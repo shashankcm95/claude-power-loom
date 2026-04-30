@@ -16,6 +16,20 @@ const { isClaudeFocused } = require('./_focus.js');
 const COOLDOWN_MS = 20 * 1000;
 const COOLDOWN_FILE = path.join(os.tmpdir(), 'claude-notify-waiting-cooldown.json');
 
+// Diagnostic logging — set CLAUDE_HOOKS_DEBUG=1 to enable
+const DEBUG = process.env.CLAUDE_HOOKS_DEBUG === '1' || process.env.CLAUDE_HOOKS_DEBUG === 'true';
+const LOG_DIR = path.join(os.homedir(), '.claude', 'logs');
+const LOG_FILE = path.join(LOG_DIR, 'notify-waiting.log');
+
+function log(event, details) {
+  if (!DEBUG) return;
+  try {
+    fs.mkdirSync(LOG_DIR, { recursive: true });
+    const entry = `[${new Date().toISOString()}] ${event}: ${JSON.stringify(details)}\n`;
+    fs.appendFileSync(LOG_FILE, entry);
+  } catch { /* non-critical */ }
+}
+
 function isInCooldown(notificationKey) {
   try {
     const data = JSON.parse(fs.readFileSync(COOLDOWN_FILE, 'utf8'));
@@ -92,26 +106,37 @@ process.stdin.on('end', () => {
   // Always pass input through (don't break the pipeline)
   process.stdout.write(input);
 
+  log('invoked', { rawInput: input.slice(0, 500) });
+
   try {
     // Skip notification if user is actively watching Claude Code
-    if (isClaudeFocused()) {
+    const focused = isClaudeFocused();
+    log('focus_check', { focused });
+    if (focused) {
+      log('skipped', { reason: 'claude_is_focused' });
       return;
     }
 
     const data = JSON.parse(input);
-    const notificationType = data.notification_type || data.type || '';
-    const notificationData = data.notification_data || data.data || {};
+    // Try multiple field names — actual schema is undocumented
+    const notificationType = data.notification_type || data.type || data.message || data.hook_event_name || '';
+    const notificationData = data.notification_data || data.data || data;
+
+    log('parsed', { notificationType, hasData: Object.keys(notificationData || {}).length > 0 });
 
     const { title, message, sound, cooldownKey } = buildMessage(notificationType, notificationData);
 
     // Skip if we recently sent the same notification
     if (isInCooldown(cooldownKey)) {
+      log('skipped', { reason: 'cooldown', key: cooldownKey });
       return;
     }
 
     recordNotification(cooldownKey);
     sendNotification(title, message, sound);
-  } catch {
+    log('sent', { title, message, sound, cooldownKey });
+  } catch (err) {
+    log('error', { error: err.message });
     // Non-critical — never block on notification failures
   }
 });
