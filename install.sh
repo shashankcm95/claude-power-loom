@@ -204,13 +204,35 @@ run_smoke_tests() {
   # Test 6: notify-waiting passes input through and writes cooldown
   rm -f "$tmpdir/claude-notify-waiting-cooldown.json"
   local notify_result
-  notify_result=$(echo '{"notification_type":"permission_prompt","notification_data":{"tool_name":"TestTool"}}' | node "$CLAUDE_DIR/hooks/scripts/notify-waiting.js" 2>/dev/null)
+  notify_result=$(echo '{"notification_type":"permission_prompt","notification_data":{"tool_name":"TestTool"}}' | CLAUDE_NOTIFY_ALWAYS=1 node "$CLAUDE_DIR/hooks/scripts/notify-waiting.js" 2>/dev/null)
   if [ -n "$notify_result" ] && [ -f "$tmpdir/claude-notify-waiting-cooldown.json" ]; then
     echo "  ✓ notify-waiting: passes input through and records cooldown"
     rm -f "$tmpdir/claude-notify-waiting-cooldown.json"
     passed=$((passed + 1))
   else
     echo "  ✗ notify-waiting: FAILED (no output or no cooldown file)"
+    failed=$((failed + 1))
+  fi
+
+  # Test 7: prompt-enrich-trigger flags vague prompts
+  local vague_result
+  vague_result=$(echo '{"prompt":"fix the auth"}' | node "$CLAUDE_DIR/hooks/scripts/prompt-enrich-trigger.js" 2>/dev/null)
+  if echo "$vague_result" | grep -q 'PROMPT-ENRICHMENT-GATE'; then
+    echo "  ✓ prompt-enrich-trigger: flags vague prompt"
+    passed=$((passed + 1))
+  else
+    echo "  ✗ prompt-enrich-trigger: FAILED to flag vague prompt"
+    failed=$((failed + 1))
+  fi
+
+  # Test 8: prompt-enrich-trigger skips clear prompts
+  local clear_result
+  clear_result=$(echo '{"prompt":"git push origin main"}' | node "$CLAUDE_DIR/hooks/scripts/prompt-enrich-trigger.js" 2>/dev/null)
+  if [ -z "$clear_result" ]; then
+    echo "  ✓ prompt-enrich-trigger: skips clear prompt"
+    passed=$((passed + 1))
+  else
+    echo "  ✗ prompt-enrich-trigger: false-positive on clear prompt"
     failed=$((failed + 1))
   fi
 

@@ -10,7 +10,7 @@ Built from original work, informed by architectural patterns from [everything-cl
 |-----------|-------|---------|
 | **Agents** | 5 | Specialized subagents: planner, code-reviewer, security-auditor, architect, optimizer |
 | **Rules** | 8 | Always-on guardrails: coding fundamentals, security, workflow, research mode, self-improvement, prompt enrichment + optional language packs (TypeScript, React/Next.js) |
-| **Hooks** | 7 | Deterministic automations: fact-forcing gate, config protection, console.log detection, pre-compact MemPalace save, session reset, completion notification, waiting notification |
+| **Hooks** | 8 | Deterministic automations: fact-forcing gate, config protection, console.log detection, pre-compact MemPalace save, session reset, completion notification, waiting notification, prompt-enrichment trigger |
 | **Commands** | 7 | Slash entry points: `/review`, `/plan`, `/security-audit`, `/self-improve`, `/forge`, `/evolve`, `/prune` |
 | **Skills** | 7 | Workflow guides: full-stack dev, deploy checklist, agent swarm, research mode, self-improvement loop, skill forge, prompt enrichment |
 
@@ -109,8 +109,10 @@ claude-toolkit/
 │   │   ├── config-guard.js      # Block linter/formatter config edits
 │   │   ├── console-log-check.js # Warn about console.log on stop
 │   │   ├── pre-compact-save.js  # Save context to MemPalace before compaction
-│   │   ├── desktop-notify.js    # Desktop notification on completion
-│   │   └── notify-waiting.js    # Desktop notification when waiting (permission/idle)
+│   │   ├── desktop-notify.js    # Desktop notification on completion (focus-aware)
+│   │   ├── notify-waiting.js    # Desktop notification when waiting (focus-aware)
+│   │   ├── prompt-enrich-trigger.js # Inject forcing instruction for vague prompts
+│   │   └── _focus.js            # Shared helper: detect if Claude is focused
 │   └── settings-reference.json  # Hook configuration template
 ├── commands/
 │   ├── review.md            # /review — invoke code-reviewer

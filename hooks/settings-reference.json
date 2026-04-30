@@ -15,6 +15,20 @@
         "id": "session:reset-tracker"
       }
     ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node HOME_DIR/.claude/hooks/scripts/prompt-enrich-trigger.js",
+            "timeout": 3
+          }
+        ],
+        "description": "Detect vague prompts and inject forcing instruction for prompt-enrichment skill",
+        "id": "prompt:enrich-trigger"
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Read|Edit|Write",
