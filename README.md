@@ -10,16 +10,20 @@ Built from original work, informed by architectural patterns from [everything-cl
 |-----------|-------|---------|
 | **Agents** | 5 | Specialized subagents: planner, code-reviewer, security-auditor, architect, optimizer |
 | **Rules** | 5 | Always-on guardrails: coding fundamentals, security, workflow + optional language packs (TypeScript, React/Next.js) |
-| **Hooks** | 4 | Deterministic automations: config protection, console.log detection, pre-compact memory save, desktop notifications |
-| **Commands** | 3 | Slash entry points: `/review`, `/plan`, `/security-audit` |
-| **Skills** | 3 | Workflow guides: full-stack dev, deploy checklist, agent swarm orchestration |
+| **Hooks** | 6 | Deterministic automations: fact-forcing gate, config protection, console.log detection, pre-compact MemPalace save, session reset, desktop notifications |
+| **Commands** | 7 | Slash entry points: `/review`, `/plan`, `/security-audit`, `/self-improve`, `/forge`, `/evolve`, `/prune` |
+| **Skills** | 6 | Workflow guides: full-stack dev, deploy checklist, agent swarm, research mode, self-improvement loop, skill forge |
 
 ## Design Philosophy
 
 - **Hooks over prompts**: Critical behaviors are enforced by deterministic scripts, not LLM instructions that can be forgotten.
+- **Fact-forcing gate**: A PreToolUse hook blocks Edit/Write until the target file has been Read — preventing hallucinated edits from stale training data.
 - **Agents with scoped access**: Each agent declares its tools and model tier. Opus for reasoning, Sonnet for mechanical work.
 - **Rules as guardrails**: Injected into every session. Concise enough not to bloat context, specific enough to prevent real mistakes.
-- **Memory at boundaries**: Pre-compact hooks save context before window compression, preventing knowledge loss in long sessions.
+- **Memory at boundaries**: Pre-compact hooks save context to both project memory AND MemPalace before window compression, preventing knowledge loss.
+- **Self-improvement loop**: Work → Capture → Review → Promote → Enforce. Proven patterns graduate from session memory to permanent rules automatically.
+- **Anti-hallucination**: Research mode enforces epistemic honesty, source attribution, and evidence-first reasoning with token budgets.
+- **Living ecosystem**: Forge new agents/skills on the fly, store their personality in MemPalace, recall them for future similar tasks.
 
 ## Install
 
@@ -46,7 +50,31 @@ git clone <your-repo-url> ~/Documents/claude-toolkit
 
 ### Hook configuration
 
-Hook scripts are installed automatically, but the hook _configuration_ must be manually merged into your `~/.claude/settings.json`. Copy the `hooks` key from `hooks/settings.json` and update the script paths to absolute paths.
+Hook scripts are installed automatically, but the hook _configuration_ must be manually merged into your `~/.claude/settings.json`. Copy the `hooks` key from `hooks/settings-reference.json` and replace `HOME_DIR` with your actual home directory path.
+
+### MemPalace (optional but recommended)
+
+MemPalace provides persistent long-term memory across sessions via semantic search:
+
+```bash
+pip3 install mempalace
+mempalace init --yes
+```
+
+Add to `~/.claude/.mcp.json`:
+```json
+{
+  "mcpServers": {
+    "mempalace": {
+      "command": "mempalace",
+      "args": ["mcp"],
+      "env": {}
+    }
+  }
+}
+```
+
+Restart Claude Code to connect the MCP server.
 
 ## Structure
 
@@ -69,19 +97,28 @@ claude-toolkit/
 │       └── react-nextjs.md  # Server/client boundaries, hooks, keys
 ├── hooks/
 │   ├── scripts/
+│   │   ├── fact-force-gate.js   # Must Read before Edit/Write (anti-hallucination)
+│   │   ├── session-reset.js     # Reset fact-gate tracker on session start
 │   │   ├── config-guard.js      # Block linter/formatter config edits
 │   │   ├── console-log-check.js # Warn about console.log on stop
-│   │   ├── pre-compact-save.js  # Save context before compaction
+│   │   ├── pre-compact-save.js  # Save context to MemPalace before compaction
 │   │   └── desktop-notify.js    # macOS notification on completion
-│   └── settings.json            # Hook configuration template
+│   └── settings-reference.json  # Hook configuration template
 ├── commands/
 │   ├── review.md            # /review — invoke code-reviewer
 │   ├── plan.md              # /plan — invoke planner
-│   └── security-audit.md    # /security-audit — invoke security-auditor
+│   ├── security-audit.md    # /security-audit — invoke security-auditor
+│   ├── self-improve.md      # /self-improve — review & promote patterns
+│   ├── forge.md             # /forge — create agents/skills on the fly
+│   ├── evolve.md            # /evolve — update agent/skill with learnings
+│   └── prune.md             # /prune — remove stale entries
 ├── skills/
 │   ├── fullstack-dev/       # Server-first development workflow
 │   ├── deploy-checklist/    # Pre-deploy verification
-│   └── agent-swarm/         # Multi-agent orchestration
+│   ├── agent-swarm/         # Multi-agent orchestration
+│   ├── research-mode/       # Anti-hallucination protocol
+│   ├── self-improve/        # Memory-to-rules promotion pipeline
+│   └── skill-forge/         # Dynamic agent/skill creation
 ├── install.sh
 ├── LICENSE
 ├── ATTRIBUTION.md
