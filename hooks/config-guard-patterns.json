@@ -1,0 +1,43 @@
+{
+  "_comment": "Filename regex patterns that config-guard blocks. Each pattern is automatically anchored with (?:^|/) and matched case-insensitively. Add or remove patterns here to customize protected config files. Use \\ to escape regex special chars.",
+  "patterns": [
+    "\\.eslintrc",
+    "eslint\\.config",
+    "\\.prettierrc",
+    "prettier\\.config",
+    "biome\\.jsonc?$",
+    "\\.stylelintrc",
+    "tsconfig[^/]*\\.json$",
+    "\\.editorconfig$",
+
+    "\\.babelrc",
+    "babel\\.config\\.",
+    "\\.swcrc",
+    "vite\\.config\\.",
+    "vitest\\.config\\.",
+    "jest\\.config\\.",
+    "webpack\\.config\\.",
+    "rollup\\.config\\.",
+    "esbuild\\.config\\.",
+    "parcel\\.config\\.",
+
+    "turbo\\.json$",
+    "nx\\.json$",
+    "\\.npmrc$",
+    "\\.yarnrc",
+    "pnpm-workspace\\.ya?ml$",
+    "\\.nvmrc$",
+    "\\.node-version$",
+
+    "commitlint\\.config\\.",
+    "lint-staged\\.config\\.",
+    "\\.lintstagedrc",
+    "lefthook\\.ya?ml$",
+    "\\.husky/",
+    "\\.pre-commit-config\\.ya?ml$",
+
+    "\\.markdownlint",
+    "\\.cspell\\.json$",
+    "cspell\\.config\\."
+  ]
+}

@@ -1,12 +1,19 @@
 #!/usr/bin/env node
 
-// PreToolUse hook: blocks edits to linter/formatter config files.
+// PreToolUse hook: blocks edits to linter/formatter/build/test config files.
 // Forces the agent to fix code instead of weakening configurations.
+//
+// Patterns load from hooks/config-guard-patterns.json (relative to this
+// script's parent directory). If the file is missing or invalid, falls
+// back to a hardcoded essential set so the gate never silently disables.
 
+const fs = require('fs');
+const path = require('path');
 const { log } = require('./_log.js');
 const logger = log('config-guard');
 
-const PROTECTED_PATTERNS = [
+// Essential fallback if patterns file is missing or invalid
+const FALLBACK_PATTERNS = [
   /(?:^|\/)\.eslintrc/i,
   /(?:^|\/)eslint\.config/i,
   /(?:^|\/)\.prettierrc/i,
@@ -16,6 +23,33 @@ const PROTECTED_PATTERNS = [
   /(?:^|\/)tsconfig[^/]*\.json$/i,
   /(?:^|\/)\.editorconfig$/i,
 ];
+
+function loadPatterns() {
+  // Look for patterns file at ../config-guard-patterns.json (next to
+  // hooks/scripts/) and at ./config-guard-patterns.json (same dir, for
+  // installs that flatten the layout).
+  const candidates = [
+    path.join(__dirname, '..', 'config-guard-patterns.json'),
+    path.join(__dirname, 'config-guard-patterns.json'),
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      const raw = fs.readFileSync(candidate, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed.patterns)) {
+        const compiled = parsed.patterns.map((p) => new RegExp(`(?:^|\\/)(?:${p})`, 'i'));
+        logger('patterns_loaded', { source: candidate, count: compiled.length });
+        return compiled;
+      }
+    } catch { /* try next candidate */ }
+  }
+
+  logger('patterns_fallback', { reason: 'no_valid_patterns_file' });
+  return FALLBACK_PATTERNS;
+}
+
+const PROTECTED_PATTERNS = loadPatterns();
 
 let input = '';
 process.stdin.setEncoding('utf8');
