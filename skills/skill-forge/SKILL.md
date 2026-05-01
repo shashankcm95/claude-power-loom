@@ -23,7 +23,7 @@ Determine:
 - **Name**: Short, descriptive (e.g., `stripe-integrator`, `graphql-designer`)
 - **Type**: Agent (has tools, model tier, acts autonomously) vs Skill (workflow guide, no tools)
 - **Scope**: What does it handle? What does it NOT handle?
-- **Personality**: Accumulated preferences, conventions, and lessons learned
+- **Conventions**: What standards / patterns the agent should encode (these go directly in the system prompt — Claude Code does not persist agent state across invocations)
 
 ### 3. Create the File
 
@@ -52,18 +52,18 @@ color: {color}
 ...
 ```
 
-### 4. Store Personality in MemPalace
-After creating the agent/skill, store its context in MemPalace:
+### 4. Document the Creation Context
+After creating the agent/skill, append a brief comment block to the agent file documenting:
 - What task triggered its creation
-- Domain-specific conventions discovered
-- Failure patterns to avoid
-- Success patterns to replicate
+- Date and project
+- Initial design decisions
 
-Use MemPalace MCP tools: `store_memory` with the agent name as the room.
+This stays in the file — Claude reads it on every invocation. If MemPalace MCP is available, you may also `store_memory` with the agent name as the room for cross-session searchability, but the agent file itself is the source of truth.
+
+**What this is NOT**: agents do NOT accumulate personality or learn across invocations. Each `Agent` tool call spawns a fresh subagent with the system prompt as written in its `.md` file. To "evolve" an agent, you must explicitly edit the `.md` file (use `/evolve {name}` for the workflow).
 
 ### 5. Register for Recall
-The new agent/skill is immediately available in `~/.claude/agents/` or `~/.claude/skills/`.
-MemPalace enables semantic recall: "find the agent I built for payment integrations."
+The new agent/skill is immediately available in `~/.claude/agents/` or `~/.claude/skills/`. Claude discovers them by listing those directories — no further registration needed.
 
 ## Evolution
 After each use of a forged agent/skill:
@@ -75,4 +75,4 @@ After each use of a forged agent/skill:
 - Don't create agents for one-off tasks — just do the work
 - Don't duplicate existing agent capabilities — extend instead
 - Don't create agents without clear scope boundaries — they become god-objects
-- Don't skip the MemPalace storage step — that's what enables recall
+- Don't claim agents have memory or personality across runs — they don't. Edit the `.md` file when behavior should change.

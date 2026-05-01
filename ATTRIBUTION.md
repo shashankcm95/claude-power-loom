@@ -34,10 +34,15 @@ how they map to specific components in this toolkit.
 ### MiroFish (License: see repository)
 - **Author**: 666ghj and contributors
 - **Repository**: https://github.com/666ghj/MiroFish
-- **Influenced**: Multi-agent swarm orchestration, autonomous agent memory
-  and personality, parallel agent contexts, knowledge graph construction.
-- **Toolkit components based on this**: `agent-swarm` skill, `skill-forge`
-  MemPalace storage step, agent personality accumulation across runs.
+- **Influenced**: Multi-agent swarm orchestration with distinct personas,
+  parallel agent contexts, run-state tracking for swarm jobs.
+- **Toolkit components based on this**: `agent-swarm` skill, `swarm/`
+  chaos-test kit (5-persona parallel testing with aggregator).
+- **What we did NOT borrow**: MiroFish's "agent personality across
+  sessions" pattern. Claude Code does not persist agent state between
+  Agent tool invocations — each subagent is fresh. Earlier versions of
+  this toolkit's documentation made aspirational claims about agent
+  personality accumulation; those have been removed.
 
 ### claude-superpowers (MIT License)
 - **Author**: Ivan Magda

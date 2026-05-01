@@ -81,6 +81,30 @@
         ],
         "description": "Warn about console.log statements in recently edited files",
         "id": "stop:console-check"
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node HOME_DIR/.claude/hooks/scripts/auto-store-enrichment.js",
+            "timeout": 10
+          }
+        ],
+        "description": "Auto-store [ENRICHED-PROMPT-START/END] blocks from response into prompt-patterns.json",
+        "id": "stop:auto-store-enrichment"
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node HOME_DIR/.claude/hooks/scripts/session-end-nudge.js",
+            "timeout": 3
+          }
+        ],
+        "description": "After N responses, nudge user toward /self-improve (closes the session-end review loop)",
+        "id": "stop:session-end-nudge"
       }
     ]
   }

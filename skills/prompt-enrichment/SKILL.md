@@ -72,47 +72,44 @@ If under 500 words, show the full enriched prompt.
 
 ## Step 4: Present for Review
 
-Show the enriched prompt to the user with clear formatting:
+Show the enriched prompt to the user using the **deterministic markup** below (the `auto-store-enrichment.js` Stop hook parses these markers to auto-store the pattern — don't skip the markers):
 
 ```
 📋 Enriched Prompt:
 
-**Instructions**: [what to do, how, constraints]
-**Context**: [relevant background pulled from project]
-**Input**: [specific files/data involved]
-**Output**: [expected deliverable and format]
-
-[Technique tags: #chain-of-thought #negative-prompting]
+[ENRICHED-PROMPT-START]
+RAW: <original user prompt verbatim>
+CATEGORY: <refactor|bugfix|feature|review|docs|other>
+TECHNIQUES: <comma-separated, e.g. chain-of-thought,rag>
+INSTRUCTIONS: <what to do, how, constraints>
+CONTEXT: <relevant background pulled from project>
+INPUT: <specific files/data involved>
+OUTPUT: <expected deliverable and format>
+[ENRICHED-PROMPT-END]
 
 Approve, modify, or say "just do it" to skip enrichment.
 ```
 
+**Important**: the START/END markers MUST be on their own lines. The auto-store hook parses by line — embedded markers in a sentence won't trigger storage.
+
 ### User Responses
-- **Approve** (yes, looks good, go ahead): Execute the enriched prompt. Store pattern.
-- **Modify** (change X to Y, also include Z): Apply changes. Show updated version. Re-present.
-- **Skip** ("just do it", "skip"): Execute raw prompt as-is. Don't store pattern.
-- **Always skip for this type**: Store a "skip" preference for this task category.
+- **Approve** (yes, looks good, go ahead): Execute the enriched prompt. The Stop hook auto-stores it.
+- **Modify** (change X to Y, also include Z): Apply changes. Show updated version with markers. Re-present.
+- **Skip** ("just do it", "skip"): Execute raw prompt as-is. The Stop hook detects no markers and doesn't store.
 
-## Step 5: Store Pattern
+## Step 5: Storage (automatic — no action required from Claude)
 
-On approval, **always** store the pattern by running the storage CLI:
+When you produce the `[ENRICHED-PROMPT-START]...[ENRICHED-PROMPT-END]` markup in your response, the **`auto-store-enrichment.js` Stop hook** automatically:
+1. Detects the marker pair in your output
+2. Parses the structured fields (RAW, CATEGORY, TECHNIQUES, INSTRUCTIONS, etc.)
+3. Calls `node ~/.claude/hooks/scripts/prompt-pattern-store.js store ...` with the parsed values
+4. Writes to `~/.claude/prompt-patterns.json` (the canonical local store)
 
-```bash
-node ~/.claude/hooks/scripts/prompt-pattern-store.js store \
-  --raw "<original user prompt>" \
-  --enriched "<full enriched prompt>" \
-  --category "<refactor|bugfix|feature|review|docs|other>" \
-  --techniques "chain-of-thought,rag" \
-  --modified "true|false"
-```
+This means: **showing the enriched prompt with proper markup IS the storage trigger.** You don't need to call the CLI manually.
 
-This writes to `~/.claude/prompt-patterns.json` (the canonical local store, used regardless of MemPalace availability — it's the source of truth that the lookup step queries).
+The CLI handles approval-count incrementing: similar prompts (≥0.6 Jaccard similarity) merge into one entry; the count bumps automatically across sessions.
 
-The CLI handles approval-count incrementing automatically: if a similar pattern (≥80% Jaccard similarity on word overlap) exists, it bumps that pattern's count. Otherwise it creates a new one.
-
-**Optional: also store in MemPalace** if MCP is available. Use `mcp__mempalace__store_memory` with the `prompt-patterns` room. The local JSON is the source of truth; MemPalace is for cross-machine semantic search.
-
-After storing, the CLI returns the new tier for that pattern. Tell the user briefly: *"Pattern stored — now at Familiar tier (2 approvals). One more and it'll auto-apply silently."*
+**Optional**: if MemPalace MCP is available, you can also call `mcp__mempalace__store_memory` for cross-machine semantic search — but the local JSON is the source of truth.
 
 ## Step 6: Execute
 
