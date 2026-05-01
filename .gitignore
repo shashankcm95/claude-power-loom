@@ -5,3 +5,6 @@ node_modules/
 # MemPalace per-project files (issue #185)
 mempalace.yaml
 entities.json
+
+# Swarm run state (per-run findings, not for version control)
+swarm/run-state/
