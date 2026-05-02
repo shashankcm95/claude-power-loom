@@ -12,6 +12,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { acquireLock: sharedAcquireLock, releaseLock: sharedReleaseLock } = require('./_lib/lock');
 
 const STORE_PATH = path.join(os.homedir(), '.claude', 'agent-patterns.json');
 const LOCK_PATH = STORE_PATH + '.lock';
@@ -31,42 +32,22 @@ function parseArgs(argv) {
   return args;
 }
 
-function sleepMs(ms) {
-  try {
-    if (typeof SharedArrayBuffer === 'function' && typeof Atomics?.wait === 'function') {
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
-      return;
-    }
-  } catch { /* fall through */ }
-  const end = Date.now() + ms;
-  while (Date.now() < end) { /* spin */ }
-}
-
-function acquireLock() {
+// H.3.2: lock primitives extracted to _lib/lock.js. Local wrappers preserve
+// callsite signatures (no args). The directory-creation step (mkdir on
+// STORE_PATH dirname) used to live inside acquireLock; moved to a one-shot
+// initializer below so the shared lock primitive stays generic.
+let _ensuredDir = false;
+function _ensureDir() {
+  if (_ensuredDir) return;
   fs.mkdirSync(path.dirname(STORE_PATH), { recursive: true });
-  const start = Date.now();
-  while (Date.now() - start < LOCK_TIMEOUT_MS) {
-    try {
-      const fd = fs.openSync(LOCK_PATH, 'wx');
-      fs.writeSync(fd, JSON.stringify({ pid: process.pid }));
-      fs.closeSync(fd);
-      return true;
-    } catch (err) {
-      if (err.code !== 'EEXIST') throw err;
-      try {
-        const stat = fs.statSync(LOCK_PATH);
-        if (Date.now() - stat.mtimeMs > 10000) {
-          try { fs.unlinkSync(LOCK_PATH); } catch { /* race */ }
-        }
-      } catch { /* race */ }
-      sleepMs(50);
-    }
-  }
-  return false;
+  _ensuredDir = true;
 }
-
+function acquireLock() {
+  _ensureDir();
+  return sharedAcquireLock(LOCK_PATH, { maxWaitMs: LOCK_TIMEOUT_MS });
+}
 function releaseLock() {
-  try { fs.unlinkSync(LOCK_PATH); } catch { /* gone */ }
+  return sharedReleaseLock(LOCK_PATH);
 }
 
 function loadStore() {

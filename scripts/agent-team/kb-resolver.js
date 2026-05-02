@@ -28,6 +28,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { withLock } = require('./_lib/lock'); // H.3.2 (CS-1 code-reviewer X-3)
 
 const KB_BASE = process.env.HETS_KB_DIR ||
   path.join(process.env.HOME, 'Documents', 'claude-toolkit', 'skills', 'agent-team', 'kb');
@@ -80,15 +81,30 @@ function loadManifest() {
   }
 }
 
+// H.3.2 (CS-1 code-reviewer X-3): withLock wraps the read-modify-write
+// to prevent two concurrent `scan` invocations from clobbering each other.
+const MANIFEST_LOCK = MANIFEST_PATH + '.lock';
 function writeManifestAtomic(manifest) {
   fs.mkdirSync(KB_BASE, { recursive: true });
-  const tmp = MANIFEST_PATH + '.tmp.' + process.pid;
-  fs.writeFileSync(tmp, JSON.stringify(manifest, null, 2));
-  fs.renameSync(tmp, MANIFEST_PATH);
+  withLock(MANIFEST_LOCK, () => {
+    const tmp = MANIFEST_PATH + '.tmp.' + process.pid;
+    fs.writeFileSync(tmp, JSON.stringify(manifest, null, 2));
+    fs.renameSync(tmp, MANIFEST_PATH);
+  });
 }
 
+// H.3.2 (CS-1 hacker.zoe CRIT-3 + code-reviewer H-4):
+// Path-traversal fix. `kbId` containing `..` would join to a path outside
+// KB_BASE; `kb-resolver cat ../../etc/secrets` reads outside the KB. Boundary
+// check via `path.resolve` ensures the resolved file lives under KB_BASE.
 function findDocPath(kbId) {
-  const candidate = path.join(KB_BASE, kbId + '.md');
+  const candidate = path.resolve(KB_BASE, kbId + '.md');
+  const baseResolved = path.resolve(KB_BASE);
+  // Refuse if the resolved candidate escapes KB_BASE. The trailing path.sep
+  // guard prevents `KB_BASE_extra` matching `KB_BASE` as a prefix.
+  if (!candidate.startsWith(baseResolved + path.sep) && candidate !== baseResolved) {
+    return null;
+  }
   if (fs.existsSync(candidate)) return candidate;
   return null;
 }

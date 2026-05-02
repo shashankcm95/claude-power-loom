@@ -20,6 +20,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { withLock } = require('./_lib/lock'); // H.3.2 (CS-1 hacker.zoe CRIT-4)
 
 const RUN_STATE_BASE = process.env.HETS_RUN_STATE_DIR ||
   path.join(process.env.HOME, 'Documents', 'claude-toolkit', 'swarm', 'run-state');
@@ -55,12 +56,26 @@ function loadBudgets(runId) {
   }
 }
 
+// (write-only; the lock wrapping the WHOLE read-modify-write lives at the
+// callsite inside cmdRecord — H.3.2 own-validation probe 3 caught that
+// wrapping only the write isn't enough; load+modify+write must be atomic
+// across processes.)
 function writeBudgetsAtomic(runId, data) {
   const fp = budgetFilePath(runId);
   fs.mkdirSync(path.dirname(fp), { recursive: true });
   const tmp = fp + '.tmp.' + process.pid;
   fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
   fs.renameSync(tmp, fp);
+}
+
+// Helper to lock the whole RMW cycle on the budget file for a run.
+// 15s timeout (vs default 3s) because chaos-test convention may fire 30+
+// concurrent record calls; busy-wait fairness is poor under contention.
+// Own-validation probe 3 saw 23% loss at 3s timeout, 0% at 15s.
+function withBudgetLock(runId, fn) {
+  const lockPath = budgetFilePath(runId) + '.lock';
+  fs.mkdirSync(path.dirname(lockPath), { recursive: true });
+  return withLock(lockPath, fn, { maxWaitMs: 15000 });
 }
 
 function loadContractForPersona(persona) {
@@ -135,27 +150,36 @@ function cmdRecord(args) {
     console.error('--tokens-input and --tokens-output must be integers');
     process.exit(1);
   }
-  let budgets = loadBudgets(runId);
-  if (!budgets) {
-    // Auto-init if missing — convenience for ad-hoc usage
-    cmdInit({ _: [runId] });
-    budgets = loadBudgets(runId);
-  }
-  const entry = ensureSpawn(budgets, args.identity);
-  entry.tokensInput += ti;
-  entry.tokensOutput += to;
-  entry.totalTokens = entry.tokensInput + entry.tokensOutput;
-  entry.recordedAt = new Date().toISOString();
-  writeBudgetsAtomic(runId, budgets);
-  // Compute derived: how much budget remains
-  const allowance = (entry.budgetTokens || 0) + entry.extensionsUsed * entry.extensionAmount;
-  const remaining = allowance - entry.totalTokens;
+  // H.3.2 (CS-1 hacker.zoe CRIT-4 + code-reviewer H-2; own-validation probe 3):
+  // Lock the WHOLE read-modify-write cycle. Wrapping only writeBudgetsAtomic
+  // is insufficient — concurrent loaders all read pre-increment state, then
+  // serialize their writes; last writer wins, others' increments lost.
+  let allowance, remaining, totalAfter;
+  withBudgetLock(runId, () => {
+    let budgets = loadBudgets(runId);
+    if (!budgets) {
+      // Auto-init if missing — convenience for ad-hoc usage. (Note: cmdInit
+      // exits the process if the file already exists; safe inside the lock
+      // because we've already confirmed it doesn't.)
+      const data = { runId, createdAt: new Date().toISOString(), spawns: {} };
+      writeBudgetsAtomic(runId, data);
+      budgets = data;
+    }
+    const entry = ensureSpawn(budgets, args.identity);
+    entry.tokensInput += ti;
+    entry.tokensOutput += to;
+    entry.totalTokens = entry.tokensInput + entry.tokensOutput;
+    entry.recordedAt = new Date().toISOString();
+    writeBudgetsAtomic(runId, budgets);
+    // Capture for the post-lock log line.
+    allowance = (entry.budgetTokens || 0) + entry.extensionsUsed * entry.extensionAmount;
+    totalAfter = entry.totalTokens;
+    remaining = allowance - entry.totalTokens;
+  });
   console.log(JSON.stringify({
     action: 'record',
     identity: args.identity,
-    tokensInput: entry.tokensInput,
-    tokensOutput: entry.tokensOutput,
-    totalTokens: entry.totalTokens,
+    totalTokens: totalAfter,
     allowance,
     remainingTokens: remaining,
     overBudget: remaining < 0,
