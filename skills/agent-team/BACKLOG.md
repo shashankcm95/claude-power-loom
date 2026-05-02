@@ -75,26 +75,28 @@ E2E validated 5 probes covering all source paths + promise-mode skip + missing-t
 
 ## Phase H.2 — explicitly deferred (added to backlog per user direction)
 
-### H.2.7 — Full pattern contracts (structural code review) — IMPORTANT TO REVISIT
+### H.2.7 — Full pattern contracts (structural code review) — SHIPPED
 
-**Status**: documented in SKILL.md as the third leg of the "triple contract"; not implemented.
+**Status**: shipped this turn. Closes the long-standing DOCUMENTATION-DEBT flag where SKILL.md described "triple contract" but only 2/3 were implemented.
 
-**Scope**: Third contract type — pattern checks beyond functional + anti-pattern. Examples:
-- "Code uses a loop, not 1000 unrolled prints" (the original 1000-zeros defense)
-- "Function is ≤50 lines" (from CLAUDE.md fundamentals)
-- "No nesting >4 levels"
-- "No hardcoded values where constants exist"
+**What landed**:
+- New functional check `noUnrolledLoops` — scans code blocks for ≥`maxRepetitions` (default 5) identical lines after stripping syntactic boilerplate (lines <3 chars filtered, e.g., `}`, `};`, `})`)
+- New functional check `noExcessiveNesting` — brace-counting depth on C-family code blocks; default `maxDepth: 4` (matches CLAUDE.md fundamentals); strips string literals + line/block comments before counting
+- New pattern doc `patterns/structural-code-review.md`
+- SKILL.md "triple contract" section updated to describe what's actually implemented (no more oversell)
+- Pattern catalog table refreshed with current statuses for H.2.3 through H.2.7
 
-Implementation options:
-- Code-shape regexes + AST sniffs (simple, fast, brittle)
-- LLM-as-judge (sophisticated, slow, soft)
-- Hybrid (default to regex; escalate to LLM-as-judge for low-confidence cases)
+**Bug caught & fixed during own validation**: probe 2 initially failed `noUnrolledLoops` on legitimate nested code because 6 closing `}` in a row tripped the repetition counter. Added `length >= 3` filter to skip syntactic boilerplate. Re-run confirmed F2 passes for nested code while F3 correctly catches the depth violation.
 
-**Why this matters (oversell flag)**: SKILL.md currently describes triple contract as the anti-1000-zeros defense. Without H.2.7, that's a 2/3 implementation. Either ship H.2.7 OR rewrite SKILL.md to call it a two-contract verification with future pattern layer. The architect actor already flagged this in chaos-20260502-060039. **Don't drop this without explicit user decision** — it's a documentation-debt issue, not just feature-bloat.
+**Follow-up tasks**:
+- **Add structural checks to builder persona contracts (06-12)** — currently the contracts don't reference `noUnrolledLoops` or `noExcessiveNesting`. Adding them to all 7 builder contracts is ~30 LoC across 7 files. Defer until first chaos run with builders surfaces a real "wrote code wrong" finding.
+- **Indentation-based nesting check** for Python — `noExcessiveNesting` is brace-only. A separate `noExcessiveIndent` check could count leading whitespace consistency. Lower priority; catches a smaller class of bugs.
+- **`functionTooLong` check** — count lines between `function ... {` and matching `}` per CLAUDE.md "<50 lines" fundamental. ~50 LoC + brace-balance tracker.
+- **`noHardcodedMagicValues` check** — flag numeric literals not assigned to a constant. Heuristic; high false-positive risk. ~80 LoC + tuning.
 
-**Dependencies**: H.2.6 (`invokesRequiredSkills`) is a similar-shape check; its transcript-reading logic could be shared.
+### H.2.7 (DOCUMENTATION-DEBT FLAG, archival marker) — RESOLVED
 
-**Estimate**: ~400 LoC + ~3hr.
+The flag is now resolved. SKILL.md's "triple contract" section accurately describes 3/3 implemented checks. Architect actor's chaos-20260502-060039 oversell finding is closed.
 
 ### H.2.8 — On-demand budget extensions
 

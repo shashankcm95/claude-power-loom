@@ -81,6 +81,8 @@ The verifier check `invokesRequiredSkills` (planned for H.2.6) will skip enforce
 | `containsKeywords` | Output contains specific keywords | `{ keywords: ["verified", "evidence"] }` |
 | `noEmptyChallengeSection` | Counts `### CHALLENGE-N` headings; ≥`min` required. For challenger contracts (asymmetric-challenger pattern). | `{ min: 1 }` |
 | `invokesRequiredSkills` | Reads actor transcript JSONL (or falls back to `--skills` CLI flag), verifies each `skills.required` was invoked via `Skill` tool. Skips skills with `skill_status: 'not-yet-authored'` (promise mode). Returns rich result `{ pass, source, invokedSkills, missingRequired, skippedPromiseMode, requiredCount }`. | none — auto-reads `--transcript` or `--skills` |
+| `noUnrolledLoops` (H.2.7 — third-contract leg) | Scans code blocks (` ```...``` `) for ≥`maxRepetitions` identical lines = fail. Catches the 1000-zeros family (manual unrolling instead of loop/abstraction). Use for builder personas (06-12) writing code in findings. | `{ maxRepetitions: 5 }` (default 5) |
+| `noExcessiveNesting` (H.2.7) | Brace-counting depth check on code blocks; fails if any block exceeds `maxDepth`. C-family languages only (Python's indentation-based nesting is a known limitation). Strips string literals + comments before counting. | `{ maxDepth: 4 }` (default 4, matches CLAUDE.md) |
 
 ## Anti-pattern checks
 

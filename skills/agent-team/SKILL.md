@@ -41,12 +41,12 @@ Each agent has THREE contracts, validated by `scripts/agent-team/contract-verifi
 - All claims have evidence markers (`file:line`, `verified by`)
 - No padding without acknowledgment
 
-### 3. Pattern contract (Phase H.2) — did you use correct approach?
-- Right abstractions (e.g., a loop instead of brute-force expansion)
-- Idiomatic for the role (e.g., hacker actually attempts attacks)
-- Integrates with toolkit conventions
+### 3. Pattern contract (H.2.7 — shipped) — did you use correct approach?
+- **`noUnrolledLoops`**: scans code blocks in actor findings; ≥5 identical lines = fail (catches manual unrolling)
+- **`noExcessiveNesting`**: brace-counting depth check on code blocks; default `maxDepth: 4` (C-family only — Python's indentation-based nesting is a documented limitation)
+- See [patterns/structural-code-review.md](patterns/structural-code-review.md) for the design + when-to-use guidance
 
-The 1000-zeros example fails Contract #2 (template repetition) and #3 (no abstraction). The hacker writing "brute-forced 1000 cases" instead of using a meaningful test fails #2.
+The 1000-zeros example now fails Contract #3 cleanly: the unrolled `print(0)` × 1000 trips `noUnrolledLoops` at the 5th repetition.
 
 ## Workflow
 
@@ -181,17 +181,18 @@ Reusable patterns extracted from HETS development live in `patterns/`. Each patt
 
 | Pattern | Status |
 |---------|--------|
-| [Asymmetric Challenger](patterns/asymmetric-challenger.md) | proposed |
-| [Trust-Tiered Verification Depth](patterns/trust-tiered-verification.md) | proposed |
+| [Asymmetric Challenger](patterns/asymmetric-challenger.md) | implementing (H.2.3) |
+| [Trust-Tiered Verification Depth](patterns/trust-tiered-verification.md) | implementing (H.2.4) |
 | [Convergence-as-Signal](patterns/convergence-as-signal.md) | observed |
-| [Persona-Skills Mapping](patterns/persona-skills-mapping.md) | implementing |
+| [Persona-Skills Mapping](patterns/persona-skills-mapping.md) | active (H.2.6 closed the loop) |
 | [Agent Identity & Reputation](patterns/agent-identity-reputation.md) | implementing |
 | [Meta-Validation](patterns/meta-validation.md) | active |
 | [Prompt Distillation](patterns/prompt-distillation.md) | implementing |
 | [Shared Knowledge Base](patterns/shared-knowledge-base.md) | implementing |
 | [Content-Addressed References](patterns/content-addressed-refs.md) | implementing |
-| [Skill Bootstrapping](patterns/skill-bootstrapping.md) | proposed |
-| [Tech-Stack Analyzer](patterns/tech-stack-analyzer.md) | proposed |
+| [Skill Bootstrapping](patterns/skill-bootstrapping.md) | implementing (H.2.5) |
+| [Tech-Stack Analyzer](patterns/tech-stack-analyzer.md) | implementing (H.2.5) |
+| [Structural Code Review](patterns/structural-code-review.md) | implementing (H.2.7) |
 
 To target a pattern in a future chaos run, read its "Validation Strategy" section — each lists concrete failure modes and how an actor could stress them. `chaos-test --pattern <name>` is planned for full H.2.
 
@@ -247,4 +248,5 @@ Refs of the form `kb:<id>@<short-hash>` validate the doc hasn't drifted since th
 - **H.2.4 (shipped — trust-tiered verification, LATENCY-CRITICAL)**: queryable tier API in `agent-identity.js` (`tier --identity X`, `recommend-verification --identity X`); verification policy table (high-trust → spot-check + skip `noTextSimilarityToPriorRun`; medium-trust → asymmetric challenger; low-trust + unproven → symmetric pair). New `--skip-checks <ids-or-names>` flag on `contract-verifier.js` skips listed checks with `status: 'skipped'` audit trail. New `kb:hets/symmetric-pair-conventions` doc. Pattern doc status `proposed → implementing`. New `HETS_IDENTITY_STORE` env var lets ephemeral runs use temp registries (used by E2E fixtures). E2E validated 4 probes against seeded fixture covering all 4 tier levels: tier formula correct; recommend-verification policy correct; --skip-checks works by check.id and by check.check name.
 - **H.2.5 (shipped — tech-stack analyzer + skill-bootstrapping wiring)**: new top-level skill `skills/tech-stack-analyzer/SKILL.md` (orchestrator-side entry point for "build me X" tasks; 7-step workflow with 2 user-gates). New `kb:hets/stack-skill-map` (12 stack entries mapping web / mobile / backend / data / ml / infra / security domains → required + recommended skills + suggested personas + rationale). New `/build-team` command as user-facing entry point. Patterns `tech-stack-analyzer` + `skill-bootstrapping` status `proposed → implementing`. E2E validated 6 probes: stack-skill-map resolves via `cat` and via hash-pinned ref; skill scaffold present + correct trigger sections; command exists; cross-validation confirms 7 stack-skill-map skill names map to real persona contracts AND 4 marketplace skills exist on disk in `~/.claude/plugins/marketplaces/knowledge-work-plugins/`.
 - **H.2.6 (shipped — invokesRequiredSkills verifier check)**: new functional check that reads the actor's transcript JSONL (`--transcript <path>`) and verifies each `skills.required` was invoked via the `Skill` tool. Falls back to `--skills` CLI flag when no transcript supplied; graceful pass with `reason: 'no_skills_source_supplied'` when neither. Skips skills with `skill_status: 'not-yet-authored'` (promise mode). Functional-check dispatcher extended to support rich `{pass, ...meta}` returns alongside boolean returns (mirrors antiPattern shape). `persona-skills-mapping` pattern status `implementing → active` (now has enforcement teeth). E2E validated 5 probes: transcript-with-required PASS; transcript-empty FAIL on missing skills (promise-mode skipped correctly); --skills fallback PASS; no-source-graceful PASS with reason; missing-transcript-file FAIL with reason.
-- **H.2 (next)**: see `BACKLOG.md`. Deferred (in backlog): H.2.7 (full pattern contracts — DOCUMENTATION-DEBT FLAG), H.2.8 (on-demand budget extensions), H.2.9 (`chaos-test --pattern <name>` runner). All other H.2 active items shipped.
+- **H.2.7 (shipped — full pattern contracts, third-leg of triple defense)**: closes the long-standing DOCUMENTATION-DEBT flag where SKILL.md described "triple contract" but only 2/3 were implemented. New functional checks: `noUnrolledLoops` (scans code blocks for ≥N identical lines = manual unrolling) + `noExcessiveNesting` (brace-counting depth on C-family code blocks; default `maxDepth: 4`, matches CLAUDE.md fundamentals; strips string literals + comments before counting). New pattern doc `patterns/structural-code-review.md`. The 1000-zeros example now trips `noUnrolledLoops` at the 5th repetition — closes the long-running anti-pattern oversell. E2E validated 5 probes covering unrolled-loop detection, excessive-nesting detection, clean-code passes, Python-indentation limitation (documented), and code-block extraction.
+- **H.2 (next)**: see `BACKLOG.md`. Deferred (in backlog): H.2.8 (on-demand budget extensions), H.2.9 (`chaos-test --pattern <name>` runner). All other H.2 items shipped (H.2.1–H.2.7).

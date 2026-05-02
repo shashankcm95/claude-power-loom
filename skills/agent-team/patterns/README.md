@@ -22,7 +22,8 @@ This dual form is itself the [Prompt Distillation](prompt-distillation.md) patte
 | 8 | [Shared Knowledge Base](shared-knowledge-base.md) | implementing | One source of truth for docs; runs reference a frozen snapshot so mid-run edits don't affect in-flight agents. |
 | 9 | [Content-Addressed References](content-addressed-refs.md) | implementing | Refs by SHA-hashed pointer (`kb:<id>@<hash>`); cross-project reuse + reproducibility for free. |
 | 10 | [Skill Bootstrapping](skill-bootstrapping.md) | proposed | Missing skill → user-gated forge invocation → review → catalog admission. |
-| 11 | [Tech-Stack Analyzer](tech-stack-analyzer.md) | proposed | Parse user task → infer stack → map to skills → produce a plan the user can redirect. |
+| 11 | [Tech-Stack Analyzer](tech-stack-analyzer.md) | implementing | Parse user task → infer stack → map to skills → produce a plan the user can redirect. |
+| 12 | [Structural Code Review](structural-code-review.md) | implementing | Third leg of "triple contract" — `noUnrolledLoops` + `noExcessiveNesting` checks against code blocks in actor findings. Catches the 1000-zeros family. |
 
 **Status legend:** `active` = code in production; `implementing` = code being written this phase; `proposed` = designed but not yet implemented; `observed` = pattern recurred in practice without intentional design.
 

@@ -123,6 +123,73 @@ const functionalChecks = Object.assign(Object.create(null), {
   outputLengthMin: (cArgs) => body.length >= cArgs.min,
   outputLengthMax: (cArgs) => body.length <= cArgs.max,
   containsKeywords: (cArgs) => cArgs.keywords.every((k) => body.toLowerCase().includes(k.toLowerCase())),
+  // H.2.7 — structural code-review checks (the third leg of the "triple
+  // contract" defense from SKILL.md; closes the documentation-debt flag).
+  // Operate on code blocks (```...```) embedded in actor findings — builder
+  // personas write code as part of fix recommendations; pattern checks catch
+  // the 1000-zeros family (functionally-correct output produced by an
+  // architecturally-wrong approach).
+  noUnrolledLoops: (cArgs) => {
+    const codeBlocks = body.match(/```[\s\S]*?```/g) || [];
+    const threshold = (cArgs && cArgs.maxRepetitions) || 5;
+    for (const block of codeBlocks) {
+      // Filter: length >= 3 strips syntactic boilerplate like `}`, `};`,
+      // `})`, `]` — false-positive caught by H.2.7 own-validation probe 2
+      // where 6 closing braces in nested code tripped the check spuriously.
+      const lines = block.split('\n').slice(1, -1).map((l) => l.trim()).filter((l) => l.length >= 3);
+      if (lines.length < threshold) continue;
+      const counts = Object.create(null);
+      for (const line of lines) {
+        counts[line] = (counts[line] || 0) + 1;
+        if (counts[line] >= threshold) {
+          return {
+            pass: false,
+            reason: 'unrolled_loop_detected',
+            repeatedLine: line.length > 80 ? line.slice(0, 80) + '...' : line,
+            repetitionCount: counts[line],
+            threshold,
+          };
+        }
+      }
+    }
+    return { pass: true, codeBlocksScanned: codeBlocks.length };
+  },
+  // Brace-counting nesting check. Limitation: C-family languages only
+  // (Python uses indentation; not currently inspected). Documented in spec.
+  noExcessiveNesting: (cArgs) => {
+    const codeBlocks = body.match(/```[\s\S]*?```/g) || [];
+    const maxDepth = (cArgs && cArgs.maxDepth) || 4;
+    let worstDepth = 0;
+    let worstBlock = null;
+    for (const block of codeBlocks) {
+      let depth = 0;
+      let blockMax = 0;
+      // Strip strings + comments (very rough — covers most cases) so braces
+      // inside strings don't inflate depth.
+      const stripped = block
+        .replace(/```\w*\n/, '')
+        .replace(/\n```$/, '')
+        .replace(/"(?:\\.|[^"\\])*"/g, '""')
+        .replace(/'(?:\\.|[^'\\])*'/g, "''")
+        .replace(/\/\/[^\n]*/g, '')
+        .replace(/\/\*[\s\S]*?\*\//g, '');
+      for (const ch of stripped) {
+        if (ch === '{') depth++;
+        else if (ch === '}') depth--;
+        if (depth > blockMax) blockMax = depth;
+      }
+      if (blockMax > worstDepth) {
+        worstDepth = blockMax;
+        worstBlock = block.slice(0, 120) + (block.length > 120 ? '...' : '');
+      }
+    }
+    return {
+      pass: worstDepth <= maxDepth,
+      maxObservedDepth: worstDepth,
+      threshold: maxDepth,
+      ...(worstDepth > maxDepth ? { sample: worstBlock } : {}),
+    };
+  },
   // For challenger contracts (asymmetric-challenger pattern). Counts
   // ### CHALLENGE-N headings; each represents a substantive disagreement
   // with the implementer's output. Functional check (must produce ≥N
