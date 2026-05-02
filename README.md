@@ -1,6 +1,10 @@
 # claude-toolkit
 
-A curated, opinionated enhancement layer for Claude Code. Six hooks, eight rules, seven skills, five agents, and seven slash commands working together to make Claude more reliable, less hallucinatory, and continuously self-improving — across any project, any stack.
+A curated, opinionated enhancement layer for Claude Code. Two layers:
+
+**Substrate**: 6 deterministic hooks + 8 rules + 9 skills + 5 agents + 8 slash commands working together to make Claude more reliable, less hallucinatory, and continuously self-improving — across any project, any stack.
+
+**HETS** (Hierarchical Engineering Team Simulation, Phase H.x): a separate layer for complex multi-step work — 12 specialist personas (5 auditors + 7 builders) with persistent named identities, content-addressed shared knowledge base, contract-verified outputs, asymmetric/symmetric pairing, trust-tiered verification, and integration with the `knowledge-work-plugins` marketplace. See [skills/agent-team/SKILL.md](skills/agent-team/SKILL.md).
 
 **Repository**: https://github.com/shashankcm95/claude-skills-consolidated
 
@@ -30,11 +34,12 @@ These shape Claude's reasoning but **can be skipped** by the LLM under pressure.
 | Layer | Count | Invocation | Compliance |
 |-------|-------|------------|------------|
 | **Rules** (always-on text) | 8 | Injected into every session | LLM may skip |
-| **Skills** (workflow guides) | 7 | Claude matches to tasks | LLM may skip |
+| **Skills** (workflow guides) | 9 | Claude matches to tasks | LLM may skip |
 | **Agents** (scoped specialists) | 5 | Claude delegates when needed | LLM may skip |
-| **Commands** (manual shortcuts) | 7 | User types `/command-name` | User-driven |
+| **Commands** (manual shortcuts) | 8 | User types `/command-name` | User-driven |
+| **HETS personas** (specialist team) | 12 + 1 challenger template | Spawn via `agent-team` skill; identity assigned per spawn | Contract-verified post-hoc, trust-tiered |
 
-**The honest takeaway**: the value of the toolkit is concentrated in the 6 hooks. Rules/skills/agents add useful context but rely on instruction-following. If a behavior must always happen, build a hook for it.
+**The honest takeaway**: the value of the substrate is concentrated in the 6 hooks. Rules/skills/agents add useful context but rely on instruction-following. If a behavior must always happen, build a hook for it. **HETS adds verifiable multi-agent coordination on top** — outputs are checked against per-persona contracts (functional + anti-pattern checks), so even though individual agents may skip instructions, the team-level verdict is deterministic.
 
 ---
 
@@ -173,7 +178,7 @@ Each agent is a `.md` file with YAML frontmatter declaring its name, description
 
 ---
 
-### Skills (7) — The Workflow Layer
+### Skills (9) — The Workflow Layer
 
 Skills are markdown procedures Claude matches to tasks contextually. They contain step-by-step workflows that complement the rules.
 
@@ -186,10 +191,12 @@ Skills are markdown procedures Claude matches to tasks contextually. They contai
 | `self-improve` | Memory-to-rules promotion pipeline: scan MEMORY.md → identify recurring patterns → promote to rules/skills/agents → prune stale entries |
 | `skill-forge` | Dynamic agent/skill creation at runtime: gap detection → name + scope + model + tools → create file in repo + ~/.claude/ → store in MemPalace |
 | `prompt-enrichment` | 4-part structured prompt builder triggered by the vagueness hook. Confidence tiers: **Learning** (0 approvals, full review), **Familiar** (1-2, light confirmation), **Trusted** (3-4, summary auto-proceed), **Independent** (5+, silent enrichment) |
+| `agent-team` (Phase H.x) | **Hierarchical Engineering Team Simulation**. Multi-tier coordinated agents (super → orchestrator → actor) with verifiable contracts, identity model, content-addressed KB, asymmetric+symmetric pairing, trust-tiered verification. See dedicated section below. |
+| `swift-development` (H.2.1) | First specialist skill authored as a worked example for the HETS builder family. Swift idioms, ARC, structured concurrency, project structure. Triggers when a HETS persona requires it. |
 
 ---
 
-### Commands (7) — The Manual Shortcut Layer
+### Commands (8) — The Manual Shortcut Layer
 
 Commands are `.md` files invoked by typing `/command-name`. They're explicit triggers; the same behaviors are also available as automatic rules where appropriate.
 
@@ -202,6 +209,47 @@ Commands are `.md` files invoked by typing `/command-name`. They're explicit tri
 | `/forge` | Create a new agent or skill on the fly |
 | `/evolve` | Update an existing agent/skill with new learnings |
 | `/prune` | Remove stale memory entries, duplicate rules, unused skills |
+| `/chaos-test` (H.x) | Hierarchical chaos test of the toolkit itself — meta-validation pattern. Spawns HETS team with 5 auditor personas to audit the toolkit's own infrastructure. |
+
+---
+
+### HETS — Hierarchical Engineering Team Simulation (Phase H.x)
+
+A separate layer for tasks too complex for a single agent. Implements the architecture documented in [skills/agent-team/SKILL.md](skills/agent-team/SKILL.md) and the 11-pattern library at [skills/agent-team/patterns/](skills/agent-team/patterns/).
+
+**Components shipped across phases H.1 → H.2.4** (current; full phase log in [skills/agent-team/SKILL.md](skills/agent-team/SKILL.md) and [skills/agent-team/BACKLOG.md](skills/agent-team/BACKLOG.md)):
+
+| Layer | Count | Lives at |
+|-------|-------|----------|
+| **Personas** | 12 (5 auditor + 7 builder) + 1 challenger template | `swarm/personas/`, `swarm/personas-contracts/` |
+| **Patterns library** | 11 (HETS, asymmetric-challenger, trust-tiered-verification, convergence-as-signal, persona-skills-mapping, agent-identity-reputation, meta-validation, prompt-distillation, shared-knowledge-base, content-addressed-refs, skill-bootstrapping, tech-stack-analyzer) | `skills/agent-team/patterns/` |
+| **Shared KB** | 18 docs across 7 domains (hets, mobile-dev, web-dev, backend-dev, ml-dev, infra-dev, data-dev, security-dev) | `skills/agent-team/kb/` |
+| **Scripts** | 5 (tree-tracker, contract-verifier, pattern-recorder, agent-identity, kb-resolver) | `scripts/agent-team/` |
+| **Persistent state** | Per-identity reputation, per-persona pattern history, KB manifest | `~/.claude/agent-identities.json`, `~/.claude/agent-patterns.json`, `skills/agent-team/kb/manifest.json` |
+
+**Key features:**
+
+- **12 specialist personas in two families**:
+  - **Auditor family** (chaos-test focused): `01-hacker`, `02-confused-user`, `03-code-reviewer`, `04-architect`, `05-honesty-auditor`
+  - **Builder family** (product focused): `06-ios-developer`, `07-java-backend`, `08-ml-engineer`, `09-react-frontend`, `10-devops-sre`, `11-data-engineer`, `12-security-engineer`
+- **Persistent named identities**: each persona has a roster of identities (e.g. `04-architect` → `mira`, `theo`, `ari`); each accumulates per-instance trust + skill-invocation history across runs ("I trust mira" becomes meaningful)
+- **Verifiable contracts**: every output checked against functional + anti-pattern checks (`prototype-pollution-safe verifier with 11 check types`)
+- **Content-addressed KB**: SHA-256 refs (`kb:web-dev/react-essentials@a3f1b2c4`) frozen-per-run via snapshots — same content always produces same hash, cross-project reuse falls out for free
+- **Asymmetric challenger**: lightweight critic (`challenger.contract.json`, ~10K tokens) reads implementer's output and surfaces ≥1 substantive disagreement; ~1.3-1.5× cost vs ~2× for symmetric pair
+- **Trust-tiered verification** (LATENCY-CRITICAL): high-trust identities skip expensive checks (e.g., `noTextSimilarityToPriorRun`); low-trust + unproven get symmetric pair; queryable via `agent-identity recommend-verification`
+- **Marketplace integration**: contracts can reference `knowledge-work-plugins` skills (e.g., `engineering:incident-response`, `data:sql-queries`) via `marketplace:<plugin>` skill_status alongside `available` and `not-yet-authored`
+
+**Quick reference — the 5 HETS scripts:**
+
+| Script | Purpose | Key subcommands |
+|--------|---------|-----------------|
+| `tree-tracker.js` | Persists the spawn graph for a HETS run | `spawn`, `complete`, `bfs`, `dfs`, `status` |
+| `contract-verifier.js` | Runs functional + anti-pattern checks; supports `--skip-checks` for tier-aware verification | (single CLI; no subcommands) |
+| `pattern-recorder.js` | Appends results to `~/.claude/agent-patterns.json` (per-persona aggregate) | `record`, `stats`, `list` |
+| `agent-identity.js` | Per-identity assignment + reputation + tier policy | `assign`, `assign-challenger`, `tier`, `recommend-verification`, `list`, `stats`, `record`, `init` |
+| `kb-resolver.js` | Content-addressed KB resolver with snapshot semantics | `cat`, `hash`, `list`, `resolve`, `scan`, `snapshot`, `register` |
+
+For deep architecture details, current phase status, and what's planned next: see [skills/agent-team/SKILL.md](skills/agent-team/SKILL.md). For the deferred-work catalog: [skills/agent-team/BACKLOG.md](skills/agent-team/BACKLOG.md).
 
 ---
 
@@ -301,10 +349,29 @@ claude-toolkit/
 ├── hooks/
 │   ├── scripts/             # 6 hook scripts + _log.js helper + prompt-pattern-store CLI
 │   └── settings-reference.json  # Hook config template
-├── commands/                # 7 slash command definitions
-├── skills/                  # 7 skill workflow guides (each in own dir)
+├── commands/                # 8 slash command definitions (incl. /chaos-test)
+├── skills/                  # 9 skill workflow guides
+│   ├── agent-team/          # HETS (Hierarchical Engineering Team Simulation)
+│   │   ├── SKILL.md         #   Architecture + phase status
+│   │   ├── BACKLOG.md       #   Deferred work catalog
+│   │   ├── contract-format.md  # Contract JSON schema spec
+│   │   ├── kb/              #   Shared knowledge base (18 docs across 7 domains)
+│   │   │   └── manifest.json   #   Generated by `kb-resolver scan`
+│   │   ├── patterns/        #   11 reusable architectural patterns
+│   │   └── role-templates/  #   PM / senior / engineer role templates
+│   └── swift-development/   # First specialist skill (worked example for builder family)
+├── swarm/
+│   ├── personas/            # 12 persona docs (5 auditors + 7 builders)
+│   ├── personas-contracts/  # 12 persona contracts + 1 challenger template
+│   ├── super-agent.md       # Super-agent (depth-0) workflow doc
+│   ├── orchestrator.md      # Orchestrator (depth-1) workflow doc
+│   ├── hierarchical-aggregate.js  # Cross-run delta analyzer
+│   └── run-state/           # Per-run findings (gitignored)
 ├── scripts/
-│   └── claude-toolkit-status.sh  # Diagnostic: see what's actually firing
+│   ├── agent-team/          # 5 HETS scripts (tree-tracker, contract-verifier,
+│   │                        # pattern-recorder, agent-identity, kb-resolver)
+│   ├── claude-toolkit-status.sh  # Diagnostic: see what's actually firing
+│   └── compliance-probe.sh  # Real-prompt enrichment compliance measurement
 ├── install.sh               # Installer with --diff, --backup, --test
 ├── ATTRIBUTION.md           # Detailed attribution
 ├── LICENSE                  # MIT
