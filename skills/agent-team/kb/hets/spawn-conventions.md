@@ -86,3 +86,7 @@ Always invoke from `~/Documents/claude-toolkit/scripts/agent-team/...`, NOT `~/.
 ### Identity rosters
 
 See `kb:hets/identity-roster` for the canonical roster per persona.
+
+### Challenger spawns (H.2.3)
+
+After an implementer completes, the parent MAY spawn a challenger to surface disagreements. Challenger uses a different convention (different identity-pick policy, different contract, different output shape). See `kb:hets/challenger-conventions` for the full flow.

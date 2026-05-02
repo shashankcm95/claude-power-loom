@@ -79,6 +79,7 @@ The verifier check `invokesRequiredSkills` (planned for H.2.6) will skip enforce
 | `outputLengthMin` | Output body is at least N chars | `{ min: 500 }` |
 | `outputLengthMax` | Output body is at most N chars | `{ max: 50000 }` |
 | `containsKeywords` | Output contains specific keywords | `{ keywords: ["verified", "evidence"] }` |
+| `noEmptyChallengeSection` | Counts `### CHALLENGE-N` headings; ≥`min` required. For challenger contracts (asymmetric-challenger pattern). | `{ min: 1 }` |
 
 ## Anti-pattern checks
 

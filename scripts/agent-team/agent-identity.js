@@ -241,6 +241,69 @@ function cmdStats(args) {
   console.log(JSON.stringify({ totalIdentities: Object.keys(store.identities).length, byPersona }, null, 2));
 }
 
+function cmdAssignChallenger(args) {
+  // H.2.3 — asymmetric challenger pattern. Picks an identity to act as
+  // challenger, preferring DIFFERENT persona than the implementer to avoid
+  // shared blind spots. Falls back to same-persona-different-identity if
+  // no different-persona identities are available. Never picks same identity.
+  if (!args['exclude-persona'] && !args['exclude-identity']) {
+    console.error('Usage: assign-challenger --exclude-persona <NN-name> [--exclude-identity <persona.name>] [--task <tag>]');
+    process.exit(1);
+  }
+  withLock(() => {
+    const store = readStore();
+    const excludePersona = args['exclude-persona'];
+    const excludeIdentity = args['exclude-identity'];
+
+    // Build candidate pool from rosters.
+    const candidates = [];
+    for (const [persona, names] of Object.entries(store.rosters)) {
+      for (const name of names) {
+        const id = `${persona}.${name}`;
+        if (id === excludeIdentity) continue;
+        candidates.push({
+          persona, name, id,
+          differentPersona: persona !== excludePersona,
+        });
+      }
+    }
+    if (candidates.length === 0) {
+      console.error('No challenger candidates available (all identities excluded).');
+      process.exit(1);
+    }
+
+    // Prefer different-persona; fall back to same-persona-different-identity.
+    const differentPersonaPool = candidates.filter((c) => c.differentPersona);
+    const pool = differentPersonaPool.length > 0 ? differentPersonaPool : candidates;
+    const poolType = differentPersonaPool.length > 0 ? 'different-persona' : 'same-persona-different-identity';
+
+    // Round-robin within pool, keyed by excludePersona so different
+    // implementer-personas get different challenger rotations.
+    if (!store.nextChallengerIndex) store.nextChallengerIndex = {};
+    const key = excludePersona || '_default_';
+    if (store.nextChallengerIndex[key] === undefined) store.nextChallengerIndex[key] = 0;
+    const idx = store.nextChallengerIndex[key];
+    const pick = pool[idx % pool.length];
+    store.nextChallengerIndex[key] = (idx + 1) % pool.length;
+
+    // Update the picked identity's spawn record.
+    const identity = ensureIdentity(store, pick.persona, pick.name);
+    identity.lastSpawnedAt = new Date().toISOString();
+    identity.totalSpawns += 1;
+
+    writeStore(store);
+
+    console.log(JSON.stringify({
+      action: 'assign-challenger',
+      challenger: { persona: pick.persona, name: pick.name, identity: pick.id, tier: tierOf(identity) },
+      excludedPersona: excludePersona || null,
+      excludedIdentity: excludeIdentity || null,
+      poolType,
+      task: args.task || null,
+    }, null, 2));
+  });
+}
+
 function cmdRecord(args) {
   if (!args.identity || !args.verdict) {
     console.error('Usage: record --identity <persona.name> --verdict pass|partial|fail [--task <tag>] [--skills s1,s2]');
@@ -284,6 +347,7 @@ const args = parseArgs(process.argv.slice(3));
 switch (cmd) {
   case 'init': cmdInit(); break;
   case 'assign': cmdAssign(args); break;
+  case 'assign-challenger': cmdAssignChallenger(args); break;
   case 'list': cmdList(args); break;
   case 'stats': cmdStats(args); break;
   case 'record': cmdRecord(args); break;

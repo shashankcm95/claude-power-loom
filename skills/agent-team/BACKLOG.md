@@ -15,17 +15,14 @@ Deferred work from prior phases, captured here so nothing important gets silentl
 - **Author specialist KB stubs that match marketplace skills** — e.g., `kb:engineering/incident-response-playbook` could be a HETS-side companion to the marketplace skill, providing project-specific context. Lazy: only when a builder persona spawn produces a noticeable gap.
 - **Verify marketplace skill invocation paths** — when `invokesRequiredSkills` ships in H.2.6, validate that namespaced names (`engineering:debug`) resolve correctly via the actor's `Skill` tool calls.
 
-### H.2.3 — Asymmetric challenger spawning
+### H.2.3 — Asymmetric challenger spawning — SHIPPED
 
-**Status**: pattern doc shipped, implementation pending.
+**Status**: shipped. `challenger.contract.json` + `noEmptyChallengeSection` functional check + `agent-identity assign-challenger` subcommand + `kb:hets/challenger-conventions` doc + asymmetric-challenger pattern status promoted to `implementing`. E2E validated with 4 probes covering assign-challenger preference rules + verifier accept (challenges present) + verifier reject (no challenges + capitulation phrase).
 
-**Scope**: New `actor-challenger.contract.json` template; spawn-pattern where parent spawns implementer, then on completion spawns challenger with implementer output as input; new verifier check `noEmptyChallengeSection`.
-
-**Rationale**: Current verification is post-hoc only. Asymmetric pairing catches bugs the implementer's own contract misses, at ~1.3-1.5× cost vs ~2× for symmetric pairing (per [pattern doc](patterns/asymmetric-challenger.md)).
-
-**Dependencies**: identity infrastructure (shipped). Independent of all other H.2 sub-phases.
-
-**Estimate**: ~400 LoC + ~2hr.
+**Follow-up tasks** (deferred — pick up when H.2.4 / a real chaos run uses challengers):
+- **`assign-challenger --exclude-personas <list>`** to exclude multiple personas at once (current implementation excludes only one). Useful when a chaos run has spawned 3 implementers and the challenger should differ from all 3.
+- **Symmetric-pair spawning** for top-of-tree (super-root) per asymmetric-challenger pattern's "When Not to Use" — currently no scaffolding for symmetric pairs. Likely lands as part of H.2.4 trust-tiered logic.
+- **Challenge-vs-claim binding** in the verifier: F3 only counts headings; could optionally validate that each `### CHALLENGE-N` quotes implementer text via a regex like `\*\*Implementer claim\*\*\s*\(quoted\)`. Useful for stricter enforcement once we see what real challenger outputs look like.
 
 ### H.2.4 — Trust-tiered verification depth — LATENCY-CRITICAL
 

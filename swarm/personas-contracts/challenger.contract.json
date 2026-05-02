@@ -1,0 +1,43 @@
+{
+  "agentId": "actor-challenger",
+  "persona": "<set-at-spawn>",
+  "role": "actor",
+  "_doc": "Generic shared challenger contract — applied to any persona acting in challenge-duty mode. Reads an implementer's output (passed as context in the spawn prompt) and surfaces >=1 substantive disagreement. Does NOT redo the implementer's task. Lower budget than implementer contracts. See patterns/asymmetric-challenger.md.",
+  "skills": {
+    "required": [],
+    "recommended": ["engineering:code-review", "research-mode"],
+    "skill_status": {
+      "engineering:code-review": "marketplace:knowledge-work-plugins/engineering",
+      "research-mode": "available"
+    }
+  },
+  "kb_scope": {
+    "default": [
+      "kb:hets/spawn-conventions",
+      "kb:hets/challenger-conventions"
+    ]
+  },
+  "budget": {
+    "tokens": 10000,
+    "extensible": true,
+    "maxExtensions": 1,
+    "extensionAmount": 5000
+  },
+  "functional": [
+    { "id": "F1", "check": "outputContainsFrontmatter", "required": true },
+    { "id": "F2", "check": "frontmatterHasFields", "args": { "fields": ["id", "role", "depth", "parent", "persona", "identity", "challenges_implementer"] }, "required": true },
+    { "id": "F3", "check": "noEmptyChallengeSection", "args": { "min": 1 }, "required": true },
+    { "id": "F4", "check": "outputLengthMin", "args": { "min": 400 }, "required": true },
+    { "id": "F5", "check": "outputLengthMax", "args": { "max": 8000 }, "required": false }
+  ],
+  "antiPattern": [
+    { "id": "A1", "check": "noPaddingPhrases", "args": { "phrases": ["looks fine", "no issues found", "I agree with everything", "minor nit", "could be clearer", "nothing to add"] }, "severity": "fail" },
+    { "id": "A2", "check": "claimsHaveEvidence", "severity": "fail" },
+    { "id": "A3", "check": "noTextSimilarityToPriorRun", "args": { "threshold": 0.6 }, "severity": "warn" },
+    { "id": "A4", "check": "noTemplateRepetition", "args": { "minVariation": 0.3 }, "severity": "warn" }
+  ],
+  "fallbackAcceptable": [
+    "Implementer's output cited exhaustively-correct work AND no substantive disagreement found → state explicitly with reasoning + which claims were independently verified (per-claim, not aggregated)",
+    "Cannot resolve a referenced KB doc → note the gap; do not infer challenge from missing context"
+  ]
+}

@@ -101,6 +101,18 @@ const functionalChecks = Object.assign(Object.create(null), {
   outputLengthMin: (cArgs) => body.length >= cArgs.min,
   outputLengthMax: (cArgs) => body.length <= cArgs.max,
   containsKeywords: (cArgs) => cArgs.keywords.every((k) => body.toLowerCase().includes(k.toLowerCase())),
+  // For challenger contracts (asymmetric-challenger pattern). Counts
+  // ### CHALLENGE-N headings; each represents a substantive disagreement
+  // with the implementer's output. Functional check (must produce ≥N
+  // challenges) — distinct from anti-pattern checks which avoid bad
+  // behaviors. Returns boolean for compatibility with the functional-check
+  // dispatcher (which expects a bool, not the {pass, ...} object shape
+  // antiPattern checks return).
+  noEmptyChallengeSection: (cArgs) => {
+    const challenges = body.match(/^###\s+CHALLENGE-?\d+/gim) || [];
+    const minChallenges = (cArgs && cArgs.min) || 1;
+    return challenges.length >= minChallenges;
+  },
 });
 
 const antiPatternChecks = Object.assign(Object.create(null), {
