@@ -20,6 +20,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { withLock } = require('./_lib/lock'); // H.3.2 (CS-1 code-reviewer X-3)
 
 // H.2.1 path-resolution fix: previously `path.join(__dirname, '..', '..', ...)`
 // resolved differently when invoked from ~/.claude/scripts/ vs the toolkit copy,
@@ -39,18 +40,21 @@ function load(runId) {
   catch { return { runId, root: null, nodes: {}, createdAt: new Date().toISOString() }; }
 }
 
+// H.3.2 (CS-1 code-reviewer X-3): RMW race possible when multiple actors
+// spawn concurrently from a chaos-test super-agent. Lock the read-modify-write.
 function save(runId, tree) {
   const p = treePath(runId);
   fs.mkdirSync(path.dirname(p), { recursive: true });
-  // Atomic write
-  const tmp = p + '.tmp.' + process.pid;
-  try {
-    fs.writeFileSync(tmp, JSON.stringify(tree, null, 2));
-    fs.renameSync(tmp, p);
-  } catch (err) {
-    try { fs.unlinkSync(tmp); } catch { /* ignore */ }
-    throw err;
-  }
+  withLock(p + '.lock', () => {
+    const tmp = p + '.tmp.' + process.pid;
+    try {
+      fs.writeFileSync(tmp, JSON.stringify(tree, null, 2));
+      fs.renameSync(tmp, p);
+    } catch (err) {
+      try { fs.unlinkSync(tmp); } catch { /* ignore */ }
+      throw err;
+    }
+  });
 }
 
 function parseArgs(argv) {

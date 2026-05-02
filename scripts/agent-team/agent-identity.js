@@ -17,6 +17,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { withLock: sharedWithLock } = require('./_lib/lock'); // H.3.2: extract shared
 
 // HETS_IDENTITY_STORE env var lets tests + ephemeral runs point at a temp file
 // without polluting the real registry. Default: ~/.claude/agent-identities.json.
@@ -79,31 +80,9 @@ function readStore() {
   }
 }
 
-function acquireLock(maxWaitMs = 3000) {
-  const start = Date.now();
-  while (Date.now() - start < maxWaitMs) {
-    try {
-      fs.writeFileSync(LOCK_PATH, String(process.pid), { flag: 'wx' });
-      return true;
-    } catch {
-      // Stale lock recovery: if the locking pid is gone, take it over.
-      try {
-        const pid = parseInt(fs.readFileSync(LOCK_PATH, 'utf8'), 10);
-        if (pid && pid !== process.pid) {
-          try { process.kill(pid, 0); } // throws if pid is gone
-          catch { fs.unlinkSync(LOCK_PATH); continue; }
-        }
-      } catch { /* lock disappeared between check and read */ }
-      const end = Date.now() + 50;
-      while (Date.now() < end) {} // brief busy-wait; mitigated by file-lock fallback below
-    }
-  }
-  return false;
-}
-
-function releaseLock() {
-  try { fs.unlinkSync(LOCK_PATH); } catch { /* ignore */ }
-}
+// H.3.2: lock primitives extracted to _lib/lock.js. Local withLock wraps the
+// shared one with the module-scoped LOCK_PATH for backwards-compat callsites.
+function withLock(fn) { return sharedWithLock(LOCK_PATH, fn); }
 
 function writeStore(store) {
   ensureDir();
@@ -112,13 +91,8 @@ function writeStore(store) {
   fs.renameSync(tmp, STORE_PATH);
 }
 
-function withLock(fn) {
-  if (!acquireLock()) {
-    console.error('Could not acquire identity-store lock within 3s. Aborting.');
-    process.exit(2);
-  }
-  try { return fn(); } finally { releaseLock(); }
-}
+// (H.3.2: old local withLock removed; callsites now use the one defined at line 85
+// which delegates to scripts/agent-team/_lib/lock.js. See agent-identity.js:85.)
 
 function tierOf(stats) {
   const total = (stats.verdicts.pass || 0) + (stats.verdicts.partial || 0) + (stats.verdicts.fail || 0);
