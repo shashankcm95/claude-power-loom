@@ -7,6 +7,33 @@ $ARGUMENTS — optional. Examples:
 - `(no args)` — default tri-fold (Code/Behavior/Architecture orchestrators)
 - `--max-depth 2` — limit recursion (default 3; 2 means flat swarm)
 - `--no-baseline` — skip cross-run delta even if prior runs exist
+- `--pattern <name>` (H.2.9) — target a specific architectural pattern's validation scenarios. See "Pattern-targeted runs" below.
+
+## Pattern-targeted runs (`--pattern <name>`)
+
+Instead of the default broad audit, this mode runs a focused chaos test against a single pattern's failure modes. Workflow:
+
+```bash
+# 1. List available patterns + their scenario counts
+node ~/Documents/claude-toolkit/scripts/agent-team/pattern-runner.js list-patterns
+
+# 2. Inspect a pattern's testable scenarios
+node ~/Documents/claude-toolkit/scripts/agent-team/pattern-runner.js summary --pattern asymmetric-challenger
+
+# 3. Get ready-to-paste actor-prompt skeletons (one per scenario)
+node ~/Documents/claude-toolkit/scripts/agent-team/pattern-runner.js prompts --pattern asymmetric-challenger
+```
+
+For each scenario in the pattern's "Validation Strategy" section:
+- Spawn an actor (auditor persona — typically `01-hacker` or `04-architect` for adversarial scenarios; `03-code-reviewer` for verification scenarios)
+- Pass the prompt skeleton from `prompts` subcommand as the actor's task
+- Actor sets up the conditions, runs the relevant HETS infrastructure, observes, reports
+- Verdict per scenario: `pattern-defense-fired | pattern-silent-failure | pattern-not-applicable`
+
+After all scenarios complete:
+- Aggregate per-pattern: how many scenarios fired the defense correctly?
+- If any `pattern-silent-failure`: surface as a CRITICAL gap in the consolidated report — the pattern claims to defend against the failure mode but doesn't.
+- Use `agent-identity recommend-verification` per spawned identity to apply trust-tiered verification (skip expensive checks for high-trust identities — H.2.4).
 
 ## Steps
 

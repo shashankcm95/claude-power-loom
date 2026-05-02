@@ -111,19 +111,23 @@ The flag is now resolved. SKILL.md's "triple contract" section accurately descri
 - **Aggregate budget across run**: cap total per-run token spend (sum of all spawns); deny extensions when run-cap is approached even if per-spawn extensions remain. Useful for cost-controlled chaos runs. ~80 LoC.
 - **Auto-record from transcript at verifier time**: `contract-verifier.js` already has `--transcript`; could auto-call `budget-tracker record-from-transcript` after verification completes, removing one manual orchestrator step. ~40 LoC.
 
-### H.2.9 — `chaos-test --pattern <name>` simulation runner
+### H.2.9 — `chaos-test --pattern <name>` simulation runner — SHIPPED
 
-**Status**: documented in patterns/README.md as planned for H.2; not implemented.
+**Status**: shipped this turn. `scripts/agent-team/pattern-runner.js` extracts validation scenarios from any pattern doc; `chaos-test` command updated with `--pattern <name>` workflow.
 
-**Scope**: New flag on the chaos-test command that:
-1. Reads the named pattern's "Validation Strategy" section
-2. Auto-derives actor prompts from the listed scenarios
-3. Spawns actors targeted at exercising those failure modes
-4. Reports which failure modes were exercised + their outcomes
+**What landed** (~210 LoC):
+- 4 subcommands: `list-patterns` (status + scenario count for all 12 patterns), `extract --pattern X` (JSON output of scenarios), `summary --pattern X` (human-readable), `prompts --pattern X` (ready-to-paste actor-prompt skeletons per scenario)
+- Case-insensitive header match (caught a real bug: `structural-code-review.md` uses lowercase "strategy" — initially extracted 0 scenarios; case-insensitive fix unlocked 5)
+- `\Z` regex bug avoided (used `$(?![\s\S])` per the H.2-bridge fix)
+- 49 total scenarios across the 12 patterns now machine-extractable
+- chaos-test command's `## Pattern-targeted runs` section documents the full workflow
 
-**Why deferred**: every pattern doc already has a "Validation Strategy" section we can READ to manually author actor prompts. The runner just automates the binding. Real chaos coverage doesn't require the runner to exist.
+**E2E validated** with 5 probes: list-patterns shows all 12 with non-zero scenario counts; extract returns JSON with frontmatter + scenarios; summary is human-readable; prompts emits structured actor-prompt skeletons; not-found pattern exits 1 with clear message.
 
-**Estimate**: ~300 LoC + ~2hr.
+**Follow-up tasks**:
+- **First real `--pattern` chaos run**: pick a pattern (e.g., asymmetric-challenger or trust-tiered-verification) and run chaos-test --pattern against it. Will likely surface issues in the prompt-skeleton design — they're heuristic. Defer until we have appetite for a full chaos-test cycle.
+- **Per-scenario verdict aggregation**: pattern-runner could add a `verify --pattern X --run-id Y` subcommand that scans the run's actor outputs for verdict markers (pattern-defense-fired / pattern-silent-failure / pattern-not-applicable) and reports a per-pattern coverage score. ~80 LoC.
+- **Pattern-doc lint**: companion check `--lint --pattern X` that warns when a pattern doc's `## Validation Strategy` section is missing or has fewer than N scenarios. ~30 LoC.
 
 ## Phase G + earlier — not yet fixed
 
