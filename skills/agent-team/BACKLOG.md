@@ -187,6 +187,140 @@ The flag is now resolved. SKILL.md's "triple contract" section accurately descri
 
 **Estimate**: ~10 LoC + ~10min.
 
+## Cross-phase / integration items (chat-scan after H.2.9)
+
+Found by scanning the H.2.x conversation history end-to-end after all 9 sub-phases shipped. These are themes that surfaced multiple times but weren't captured as concrete tasks in any phase's follow-ups. Ordered roughly by leverage.
+
+### CS-1 — Meta-validation chaos run on H.2.x infrastructure
+
+**Status**: NOT YET RUN.
+
+**Scope**: Run a full `/chaos-test` against the toolkit's H.2.1 → H.2.9 changes. Last meta-validation was `chaos-20260502-060039` (pre-bridge). We've shipped 9 sub-phases since, adding ~3000 LoC + 12 personas + 11 patterns + 18 KB docs + 5 new scripts.
+
+**Why now**: chaos-test on the chaos test infra has a strong track record of surfacing real bugs at the seams (e.g., the prototype pollution + `.some` + `\Z` regex finds in chaos-20260502-060039). With the much larger H.2.x surface, integration bugs are likely.
+
+**Estimate**: ~30 min run + ~1 hr review.
+
+### CS-2 — README refresh through H.2.9
+
+**Status**: README documents through H.2.4 only.
+
+**Scope**: Add to README the H.2.5–H.2.9 components: `tech-stack-analyzer` skill, `/build-team` command, `pattern-runner.js`, `budget-tracker.js`, `noUnrolledLoops` + `noExcessiveNesting` checks, knowledge-work-plugins integration, the `marketplace:` skill_status value. Update Project Structure to show `commands/build-team.md`, the new scripts.
+
+**Estimate**: ~30 min, additive (no removals).
+
+### CS-3 — MCP server exposing HETS state
+
+**Status**: implied by Gemini conversation (MCP for connectors); never made concrete.
+
+**Scope**: Author a Model Context Protocol (MCP) server that exposes HETS substrate operations (`assign-identity`, `recommend-verification`, `resolve kb-ref`, `extract pattern scenarios`, `record budget usage`) as MCP tools. Lets other Claude Code instances consume HETS WITHOUT cloning the toolkit — closes the cross-project-reuse promise of content-addressed refs.
+
+**Why this matters**: today HETS is filesystem-bound. To use it from another project, you clone the toolkit + run scripts. An MCP server would make HETS a first-class shared service.
+
+**Estimate**: ~3-4 hrs (new MCP server scaffolding + 5-7 tool handlers + auth/permission story).
+
+### CS-4 — `.claude-plugin/` packaging concrete
+
+**Status**: listed in periodic-audit checks (#3) but no concrete task; came up multiple times in the Gemini conversation about distribution.
+
+**Scope**: Promote the audit reminder to a real task. Author `.claude-plugin/plugin.json` manifest. Verify all components (agents, hooks, rules, skills, commands, swarm, scripts) install cleanly via the marketplace install path. May require restructuring some paths to match plugin layout conventions.
+
+**Estimate**: ~2 hrs.
+
+### CS-5 — agent-swarm vs agent-team skill consolidation
+
+**Status**: never resolved during phase work.
+
+**Scope**: The original toolkit had `skills/agent-swarm/` (parallel sub-agent dispatch). H.2 added `skills/agent-team/` (full HETS — hierarchical with contracts, identity, KB, etc.). They overlap conceptually. Decide:
+- (a) Merge: agent-team subsumes agent-swarm; deprecate agent-swarm
+- (b) Layer: agent-swarm = lightweight parallel-dispatch; agent-team = heavyweight HETS; both kept with cross-references
+- (c) Rename: agent-swarm → agent-swarm-classic; agent-team → agent-team
+
+Option (b) is probably right (lightweight tool for simple cases, heavyweight for product work) but worth a deliberate decision rather than current accidental overlap.
+
+**Estimate**: ~30 min (decision + cross-reference doc updates; no code unless deprecating).
+
+### CS-6 — End-user guide for builder personas
+
+**Status**: builder personas (06-12) ship but no walkthrough exists for end-user adoption.
+
+**Scope**: New doc at `skills/agent-team/USING.md` (or major README section) walking through:
+1. Install the toolkit
+2. Initialize HETS (`agent-identity init`, `kb-resolver scan`)
+3. Run `/build-team your-real-task`
+4. Review the analyzer's plan; redirect if needed
+5. Bootstrap any missing skills via `/forge`
+6. Spawn the team; review per-actor outputs
+7. Verify; iterate
+
+Target audience: developer who clones the toolkit for a real product project (not for chaos-testing the toolkit itself).
+
+**Estimate**: ~1 hr.
+
+### CS-7 — Pre-flight check for chaos-test substrate
+
+**Status**: chaos-test command assumes substrate is initialized.
+
+**Scope**: Add a step (or a `chaos-test preflight` subcommand) that verifies before spawning:
+- `kb-resolver scan` runs cleanly (manifest fresh)
+- `agent-identity list` succeeds (registry initialized)
+- `budget-tracker init` works for the run-id (or creates fresh budget file)
+- All 5 personas in scope have valid contract files
+- `pattern-runner list-patterns` returns expected count
+
+**Estimate**: ~30 min (add to chaos-test.md as Step 0 + maybe a wrapper script).
+
+### CS-8 — Cross-script env var consistency doc
+
+**Status**: 5 env vars distributed across HETS scripts; per-script docstring only.
+
+**Scope**: Single doc (e.g., `kb:hets/env-vars` or section in SKILL.md) listing all HETS env vars, their defaults, which scripts honor them:
+- `HETS_KB_DIR` — kb-resolver
+- `HETS_RUN_STATE_DIR` — kb-resolver, budget-tracker, tree-tracker (after H.2.1 fix)
+- `HETS_IDENTITY_STORE` — agent-identity
+- `HETS_CONTRACTS_DIR` — budget-tracker (could be adopted by others)
+- `HETS_PATTERNS_DIR` — pattern-runner
+
+**Estimate**: ~15 min.
+
+### CS-9 — MemPalace integration for HETS state (optional)
+
+**Status**: HETS state lives in local JSON files; MemPalace MCP available but unused for HETS.
+
+**Scope**: Optional adapter layer where `agent-identities.json`, `agent-patterns.json`, and the kb manifest can route through MemPalace (when configured) for cross-session semantic memory + cross-machine sync. Local-file fallback remains the default.
+
+**Estimate**: ~2 hrs (define interface + implement adapters; keep local as fallback per existing toolkit pattern).
+
+### CS-10 — chaos-test --pattern as actual CLI orchestration
+
+**Status**: chaos-test command's `## Pattern-targeted runs` section is LLM instructions; no end-to-end CLI driver.
+
+**Scope**: Wrapper script (or `pattern-runner orchestrate --pattern X --run-id Y`) that sequences: extract scenarios → spawn one actor per scenario → wait for completion → verify each → aggregate per-pattern coverage. Removes the need for the LLM to drive the workflow turn-by-turn.
+
+**Estimate**: ~2 hrs (parallel spawn coordination is non-trivial; needs careful state-passing).
+
+### CS-11 — CONTRIBUTING.md retrospective examples
+
+**Status**: CONTRIBUTING.md uses hypothetical "feat/phase-H.2.8" example; that's now historical (PR #1 shipped).
+
+**Scope**: Update CONTRIBUTING.md examples to reference real shipped PRs (PR #1 = H.2.8 = budget-tracker; PR #2 = H.2.9 = pattern-runner). Add a "Worked examples from this repo" section.
+
+**Estimate**: ~10 min.
+
+### CS-12 — Compliance probe refresh for H.2.x scripts
+
+**Status**: `compliance-probe.sh` checks prompt-enrichment + fact-force-gate; doesn't know about HETS-script usage.
+
+**Scope**: Extend probe to additionally check for HETS substrate usage in recent runs:
+- Did any run call `kb-resolver snapshot` to freeze KB state?
+- Did any spawn invoke `agent-identity assign` / `assign-challenger`?
+- Did contract verification call `--transcript` or rely on `--skills` fallback?
+- Was `budget-tracker record-from-transcript` called post-spawn?
+
+Useful signal for "is the HETS substrate being used or just sitting there?" — same instinct as the original probe ("is enrichment happening on real prompts?").
+
+**Estimate**: ~1 hr.
+
 ## How to use this backlog
 
 1. When an item becomes blocking, promote it to a phase in SKILL.md
