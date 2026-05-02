@@ -1,0 +1,25 @@
+{
+  "agentId": "actor-architect",
+  "persona": "04-architect",
+  "role": "actor",
+  "budget": {
+    "tokens": 30000,
+    "extensible": true,
+    "maxExtensions": 1,
+    "extensionAmount": 15000
+  },
+  "functional": [
+    { "id": "F1", "check": "outputContainsFrontmatter", "required": true },
+    { "id": "F2", "check": "frontmatterHasFields", "args": { "fields": ["id", "role", "depth", "parent", "persona"] }, "required": true },
+    { "id": "F3", "check": "outputLengthMin", "args": { "min": 2000 }, "required": true },
+    { "id": "F4", "check": "containsKeywords", "args": { "keywords": ["coherence", "gap"] }, "required": false }
+  ],
+  "antiPattern": [
+    { "id": "A1", "check": "noTextSimilarityToPriorRun", "args": { "threshold": 0.6 }, "severity": "warn" },
+    { "id": "A2", "check": "noPaddingPhrases", "severity": "fail" },
+    { "id": "A3", "check": "acknowledgesFallback", "severity": "warn" }
+  ],
+  "fallbackAcceptable": [
+    "No code execution needed → architectural review is reasoning-based"
+  ]
+}

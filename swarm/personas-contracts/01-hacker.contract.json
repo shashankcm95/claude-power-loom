@@ -1,0 +1,29 @@
+{
+  "agentId": "actor-hacker",
+  "persona": "01-hacker",
+  "role": "actor",
+  "budget": {
+    "tokens": 30000,
+    "extensible": true,
+    "maxExtensions": 1,
+    "extensionAmount": 15000
+  },
+  "functional": [
+    { "id": "F1", "check": "outputContainsFrontmatter", "required": true },
+    { "id": "F2", "check": "frontmatterHasFields", "args": { "fields": ["id", "role", "depth", "parent", "persona"] }, "required": true },
+    { "id": "F3", "check": "minFindings", "args": { "min": 3 }, "required": true },
+    { "id": "F4", "check": "hasFileCitations", "args": { "min": 5 }, "required": true },
+    { "id": "F5", "check": "hasSeveritySections", "args": { "severities": ["CRITICAL", "HIGH", "MEDIUM"] }, "required": true }
+  ],
+  "antiPattern": [
+    { "id": "A1", "check": "claimsHaveEvidence", "severity": "fail" },
+    { "id": "A2", "check": "noTextSimilarityToPriorRun", "args": { "threshold": 0.6 }, "severity": "warn" },
+    { "id": "A3", "check": "noTemplateRepetition", "args": { "minVariation": 0.25 }, "severity": "warn" },
+    { "id": "A4", "check": "acknowledgesFallback", "severity": "warn" },
+    { "id": "A5", "check": "noPaddingPhrases", "severity": "fail" }
+  ],
+  "fallbackAcceptable": [
+    "Bash blocked → source-inspection with file:line citations is acceptable",
+    "Cannot run actual attacks → reasoning from source with explicit code path tracing is acceptable"
+  ]
+}

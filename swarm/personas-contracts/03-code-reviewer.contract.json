@@ -1,0 +1,25 @@
+{
+  "agentId": "actor-code-reviewer",
+  "persona": "03-code-reviewer",
+  "role": "actor",
+  "budget": {
+    "tokens": 30000,
+    "extensible": true,
+    "maxExtensions": 1,
+    "extensionAmount": 15000
+  },
+  "functional": [
+    { "id": "F1", "check": "outputContainsFrontmatter", "required": true },
+    { "id": "F2", "check": "frontmatterHasFields", "args": { "fields": ["id", "role", "depth", "parent", "persona"] }, "required": true },
+    { "id": "F3", "check": "minFindings", "args": { "min": 3 }, "required": true },
+    { "id": "F4", "check": "hasFileCitations", "args": { "min": 6 }, "required": true },
+    { "id": "F5", "check": "hasSeveritySections", "args": { "severities": ["CRITICAL", "HIGH", "MEDIUM", "LOW"] }, "required": true }
+  ],
+  "antiPattern": [
+    { "id": "A1", "check": "claimsHaveEvidence", "severity": "fail" },
+    { "id": "A2", "check": "noTextSimilarityToPriorRun", "args": { "threshold": 0.55 }, "severity": "warn" },
+    { "id": "A3", "check": "noTemplateRepetition", "args": { "minVariation": 0.3 }, "severity": "warn" },
+    { "id": "A4", "check": "noPaddingPhrases", "severity": "fail" }
+  ],
+  "fallbackAcceptable": []
+}

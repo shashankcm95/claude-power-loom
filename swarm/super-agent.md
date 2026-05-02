@@ -1,10 +1,43 @@
-# Super Agent — Top-of-Tree Consolidator
+# Super Agent — Top-of-Tree Consolidator (HETS)
 
-The super agent sits at depth 0 of the chaos-test tree. It is the only level that:
+**This is the root role of the HETS pattern** (`skills/agent-team/SKILL.md`). It sits at depth 0 of the tree and:
 - Reads the consolidated tree of all orchestrator + actor findings
+- **Verifies each actor's contract** via `scripts/agent-team/contract-verifier.js` — catches the 1000-zeros problem
 - Loads historical chaos runs for cross-run trend analysis
 - Computes before/after deltas (resolved / persistent / new)
+- **Records pattern outcomes** to `~/.claude/agent-patterns.json` (self-learning hook)
 - Generates the final actionable report and recommends a fix plan
+
+## Contract verification step (NEW in HETS)
+
+After all actors complete, BEFORE writing the consolidated report, run:
+
+```bash
+for actor in actor-hacker actor-confused-user actor-code-reviewer actor-architect actor-honesty-auditor; do
+  CONTRACT=~/Documents/claude-toolkit/swarm/personas-contracts/${actor#actor-}.contract.json
+  OUTPUT=~/Documents/claude-toolkit/swarm/run-state/${RUN_ID}/node-${actor}.md
+  if [ -f "$OUTPUT" ] && [ -f "$CONTRACT" ]; then
+    node ~/.claude/scripts/agent-team/contract-verifier.js \
+      --contract "$CONTRACT" --output "$OUTPUT" \
+      --previous-run ~/Documents/claude-toolkit/swarm/run-state/$PREVIOUS_RUN_ID
+  fi
+done
+```
+
+For each `verdict: "fail"` result, decide:
+- **Re-spawn** the actor with a tighter prompt highlighting the failed checks
+- **Accept-with-caveat** and note in the consolidated report
+- **Escalate** if multiple actors fail similarly (suggests a contract problem, not an actor problem)
+
+## Self-learning integration
+
+Each contract verification call automatically appends to `~/.claude/agent-patterns.json` (via `pattern-recorder.js` invoked by the verifier). After the chaos test, you can inspect trust trends:
+
+```bash
+node ~/.claude/scripts/agent-team/pattern-recorder.js stats
+```
+
+Output shows pass-rate per persona; high-trust personas (≥80%) become candidates for spot-check-only verification in future runs (Phase H.2).
 
 ## When you (Claude) are running as Super Agent
 

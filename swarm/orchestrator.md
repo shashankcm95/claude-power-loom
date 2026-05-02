@@ -2,7 +2,17 @@
 
 Recursive multi-tier orchestration for chaos testing. Tree of agents, each level rolls findings up to its parent. Bounded by `MAX_DEPTH` to prevent runaway recursion.
 
-Inspired by MiroFish's parallel-simulation pattern, extended with tree decomposition.
+**This is a consumer of the HETS pattern** (`skills/agent-team/SKILL.md`). Read that first if you're new to the architecture.
+
+Inspired by MiroFish's parallel-simulation pattern, extended with tree decomposition + verifiable contracts (the 1000-zeros defense) + self-learning hook.
+
+## Operational notes
+
+- **Sub-agents may not have Agent tool access.** When spawning fails, fall back to inline persona execution and explicitly mark the resulting node as `executed_inline: true` in its frontmatter.
+- **API rate limits hit before max_depth limits in practice.** A flat fan-out of 5 actors from super-root is safer than 3 orchestrators each spawning 2 actors.
+- **Every spawn must be tracked** via `node ~/.claude/scripts/agent-team/tree-tracker.js spawn ...` so the tree is auditable.
+- **Every actor completion must be verified** via `node ~/.claude/scripts/agent-team/contract-verifier.js --contract X --output Y`.
+- **Persona contracts are at** `~/Documents/claude-toolkit/swarm/personas-contracts/{NN-name}.contract.json`.
 
 ## Architecture
 
