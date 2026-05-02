@@ -34,9 +34,38 @@ Specification for `*.contract.json` files. These files define what an agent must
   "fallbackAcceptable": [
     "Bash blocked → source-inspection with file:line citations is acceptable",
     "Network blocked → mark as 'verification deferred' is acceptable"
-  ]
+  ],
+  "skills": {
+    "required": ["swift-development"],
+    "recommended": ["engineering:debug", "engineering:testing-strategy", "swiftui"],
+    "skill_status": {
+      "swift-development": "available",
+      "engineering:debug": "marketplace:knowledge-work-plugins/engineering",
+      "swiftui": "not-yet-authored"
+    }
+  },
+  "kb_scope": {
+    "default": ["kb:mobile-dev/swift-essentials", "kb:hets/spawn-conventions"]
+  }
 }
 ```
+
+## Skill status values
+
+The `skills.skill_status` map records where each skill name resolves. Three values:
+
+| Status | Meaning | Resolution path |
+|--------|---------|-----------------|
+| `available` | Skill is locally authored at `~/Documents/claude-toolkit/skills/<name>/SKILL.md` | Direct read |
+| `marketplace:<marketplace>/<plugin>` | Skill ships with a Claude Code plugin marketplace (e.g., `marketplace:knowledge-work-plugins/engineering`) | Plugin must be installed; invoke via `Skill` tool with namespaced name (e.g., `engineering:debug`) |
+| `not-yet-authored` | Promise mode — referenced but not yet written | H.2.5 skill-bootstrapping flow authors on first use (user-gated, per `patterns/skill-bootstrapping.md`) |
+
+Skill names follow conventions:
+- Locally authored: bare name, e.g., `swift-development`
+- Marketplace: namespaced as `<plugin>:<skill>`, e.g., `engineering:debug`, `data:sql-queries`
+- Promise-mode: bare name (will resolve to local once authored)
+
+The verifier check `invokesRequiredSkills` (planned for H.2.6) will skip enforcement for `not-yet-authored` skills, validate marketplace skills by checking the actor's transcript for `Skill` tool invocations of the namespaced form, and require local skills to appear in invocations directly.
 
 ## Functional checks
 

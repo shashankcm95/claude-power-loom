@@ -1,25 +1,28 @@
 {
-  "agentId": "actor-ios-developer",
-  "persona": "06-ios-developer",
+  "agentId": "actor-data-engineer",
+  "persona": "11-data-engineer",
   "role": "actor",
   "skills": {
-    "required": ["swift-development"],
-    "recommended": ["engineering:debug", "engineering:testing-strategy", "engineering:deploy-checklist", "swiftui", "xcode-debugging", "app-store-deployment", "core-data"],
+    "required": ["airflow"],
+    "recommended": ["data:sql-queries", "data:explore-data", "data:validate-data", "data:statistical-analysis", "engineering:debug", "engineering:testing-strategy", "dbt", "snowflake", "kafka", "data-modeling"],
     "skill_status": {
-      "swift-development": "available",
+      "airflow": "not-yet-authored",
+      "data:sql-queries": "marketplace:knowledge-work-plugins/data",
+      "data:explore-data": "marketplace:knowledge-work-plugins/data",
+      "data:validate-data": "marketplace:knowledge-work-plugins/data",
+      "data:statistical-analysis": "marketplace:knowledge-work-plugins/data",
       "engineering:debug": "marketplace:knowledge-work-plugins/engineering",
       "engineering:testing-strategy": "marketplace:knowledge-work-plugins/engineering",
-      "engineering:deploy-checklist": "marketplace:knowledge-work-plugins/engineering",
-      "swiftui": "not-yet-authored",
-      "xcode-debugging": "not-yet-authored",
-      "app-store-deployment": "not-yet-authored",
-      "core-data": "not-yet-authored"
+      "dbt": "not-yet-authored",
+      "snowflake": "not-yet-authored",
+      "kafka": "not-yet-authored",
+      "data-modeling": "not-yet-authored"
     }
   },
   "kb_scope": {
     "default": [
-      "kb:mobile-dev/swift-essentials",
-      "kb:mobile-dev/ios-app-architecture",
+      "kb:data-dev/orchestration-essentials",
+      "kb:data-dev/data-modeling-basics",
       "kb:hets/spawn-conventions"
     ]
   },
@@ -35,7 +38,7 @@
     { "id": "F3", "check": "minFindings", "args": { "min": 2 }, "required": true },
     { "id": "F4", "check": "hasFileCitations", "args": { "min": 4 }, "required": true },
     { "id": "F5", "check": "hasSeveritySections", "args": { "severities": ["CRITICAL", "HIGH", "MEDIUM", "LOW"] }, "required": true },
-    { "id": "F6", "check": "containsKeywords", "args": { "keywords": ["swift"] }, "required": false }
+    { "id": "F6", "check": "containsKeywords", "args": { "keywords": ["pipeline"] }, "required": false }
   ],
   "antiPattern": [
     { "id": "A1", "check": "claimsHaveEvidence", "severity": "fail" },
@@ -45,7 +48,7 @@
     { "id": "A5", "check": "acknowledgesFallback", "severity": "warn" }
   ],
   "fallbackAcceptable": [
-    "No simulator / device → reasoning from source with file:line citations is acceptable",
+    "No live orchestrator access → reasoning from DAG source + retry semantics is acceptable",
     "Recommended skill not-yet-authored → proceed with required skill + KB; surface gap in Notes"
   ]
 }

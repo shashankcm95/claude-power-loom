@@ -4,24 +4,16 @@ Deferred work from prior phases, captured here so nothing important gets silentl
 
 ## Phase H.2 (in progress)
 
-### H.2.2 — Builder persona expansion (07-12)
+### H.2.2 — Builder persona expansion (07-12) — SHIPPED
 
-**Status**: pending (next after H.2.1 vertical slice ships).
+**Status**: shipped this turn. All 6 personas + contracts + rosters + 11 KB stubs landed.
 
-**Scope**: Author the remaining builder personas with promise-mode skill mappings:
+**Bonus integration**: `knowledge-work-plugins` marketplace skills referenced via new `marketplace:<plugin>` status value in contracts (alongside `available` + `not-yet-authored`). Marketplace skills used: `engineering:incident-response` (10-devops-sre), `engineering:deploy-checklist` (multi), `engineering:debug` (multi), `engineering:testing-strategy` (multi), `engineering:system-design` (07-java-backend), `engineering:code-review` (multi), `data:sql-queries` + `data:explore-data` + `data:validate-data` + `data:statistical-analysis` (08-ml-engineer, 11-data-engineer), `design:accessibility-review` + `design:ux-copy` (09-react-frontend), `engineering:standup` (10-devops-sre), `legal:compliance-check` (12-security-engineer).
 
-| Persona | Required skill | Recommended skills | Roster |
-|---------|---------------|-------------------|--------|
-| 07-java-backend | `spring-boot` | `jpa-orm`, `jvm-tuning`, `kafka`, `postgres-engineering` | `sasha`, `cam`, `pat` |
-| 08-ml-engineer | `ml-pipelines` | `pytorch`, `model-evaluation`, `model-deployment` | `chen`, `priya`, `omar` |
-| 09-react-frontend | `react` | `typescript`, `next-js`, `tailwind`, `accessibility-a11y` | `dev`, `jamie`, `casey` |
-| 10-devops-sre | `kubernetes` | `terraform`, `prometheus`, `incident-response`, `ci-cd` | `iris`, `hugo`, `jules` |
-| 11-data-engineer | `airflow` | `dbt`, `snowflake`, `kafka`, `data-modeling` | `fin`, `niko`, `rae` |
-| 12-security-engineer | `penetration-testing` | `security-audit`, `cryptography`, `iam`, `compliance-frameworks` | `vlad`, `mio`, `eli` |
-
-All required + recommended skills marked `not-yet-authored` in the contract — bootstrap on first use via the [skill-bootstrapping](patterns/skill-bootstrapping.md) flow.
-
-**Estimate**: ~500 LoC + ~3hr.
+**Follow-up tasks** (lighter weight than H.2.2 but worth tracking):
+- **Audit auditor personas (01-05)** for marketplace integration opportunities — `04-architect` would benefit from `engineering:architecture` + `engineering:system-design`; `03-code-reviewer` from `engineering:code-review` + `engineering:debug` + `engineering:testing-strategy`. Estimate: ~30 min, low risk.
+- **Author specialist KB stubs that match marketplace skills** — e.g., `kb:engineering/incident-response-playbook` could be a HETS-side companion to the marketplace skill, providing project-specific context. Lazy: only when a builder persona spawn produces a noticeable gap.
+- **Verify marketplace skill invocation paths** — when `invokesRequiredSkills` ships in H.2.6, validate that namespaced names (`engineering:debug`) resolve correctly via the actor's `Skill` tool calls.
 
 ### H.2.3 — Asymmetric challenger spawning
 
@@ -35,11 +27,13 @@ All required + recommended skills marked `not-yet-authored` in the contract — 
 
 **Estimate**: ~400 LoC + ~2hr.
 
-### H.2.4 — Trust-tiered verification depth
+### H.2.4 — Trust-tiered verification depth — LATENCY-CRITICAL
 
 **Status**: tier formula exists in `agent-identity.js` (basic); tier-driven spawn behavior pending.
 
-**Scope**: Promote tier formula to a queryable API (`agent-identity tier --identity X`); add `--tier-policy` flag to chaos-test command; spawn-time decision: high-trust → no challenger, medium-trust → asymmetric challenger, low-trust → symmetric pair.
+**Scope**: Promote tier formula to a queryable API (`agent-identity tier --identity X`); add `--tier-policy` flag to chaos-test command; spawn-time decision: high-trust → no challenger, medium-trust → asymmetric challenger, low-trust → symmetric pair. Also extend to verification-check selection: high-trust skips a subset of expensive checks (e.g., `noTextSimilarityToPriorRun` doing pairwise file reads against prior runs).
+
+**Why latency-critical** (not just cost-aware): verification accumulates linearly with `N actors × M check types × per-check time`. At ~30s wall-clock per actor's verifier pass, 5 actors = ~2.5 min added to every run. Adding H.2.6 (`invokesRequiredSkills`, transcript scan) + H.2.7 (pattern contracts, code-shape checks) increases per-actor M. Without H.2.4 skipping checks for trusted identities, the system gets slow enough that "real-time" feedback is no longer achievable. Gemini critique correctly flagged this; promoted from cost-mitigation to latency-mitigation.
 
 **Dependencies**: H.2.3 (asymmetric challenger).
 
@@ -187,3 +181,20 @@ Implementation options:
 1. When an item becomes blocking, promote it to a phase in SKILL.md
 2. When working in a related area, opportunistically pick up adjacent items (the H.2.1 vertical slice picked up tree-tracker H-2 + M-2 + path resolution + the [a-z]{1,10} regex fix all at once)
 3. Re-evaluate quarterly — items here may become irrelevant as the toolkit evolves
+
+## Discipline checks (before adding a new persona / contract / KB doc / pattern)
+
+Asked of every new addition to defend against org-chart delusion + maintenance-tax bloat:
+
+- **Does this earn its keep, or am I adding it because the architecture allows it?** A persona that handles ≤2 distinct task types overlaps too much with an existing one — fold in.
+- **Will this be invoked?** A KB doc that no spawn prompt references is dead weight; a contract field that no verifier check reads is documentation drift.
+- **Is the maintenance cost real?** Speculative skill authoring (vs promise-mode + bootstrap on first use) is the trap — only author what's about to be used.
+- **Does it overlap with a native primitive?** Periodic native-primitive audit (every quarter, see "Periodic external-audit checks" below).
+
+## Periodic external-audit checks (quarterly)
+
+Things to revisit on a slow cadence so the toolkit doesn't accumulate redundancy with native primitives or marketplace plugins:
+
+1. **Native Anthropic / Claude Code primitives** — has anything shipped that subsumes what we built (Skills format, Plugins format, native sub-agent coordination)? If so, evaluate migration cost vs custom-feature differentiation. Don't migrate just because it's native; do migrate if our custom layer no longer adds measurable value.
+2. **MCP servers for connectors** — if/when we need Slack / DB / external integrations, use MCP servers (https://modelcontextprotocol.io). Don't roll our own connectors.
+3. **`.claude-plugin/` packaging** — if we want to distribute the toolkit so others can install it, repackage as a plugin bundle. Doesn't change what we built; changes how it ships.

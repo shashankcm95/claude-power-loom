@@ -1,25 +1,26 @@
 {
-  "agentId": "actor-ios-developer",
-  "persona": "06-ios-developer",
+  "agentId": "actor-react-frontend",
+  "persona": "09-react-frontend",
   "role": "actor",
   "skills": {
-    "required": ["swift-development"],
-    "recommended": ["engineering:debug", "engineering:testing-strategy", "engineering:deploy-checklist", "swiftui", "xcode-debugging", "app-store-deployment", "core-data"],
+    "required": ["react"],
+    "recommended": ["design:accessibility-review", "design:ux-copy", "engineering:code-review", "engineering:debug", "engineering:testing-strategy", "typescript", "next-js", "tailwind"],
     "skill_status": {
-      "swift-development": "available",
+      "react": "not-yet-authored",
+      "design:accessibility-review": "marketplace:knowledge-work-plugins/design",
+      "design:ux-copy": "marketplace:knowledge-work-plugins/design",
+      "engineering:code-review": "marketplace:knowledge-work-plugins/engineering",
       "engineering:debug": "marketplace:knowledge-work-plugins/engineering",
       "engineering:testing-strategy": "marketplace:knowledge-work-plugins/engineering",
-      "engineering:deploy-checklist": "marketplace:knowledge-work-plugins/engineering",
-      "swiftui": "not-yet-authored",
-      "xcode-debugging": "not-yet-authored",
-      "app-store-deployment": "not-yet-authored",
-      "core-data": "not-yet-authored"
+      "typescript": "not-yet-authored",
+      "next-js": "not-yet-authored",
+      "tailwind": "not-yet-authored"
     }
   },
   "kb_scope": {
     "default": [
-      "kb:mobile-dev/swift-essentials",
-      "kb:mobile-dev/ios-app-architecture",
+      "kb:web-dev/react-essentials",
+      "kb:web-dev/typescript-react-patterns",
       "kb:hets/spawn-conventions"
     ]
   },
@@ -35,7 +36,7 @@
     { "id": "F3", "check": "minFindings", "args": { "min": 2 }, "required": true },
     { "id": "F4", "check": "hasFileCitations", "args": { "min": 4 }, "required": true },
     { "id": "F5", "check": "hasSeveritySections", "args": { "severities": ["CRITICAL", "HIGH", "MEDIUM", "LOW"] }, "required": true },
-    { "id": "F6", "check": "containsKeywords", "args": { "keywords": ["swift"] }, "required": false }
+    { "id": "F6", "check": "containsKeywords", "args": { "keywords": ["react"] }, "required": false }
   ],
   "antiPattern": [
     { "id": "A1", "check": "claimsHaveEvidence", "severity": "fail" },
@@ -45,7 +46,7 @@
     { "id": "A5", "check": "acknowledgesFallback", "severity": "warn" }
   ],
   "fallbackAcceptable": [
-    "No simulator / device → reasoning from source with file:line citations is acceptable",
+    "No browser access for keyboard testing → static analysis of focus traps is acceptable",
     "Recommended skill not-yet-authored → proceed with required skill + KB; surface gap in Notes"
   ]
 }

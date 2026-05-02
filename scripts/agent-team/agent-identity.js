@@ -31,9 +31,13 @@ const DEFAULT_ROSTERS = {
   '04-architect': ['mira', 'theo', 'ari'],
   '05-honesty-auditor': ['quinn', 'lior', 'aki'],
   // Builder family (product-focused, H.2.1+)
-  '06-ios-developer': ['riley', 'morgan', 'taylor'],
-  // Builder personas 07-12 are reserved (see kb:hets/identity-roster); rosters
-  // added when the corresponding persona files ship in H.2.2.
+  '06-ios-developer': ['riley', 'morgan', 'taylor'],   // shipped H.2.1
+  '07-java-backend': ['sasha', 'cam', 'pat'],           // shipped H.2.2
+  '08-ml-engineer': ['chen', 'priya', 'omar'],          // shipped H.2.2
+  '09-react-frontend': ['dev', 'jamie', 'casey'],       // shipped H.2.2
+  '10-devops-sre': ['iris', 'hugo', 'jules'],           // shipped H.2.2
+  '11-data-engineer': ['fin', 'niko', 'rae'],           // shipped H.2.2
+  '12-security-engineer': ['vlad', 'mio', 'eli'],       // shipped H.2.2
 };
 
 function parseArgs(argv) {

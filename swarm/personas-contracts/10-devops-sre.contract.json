@@ -1,25 +1,24 @@
 {
-  "agentId": "actor-ios-developer",
-  "persona": "06-ios-developer",
+  "agentId": "actor-devops-sre",
+  "persona": "10-devops-sre",
   "role": "actor",
   "skills": {
-    "required": ["swift-development"],
-    "recommended": ["engineering:debug", "engineering:testing-strategy", "engineering:deploy-checklist", "swiftui", "xcode-debugging", "app-store-deployment", "core-data"],
+    "required": ["kubernetes"],
+    "recommended": ["engineering:incident-response", "engineering:deploy-checklist", "engineering:standup", "engineering:debug", "terraform", "prometheus"],
     "skill_status": {
-      "swift-development": "available",
-      "engineering:debug": "marketplace:knowledge-work-plugins/engineering",
-      "engineering:testing-strategy": "marketplace:knowledge-work-plugins/engineering",
+      "kubernetes": "not-yet-authored",
+      "engineering:incident-response": "marketplace:knowledge-work-plugins/engineering",
       "engineering:deploy-checklist": "marketplace:knowledge-work-plugins/engineering",
-      "swiftui": "not-yet-authored",
-      "xcode-debugging": "not-yet-authored",
-      "app-store-deployment": "not-yet-authored",
-      "core-data": "not-yet-authored"
+      "engineering:standup": "marketplace:knowledge-work-plugins/engineering",
+      "engineering:debug": "marketplace:knowledge-work-plugins/engineering",
+      "terraform": "not-yet-authored",
+      "prometheus": "not-yet-authored"
     }
   },
   "kb_scope": {
     "default": [
-      "kb:mobile-dev/swift-essentials",
-      "kb:mobile-dev/ios-app-architecture",
+      "kb:infra-dev/kubernetes-essentials",
+      "kb:infra-dev/observability-basics",
       "kb:hets/spawn-conventions"
     ]
   },
@@ -35,7 +34,7 @@
     { "id": "F3", "check": "minFindings", "args": { "min": 2 }, "required": true },
     { "id": "F4", "check": "hasFileCitations", "args": { "min": 4 }, "required": true },
     { "id": "F5", "check": "hasSeveritySections", "args": { "severities": ["CRITICAL", "HIGH", "MEDIUM", "LOW"] }, "required": true },
-    { "id": "F6", "check": "containsKeywords", "args": { "keywords": ["swift"] }, "required": false }
+    { "id": "F6", "check": "containsKeywords", "args": { "keywords": ["kubernetes"] }, "required": false }
   ],
   "antiPattern": [
     { "id": "A1", "check": "claimsHaveEvidence", "severity": "fail" },
@@ -45,7 +44,7 @@
     { "id": "A5", "check": "acknowledgesFallback", "severity": "warn" }
   ],
   "fallbackAcceptable": [
-    "No simulator / device → reasoning from source with file:line citations is acceptable",
+    "No live cluster access → static analysis of manifests + reasoning about runtime behavior is acceptable",
     "Recommended skill not-yet-authored → proceed with required skill + KB; surface gap in Notes"
   ]
 }

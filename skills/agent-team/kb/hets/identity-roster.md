@@ -48,13 +48,14 @@ Edit `~/.claude/agent-identities.json` directly under `rosters.<persona>`, then 
 
 These tiers eventually drive [Trust-Tiered Verification Depth](../../patterns/trust-tiered-verification.md) — high-trust identities skip the challenger pair, low-trust always get one.
 
-### Builder personas (Phase H.2-bridge.3, not yet shipped)
+### Builder personas (Phase H.2.1 + H.2.2, shipped)
 
-When the builder personas land (`06-ios-developer` through `12-security-engineer`), each gets its own roster following the same convention. Suggested names:
-- `06-ios-developer`: `riley`, `morgan`, `taylor`
-- `07-java-backend`: `sasha`, `cam`, `pat`
-- `08-ml-engineer`: `chen`, `priya`, `omar`
-- `09-react-frontend`: `dev`, `jamie`, `casey`
-- `10-devops-sre`: `iris`, `hugo`, `jules`
-- `11-data-engineer`: `fin`, `niko`, `rae`
-- `12-security-engineer`: `vlad`, `mio`, `eli`
+All seven builder personas are live. Each has its own roster following the same convention as the auditor family:
+
+- `06-ios-developer`: `riley`, `morgan`, `taylor` (shipped H.2.1)
+- `07-java-backend`: `sasha`, `cam`, `pat` (shipped H.2.2)
+- `08-ml-engineer`: `chen`, `priya`, `omar` (shipped H.2.2)
+- `09-react-frontend`: `dev`, `jamie`, `casey` (shipped H.2.2)
+- `10-devops-sre`: `iris`, `hugo`, `jules` (shipped H.2.2)
+- `11-data-engineer`: `fin`, `niko`, `rae` (shipped H.2.2)
+- `12-security-engineer`: `vlad`, `mio`, `eli` (shipped H.2.2)

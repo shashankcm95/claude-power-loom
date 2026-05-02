@@ -1,25 +1,27 @@
 {
-  "agentId": "actor-ios-developer",
-  "persona": "06-ios-developer",
+  "agentId": "actor-ml-engineer",
+  "persona": "08-ml-engineer",
   "role": "actor",
   "skills": {
-    "required": ["swift-development"],
-    "recommended": ["engineering:debug", "engineering:testing-strategy", "engineering:deploy-checklist", "swiftui", "xcode-debugging", "app-store-deployment", "core-data"],
+    "required": ["ml-pipelines"],
+    "recommended": ["data:explore-data", "data:validate-data", "data:statistical-analysis", "data:sql-queries", "engineering:debug", "engineering:testing-strategy", "pytorch", "model-evaluation", "model-deployment"],
     "skill_status": {
-      "swift-development": "available",
+      "ml-pipelines": "not-yet-authored",
+      "data:explore-data": "marketplace:knowledge-work-plugins/data",
+      "data:validate-data": "marketplace:knowledge-work-plugins/data",
+      "data:statistical-analysis": "marketplace:knowledge-work-plugins/data",
+      "data:sql-queries": "marketplace:knowledge-work-plugins/data",
       "engineering:debug": "marketplace:knowledge-work-plugins/engineering",
       "engineering:testing-strategy": "marketplace:knowledge-work-plugins/engineering",
-      "engineering:deploy-checklist": "marketplace:knowledge-work-plugins/engineering",
-      "swiftui": "not-yet-authored",
-      "xcode-debugging": "not-yet-authored",
-      "app-store-deployment": "not-yet-authored",
-      "core-data": "not-yet-authored"
+      "pytorch": "not-yet-authored",
+      "model-evaluation": "not-yet-authored",
+      "model-deployment": "not-yet-authored"
     }
   },
   "kb_scope": {
     "default": [
-      "kb:mobile-dev/swift-essentials",
-      "kb:mobile-dev/ios-app-architecture",
+      "kb:ml-dev/pipeline-essentials",
+      "kb:ml-dev/training-vs-inference",
       "kb:hets/spawn-conventions"
     ]
   },
@@ -35,7 +37,7 @@
     { "id": "F3", "check": "minFindings", "args": { "min": 2 }, "required": true },
     { "id": "F4", "check": "hasFileCitations", "args": { "min": 4 }, "required": true },
     { "id": "F5", "check": "hasSeveritySections", "args": { "severities": ["CRITICAL", "HIGH", "MEDIUM", "LOW"] }, "required": true },
-    { "id": "F6", "check": "containsKeywords", "args": { "keywords": ["swift"] }, "required": false }
+    { "id": "F6", "check": "containsKeywords", "args": { "keywords": ["model"] }, "required": false }
   ],
   "antiPattern": [
     { "id": "A1", "check": "claimsHaveEvidence", "severity": "fail" },
@@ -45,7 +47,7 @@
     { "id": "A5", "check": "acknowledgesFallback", "severity": "warn" }
   ],
   "fallbackAcceptable": [
-    "No simulator / device → reasoning from source with file:line citations is acceptable",
+    "No GPU / training runtime → reasoning from training scripts + eval logs is acceptable",
     "Recommended skill not-yet-authored → proceed with required skill + KB; surface gap in Notes"
   ]
 }

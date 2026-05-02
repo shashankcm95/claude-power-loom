@@ -1,25 +1,27 @@
 {
-  "agentId": "actor-ios-developer",
-  "persona": "06-ios-developer",
+  "agentId": "actor-java-backend",
+  "persona": "07-java-backend",
   "role": "actor",
   "skills": {
-    "required": ["swift-development"],
-    "recommended": ["engineering:debug", "engineering:testing-strategy", "engineering:deploy-checklist", "swiftui", "xcode-debugging", "app-store-deployment", "core-data"],
+    "required": ["spring-boot"],
+    "recommended": ["engineering:system-design", "engineering:debug", "engineering:testing-strategy", "engineering:deploy-checklist", "engineering:code-review", "jpa-orm", "jvm-tuning", "kafka", "postgres-engineering"],
     "skill_status": {
-      "swift-development": "available",
+      "spring-boot": "not-yet-authored",
+      "engineering:system-design": "marketplace:knowledge-work-plugins/engineering",
       "engineering:debug": "marketplace:knowledge-work-plugins/engineering",
       "engineering:testing-strategy": "marketplace:knowledge-work-plugins/engineering",
       "engineering:deploy-checklist": "marketplace:knowledge-work-plugins/engineering",
-      "swiftui": "not-yet-authored",
-      "xcode-debugging": "not-yet-authored",
-      "app-store-deployment": "not-yet-authored",
-      "core-data": "not-yet-authored"
+      "engineering:code-review": "marketplace:knowledge-work-plugins/engineering",
+      "jpa-orm": "not-yet-authored",
+      "jvm-tuning": "not-yet-authored",
+      "kafka": "not-yet-authored",
+      "postgres-engineering": "not-yet-authored"
     }
   },
   "kb_scope": {
     "default": [
-      "kb:mobile-dev/swift-essentials",
-      "kb:mobile-dev/ios-app-architecture",
+      "kb:backend-dev/spring-boot-essentials",
+      "kb:backend-dev/jvm-runtime-basics",
       "kb:hets/spawn-conventions"
     ]
   },
@@ -35,7 +37,7 @@
     { "id": "F3", "check": "minFindings", "args": { "min": 2 }, "required": true },
     { "id": "F4", "check": "hasFileCitations", "args": { "min": 4 }, "required": true },
     { "id": "F5", "check": "hasSeveritySections", "args": { "severities": ["CRITICAL", "HIGH", "MEDIUM", "LOW"] }, "required": true },
-    { "id": "F6", "check": "containsKeywords", "args": { "keywords": ["swift"] }, "required": false }
+    { "id": "F6", "check": "containsKeywords", "args": { "keywords": ["spring"] }, "required": false }
   ],
   "antiPattern": [
     { "id": "A1", "check": "claimsHaveEvidence", "severity": "fail" },
@@ -45,7 +47,7 @@
     { "id": "A5", "check": "acknowledgesFallback", "severity": "warn" }
   ],
   "fallbackAcceptable": [
-    "No simulator / device → reasoning from source with file:line citations is acceptable",
+    "No JVM access for live profiling → reasoning from source + heap-dump-style analysis is acceptable",
     "Recommended skill not-yet-authored → proceed with required skill + KB; surface gap in Notes"
   ]
 }
