@@ -24,11 +24,16 @@ const LOCK_PATH = STORE_PATH + '.lock';
 // Default rosters — small enough to survive a single chaos run, large enough that
 // 3 parallel actors of one persona always get distinct identities.
 const DEFAULT_ROSTERS = {
+  // Auditor family (chaos-test-focused, original 5)
   '01-hacker': ['zoe', 'ren', 'kai'],
   '02-confused-user': ['sam', 'alex', 'rafael'],
   '03-code-reviewer': ['nova', 'jade', 'blair'],
   '04-architect': ['mira', 'theo', 'ari'],
   '05-honesty-auditor': ['quinn', 'lior', 'aki'],
+  // Builder family (product-focused, H.2.1+)
+  '06-ios-developer': ['riley', 'morgan', 'taylor'],
+  // Builder personas 07-12 are reserved (see kb:hets/identity-roster); rosters
+  // added when the corresponding persona files ship in H.2.2.
 };
 
 function parseArgs(argv) {

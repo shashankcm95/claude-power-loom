@@ -11,7 +11,7 @@
         "identity",
         "roster"
       ],
-      "lastUpdated": "2026-05-02T12:14:56.950Z"
+      "lastUpdated": "2026-05-02T12:34:21.021Z"
     },
     "hets/spawn-conventions": {
       "path": "hets/spawn-conventions.md",
@@ -23,7 +23,34 @@
         "conventions",
         "spawn"
       ],
-      "lastUpdated": "2026-05-02T12:14:56.955Z"
+      "lastUpdated": "2026-05-02T12:34:21.049Z"
+    },
+    "mobile-dev/ios-app-architecture": {
+      "path": "mobile-dev/ios-app-architecture.md",
+      "version": 1,
+      "hash": "e89de02bc78e3a6476991b3ead495d5e722fdbaadc7fc22b2d54536b14acf119",
+      "shortHash": "e89de02b",
+      "tags": [
+        "mobile",
+        "ios",
+        "architecture",
+        "mvvm",
+        "tca"
+      ],
+      "lastUpdated": "2026-05-02T12:34:21.050Z"
+    },
+    "mobile-dev/swift-essentials": {
+      "path": "mobile-dev/swift-essentials.md",
+      "version": 1,
+      "hash": "66cffca27ac2f9414f6eb070ff8b2ae3726dd5850bca022c8cf21a957b46ba63",
+      "shortHash": "66cffca2",
+      "tags": [
+        "mobile",
+        "ios",
+        "swift",
+        "language"
+      ],
+      "lastUpdated": "2026-05-02T12:34:21.050Z"
     },
     "web-dev/react-essentials": {
       "path": "web-dev/react-essentials.md",
@@ -36,7 +63,7 @@
         "react",
         "javascript"
       ],
-      "lastUpdated": "2026-05-02T12:14:56.955Z"
+      "lastUpdated": "2026-05-02T12:34:21.050Z"
     }
   }
 }

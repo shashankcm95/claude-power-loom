@@ -68,7 +68,11 @@ function countFindings(text) {
 }
 
 function countFileCitations(text) {
-  const matches = text.match(/(?:[a-zA-Z_./-]+\.[a-z]{1,4}):\d+|\*\*File\*\*:\s*\S+|`[a-zA-Z_./-]+\.[a-z]{1,4}`/g) || [];
+  // Extension length [1, 10] covers .js (2), .py (2), .swift (5), .kotlin (6),
+  // .markdown (8), .dockerfile (10). Original [1, 4] silently rejected anything
+  // longer than .yaml — surfaced by H.2.1 vertical slice when 06-ios-developer
+  // outputs cited .swift files and the verifier reported zero citations.
+  const matches = text.match(/(?:[a-zA-Z_./-]+\.[a-z]{1,10}):\d+|\*\*File\*\*:\s*\S+|`[a-zA-Z_./-]+\.[a-z]{1,10}`/g) || [];
   return matches.length;
 }
 
@@ -142,8 +146,8 @@ const antiPatternChecks = Object.assign(Object.create(null), {
       const hasFindings = /^###\s+/m.test(section) || /^[*-]\s+\*\*/m.test(section);
       if (!hasFindings) continue;
       const hasEvidence = markers.some((m) => section.toLowerCase().includes(m.toLowerCase())) ||
-                         /\.[a-z]{1,4}:\d+/i.test(section) ||
-                         /`[a-zA-Z_./-]+\.[a-z]{1,4}`/.test(section) ||
+                         /\.[a-z]{1,10}:\d+/i.test(section) ||
+                         /`[a-zA-Z_./-]+\.[a-z]{1,10}`/.test(section) ||
                          /lines?\s+\d+/i.test(section);
       if (!hasEvidence) return { pass: false, reason: 'serious_finding_without_evidence', sample: section.slice(0, 200) };
     }

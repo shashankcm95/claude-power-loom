@@ -219,7 +219,8 @@ Refs of the form `kb:<id>@<short-hash>` validate the doc hasn't drifted since th
 
 - `SKILL.md` — this file
 - `contract-format.md` — full spec for contract JSON
-- `patterns/` — reusable architectural patterns (this is the substrate for new simulations)
+- `BACKLOG.md` — deferred work + rationale (added in H.2.1)
+- `patterns/` — reusable architectural patterns (substrate for new simulations)
 - `kb/` — shared knowledge base (content-addressed, frozen-per-run)
 - `role-templates/pm.md` — super-agent role template
 - `role-templates/senior.md` — orchestrator role template
@@ -239,5 +240,6 @@ Refs of the form `kb:<id>@<short-hash>` validate the doc hasn't drifted since th
 
 - **H.1 (shipped)**: tree tracking, functional + anti-pattern contracts, self-learning recorder
 - **H.2-bridge (this phase)**: verifier-bug fixes (C-1 prototype pollution, H-1 `.some` semantics, `\Z` regex), persona-skills mapping in contracts, identity registry + per-identity recording, patterns library
-- **H.2-bridge.2 (this phase)**: shared knowledge base + content-addressed refs (`kb-resolver.js`), 4 new pattern docs (shared-KB, content-addressed-refs, skill-bootstrapping, tech-stack-analyzer), 3 starter KB docs
-- **H.2 (next)**: trust scoring with persistence + trust-tiered review depth, on-demand budget extensions, full pattern contracts (structural code review), `invokesRequiredSkills` verifier check (transcript-driven), asymmetric challenger spawning, `chaos-test --pattern <name>`, builder personas (06-12), tech-stack analyzer + skill bootstrapping orchestrator wiring
+- **H.2-bridge.2 (shipped)**: shared knowledge base + content-addressed refs (`kb-resolver.js`), 4 new pattern docs (shared-KB, content-addressed-refs, skill-bootstrapping, tech-stack-analyzer), 3 starter KB docs
+- **H.2.1 (shipped — vertical slice)**: first builder persona end-to-end. `06-ios-developer` persona + contract with promise-mode skill_status; `swift-development` specialist skill; `kb:mobile-dev/{swift-essentials,ios-app-architecture}` KB docs; identity roster `[riley, morgan, taylor]`. **Bonus fixes bundled**: tree-tracker path resolution (env var override), tree-tracker H-2 cycle guard, tree-tracker M-2 collision warning, verifier `[a-z]{1,4}` → `[a-z]{1,10}` regex (was rejecting `.swift`/`.kotlin`/`.python` — surfaced by the vertical slice itself).
+- **H.2 (next)**: see `BACKLOG.md`. Active items: H.2.2 (builder personas 07-12), H.2.3 (asymmetric challenger spawning), H.2.4 (trust-tiered verification depth), H.2.5 (tech-stack analyzer + skill-bootstrapping orchestrator wiring), H.2.6 (`invokesRequiredSkills` verifier check). Deferred (in backlog): H.2.7 (full pattern contracts — DOCUMENTATION-DEBT FLAG), H.2.8 (on-demand budget extensions), H.2.9 (`chaos-test --pattern <name>` runner).

@@ -21,8 +21,16 @@
 const fs = require('fs');
 const path = require('path');
 
+// H.2.1 path-resolution fix: previously `path.join(__dirname, '..', '..', ...)`
+// resolved differently when invoked from ~/.claude/scripts/ vs the toolkit copy,
+// leading to "Node not found" errors when spawn and complete were called from
+// different copies (surfaced in chaos-20260502-060039). Now: env-var override,
+// fall back to the toolkit-canonical path.
+const RUN_STATE_BASE = process.env.HETS_RUN_STATE_DIR ||
+  path.join(process.env.HOME, 'Documents', 'claude-toolkit', 'swarm', 'run-state');
+
 function treePath(runId) {
-  return path.join(__dirname, '..', '..', 'swarm', 'run-state', runId, 'tree.json');
+  return path.join(RUN_STATE_BASE, runId, 'tree.json');
 }
 
 function load(runId) {
@@ -64,6 +72,14 @@ function cmdSpawn(args) {
     process.exit(1);
   }
   const tree = load(args['run-id']);
+  // M-2 fix: warn (don't silently overwrite) on duplicate spawn.
+  // Audit trail is the whole point of tree.json — losing prior status / completedAt /
+  // children silently is the failure mode chaos-20260502-060039 flagged.
+  if (tree.nodes[args.child]) {
+    const existing = tree.nodes[args.child];
+    console.error(`Warning: spawn collision for "${args.child}" (existing status: ${existing.status}, spawnedAt: ${existing.spawnedAt}). Preserving prior children list; updating other fields.`);
+  }
+  const existingChildren = tree.nodes[args.child]?.children || [];
   const node = {
     id: args.child,
     parent: args.parent || null,
@@ -72,7 +88,7 @@ function cmdSpawn(args) {
     status: 'pending',
     spawnedAt: new Date().toISOString(),
     completedAt: null,
-    children: [],
+    children: existingChildren,
   };
   tree.nodes[args.child] = node;
   if (args.parent && tree.nodes[args.parent]) {
@@ -148,9 +164,18 @@ function cmdDfs(args) {
 }
 
 function depthOf(id, tree) {
+  // H-2 fix: cycle guard. cmdSpawn does not validate child !== parent, so a
+  // corrupted or adversarial tree.json can produce a parent cycle. Without
+  // visited tracking, every bfs/dfs/status call hangs. Return -1 on cycle.
   let depth = 0;
   let cur = tree.nodes[id];
-  while (cur && cur.parent) { depth++; cur = tree.nodes[cur.parent]; }
+  const visited = new Set();
+  while (cur && cur.parent) {
+    if (visited.has(cur.id)) return -1;
+    visited.add(cur.id);
+    depth++;
+    cur = tree.nodes[cur.parent];
+  }
   return depth;
 }
 
