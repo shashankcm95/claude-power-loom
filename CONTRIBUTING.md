@@ -99,8 +99,13 @@ After CONTRIBUTING.md adoption, all prior phase commits were tagged in place (an
 | `phase-H.2.5` | `7e80b53` | Tech-stack analyzer + skill-bootstrapping wiring |
 | `phase-H.2.6` | `782be51` | invokesRequiredSkills verifier check |
 | `phase-H.2.7` | `0a06cec` | Full pattern contracts (third leg of triple defense) |
+| `phase-H.2.8` | `5f59375` | On-demand budget extensions (first PR-flow phase) |
+| `phase-H.2.9` | `c3e3256` | chaos-test --pattern simulation runner |
+| `phase-H.3.0` | `6397b4e` | contracts-validate.js |
+| `phase-H.3.1` | `7a9504b` | Quick-wins bundle (5 fixes) |
+| `phase-H.3.2` | (TBD) | Shared withLock + kb-resolver path traversal |
 
-`d166add` (README refresh) was a doc-only commit between H.2.4 and H.2.5 — no tag (matches "trivial docs allowed direct on main" rule).
+`d166add` (README refresh through H.2.4) and `90b87ac` (chat-scan BACKLOG additions) were doc-only commits — no tags (matches "trivial docs allowed direct on main" rule).
 
 ## What this changes vs prior practice
 
@@ -116,6 +121,37 @@ After CONTRIBUTING.md adoption, all prior phase commits were tagged in place (an
 - **Hotfix on main**: a single-line typo fix in a doc — direct commit + push is fine.
 - **Experimental scratch**: spike branches that won't merge — no PR needed, but DO NOT name them `feat/` (use `spike/` or `wip/`).
 - **Work-in-progress sync**: pushing to your own feature branch mid-work to back up. No PR until ready for review.
+
+## Post-phase install convention (H.3.3)
+
+The toolkit ships in two locations:
+
+1. The toolkit repo at `~/Documents/claude-toolkit/` (canonical source — what you edit + commit + PR)
+2. The installed view at `~/.claude/` (what Claude Code actually loads — slash commands, skills, agents, hooks)
+
+When a phase ships content that affects the user-invocable surface (commands, skills, agents, rule docs, hooks), **the installer must be re-run** to sync the new content into `~/.claude/`. Until that happens, the new commands/skills exist in the repo but are NOT discoverable by Claude Code.
+
+CS-1 confused-user.sam caught this gap concretely: after H.2.5 shipped `commands/build-team.md` + `skills/tech-stack-analyzer/SKILL.md`, **neither was installed** — the user-facing story was undelivered for any installer who hadn't re-run install.sh since H.2.4. H.3.3 fixed this and adopts the convention below.
+
+### Post-phase install convention
+
+Run after every PR merge that touches `commands/`, `skills/`, `agents/`, `rules/`, or `hooks/scripts/`:
+
+```bash
+cd ~/Documents/claude-toolkit
+./install.sh --diff --commands --skills --agents --rules --hooks  # preview
+./install.sh --commands --skills --agents --rules --hooks         # install
+```
+
+Restart Claude Code to pick up the changes (or wait for the next session — each session re-loads the available-skills set).
+
+### What's safe to skip
+
+Phases that touch ONLY `scripts/agent-team/`, `swarm/`, or `skills/agent-team/{patterns,kb}/` don't need the installer — those paths aren't synced into `~/.claude/`. The HETS scripts (per the manual-sync convention earlier in this CONTRIBUTING doc) are copied into `~/.claude/scripts/agent-team/` separately, by the per-script `cp` step that each phase commit explicitly runs.
+
+### Periodic reconciliation
+
+Even when no phase ships user-facing content, run `./install.sh --diff --all` quarterly. If anything's drifted, re-install. (A future phase could add this as a CI check or a `chaos-test` pre-flight per CS-1's H.2.x discipline-check section.)
 
 ## Related
 
