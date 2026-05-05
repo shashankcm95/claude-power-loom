@@ -2,6 +2,34 @@
 
 Deferred work from prior phases, captured here so nothing important gets silently dropped. Each entry: scope, rationale, dependencies, rough estimate.
 
+## Phase H.4.2 — validator hooks + trust formula transparency — SHIPPED
+
+**Status**: shipped. Two hook-layer validators + one pattern-doc clarification, deferred from the original H.4.1 scope so H.4.1 could ship the auto self-improve loop in isolation.
+
+What landed:
+- **`hooks/scripts/validators/validate-no-bare-secrets.js`** (PreToolUse:Edit/Write)
+  - Blocks writes containing secret-shaped literals
+  - Patterns: Anthropic API keys, Stripe live + restricted keys, Slack tokens, GitHub PATs, AWS access key IDs, JWT-shape tokens, `*_(SECRET|KEY|TOKEN|PASSWORD)=<value>` assignments
+  - Skip list: `.env.example`, `.env.template`, `tests/fixtures/`, the validator's own dir
+  - Placeholder detection: `${VAR}`, `<NAME>`, `{{template}}`, repeat-char sequences, common placeholder strings
+  - **Never echoes matched literals** in block reasons (log/chat hygiene)
+- **`hooks/scripts/validators/validate-frontmatter-on-skills.js`** (PreToolUse:Write)
+  - Blocks Write of skill / pattern .md files missing YAML frontmatter
+  - Path patterns: `skills/<name>/SKILL.md`, `skills/<name>/<file>.md`, `skills/agent-team/patterns/<file>.md`
+  - Skip basenames: README.md, BACKLOG.md, CHANGELOG.md
+- **`patterns/agent-identity-reputation.md` Trust Formula section**
+  - Documents the actual `tierOf()` from `agent-identity.js:97-104`
+  - Worked examples with live identity data
+  - Tier → policy mapping table
+  - Known limitations: no recency decay, partial counts as miss, cliff thresholds
+  - Comparison to ruflo's published `0.4·success + 0.2·uptime + 0.2·threat + 0.2·integrity`
+
+E2E validated 8 probes (4 secrets, 4 frontmatter). Sync to `~/.claude/` parity verified. contracts-validate 0 violations.
+
+**H.4.2 follow-ups**:
+- `validators-config.json` external-pattern file (matches config-guard's pattern) — for now patterns are inlined; revisit when a 3rd validator lands
+- Trust-formula tunables (partial-credit weight, recency window, MIN_VERDICTS_FOR_TIER per-persona override) — surfaced in pattern doc but not implemented
+
 ## Phase H.4 — kb_scope enforcement — SHIPPED as H.4.0
 
 **Status**: shipped. Closes the #1 unmoved finding from both CS-1 and CS-2 architects: `kb_scope` was loaded into spawn-time prompt blocks but never enforced at verify-time. Same shape as H.2.6's `invokesRequiredSkills` precedent — contract field → transcript scan → pass/fail.

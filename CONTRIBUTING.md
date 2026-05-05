@@ -110,6 +110,7 @@ After CONTRIBUTING.md adoption, all prior phase commits were tagged in place (an
 | `phase-H.3.6` | `f3e9bda` | CS-2 regression bundle (5 fixes) |
 | `phase-H.4.0` | `181eb6c` | kb_scope enforcement (closes top architect-unmoved item) |
 | `phase-H.4.1` | `36bfab2` | Auto self-improve loop (multi-trigger + threshold promotion + batched approval) |
+| `phase-H.4.2` | (TBD) | Validator-subdir hooks + trust-formula transparency |
 
 `d166add` (README refresh through H.2.4) and `90b87ac` (chat-scan BACKLOG additions) were doc-only commits — no tags (matches "trivial docs allowed direct on main" rule).
 

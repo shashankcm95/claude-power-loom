@@ -52,6 +52,62 @@ Stress-test scenarios:
 - One-off experiments where identity continuity is noise
 - Test runs that need fresh / unbiased identities (use `--ephemeral` flag — not yet implemented)
 
+## Trust Formula (H.4.2 — explicit + auditable)
+
+The trust score is **computed on demand** from each identity's persisted verdict history; there is no static `trust: 0.85` field on disk. Source of truth: `tierOf(stats)` in `scripts/agent-team/agent-identity.js:97-104`. The formula is intentionally simple — no recency decay, no skill-invocation weighting, no per-task complexity adjustment — so audits can reproduce any tier assignment from `verdicts {pass, partial, fail}` alone.
+
+### The actual formula
+
+```
+total = pass + partial + fail
+if total < 5:                  tier = 'unproven'
+else:
+  passRate = pass / total
+  if passRate >= 0.8:          tier = 'high-trust'
+  elif passRate >= 0.5:        tier = 'medium-trust'
+  else:                        tier = 'low-trust'
+```
+
+Three things to notice:
+
+1. **Minimum-runs gate** — under 5 verdicts you're treated as `unproven` (which the verification policy maps to `low-trust` defaults). One lucky pass doesn't earn high-trust.
+2. **Partial = miss** — `partial` verdicts count toward the denominator but NOT the numerator. Equivalent to `partial → 0.0 credit`. Conservative; could be tuned to give partial credit (e.g., 0.5) in a future pass.
+3. **No recency decay** — old verdicts weigh equally with new ones. An identity that passed 100 times two years ago and failed 5 times this week stays high-trust. **Known limitation**; tracked in BACKLOG for H.4.x or H.5.
+
+### Worked example (live data, 2026-05-05)
+
+```
+identity                       totalSpawns   pass  partial  fail   tier
+04-architect.mira              2             0     0        0      unproven (passes < 5)
+06-ios-developer.riley         1             1     0        0      unproven (passes < 5)
+01-hacker.zoe (CS-1)           1             0     1        0      unproven (passes < 5)
+[hypothetical: 9 pass, 1 fail] 10            9     0        1      high-trust (passRate=0.9)
+[hypothetical: 6 pass, 4 fail] 10            6     0        4      medium-trust (passRate=0.6)
+```
+
+Every live identity is currently `unproven` — this isn't a bug, it's the gate doing its job. Trust accumulates with verdict count.
+
+### Tier → policy mapping (read by `recommend-verification`)
+
+The trust formula above is purely descriptive; the **policy table** (`agent-identity.js:293-322`) maps each tier to a verification recommendation:
+
+| Tier | Verification | Challenger | Skips |
+|------|--------------|------------|-------|
+| `high-trust` | spot-check only | none | `noTextSimilarityToPriorRun` |
+| `medium-trust` | asymmetric challenger (1) | 1, different persona preferred | none |
+| `low-trust` | symmetric pair | 2 | none |
+| `unproven` | symmetric pair (cautious default) | 2 | none |
+
+### Why simple beats sophisticated here
+
+A weighted formula like `0.4·passRate + 0.2·skillCompleteness + 0.2·recency + 0.2·complexity` (cf. ruflo's published `0.4·success + 0.2·uptime + 0.2·threat + 0.2·integrity`) is more expressive but also more opaque. Audits become "why is mira high-trust?" → "she's at 0.78 weighted trust" → "what does that mean?" The current pass-rate-with-floor model gives every audit a one-line answer: *"mira is high-trust because she's passed 8 of her 10 verdicts (80%) since being spawned 2026-05-02."* When the formula evolves, it does so explicitly — change the function, bump the doc, ship a new phase.
+
+### Tunables (BACKLOG)
+
+- `MIN_VERDICTS_FOR_TIER` — currently hardcoded at 5 in `tierOf`. Future: contract-level override per persona.
+- Partial-credit weight — currently 0.0; tuning to 0.5 would let challenger personas (which often produce partial verdicts on edge cases) accumulate trust faster.
+- Recency window — track `passRate` over last N verdicts as well as lifetime; surface both in `tier` output.
+
 ## Related Patterns
 
 - [Trust-Tiered Verification Depth](trust-tiered-verification.md) — reads per-identity trust to decide verification depth

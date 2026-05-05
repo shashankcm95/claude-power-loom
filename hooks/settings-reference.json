@@ -65,6 +65,30 @@
         ],
         "description": "Block modifications to linter/formatter config files — fix code, not configs",
         "id": "pre:config-guard"
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node HOME_DIR/.claude/hooks/scripts/validators/validate-no-bare-secrets.js",
+            "timeout": 5
+          }
+        ],
+        "description": "H.4.2: Block writes containing secret-shaped literals (Anthropic/Stripe/Slack/GitHub/AWS keys, JWT, *_KEY/*_SECRET assignments). Hook-layer enforcement of the security.md pre-commit checklist.",
+        "id": "pre:validate-no-bare-secrets"
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node HOME_DIR/.claude/hooks/scripts/validators/validate-frontmatter-on-skills.js",
+            "timeout": 5
+          }
+        ],
+        "description": "H.4.2: Block Write of skill/pattern .md files that lack YAML frontmatter (silently-broken skills are worse than visibly-broken ones).",
+        "id": "pre:validate-frontmatter-on-skills"
       }
     ],
     "PreCompact": [
