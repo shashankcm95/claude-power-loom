@@ -2,6 +2,31 @@
 
 Deferred work from prior phases, captured here so nothing important gets silently dropped. Each entry: scope, rationale, dependencies, rough estimate.
 
+## Phase H.5.2 — CS-3 CRIT bundle — SHIPPED
+
+**Status**: shipped. All 5 CRITICAL findings from the CS-3 chaos-test (chaos-20260505-095622-cs3) auditor swarm closed in one PR.
+
+What landed:
+- **`kb_scope_consumed` provenance hardening** (`contract-verifier.js:109-180`) — text-pattern check became real provenance check via tool_use ↔ tool_result pairing + shell-evasion rejection + result-content validation. Closes hacker.kai CRIT-1 ("verifier was upgraded from no-enforcement to string-pattern-enforcement that any actor controlling its own transcript can pass").
+- **Secrets validator hardening** (`hooks/scripts/validators/validate-no-bare-secrets.js`):
+  - Added `github_pat_<82chars>` regex (modern fine-grained PAT, missing since shipping)
+  - Fail-CLOSED on parse error (was fail-open — wrong for a security gate)
+  - Tightened SKIP_PATH_PATTERNS (validator dir was self-permissive)
+  - Fixed Edit field reference (`replace_all_string` doesn't exist; was effectively only scanning `new_string`)
+  - Added multi-edit fallback + NotebookEdit pessimistic scan
+- **README hook count consistency** — 5 sections updated from inconsistent `11`/`(6)`/`6 hook scripts` to canonical `11`. Section preamble explains breakdown by lifecycle event.
+- **README single-canonical Install** — second `## Install` heading renamed to `## Legacy installer reference`; plugin-route note added that `hooks/hooks.json` auto-loads via `${CLAUDE_PLUGIN_ROOT}` (no manual `settings.json` merge needed).
+
+E2E validated 9 probes (4 secrets, 2 kb_scope provenance, 3 Edit shape). contracts-validate: 0 violations across all 7 validators.
+
+**H.5.x follow-ups still in BACKLOG**:
+- **H.5.3** — pattern→enforcement bridge (12 of 13 patterns at 0 contract refs; persistent finding for 3 consecutive runs)
+- **H.5.4** — builder dogfood run (architect.theo recommends elevating above H.5.3)
+- **`hierarchical-aggregate.js` relocation** — 5 consecutive chaos runs unmoved; either relocate or document why `swarm/` is correct
+- **`_lib/` second extraction** — directory of one (just `lock.js`); CS-2 recommended `_lib/runState.js` consolidation
+- **Pre-spawn budget-tracker check** — substrate exists, call-site missing
+- **Auditor contracts (01-05) lack `kb_scope`** — uniformly applies H.4.0 enforcement to consumers, not just producers
+
 ## Phase H.5.1 — pattern status sync + KB exemption doc — SHIPPED
 
 **Status**: shipped. Closes 2 of CS-3 Track 1's findings:

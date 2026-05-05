@@ -28,7 +28,12 @@ const SECRET_PATTERNS = [
   { id: 'stripe-live-key',    regex: /sk_live_[A-Za-z0-9]{20,}/g,            description: 'Stripe live secret key' },
   { id: 'stripe-restricted',  regex: /rk_live_[A-Za-z0-9]{20,}/g,            description: 'Stripe restricted key' },
   { id: 'slack-token',        regex: /xox[baprs]-[A-Za-z0-9-]{10,}/g,         description: 'Slack token' },
-  { id: 'github-pat',         regex: /gh[posur]_[A-Za-z0-9]{36,}/g,           description: 'GitHub personal access token' },
+  { id: 'github-pat-classic', regex: /gh[posur]_[A-Za-z0-9]{36,}/g,           description: 'GitHub classic personal access token' },
+  // H.5.2 (CS-3 hacker.kai CRIT-2): GitHub fine-grained PAT — primary modern
+  // format since 2022, prefix `github_pat_` followed by 82 chars (verified per
+  // GitHub docs). The classic regex above does NOT cover this; it's a separate
+  // pattern.
+  { id: 'github-pat-fine-grained', regex: /github_pat_[A-Za-z0-9_]{82}/g,     description: 'GitHub fine-grained personal access token' },
   { id: 'aws-access-key-id',  regex: /\bAKIA[0-9A-Z]{16}\b/g,                 description: 'AWS access key ID' },
   { id: 'jwt-token',          regex: /\beyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}/g, description: 'JWT-shape token' },
   // Generic assignment pattern. Trailing-value group requires ≥16 alphanumeric chars; excludes obvious placeholders.
@@ -52,13 +57,19 @@ const PLACEHOLDER_VALUES = new Set([
 
 // Skip patterns: don't scan reads of common test fixtures, .env.example, etc.
 // (No false positives on intentional documentation of the patterns themselves.)
+//
+// H.5.2 (CS-3 hacker.kai CRIT-2): the prior version skipped ALL writes under
+// `hooks/scripts/validators/` — a self-permissive blind spot. Anyone editing
+// the validator could store secrets there with zero hook resistance. Tightened
+// to skip only test-fixture sub-paths, not the validator code itself.
 const SKIP_PATH_PATTERNS = [
   /\.env\.example$/i,
   /\.env\.template$/i,
   /\.env\.sample$/i,
   /(?:^|\/)tests?\/fixtures\//i,
   /(?:^|\/)__tests__\/.*\.(test|spec|fixture)\./i,
-  /(?:^|\/)hooks\/scripts\/validators\//i, // this validator + tests of it
+  /(?:^|\/)hooks\/scripts\/validators\/.*\.(test|spec|fixture)\./i, // narrowed
+  /(?:^|\/)hooks\/scripts\/validators\/fixtures\//i, // narrowed
 ];
 
 function shouldSkipPath(filePath) {
@@ -116,13 +127,29 @@ process.stdin.on('end', () => {
     }
 
     // Build the content surface to scan based on tool variant.
+    // H.5.2 (CS-3 code-reviewer.blair C-1): the Edit tool's payload is
+    // `new_string` + boolean `replace_all` — NOT a `replace_all_string` field.
+    // The previous code referenced a non-existent field; only `new_string`
+    // was effectively scanned. Worse, future multi-edit payloads (e.g.,
+    // `edits: [{old_string, new_string}]`) would silently bypass. Now: scan
+    // `new_string` for Edit, and pessimistically scan the entire `tool_input`
+    // JSON if the shape is unrecognized (defense in depth — false positives
+    // here are acceptable; missing a secret is not).
     let scanText = '';
     if (toolName === 'Write') {
       scanText = toolInput.content || '';
     } else if (toolName === 'Edit') {
-      // Scan only the new content, not what's being replaced — the old_string
-      // is whatever was already on disk and has presumably already been read.
-      scanText = (toolInput.new_string || '') + '\n' + (toolInput.replace_all_string || '');
+      scanText = toolInput.new_string || '';
+      // Multi-edit fallback: if `edits` array is present, concat all new strings.
+      if (Array.isArray(toolInput.edits)) {
+        for (const e of toolInput.edits) {
+          if (e && typeof e.new_string === 'string') scanText += '\n' + e.new_string;
+        }
+      }
+    } else if (toolName === 'NotebookEdit') {
+      // NotebookEdit uses `new_source` for cell content; pessimistic scan covers
+      // both the documented field + any future variants.
+      scanText = (toolInput.new_source || '') + '\n' + JSON.stringify(toolInput);
     } else {
       // Other tools: not our jurisdiction.
       logger('approve', { toolName, reason: 'tool_out_of_scope' });
@@ -153,8 +180,18 @@ process.stdin.on('end', () => {
     logger('block', { toolName, filePath, findingCount: findings.length, ids: findings.map((f) => f.id) });
     process.stdout.write(JSON.stringify({ decision: 'block', reason }));
   } catch (err) {
-    // Never block on parse errors — graceful degrade matches fact-force-gate.
-    logger('error', { error: err.message });
-    process.stdout.write(JSON.stringify({ decision: 'approve' }));
+    // H.5.2 (CS-3 hacker.kai CRIT-2): fail-CLOSED on parse error.
+    // Prior version was `decision: 'approve'` — graceful-degrade is wrong
+    // for a security gate. An attacker (or buggy upstream) emitting malformed
+    // stdin bypassed the entire secrets gate. Now: block with a generic
+    // INTERNAL ERROR reason; log the parse error for diagnostics. Compare to
+    // fact-force-gate (which correctly approves on parse error since it's a
+    // discipline check, not a security check). The two have different threat
+    // models.
+    logger('block', { error: err.message, reason: 'parse_error_fail_closed' });
+    process.stdout.write(JSON.stringify({
+      decision: 'block',
+      reason: 'SECRETS GATE: internal error parsing tool input — refusing to approve write. This is fail-closed by design; check ~/.claude/logs/validate-no-bare-secrets.log for the parse error.',
+    }));
   }
 });

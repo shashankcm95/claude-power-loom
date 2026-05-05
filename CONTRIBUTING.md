@@ -113,6 +113,7 @@ After CONTRIBUTING.md adoption, all prior phase commits were tagged in place (an
 | `phase-H.4.2` | `b0a3e6d` | Validator-subdir hooks + trust-formula transparency |
 | `phase-H.5.0` | `4ff1aee` | Official Claude Code plugin packaging (anti-slop differentiation in README) |
 | `phase-H.5.1` | `1103137` | Pattern status sync (9 → active) + KB exemption documentation (CS-3 Track 1 fixes) |
+| `phase-H.5.2` | (TBD) | CS-3 CRIT bundle (5 fixes: kb_scope provenance, secrets validator hardening, README consistency) |
 
 `d166add` (README refresh through H.2.4) and `90b87ac` (chat-scan BACKLOG additions) were doc-only commits — no tags (matches "trivial docs allowed direct on main" rule).
 

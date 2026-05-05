@@ -74,7 +74,7 @@ These shape Claude's reasoning but **can be skipped** by the LLM under pressure.
 | **Commands** (manual shortcuts) | 8 | User types `/command-name` | User-driven |
 | **HETS personas** (specialist team) | 12 + 1 challenger template | Spawn via `agent-team` skill; identity assigned per spawn | Contract-verified post-hoc, trust-tiered |
 
-**The honest takeaway**: the value of the substrate is concentrated in the 6 hooks. Rules/skills/agents add useful context but rely on instruction-following. If a behavior must always happen, build a hook for it. **HETS adds verifiable multi-agent coordination on top** — outputs are checked against per-persona contracts (functional + anti-pattern checks), so even though individual agents may skip instructions, the team-level verdict is deterministic.
+**The honest takeaway**: the value of the substrate is concentrated in the 11 hooks. Rules/skills/agents add useful context but rely on instruction-following. If a behavior must always happen, build a hook for it. **HETS adds verifiable multi-agent coordination on top** — outputs are checked against per-persona contracts (functional + anti-pattern checks), so even though individual agents may skip instructions, the team-level verdict is deterministic.
 
 ---
 
@@ -102,7 +102,9 @@ To prevent disappointment, here's what the toolkit doesn't do:
 
 ## Component Deep-Dives
 
-### Hooks (6) — The Deterministic Layer
+### Hooks (11) — The Deterministic Layer
+
+11 hook entries across 5 lifecycle events (1 SessionStart + 2 UserPromptSubmit + 4 PreToolUse + 1 PreCompact + 3 Stop). The 6 below are the original substrate; H.4.1 added `session-self-improve-prompt.js` (UserPromptSubmit) + augmented `auto-store-enrichment.js` and `pre-compact-save.js` with self-improve loop logic; H.4.2 added 2 validators under `hooks/scripts/validators/` (PreToolUse:Edit/Write). All 11 wire via `hooks/hooks.json` (plugin install) or `~/.claude/settings.json` (legacy install).
 
 Hook scripts run as external Node.js processes triggered by Claude Code's lifecycle events. They're the only layer with hard guarantees — pure logic, no LLM interpretation.
 
@@ -317,7 +319,9 @@ For non-technical users: **rules and hooks are always active**. You don't need t
 
 ---
 
-## Install
+## Legacy installer reference
+
+> **Note**: the canonical install path is the plugin marketplace command at the top of this README. The section below is for users who want manual control or are operating in environments without `/plugin marketplace add` support. The two paths produce equivalent installs.
 
 ```bash
 # Clone the repo
@@ -344,9 +348,11 @@ cd ~/Documents/claude-toolkit
 | `--backup` | Snapshot existing `~/.claude/` to `~/.claude/backups/backup-{timestamp}/` |
 | `--test` | Run 7-point smoke test suite after install (verifies hooks fire correctly) |
 
-### Hook Configuration
+### Hook Configuration (legacy path only)
 
-Hook scripts copy automatically; the configuration must be merged into `~/.claude/settings.json`. Reference template at `hooks/settings-reference.json` — replace `HOME_DIR` with your home directory path.
+If you used `install.sh`, hook scripts copy automatically but the configuration must be merged into `~/.claude/settings.json` manually. Reference template at `hooks/settings-reference.json` — replace `HOME_DIR` with your home directory path.
+
+**If you used the plugin install path** (`/plugin marketplace add ...`), you can skip this step entirely — `hooks/hooks.json` ships with the plugin and is auto-loaded by Claude Code's plugin loader using `${CLAUDE_PLUGIN_ROOT}` substitution. No manual `settings.json` editing required.
 
 ### MemPalace Setup (Optional)
 
@@ -382,7 +388,7 @@ claude-toolkit/
 │   ├── typescript/          # 1 language-specific rule
 │   └── web/                 # 1 framework-specific rule
 ├── hooks/
-│   ├── scripts/             # 6 hook scripts + _log.js helper + prompt-pattern-store CLI
+│   ├── scripts/             # 11 hook scripts (incl. validators/) + _log.js helper + prompt-pattern-store CLI
 │   └── settings-reference.json  # Hook config template
 ├── commands/                # 8 slash command definitions (incl. /chaos-test)
 ├── skills/                  # 9 skill workflow guides

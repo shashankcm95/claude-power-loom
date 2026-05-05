@@ -99,38 +99,101 @@ function extractSkillsFromTranscript(transcriptPath) {
 }
 
 // H.4.0 — extract KB document reads from an actor's transcript JSONL.
-// We detect three invocation shapes that an actor would use to consume a
-// declared kb_scope entry:
+// H.5.2 (CS-3 hacker.kai CRIT-1) — provenance hardening:
+//   The original H.4.0 implementation was a TEXT-PATTERN check on the
+//   actor-controlled command string, not a PROVENANCE check on tool execution.
+//   An actor could emit `echo "kb-resolver cat foo/bar"` and credit the read
+//   without ever running kb-resolver. The verifier now:
+//     1. Pairs every `tool_use` with its matching `tool_result` (by id)
+//     2. Requires `tool_result.is_error !== true` AND non-empty content
+//     3. Rejects Bash commands that contain shell-evasion shapes
+//        (`echo`, `printf`, leading `#`, heredoc `<<`, comment-piped `| cat`)
+//     4. Rejects result content that looks like an error (kb-resolver writes
+//        "Not found: <id>" to stderr — captured by Bash tool's stderr+stdout merge)
+//     5. Rejects path-traversal shapes in captured ids (`..` or leading `/`)
+//   Without ALL of these, the H.4.0 closure is cosmetic per kai CRIT-1.
+//
+// Detected invocation shapes (each requires successful tool_result above):
 //   1. Bash: `kb-resolver(.js)? cat <id>`           — bare or kb:-prefixed id
 //   2. Bash: `kb-resolver(.js)? resolve kb:<id>[@<short-hash>]`
 //   3. Read: file_path matching `skills/agent-team/kb/<domain>/<doc>.md`
-// Returns a Set of normalized `kb:<domain>/<doc>` strings (matches the
-// canonical form used in contract.kb_scope.default arrays).
+// Returns a Set of normalized `kb:<domain>/<doc>` strings.
 function extractKbReadsFromTranscript(transcriptPath) {
   const kbReads = new Set();
   const lines = fs.readFileSync(transcriptPath, 'utf8').split('\n').filter(Boolean);
+
+  // Pass 1: index tool_results by tool_use_id. Claude transcripts have
+  // tool_use blocks in assistant messages; the matching tool_result is in
+  // the next user message's content, keyed by `tool_use_id`.
+  const toolResults = new Map();
   for (const line of lines) {
     let msg;
     try { msg = JSON.parse(line); } catch { continue; }
     const content = msg && msg.message && msg.message.content;
     if (!Array.isArray(content)) continue;
     for (const block of content) {
-      if (!block || block.type !== 'tool_use') continue;
+      if (!block || block.type !== 'tool_result' || !block.tool_use_id) continue;
+      let resultText = '';
+      if (typeof block.content === 'string') {
+        resultText = block.content;
+      } else if (Array.isArray(block.content)) {
+        resultText = block.content.map((c) => (c && typeof c.text === 'string') ? c.text : '').join('');
+      }
+      toolResults.set(block.tool_use_id, {
+        is_error: block.is_error === true,
+        content: resultText,
+      });
+    }
+  }
+
+  // Shell-evasion patterns that would let the kb-resolver substring appear
+  // in a command without actually invoking the resolver. Not exhaustive (an
+  // adversary can always be more creative), but catches the obvious cases
+  // kai CRIT-1 enumerated.
+  const SHELL_EVASION = /\becho\b|\bprintf\b|\bcat\s*<<|^\s*#|\|\s*cat\b/;
+  // Error-shape patterns in tool_result content. kb-resolver's cmdCat writes
+  // "Not found: <kb_id>" to stderr on miss, which Bash tool captures.
+  const RESULT_ERROR = /^Not found:|^Error:|kb-resolver: error|MODULE_NOT_FOUND/im;
+
+  // Pass 2: scan tool_use blocks; only credit successful reads.
+  for (const line of lines) {
+    let msg;
+    try { msg = JSON.parse(line); } catch { continue; }
+    const content = msg && msg.message && msg.message.content;
+    if (!Array.isArray(content)) continue;
+    for (const block of content) {
+      if (!block || block.type !== 'tool_use' || !block.id) continue;
+      const result = toolResults.get(block.id);
+      // Provenance gate: require a successful, non-empty tool_result.
+      if (!result) continue;
+      if (result.is_error) continue;
+      if (!result.content || !result.content.trim()) continue;
+      if (RESULT_ERROR.test(result.content)) continue;
+
       const input = block.input || {};
       if (block.name === 'Bash' && typeof input.command === 'string') {
         const cmd = input.command;
+        // Reject shell-evasion shapes that let the regex match without execution.
+        if (SHELL_EVASION.test(cmd)) continue;
         // `kb-resolver cat <id>` — bare id (no kb: prefix) per cmdCat signature
         for (const m of cmd.matchAll(/kb-resolver(?:\.js)?\s+cat\s+(?:kb:)?([a-zA-Z][\w./-]+)/g)) {
-          kbReads.add('kb:' + m[1]);
+          const id = m[1];
+          if (id.includes('..') || id.startsWith('/')) continue;
+          kbReads.add('kb:' + id);
         }
         // `kb-resolver resolve kb:<id>[@<hash>]` — kb: prefixed
         for (const m of cmd.matchAll(/kb-resolver(?:\.js)?\s+resolve\s+(kb:[\w./-]+?)(?:@[a-f0-9]+)?(?=\s|$)/g)) {
-          kbReads.add(m[1]);
+          const id = m[1];
+          if (id.includes('..')) continue;
+          kbReads.add(id);
         }
       }
       if (block.name === 'Read' && typeof input.file_path === 'string') {
         const m = input.file_path.match(/skills\/agent-team\/kb\/([\w-]+\/[\w.-]+?)\.md$/);
-        if (m) kbReads.add('kb:' + m[1]);
+        if (!m) continue;
+        const id = m[1];
+        if (id.includes('..')) continue;
+        kbReads.add('kb:' + id);
       }
     }
   }
