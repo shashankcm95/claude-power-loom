@@ -52,6 +52,20 @@ Stress-test scenarios:
 - Spawn-time-only fixtures where no transcript will ever be collected (the check graceful-passes anyway, but adding the check just adds noise to the result JSON)
 - Personas whose tasks intentionally span ad-hoc KB reads (declare scope as `[]` then; the check graceful-passes)
 
+## Toolkit-meta KB docs are intentionally exempt
+
+Not every doc under `skills/agent-team/kb/` is subject to `kb_scope_consumed` enforcement. **Per-persona-domain KB docs** (e.g., `kb:security-dev/threat-modeling-essentials`, `kb:mobile-dev/swift-essentials`) are declared in `contract.kb_scope.default` and ARE enforced. **Toolkit-meta KB docs** describe shared orchestration vocabulary used by skills/commands at execution time, not by per-persona contracts at verify time, and are deliberately NOT in any contract's `kb_scope.default`:
+
+| Doc | Consumed by | Why exempt |
+|-----|-------------|-----------|
+| `kb:hets/identity-roster` | `agent-team` SKILL.md, spawn-conventions | Roster of identity names per persona; loaded as orchestration data, not domain knowledge |
+| `kb:hets/stack-skill-map` | `tech-stack-analyzer` SKILL.md, `/build-team` command | Stack→skill heuristic table; consulted by the analyzer skill, not by spawned actors |
+| `kb:hets/symmetric-pair-conventions` | `trust-tiered-verification` flow, `agent-team` SKILL.md | Pair-spawn conventions for low-trust identities; loaded by the verification flow, not the actor |
+
+These show up as 0-contract-references in coverage audits (CS-3 surfaced this); the absence is intentional. If a future persona contract genuinely needs one of these docs, declaring it in `kb_scope.default` is fine — the check works the same way. But default is exempt.
+
+The principle: **`kb_scope_consumed` is for "did the actor read its domain knowledge before producing findings?"** — not for "did every toolkit-shared doc get touched."
+
 ## Related Patterns
 
 - [Shared Knowledge Base](shared-knowledge-base.md) — where the KB docs live and are content-addressed

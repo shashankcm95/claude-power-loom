@@ -1,6 +1,6 @@
 ---
 pattern: tech-stack-analyzer
-status: implementing
+status: active
 intent: Parse user task → infer stack → identify required skills → produce a plan the user can redirect.
 related: [skill-bootstrapping, persona-skills-mapping, shared-knowledge-base]
 ---

@@ -1,6 +1,6 @@
 ---
 pattern: asymmetric-challenger
-status: implementing
+status: active
 intent: Critic reads implementer's output and surfaces ≥1 substantive disagreement.
 related: [hets, trust-tiered-verification, convergence-as-signal]
 ---

@@ -1,6 +1,6 @@
 ---
 pattern: trust-tiered-verification
-status: implementing
+status: active
 intent: Verification depth scales inversely with measured per-identity trust score.
 related: [agent-identity-reputation, asymmetric-challenger, hets, prompt-distillation]
 ---

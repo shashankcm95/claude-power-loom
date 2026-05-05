@@ -2,6 +2,21 @@
 
 Deferred work from prior phases, captured here so nothing important gets silently dropped. Each entry: scope, rationale, dependencies, rough estimate.
 
+## Phase H.5.1 — pattern status sync + KB exemption doc — SHIPPED
+
+**Status**: shipped. Closes 2 of CS-3 Track 1's findings:
+
+1. **Pattern status drift** — 9 pattern docs were stuck at `status: implementing` despite their underlying code shipping phases ago. Promoted to `active` across all 3 sources of truth (frontmatter, `patterns/README.md` index, `SKILL.md` table). Pattern table also fills in the previously-missing `kb-scope-enforcement` row (13th pattern, shipped H.4.0). Final distribution: 12 active, 1 observed, 0 implementing.
+2. **"Orphan" KB framing was wrong** — CS-3 Track 1 flagged 3 KB docs as missing from contract `kb_scope.default`. Investigation showed they're consumed by skills/commands/manifests, just not by per-persona contracts. Documented as intentional exemption in `patterns/kb-scope-enforcement.md` under a new "Toolkit-meta KB docs are intentionally exempt" section. The `kb_scope_consumed` check's principle is now explicit: domain-knowledge enforcement only, not toolkit-shared doc enforcement.
+
+contracts-validate: 0 violations across all 7 validators after sync.
+
+**H.5.1 follow-ups (deferred)**:
+
+- **CS-3 Track 2 — full auditor swarm**: 5 personas in parallel for qualitative bug-hunt findings on top of the coverage audit. ~5-10 min wallclock, ~50-80K tokens. Defer until H.5.2/H.5.3 land so auditors don't waste effort on already-known findings.
+- **H.5.3 — pattern → enforcement bridge**: 12 of 13 patterns have 0 contract refs. For each unenforced pattern: ship a verifier check (like H.4.0 did for `kb_scope`), promote if naturally enforced via existing mechanisms, or demote if aspirational. Big phase; needs explicit per-pattern triage.
+- **H.5.4 — builder dogfood run**: builders 06-12 are at `unproven` tier with no real verdicts. Spawn 1-2 on a real task to validate the substrate works end-to-end. Generates real trust-formula data.
+
 ## Phase H.5.0 — official Claude Code plugin packaging — SHIPPED
 
 **Status**: shipped. Toolkit is now installable as an official Claude Code plugin via `/plugin marketplace add shashankcm95/claude-skills-consolidated`. Three new manifests at repo root (`.claude-plugin/plugin.json`, `hooks/hooks.json`, `marketplace.json`) match the `code.claude.com/docs/en/plugins-reference` schema. Anti-AI-slop differentiation table in README explicitly compares this plugin's enforcement footprint (11 hooks, multi-agent HETS, triple-contract verifier, threshold-based auto self-improve, chaos-test meta-validation, 13 patterns) against typical SKILL.md-template plugins.

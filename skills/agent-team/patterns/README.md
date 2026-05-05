@@ -12,18 +12,18 @@ This dual form is itself the [Prompt Distillation](prompt-distillation.md) patte
 | # | Pattern | Status | One-line intent |
 |---|---------|--------|-----------------|
 | 0 | [HETS](../SKILL.md) | active | Tree of agents bounded by depth; per-tier contracts; trust accumulates across runs. (Foundational — see SKILL.md.) |
-| 1 | [Asymmetric Challenger](asymmetric-challenger.md) | implementing | Critic reads implementer's output and surfaces ≥1 substantive disagreement; ~1.3–1.5× cost vs ~2× symmetric. |
-| 2 | [Trust-Tiered Verification Depth](trust-tiered-verification.md) | implementing | Verification depth scales inversely with measured trust score per identity. |
+| 1 | [Asymmetric Challenger](asymmetric-challenger.md) | active | Critic reads implementer's output and surfaces ≥1 substantive disagreement; ~1.3–1.5× cost vs ~2× symmetric. |
+| 2 | [Trust-Tiered Verification Depth](trust-tiered-verification.md) | active | Verification depth scales inversely with measured trust score per identity. |
 | 3 | [Convergence-as-Signal](convergence-as-signal.md) | observed | Different personas independently surfacing same finding = high-confidence signal. |
 | 4 | [Persona-Skills Mapping](persona-skills-mapping.md) | active | One-to-many mapping of personas to skills; spawn prompts list names; verifier checks invocation. |
-| 5 | [Agent Identity & Reputation](agent-identity-reputation.md) | implementing | Personas as roles; identities as persistent named instances accumulating per-identity trust. |
+| 5 | [Agent Identity & Reputation](agent-identity-reputation.md) | active | Personas as roles; identities as persistent named instances accumulating per-identity trust. |
 | 6 | [Meta-Validation](meta-validation.md) | active | Run the chaos test on the chaos test infrastructure; bugs in audit infra are highest-leverage to find. |
-| 7 | [Prompt Distillation](prompt-distillation.md) | implementing | Spawn prompt size scales inversely with (trust × familiarity); cards over full docs by default. |
-| 8 | [Shared Knowledge Base](shared-knowledge-base.md) | implementing | One source of truth for docs; runs reference a frozen snapshot so mid-run edits don't affect in-flight agents. |
-| 9 | [Content-Addressed References](content-addressed-refs.md) | implementing | Refs by SHA-hashed pointer (`kb:<id>@<hash>`); cross-project reuse + reproducibility for free. |
-| 10 | [Skill Bootstrapping](skill-bootstrapping.md) | implementing | Missing skill → user-gated forge invocation → review → catalog admission. |
-| 11 | [Tech-Stack Analyzer](tech-stack-analyzer.md) | implementing | Parse user task → infer stack → map to skills → produce a plan the user can redirect. |
-| 12 | [Structural Code Review](structural-code-review.md) | implementing | Third leg of "triple contract" — `noUnrolledLoops` + `noExcessiveNesting` checks against code blocks in actor findings. Catches the 1000-zeros family. |
+| 7 | [Prompt Distillation](prompt-distillation.md) | active | Spawn prompt size scales inversely with (trust × familiarity); cards over full docs by default. |
+| 8 | [Shared Knowledge Base](shared-knowledge-base.md) | active | One source of truth for docs; runs reference a frozen snapshot so mid-run edits don't affect in-flight agents. |
+| 9 | [Content-Addressed References](content-addressed-refs.md) | active | Refs by SHA-hashed pointer (`kb:<id>@<hash>`); cross-project reuse + reproducibility for free. |
+| 10 | [Skill Bootstrapping](skill-bootstrapping.md) | active | Missing skill → user-gated forge invocation → review → catalog admission. |
+| 11 | [Tech-Stack Analyzer](tech-stack-analyzer.md) | active | Parse user task → infer stack → map to skills → produce a plan the user can redirect. |
+| 12 | [Structural Code Review](structural-code-review.md) | active | Third leg of "triple contract" — `noUnrolledLoops` + `noExcessiveNesting` checks against code blocks in actor findings. Catches the 1000-zeros family. |
 | 13 | [KB-Scope Enforcement](kb-scope-enforcement.md) | active | Verify actor consumed every KB doc declared in `contract.kb_scope.default` by transcript scan; closes the long-standing CS-1+CS-2 architect "declare-without-read" finding. |
 
 **Status legend:** `active` = code in production; `implementing` = code being written this phase; `proposed` = designed but not yet implemented; `observed` = pattern recurred in practice without intentional design.
