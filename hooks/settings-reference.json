@@ -27,6 +27,18 @@
         ],
         "description": "Detect vague prompts and inject forcing instruction for prompt-enrichment skill",
         "id": "prompt:enrich-trigger"
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node HOME_DIR/.claude/hooks/scripts/session-self-improve-prompt.js",
+            "timeout": 5
+          }
+        ],
+        "description": "H.4.1: on first prompt of session, inject pending self-improve queue if non-empty (closes the manual /self-improve loop)",
+        "id": "prompt:self-improve-queue"
       }
     ],
     "PreToolUse": [

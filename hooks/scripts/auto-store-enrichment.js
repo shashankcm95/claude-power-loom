@@ -166,6 +166,70 @@ function storePattern(enrichment) {
   }
 }
 
+// H.4.1 — auto self-improve loop hook. Resolves via the same candidate-paths
+// pattern as STORE_SCRIPT above so it works from either the canonical repo
+// path or the installed ~/.claude/scripts location.
+function resolveSelfImproveScript() {
+  const candidates = [
+    path.join(__dirname, '..', '..', 'scripts', 'self-improve-store.js'),
+    path.join(__dirname, '..', 'scripts', 'self-improve-store.js'),
+    path.join(require('os').homedir(), '.claude', 'scripts', 'self-improve-store.js'),
+  ];
+  for (const c of candidates) {
+    try { fs.accessSync(c, fs.constants.F_OK); return c; } catch { /* next */ }
+  }
+  return null;
+}
+const SELF_IMPROVE_SCRIPT = resolveSelfImproveScript();
+
+// Heuristic: harvest signal types from the assistant's response text.
+// Cheap, deterministic, no LLM. Same regex shape as pre-compact-save.js.
+function extractSignals(text) {
+  const signals = [];
+  // File paths (≥2 segments + extension; matches pre-compact heuristic)
+  const filePathPattern = /(?:\/[\w.-]+){2,}\.\w{1,10}/g;
+  const paths = new Set(text.match(filePathPattern) || []);
+  for (const p of paths) signals.push('filePath:' + p);
+  // Slash-command invocations the user is running
+  const cmdPattern = /(?<![\w/-])\/([a-z][a-z0-9-]+)(?=\s|$|[.,;:!?])/g;
+  const cmds = new Set();
+  let m;
+  while ((m = cmdPattern.exec(text)) !== null) cmds.add(m[1]);
+  for (const c of cmds) signals.push('command:/' + c);
+  return signals;
+}
+
+function bumpSelfImproveCounters(signals) {
+  if (!SELF_IMPROVE_SCRIPT) return null;
+  // bump turn counter + each detected signal. spawnSync per call is fine —
+  // the store does atomic writes and the volume is low (1 turn + ≤20 unique
+  // signals per Stop event). 8s timeout matches storePattern.
+  const results = { shouldScan: false, signalsBumped: 0 };
+  try {
+    const turnRes = spawnSync(process.execPath, [SELF_IMPROVE_SCRIPT, 'bump-turn'], {
+      encoding: 'utf8', timeout: 8000, stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    if (turnRes.status === 0) {
+      try { results.shouldScan = JSON.parse(turnRes.stdout).shouldScan === true; } catch {}
+    }
+    for (const sig of signals.slice(0, 20)) {
+      const r = spawnSync(process.execPath, [SELF_IMPROVE_SCRIPT, 'bump', '--signal', sig], {
+        encoding: 'utf8', timeout: 4000, stdio: ['pipe', 'pipe', 'pipe'],
+      });
+      if (r.status === 0) results.signalsBumped++;
+    }
+    if (results.shouldScan) {
+      spawnSync(process.execPath, [SELF_IMPROVE_SCRIPT, 'scan'], {
+        encoding: 'utf8', timeout: 8000, stdio: ['pipe', 'pipe', 'pipe'],
+      });
+    }
+  } catch (err) {
+    log('self_improve_failed', { error: err.message });
+    return null;
+  }
+  return results;
+}
+
 let input = '';
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', (chunk) => { input += chunk; });
@@ -177,14 +241,28 @@ process.stdin.on('end', () => {
     const enrichments = extractEnrichments(input);
     if (enrichments.length === 0) {
       log('no_enrichment', { inputLen: input.length });
-      return;
-    }
-
-    log('detected', { count: enrichments.length });
-    for (const enrichment of enrichments) {
-      storePattern(enrichment);
+    } else {
+      log('detected', { count: enrichments.length });
+      for (const enrichment of enrichments) {
+        storePattern(enrichment);
+      }
     }
   } catch (err) {
     log('error', { error: err.message });
+  }
+
+  // H.4.1: bump self-improve counters + maybe trigger scan. Best-effort —
+  // failures here never affect the response pipeline.
+  try {
+    const signals = extractSignals(input);
+    const result = bumpSelfImproveCounters(signals);
+    if (result) {
+      log('self_improve_bumped', {
+        signalsBumped: result.signalsBumped,
+        shouldScan: result.shouldScan,
+      });
+    }
+  } catch (err) {
+    log('self_improve_error', { error: err.message });
   }
 });

@@ -69,6 +69,35 @@ Now do the intelligent part that only you can do:
 
 The checkpoint file has the file paths and timestamp. You provide the meaning.`;
 
+// H.4.1 — also run a self-improve consolidation scan at compaction. Same
+// candidate-paths resolution as auto-store-enrichment so it works in both
+// repo + installed locations.
+function resolveSelfImproveScript() {
+  const candidates = [
+    path.join(__dirname, '..', '..', 'scripts', 'self-improve-store.js'),
+    path.join(__dirname, '..', 'scripts', 'self-improve-store.js'),
+    path.join(os.homedir(), '.claude', 'scripts', 'self-improve-store.js'),
+  ];
+  for (const c of candidates) {
+    try { fs.accessSync(c, fs.constants.F_OK); return c; } catch { /* next */ }
+  }
+  return null;
+}
+
+function runSelfImproveScan() {
+  const script = resolveSelfImproveScript();
+  if (!script) return null;
+  const { spawnSync } = require('child_process');
+  // Compaction is a natural moment for a heavier scan. Per-signal bumps
+  // already happened turn-by-turn in the Stop hook; here we just trigger
+  // the consolidation pass that applies thresholds + queues candidates.
+  const res = spawnSync(process.execPath, [script, 'scan'], {
+    encoding: 'utf8', timeout: 10000, stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  if (res.status !== 0) return null;
+  try { return JSON.parse(res.stdout); } catch { return null; }
+}
+
 let input = '';
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', (chunk) => { input += chunk; });
@@ -85,6 +114,17 @@ process.stdin.on('end', () => {
     });
   } catch (err) {
     logger('error', { error: err.message });
+  }
+
+  // H.4.1 — best-effort self-improve scan. Failures here never block
+  // compaction or response output; result is logged for diagnostics.
+  try {
+    const scanResult = runSelfImproveScan();
+    if (scanResult) {
+      logger('self_improve_scan', scanResult);
+    }
+  } catch (err) {
+    logger('self_improve_scan_error', { error: err.message });
   }
 
   // Only emit SAVE_PROMPT when the checkpoint was actually written.
