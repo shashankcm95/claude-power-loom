@@ -119,6 +119,7 @@ After CONTRIBUTING.md adoption, all prior phase commits were tagged in place (an
 | `phase-H.5.5` | `fe290a7` | Architectural cleanup (aggregator location decided + _lib/runState.js extracted) |
 | `phase-H.5.6` | `9ef1b5b` | First builder dogfood run (12-security-engineer.mio authors auditor kb_scope; verdict PASS) |
 | `phase-H.6.0` | `8dd2b44` | Spawn-recorder for orchestration-test visibility (foundational for H.6.x) |
+| `phase-H.6.1` | (TBD) | First abstract-task orchestration walkthrough (7 gaps surfaced; spawn aborted) |
 
 `d166add` (README refresh through H.2.4) and `90b87ac` (chat-scan BACKLOG additions) were doc-only commits — no tags (matches "trivial docs allowed direct on main" rule).
 
