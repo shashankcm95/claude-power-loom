@@ -21,17 +21,13 @@
 const fs = require('fs');
 const path = require('path');
 const { withLock } = require('./_lib/lock'); // H.3.2 (CS-1 code-reviewer X-3)
-
-// H.2.1 path-resolution fix: previously `path.join(__dirname, '..', '..', ...)`
-// resolved differently when invoked from ~/.claude/scripts/ vs the toolkit copy,
-// leading to "Node not found" errors when spawn and complete were called from
-// different copies (surfaced in chaos-20260502-060039). Now: env-var override,
-// fall back to the toolkit-canonical path.
-const RUN_STATE_BASE = process.env.HETS_RUN_STATE_DIR ||
-  path.join(process.env.HOME, 'Documents', 'claude-toolkit', 'swarm', 'run-state');
+// H.5.5 (CS-2/CS-3 theo HIGH): RUN_STATE_BASE was duplicated in 3 substrate
+// scripts; now single-sourced via _lib/runState.js (closes "_lib/ is a
+// directory of one" finding).
+const { runStateDir } = require('./_lib/runState');
 
 function treePath(runId) {
-  return path.join(RUN_STATE_BASE, runId, 'tree.json');
+  return path.join(runStateDir(runId), 'tree.json');
 }
 
 function load(runId) {

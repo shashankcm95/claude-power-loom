@@ -2,6 +2,16 @@
 
 Deferred work from prior phases, captured here so nothing important gets silently dropped. Each entry: scope, rationale, dependencies, rough estimate.
 
+## Phase H.5.5 — architectural cleanup — SHIPPED
+
+**Status**: shipped. Closes 2 of theo's 3 architectural HIGHs from CS-3:
+
+1. **`hierarchical-aggregate.js` location DECIDED** — 5 consecutive chaos runs flagged "either move or document." H.5.5 commits to the decision: stays at `swarm/` because it's chaos-test runtime tooling (operates over `swarm/run-state/` artifacts; only invoked by chaos-test workflows), not HETS substrate (which is what `scripts/agent-team/` houses — substrate consumed by spawned actors + verifier callsites). SKILL.md:122 reframed from "persistent BACKLOG item to relocate" to explicit decision rationale.
+
+2. **`_lib/` directory of one resolved** — created `scripts/agent-team/_lib/runState.js` consolidating `RUN_STATE_BASE` constant + `runStateDir(runId)` helper that was previously duplicated in tree-tracker.js, budget-tracker.js, and kb-resolver.js. `_lib/` now has 2 modules (lock.js + runState.js) — coherent abstraction, not premature directory naming. E2E validated all 3 consumers + env override.
+
+**The 3rd architectural HIGH (builder dogfood) deferred to H.5.6** since it requires a real engineering task + spawn cycle + verdict capture — not refactor work.
+
 ## Phase H.5.4 — remaining CS-3 HIGH cluster — SHIPPED
 
 **Status**: shipped. Closes the last 4 of the actionable CS-3 HIGH findings (architectural HIGHs from theo deferred to H.5.5/H.5.6 since they need different scope decisions).

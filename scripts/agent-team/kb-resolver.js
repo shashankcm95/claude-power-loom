@@ -33,8 +33,8 @@ const { withLock } = require('./_lib/lock'); // H.3.2 (CS-1 code-reviewer X-3)
 const KB_BASE = process.env.HETS_KB_DIR ||
   path.join(process.env.HOME, 'Documents', 'claude-toolkit', 'skills', 'agent-team', 'kb');
 const MANIFEST_PATH = path.join(KB_BASE, 'manifest.json');
-const RUN_STATE_BASE = process.env.HETS_RUN_STATE_DIR ||
-  path.join(process.env.HOME, 'Documents', 'claude-toolkit', 'swarm', 'run-state');
+// H.5.5 (CS-2/CS-3 theo HIGH): single-source RUN_STATE_BASE via _lib/runState.
+const { runStateDir } = require('./_lib/runState');
 
 function parseArgs(argv) {
   const args = { _: [] };
@@ -249,7 +249,7 @@ function cmdSnapshot(args) {
   const runId = args._[0];
   if (!runId) { console.error('Usage: snapshot <run-id>'); process.exit(1); }
   const manifest = loadManifest();
-  const snapshotPath = path.join(RUN_STATE_BASE, runId, 'kb-snapshot.json');
+  const snapshotPath = path.join(runStateDir(runId), 'kb-snapshot.json');
   fs.mkdirSync(path.dirname(snapshotPath), { recursive: true });
   const snapshot = {
     snapshotAt: new Date().toISOString(),

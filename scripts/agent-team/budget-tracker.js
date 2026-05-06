@@ -21,9 +21,9 @@
 const fs = require('fs');
 const path = require('path');
 const { withLock } = require('./_lib/lock'); // H.3.2 (CS-1 hacker.zoe CRIT-4)
+// H.5.5 (CS-2/CS-3 theo HIGH): single-source RUN_STATE_BASE via _lib/runState.
+const { runStateDir } = require('./_lib/runState');
 
-const RUN_STATE_BASE = process.env.HETS_RUN_STATE_DIR ||
-  path.join(process.env.HOME, 'Documents', 'claude-toolkit', 'swarm', 'run-state');
 const CONTRACTS_BASE = process.env.HETS_CONTRACTS_DIR ||
   path.join(process.env.HOME, 'Documents', 'claude-toolkit', 'swarm', 'personas-contracts');
 
@@ -43,7 +43,7 @@ function parseArgs(argv) {
 }
 
 function budgetFilePath(runId) {
-  return path.join(RUN_STATE_BASE, runId, 'budgets.json');
+  return path.join(runStateDir(runId), 'budgets.json');
 }
 
 function loadBudgets(runId) {
