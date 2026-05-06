@@ -196,6 +196,152 @@ function aggregateQualityFactors(history) {
   return out;
 }
 
+// H.7.2 — weighted trust score weights. Theory-driven (n<20 verdicts; cannot
+// fit empirically yet). Magnitudes chosen per these citations:
+//   findings_per_10k: Dunsmore 2003 ("review effectiveness ~ defect density")
+//   file_citations_per_finding: Bacchelli & Bird MSR 2013 ("evidence depth ~ review quality")
+//   cap_request_actionability: lower weight; small sample size at H.7.2 (n=1)
+//   kb_provenance_verified: contract compliance — equal-weight to evidence axes
+//   convergence_agree_pct: HIGHEST; inter-rater reliability literature
+//     (Cohen 1960, Krippendorff 2004 — agreement is the gold-standard reliability signal)
+//   tokens: efficiency penalty (negative direction)
+// All weights tunable in this single object; refit scheduled for H.8.x once n>=20.
+const WEIGHTS = Object.freeze({
+  findings_per_10k: 0.10,
+  file_citations_per_finding: 0.10,
+  cap_request_actionability: 0.05,
+  kb_provenance_verified_pct: 0.10,
+  convergence_agree_pct: 0.15,
+  tokens: -0.05,
+});
+
+// H.7.2 — reference scales for clamp-to-[0,1] linear normalization. Each pair
+// is [low, high]: values <= low normalize to 0; values >= high normalize to 1.
+// Validated against H.6.x cycle observed data (see pattern doc worked example).
+//   findings_per_10k: 0.5->2.5 captures the observed 0.6->1.1 range with headroom
+//   file_citations_per_finding: 1.5->6.0 (raised from 4.0 in initial plan; ari/noor
+//     both record 5+ which would clamp to 1.0 at the lower ceiling)
+//   tokens: 50K->150K (NEGATIVE-direction; weight sign inverts)
+// kb_provenance_verified_pct, convergence_agree_pct, cap_request_actionability
+// are already in [0,1] from upstream (booleans-as-pct or ratios); pass-through
+// with clamp-only safety.
+const REFERENCE_SCALES = Object.freeze({
+  findings_per_10k: [0.5, 2.5],
+  file_citations_per_finding: [1.5, 6.0],
+  tokens: [50000, 150000],
+});
+
+// H.7.2 — bonus cap range. Applied AFTER summing per-axis contributions.
+// [-0.10, +0.50] from the H.7.2 plan. The asymmetry reflects that bonus exists
+// to differentiate among already-passing identities (rewarding excellence) more
+// than to penalize narrow misses; the negative cap is conservative.
+const BONUS_CAP = Object.freeze({ min: -0.10, max: 0.50 });
+
+// H.7.2 — clamp-to-[0,1] linear normalization helper. Pure; no side effects.
+// Returns null for non-finite numbers (nullable axis); 0 when v <= low; 1 when
+// v >= high; linear scaling in between. Mirrors aggregateQualityFactors's
+// null-on-no-data semantics (see agent-identity.js:175).
+function normalizeAxis(name, raw) {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) return null;
+  const scale = REFERENCE_SCALES[name];
+  // Pass-through axes (already in [0,1]): kb_provenance_verified_pct,
+  // convergence_agree_pct, cap_request_actionability. Clamp only for safety.
+  if (!scale) {
+    if (raw <= 0) return 0;
+    if (raw >= 1) return 1;
+    return raw;
+  }
+  const [low, high] = scale;
+  if (raw <= low) return 0;
+  if (raw >= high) return 1;
+  return (raw - low) / (high - low);
+}
+
+// H.7.2 — compute weighted trust score. Pure function; consumes the same `stats`
+// object passed to tierOf, plus the precomputed aggregateQF (from
+// aggregateQualityFactors). Returns null when there is no quality data to
+// compute a score from. Otherwise returns a structured object with full
+// per-axis decomposition for audit transparency.
+//
+// Output shape:
+//   {
+//     score: number in [0,1],
+//     passRate: number in [0,1],
+//     quality_bonus: number in [BONUS_CAP.min, BONUS_CAP.max],
+//     bonus_capped: boolean,
+//     components: { <axis>: { raw, normalized, weight, contribution }, ... },
+//     decomposition_note: string  // human-readable summary; comma-separated clauses
+//   }
+//
+// Edge cases:
+//   - aggregateQF === null  -> return null (legacy identity, no quality history)
+//   - axis missing/null in aggregateQF -> contribution=0; not null-propagated
+//   - passRate=0 -> score=0 always (multiplicative composition guarantees this)
+//   - bonus exceeds [BONUS_CAP.min, BONUS_CAP.max] -> clamped; bonus_capped=true
+//   - score outside [0,1] after composition -> clamped to [0,1] (defense-in-depth)
+function computeWeightedTrustScore(stats, aggregateQF) {
+  if (aggregateQF === null || aggregateQF === undefined) return null;
+
+  const total = (stats.verdicts.pass || 0) + (stats.verdicts.partial || 0) + (stats.verdicts.fail || 0);
+  const passRate = total === 0 ? 0 : (stats.verdicts.pass || 0) / total;
+
+  const components = {};
+  let bonusSum = 0;
+  const notes = [];
+
+  // Iterate the 6 axes carrying weights. Order is stable for deterministic
+  // JSON output (consumers can rely on key order in V8 for own-property keys).
+  const axes = [
+    'findings_per_10k',
+    'file_citations_per_finding',
+    'cap_request_actionability',
+    'kb_provenance_verified_pct',
+    'convergence_agree_pct',
+    'tokens',
+  ];
+
+  for (const axis of axes) {
+    const raw = aggregateQF[axis];
+    const normalized = normalizeAxis(axis, raw);
+    const weight = WEIGHTS[axis];
+    const contribution = normalized === null ? 0 : normalized * weight;
+    components[axis] = { raw: raw === undefined ? null : raw, normalized, weight, contribution };
+    bonusSum += contribution;
+    if (normalized === null) notes.push(`${axis}: null (no records)`);
+  }
+
+  // Cap the bonus AFTER summing per-axis contributions.
+  let bonusCapped = false;
+  let qualityBonus = bonusSum;
+  if (qualityBonus > BONUS_CAP.max) {
+    qualityBonus = BONUS_CAP.max;
+    bonusCapped = true;
+    notes.push(`bonus capped at ${BONUS_CAP.max} from raw ${bonusSum.toFixed(4)}`);
+  } else if (qualityBonus < BONUS_CAP.min) {
+    qualityBonus = BONUS_CAP.min;
+    bonusCapped = true;
+    notes.push(`bonus capped at ${BONUS_CAP.min} from raw ${bonusSum.toFixed(4)}`);
+  }
+
+  // Multiplicative composition. passRate=0 -> score=0 regardless of bonus.
+  let score = passRate * (1 + qualityBonus);
+  // Defense-in-depth: clamp final score to [0,1] in case a future weight-table
+  // change produces 1+bonus < 0 or > 2. Today's [-0.10,+0.50] cap precludes both.
+  score = Math.max(0, Math.min(1, score));
+
+  if (passRate === 0) notes.push(`score=0 (passRate=0; never had a pass)`);
+
+  return {
+    score: Math.round(score * 1000) / 1000,
+    passRate: Math.round(passRate * 1000) / 1000,
+    quality_bonus: Math.round(qualityBonus * 1000) / 1000,
+    bonus_capped: bonusCapped,
+    components,
+    decomposition_note: notes.length === 0 ? 'all axes contributed normally' : notes.join('; '),
+  };
+}
+
 function cmdInit() {
   withLock(() => {
     if (fs.existsSync(STORE_PATH)) {
@@ -332,6 +478,9 @@ function cmdStats(args) {
     }
     _backfillH66Schema(data);  // surface aggregate even on legacy records
     const total = data.verdicts.pass + data.verdicts.partial + data.verdicts.fail;
+    // H.7.2 — compute aggregateQF ONCE and pass it both to the surfaced field
+    // AND to computeWeightedTrustScore (avoids double-walking the history).
+    const aggregateQF = aggregateQualityFactors(data.quality_factors_history);
     const out = {
       identity: args.identity,
       tier: tierOf(data),
@@ -346,7 +495,12 @@ function cmdStats(args) {
       // unchanged; this block surfaces the data H.7.0 will weight empirically
       // once ≥20 builder verdicts have accumulated. Means computed over
       // non-null values; null when no observations on that axis yet.
-      aggregate_quality_factors: aggregateQualityFactors(data.quality_factors_history),
+      aggregate_quality_factors: aggregateQF,
+      // H.7.2 — supplemental weighted trust score. Tier (above) remains the
+      // audit-default; this is a higher-resolution sibling signal computed from
+      // aggregate_quality_factors. Null when no quality history exists. Pure
+      // function; auditable via the per-axis `components` decomposition.
+      weighted_trust_score: computeWeightedTrustScore(data, aggregateQF),
     };
     console.log(JSON.stringify(out, null, 2));
     return;

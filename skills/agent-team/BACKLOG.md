@@ -2,6 +2,39 @@
 
 Deferred work from prior phases, captured here so nothing important gets silently dropped. Each entry: scope, rationale, dependencies, rough estimate.
 
+## Phase H.7.2 — Theory-driven weighted trust score — SHIPPED
+
+**Status**: shipped via corrected autonomous-platform pattern (mira designed; evan implemented; root coordinated). Closes the "rich measurement, binary signal" gap — quality axes now contribute to within-tier ranking without breaking the H.4.2 audit-transparency commitment.
+
+### What landed
+- `agent-identity.js:198` — new `computeWeightedTrustScore(stats, aggregateQF)` + `WEIGHTS` + `REFERENCE_SCALES` + `BONUS_CAP` constants + `normalizeAxis()` helper
+- `agent-identity.js:325-356` — `cmdStats --identity` adds `weighted_trust_score` field
+- `patterns/agent-identity-reputation.md` — new "Weighted Trust Score (H.7.2 — supplemental signal)" subsection with worked example (ari)
+- **`tierOf` UNCHANGED** — H.4.2 commitment honored
+
+### Weights (theory-driven; refit at H.7.3)
+| Axis | Weight | Citation |
+|------|--------|----------|
+| findings_per_10k | +0.10 | Dunsmore 2003 |
+| file_citations_per_finding | +0.10 | Bacchelli & Bird MSR 2013 |
+| cap_request_actionability | +0.05 | Small-sample noise control |
+| kb_provenance_verified_pct | +0.10 | Contract compliance |
+| convergence_agree_pct | **+0.15** | Cohen's κ / Krippendorff's α |
+| tokens | -0.05 | Efficiency penalty |
+
+Bonus cap [-0.10, +0.50]. Final score clamp [0, 1]. mira's calibration adjustment: file_citations_per_finding reference high raised 4.0 → 6.0 to prevent ceiling-clamp on real data.
+
+### Cycle data
+- mira: pass=4, weighted_trust_score=1.000 (clamped), bonus=+0.198, convergence_agree_pct=1.0
+- evan: pass=2, weighted_trust_score=1.000 (clamped), bonus=+0.193, convergence_agree_pct=1.0
+- Toolkit-wide builder verdicts: 9 → **11** (55% of way to n=20)
+
+### H.7.2 follow-ups (deferred)
+- **H.7.3 — Empirical refit**: at ≥20 verdicts, fit weights from accumulated `quality_factors_history`; compare theory-driven vs empirical-fit; document deltas. Today: 11 verdicts; need 9 more.
+- **`HETS_WEIGHT_PROFILE` env override**: per-org calibration of reference scales. Future phase.
+- **`cap_request_actionability` weight tuning**: today +0.05 (small-sample); revisit when ≥4 identities have non-null values.
+- **Subjective-quality validation**: 10-min user-judgment check comparing weighted ranking to intuition. Run after a few real tasks accumulate.
+
 ## Phase H.7.1 — Asymmetric-challenger callsite wiring — SHIPPED
 
 **Status**: shipped via the corrected autonomous-platform pattern (root delegated to architect + 13-node-backend; never hand-coded). Closes the H.2.3 + H.2.4 callsite gap unmoved across CS-1/CS-2/CS-3 chaos runs (architect's "substrate-rich, call-site-poor" finding).

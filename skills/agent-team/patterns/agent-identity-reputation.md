@@ -107,6 +107,90 @@ A weighted formula like `0.4·passRate + 0.2·skillCompleteness + 0.2·recency +
 - `MIN_VERDICTS_FOR_TIER` — currently hardcoded at 5 in `tierOf`. Future: contract-level override per persona.
 - Partial-credit weight — currently 0.0; tuning to 0.5 would let challenger personas (which often produce partial verdicts on edge cases) accumulate trust faster.
 - Recency window — track `passRate` over last N verdicts as well as lifetime; surface both in `tier` output.
+- **Empirical refit of weighted-trust weights at H.8.x** — once `n≥20` builder verdicts accumulate (n=9 today), regress `verdict ∈ {pass, partial, fail}` against the 6 weighted axes and replace the theory-driven values in the `WEIGHTS` const at `agent-identity.js`. Reference scales may also need empirical adjustment as the observed range shifts.
+
+### Weighted Trust Score (H.7.2 — supplemental signal)
+
+`tierOf` (above) remains the audit-default trust signal — reproducible from `verdicts {pass, partial, fail}` alone, per the H.4.2 commitment. H.7.2 adds a **supplemental** weighted score that incorporates the H.7.0-prep + H.7.1 quality axes. The two are sibling signals; tier is the policy input, weighted score is the diagnostic / fine-grained ranking input. **Tier is NOT modified** — `tierOf` remains the formula at `agent-identity.js:97-104`, unchanged.
+
+#### Formula
+
+```
+score = passRate × (1 + clamped_bonus)
+clamped_bonus = clamp(Σ axis_contribution_i, -0.10, +0.50)
+axis_contribution_i = WEIGHTS[i] × normalize_i(aggregateQF[i])
+```
+
+Source of truth: `computeWeightedTrustScore(stats, aggregateQF)` in `scripts/agent-team/agent-identity.js`. Surfaced as `cmdStats --identity X` JSON field `weighted_trust_score`.
+
+#### Weights table (theory-driven; refit scheduled for H.8.x at n≥20)
+
+| Axis | Weight | Direction | Citation / Rationale |
+|------|--------|-----------|----------------------|
+| `findings_per_10k` | +0.10 | positive | Dunsmore 2003: review effectiveness ~ defect density. Higher findings density per token = more efficient signal. |
+| `file_citations_per_finding` | +0.10 | positive | Bacchelli & Bird MSR 2013: evidence depth ~ review quality. Each finding citing more files = stronger grounding. |
+| `cap_request_actionability` | +0.05 | positive | Half-weight; small sample size at H.7.2 (n=1 record on disk). Diagnostic-instinct signal. |
+| `kb_provenance_verified_pct` | +0.10 | positive | Contract compliance — equal weight to evidence axes. Represents discipline. |
+| `convergence_agree_pct` | +0.15 | positive | HIGHEST. Cohen 1960 / Krippendorff 2004: inter-rater agreement is the gold-standard reliability signal. |
+| `tokens` | -0.05 | negative | Efficiency penalty. High token use for the same output = waste; weight sign inverts the standard normalization. |
+
+Bonus cap: `[-0.10, +0.50]`. Asymmetric — bonus differentiates among passers more than it penalizes near-misses.
+
+**Note on tightness**: under the H.7.2 weight table, the max-positive theoretical bonus is **exactly +0.50** (sum of positive weights: 0.10+0.10+0.05+0.10+0.15 = 0.50; tokens contributes ≤0). The cap is therefore mathematically unreachable from above under H.7.2 — `bonus_capped=true` only fires if a future weight refit produces a sum > 0.50 or pushes some bonus contribution sufficiently negative. The defense-in-depth final score-clamp `Math.max(0, Math.min(1, score))` IS reachable: ari and noor both produce `passRate × (1 + bonus) > 1` and the clamp engages.
+
+#### Reference scales for normalization
+
+| Axis | Low (→0) | High (→1) | Validated against H.6.x data |
+|------|----------|-----------|------------------------------|
+| `findings_per_10k` | 0.5 | 2.5 | observed 0.6→1.1; ample headroom |
+| `file_citations_per_finding` | 1.5 | 6.0 | observed 3.0→5.75; raised from 4.0 to keep top observers below ceiling |
+| `cap_request_actionability` | 0 | 1 | already in [0,1] |
+| `kb_provenance_verified_pct` | 0 | 1 | already in [0,1] |
+| `convergence_agree_pct` | 0 | 1 | already in [0,1] |
+| `tokens` | 50,000 | 150,000 | observed 57k→134k; reference range 50k→150k |
+
+Values outside `[low, high]` clamp to 0 or 1. Linear scaling between.
+
+#### Worked example (live data, 2026-05-06)
+
+`04-architect.ari` after 3 verdicts (3 pass / 0 partial / 0 fail):
+
+- passRate = 1.000
+- findings_per_10k = 1.0654 → normalized 0.2827 → contribution +0.0283
+- file_citations_per_finding = 5.273 → normalized 0.8384 → contribution +0.0838
+- cap_request_actionability = null → contribution 0
+- kb_provenance_verified_pct = 0.0 → contribution 0
+- convergence_agree_pct = 1.0 → normalized 1.0 → contribution +0.150
+- tokens = 103,250 → normalized 0.5325 → contribution -0.0266
+- bonus_sum = +0.235; not capped (within [-0.10, +0.50])
+- raw composite = 1.0 × (1 + 0.235) = 1.235 → **clamped to 1.0** by the defense-in-depth final-score clamp
+
+ari's tier remains `unproven` (3 < 5 verdicts) per `tierOf`; ari's weighted score is 1.0 (clamped) — the two signals show what each is for: tier guards against premature high-trust on thin data; weighted score reveals the underlying quality already present.
+
+#### Edge-case rules
+
+1. **No quality_factors_history** → `weighted_trust_score: null` (entire field). `tier` and `passRate` unaffected.
+2. **passRate = 0** → `score = 0` regardless of bonus. Multiplicative composition guarantees this.
+3. **Some axes null** (e.g., `convergence_samples = 0`) → those axes contribute 0; bonus is reduced but score is non-null.
+4. **Bonus exceeds cap** → clamped; `bonus_capped: true` flag set; `quality_bonus` reflects the capped value.
+5. **Score after composition outside [0,1]** → clamped to [0,1] (defense-in-depth; today this engages on high-quality identities like ari/noor where `passRate × (1+bonus) > 1`).
+
+#### `decomposition_note` grammar
+
+Comma-separated clauses, each in the form `"<axis>: <reason>"` or `"score: <reason>"`. Future tooling can parse this. Examples:
+
+- `"all axes contributed normally"` (default — no special cases)
+- `"convergence_agree_pct: null (no records); kb_provenance_verified_pct: null (no records)"`
+- `"bonus capped at 0.5 from raw 0.6235; cap_request_actionability: null (no records)"`
+- `"score=0 (passRate=0; never had a pass)"`
+
+#### Why tier stays primary
+
+Tier is the policy input (`recommend-verification` reads it; `prune` reads it). Switching policy to a continuous weighted threshold would re-open the H.4.2 audit-transparency wound. The supplemental score is for diagnostic ranking, debugging individual identities, and (eventually) refitting weights from accumulated empirical data. **`tierOf` is unchanged in H.7.2 (H.4.2 commitment held).**
+
+#### Refit roadmap
+
+Pointer to BACKLOG above: empirical refit at **H.8.x** once `n≥20` verdicts accumulate. The `WEIGHTS` and `REFERENCE_SCALES` constants in `agent-identity.js` are the only places that need to change — `computeWeightedTrustScore`, the `cmdStats` plumbing, and the consumer-facing JSON shape stay identical.
 
 ## Lifecycle + Evolution Vision (H.6.6 + H.7.0)
 
