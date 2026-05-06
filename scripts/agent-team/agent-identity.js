@@ -182,6 +182,17 @@ function aggregateQualityFactors(history) {
   // kb_provenance is bool — express as % verified (or null when no observations)
   const kbVals = history.map((h) => h && h.kb_provenance_verified).filter((v) => typeof v === 'boolean');
   out.kb_provenance_verified_pct = kbVals.length === 0 ? null : (kbVals.filter(Boolean).length / kbVals.length);
+  // H.7.1 — convergence axis. Filter to records with non-null convergence
+  // (paired runs only). null when no paired data exists; percentage of "agree"
+  // over decisive (agree|disagree) entries otherwise. n/a counted in the sample
+  // count but excluded from the percentage denominator.
+  const convergenceVals = history.map((h) => h && h.convergence)
+    .filter((v) => v === 'agree' || v === 'disagree' || v === 'n/a');
+  const convergenceDecisive = convergenceVals.filter((v) => v === 'agree' || v === 'disagree');
+  out.convergence_agree_pct = convergenceDecisive.length === 0
+    ? null
+    : (convergenceDecisive.filter((v) => v === 'agree').length / convergenceDecisive.length);
+  out.convergence_samples = convergenceVals.length;
   return out;
 }
 
@@ -416,6 +427,96 @@ function cmdAssignChallenger(args) {
   });
 }
 
+// H.7.1 — assign-pair subcommand. Symmetric-pair pattern needs N distinct
+// challengers; today's flow calls assign-challenger N times with manually-
+// threaded --exclude-identity flags (kb:hets/symmetric-pair-conventions:24-35).
+// This wraps that loop with internal exclusion accumulation so callers
+// (build-team.md Step 7) get a single deterministic call. Async-style
+// node script (sync filesystem under withLock — same model as cmdAssign).
+function cmdAssignPair(args) {
+  if (!args.persona) {
+    console.error('Usage: assign-pair --persona <NN-name> [--count N] [--task <tag>]');
+    process.exit(1);
+  }
+  const count = parseInt(args.count || '2', 10);
+  if (!Number.isFinite(count) || count < 2) {
+    console.error(`Invalid --count: ${args.count}. Must be >= 2. For count=1, use assign-challenger.`);
+    process.exit(1);
+  }
+
+  const pair = [];
+  let poolType = null;
+  const exclusions = [];
+
+  withLock(() => {
+    const store = readStore();
+    const excludePersona = args.persona;
+
+    // Build candidate pool ONCE; iterate picks against accumulating exclusions.
+    const candidates = [];
+    for (const [persona, names] of Object.entries(store.rosters)) {
+      for (const name of names) {
+        const id = `${persona}.${name}`;
+        // H.6.6 parity — skip retired identities (matches cmdAssign live-pool filter).
+        const existing = store.identities[id];
+        if (existing && existing.retired) continue;
+        candidates.push({
+          persona, name, id,
+          differentPersona: persona !== excludePersona,
+        });
+      }
+    }
+    if (candidates.length < count) {
+      console.error(`Not enough candidates: requested ${count}, available ${candidates.length} (after retiring filter). Add roster entries OR reduce --count.`);
+      process.exit(1);
+    }
+
+    for (let i = 0; i < count; i++) {
+      const remainingPool = candidates.filter((c) => !exclusions.includes(c.id));
+      if (remainingPool.length === 0) {
+        console.error(`Roster exhausted after ${pair.length} picks; need ${count}. Add new identities to roster ${excludePersona}.`);
+        process.exit(1);
+      }
+      const differentPersonaPool = remainingPool.filter((c) => c.differentPersona);
+      const pool = differentPersonaPool.length > 0 ? differentPersonaPool : remainingPool;
+      const thisIterationPoolType = differentPersonaPool.length > 0
+        ? 'different-persona'
+        : 'same-persona-different-identity';
+
+      // First iteration sets poolType; later iterations only mark 'mixed' if they fall back.
+      if (poolType === null) poolType = thisIterationPoolType;
+      else if (poolType !== thisIterationPoolType) poolType = 'mixed';
+
+      // Round-robin within the live pool, sharing the nextChallengerIndex bucket
+      // keyed by excludePersona (parity with cmdAssignChallenger).
+      if (!store.nextChallengerIndex) store.nextChallengerIndex = {};
+      const key = excludePersona;
+      if (store.nextChallengerIndex[key] === undefined) store.nextChallengerIndex[key] = 0;
+      const idx = store.nextChallengerIndex[key];
+      const pick = pool[idx % pool.length];
+      store.nextChallengerIndex[key] = (idx + 1) % pool.length;
+
+      const identity = ensureIdentity(store, pick.persona, pick.name);
+      identity.lastSpawnedAt = new Date().toISOString();
+      identity.totalSpawns += 1;
+
+      pair.push(pick.id);
+      exclusions.push(pick.id);
+    }
+
+    writeStore(store);
+  });
+
+  console.log(JSON.stringify({
+    action: 'assign-pair',
+    pair,
+    poolType,
+    count: pair.length,
+    excludedPersona: args.persona,
+    task: args.task || null,
+  }, null, 2));
+}
+
 // H.2.4 — trust-tiered verification policy. Translates per-identity trust
 // (from tierOf) into a verification recommendation: how much to verify,
 // whether to spawn a challenger, which expensive checks to skip.
@@ -554,6 +655,9 @@ function cmdRecord(args) {
       cap_request_actionability: qualityFactors && typeof qualityFactors.cap_request_actionability === 'number' ? qualityFactors.cap_request_actionability : null,
       kb_provenance_verified: qualityFactors && typeof qualityFactors.kb_provenance_verified === 'boolean' ? qualityFactors.kb_provenance_verified : null,
       tokens: qualityFactors && typeof qualityFactors.tokens === 'number' ? qualityFactors.tokens : null,
+      // H.7.1 — paired-with + convergence (carried in via quality-factors-json from pattern-recorder)
+      paired_with: qualityFactors && typeof qualityFactors.paired_with === 'string' ? qualityFactors.paired_with : null,
+      convergence: qualityFactors && typeof qualityFactors.convergence === 'string' ? qualityFactors.convergence : null,
     };
     data.quality_factors_history.push(entry);
     if (data.quality_factors_history.length > QUALITY_FACTORS_HISTORY_CAP) {
@@ -726,6 +830,7 @@ switch (cmd) {
   case 'init': cmdInit(); break;
   case 'assign': cmdAssign(args); break;
   case 'assign-challenger': cmdAssignChallenger(args); break;
+  case 'assign-pair': cmdAssignPair(args); break;
   case 'tier': cmdTier(args); break;
   case 'recommend-verification': cmdRecommendVerification(args); break;
   case 'list': cmdList(args); break;

@@ -35,7 +35,96 @@ Follow the 7-step workflow in `skills/tech-stack-analyzer/SKILL.md`:
 - Step 4: Cross-check skill availability (mark each as available / marketplace / missing)
 - Step 5: **USER GATE 1** — present plan, wait for approve / adjust / cancel
 - Step 6: **USER GATE 2** (if missing skills) — bootstrap-via-forge approval
-- Step 7: Spawn the team using `agent-identity recommend-verification` per identity
+- Step 7: Spawn each identity with tier-appropriate verification
+
+  For each identity in the planned team:
+
+  ```bash
+  # 1. Get verification recommendation
+  REC=$(node ~/Documents/claude-toolkit/scripts/agent-team/agent-identity.js \
+    recommend-verification --identity "$IDENTITY")
+  VERIFICATION=$(echo "$REC" | jq -r '.verification')
+  CHALLENGER_COUNT=$(echo "$REC" | jq -r '.challengerCount')
+  TIER=$(echo "$REC" | jq -r '.tier')
+
+  # 2. Spawn implementer (always, regardless of tier)
+  spawn_implementer "$IDENTITY" "$TASK"   # follows kb:hets/spawn-conventions
+
+  # 3. Branch on verification policy.
+  #    SKIP_CHECKS is read ONLY in the high-trust branch (H-2 of the H.7.1 design):
+  #    medium/low must run full verification.
+  case "$VERIFICATION" in
+    spot-check-only)
+      # high-trust — verify with skipped expensive checks (only branch that
+      # consumes recommend-verification.skipChecks; do NOT forward this flag
+      # in the medium/low branches).
+      SKIP_CHECKS=$(echo "$REC" | jq -r '.skipChecks | join(",")')
+      node ~/Documents/claude-toolkit/scripts/agent-team/contract-verifier.js \
+        --contract "$IMPL_CONTRACT" \
+        --output "$IMPL_OUTPUT" \
+        --identity "$IDENTITY" \
+        --skip-checks "$SKIP_CHECKS"
+      ;;
+
+    asymmetric-challenger)
+      # medium-trust — verify implementer first (full checks; SKIP_CHECKS empty)
+      node ~/Documents/claude-toolkit/scripts/agent-team/contract-verifier.js \
+        --contract "$IMPL_CONTRACT" --output "$IMPL_OUTPUT" --identity "$IDENTITY"
+
+      # then spawn 1 challenger (different persona preferred)
+      CHALLENGER=$(node ~/Documents/claude-toolkit/scripts/agent-team/agent-identity.js \
+        assign-challenger \
+          --exclude-persona "${IDENTITY%%.*}" \
+          --exclude-identity "$IDENTITY" \
+          --task "challenge-${IDENTITY}" | jq -r '.challenger.identity')
+      spawn_challenger "$CHALLENGER" "$IMPL_OUTPUT"   # follows kb:hets/challenger-conventions
+
+      # record paired result with convergence signal
+      node ~/Documents/claude-toolkit/scripts/agent-team/pattern-recorder.js record \
+        --task-signature "${IDENTITY%%.*}:actor-${IDENTITY%%.*}" \
+        --persona "${IDENTITY%%.*}" \
+        --identity "$IDENTITY" \
+        --verdict "$VERDICT" \
+        --paired-with "$CHALLENGER" \
+        --convergence "$CONVERGENCE"   # agree|disagree|n/a from challenger output analysis
+      ;;
+
+    symmetric-pair)
+      # low-trust or unproven — full verification + 2 challengers
+      node ~/Documents/claude-toolkit/scripts/agent-team/contract-verifier.js \
+        --contract "$IMPL_CONTRACT" --output "$IMPL_OUTPUT" --identity "$IDENTITY"
+
+      # use the new assign-pair subcommand (cleaner than two assign-challenger calls)
+      PAIR=$(node ~/Documents/claude-toolkit/scripts/agent-team/agent-identity.js \
+        assign-pair \
+          --persona "${IDENTITY%%.*}" \
+          --count "$CHALLENGER_COUNT" \
+          --task "challenge-${IDENTITY}")
+      CH1=$(echo "$PAIR" | jq -r '.pair[0]')
+      CH2=$(echo "$PAIR" | jq -r '.pair[1]')
+
+      spawn_challenger "$CH1" "$IMPL_OUTPUT"
+      spawn_challenger "$CH2" "$IMPL_OUTPUT"
+
+      # record paired with convergence (compare CH1+CH2 outputs)
+      node ~/Documents/claude-toolkit/scripts/agent-team/pattern-recorder.js record \
+        --task-signature "${IDENTITY%%.*}:actor-${IDENTITY%%.*}" \
+        --persona "${IDENTITY%%.*}" \
+        --identity "$IDENTITY" \
+        --verdict "$VERDICT" \
+        --paired-with "${CH1},${CH2}" \
+        --convergence "$CONVERGENCE"
+      ;;
+  esac
+  ```
+
+  After all identities have completed Step 7's branch, surface the `convergence_agree_pct` aggregate via:
+
+  ```bash
+  node ~/Documents/claude-toolkit/scripts/agent-team/agent-identity.js stats --identity "$IDENTITY" | jq '.aggregate_quality_factors'
+  ```
+
+  The chat agent (Claude reading `/build-team`) follows this flow per identity. The `spawn_implementer` and `spawn_challenger` placeholders are conventions documented in `kb:hets/spawn-conventions` and `kb:hets/challenger-conventions`.
 
 ### 3. Show user the consolidated artifact
 

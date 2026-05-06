@@ -35,7 +35,10 @@ const KB_MANIFEST = path.join(TOOLKIT, 'skills', 'agent-team', 'kb', 'manifest.j
 const SKILLS_BASE = path.join(TOOLKIT, 'skills');
 const MARKETPLACE_BASE = path.join(process.env.HOME, '.claude', 'plugins', 'marketplaces');
 
-const VALID_STATUSES = new Set(['proposed', 'implementing', 'observed', 'active', 'deprecated']);
+// H.7.1 — `active+enforced` is the same as `active` but additionally indicates
+// the pattern has a wired callsite (data flows through it). Added to close the
+// "substrate-rich, call-site-poor" architect finding (CS-1/CS-2/CS-3).
+const VALID_STATUSES = new Set(['proposed', 'implementing', 'observed', 'active', 'active+enforced', 'deprecated']);
 const VALID_SKILL_STATUSES_LITERAL = new Set(['available', 'not-yet-authored']);
 
 // ---------- helpers ----------
@@ -89,7 +92,8 @@ function parseStatusTable(markdown) {
     const base = path.basename(linkTarget).replace(/\.md$/, '').replace(/\?.*$/, '');
     // Status text may have parenthetical phase notes like "implementing (H.2.5)"
     const statusRaw = m[3].trim();
-    const statusMatch = statusRaw.match(/^(proposed|implementing|observed|active|deprecated)\b/i);
+    // H.7.1 — match `active+enforced` BEFORE bare `active` so the longer form wins.
+    const statusMatch = statusRaw.match(/^(active\+enforced|proposed|implementing|observed|active|deprecated)\b/i);
     if (statusMatch && base) {
       result.set(base, statusMatch[1].toLowerCase());
     }

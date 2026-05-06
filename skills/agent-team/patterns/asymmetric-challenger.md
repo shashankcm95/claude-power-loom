@@ -1,6 +1,6 @@
 ---
 pattern: asymmetric-challenger
-status: active
+status: active+enforced
 intent: Critic reads implementer's output and surfaces ≥1 substantive disagreement.
 related: [hets, trust-tiered-verification, convergence-as-signal]
 ---
@@ -45,6 +45,10 @@ Stress-test scenarios for a future chaos run targeting this pattern:
 - Top of tree (super-root, final reports) — symmetric pairing pays for itself there
 - High-trust identity on routine task (current verifier coverage is sufficient)
 - Tasks where convergence-across-different-personas is already happening (free signal)
+
+## Enforcement callsite
+
+This pattern is wired into `commands/build-team.md` Step 7 (the medium-trust branch). The orchestrator calls `agent-identity recommend-verification --identity X`; when the policy returns `verification: asymmetric-challenger`, Step 7 spawns implementer + 1 challenger via the flow documented in `kb:hets/challenger-conventions`. Convergence between implementer claims and challenger disagreements feeds `pattern-recorder --convergence agree|disagree|n/a`, accumulating in `agent-identities.json` `quality_factors_history`. See `commands/build-team.md` Step 7 for the literal shell flow.
 
 ## Related Patterns
 

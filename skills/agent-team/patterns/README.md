@@ -12,8 +12,8 @@ This dual form is itself the [Prompt Distillation](prompt-distillation.md) patte
 | # | Pattern | Status | One-line intent |
 |---|---------|--------|-----------------|
 | 0 | [HETS](../SKILL.md) | active | Tree of agents bounded by depth; per-tier contracts; trust accumulates across runs. (Foundational — see SKILL.md.) |
-| 1 | [Asymmetric Challenger](asymmetric-challenger.md) | active | Critic reads implementer's output and surfaces ≥1 substantive disagreement; ~1.3–1.5× cost vs ~2× symmetric. |
-| 2 | [Trust-Tiered Verification Depth](trust-tiered-verification.md) | active | Verification depth scales inversely with measured trust score per identity. |
+| 1 | [Asymmetric Challenger](asymmetric-challenger.md) | active+enforced | Critic reads implementer's output and surfaces ≥1 substantive disagreement; ~1.3–1.5× cost vs ~2× symmetric. |
+| 2 | [Trust-Tiered Verification Depth](trust-tiered-verification.md) | active+enforced | Verification depth scales inversely with measured trust score per identity. |
 | 3 | [Convergence-as-Signal](convergence-as-signal.md) | observed | Different personas independently surfacing same finding = high-confidence signal. |
 | 4 | [Persona-Skills Mapping](persona-skills-mapping.md) | active | One-to-many mapping of personas to skills; spawn prompts list names; verifier checks invocation. |
 | 5 | [Agent Identity & Reputation](agent-identity-reputation.md) | active | Personas as roles; identities as persistent named instances accumulating per-identity trust. |
@@ -27,7 +27,7 @@ This dual form is itself the [Prompt Distillation](prompt-distillation.md) patte
 | 13 | [KB-Scope Enforcement](kb-scope-enforcement.md) | active | Verify actor consumed every KB doc declared in `contract.kb_scope.default` by transcript scan; closes the long-standing CS-1+CS-2 architect "declare-without-read" finding. |
 | 14 | [Missing-Capability Signal](missing-capability-signal.md) | active | Sub-agents diagnose substrate gaps; root acquires. Sub-agents return a structured `request` (forge-persona/forge-skill/author-kb-doc/extend-stack-map) instead of writing files themselves. Closes the H.6.4 manual-authoring gap; enables autonomous platform extension. |
 
-**Status legend:** `active` = code in production; `implementing` = code being written this phase; `proposed` = designed but not yet implemented; `observed` = pattern recurred in practice without intentional design.
+**Status legend:** `active` = code in production but no enforcement callsite; `active+enforced` = production AND wired to a callsite (data flows); `implementing` = code being written this phase; `proposed` = designed but not yet implemented; `observed` = pattern recurred in practice without intentional design.
 
 ## How to add a new pattern
 

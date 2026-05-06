@@ -1,6 +1,6 @@
 ---
 pattern: trust-tiered-verification
-status: active
+status: active+enforced
 intent: Verification depth scales inversely with measured per-identity trust score.
 related: [agent-identity-reputation, asymmetric-challenger, hets, prompt-distillation]
 ---
@@ -43,6 +43,10 @@ Stress-test scenarios:
 
 - First ~10 runs of a new HETS deployment (no history; tiering provides no benefit)
 - Any run where the goal is **finding maximum bugs** rather than steady-state validation — turn off tiering, accept the 2× cost
+
+## Enforcement callsite
+
+The policy table at `agent-identity.js:419-457` (`VERIFICATION_POLICY`) is consumed by `commands/build-team.md` Step 7. Step 7 branches on the `verification` field returned by `recommend-verification --identity X`, dispatching to one of three flows: high-trust spot-check (with `--skip-checks`), medium-trust asymmetric (1 challenger via `assign-challenger`), or low-trust/unproven symmetric pair (2 challengers via `assign-pair`). See `commands/build-team.md` Step 7 for the literal shell flow.
 
 ## Related Patterns
 

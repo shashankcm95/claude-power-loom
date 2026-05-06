@@ -128,7 +128,8 @@ After CONTRIBUTING.md adoption, all prior phase commits were tagged in place (an
 | `phase-H.6.7` | `60f7991` | Canonical-source registry (23 entries: skill-name → official-docs URL) — L2 of evolution loop |
 | `phase-H.6.8` | `6ba5406` | First post-H.6.7 orchestration test — 13-node-backend.kira PASS on rate-limiting task (H.6.1 closed) |
 | `phase-H.6.9` | `7e771ce` | Full post-H.6.7 orchestration cycle: 5 tasks / 5 PASS / 5 personas / 5 forged skills / 6 builder verdicts toolkit-wide (H.6.x cycle CLOSED) |
-| `phase-H.7.0-prep` | (TBD) | Hybrid quality factors + validation_sources registry — observability layer for H.7.0 evolution loop (5 axes captured per verdict; trust formula unchanged) |
+| `phase-H.7.0-prep` | `1c5f7e5` | Hybrid quality factors + validation_sources registry — observability layer for H.7.0 evolution loop (5 axes captured per verdict; trust formula unchanged) |
+| `phase-H.7.1` | (TBD) | Asymmetric-challenger callsite wired into /build-team Step 7 — first phase via corrected autonomous-platform pattern (architect + 13-node-backend pair-run; convergence axis captured) |
 
 `d166add` (README refresh through H.2.4) and `90b87ac` (chat-scan BACKLOG additions) were doc-only commits — no tags (matches "trivial docs allowed direct on main" rule).
 

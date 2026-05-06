@@ -87,6 +87,18 @@ function cmdRecord(args) {
     const kbProvenance = args['kb-provenance-verified'] !== undefined
       ? (args['kb-provenance-verified'] === 'true' || args['kb-provenance-verified'] === true)
       : null;
+    // H.7.1 — paired-with + convergence flags. Composed into quality_factors
+    // payload so the H.7.0-prep aggregation pipeline picks them up automatically.
+    const pairedWith = typeof args['paired-with'] === 'string' && args['paired-with'].length > 0
+      ? args['paired-with']
+      : null;
+    const convergenceRaw = typeof args.convergence === 'string' ? args.convergence : null;
+    const VALID_CONVERGENCE = ['agree', 'disagree', 'n/a'];
+    if (convergenceRaw !== null && !VALID_CONVERGENCE.includes(convergenceRaw)) {
+      console.error(`Invalid --convergence: ${convergenceRaw}. Must be ${VALID_CONVERGENCE.join('|')}.`);
+      process.exit(1);
+    }
+    const convergence = convergenceRaw;
     const qualityFactors = {
       // findings per 10K tokens — efficiency signal
       findings_per_10k: (tokens && tokens > 0 && findingsCount > 0) ? (findingsCount / (tokens / 10000)) : null,
@@ -96,6 +108,9 @@ function cmdRecord(args) {
       cap_request_actionability: (capTotal !== null && capTotal > 0) ? (capActed / capTotal) : null,
       kb_provenance_verified: kbProvenance,
       tokens: tokens,
+      // H.7.1 — paired-with + convergence axes for the asymmetric-challenger callsite
+      paired_with: pairedWith,
+      convergence: convergence,
     };
     const hasAnyFactor = Object.values(qualityFactors).some((v) => v !== null);
 

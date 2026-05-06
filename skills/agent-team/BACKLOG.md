@@ -2,6 +2,30 @@
 
 Deferred work from prior phases, captured here so nothing important gets silently dropped. Each entry: scope, rationale, dependencies, rough estimate.
 
+## Phase H.7.1 — Asymmetric-challenger callsite wiring — SHIPPED
+
+**Status**: shipped via the corrected autonomous-platform pattern (root delegated to architect + 13-node-backend; never hand-coded). Closes the H.2.3 + H.2.4 callsite gap unmoved across CS-1/CS-2/CS-3 chaos runs (architect's "substrate-rich, call-site-poor" finding).
+
+### What landed
+- `commands/build-team.md` Step 7 — literal ~93-line bash flow with three branches per `recommend-verification`'s `verification` field
+- `agent-identity.js` — new `cmdAssignPair` subcommand (lines 436-525) with internal exclusion accumulation
+- `pattern-recorder.js` + `agent-identity.js` — `--paired-with` + `--convergence` flags compose into `quality_factors` payload; new `convergence_agree_pct` + `convergence_samples` aggregate axes
+- `patterns/asymmetric-challenger.md` + `patterns/trust-tiered-verification.md` — status `active` → `active+enforced` with new "Enforcement callsite" sections
+- `patterns/README.md` — legend defines new status; table updated
+- `contracts-validate.js` — `VALID_STATUSES` extended (noor's inline capability-gap fix)
+
+### Cycle data
+- ari (04-architect): pass=3, passRate=1.0, convergence_agree_pct=1.0
+- noor (13-node-backend): pass=2, passRate=1.0, convergence_agree_pct=1.0
+- Toolkit-wide builder verdicts: 7 → 9 (+2 paired)
+- First convergence-axis entries in toolkit history
+
+### H.7.1 follow-ups (deferred)
+- **Real /build-team self-test**: smoke-test validated assign-pair + recording. A real /build-team invocation that triggers the FULL Step 7 flow (recommend-verification → assign-challenger → spawn implementer + challenger → verify both → record convergence) is the next step. Suggested next-task: M-1 spawn-conventions update from H.6.9 backlog.
+- **`validation_sources` for challenger.contract.json**: should challenger output cite primary references too? Probably yes for security-themed pair-runs (RFCs); deferred until pattern emerges.
+- **Token-extraction validation**: H.7.1 verdicts had `tokensUsed: null` (no transcripts); future spawns with `--transcript` should populate it.
+- **`assign-pair` semantic clarification**: noor's implementation prefers different-persona (matches asymmetric-challenger), which means the "symmetric-pair" branch in build-team Step 7 also gets different-persona challengers. If true symmetric-pair (same-persona-different-identity) is needed for the `low-trust + unproven` policy, future phase to add explicit `--same-persona` flag.
+
 ## Phase H.7.0-prep — Hybrid quality factors + validation_sources registry — SHIPPED
 
 **Status**: shipped. The observability layer for the eventual H.7.0 evolution loop. Two coordinated, schema-additive changes — both forward-compat, neither changes `tierOf` (H.4.2 audit transparency preserved).
