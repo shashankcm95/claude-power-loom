@@ -39,6 +39,16 @@ function requiresFrontmatter(filePath) {
 
 function hasFrontmatter(content) {
   if (!content || typeof content !== 'string') return false;
+  // H.5.3 (CS-3 code-reviewer.blair H-5): strip leading UTF-8 BOM (U+FEFF,
+  // bytes EF BB BF) before checking. Some editors (Notepad on Windows, some
+  // CI pipelines) inject BOM on save; the prior version saw `<BOM>---\n`
+  // and rejected the frontmatter as missing. Stripping is harmless for
+  // non-BOM content and unblocks valid skills written from BOM-injecting
+  // tools. The BOM is a zero-width no-break space; it's never semantically
+  // part of the file.
+  if (content.charCodeAt(0) === 0xFEFF) {
+    content = content.slice(1);
+  }
   // Must start with `---\n` (or `---\r\n`) and have a closing `---` line
   // somewhere within the first ~50 lines (frontmatter shouldn't be huge).
   if (!/^---\r?\n/.test(content)) return false;

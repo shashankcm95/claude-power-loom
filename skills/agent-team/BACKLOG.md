@@ -2,6 +2,29 @@
 
 Deferred work from prior phases, captured here so nothing important gets silently dropped. Each entry: scope, rationale, dependencies, rough estimate.
 
+## Phase H.5.3 — self-improve-store hardening + frontmatter BOM — SHIPPED
+
+**Status**: shipped. Closes 6 CS-3 HIGH findings clustered around `scripts/self-improve-store.js` robustness + 1 frontmatter validator cross-platform issue.
+
+What landed:
+- `writeAtomic` tmp-suffix: pid + hrtime + 6-byte crypto nonce (was just pid; collided under concurrent same-PID writers)
+- Lock-fallback now emits stderr warning on first occurrence (was silently no-op)
+- `loadCounters` + `loadPending` quarantine corrupt files to `<path>.corrupt-<ISO>` before returning defaults (was silently zeroing history on parse failure)
+- `executeGraduation` wraps observations.log appends in `withLock` + caps line length at 256 bytes (safely under Darwin's 512-byte PIPE_BUF)
+- `hasFrontmatter` strips UTF-8 BOM (`﻿`) before frontmatter check (was false-blocking valid skills written from BOM-injecting editors)
+
+E2E validated 5 probes. ~/.claude/ sync verified. contracts-validate: 0 violations.
+
+**Remaining HIGHs from CS-3 (deferred to H.5.4):**
+- `auto-store-enrichment.js` filePath regex: Windows + spaces + regex metacharacters (blair H-4)
+- `${CLAUDE_PLUGIN_ROOT}` placeholder unverified at runtime (kai H-4)
+- README marketplace.json location framing (rafael HIGH-1)
+- README install.sh deprecation status (rafael HIGH-2)
+- `extractKbReadsFromTranscript` path-traversal regex normalization (kai H-3) — partially addressed in H.5.2
+- `hierarchical-aggregate.js` location drift (theo HIGH; 5 chaos runs unmoved)
+- Builders 06-12 unproven tier (theo HIGH; H.5.4 dogfood territory)
+- `_lib/` directory of one (theo HIGH; refactor)
+
 ## Phase H.5.2 — CS-3 CRIT bundle — SHIPPED
 
 **Status**: shipped. All 5 CRITICAL findings from the CS-3 chaos-test (chaos-20260505-095622-cs3) auditor swarm closed in one PR.

@@ -32,6 +32,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const crypto = require('crypto');
 
 const HOME = os.homedir();
 const COUNTERS_PATH = path.join(HOME, '.claude', 'self-improve-counters.json');
@@ -39,16 +40,27 @@ const PENDING_PATH = path.join(HOME, '.claude', 'checkpoints', 'self-improve-pen
 const OBSERVATIONS_LOG = path.join(HOME, '.claude', 'checkpoints', 'observations.log');
 
 // Reuse the shared lock primitive from agent-team scripts when available.
-// Fallback to no-op locking — counter bumps are infrequent and any drift is
-// self-healing on the next scan.
+// H.5.3 (CS-3 hacker.kai H-1 + code-reviewer.blair H-2): emit a stderr warning
+// when the fallback no-op path is taken — silent degradation of an atomicity
+// guarantee was the load-bearing complaint. Operators now have visibility.
 let withLock;
+let _lockFallbackWarned = false;
+function _warnLockFallback() {
+  if (_lockFallbackWarned) return;
+  _lockFallbackWarned = true;
+  process.stderr.write(
+    '[self-improve-store] WARNING: lock primitive (_lib/lock.js) unreachable; ' +
+    'using no-op fallback. Concurrent bump/scan operations may corrupt state. ' +
+    'Install or symlink the agent-team scripts to enable real locking.\n'
+  );
+}
 try {
   withLock = require(path.join(HOME, '.claude', 'scripts', 'agent-team', '_lib', 'lock')).withLock;
 } catch {
   try {
     withLock = require(path.join(__dirname, 'agent-team', '_lib', 'lock')).withLock;
   } catch {
-    withLock = (_lockPath, fn) => fn();
+    withLock = (_lockPath, fn) => { _warnLockFallback(); return fn(); };
   }
 }
 
@@ -83,8 +95,26 @@ function parseArgs(argv) {
 }
 
 function loadCounters() {
-  try { return JSON.parse(fs.readFileSync(COUNTERS_PATH, 'utf8')); }
-  catch {
+  // H.5.3 (CS-3 kai H-1 + blair H-3): if the file exists but parse fails, it's
+  // either corrupted or malformed. Quarantine to `<path>.corrupt-<ISO>` BEFORE
+  // returning empty defaults — preserves forensics and prevents silent
+  // history-wipe on the next writeAtomic. If the file simply doesn't exist
+  // (first run, or after reset), return defaults with no quarantine.
+  try {
+    const raw = fs.readFileSync(COUNTERS_PATH, 'utf8');
+    return JSON.parse(raw);
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      // Expected on first run.
+    } else {
+      // Parse error or read error on existing file → quarantine.
+      try {
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const quarantine = `${COUNTERS_PATH}.corrupt-${stamp}`;
+        fs.renameSync(COUNTERS_PATH, quarantine);
+        process.stderr.write(`[self-improve-store] WARNING: counters file unreadable; quarantined to ${quarantine}. Error: ${err.message}\n`);
+      } catch { /* best-effort — if quarantine fails, fall through to fresh state */ }
+    }
     return {
       version: 1,
       createdAt: new Date().toISOString(),
@@ -97,8 +127,19 @@ function loadCounters() {
 }
 
 function loadPending() {
-  try { return JSON.parse(fs.readFileSync(PENDING_PATH, 'utf8')); }
-  catch {
+  // H.5.3: same quarantine-on-corruption shape as loadCounters above.
+  try {
+    const raw = fs.readFileSync(PENDING_PATH, 'utf8');
+    return JSON.parse(raw);
+  } catch (err) {
+    if (err.code !== 'ENOENT') {
+      try {
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const quarantine = `${PENDING_PATH}.corrupt-${stamp}`;
+        fs.renameSync(PENDING_PATH, quarantine);
+        process.stderr.write(`[self-improve-store] WARNING: pending file unreadable; quarantined to ${quarantine}. Error: ${err.message}\n`);
+      } catch { /* best-effort */ }
+    }
     return {
       version: 1,
       candidates: [],
@@ -109,9 +150,16 @@ function loadPending() {
 }
 
 function writeAtomic(filePath, data) {
+  // H.5.3 (CS-3 blair H-1 + kai L-1): tmp suffix was just `.tmp.<pid>` —
+  // collides if two writers in the same process race (e.g., async signal
+  // bumps from a future caller) OR if container PID reuse hits the same
+  // pid. Now: pid + nanosecond hrtime + 8 bytes of crypto randomness.
+  // Birthday-resistance is overkill for this volume but the change is one
+  // line + matches the kb-resolver / pattern-recorder atomic-write idiom.
   const dir = path.dirname(filePath);
   fs.mkdirSync(dir, { recursive: true });
-  const tmp = filePath + '.tmp.' + process.pid;
+  const nonce = crypto.randomBytes(6).toString('hex');
+  const tmp = `${filePath}.tmp.${process.pid}.${process.hrtime.bigint()}.${nonce}`;
   fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
   fs.renameSync(tmp, filePath);
 }
@@ -233,14 +281,27 @@ function cmdScan() {
   console.log(JSON.stringify(result));
 }
 
+// H.5.3 (CS-3 hacker.kai H-2): executeGraduation appends to a shared log.
+// Lines longer than PIPE_BUF (512 bytes on Darwin, 4096 on Linux) lose append
+// atomicity → concurrent writers can interleave bytes mid-line → audit log
+// corrupted. The `summary` field is built from raw signal text including
+// arbitrary-length file paths, so lines can exceed the limit. Now: lock the
+// append + truncate over-long lines with an explicit marker. The lock uses
+// the OBSERVATIONS_LOG itself + `.lock` suffix; same pattern as elsewhere.
+const OBSERVATION_LINE_MAX = 256; // safely under Darwin's PIPE_BUF (512)
 function executeGraduation(candidate) {
-  const line = `[${candidate.createdAt}] ${candidate.kind} | ${candidate.summary} | id=${candidate.id}\n`;
-  try {
-    fs.mkdirSync(path.dirname(OBSERVATIONS_LOG), { recursive: true });
-    fs.appendFileSync(OBSERVATIONS_LOG, line);
-  } catch {
-    // Best-effort — observations.log is informational, not load-bearing.
+  let line = `[${candidate.createdAt}] ${candidate.kind} | ${candidate.summary} | id=${candidate.id}\n`;
+  if (line.length > OBSERVATION_LINE_MAX) {
+    line = line.slice(0, OBSERVATION_LINE_MAX - 16) + '...[truncated]\n';
   }
+  withLock(OBSERVATIONS_LOG + '.lock', () => {
+    try {
+      fs.mkdirSync(path.dirname(OBSERVATIONS_LOG), { recursive: true });
+      fs.appendFileSync(OBSERVATIONS_LOG, line);
+    } catch {
+      // Best-effort — observations.log is informational, not load-bearing.
+    }
+  });
 }
 
 function cmdPending(args) {
