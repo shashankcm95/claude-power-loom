@@ -6,7 +6,7 @@
     "required": ["kubernetes"],
     "recommended": ["engineering:incident-response", "engineering:deploy-checklist", "engineering:standup", "engineering:debug", "terraform", "prometheus"],
     "skill_status": {
-      "kubernetes": "not-yet-authored",
+      "kubernetes": "available",
       "engineering:incident-response": "marketplace:knowledge-work-plugins/engineering",
       "engineering:deploy-checklist": "marketplace:knowledge-work-plugins/engineering",
       "engineering:standup": "marketplace:knowledge-work-plugins/engineering",

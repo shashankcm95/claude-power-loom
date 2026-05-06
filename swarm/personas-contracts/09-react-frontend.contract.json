@@ -6,7 +6,7 @@
     "required": ["react"],
     "recommended": ["design:accessibility-review", "design:ux-copy", "engineering:code-review", "engineering:debug", "engineering:testing-strategy", "typescript", "next-js", "tailwind"],
     "skill_status": {
-      "react": "not-yet-authored",
+      "react": "available",
       "design:accessibility-review": "marketplace:knowledge-work-plugins/design",
       "design:ux-copy": "marketplace:knowledge-work-plugins/design",
       "engineering:code-review": "marketplace:knowledge-work-plugins/engineering",

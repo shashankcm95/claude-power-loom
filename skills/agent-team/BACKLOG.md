@@ -2,6 +2,42 @@
 
 Deferred work from prior phases, captured here so nothing important gets silently dropped. Each entry: scope, rationale, dependencies, rough estimate.
 
+## Phase H.6.9 — full post-H.6.7 orchestration test cycle (5 tasks, 5 PASS) — SHIPPED
+
+**Status**: shipped. Closes the original H.6.1 5-task plan end-to-end. Builds on H.6.8 (Task 1: rate-limiting PASS) with 4 additional task runs across diverse domains.
+
+| # | Task | Persona / Identity | Skill forged | Findings | Citations |
+|---|------|--------------------|--------------|----------|-----------|
+| 2 | React search-results-with-pagination | 09-react-frontend.casey | `react` (react.dev) | 9 | 34 |
+| 3 | k8s Deployment + Service manifest | 10-devops-sre.hugo | `kubernetes` (kubernetes.io) | 7 | 20 |
+| 4 | OAuth2 token-handling audit | 12-security-engineer.vlad | `penetration-testing` (owasp.org WSTG) | 13 | 23 |
+| 5 | ETL pipeline CSV→Postgres dedup | 11-data-engineer.niko | `airflow` (airflow.apache.org) | 11 | 20 |
+
+5 of 5 builder personas now have first real-task verdicts. Trust-formula data: kira passRate 0.667 (medium-trust), casey passRate 1.0 (still unproven at 3 verdicts under 5-threshold), hugo/vlad/niko each at 1 pass. Combined with mio's H.5.6, **6 builder verdicts toolkit-wide** — 30% of the way to H.7.0's ≥20-verdict threshold.
+
+**Registry extension acted on this cycle**: `airflow` added to `kb:hets/canonical-skill-sources` (now 24 entries) per niko's H.6.5 `extend-canonical-sources` request. Demonstrates the H.6.5 pattern in production (sub-agent diagnoses; root acts).
+
+**8 H.6.5 capability requests surfaced**:
+- forge-skill: `express`, `postgres-engineering`, `react-testing`, `external-secrets-operator` — DEFERRED (no current blocker)
+- author-kb-doc: `backend-dev/redis-pool-patterns`, `web-dev/accessibility-pagination`, `infra-dev/prometheus-patterns` — LOGGED
+- extend-canonical-sources: `airflow` — ACTED ON
+
+**Meta-findings (6)**:
+- M-1: severity-section findings placement is the convention; `## Findings` heading is the trap (`kb:hets/spawn-conventions` update needed)
+- M-2: spawn prompts must use absolute paths for output (cwd-relative is fragile across spawn sessions)
+- M-3: root-authoring-skills (~5K tokens each) is structurally cheaper than sub-agent forge (~25-35K tokens each); H.6.5 + H.6.7 conventions validated
+- M-4: H.6.2-H.6.7 substrate fixes are durable (zero routing failures across 5 diverse tasks)
+- M-5: H.5.7 (builder-engineering-task contract template) promoted to HIGH priority — 4/5 tasks contorted engineering work into audit-shape
+- M-6: foreground-spawn 5/5 — CS-1/CS-3's background-spawn loss pattern fully avoided
+
+The H.6.x cycle (H.6.0 → H.6.9) is now CLOSED. Aggregate findings doc at `swarm/H.6.9-orchestration-cycle-findings.md`.
+
+**H.6.9 follow-ups (deferred)**:
+- Update `kb:hets/spawn-conventions` re: severity-section finding placement (M-1)
+- Author 7 logged capability gaps (4 forge-skill, 3 author-kb-doc) when first concrete task surfaces blocker
+- Promote H.5.7 (builder-engineering-task contract template) — 4/5 cycle tasks hit it; not blocking but real
+- Run a second cycle on diverse user tasks to accumulate verdicts toward H.7.0's 20-verdict threshold
+
 ## Phase H.6.8 — first post-H.6.7 orchestration test (H.6.1 closure) — SHIPPED
 
 **Status**: shipped. Re-ran H.6.1's aborted task end-to-end after H.6.2-H.6.7 substrate fixes. `13-node-backend.kira` PASSED across all 9 functional + 5 antiPattern checks (6 findings, 33 file citations, recommendation `accept`). Authored `node-backend-development` skill at root from `nodejs.org/docs/latest/api/` (H.6.7 canonical-source path); updated contract `skill_status: not-yet-authored → available`; spawned in foreground; verified independently via contract-verifier; recorded verdict to identity (kira: passRate 0.6 → 0.667, tier stays medium-trust).

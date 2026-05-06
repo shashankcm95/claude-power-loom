@@ -6,7 +6,7 @@
     "required": ["penetration-testing"],
     "recommended": ["engineering:code-review", "engineering:incident-response", "legal:compliance-check", "security-audit", "cryptography", "iam", "compliance-frameworks"],
     "skill_status": {
-      "penetration-testing": "not-yet-authored",
+      "penetration-testing": "available",
       "engineering:code-review": "marketplace:knowledge-work-plugins/engineering",
       "engineering:incident-response": "marketplace:knowledge-work-plugins/engineering",
       "legal:compliance-check": "marketplace:knowledge-work-plugins/legal",

@@ -138,6 +138,11 @@ redis:
   url: https://redis.io/docs/
   type: reference
   notes: Commands reference + Reference (data-types, persistence, replication) are canonical. Avoid version-specific blog posts; commands have evolved across major versions.
+
+airflow:
+  url: https://airflow.apache.org/docs/
+  type: reference
+  notes: Always Airflow 2.x docs (1.x deprecated since 2021). Concepts (DAGs, tasks, executors, sensors) + Best Practices are load-bearing. For provider operators see https://airflow.apache.org/docs/apache-airflow-providers/. Added H.6.9 via niko's extend-canonical-sources request from Task 5 ETL run.
 ```
 
 #### Infra / DevOps

@@ -6,7 +6,7 @@
     "required": ["airflow"],
     "recommended": ["data:sql-queries", "data:explore-data", "data:validate-data", "data:statistical-analysis", "engineering:debug", "engineering:testing-strategy", "dbt", "snowflake", "kafka", "data-modeling"],
     "skill_status": {
-      "airflow": "not-yet-authored",
+      "airflow": "available",
       "data:sql-queries": "marketplace:knowledge-work-plugins/data",
       "data:explore-data": "marketplace:knowledge-work-plugins/data",
       "data:validate-data": "marketplace:knowledge-work-plugins/data",
