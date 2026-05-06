@@ -240,45 +240,6 @@ The forge→assign→spawn flow is now explicit (see `patterns/skill-bootstrappi
 - **H.6.3** — auto-trigger skill-forge from `agent-identity assign` when contract has `not-yet-authored` skills (the only remaining gap from H.6.1; ~50 LoC, queued next)
 - **14-python-backend** persona — same gap shape as 13-node-backend, lower urgency (Backend — Python entry still routes to 07-java-backend as placeholder)
 
-## Phase H.6.4 — persona/contract coherence for non-JVM backends (NEW from H.6.1)
-
-**Status**: not yet started. Surfaced as GAPs 4-7 in H.6.1 orchestration walkthrough.
-
-**The finding**: 07-java-backend persona has triple incoherence for any non-JVM backend task — required skill is `spring-boot` (JVM-specific, not-yet-authored), kb_scope is JVM-only (`backend-dev/spring-boot-essentials + jvm-runtime-basics`), and the persona name itself ("07-java-backend") implies language family. Stack-skill-map docs say "07-java-backend persona is the closest match for general backend work" but the contract layer contradicts that claim.
-
-**Two design options**:
-
-1. **New persona** — `13-node-backend` with skills `[express, nest-js]` and Node-specific kb_scope. Symmetric solution; no breaking changes. Requires authoring new persona file + contract + roster + KB docs.
-2. **Rename + restructure** — `07-java-backend` → `07-backend` with stack-conditional `skill_status` + `kb_scope` (e.g., resolved at spawn time based on task's tech-stack-analyzer output). Cleaner long-term but requires verifier changes to handle conditional contracts.
-
-**Estimate**: 1-2 hr for option 1 (new persona); 3-4 hr for option 2 (verifier conditional dispatch). Option 1 is the safer first step.
-
-## Phase H.6.3 — auto-trigger skill-forge from `agent-identity assign` (NEW from H.6.1)
-
-**Status**: not yet started. Confirmed gap from H.5.6 mio dogfood; re-confirmed in H.6.1.
-
-**The finding**: when a persona contract has `skills.required` entries with `skill_status: "not-yet-authored"`, the orchestrator should pause + invoke skill-forge before spawning. Today this is purely manual — the `assign` subcommand returns the identity without checking skill availability. Result: in H.5.6 mio used a workaround (the skill happened to exist); in H.6.1 the skill mismatch was so deep that no forge would have helped (tech mismatch, not skill absence).
-
-**Scope**:
-- Modify `agent-identity.js cmdAssign` to read the persona contract + report any `not-yet-authored` skills as a JSON warning
-- Optional: a `--require-forged` flag that exits non-zero if any required skill is missing
-- Document the forge → assign → spawn flow as a 3-step orchestrator pattern
-
-**Estimate**: ~50 LoC, ~45 min.
-
-## Phase H.6.2 — extend stack-skill-map with Node/Express + Go + Rust (NEW from H.6.1)
-
-**Status**: not yet started. Surfaced as GAP-1 in H.6.1.
-
-**The finding**: stack-skill-map covers 12 stacks; the prominent missing entries are Node/Express, Go, Rust, PHP, Ruby. Tasks against any of these fall to the architect-scoping default fallback OR (worse) silently get routed to the closest-fit persona whose contract doesn't actually match.
-
-**Scope**:
-- Add `Backend — Node-Express` entry: `required: [express]`, `recommended: [engineering:debug, jest, postgres-engineering]`, `personas: [13-node-backend]` (depends on H.6.4) OR `[07-java-backend]` (placeholder until H.6.4)
-- Add `Backend — Go service`, `Backend — Rust service` similar shapes
-- Update the analyzer skill description to match
-
-**Estimate**: ~20 LoC doc fix + 30 min. Low-risk.
-
 ## Phase H.6.1 — first abstract-task orchestration walkthrough — SHIPPED
 
 **Status**: shipped. Validated the spawn-recorder + the manual orchestration walkthrough discipline. Surfaced 4 follow-up phases (H.6.2, H.6.3, H.6.4) plus confirmed H.5.7 priority. See `swarm/H.6.1-orchestration-test-findings.md` for the full report.
@@ -347,7 +308,6 @@ E2E validated 5 probes. contracts-validate: 0 violations.
 
 **Architectural HIGHs from theo (deferred — need scope decisions, not pure fixes)**:
 - `hierarchical-aggregate.js` location drift (5 chaos runs unmoved) — decide: relocate or document. Either way ~10 min.
-- Builders 06-12 unproven tier — H.5.6 (or rename to H.5.5) dogfood run; pick a real task, run `/build-team`, populate trust-formula data.
 - `_lib/` directory of one — extract `_lib/runState.js` from the 4 scripts that resolve `swarm/run-state/` paths; ~30 min refactor.
 
 **Remaining CS-3 MEDIUM/LOW** (not addressed in this phase; deferred to next chaos cycle to see if they re-surface):
@@ -656,22 +616,6 @@ First production run of the H.3.0 validator surfaced 29 real drift violations:
 
 **Estimate**: ~150 LoC + ~1hr.
 
-### Cross-run baseline migration
-
-**Source**: chaos-20260502-060039, architect HIGH.
-
-**Scope**: One-time migration that synthesizes minimal `tree.json` for prior chaos runs (172842, 180536, 184505) from their existing `node-*.md` files. Without this, "cross-run delta analysis" output is meaningless because the prior runs don't have tree state.
-
-**Estimate**: ~100 LoC + ~30min.
-
-### Hierarchical-aggregate path mismatch
-
-**Source**: chaos-20260502-060039, architect HIGH.
-
-**Scope**: SKILL.md says `scripts/agent-team/hierarchical-aggregate.js` but the actual script lives at `swarm/hierarchical-aggregate.js`. Either move/symlink or update SKILL.md.
-
-**Estimate**: ~10 LoC + ~10min.
-
 ### Aggregator parsing fragility
 
 **Source**: chaos-20260502-060039, orch-behavior synthesis.
@@ -680,27 +624,9 @@ First production run of the H.3.0 validator surfaced 29 real drift violations:
 
 **Estimate**: ~150 LoC + ~1hr (option B; option A is even smaller).
 
-### `unknown_check` on required functional check should fail
-
-**Source**: H.2-bridge probe (Probe 1 of the verifier-fix end-to-end check).
-
-**Scope**: Currently a contract listing only invented check names verdicts as `pass` because `unknown_check` doesn't increment `functionalFailures` for the `continue` path. Should fail required checks with unknown names.
-
-**Estimate**: ~10 LoC + ~10min.
-
 ## Cross-phase / integration items (chat-scan after H.2.9)
 
 Found by scanning the H.2.x conversation history end-to-end after all 9 sub-phases shipped. These are themes that surfaced multiple times but weren't captured as concrete tasks in any phase's follow-ups. Ordered roughly by leverage.
-
-### CS-1 — Meta-validation chaos run on H.2.x infrastructure
-
-**Status**: NOT YET RUN.
-
-**Scope**: Run a full `/chaos-test` against the toolkit's H.2.1 → H.2.9 changes. Last meta-validation was `chaos-20260502-060039` (pre-bridge). We've shipped 9 sub-phases since, adding ~3000 LoC + 12 personas + 11 patterns + 18 KB docs + 5 new scripts.
-
-**Why now**: chaos-test on the chaos test infra has a strong track record of surfacing real bugs at the seams (e.g., the prototype pollution + `.some` + `\Z` regex finds in chaos-20260502-060039). With the much larger H.2.x surface, integration bugs are likely.
-
-**Estimate**: ~30 min run + ~1 hr review.
 
 ### CS-2 — README refresh through H.2.9
 
@@ -719,14 +645,6 @@ Found by scanning the H.2.x conversation history end-to-end after all 9 sub-phas
 **Why this matters**: today HETS is filesystem-bound. To use it from another project, you clone the toolkit + run scripts. An MCP server would make HETS a first-class shared service.
 
 **Estimate**: ~3-4 hrs (new MCP server scaffolding + 5-7 tool handlers + auth/permission story).
-
-### CS-4 — `.claude-plugin/` packaging concrete
-
-**Status**: listed in periodic-audit checks (#3) but no concrete task; came up multiple times in the Gemini conversation about distribution.
-
-**Scope**: Promote the audit reminder to a real task. Author `.claude-plugin/plugin.json` manifest. Verify all components (agents, hooks, rules, skills, commands, swarm, scripts) install cleanly via the marketplace install path. May require restructuring some paths to match plugin layout conventions.
-
-**Estimate**: ~2 hrs.
 
 ### CS-5 — agent-swarm vs agent-team skill consolidation
 
