@@ -555,12 +555,37 @@ else if (functionalFailures === 0 && antiPatternFailures === 0) verdict = 'parti
 else verdict = 'fail';
 
 result.verdict = verdict;
+// H.7.0-prep — tokens_used in summary. Sum input + output + cache_creation +
+// cache_read across all assistant messages in the transcript (mirrors the
+// budget-tracker's record-from-transcript shape from H.2.8). Null when no
+// transcript was supplied — backwards-compat. This is the load-bearing input
+// for the findings-per-10K-tokens quality factor.
+let tokensUsed = null;
+if (args.transcript && fs.existsSync(args.transcript)) {
+  try {
+    const transcriptLines = fs.readFileSync(args.transcript, 'utf8').split('\n').filter(Boolean);
+    let totalIn = 0, totalOut = 0, totalCacheCreate = 0, totalCacheRead = 0;
+    for (const line of transcriptLines) {
+      let entry;
+      try { entry = JSON.parse(line); } catch { continue; }
+      const usage = entry?.message?.usage;
+      if (usage && typeof usage === 'object') {
+        if (typeof usage.input_tokens === 'number') totalIn += usage.input_tokens;
+        if (typeof usage.output_tokens === 'number') totalOut += usage.output_tokens;
+        if (typeof usage.cache_creation_input_tokens === 'number') totalCacheCreate += usage.cache_creation_input_tokens;
+        if (typeof usage.cache_read_input_tokens === 'number') totalCacheRead += usage.cache_read_input_tokens;
+      }
+    }
+    tokensUsed = totalIn + totalOut + totalCacheCreate + totalCacheRead;
+  } catch { tokensUsed = null; /* best-effort; never fail the verdict on token-extraction issues */ }
+}
 result.summary = {
   functionalFailures,
   antiPatternFailures,
   antiPatternWarns,
   findingsCount: countFindings(body),
   fileCitations: countFileCitations(body),
+  tokensUsed,  // H.7.0-prep — null when no transcript supplied
 };
 result.recommendation = verdict === 'pass' ? 'accept'
   : verdict === 'partial' ? 'accept-with-warning'

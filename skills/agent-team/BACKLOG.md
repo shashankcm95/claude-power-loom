@@ -2,6 +2,49 @@
 
 Deferred work from prior phases, captured here so nothing important gets silently dropped. Each entry: scope, rationale, dependencies, rough estimate.
 
+## Phase H.7.0-prep — Hybrid quality factors + validation_sources registry — SHIPPED
+
+**Status**: shipped. The observability layer for the eventual H.7.0 evolution loop. Two coordinated, schema-additive changes — both forward-compat, neither changes `tierOf` (H.4.2 audit transparency preserved).
+
+### A. Hybrid quality factors
+
+`quality_factors_history` array on each identity captures 5 axes per verdict:
+- `findings_per_10k` (efficiency)
+- `file_citations_per_finding` (depth-of-evidence)
+- `cap_request_actionability` (diagnostic instinct — acted/total)
+- `kb_provenance_verified` (F9 transcript-validated)
+- `tokens` (raw cost signal)
+
+Bounded at 50 most-recent entries per identity. Backwards-compat: missing flags = null axes.
+
+`pattern-recorder.js` extended with `--tokens / --file-citations / --cap-requests-acted / --cap-requests-total / --kb-provenance-verified` flags. Composes payload, forwards as `--quality-factors-json` to `agent-identity.js`.
+
+`contract-verifier.js` summary block extended with `tokensUsed` (computed from `--transcript` JSONL when supplied; null otherwise).
+
+New `quality-factors-backfill.js` — idempotent one-shot. Reads spawn-history.jsonl + agent-patterns.json fallback. Backfilled 5 H.6.x identities (kira, casey, hugo, vlad, niko).
+
+### B. validation_sources registry
+
+`kb:hets/canonical-skill-sources` schema extended with optional `validation_sources: [{ title, url, type, year }]` for skill classes where owner docs aren't enough.
+
+Selectively populated for 4 skills:
+- `penetration-testing` — RFC 6749 + RFC 6819 + OAuth Security BCP + NIST SP 800-63B
+- `security-audit` — OWASP ASVS + CWE Top 25
+- `pytorch` — Adam (Kingma+Ba 2014) + Attention (Vaswani+ 2017) + ResNet (He+ 2015)
+- `kubernetes` — Borg (Verma+ 2015) + Borg/Omega/Kubernetes (Burns+ 2016) + Raft (Ongaro+Ousterhout 2014)
+
+`skills/skill-forge/SKILL.md` Step 2a extended with the **two-axis principle**: canonical URL = HOW; validation_sources = WHY. Library/tooling skills correctly excluded (owner docs sufficient).
+
+### Self-test result
+
+Spawned `12-security-engineer.mio` on JWT-pinning audit. Verdict PASS (5 findings, 15 citations). Every finding cited BOTH OWASP (HOW) AND ≥1 RFC/NIST (WHY). `aggregate_quality_factors` populated correctly (samples=2, findings_per_10k=0.876, file_citations_per_finding=3.0, tokens=57100). Tier `unproven` (3<5 verdicts) — `tierOf` formula working as designed.
+
+### H.7.0-prep follow-ups (deferred)
+
+- **Empirical weight derivation (H.7.0 main)**: at ≥20 verdicts, analyze quality_factors_history correlations with subjective quality (user judgment), then design weighted formula. Today: 7 verdicts; need 13 more.
+- **Token-extraction validation**: future spawn with `--transcript` should populate `tokensUsed` non-null; deferred until first such orchestration run.
+- **kb_provenance_verified true-positive demo**: this self-test recorded false (no transcript); deferred until transcript-wired spawn happens.
+
 ## Phase H.6.9 — full post-H.6.7 orchestration test cycle (5 tasks, 5 PASS) — SHIPPED
 
 **Status**: shipped. Closes the original H.6.1 5-task plan end-to-end. Builds on H.6.8 (Task 1: rate-limiting PASS) with 4 additional task runs across diverse domains.

@@ -130,6 +130,13 @@ function ensureIdentity(store, persona, name) {
         kbFocus: [],         // dominant kb_scope refs (from spawn history; H.7.0 work)
         taskDomain: null,    // dominant task tag prefix (e.g., "audit-*", "build-*")
       },
+      // H.7.0-prep — Hybrid quality factors history. Per-verdict multi-axis
+      // signal captured at record-time; surfaced in `cmdStats` aggregate block.
+      // Trust formula (`tierOf`) is INTENTIONALLY UNCHANGED — preserves H.4.2
+      // audit transparency. This data exists so H.7.0 weight-design can be
+      // empirical (≥20 verdicts target) rather than guessed.
+      // Bounded: cap at QUALITY_FACTORS_HISTORY_CAP most-recent entries.
+      quality_factors_history: [],
     };
   }
   return store.identities[id];
@@ -148,7 +155,34 @@ function _backfillH66Schema(identity) {
   if (!identity.traits) {
     identity.traits = { skillFocus: null, kbFocus: [], taskDomain: null };
   }
+  // H.7.0-prep — quality factors history forward-compat backfill
+  if (!Array.isArray(identity.quality_factors_history)) {
+    identity.quality_factors_history = [];
+  }
   return identity;
+}
+
+// H.7.0-prep — bounded growth on quality_factors_history. Cap at 50 most-recent
+// entries per identity to prevent unbounded JSON growth across years of runs.
+// 50 is sufficient signal for the H.7.0 weight-derivation analysis (target n≥20
+// global; per-identity history rarely exceeds 50 in practice).
+const QUALITY_FACTORS_HISTORY_CAP = 50;
+
+// H.7.0-prep — compute per-identity aggregate quality factors. Returns null
+// for axes where every entry is null (no data captured). Means computed
+// over non-null values only — backwards-compat with pre-H.7.0-prep entries.
+function aggregateQualityFactors(history) {
+  if (!Array.isArray(history) || history.length === 0) return null;
+  const axes = ['findings_per_10k', 'file_citations_per_finding', 'cap_request_actionability', 'tokens'];
+  const out = { samples: history.length };
+  for (const axis of axes) {
+    const vals = history.map((h) => h && h[axis]).filter((v) => typeof v === 'number' && Number.isFinite(v));
+    out[axis] = vals.length === 0 ? null : vals.reduce((a, b) => a + b, 0) / vals.length;
+  }
+  // kb_provenance is bool — express as % verified (or null when no observations)
+  const kbVals = history.map((h) => h && h.kb_provenance_verified).filter((v) => typeof v === 'boolean');
+  out.kb_provenance_verified_pct = kbVals.length === 0 ? null : (kbVals.filter(Boolean).length / kbVals.length);
+  return out;
 }
 
 function cmdInit() {
@@ -285,6 +319,7 @@ function cmdStats(args) {
       console.error(`Unknown identity: ${args.identity}`);
       process.exit(1);
     }
+    _backfillH66Schema(data);  // surface aggregate even on legacy records
     const total = data.verdicts.pass + data.verdicts.partial + data.verdicts.fail;
     const out = {
       identity: args.identity,
@@ -296,6 +331,11 @@ function cmdStats(args) {
       skillInvocations: data.skillInvocations,
       createdAt: data.createdAt,
       lastSpawnedAt: data.lastSpawnedAt,
+      // H.7.0-prep — multi-axis quality signal. Trust formula (tier) is
+      // unchanged; this block surfaces the data H.7.0 will weight empirically
+      // once ≥20 builder verdicts have accumulated. Means computed over
+      // non-null values; null when no observations on that axis yet.
+      aggregate_quality_factors: aggregateQualityFactors(data.quality_factors_history),
     };
     console.log(JSON.stringify(out, null, 2));
     return;
@@ -461,12 +501,26 @@ function cmdRecommendVerification(args) {
 
 function cmdRecord(args) {
   if (!args.identity || !args.verdict) {
-    console.error('Usage: record --identity <persona.name> --verdict pass|partial|fail [--task <tag>] [--skills s1,s2]');
+    console.error('Usage: record --identity <persona.name> --verdict pass|partial|fail [--task <tag>] [--skills s1,s2] [--quality-factors-json <json>]');
     process.exit(1);
   }
   if (!['pass', 'partial', 'fail'].includes(args.verdict)) {
     console.error(`Invalid verdict: ${args.verdict}. Must be pass|partial|fail.`);
     process.exit(1);
+  }
+  // H.7.0-prep — parse optional quality-factors payload up-front; fail loudly
+  // on bad JSON so callers don't silently lose signal.
+  let qualityFactors = null;
+  if (args['quality-factors-json']) {
+    try {
+      qualityFactors = JSON.parse(args['quality-factors-json']);
+      if (typeof qualityFactors !== 'object' || qualityFactors === null) {
+        throw new Error('quality-factors-json must decode to an object');
+      }
+    } catch (e) {
+      console.error(`Invalid --quality-factors-json: ${e.message}`);
+      process.exit(1);
+    }
   }
   withLock(() => {
     const store = readStore();
@@ -475,6 +529,7 @@ function cmdRecord(args) {
       console.error(`Unknown identity: ${args.identity}. Run "assign" first.`);
       process.exit(1);
     }
+    _backfillH66Schema(data);  // ensure H.7.0-prep field exists on legacy records
     data.verdicts[args.verdict] += 1;
     if (args.task && !data.specializations.includes(args.task)) {
       // Track up to 5 most-recent task tags (rough proxy for specialization).
@@ -486,6 +541,24 @@ function cmdRecord(args) {
         data.skillInvocations[s] = (data.skillInvocations[s] || 0) + 1;
       }
     }
+    // H.7.0-prep — append per-verdict quality factors entry. Always recorded,
+    // even when payload is empty/null — gives us a per-verdict timestamp + verdict
+    // shape for future correlation analysis. Bounded by QUALITY_FACTORS_HISTORY_CAP.
+    const entry = {
+      ts: new Date().toISOString(),
+      verdict: args.verdict,
+      task_signature: args.task || null,
+      // Multi-axis signal — null when caller didn't supply (backwards-compat).
+      findings_per_10k: qualityFactors && typeof qualityFactors.findings_per_10k === 'number' ? qualityFactors.findings_per_10k : null,
+      file_citations_per_finding: qualityFactors && typeof qualityFactors.file_citations_per_finding === 'number' ? qualityFactors.file_citations_per_finding : null,
+      cap_request_actionability: qualityFactors && typeof qualityFactors.cap_request_actionability === 'number' ? qualityFactors.cap_request_actionability : null,
+      kb_provenance_verified: qualityFactors && typeof qualityFactors.kb_provenance_verified === 'boolean' ? qualityFactors.kb_provenance_verified : null,
+      tokens: qualityFactors && typeof qualityFactors.tokens === 'number' ? qualityFactors.tokens : null,
+    };
+    data.quality_factors_history.push(entry);
+    if (data.quality_factors_history.length > QUALITY_FACTORS_HISTORY_CAP) {
+      data.quality_factors_history = data.quality_factors_history.slice(-QUALITY_FACTORS_HISTORY_CAP);
+    }
     writeStore(store);
     console.log(JSON.stringify({
       action: 'record',
@@ -493,6 +566,7 @@ function cmdRecord(args) {
       verdict: args.verdict,
       tier: tierOf(data),
       totalRecorded: data.verdicts.pass + data.verdicts.partial + data.verdicts.fail,
+      qualityFactorsRecorded: qualityFactors !== null,
     }, null, 2));
   });
 }

@@ -298,15 +298,15 @@
     "hets/canonical-skill-sources": {
       "path": "hets/canonical-skill-sources.md",
       "version": 1,
-      "hash": "c379f090d5ef269a87849e87103dfc256e1177511b63030b5bb94165c3a399e7",
-      "shortHash": "c379f090",
+      "hash": "9f192b153991b17ca952a87175bbb816e8aa3de8dfabbd1aabbf3b2cf302dc62",
+      "shortHash": "9f192b15",
       "tags": [
         "hets",
         "skill-forge",
         "canonical-sources",
         "evolution-loop-l2"
       ],
-      "lastUpdated": "2026-05-06T18:26:15.957Z"
+      "lastUpdated": "2026-05-06T18:56:28.553Z"
     }
   }
 }

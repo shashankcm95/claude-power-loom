@@ -64,6 +64,8 @@ function saveStore(store) {
 function cmdRecord(args) {
   if (!args['task-signature'] || !args.verdict || !args.persona) {
     console.error('Usage: record --task-signature X --persona Y --verdict pass|partial|fail [--agent-role R] [--findings-count N] [--identity persona.name] [--skills s1,s2]');
+    console.error('  H.7.0-prep optional quality factors:');
+    console.error('    [--tokens N] [--file-citations N] [--cap-requests-acted N] [--cap-requests-total N] [--kb-provenance-verified true|false]');
     process.exit(1);
   }
 
@@ -74,15 +76,39 @@ function cmdRecord(args) {
 
   try {
     const store = loadStore();
+    // H.7.0-prep — capture optional quality-factors flags. Compute derived
+    // metrics here so each axis has a consistent definition across the
+    // toolkit (callers don't have to do the math themselves).
+    const findingsCount = parseInt(args['findings-count'] || '0', 10);
+    const tokens = args.tokens ? parseInt(args.tokens, 10) : null;
+    const fileCitations = args['file-citations'] ? parseInt(args['file-citations'], 10) : null;
+    const capActed = args['cap-requests-acted'] ? parseInt(args['cap-requests-acted'], 10) : null;
+    const capTotal = args['cap-requests-total'] ? parseInt(args['cap-requests-total'], 10) : null;
+    const kbProvenance = args['kb-provenance-verified'] !== undefined
+      ? (args['kb-provenance-verified'] === 'true' || args['kb-provenance-verified'] === true)
+      : null;
+    const qualityFactors = {
+      // findings per 10K tokens — efficiency signal
+      findings_per_10k: (tokens && tokens > 0 && findingsCount > 0) ? (findingsCount / (tokens / 10000)) : null,
+      // citations per finding — depth-of-evidence signal
+      file_citations_per_finding: (fileCitations !== null && findingsCount > 0) ? (fileCitations / findingsCount) : null,
+      // cap-request actionability — diagnostic-instinct signal (acted/total; null when 0/0)
+      cap_request_actionability: (capTotal !== null && capTotal > 0) ? (capActed / capTotal) : null,
+      kb_provenance_verified: kbProvenance,
+      tokens: tokens,
+    };
+    const hasAnyFactor = Object.values(qualityFactors).some((v) => v !== null);
+
     const entry = {
       task_signature: args['task-signature'],
       agent_role: args['agent-role'] || 'actor',
       persona: args.persona,
       identity: args.identity || null,
       verdict: args.verdict,
-      findings_count: parseInt(args['findings-count'] || '0', 10),
+      findings_count: findingsCount,
       ran_at: new Date().toISOString(),
     };
+    if (hasAnyFactor) entry.quality_factors = qualityFactors;
     store.patterns.push(entry);
 
     // LRU cap
@@ -103,13 +129,19 @@ function cmdRecord(args) {
           const fwdArgs = [identityScript, 'record', '--identity', args.identity, '--verdict', args.verdict];
           if (args['task-signature']) fwdArgs.push('--task', args['task-signature']);
           if (args.skills) fwdArgs.push('--skills', args.skills);
+          // H.7.0-prep — forward quality-factors payload (only when at least
+          // one axis is supplied; otherwise omit and let agent-identity.js
+          // record null-axes entry).
+          if (hasAnyFactor) {
+            fwdArgs.push('--quality-factors-json', JSON.stringify(qualityFactors));
+          }
           const r = spawnSync(process.execPath, fwdArgs, { stdio: 'pipe', timeout: 5000 });
           identityForwarded = r.status === 0;
         }
       } catch { /* identity forwarder is best-effort */ }
     }
 
-    console.log(JSON.stringify({ action: 'recorded', total: store.patterns.length, identityForwarded }));
+    console.log(JSON.stringify({ action: 'recorded', total: store.patterns.length, identityForwarded, qualityFactorsForwarded: hasAnyFactor }));
   } finally {
     releaseLock();
   }

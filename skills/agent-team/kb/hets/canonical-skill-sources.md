@@ -22,7 +22,7 @@ A skill forged from `react.dev/reference` will encode the React team's idioms; o
 
 ### Schema
 
-Each entry: skill-name → `{ url, type, notes }`:
+Each entry: skill-name → `{ url, type, notes, validation_sources? }`:
 
 - **`url`** — primary documentation URL. Prefer reference docs over tutorials (more comprehensive surface area).
 - **`type`** — what kind of source. Values:
@@ -31,6 +31,7 @@ Each entry: skill-name → `{ url, type, notes }`:
   - `spec` — language / protocol specification (the most authoritative form for languages and standards)
   - `book` — official book / handbook (e.g., TypeScript Handbook)
 - **`notes`** — anything that changes how skill-forge uses the source (e.g., "use the v18 docs only; v17 has known deprecations").
+- **`validation_sources`** *(optional, H.7.0-prep)* — list of primary references (peer-reviewed papers, RFCs, standards docs) that encode the WHY behind the canonical doc's HOW. Format: `[{ title, url, type, year }]` where `type ∈ { paper, rfc, standard, book }`. Selectively populated for skill classes where owner docs aren't enough (security, algorithms, architecture). See "When NOT to add validation_sources" below.
 
 ### Registry
 
@@ -123,6 +124,19 @@ pytorch:
   url: https://pytorch.org/docs/stable/index.html
   type: reference
   notes: Tensor + nn + optim + autograd are the load-bearing modules. For training loops the Lightning docs are pragmatic but not canonical.
+  validation_sources:
+    - title: Adam - A Method for Stochastic Optimization (Kingma & Ba)
+      url: https://arxiv.org/abs/1412.6980
+      type: paper
+      year: 2014
+    - title: Attention Is All You Need (Vaswani et al.)
+      url: https://arxiv.org/abs/1706.03762
+      type: paper
+      year: 2017
+    - title: Deep Residual Learning for Image Recognition (He et al., ResNet)
+      url: https://arxiv.org/abs/1512.03385
+      type: paper
+      year: 2015
 
 pandas:
   url: https://pandas.pydata.org/docs/
@@ -152,6 +166,19 @@ kubernetes:
   url: https://kubernetes.io/docs/home/
   type: reference
   notes: Concepts + Tasks + Reference are the three pillars. For YAML manifests the API reference (https://kubernetes.io/docs/reference/kubernetes-api/) is the source of truth.
+  validation_sources:
+    - title: Large-scale cluster management at Google with Borg (Verma et al.)
+      url: https://research.google/pubs/pub43438/
+      type: paper
+      year: 2015
+    - title: Borg, Omega, and Kubernetes (Burns et al., ACM Queue)
+      url: https://queue.acm.org/detail.cfm?id=2898444
+      type: paper
+      year: 2016
+    - title: In Search of an Understandable Consensus Algorithm (Raft, Ongaro & Ousterhout)
+      url: https://raft.github.io/raft.pdf
+      type: paper
+      year: 2014
 
 docker:
   url: https://docs.docker.com/
@@ -171,11 +198,37 @@ security-audit:
   url: https://owasp.org/www-project-top-ten/
   type: reference
   notes: OWASP Top 10 is the canonical starting surface. Cross-reference https://cwe.mitre.org/ for specific weakness IDs and https://cheatsheetseries.owasp.org/ for engineering-actionable defenses.
+  validation_sources:
+    - title: OWASP Application Security Verification Standard (ASVS) v4.0.3
+      url: https://owasp.org/www-project-application-security-verification-standard/
+      type: standard
+      year: 2021
+    - title: CWE Top 25 Most Dangerous Software Weaknesses
+      url: https://cwe.mitre.org/top25/
+      type: standard
+      year: 2024
 
 penetration-testing:
   url: https://owasp.org/www-project-web-security-testing-guide/
   type: reference
   notes: WSTG is the methodology canonical source. Tool-specific docs (Burp, OWASP ZAP) are secondary.
+  validation_sources:
+    - title: RFC 6749 — The OAuth 2.0 Authorization Framework
+      url: https://datatracker.ietf.org/doc/html/rfc6749
+      type: rfc
+      year: 2012
+    - title: RFC 6819 — OAuth 2.0 Threat Model and Security Considerations
+      url: https://datatracker.ietf.org/doc/html/rfc6819
+      type: rfc
+      year: 2013
+    - title: OAuth 2.0 Security Best Current Practice (draft-ietf-oauth-security-topics)
+      url: https://datatracker.ietf.org/doc/html/draft-ietf-oauth-security-topics
+      type: standard
+      year: 2024
+    - title: NIST SP 800-63B — Digital Identity Guidelines (Authentication)
+      url: https://pages.nist.gov/800-63-3/sp800-63b.html
+      type: standard
+      year: 2017
 ```
 
 ### Lookup convention (for skill-forge)
@@ -205,6 +258,21 @@ penetration-testing:
 - A skill is forged for the first time AND has an authoritative source — add at task end via missing-capability-signal request `type: extend-canonical-sources`
 - An existing entry's URL has stale (project relocated docs) — bump `version` + update `url` + add note
 - Cross-reference shifts (e.g., Apple moves Swift docs from swift.org to developer.apple.com) — update `notes` to clarify
+
+### When NOT to add validation_sources (H.7.0-prep)
+
+`validation_sources` is reserved for skill classes where owner-maintained docs are insufficient. **Do NOT add them for**:
+
+- **Library / framework APIs** (react, vue, express, fastapi, airflow, etc.) — the owner docs ARE the canonical surface. Academic papers or RFCs don't exist for "how to use this library."
+- **Tooling / configuration** (terraform, docker, kubectl) — config schema is the spec; no peer-review needed.
+- **Style / convention skills** (typescript, tailwind) — these are subjective design choices, not academic claims.
+
+**DO add them for**:
+- **Security skills** (security-audit, penetration-testing, cryptography) — primary RFCs, NIST publications, OWASP standards encode the threat model and reference implementations beyond what curation docs cover
+- **Algorithm-heavy skills** (pytorch, ml-engineering, distributed-consensus) — owner docs cover API; the WHY (optimization theory, attention mechanism, Raft proof) lives in primary research
+- **Architecture skills** (kubernetes, distributed-systems) — operational docs say HOW; the design rationale is in seminal papers (Borg, Omega, Raft)
+
+The principle: **validation_sources answer "WHY does this work?"; the canonical URL answers "HOW do I use this?"**
 
 ### When NOT to add
 
