@@ -24,3 +24,9 @@
 ## Deploy
 
 Before deploying, follow the deploy-checklist skill for the full pre-deployment verification workflow.
+
+## Plan Mode for Multi-File Changes
+
+- Any task touching ≥2 distinct files → enter plan mode first
+- Single-file changes, doc-only edits, trivial fixes → skip plan mode
+- When in doubt: enter plan mode (cheap insurance, expensive to skip)
