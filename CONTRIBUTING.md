@@ -126,7 +126,7 @@ After CONTRIBUTING.md adoption, all prior phase commits were tagged in place (an
 | `phase-H.6.5` | `c604d60` | Missing-capability-signal pattern (sub-agents diagnose; root acquires) — autonomous platform extension |
 | `phase-H.6.6` | `32f1872` | Lifecycle primitives (soft-retire + specialist-tag + L3-forward schema) — first L1 substrate of evolution loop |
 | `phase-H.6.7` | `60f7991` | Canonical-source registry (23 entries: skill-name → official-docs URL) — L2 of evolution loop |
-| `phase-H.6.8` | (TBD) | First post-H.6.7 orchestration test — 13-node-backend.kira PASS on rate-limiting task (H.6.1 closed) |
+| `phase-H.6.8` | `6ba5406` | First post-H.6.7 orchestration test — 13-node-backend.kira PASS on rate-limiting task (H.6.1 closed) |
 
 `d166add` (README refresh through H.2.4) and `90b87ac` (chat-scan BACKLOG additions) were doc-only commits — no tags (matches "trivial docs allowed direct on main" rule).
 
