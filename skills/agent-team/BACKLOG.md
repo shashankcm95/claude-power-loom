@@ -2,6 +2,30 @@
 
 Deferred work from prior phases, captured here so nothing important gets silently dropped. Each entry: scope, rationale, dependencies, rough estimate.
 
+## Phase H.5.4 — remaining CS-3 HIGH cluster — SHIPPED
+
+**Status**: shipped. Closes the last 4 of the actionable CS-3 HIGH findings (architectural HIGHs from theo deferred to H.5.5/H.5.6 since they need different scope decisions).
+
+What landed:
+- New `hooks/scripts/_lib/file-path-pattern.js` (shared filePath extractor); de-duped + extended for Windows + quoted-paths-with-spaces (blair H-4)
+- `${CLAUDE_PLUGIN_ROOT}` verification in `session-reset.js` (kai H-4)
+- README: explicit marketplace.json layout note (rafael HIGH-1)
+- README: removed "legacy" / "deprecated" framings around install.sh (rafael HIGH-2)
+
+E2E validated 5 probes. contracts-validate: 0 violations.
+
+**Architectural HIGHs from theo (deferred — need scope decisions, not pure fixes)**:
+- `hierarchical-aggregate.js` location drift (5 chaos runs unmoved) — decide: relocate or document. Either way ~10 min.
+- Builders 06-12 unproven tier — H.5.6 (or rename to H.5.5) dogfood run; pick a real task, run `/build-team`, populate trust-formula data.
+- `_lib/` directory of one — extract `_lib/runState.js` from the 4 scripts that resolve `swarm/run-state/` paths; ~30 min refactor.
+
+**Remaining CS-3 MEDIUM/LOW** (not addressed in this phase; deferred to next chaos cycle to see if they re-surface):
+- `inferKindFromSignal` default-allow (kai M-1)
+- Frontmatter validator: no YAML parse (blair M-2 / kai M-2)
+- parseFrontmatter strip-quotes permissive (kai M-3)
+- `newCandidateId` 24-bit collision risk (kai L-1) — partially closed by H.5.3 tmp-suffix fix
+- scanContent regex stateful-ness brittle (kai L-2)
+
 ## Phase H.5.3 — self-improve-store hardening + frontmatter BOM — SHIPPED
 
 **Status**: shipped. Closes 6 CS-3 HIGH findings clustered around `scripts/self-improve-store.js` robustness + 1 frontmatter validator cross-platform issue.

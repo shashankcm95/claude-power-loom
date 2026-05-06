@@ -115,6 +115,7 @@ After CONTRIBUTING.md adoption, all prior phase commits were tagged in place (an
 | `phase-H.5.1` | `1103137` | Pattern status sync (9 → active) + KB exemption documentation (CS-3 Track 1 fixes) |
 | `phase-H.5.2` | `24630d6` | CS-3 CRIT bundle (5 fixes: kb_scope provenance, secrets validator hardening, README consistency) |
 | `phase-H.5.3` | `cbb577f` | Self-improve-store hardening + frontmatter BOM (6 CS-3 HIGHs) |
+| `phase-H.5.4` | (TBD) | Remaining CS-3 HIGH cluster (filePath regex + CLAUDE_PLUGIN_ROOT verification + README clarity) |
 
 `d166add` (README refresh through H.2.4) and `90b87ac` (chat-scan BACKLOG additions) were doc-only commits — no tags (matches "trivial docs allowed direct on main" rule).
 

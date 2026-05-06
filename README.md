@@ -11,12 +11,16 @@
 /plugin marketplace add shashankcm95/claude-skills-consolidated
 /plugin install claude-skills-consolidated
 
-# Or via the legacy installer (fallback for manual setups)
+# Or via the legacy installer (kept for environments without /plugin support)
 git clone https://github.com/shashankcm95/claude-skills-consolidated.git ~/Documents/claude-toolkit
 cd ~/Documents/claude-toolkit && ./install.sh --all
 ```
 
 After install, restart Claude Code (or run `/reload-plugins`).
+
+> **Plugin manifest layout** — `.claude-plugin/plugin.json` lives in the conventional `.claude-plugin/` directory. `marketplace.json` lives at the **repository root** (so `/plugin marketplace add owner/repo` finds it via `source: "."`). This is the official Claude Code plugin layout — both files are required, just in different locations.
+
+> **Install path equivalence** — both paths produce the same on-disk state in `~/.claude/`. The `install.sh` route is kept indefinitely as a fallback for users in environments without `/plugin marketplace add` support (older Claude Code, restricted-network deployments, etc.) — it is **not** deprecated. Pick whichever fits your setup.
 
 ## What separates this from typical Claude plugins
 

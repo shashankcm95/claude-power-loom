@@ -12,17 +12,17 @@ const os = require('os');
 const { log } = require('./_log.js');
 const logger = log('pre-compact-save');
 
+// H.5.4 (CS-3 code-reviewer.blair H-4): file-path regex now lives in shared
+// `_lib/file-path-pattern.js` (de-duped from auto-store-enrichment.js). New
+// extractor adds Windows + quoted-paths-with-spaces coverage.
+const { extractFilePaths } = require('./_lib/file-path-pattern');
+
 // Deterministic checkpoint: extract key signals from the input
 function extractCheckpoint(inputText) {
   const timestamp = new Date().toISOString();
   const cwd = process.cwd();
 
-  // Extract file paths mentioned in the conversation (heuristic).
-  // Phase-E4: tightened regex — require ≥2 directory segments and a
-  // 1-10 char extension. Avoids matching version numbers (/3.2.1) and
-  // URL path components (/oauth/token.json fragments).
-  const filePathPattern = /(?:\/[\w.-]+){2,}\.\w{1,10}/g;
-  const mentionedFiles = [...new Set(inputText.match(filePathPattern) || [])].slice(0, 20);
+  const mentionedFiles = [...extractFilePaths(inputText)].slice(0, 20);
 
   return {
     timestamp,

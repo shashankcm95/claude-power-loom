@@ -13,6 +13,19 @@ const logger = log('session-reset');
 const SESSION_ID = process.env.CLAUDE_SESSION_ID || process.env.CLAUDE_CONVERSATION_ID || String(process.ppid || 'default');
 const TRACKER_PATH = path.join(os.tmpdir(), `claude-read-tracker-${SESSION_ID}.json`);
 
+// H.5.4 (CS-3 hacker.kai H-4): probe whether the harness expands
+// ${CLAUDE_PLUGIN_ROOT} in hook commands. If we're running from a plugin
+// install, CLAUDE_PLUGIN_ROOT is set in the env at hook-fire time. If the
+// harness silently failed to expand the placeholder, the env var is empty
+// AND the script's own __dirname doesn't match a plugin-managed install
+// path — this is the "plugin manifest exists but isn't being loaded" failure
+// mode. Logging at SessionStart gives operators visibility before any
+// security hook silently no-ops.
+const PLUGIN_ROOT = process.env.CLAUDE_PLUGIN_ROOT || '';
+const SCRIPT_DIR = __dirname;
+const looksLikePluginInstall = SCRIPT_DIR.includes('/plugins/') || SCRIPT_DIR.includes('/.claude-plugin/');
+const placeholderUnexpanded = PLUGIN_ROOT.includes('${') || PLUGIN_ROOT === '';
+
 try {
   // Use the same atomic-rename pattern that fact-force-gate uses on this file
   // (writers must be consistent or readers see partial JSON).
@@ -22,7 +35,21 @@ try {
     sessionStart: Date.now(),
   }, null, 2));
   fs.renameSync(tmpPath, TRACKER_PATH);
-  logger('reset', { sessionId: SESSION_ID });
+  logger('reset', {
+    sessionId: SESSION_ID,
+    pluginRoot: PLUGIN_ROOT || '(unset)',
+    scriptDir: SCRIPT_DIR,
+    looksLikePluginInstall,
+  });
+  if (looksLikePluginInstall && placeholderUnexpanded) {
+    process.stderr.write(
+      '[session-reset] WARNING: hooks appear to be running from a plugin ' +
+      'install location but CLAUDE_PLUGIN_ROOT is unset or unexpanded. ' +
+      'Other hooks using ${CLAUDE_PLUGIN_ROOT} substitution may silently ' +
+      'fail to resolve. Check your Claude Code version + plugin loader.\n'
+    );
+    logger('plugin_root_warning', { reason: 'unset_in_plugin_context' });
+  }
 
   const tmpDir = os.tmpdir();
   const files = fs.readdirSync(tmpDir);

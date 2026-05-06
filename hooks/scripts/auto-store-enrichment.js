@@ -182,14 +182,16 @@ function resolveSelfImproveScript() {
 }
 const SELF_IMPROVE_SCRIPT = resolveSelfImproveScript();
 
-// Heuristic: harvest signal types from the assistant's response text.
-// Cheap, deterministic, no LLM. Same regex shape as pre-compact-save.js.
+// H.5.4 (CS-3 code-reviewer.blair H-4): file-path regex extracted to a shared
+// `_lib/file-path-pattern.js` module so the regex shape is single-sourced (was
+// duplicated in pre-compact-save.js). New extractor handles Unix paths,
+// Windows paths (drive-letter + backslash), and quoted paths-with-spaces.
+const { extractFilePaths } = require('./_lib/file-path-pattern');
+
 function extractSignals(text) {
   const signals = [];
-  // File paths (≥2 segments + extension; matches pre-compact heuristic)
-  const filePathPattern = /(?:\/[\w.-]+){2,}\.\w{1,10}/g;
-  const paths = new Set(text.match(filePathPattern) || []);
-  for (const p of paths) signals.push('filePath:' + p);
+  // File paths via shared extractor (Unix + Windows + quoted-with-spaces)
+  for (const p of extractFilePaths(text)) signals.push('filePath:' + p);
   // Slash-command invocations the user is running
   const cmdPattern = /(?<![\w/-])\/([a-z][a-z0-9-]+)(?=\s|$|[.,;:!?])/g;
   const cmds = new Set();
