@@ -122,7 +122,7 @@ After CONTRIBUTING.md adoption, all prior phase commits were tagged in place (an
 | `phase-H.6.1` | `712bdad` | First abstract-task orchestration walkthrough (7 gaps surfaced; spawn aborted) |
 | `phase-H.6.2` | `08eb0a2` | Stack-skill-map extension (Backend — Node entry; pointers for 14-python-backend) |
 | `phase-H.6.4` | `08eb0a2` | New 13-node-backend persona + contract + 2 KB docs (closes H.6.1 routing gap) — same SHA as H.6.2 (shipped together) |
-| `phase-H.6.3` | (TBD) | `agent-identity assign` surfaces `forgeNeeded` field at assign-time (closes last H.6.1 gap) |
+| `phase-H.6.3` | `8cfc4ca` | `agent-identity assign` surfaces `forgeNeeded` field at assign-time (closes last H.6.1 gap) |
 
 `d166add` (README refresh through H.2.4) and `90b87ac` (chat-scan BACKLOG additions) were doc-only commits — no tags (matches "trivial docs allowed direct on main" rule).
 
