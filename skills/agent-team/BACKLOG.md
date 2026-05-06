@@ -2,6 +2,17 @@
 
 Deferred work from prior phases, captured here so nothing important gets silently dropped. Each entry: scope, rationale, dependencies, rough estimate.
 
+## Phase H.6.0 — spawn-recorder for orchestration-test visibility — SHIPPED
+
+**Status**: shipped. Foundational tooling for H.6.x orchestration tests. New `scripts/agent-team/spawn-recorder.js` captures per-spawn audit data (persona, identity, skills resolved, kb_scope read/declared, verdict, tokens, wallclock, gaps surfaced) into `~/.claude/spawn-history.jsonl`.
+
+The `gaps` aggregator is the load-bearing subcommand — surfaces recurring orchestration gaps across multi-run test batches (e.g., "skill-forge not auto-triggered" recurring across multiple tasks).
+
+**H.6.x follow-ups**:
+- **H.6.1** — first abstract-task orchestration test ("Add rate limiting to my Express API") — captures what gets invoked vs what we expected
+- **H.6.2** — batch 4 more orchestration tests across diverse domains (security, devops, data, frontend)
+- **H.6.3** — analyze recurring gaps; decide which to fix as code (e.g., auto-trigger forge), which to fix as docs (e.g., disambiguate task → persona routing rules)
+
 ## Phase H.5.7 — builder contract shape (NEW from H.5.6 dogfood)
 
 **Status**: not yet started. Surfaced as H-1 by `12-security-engineer.mio` during the H.5.6 dogfood run.
