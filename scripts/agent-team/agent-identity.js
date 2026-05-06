@@ -42,6 +42,7 @@ const DEFAULT_ROSTERS = {
   '10-devops-sre': ['iris', 'hugo', 'jules'],           // shipped H.2.2
   '11-data-engineer': ['fin', 'niko', 'rae'],           // shipped H.2.2
   '12-security-engineer': ['vlad', 'mio', 'eli'],       // shipped H.2.2
+  '13-node-backend': ['noor', 'evan', 'kira'],          // shipped H.6.4 — closes Express/Node routing gap surfaced in H.6.1
 };
 
 function parseArgs(argv) {

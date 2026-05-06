@@ -70,7 +70,15 @@ rationale: Spring Boot is the JVM service default; data-engineer joins for DB-he
 required: [python-web-framework]
 recommended: [engineering:system-design, engineering:code-review, engineering:debug, engineering:testing-strategy]
 personas: [07-java-backend]
-rationale: 07-java-backend persona is the closest match for general backend work; python-web-framework skill is not-yet-authored (bootstrap path applies)
+rationale: 07-java-backend persona is the closest match for general backend work; python-web-framework skill is not-yet-authored (bootstrap path applies). Long-term: warrants its own 14-python-backend persona — track in BACKLOG.
+```
+
+#### Backend — Node / Express / NestJS service
+```yaml
+required: [node-backend-development]
+recommended: [express, nest-js, typescript, postgres-engineering, engineering:system-design, engineering:debug, engineering:testing-strategy, engineering:deploy-checklist, engineering:code-review]
+personas: [13-node-backend]
+rationale: Async-first runtime, single-threaded event loop, JS/TS ecosystem. 13-node-backend persona has Node-specific kb_scope (node-runtime-basics + express-essentials); skills are aspirational (not-yet-authored — bootstrap path applies). Closes the H.6.1 routing gap where Express tasks couldn't be coherently routed.
 ```
 
 #### Data — ETL pipeline

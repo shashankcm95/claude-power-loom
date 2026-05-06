@@ -2,6 +2,14 @@
 
 Deferred work from prior phases, captured here so nothing important gets silently dropped. Each entry: scope, rationale, dependencies, rough estimate.
 
+## Phase H.6.2 + H.6.4 — Node/Express routing coherence — SHIPPED
+
+**Status**: shipped. Closes the load-bearing routing-coherence gap from H.6.1 (Express tasks couldn't be coherently routed). New `13-node-backend` persona with Node-specific contract + KB scope + identity roster; stack-skill-map extended with Backend — Node entry; 2 new KB docs (`node-runtime-basics`, `express-essentials`); re-run of H.6.1 task-1 routing walkthrough now succeeds.
+
+**Open follow-ups**:
+- **H.6.3** — auto-trigger skill-forge from `agent-identity assign` when contract has `not-yet-authored` skills (the only remaining gap from H.6.1; ~50 LoC, queued next)
+- **14-python-backend** persona — same gap shape as 13-node-backend, lower urgency (Backend — Python entry still routes to 07-java-backend as placeholder)
+
 ## Phase H.6.4 — persona/contract coherence for non-JVM backends (NEW from H.6.1)
 
 **Status**: not yet started. Surfaced as GAPs 4-7 in H.6.1 orchestration walkthrough.

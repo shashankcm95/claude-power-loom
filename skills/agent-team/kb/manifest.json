@@ -1,6 +1,21 @@
 {
   "version": 1,
   "entries": {
+    "backend-dev/express-essentials": {
+      "path": "backend-dev/express-essentials.md",
+      "version": 1,
+      "hash": "606c3f7df84b8892203bc077178453e83cf9d94014f4210c649ad1302260afd8",
+      "shortHash": "606c3f7d",
+      "tags": [
+        "backend",
+        "node",
+        "express",
+        "middleware",
+        "http",
+        "rate-limiting"
+      ],
+      "lastUpdated": "2026-05-06T12:33:55.295Z"
+    },
     "backend-dev/jvm-runtime-basics": {
       "path": "backend-dev/jvm-runtime-basics.md",
       "version": 1,
@@ -14,7 +29,22 @@
         "threading",
         "starter"
       ],
-      "lastUpdated": "2026-05-02T16:18:11.362Z"
+      "lastUpdated": "2026-05-06T12:33:55.300Z"
+    },
+    "backend-dev/node-runtime-basics": {
+      "path": "backend-dev/node-runtime-basics.md",
+      "version": 1,
+      "hash": "09596832a61868daeb9d369c1c3437c2713231ff2a81e849e80fe8e42e71798e",
+      "shortHash": "09596832",
+      "tags": [
+        "backend",
+        "node",
+        "javascript",
+        "typescript",
+        "runtime",
+        "async"
+      ],
+      "lastUpdated": "2026-05-06T12:33:55.300Z"
     },
     "backend-dev/spring-boot-essentials": {
       "path": "backend-dev/spring-boot-essentials.md",
@@ -28,7 +58,7 @@
         "spring-boot",
         "starter"
       ],
-      "lastUpdated": "2026-05-02T16:18:11.367Z"
+      "lastUpdated": "2026-05-06T12:33:55.300Z"
     },
     "data-dev/data-modeling-basics": {
       "path": "data-dev/data-modeling-basics.md",
@@ -42,7 +72,7 @@
         "warehouse",
         "starter"
       ],
-      "lastUpdated": "2026-05-02T16:18:11.367Z"
+      "lastUpdated": "2026-05-06T12:33:55.301Z"
     },
     "data-dev/orchestration-essentials": {
       "path": "data-dev/orchestration-essentials.md",
@@ -57,7 +87,7 @@
         "idempotency",
         "starter"
       ],
-      "lastUpdated": "2026-05-02T16:18:11.367Z"
+      "lastUpdated": "2026-05-06T12:33:55.301Z"
     },
     "hets/challenger-conventions": {
       "path": "hets/challenger-conventions.md",
@@ -70,7 +100,7 @@
         "asymmetric",
         "conventions"
       ],
-      "lastUpdated": "2026-05-02T16:18:11.367Z"
+      "lastUpdated": "2026-05-06T12:33:55.301Z"
     },
     "hets/identity-roster": {
       "path": "hets/identity-roster.md",
@@ -82,7 +112,7 @@
         "identity",
         "roster"
       ],
-      "lastUpdated": "2026-05-02T16:18:11.368Z"
+      "lastUpdated": "2026-05-06T12:33:55.301Z"
     },
     "hets/spawn-conventions": {
       "path": "hets/spawn-conventions.md",
@@ -94,13 +124,13 @@
         "conventions",
         "spawn"
       ],
-      "lastUpdated": "2026-05-02T16:18:11.368Z"
+      "lastUpdated": "2026-05-06T12:33:55.305Z"
     },
     "hets/stack-skill-map": {
       "path": "hets/stack-skill-map.md",
       "version": 1,
-      "hash": "7d0df1ae4fa40047c334e68ba3d94447b023e047ed350a5044acda3f94ebda12",
-      "shortHash": "7d0df1ae",
+      "hash": "5c842fc8527394bd59f0b5f76648a2e1bad57cf4be461f94721eab3ff5fe9fa2",
+      "shortHash": "5c842fc8",
       "tags": [
         "hets",
         "stack",
@@ -108,7 +138,7 @@
         "mapping",
         "analyzer"
       ],
-      "lastUpdated": "2026-05-02T16:18:11.368Z"
+      "lastUpdated": "2026-05-06T12:33:55.305Z"
     },
     "hets/symmetric-pair-conventions": {
       "path": "hets/symmetric-pair-conventions.md",
@@ -121,7 +151,7 @@
         "low-trust",
         "conventions"
       ],
-      "lastUpdated": "2026-05-02T16:18:11.368Z"
+      "lastUpdated": "2026-05-06T12:33:55.306Z"
     },
     "infra-dev/kubernetes-essentials": {
       "path": "infra-dev/kubernetes-essentials.md",
@@ -135,7 +165,7 @@
         "k8s",
         "starter"
       ],
-      "lastUpdated": "2026-05-02T16:18:11.369Z"
+      "lastUpdated": "2026-05-06T12:33:55.306Z"
     },
     "infra-dev/observability-basics": {
       "path": "infra-dev/observability-basics.md",
@@ -150,7 +180,7 @@
         "sre",
         "starter"
       ],
-      "lastUpdated": "2026-05-02T16:18:11.369Z"
+      "lastUpdated": "2026-05-06T12:33:55.307Z"
     },
     "ml-dev/pipeline-essentials": {
       "path": "ml-dev/pipeline-essentials.md",
@@ -164,7 +194,7 @@
         "reproducibility",
         "starter"
       ],
-      "lastUpdated": "2026-05-02T16:18:11.369Z"
+      "lastUpdated": "2026-05-06T12:33:55.307Z"
     },
     "ml-dev/training-vs-inference": {
       "path": "ml-dev/training-vs-inference.md",
@@ -179,7 +209,7 @@
         "drift",
         "starter"
       ],
-      "lastUpdated": "2026-05-02T16:18:11.375Z"
+      "lastUpdated": "2026-05-06T12:33:55.307Z"
     },
     "mobile-dev/ios-app-architecture": {
       "path": "mobile-dev/ios-app-architecture.md",
@@ -193,7 +223,7 @@
         "mvvm",
         "tca"
       ],
-      "lastUpdated": "2026-05-02T16:18:11.375Z"
+      "lastUpdated": "2026-05-06T12:33:55.307Z"
     },
     "mobile-dev/swift-essentials": {
       "path": "mobile-dev/swift-essentials.md",
@@ -206,7 +236,7 @@
         "swift",
         "language"
       ],
-      "lastUpdated": "2026-05-02T16:18:11.376Z"
+      "lastUpdated": "2026-05-06T12:33:55.308Z"
     },
     "security-dev/auth-patterns": {
       "path": "security-dev/auth-patterns.md",
@@ -222,7 +252,7 @@
         "mfa",
         "starter"
       ],
-      "lastUpdated": "2026-05-02T16:18:11.376Z"
+      "lastUpdated": "2026-05-06T12:33:55.308Z"
     },
     "security-dev/threat-modeling-essentials": {
       "path": "security-dev/threat-modeling-essentials.md",
@@ -236,7 +266,7 @@
         "attack-trees",
         "starter"
       ],
-      "lastUpdated": "2026-05-02T16:18:11.376Z"
+      "lastUpdated": "2026-05-06T12:33:55.308Z"
     },
     "web-dev/react-essentials": {
       "path": "web-dev/react-essentials.md",
@@ -249,7 +279,7 @@
         "react",
         "javascript"
       ],
-      "lastUpdated": "2026-05-02T16:18:11.376Z"
+      "lastUpdated": "2026-05-06T12:33:55.308Z"
     },
     "web-dev/typescript-react-patterns": {
       "path": "web-dev/typescript-react-patterns.md",
@@ -263,7 +293,7 @@
         "typescript",
         "starter"
       ],
-      "lastUpdated": "2026-05-02T16:18:11.377Z"
+      "lastUpdated": "2026-05-06T12:33:55.309Z"
     }
   }
 }

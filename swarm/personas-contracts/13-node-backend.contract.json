@@ -1,0 +1,56 @@
+{
+  "agentId": "actor-node-backend",
+  "persona": "13-node-backend",
+  "role": "actor",
+  "skills": {
+    "required": ["node-backend-development"],
+    "recommended": ["express", "nest-js", "typescript", "postgres-engineering", "engineering:debug", "engineering:testing-strategy", "engineering:deploy-checklist", "engineering:code-review", "engineering:system-design"],
+    "skill_status": {
+      "node-backend-development": "not-yet-authored",
+      "express": "not-yet-authored",
+      "nest-js": "not-yet-authored",
+      "typescript": "not-yet-authored",
+      "postgres-engineering": "not-yet-authored",
+      "engineering:debug": "marketplace:knowledge-work-plugins/engineering",
+      "engineering:testing-strategy": "marketplace:knowledge-work-plugins/engineering",
+      "engineering:deploy-checklist": "marketplace:knowledge-work-plugins/engineering",
+      "engineering:code-review": "marketplace:knowledge-work-plugins/engineering",
+      "engineering:system-design": "marketplace:knowledge-work-plugins/engineering"
+    }
+  },
+  "kb_scope": {
+    "default": [
+      "kb:backend-dev/node-runtime-basics",
+      "kb:backend-dev/express-essentials",
+      "kb:hets/spawn-conventions"
+    ]
+  },
+  "budget": {
+    "tokens": 35000,
+    "extensible": true,
+    "maxExtensions": 1,
+    "extensionAmount": 15000
+  },
+  "functional": [
+    { "id": "F1", "check": "outputContainsFrontmatter", "required": true },
+    { "id": "F2", "check": "frontmatterHasFields", "args": { "fields": ["id", "role", "depth", "parent", "persona", "identity"] }, "required": true },
+    { "id": "F3", "check": "minFindings", "args": { "min": 2 }, "required": true },
+    { "id": "F4", "check": "hasFileCitations", "args": { "min": 4 }, "required": true },
+    { "id": "F5", "check": "hasSeveritySections", "args": { "severities": ["CRITICAL", "HIGH", "MEDIUM", "LOW"] }, "required": true },
+    { "id": "F6", "check": "containsKeywords", "args": { "keywords": ["node", "async"] }, "required": false },
+    { "id": "F7", "check": "noUnrolledLoops", "args": { "maxRepetitions": 5 }, "required": true },
+    { "id": "F8", "check": "noExcessiveNesting", "args": { "maxDepth": 4 }, "required": true },
+    { "id": "F9", "check": "kb_scope_consumed", "required": true }
+  ],
+  "antiPattern": [
+    { "id": "A1", "check": "claimsHaveEvidence", "severity": "fail" },
+    { "id": "A2", "check": "noTextSimilarityToPriorRun", "args": { "threshold": 0.6 }, "severity": "warn" },
+    { "id": "A3", "check": "noTemplateRepetition", "args": { "minVariation": 0.3 }, "severity": "warn" },
+    { "id": "A4", "check": "noPaddingPhrases", "severity": "fail" },
+    { "id": "A5", "check": "acknowledgesFallback", "severity": "warn" }
+  ],
+  "fallbackAcceptable": [
+    "No live service runtime → reasoning from source + traces is acceptable",
+    "Recommended skill not-yet-authored → proceed with required skill + KB; surface gap in Notes"
+  ]
+}
