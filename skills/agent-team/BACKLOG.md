@@ -2,6 +2,35 @@
 
 Deferred work from prior phases, captured here so nothing important gets silently dropped. Each entry: scope, rationale, dependencies, rough estimate.
 
+## Phase H.5.7 — builder contract shape (NEW from H.5.6 dogfood)
+
+**Status**: not yet started. Surfaced as H-1 by `12-security-engineer.mio` during the H.5.6 dogfood run.
+
+**The finding**: the 12-security-engineer contract (and presumably the other 6 builder contracts 06-11 by symmetry) is shaped for audit-report output: `minFindings ≥ 2`, `hasFileCitations ≥ 4`, `hasSeveritySections [CRITICAL, HIGH, MEDIUM, LOW]`, `containsKeywords ["threat"]`, audit-domain `kb_scope`. This works for chaos-test runs where builders simulate adversarial audits. It does NOT work for builders running real engineering tasks: mio had to (a) re-frame contract-editing decisions as numbered findings, (b) pad citations across edited files to hit the threshold, (c) read KB docs that weren't load-bearing for the engineering task, (d) invent severity sections that mostly say "None this run".
+
+**Two design options for H.5.7**:
+
+1. **Separate contract template** — author `builder-engineering-task.contract.json` template with engineering-shaped checks (e.g., `producesValidJSON`, `passesContractsValidate`, `noUnscopedFileEdits`, `decisionsDocumented`). Each builder-on-engineering spawn picks the engineering template instead of its persona contract.
+2. **Conditional checks** — extend persona contracts with `task_type` field (`audit` | `engineering`) and have contract-verifier dispatch different functional checks per type. More complex but keeps personas single-source.
+
+**Estimate**: 1 hr for option 1 (~80 LoC across new template + verifier dispatch). 2 hrs for option 2 (verifier dispatch + per-persona task-type-aware checks).
+
+**Why not block on this for H.5.6**: mio's PASS verdict is genuine (she did the engineering work + the report). The finding is real future work; not a regression in the current substrate.
+
+## Phase H.5.6 — first builder dogfood — SHIPPED
+
+**Status**: shipped. Closes CS-3 architect-theo's last architectural HIGH (builders 06-12 at unproven tier with no real verdicts).
+
+What landed:
+- `12-security-engineer.mio` spawned on the auditor-kb_scope-authoring task (real engineering work, not a fixture)
+- 5 auditor contracts (01-05) now have `kb_scope.default` + opt into `kb_scope_consumed` check
+- contract-verifier verdict: **PASS** across all 9 functional + 5 antiPattern checks
+- mio's identity record updated: passRate=1.0, verdicts.pass=1, skillInvocations.security-audit=1
+- **First-ever builder verdict recorded** — real trust-formula data populated
+- mio surfaced a genuine architectural H-1 finding (contract shape mismatch) — promoted to H.5.7 backlog item
+
+H.4.0's enforcement template now applies symmetrically: producers (builders 06-12) AND consumers (auditors 01-05) all opt into `kb_scope_consumed`.
+
 ## Phase H.5.5 — architectural cleanup — SHIPPED
 
 **Status**: shipped. Closes 2 of theo's 3 architectural HIGHs from CS-3:

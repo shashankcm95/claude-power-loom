@@ -117,6 +117,7 @@ After CONTRIBUTING.md adoption, all prior phase commits were tagged in place (an
 | `phase-H.5.3` | `cbb577f` | Self-improve-store hardening + frontmatter BOM (6 CS-3 HIGHs) |
 | `phase-H.5.4` | `8f6fd28` | Remaining CS-3 HIGH cluster (filePath regex + CLAUDE_PLUGIN_ROOT verification + README clarity) |
 | `phase-H.5.5` | `fe290a7` | Architectural cleanup (aggregator location decided + _lib/runState.js extracted) |
+| `phase-H.5.6` | (TBD) | First builder dogfood run (12-security-engineer.mio authors auditor kb_scope; verdict PASS) |
 
 `d166add` (README refresh through H.2.4) and `90b87ac` (chat-scan BACKLOG additions) were doc-only commits — no tags (matches "trivial docs allowed direct on main" rule).
 

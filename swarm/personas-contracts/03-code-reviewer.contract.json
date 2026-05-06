@@ -12,6 +12,11 @@
       "research-mode": "available"
     }
   },
+  "kb_scope": {
+    "default": [
+      "kb:hets/spawn-conventions"
+    ]
+  },
   "budget": {
     "tokens": 30000,
     "extensible": true,
@@ -23,7 +28,8 @@
     { "id": "F2", "check": "frontmatterHasFields", "args": { "fields": ["id", "role", "depth", "parent", "persona"] }, "required": true },
     { "id": "F3", "check": "minFindings", "args": { "min": 3 }, "required": true },
     { "id": "F4", "check": "hasFileCitations", "args": { "min": 6 }, "required": true },
-    { "id": "F5", "check": "hasSeveritySections", "args": { "severities": ["CRITICAL", "HIGH", "MEDIUM", "LOW"] }, "required": true }
+    { "id": "F5", "check": "hasSeveritySections", "args": { "severities": ["CRITICAL", "HIGH", "MEDIUM", "LOW"] }, "required": true },
+    { "id": "F6", "check": "kb_scope_consumed", "required": true }
   ],
   "antiPattern": [
     { "id": "A1", "check": "claimsHaveEvidence", "severity": "fail" },
