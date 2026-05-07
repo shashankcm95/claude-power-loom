@@ -298,6 +298,34 @@ run_smoke_tests() {
     failed=$((failed + 1))
   fi
 
+  # Test 11 (H.7.7): error-critic Critic→Refiner — first failure stays silent
+  # (below escalation threshold). Wipe failure dir to ensure clean state.
+  local tmp_failures
+  tmp_failures=$(node -e "console.log(require('os').tmpdir())")"/.claude-toolkit-failures"
+  rm -rf "$tmp_failures"
+  local h77_first_result
+  h77_first_result=$(echo '{"tool_name":"Bash","tool_input":{"command":"npm test"},"tool_response":{"stderr":"Error: failed","is_error":true}}' | node "$CLAUDE_DIR/hooks/scripts/error-critic.js" 2>/dev/null)
+  if [ -z "$h77_first_result" ]; then
+    echo "  ✓ error-critic: H.7.7 first failure stays silent (below threshold)"
+    passed=$((passed + 1))
+  else
+    echo "  ✗ error-critic: H.7.7 first failure should be silent — got: ${h77_first_result:0:80}"
+    failed=$((failed + 1))
+  fi
+
+  # Test 12 (H.7.7): error-critic emits [FAILURE-REPEATED] forcing instruction
+  # on the SECOND failure of the same command
+  local h77_second_result
+  h77_second_result=$(echo '{"tool_name":"Bash","tool_input":{"command":"npm test"},"tool_response":{"stderr":"Error: failed again","is_error":true}}' | node "$CLAUDE_DIR/hooks/scripts/error-critic.js" 2>/dev/null)
+  if echo "$h77_second_result" | grep -q 'FAILURE-REPEATED'; then
+    echo "  ✓ error-critic: H.7.7 [FAILURE-REPEATED] forcing instruction on 2nd same-command failure"
+    passed=$((passed + 1))
+  else
+    echo "  ✗ error-critic: H.7.7 [FAILURE-REPEATED] missing on 2nd failure — got: ${h77_second_result:0:80}"
+    failed=$((failed + 1))
+  fi
+  rm -rf "$tmp_failures"
+
 
   echo ""
   echo "  Results: $passed passed, $failed failed"

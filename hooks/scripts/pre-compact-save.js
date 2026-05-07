@@ -17,6 +17,79 @@ const logger = log('pre-compact-save');
 // extractor adds Windows + quoted-paths-with-spaces coverage.
 const { extractFilePaths } = require('./_lib/file-path-pattern');
 
+// H.7.7: workflow-state-aware injection. The pre-compact context loss is
+// most painful mid-orchestration (build-team in progress, chaos-test running,
+// architect+builder pair-run between spawns). Detect active orchestration
+// state from `swarm/run-state/<run-id>/` directories and inject the active
+// run-id + role hints alongside the SAVE_PROMPT so post-compact Claude can
+// resume coherently. Mirrors cep's `precompact-rules.sh` pattern.
+//
+// The detection is best-effort: if the toolkit canonical path isn't present
+// in the user's repo (this hook may run from any cwd), state detection
+// silently no-ops and the hook behaves as before. Pure additive.
+const TOOLKIT_RUN_STATE_CANDIDATES = [
+  // Most common path on the author's machine; users may need to override.
+  path.join(os.homedir(), 'Documents', 'claude-toolkit', 'swarm', 'run-state'),
+  // Alternative if cwd happens to be the toolkit
+  path.join(process.cwd(), 'swarm', 'run-state'),
+];
+
+/**
+ * Detect any in-progress orchestration runs by listing swarm/run-state/
+ * directories that have node-actor-*.md files but no terminal verdict
+ * marker. Returns up to 3 most-recent run-ids with their actor counts.
+ *
+ * Best-effort: returns empty array on any error (missing dir, permission
+ * issues, etc.) so the hook never blocks.
+ *
+ * @returns {Array<{runId: string, actors: number, mtime: number}>}
+ */
+function detectActiveOrchestrationRuns() {
+  for (const baseDir of TOOLKIT_RUN_STATE_CANDIDATES) {
+    try {
+      if (!fs.existsSync(baseDir)) continue;
+      const runs = fs.readdirSync(baseDir)
+        .map((runId) => {
+          try {
+            const runDir = path.join(baseDir, runId);
+            const stat = fs.statSync(runDir);
+            if (!stat.isDirectory()) return null;
+            const actors = fs.readdirSync(runDir).filter((f) => f.startsWith('node-actor-') && f.endsWith('.md')).length;
+            if (actors === 0) return null;
+            return { runId, actors, mtime: stat.mtimeMs };
+          } catch {
+            return null;
+          }
+        })
+        .filter(Boolean)
+        // Recent first; cap to last 3 to keep injection compact
+        .sort((a, b) => b.mtime - a.mtime)
+        .slice(0, 3);
+      return runs;
+    } catch {
+      // try next candidate
+    }
+  }
+  return [];
+}
+
+/**
+ * Build a workflow-state suffix to append to the SAVE_PROMPT. Compact —
+ * one section, max ~200 chars per active run. Only emitted when at least
+ * one active run is detected; otherwise empty string (no noise).
+ *
+ * @param {Array} activeRuns Output of detectActiveOrchestrationRuns()
+ * @returns {string} Markdown-formatted suffix or empty string
+ */
+function buildWorkflowStateSuffix(activeRuns) {
+  if (!activeRuns || activeRuns.length === 0) return '';
+  const lines = activeRuns.map((r) => {
+    const ageMin = Math.round((Date.now() - r.mtime) / 60000);
+    return `  - \`${r.runId}\` (${r.actors} actor${r.actors === 1 ? '' : 's'} written; last update ${ageMin}m ago)`;
+  });
+  return `\n\n## Active orchestration runs (workflow state — H.7.7)\n\nThe following swarm/run-state runs have actor outputs but may be mid-cycle:\n\n${lines.join('\n')}\n\nIf compaction loses orchestration context, refer to the run-id directory directly: \`swarm/run-state/<run-id>/\`. Resume from the most recent actor file.`;
+}
+
 // Deterministic checkpoint: extract key signals from the input
 function extractCheckpoint(inputText) {
   const timestamp = new Date().toISOString();
@@ -127,10 +200,22 @@ process.stdin.on('end', () => {
     logger('self_improve_scan_error', { error: err.message });
   }
 
+  // H.7.7: detect active orchestration runs for workflow-state-aware injection
+  let workflowSuffix = '';
+  try {
+    const activeRuns = detectActiveOrchestrationRuns();
+    workflowSuffix = buildWorkflowStateSuffix(activeRuns);
+    if (activeRuns.length > 0) {
+      logger('workflow_state_detected', { count: activeRuns.length, runIds: activeRuns.map((r) => r.runId) });
+    }
+  } catch (err) {
+    logger('workflow_state_error', { error: err.message });
+  }
+
   // Only emit SAVE_PROMPT when the checkpoint was actually written.
   // Otherwise Claude would be told to reference a file that doesn't exist.
   const suffix = checkpointOk
-    ? '\n\n---\n' + SAVE_PROMPT
-    : '\n\n---\n[pre-compact-save: checkpoint write failed — MemPalace instruction skipped to avoid hallucinated file references]';
+    ? '\n\n---\n' + SAVE_PROMPT + workflowSuffix
+    : '\n\n---\n[pre-compact-save: checkpoint write failed — MemPalace instruction skipped to avoid hallucinated file references]' + workflowSuffix;
   process.stdout.write(input + suffix);
 });
