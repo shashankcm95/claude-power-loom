@@ -40,6 +40,17 @@ const logger = log('validate-plan-schema');
 // Uses non-capturing group with anchor at start-of-string OR slash boundary.
 const PLAN_PATH_RE = /(?:^|\/)\.claude\/plans\/[^\/]+\.md$/;
 
+// H.7.15 (drift-note 12) — custom plan path support via CLAUDE_PLAN_DIR env var.
+// When set, files under that directory ALSO trigger plan-schema validation
+// (in addition to the canonical `.claude/plans/` matcher). Backwards-compatible:
+// the canonical path still works regardless of env var.
+//
+// Useful for users with custom plan directories (e.g., `~/my-plans/`,
+// project-relative `docs/plans/`) who want H.7.12's tiered enforcement.
+const CUSTOM_PLAN_DIR = process.env.CLAUDE_PLAN_DIR
+  ? process.env.CLAUDE_PLAN_DIR.replace(/\/$/, '') // strip trailing slash for prefix-match
+  : null;
+
 // Tier 1: always required (truly load-bearing sections).
 // Context = "why now"; Verification Probes = "how to confirm"; one of (Files
 // To Modify | Phases) = "what is being changed". Missing any is a serious gap.
@@ -70,14 +81,22 @@ function hasH2Heading(content, sectionName) {
 }
 
 /**
- * Path filter — only `.claude/plans/*.md` files are in scope.
+ * Path filter — files in scope are: (a) under `.claude/plans/` (canonical,
+ * always enforced), or (b) under `$CLAUDE_PLAN_DIR/` if env var is set
+ * (H.7.15 drift-note 12 — custom plan path support). Path matcher requires
+ * `.md` extension in both branches.
  *
  * @param {string} filePath Absolute or relative file path
  * @returns {boolean} true if path is a plan file
  */
 function isPlanPath(filePath) {
   if (!filePath) return false;
-  return PLAN_PATH_RE.test(filePath);
+  if (PLAN_PATH_RE.test(filePath)) return true;
+  // H.7.15 — env-var custom path; only check `.md` files under that dir
+  if (CUSTOM_PLAN_DIR && filePath.startsWith(CUSTOM_PLAN_DIR + '/') && filePath.endsWith('.md')) {
+    return true;
+  }
+  return false;
 }
 
 /**

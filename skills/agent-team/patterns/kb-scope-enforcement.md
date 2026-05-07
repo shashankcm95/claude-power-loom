@@ -2,7 +2,7 @@
 pattern: kb-scope-enforcement
 status: active
 intent: Verify actor consumed every KB doc declared in `contract.kb_scope.default` by scanning the transcript for `kb-resolver cat` / `resolve` / `Read kb/<id>.md` invocations.
-related: [shared-knowledge-base, content-addressed-refs, persona-skills-mapping, hets]
+related: [shared-knowledge-base, content-addressed-refs, persona-skills-mapping, hets, validator-conventions]
 ---
 
 ## Summary

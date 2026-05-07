@@ -420,6 +420,21 @@ run_smoke_tests() {
     passed=$((passed + 1))
   fi
 
+  # Test 18 (H.7.15): drift-note 12 — custom plan path via CLAUDE_PLAN_DIR env var
+  # With env var set, .md files under that path also get tiered-schema enforcement.
+  # Same JSON as test 17 (path /tmp/custom-plans/test.md missing Tier 1 sections);
+  # without env var: silent (test 17-style); with env var: forcing instruction fires.
+  local h7_15_custom_path_json='{"tool_name":"Write","tool_input":{"file_path":"/tmp/custom-plans/test.md","content":"# Title\n\n## Context\nbody\n"}}'
+  local h7_15_custom_result
+  h7_15_custom_result=$(printf '%s' "$h7_15_custom_path_json" | CLAUDE_PLAN_DIR=/tmp/custom-plans node "$CLAUDE_DIR/hooks/scripts/validators/validate-plan-schema.js" 2>&1)
+  if echo "$h7_15_custom_result" | grep -q '\[PLAN-SCHEMA-DRIFT\]' && echo "$h7_15_custom_result" | grep -q 'Tier 1'; then
+    echo "  ✓ validate-plan-schema: H.7.15 CLAUDE_PLAN_DIR env var enables custom plan path enforcement"
+    passed=$((passed + 1))
+  else
+    echo "  ✗ validate-plan-schema: H.7.15 CLAUDE_PLAN_DIR env var should fire forcing instruction on custom path"
+    failed=$((failed + 1))
+  fi
+
 
   echo ""
   echo "  Results: $passed passed, $failed failed"

@@ -2,6 +2,74 @@
 
 Deferred work from prior phases, captured here so nothing important gets silently dropped. Each entry: scope, rationale, dependencies, rough estimate.
 
+## Phase H.7.15 — Drift-note housekeeping (mechanical fixes + process codification) — SHIPPED
+
+**Status**: shipped per approved plan. Bundle phase closing 5 of 7 truly-pending or partially-pending drift-notes from this session. Per AskUserQuestion, scoped to mechanical + process work only; architectural drift-notes 9 + 10 deferred to H.7.16 (need design / empirical investigation that doesn't fit the mechanical-fix shape).
+
+### Drift-notes addressed
+
+| Drift-note | Type | Status |
+|------------|------|--------|
+| 12 — Custom plan path validation | Mechanical | CLOSED — `CLAUDE_PLAN_DIR` env var support |
+| 13-audit — Other install subdir-glob bugs | Audit | CLOSED — no other instances found |
+| 5 — CI dogfood discipline | Process | CODIFIED — new `workflow.md` section |
+| 7 — Validator concerns conflation | Process | CODIFIED — `validator-conventions.md` Convention A |
+| 8 — Validator stderr documentation | Process | CODIFIED — `validator-conventions.md` Convention B |
+
+### What landed
+
+- **`hooks/scripts/validators/validate-plan-schema.js`**: extended `isPlanPath()` to also match files under `process.env.CLAUDE_PLAN_DIR` (drift-note 12). Backwards-compatible — canonical `~/.claude/plans/` matcher still fires. Path-match still requires `.md` extension. Documented inline.
+- **`install.sh` test 18**: verifies env-var path matching. With `CLAUDE_PLAN_DIR=/tmp/custom-plans`, a write to `/tmp/custom-plans/test.md` missing Tier 1 sections fires `[PLAN-SCHEMA-DRIFT]`. Without env var: same path stays silent. 17/17 → 18/18 smoke.
+- **Drift-note 13 audit results** (closed by audit, no fixes):
+  - `install_agents` (`agents/*.md`) — no subdirs, safe
+  - `install_rules` — uses `cp -r`, handles subdirs (`core`, `typescript`, `web`)
+  - `install_commands` (`commands/*.md`) — no subdirs, safe
+  - `install_skills` — uses `cp -r`, handles per-skill subdirs
+  - `install_hooks` — already fixed in H.7.12 to copy `validators/` + `_lib/`
+- **`rules/core/workflow.md`**: NEW section "CI infrastructure changes (H.7.15)" codifying drift-note 5. Three rules: (1) validate against clean/non-author environment before merging; (2) dogfood discipline (try as fresh contributor); (3) explicit subdir verification + pattern audit for related code.
+- **NEW `skills/agent-team/patterns/validator-conventions.md`** (~165 LoC, pattern #17): codifies drift-notes 7 + 8 as a single pattern with two conventions:
+  - **Convention A**: separation of repo-internal and external-dependency concerns. Validators that mix "is this repo internally consistent?" with "are external dependencies installed?" must gate the external check on environmental signals (e.g., `MARKETPLACE_BASE` non-empty), not enforce unconditionally. Reference: `contracts-validate.js`'s `contract-skill-status-values` validator (H.7.10).
+  - **Convention B**: self-documenting stderr messages. Validator stderr output must explain WHY (gate variable + expected scenario), not just report status. Reference: `contracts-validate.js` marketplace skip message + `validate-plan-schema.js` Tier 3 message.
+- **`patterns/README.md`**: 16 → 17 patterns; new row for `validator-conventions`.
+- **Bidirectional frontmatter reverse-links**: added `validator-conventions` to `related:` array of `route-decision.md`, `structural-code-review.md`, `kb-scope-enforcement.md` (closes 3 contract-validator violations).
+
+### Verification
+
+- ✓ Probe 1: `bash install.sh --hooks --test` → **18/18 passing** (was 17/17; +1 H.7.15 test for env-var path matching)
+- ✓ Probe 2: `node scripts/agent-team/contracts-validate.js` → 0 violations
+- ✓ Probe 3: `node scripts/agent-team/_h70-test.js` → 41/41 passing
+- ✓ Probe 4: `node --check hooks/scripts/validators/validate-plan-schema.js` → syntax-ok
+- ✓ Probe 5: synthetic plan write at custom path → forcing instruction fires
+- ✓ Probe 6: `npx markdownlint-cli2` on new pattern doc + workflow.md → 0 errors
+- ✓ Probe 7: cross-links resolve (patterns/README.md → validator-conventions.md → SKILL.md)
+
+### Drift-notes captured this phase
+
+- **Drift-note 18**: drift-note 13's "audit-part" turned out to be closed by audit alone — no other install steps had the subdir-glob bug. Pattern: not every drift-note becomes a fix; some become "audited, no work needed" outcomes. Worth tracking separately so the phase-numbering map distinguishes "audited-clean" from "active-deferral".
+
+### Honest scope discipline
+
+**What this DOES**: closes 5 of 7 pending drift-notes; codifies validator family conventions; adds CI dogfood rule; extends plan-schema validator for custom paths.
+
+**What this does NOT**:
+- Address drift-note 9 (substrate-meta routing axis) — needs architect spawn for design (route-decide formula change is load-bearing per route-decide.js:11-13). Deferred to H.7.16.
+- Address drift-note 10 (PostToolUse:Write empirical investigation) — non-zero risk that investigation finds the matcher unsupported globally, in which case scope flips to "doc the limitation". Deferred to H.7.16.
+- Add semantic content checks to plan-schema validator (drift-note 12 deeper) — current validator checks section presence only. Future phase.
+- Lint-enforced concerns separation (drift-note 7 deeper) — future phase if needed.
+
+### H.7.15 follow-ups (deferred)
+
+- **H.7.16**: drift-notes 9 + 10 (architectural / investigative)
+- Possibly H.7.17: drift-note 12 deeper + drift-note 7 deeper
+
+### Why this is the right shape
+
+- Closes 5 of 7 pending drift-notes in one ship without scope creep
+- Honors theo's H.7.9 split principle (architectural piece deferred)
+- Net additions modest: 1 NEW pattern doc (~165 LoC) + 1 modified validator + 1 install.sh test + rule additions + 4 frontmatter updates
+- Validator-conventions pattern doc turns implicit conventions into explicit ones — codifies institutional learning
+- Nineteenth distinct phase shape: drift-note housekeeping bundle
+
 ## Phase H.7.14 — Drift-note 6 audit: extract canonical findToolkitRoot helper across substrate — SHIPPED
 
 **Status**: shipped per approved plan. Closes drift-note 6 from this session (*"Multiple substrate scripts have the same hardcoded-toolkit-path anti-pattern. Mira flagged it in pre-compact-save.js (H-1). contracts-validate.js had it too. Audit candidate: scan all `scripts/agent-team/` for hardcoded `~/Documents/claude-toolkit` paths and apply the canonical findToolkitRoot() helper across the family."*)

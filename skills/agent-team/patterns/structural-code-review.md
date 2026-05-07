@@ -2,7 +2,7 @@
 pattern: structural-code-review
 status: active
 intent: The third leg of the "triple contract" defense — pattern checks against code shape, not just output content.
-related: [hets, persona-skills-mapping, convergence-as-signal]
+related: [hets, persona-skills-mapping, convergence-as-signal, validator-conventions]
 ---
 
 ## Summary
