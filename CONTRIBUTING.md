@@ -134,6 +134,7 @@ After CONTRIBUTING.md adoption, all prior phase commits were tagged in place (an
 | `phase-H.7.3` | (TBD) | Route-decision intelligence — deterministic 7-dimension gate at /build-team Step 0 (stakes/novelty/compound/audit/scope/convergence/user-facing); cuts over-routing on trivial tasks (BACKLOG cleanup root) and preserves under-routing protection on compound-stakes tasks (k8s manifest route, URL shortener borderline). theo-architect designed; noor implemented. **n=20 verdict milestone hit — H.7.4 empirical refit unblocked.** |
 | `phase-H.5.7` | (TBD) | Engineering-task contract template (shared generic, mirrors challenger.contract.json shape) + build-team Step 7 task-type heuristic + structural-code-review cross-link — closes M-5 from H.6.9 |
 | `phase-CS-6` | (TBD) | End-user USING.md walkthrough — first asymmetric architect+confused-user pair-run; ari hits HIGH-TRUST (first identity ever); HETS-on-git future-improvement BACKLOG entry bundled |
+| `phase-H.7.4` | (TBD) | Empirical refit of weighted_trust_score weights from accumulated 70 pattern entries — file_citations_per_finding 0.10→0.135 (r=0.439 moderate); tokens override (normative vs descriptive); WEIGHT_PROFILE_VERSION="h7.4-empirical-v1"; first production firing of H.7.1 high-trust spot-check (A2 skipped for ari) |
 
 `d166add` (README refresh through H.2.4) and `90b87ac` (chat-scan BACKLOG additions) were doc-only commits — no tags (matches "trivial docs allowed direct on main" rule).
 

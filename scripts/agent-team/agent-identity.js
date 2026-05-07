@@ -206,9 +206,27 @@ function aggregateQualityFactors(history) {
 //     (Cohen 1960, Krippendorff 2004 — agreement is the gold-standard reliability signal)
 //   tokens: efficiency penalty (negative direction)
 // All weights tunable in this single object; refit scheduled for H.8.x once n>=20.
+//
+// H.7.4 — Weight profile version. Surfaced in computeWeightedTrustScore output
+// so historical scores can be tagged with their profile-of-origin. Bump on any
+// weight-table or normalization-scale change.
+const WEIGHT_PROFILE_VERSION = "h7.4-empirical-v1";
+
+// H.7.4 — Empirical refit (one-axis adjustment).
+// file_citations_per_finding: 0.10 → 0.135 per Pearson r=0.439 (n=20, moderate
+//   confidence) over the H.6.x→H.7.3 builder verdict accumulation. See
+//   patterns/agent-identity-reputation.md "Empirical Refit (H.7.4)" section.
+// All other weights kept at H.7.2 theory values:
+//   - findings_per_10k, kb_provenance_verified_pct, cap_request_actionability,
+//     convergence_agree_pct: low / insufficient empirical signal at n=20.
+//   - tokens: -0.05 (UNCHANGED). Empirical r=0.288 with positive sign-flip
+//     would be a confound (90:10 imbalanced verdict sample; both fails in lower
+//     token half; substantive tasks → more tokens AND more passes). The negative
+//     weight is a deliberate efficiency penalty (normative), not a descriptive
+//     prediction. See pattern doc "Tokens override rationale" subsection.
 const WEIGHTS = Object.freeze({
   findings_per_10k: 0.10,
-  file_citations_per_finding: 0.10,
+  file_citations_per_finding: 0.135,
   cap_request_actionability: 0.05,
   kb_provenance_verified_pct: 0.10,
   convergence_agree_pct: 0.15,
@@ -337,6 +355,7 @@ function computeWeightedTrustScore(stats, aggregateQF) {
     passRate: Math.round(passRate * 1000) / 1000,
     quality_bonus: Math.round(qualityBonus * 1000) / 1000,
     bonus_capped: bonusCapped,
+    profile: WEIGHT_PROFILE_VERSION,
     components,
     decomposition_note: notes.length === 0 ? 'all axes contributed normally' : notes.join('; '),
   };

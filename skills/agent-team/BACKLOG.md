@@ -2,6 +2,33 @@
 
 Deferred work from prior phases, captured here so nothing important gets silently dropped. Each entry: scope, rationale, dependencies, rough estimate.
 
+## Phase H.7.4 — Empirical refit of weighted_trust_score weights — SHIPPED
+
+**Status**: shipped via corrected autonomous-platform pattern (ari design-review + evan implementation; convergence agree). Closes the H.6.6 commitment to design weights from data, not theory.
+
+**What landed**:
+- NEW `scripts/agent-team/weight-fit.js` (~330 LoC, pure analysis, Pearson r + linear regression)
+- `agent-identity.js`: `WEIGHTS.file_citations_per_finding 0.10 → 0.135`; new `WEIGHT_PROFILE_VERSION = "h7.4-empirical-v1"`
+- Pattern doc: new "Empirical Refit (H.7.4)" subsection
+- **First production firing of H.7.1 high-trust spot-check**: A2 marked `skipped` for HIGH-TRUST ari
+
+**Empirical results** (transparent + auditable):
+- `file_citations_per_finding`: r=0.439, moderate, **adjust** (0.10→0.135)
+- `tokens`: empirical wants flip; ari overrode (normative not descriptive; sample-censoring confound)
+- 4 other axes: keep theory-driven (sparse data or weak correlation)
+
+**Bonus-cap math change**: H.7.2 positives = 0.50 (cap unreachable); H.7.4 positives = 0.535 (cap reachable from above).
+
+**`tierOf` UNCHANGED** — H.4.2 commitment.
+
+**H.7.4 follow-ups (deferred to H.7.5)**:
+- Bootstrap confidence intervals for weight-fit.js
+- Verdict-class-imbalance handling (90:10 pass:fail)
+- Near-constant-predictor detection (kb_provenance dominated by false)
+- Refit cap_request_actionability + kb_provenance when n≥10
+- Per-persona weight calibration
+- Full breeding mechanics (parent-child propagation, retire-and-replace cycles) — original H.7.0 chicken-breeding vision; partially fulfilled (weight-design half), deferred for use cases
+
 ## CS-13 — IRL test environment isolation (env-var completion)
 
 **Status**: partial — directory + 2 of 4 env vars work today. Open work for full isolation.

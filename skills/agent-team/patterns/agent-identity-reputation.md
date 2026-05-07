@@ -128,7 +128,7 @@ Source of truth: `computeWeightedTrustScore(stats, aggregateQF)` in `scripts/age
 | Axis | Weight | Direction | Citation / Rationale |
 |------|--------|-----------|----------------------|
 | `findings_per_10k` | +0.10 | positive | Dunsmore 2003: review effectiveness ~ defect density. Higher findings density per token = more efficient signal. |
-| `file_citations_per_finding` | +0.10 | positive | Bacchelli & Bird MSR 2013: evidence depth ~ review quality. Each finding citing more files = stronger grounding. |
+| `file_citations_per_finding` | +0.135 | positive | Bacchelli & Bird MSR 2013: evidence depth ~ review quality. **Empirical refit H.7.4** (Pearson r=0.439, n=20, moderate confidence) — adjusted from theory's +0.10. See "Empirical Refit (H.7.4)" subsection below. |
 | `cap_request_actionability` | +0.05 | positive | Half-weight; small sample size at H.7.2 (n=1 record on disk). Diagnostic-instinct signal. |
 | `kb_provenance_verified_pct` | +0.10 | positive | Contract compliance — equal weight to evidence axes. Represents discipline. |
 | `convergence_agree_pct` | +0.15 | positive | HIGHEST. Cohen 1960 / Krippendorff 2004: inter-rater agreement is the gold-standard reliability signal. |
@@ -136,7 +136,7 @@ Source of truth: `computeWeightedTrustScore(stats, aggregateQF)` in `scripts/age
 
 Bonus cap: `[-0.10, +0.50]`. Asymmetric — bonus differentiates among passers more than it penalizes near-misses.
 
-**Note on tightness**: under the H.7.2 weight table, the max-positive theoretical bonus is **exactly +0.50** (sum of positive weights: 0.10+0.10+0.05+0.10+0.15 = 0.50; tokens contributes ≤0). The cap is therefore mathematically unreachable from above under H.7.2 — `bonus_capped=true` only fires if a future weight refit produces a sum > 0.50 or pushes some bonus contribution sufficiently negative. The defense-in-depth final score-clamp `Math.max(0, Math.min(1, score))` IS reachable: ari and noor both produce `passRate × (1 + bonus) > 1` and the clamp engages.
+**Note on tightness**: under the H.7.2 weight table the max-positive theoretical bonus was **exactly +0.50** (sum of positive weights: 0.10+0.10+0.05+0.10+0.15 = 0.50). Under H.7.4 the positive-weights sum becomes 0.535 (0.10+0.135+0.05+0.10+0.15) — the cap of +0.50 is now **genuinely reachable from above**, and `bonus_capped: true` will fire for top-decile identities with all positive axes saturated. The cap was always intended as a real ceiling on excellence-rewarding; H.7.2 happened to sit exactly at the boundary. The defense-in-depth final score-clamp `Math.max(0, Math.min(1, score))` remains reachable: high-passRate identities producing `passRate × (1 + bonus) > 1` engage it.
 
 #### Reference scales for normalization
 
@@ -191,6 +191,74 @@ Tier is the policy input (`recommend-verification` reads it; `prune` reads it). 
 #### Refit roadmap
 
 Pointer to BACKLOG above: empirical refit at **H.8.x** once `n≥20` verdicts accumulate. The `WEIGHTS` and `REFERENCE_SCALES` constants in `agent-identity.js` are the only places that need to change — `computeWeightedTrustScore`, the `cmdStats` plumbing, and the consumer-facing JSON shape stay identical.
+
+### Empirical Refit (H.7.4)
+
+The H.7.2 doc projected an "empirical refit at H.8.x once n≥20 verdicts accumulate." We hit n=20 (paired pass/fail with quality_factors) at the close of H.7.3, so the refit ran early as **H.7.4**. The output: **one weight adjusted, five kept at theory, one explicitly overridden against the empirical signal.** Methodology, data, and per-axis verdicts below.
+
+#### Methodology
+
+- **Tool**: `scripts/agent-team/weight-fit.js` (Pearson correlation + linear regression; deterministic, auditable, no opaque ML).
+- **Data source**: `~/.claude/agent-patterns.json`, filtered to entries with `quality_factors` populated and verdict ∈ {pass, fail}.
+- **Confidence thresholds**: high (n≥30 AND |r|≥0.30), moderate (n≥15 AND |r|≥0.20), low (else), insufficient (n<5).
+- **Decision rule**: adjust if confidence ≥ moderate AND |delta| ≥ 0.02; flag for human review if |delta| ≥ 0.10; else keep theory.
+
+#### Sample sizes (data limits — read this first)
+
+| Axis | n | Notes |
+|------|---|-------|
+| `findings_per_10k` | 20 | Fittable. |
+| `file_citations_per_finding` | 20 | Fittable. |
+| `cap_request_actionability` | 3 | Below floor; kept at theory. |
+| `kb_provenance_verified_pct` | 20 | Apparent fit, but **19/20 values are `false`** (predictor near-constant). r is information-free. |
+| `tokens` | 20 | Fittable but verdict-imbalanced (90:10 pass:fail). |
+| `convergence_agree_pct` | 12 | Below n≥15 moderate threshold. |
+
+**Verdict imbalance caveat**: 18 pass / 2 fail. With only 2 minority points, every `r` is highly sensitive to where those two points land in each predictor's distribution. Treat reported correlations as **rank-orderings, not point estimates**. Tighten thresholds at H.7.5+ once we have ≥10 fails.
+
+#### Comparison: theory (H.7.2) vs empirical (H.7.4)
+
+| Axis | H.7.2 (theory) | H.7.4 (shipped) | Empirical r | n | Verdict |
+|------|---------------|------------------|-------------|---|---------|
+| `findings_per_10k` | +0.10 | +0.10 (unchanged) | 0.083 | 20 | weak; keep theory |
+| `file_citations_per_finding` | +0.10 | **+0.135** | 0.439 | 20 | **adjusted (moderate confidence)** |
+| `cap_request_actionability` | +0.05 | +0.05 (unchanged) | n/a | 3 | insufficient n |
+| `kb_provenance_verified_pct` | +0.10 | +0.10 (unchanged) | 0.076 | 20 | data near-constant; r meaningless |
+| `convergence_agree_pct` | +0.15 | +0.15 (unchanged) | 0.674 | 12 | strong but underpowered |
+| `tokens` | -0.05 | -0.05 (unchanged) | +0.288 | 20 | **override**: confound (see below) |
+
+#### Tokens override rationale (H.4.2 audit-transparency disclosure)
+
+The empirical analysis flagged `tokens` for review (delta +0.139; r=+0.288 — sign-flip from theory's negative). **We deliberately kept the theory weight of -0.05.** The disclosure:
+
+1. **The empirical positive correlation is a sample-censoring confound.** Of n=20, only 2 are fails. Mean tokens for fails: 63,434. Mean tokens for passes: 95,273. The 6 highest-token entries (>=107k) are all passes. Both fails happen to land in the lower-token half. Without paired counterfactual data (the same agent doing the same task with vs without verbosity), this correlation reflects **"substantive tasks generate both more tokens AND more successful work"** — task-substantiveness is the lurking variable.
+
+2. **The negative weight is normative, not descriptive.** The score has two roles: it *describes* what correlates with verdict (data) AND *prescribes* what we want to incentivize (architectural design choice — efficient work is preferred over verbose work, all else equal). Allowing data to flip a normative sign blurs these roles. Audits then become "why is high-token use *rewarding*?" → "the data said so" — circular and indefensible.
+
+3. **The linear-regression slope is exactly 0** in the script output. The reported r=0.288 is driven entirely by minority-class clustering, not by a meaningful per-token effect.
+
+The override is itself an audit event: when data and architectural intent conflict, the decision is documented openly so future refits know what was overridden and why. Re-evaluate at H.7.5+ when ≥10 fails exist and tokens-per-output-token can be decomposed from raw tokens.
+
+#### Methodology limitations (honest disclosure)
+
+- **n=20 with 2 fails is the floor of usable** — we ran the refit at the earliest possible point. Statistical power is real but limited.
+- **Pearson on 90:10 imbalanced binary outcomes is sensitive to minority-class position** — see verdict-imbalance caveat above.
+- **No bootstrap CIs** in the current `weight-fit.js` output — reported r values are point estimates; CIs would be wide.
+- **`kb_provenance_verified_pct` is dominated by `false`-defaults** — likely a "no transcript → false" recording-pipeline artifact. The `keep_theory` outcome is correct but the apparent r=0.076 is information-free.
+- **`findings_per_10k` and `file_citations_per_finding` are structurally correlated** — both scale with finding count. The shipped citations adjustment may partly reflect findings-volume; cross-check at H.7.5 if findings_per_10k is also adjusted.
+
+#### Successor-phase backlog
+
+- **H.7.5**: Re-run with ≥10 fail records. Decompose tokens-per-output-token from raw tokens. Add bootstrap CIs to `weight-fit.js` output. Add near-constant-predictor warning to script. Tighten moderate-confidence threshold to `|r|≥0.25`.
+- **H.8.x**: Reconsider `convergence_agree_pct` once n≥15 paired entries (currently n=12). Joint refit of co-correlated finding-axes if both move.
+
+#### Profile versioning
+
+The shipped `WEIGHTS` object now carries the constant `WEIGHT_PROFILE_VERSION = "h7.4-empirical-v1"`. The `weighted_trust_score` JSON output surfaces this as a top-level `profile` field. Future weight changes bump the profile version; no historical-score migration is needed because scores are derived from `quality_factors_history` on demand (not stored).
+
+#### Forward-compat: tier-policy stability
+
+`tierOf` is unchanged (H.4.2 commitment held). The H.7.4 refit affects ONLY `computeWeightedTrustScore`'s output. `recommend-verification`, `prune`, and the verification-policy table all read `tier`, not `weighted_trust_score`, so no callsites change.
 
 ## Lifecycle + Evolution Vision (H.6.6 + H.7.0)
 
