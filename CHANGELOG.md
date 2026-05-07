@@ -8,6 +8,22 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **H.7.9** HETS-in-plan-mode injection. NEW `commands/build-plan.md` (dual-gate slash command modeled on `/build-team`); NEW `skills/build-plan/SKILL.md`; NEW `swarm/plan-template.md` (canonical plan template with mandatory sections — Context / Routing Decision verbatim JSON / HETS Spawn Plan / Files / Phases / Verification / Out of Scope / Drift Notes); NEW `skills/agent-team/patterns/plan-mode-hets-injection.md` (16th pattern). Converts soft-norm plan-mode + HETS-spawn discipline (`rules/core/workflow.md`) into a sharper gate without merging it with the route-decide gate. Recursive-dogfood property: theo (architect) designed the pattern using the pattern; mira (different identity, same persona family) authored the H.7.7+H.7.8 retrospective that motivated it.
+- **`/plan` vs `/build-plan` decision tree** added to `rules/core/workflow.md`. Both coexist (additive). `/build-plan` Step 0's `root` recommendation redirects cleanly to `/plan`.
+- **Drift-note convention** in plan files — captures soft-norm-drift observations during plan work; feeds the auto-loop's session-end review per `rules/core/self-improvement.md`.
+- **H.7.7** substrate primitive additions (Critic→Refiner failure-consolidation hook + workflow-state-aware pre-compact). NEW `hooks/scripts/error-critic.js` (~210 LoC); workflow-state-aware `pre-compact-save.js` (+80 LoC); 2 new smoke tests (10 → 12).
+- **H.7.8** plugin-dev tooling discipline. NEW `.markdownlint.json`, `.editorconfig`, `.github/workflows/ci.yml` (3 parallel jobs: smoke / markdown-lint / json-validate). README CI status badge.
+
+### Pending fixes (H.7.10)
+
+Mira's H.7.7+H.7.8 retrospective surfaced 3 CRITICAL + 2 HIGH bugs (TMPDIR session leak, RMW race, SAVE_PROMPT integration, path priority, recency filter). H.7.10 ships fixes via the new `/build-plan` flow as recursive dogfood.
+
+---
+
 ## [1.0.0] — 2026-05-07 — `power-loom` (rename + evolution-loop ship)
 
 **The H.7.x evolution-loop arc completed.** Plugin renamed from `claude-skills-consolidated` to `power-loom`. SemVer adopted. Stability commitment in README.

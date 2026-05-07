@@ -25,11 +25,23 @@
 
 Before deploying, follow the deploy-checklist skill for the full pre-deployment verification workflow.
 
-## Plan Mode for Multi-File Changes
+## Plan Mode for Multi-File Changes (H.7.9 — HETS-aware)
 
 - Any task touching ≥2 distinct files → enter plan mode first
 - Single-file changes, doc-only edits, trivial fixes → skip plan mode
 - When in doubt: enter plan mode (cheap insurance, expensive to skip)
+
+### `/plan` vs `/build-plan` decision tree (H.7.9)
+
+- `/plan` — single-architect planner agent delegate; trivial-to-medium scope; thin 13-line command body
+- `/build-plan` — HETS-aware variant; runs `route-decide.js` as Step 0; recommends architect spawn when `convergence_value ≥ 0.10` (post-context-mult); writes plans matching `swarm/plan-template.md` schema. Use for multi-file substantive work with non-obvious tradeoffs.
+- Both coexist (additive, not replacement). Step 0's `root` recommendation in `/build-plan` redirects cleanly to `/plan`.
+
+### Drift-note convention (H.7.9)
+
+- During plan-mode work, capture observations of soft-norm drift in a `## Drift Notes` section of the plan file. Examples: "almost skipped plan mode for this one because it 'felt' single-file but turned out to touch 4 files"; "route-decide returned `root` but task is genuinely architectural — dictionary-expansion candidate".
+- Drift notes feed the auto-loop's session-end review (`rules/core/self-improvement.md`).
+- Per the H.7.9 meta-discipline directive: conversations and tasks are the primary plugin testing framework; pattern-emergence observations promote to substrate refinement.
 
 ## Route-Decision for Non-Trivial Tasks
 

@@ -2,6 +2,70 @@
 
 Deferred work from prior phases, captured here so nothing important gets silently dropped. Each entry: scope, rationale, dependencies, rough estimate.
 
+## Phase H.7.9 — HETS-in-plan-mode injection (`/build-plan` + canonical plan template) — SHIPPED
+
+**Status**: shipped per approved plan (`~/.claude/plans/flickering-crafting-star.md`). Foundation phase of H.7.9+H.7.10 split (theo's architectural recommendation — see open question 5 in his deliverable). Plan-mode workflow honored properly: EnterPlanMode → Phase 1 (3 parallel Explore agents) → Phase 2 (architect spawn — theo, NOT mira since she designed the H.7.7+H.7.8 retrospective critique that motivates this) → Phase 3 plan-file write → ExitPlanMode user approval → execute.
+
+**What landed**:
+
+- **NEW `commands/build-plan.md`** (~150 LoC) — Dual-gate slash command modeled on `/build-team`. Step 0 route-decide gate; Step 1 EnterPlanMode if not already; Step 2 Phase 1 reconnaissance (Explore agents); Step 3 HETS architect-spawn recommendation when `convergence_value ≥ 0.10` (post-context-mult floor; same as H.7.5 borderline-promotion threshold); Step 4 write plan to canonical template; Step 5 user gate. Escape hatches: `--skip-hets` and `--force-plan`.
+- **NEW `skills/build-plan/SKILL.md`** (~120 LoC) — Frontmatter + 6 numbered steps + cross-skill linking to `agent-team/SKILL.md`, `route-decision.md`, `plan-mode-hets-injection.md`, `asymmetric-challenger.md`. When-to-use vs when-NOT-to-use criteria explicit.
+- **NEW `swarm/plan-template.md`** (~80 LoC) — Self-documenting canonical template with mandatory sections: Context / Routing Decision (verbatim JSON, replay-able) / HETS Spawn Plan / Files To Modify / Phases / Verification Probes / Out of Scope / Drift Notes. Optional sections recommended but not required. Manual schema validation at ExitPlanMode until H.7.12 enforcement hook lands.
+- **NEW `skills/agent-team/patterns/plan-mode-hets-injection.md`** (~60 LoC) — Pattern doc with Why/When/How/Failure-modes structure. Documents the recursive-dogfood property (pattern's own design uses the pattern). 16th pattern in the library; row added to `patterns/README.md` index.
+- **Updated `rules/core/workflow.md`** — "Plan Mode for Multi-File Changes" augmented with H.7.9 `/plan` vs `/build-plan` decision tree + drift-note convention. Soft-norm-to-sharper-gate conversion explicit.
+- **Updated `commands/plan.md`** — Cross-ref to `/build-plan`; nudge from planner agent when ≥2 files + non-obvious tradeoffs detected.
+
+**HETS spawn (recursive dogfood)**:
+
+- Phase 1 spawned 3 parallel Explore agents to inventory existing slash-command/skill conventions, HETS substrate mechanics, and mira's exact bug findings.
+- Phase 2 spawned `04-architect.theo` (NOT mira — separation of design from critique). Theo produced a 3,650-word design deliverable in single response. **Theo's strongest open question**: recommended splitting H.7.9 from H.7.10 (rather than bundling per user's Path C framing); user accepted at ExitPlanMode review.
+- Convergence recordable: `pattern-recorder.js record --paired-with 04-architect.mira --convergence partial-disagree` (theo agrees with mira's bug findings; partial-disagrees with phase-bundling).
+
+**Drift-notes captured (per user H.7.9 meta-discipline directive)**:
+
+1. `route-decide.js` v1.1 dictionary missed `retrospective`/`CRITICAL`/`audit` signal tokens for the H.7.9 task itself — heuristic returned `root` confidence=0.25 when architect would say `route`. **H.7.13 candidate**: dictionary expansion to catch substantive-but-vocabulary-novel architectural work.
+2. Theo recommended splitting H.7.9 from H.7.10 — split honored. Future framing: phases mixing foundation + recursive-dogfood default to split.
+3. User caught BACKLOG-listed "H.7.10 agent-discipline pass" being inadvertently shadowed by this plan's H.7.10 (mira fixes via `/build-plan`). Pattern: when proposing a phase number, scan existing BACKLOG for prior-deferred-into-that-slot items first. **Resolution**: agent-discipline pass repushed to H.7.11.
+
+**Phase-numbering map (post-H.7.9 reorg)**:
+
+| Phase | Scope |
+|-------|-------|
+| H.7.10 (next) | Recursive dogfood: apply mira's 5 fixes via `/build-plan` |
+| H.7.11 | Agent discipline pass + JSDoc (was tentatively H.7.10 in BACKLOG; pushed) |
+| H.7.12 | Plan-template enforcement hook (theo's deferred Section C) |
+| H.7.13 | Route-decide dictionary expansion (drift-note 1 above) |
+
+**Verification (per plan probes)**:
+
+- ✓ Probe 1: `bash install.sh --test` → 12/12 passing (regression — H.7.9 itself doesn't add tests)
+- ✓ Probe 2: `node scripts/agent-team/contracts-validate.js` → 0 violations
+- ✓ Probe 3: `node scripts/agent-team/route-decide.js --task "build a CRUD endpoint with auth"` → recommendation = `route` (regression check; weights not perturbed)
+- ✓ Probe 4: New files discoverable: `commands/build-plan.md`, `skills/build-plan/SKILL.md`, `swarm/plan-template.md`, `skills/agent-team/patterns/plan-mode-hets-injection.md`
+- ✓ Probe 5: Cross-link from `patterns/README.md` resolves
+- ✓ Probe 6: Workflow rule updated; `/build-plan` ↔ `/plan` decision tree explicit
+
+**Invariants preserved**:
+
+- No subprocess LLM (deterministic route-decide only)
+- No auto-spawn HETS (recommendation only; Step 5 user gate)
+- Additive to `/plan` (not replacement)
+- Route-decide weights byte-frozen (`weights_version v1.1-context-aware-2026-05-07`)
+- Escape hatches available (`--skip-hets`, `--force-plan`)
+
+**H.7.9 follow-ups (deferred)**:
+
+- **Plan-template enforcement hook** — H.7.12 PostToolUse-on-Write hook would convert template from soft norm to hard requirement. User feedback on H.7.10's recursive-dogfood will inform whether needed.
+- **Route-decide dictionary expansion** — H.7.13 candidate per drift-note 1. Add `retrospective`, `CRITICAL`, `audit`, `architectural` to weighted dimensions.
+- **Plan-correlation in spawn-recorder** — append `plan_section_triggered` field to spawn metadata; enables plan→outcome correlation analysis. Schema-additive.
+
+**Why this is the right shape**:
+
+- Closes the discipline-drift gap observed across H.7.5/7.6/7.7/7.8
+- Honors user's H.7.9 meta-discipline directive ("our conversations and tasks are the biggest testing frameworks for the plugin")
+- Recursive-dogfood property: pattern's own design uses the pattern
+- Thirteenth distinct phase shape: meta-discipline integration
+
 ## Phase H.7.8 — Plugin-dev tooling discipline (CI + lint configs) — SHIPPED
 
 **Status**: shipped per approved plan (`~/.claude/plans/flickering-crafting-star.md`). Plan-mode-discipline restored after user called out the multi-file rule slip across H.7.5 / H.7.6 / H.7.7. This phase plan-walked properly via EnterPlanMode → ExitPlanMode → execute.
