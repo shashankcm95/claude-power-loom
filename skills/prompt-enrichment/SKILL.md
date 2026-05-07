@@ -18,7 +18,29 @@ This returns JSON. Behavior depends on `bestMatch` and `bestMatchTier`:
 - `bestMatch.score >= 0.8` AND `bestMatchTier == "Independent"` (5+ approvals) → silently apply the stored enrichment, show only a one-line summary like *"Using your established pattern for {category} (5+ approvals)."* Skip steps 1–4.
 - `bestMatch.score >= 0.8` AND `bestMatchTier == "Trusted"` (3–4 approvals) → show one-line summary, auto-proceed unless user objects.
 - `bestMatch.score >= 0.8` AND `bestMatchTier == "Familiar"` (1–2 approvals) → show stored enrichment, ask "Look right?"
-- No match (or score < 0.8) → continue to Step 1 to build a new enrichment.
+- No match (or score < 0.8) → continue to Step 0.5 (and Step 1) to build a new enrichment with conversation context.
+
+## Step 0.5: Read prior conversation context (H.7.5)
+
+Before classifying or building, sample the **last 1-3 turns** of the conversation. The motivating event: H.7.4's task description ("Empirical refit of weighted_trust_score weights from accumulated verdict data") scored 0 in `route-decide.js` because the routing signal lived in the **prior assistant turn**, not the bare user prompt. Vague follow-ups frequently strip the signal that disambiguates the request.
+
+**Bound the sample** (per the user's H.7.5 directive — "we don't need the whole context, the last one or maybe 2-3 responses"):
+
+- Read the transcript at `~/.claude/projects/<project-id>/<session-id>.jsonl` (paths inferable from `cwd`)
+- Extract the **last 2 user messages + last 2 assistant responses** (max 4 turns total)
+- Cap at ~2K chars per turn; ~8K chars total. Strip tool-call blocks if present (keep assistant prose).
+
+**Why bounded**: full-conversation reads burn context for diminishing returns. The signal that disambiguates a vague follow-up is almost always in the immediately-preceding turn (a recommendation, a plan, a decision). Three turns covers one full back-and-forth + a follow-up — sufficient for ~95% of cases.
+
+**Use the context for**:
+1. **Routing**: when calling `route-decide.js`, ALWAYS pass `--context "<last assistant excerpt>"` so the gate's keyword heuristic also scans the prior recommendation. Per H.7.5, context contributions are weighted at 0.5x of task contributions, and a borderline-promotion rule fires when bare-task is low-signal but context has ≥0.10 raw score.
+2. **Disambiguation**: if the bare prompt is vague but the prior turn made a concrete recommendation (e.g., "next phase is X via orchestration"), enrich with that recommendation as INPUT/CONTEXT in Step 2.
+3. **Continuation detection**: if the user says "go on" / "continue" / "yes do that", the entire enrichment is the prior turn's recommendation. Skip Steps 1-4 and execute the recommendation directly.
+
+**Skip Step 0.5 when**:
+- This is the first turn of a new session (no prior context exists)
+- The prompt is itself unambiguous (specific files, specific verbs, clear scope)
+- The pattern lookup in Step 0 already returned a high-confidence match
 
 ## Step 1: Classify and Select Techniques
 

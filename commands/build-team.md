@@ -16,26 +16,55 @@ If `$ARGUMENTS` is empty, ask one clarifying question (intent + domain) and stop
 
 ## Steps
 
-### 0. Route-decision gate (H.7.3)
+### 0. Route-decision gate (H.7.3 + H.7.5 context-aware)
 
 Before invoking tech-stack-analyzer (which is itself ~3K tokens for the analysis pass + spawns the team's identities), check whether this task warrants HETS routing at all. Many user prompts are better answered by root directly — over-routing burns ~30× tokens for ~3× failure-mode coverage on tasks that don't have ambiguous tradeoffs.
 
 If `$ARGUMENTS` contains the literal flag `--force-route`, skip Step 0 entirely and proceed to Step 1.
 
+**H.7.5 — context-aware**: when invoking on a conversation continuation (the user is mid-thread, e.g., approving a recommendation from the prior turn), ALWAYS pass `--context "<last assistant excerpt>"`. The bare task often strips the routing signal that lived in the prior recommendation — context restores it. Bound to last 1-3 turns; cap at ~8K chars. The chat agent reading this command extracts the prior assistant excerpt itself (it's in Claude's context window already; no transcript Read needed at this layer).
+
 ```bash
-# H.7.3 — Route-decision gate. Pure-function score on 7 weighted dimensions.
+# H.7.3 + H.7.5 — Route-decision gate. Pure-function score on 7 weighted dimensions
+# plus optional --context for conversation-continuation routing signal.
 # Defaults to "route" (fail-open) if the script is missing.
 
 ROUTE_DECIDE_SCRIPT="$HOME/Documents/claude-toolkit/scripts/agent-team/route-decide.js"
+
+# H.7.5 — context excerpt from prior assistant turn (root extracts before invoking).
+# Empty string when there's no prior turn (first-turn invocation) or when the
+# task itself carries the full routing signal.
+PRIOR_TURN_EXCERPT="${PRIOR_TURN_EXCERPT:-}"
 
 if [ ! -f "$ROUTE_DECIDE_SCRIPT" ]; then
   echo "WARNING: route-decide.js not present at $ROUTE_DECIDE_SCRIPT; defaulting to route (fail-open to pre-H.7.3 behavior)"
   ROUTE_DECISION="route"
 else
-  ROUTE_OUTPUT=$(node "$ROUTE_DECIDE_SCRIPT" --task "$TASK_DESCRIPTION")
+  if [ -n "$PRIOR_TURN_EXCERPT" ]; then
+    ROUTE_OUTPUT=$(node "$ROUTE_DECIDE_SCRIPT" --task "$TASK_DESCRIPTION" --context "$PRIOR_TURN_EXCERPT")
+  else
+    ROUTE_OUTPUT=$(node "$ROUTE_DECIDE_SCRIPT" --task "$TASK_DESCRIPTION")
+  fi
   ROUTE_DECISION=$(echo "$ROUTE_OUTPUT" | jq -r '.recommendation')
   ROUTE_SCORE=$(echo "$ROUTE_OUTPUT" | jq -r '.score_total')
   ROUTE_REASONING=$(echo "$ROUTE_OUTPUT" | jq -r '.reasoning')
+  ROUTE_UNCERTAIN=$(echo "$ROUTE_OUTPUT" | jq -r '.uncertain // false')
+fi
+
+# H.7.5 — handle ROUTE-DECISION-UNCERTAIN forcing instruction BEFORE the case dispatch.
+# Triggered when score≤0.05 AND no --context was supplied AND wordCount≥4.
+# Don't silently default to root — re-invoke with context, or surface to user.
+if [ "$ROUTE_UNCERTAIN" = "true" ]; then
+  echo ""
+  echo "Route-decision: UNCERTAIN (score=$ROUTE_SCORE; no context provided; bare prompt has near-zero keyword signal)"
+  echo "Reasoning: $ROUTE_REASONING"
+  echo ""
+  echo "The keyword heuristic abstained on this task. Before defaulting to root, consider:"
+  echo "  - Does the prior assistant turn mention a concrete plan/recommendation?"
+  echo "  - Is this prompt a follow-up that strips routing context (e.g., 'go on', 'do that')?"
+  echo "  - Re-invoke with PRIOR_TURN_EXCERPT set to the last assistant excerpt"
+  echo "  - Or use --force-route / --force-root for explicit override"
+  exit 0  # model waits for user disambiguation, not literal shell exit
 fi
 
 case "$ROUTE_DECISION" in
@@ -77,7 +106,7 @@ case "$ROUTE_DECISION" in
 esac
 ```
 
-The chat agent (Claude reading `/build-team`) follows this flow on every invocation. The route-decision is a pre-flight check that runs BEFORE Step 1 (tech-stack-analyzer). If `--force-route` is passed by the user as an explicit override, skip this Step 0 entirely and proceed to Step 1.
+The chat agent (Claude reading `/build-team`) follows this flow on every invocation. The route-decision is a pre-flight check that runs BEFORE Step 1 (tech-stack-analyzer). If `--force-route` is passed by the user as an explicit override, skip this Step 0 entirely and proceed to Step 1. If the gate emits `UNCERTAIN` (H.7.5 forcing instruction fired), do NOT silently default to root — re-invoke with prior-turn context or surface to user for explicit disambiguation.
 
 ### 1. Pre-flight check
 Verify the HETS substrate is ready:

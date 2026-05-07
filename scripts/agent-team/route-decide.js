@@ -16,7 +16,7 @@
 
 // ---------- constants ----------
 
-const WEIGHTS_VERSION = 'v1-theory-driven-2026-05-07';
+const WEIGHTS_VERSION = 'v1.1-context-aware-2026-05-07';
 
 // HIGH-1 + HIGH-2 + MEDIUM-1 + C-2 adjusted weights from theo's design.
 // Sums to 1.00 within decimal-precision tolerance after R1-R6 calibration.
@@ -45,6 +45,16 @@ const SHORT_PROMPT_WORD_THRESHOLD = 4;  // <5 words triggers penalty
 const ROUTE_THRESHOLD = 0.60;
 const ROOT_THRESHOLD  = 0.30;
 const CONFIDENCE_BAND = 0.30;  // for L-1 confidence calc
+
+// H.7.5 — context-aware routing constants.
+// Context contributes at half-weight (less reliable than the bare task — prior
+// turns may have changed scope; user-judgment-discount). See mira's CRITICAL C-1
+// for the empirical justification. The borderline-promotion rule below is the
+// primary mechanism that flips the H.7.4 false-negative; the additive
+// multiplier alone cannot do it under existing thresholds (0.225 * 0.5 = 0.113
+// < ROOT_THRESHOLD 0.30).
+const CONTEXT_WEIGHT_MULT = 0.5;
+const BORDERLINE_PROMOTION_THRESHOLD = 0.10;  // post-mult context_score floor
 
 // ---------- keyword sets ----------
 
@@ -146,7 +156,11 @@ function matchKeywords(text, keywordList) {
 
 // ---------- scoring ----------
 
-function scoreTask(task) {
+function scoreTask(task, scoreArgs) {
+  // H.7.5: scoreArgs is the parsed CLI args (passed by main); used for
+  // --context, --force-route, --force-root. Default to empty object so
+  // callers that omit it (existing tests, future internal uses) still work.
+  const argsLocal = scoreArgs || {};
   const text = String(task || '');
   const lowerText = text.toLowerCase();
   const wordCount = lowerText.split(/\s+/).filter(Boolean).length;
@@ -219,10 +233,78 @@ function scoreTask(task) {
   // Clamp [0, 1]. (Counter-signals can't push below 0; fine — root is correct.)
   scoreTotal = Math.max(0, Math.min(1, scoreTotal));
 
+  // H.7.5: bare-task low-signal computed before context add so the
+  // borderline-promotion rule below can use it as ground truth ("did the
+  // bare task have ANY keyword hits?"). `allSignals` is the canonical
+  // signal — derived score thresholds change with weights, but
+  // "zero matches anywhere" is invariant. Hoisted up from its prior
+  // post-recommendation location for the borderline-promotion gate.
+  const allSignals = Object.values(matches).reduce((a, m) => a + m.length, 0);
+  const bareLowSignal = allSignals === 0;
+  const bareScoreTotal = scoreTotal;  // snapshot before context add (for output JSON)
+
+  // H.7.5 Layer A: context scoring pass. Re-uses the same KEYWORDS map +
+  // matchKeywords function — no separate scoring system. Multiplied by
+  // CONTEXT_WEIGHT_MULT (0.5) to discount second-hand signal.
+  let contextScore = 0;
+  const contextContributions = {};
+  let contextProvided = false;
+  let contextTruncated = false;
+  const ctxRaw = argsLocal.context;
+  if (ctxRaw && typeof ctxRaw === 'string' && ctxRaw.trim().length > 0) {
+    contextProvided = true;
+    let ctxText = ctxRaw;
+    if (ctxText.length > 8000) {
+      ctxText = ctxText.slice(-8000);  // preserve recency
+      contextTruncated = true;
+    }
+    const ctxLower = ctxText.toLowerCase();
+    for (const dim of Object.keys(WEIGHTS)) {
+      const ctxMatched = matchKeywords(ctxLower, KEYWORDS[dim]);
+      if (ctxMatched.length > 0) {
+        const contribution = WEIGHTS[dim] * CONTEXT_WEIGHT_MULT;
+        contextContributions[dim] = {
+          matched: ctxMatched,
+          contribution: Number(contribution.toFixed(4)),
+        };
+        contextScore += contribution;
+      }
+    }
+    // Infra-implicit lift also applies to context, multiplied. Keeps the
+    // context-scoring symmetric with the bare-task scoring path.
+    const ctxInfra = matchKeywords(ctxLower, KEYWORDS.infra_terms);
+    if (ctxInfra.length > 0) {
+      const contribution = INFRA_IMPLICIT_STAKES_LIFT * CONTEXT_WEIGHT_MULT;
+      contextContributions.infra_implicit = {
+        matched: ctxInfra,
+        contribution: Number(contribution.toFixed(4)),
+      };
+      contextScore += contribution;
+    }
+    scoreTotal += contextScore;
+    scoreTotal = Math.max(0, Math.min(1, scoreTotal));  // re-clamp after context add
+  }
+
   // Determine recommendation + confidence.
+  // H.7.5 Layer A: explicit-override flags fire FIRST and bypass all heuristics.
+  // When forced, the borderline-promotion rule + Layer C forcing-instruction
+  // are both suppressed (the user just told us the answer).
   let recommendation;
   let nearestThreshold;
-  if (scoreTotal >= ROUTE_THRESHOLD) {
+  let forced = false;
+  let forcedBy = null;
+
+  if (argsLocal['force-route']) {
+    recommendation = 'route';
+    nearestThreshold = ROUTE_THRESHOLD;
+    forced = true;
+    forcedBy = 'force-route';
+  } else if (argsLocal['force-root']) {
+    recommendation = 'root';
+    nearestThreshold = ROOT_THRESHOLD;
+    forced = true;
+    forcedBy = 'force-root';
+  } else if (scoreTotal >= ROUTE_THRESHOLD) {
     recommendation = 'route';
     nearestThreshold = ROUTE_THRESHOLD;
   } else if (scoreTotal <= ROOT_THRESHOLD) {
@@ -236,15 +318,76 @@ function scoreTask(task) {
     nearestThreshold = distRoute < distRoot ? ROUTE_THRESHOLD : ROOT_THRESHOLD;
   }
 
+  // H.7.5 Layer A — borderline-promotion rule (mira CRITICAL C-1).
+  // The additive multiplier alone CANNOT flip the H.7.4 false-negative
+  // (0.225 * 0.5 = 0.113 < ROOT_THRESHOLD 0.30). When the bare task has zero
+  // keyword hits anywhere AND the context provides a meaningful signal
+  // (>= BORDERLINE_PROMOTION_THRESHOLD post-multiplier), promote to
+  // borderline regardless of additive total — surfacing the decision to the
+  // user (the right behavior per H.7.3 Theo Decision 4: borderline escalates).
+  // Skipped when forced (user told us the answer).
+  let borderlinePromotionApplied = false;
+  if (
+    !forced &&
+    bareLowSignal &&
+    contextProvided &&
+    contextScore >= BORDERLINE_PROMOTION_THRESHOLD &&
+    recommendation === 'root'
+  ) {
+    recommendation = 'borderline';
+    nearestThreshold = ROOT_THRESHOLD;
+    borderlinePromotionApplied = true;
+  }
+
   // L-1: confidence = distance to nearest-threshold normalized to [0,1] over
   // the 0.30 band. R2: when the recommendation is `root` and there are no
   // signals at all, confidence is muted (we have no information, not high
   // confidence in root). Cap confidence at 0.4 in that case.
-  let confidence = Math.min(1, Math.abs(scoreTotal - nearestThreshold) / CONFIDENCE_BAND);
-  const allSignals = Object.values(matches).reduce((a, m) => a + m.length, 0);
+  // H.7.5: when forced, confidence is 1.0 — the user supplied ground truth.
+  let confidence;
+  if (forced) {
+    confidence = 1.0;
+  } else {
+    confidence = Math.min(1, Math.abs(scoreTotal - nearestThreshold) / CONFIDENCE_BAND);
+  }
   const lowSignal = allSignals === 0;
-  if (lowSignal && recommendation === 'root') {
+  if (!forced && lowSignal && recommendation === 'root') {
     confidence = Math.min(confidence, 0.4);
+  }
+
+  // H.7.5 Layer C: forcing-instruction emission for the bare-task
+  // low-signal-no-context case. This is the PRIMARY correctness mechanism
+  // for the H.7.4 false-negative class — when the caller did not pass
+  // --context, the script returns a structured forcing-instruction telling
+  // Claude-the-caller to either (a) re-invoke with --context, (b) supply
+  // --force-root if the task is genuinely trivial, or (c) escalate.
+  // Trigger condition is `bareLowSignal AND !contextProvided AND !forced
+  // AND wordCount >= SHORT_PROMPT_WORD_THRESHOLD` per mira CRITICAL C-2 +
+  // MEDIUM M-3 (excludes 4-word-or-fewer prompts where SHORT_PROMPT_PENALTY
+  // already calibrates).
+  let uncertain = false;
+  let forcingInstruction = null;
+  if (
+    bareLowSignal &&
+    !contextProvided &&
+    !forced &&
+    wordCount >= SHORT_PROMPT_WORD_THRESHOLD
+  ) {
+    uncertain = true;
+    forcingInstruction =
+      `[ROUTE-DECISION-UNCERTAIN]\n` +
+      `Zero keyword signals matched on this task across all 9 dimensions.\n` +
+      `This often happens when the task description is a post-conversational ` +
+      `compression of a richer prior turn — the routing-relevant info lives in ` +
+      `conversation, not the bare task string.\n\n` +
+      `Before defaulting to root, consider:\n` +
+      `- What did the prior 1-2 assistant turns suggest about complexity, scope, or convergence value?\n` +
+      `- Is the bare prompt vague but contextually substantive?\n\n` +
+      `Recommended actions:\n` +
+      `- Re-invoke with --context "<recent assistant response>" to give the classifier the missing signal\n` +
+      `- OR, if the task IS genuinely trivial, supply --force-root to confirm and silence this instruction\n` +
+      `- OR, if you know HETS routing is correct despite low signal, supply --force-route\n` +
+      `[/ROUTE-DECISION-UNCERTAIN]`;
   }
 
   // Flat lists for easy consumption.
@@ -267,14 +410,29 @@ function scoreTask(task) {
   const shortPart = shortPenaltyApplied
     ? `, short-prompt penalty (${SHORT_PROMPT_PENALTY.toFixed(2)})`
     : '';
+  // H.7.5: surface context score + borderline-promotion + forced overrides
+  // in the human-readable reasoning so audit-readers see the path taken.
+  const contextPart = contextProvided
+    ? `, context (+${contextScore.toFixed(3)}, mult=${CONTEXT_WEIGHT_MULT})`
+    : '';
+  const promotionPart = borderlinePromotionApplied
+    ? ` [borderline-promoted: bare low-signal + context >= ${BORDERLINE_PROMOTION_THRESHOLD}]`
+    : '';
+  const forcedPart = forced
+    ? ` [forced via --${forcedBy}]`
+    : '';
   const reasoning =
     `Score ${scoreTotal.toFixed(3)} → ${recommendation}` +
     (topContribs.length ? `: ${topContribs.join(', ')}` : '') +
     counterPart +
     shortPart +
+    contextPart +
+    promotionPart +
+    forcedPart +
     '.';
 
-  // Output JSON (M-3 + L-2 + theo's schema).
+  // Output JSON (M-3 + L-2 + theo's schema; H.7.5 fields inserted between
+  // low_signal and reasoning per mira LOW L-1 visual-scan-order).
   const out = {
     task: text,
     recommendation,
@@ -286,6 +444,17 @@ function scoreTask(task) {
     counter_signal_contribution: Number(counterContribution.toFixed(3)),
     short_prompt_penalty_applied: shortPenaltyApplied,
     low_signal: lowSignal,
+    // H.7.5 — context-aware routing fields
+    bare_score_total: Number(bareScoreTotal.toFixed(3)),
+    context_provided: contextProvided,
+    context_score: Number(contextScore.toFixed(3)),
+    context_contributions: contextContributions,
+    context_truncated: contextTruncated,
+    borderline_promotion_applied: borderlinePromotionApplied,
+    forced,
+    forced_by: forcedBy,
+    uncertain,
+    forcing_instruction: forcingInstruction,
     reasoning,
     weights_version: WEIGHTS_VERSION,
     thresholds: { route: ROUTE_THRESHOLD, root: ROOT_THRESHOLD },
@@ -299,15 +468,26 @@ const args = parseArgs(process.argv.slice(2));
 
 if (args.help || args.h) {
   process.stdout.write(
-    'Usage: route-decide.js --task "<description>" [--explain]\n' +
+    'Usage: route-decide.js --task "<description>" [--context "<text>"] ' +
+    '[--force-route|--force-root] [--explain]\n' +
     '\n' +
     'Scores a task on 7 weighted dimensions and emits a route/borderline/root\n' +
     'recommendation as JSON to stdout. Pure function; deterministic.\n' +
     '\n' +
     'Flags:\n' +
-    '  --task <string>   Required. Task description.\n' +
-    '  --explain         Optional. Also print human-readable summary to stderr.\n' +
-    '  --help, -h        This message.\n'
+    '  --task <string>      Required. Task description.\n' +
+    '  --context <string>   Optional. Recent assistant response or prior-turn\n' +
+    '                       text to give the classifier additional signal.\n' +
+    '                       Scored at 0.5x weight relative to --task. Truncated\n' +
+    '                       to last 8K chars (preserves recency). H.7.5.\n' +
+    '  --force-route        Optional. Override heuristic; force route\n' +
+    '                       recommendation; confidence: 1.0; bypasses Layer C\n' +
+    '                       forcing-instruction. H.7.5.\n' +
+    '  --force-root         Optional. Override heuristic; force root\n' +
+    '                       recommendation; confidence: 1.0; bypasses Layer C\n' +
+    '                       forcing-instruction. H.7.5.\n' +
+    '  --explain            Optional. Also print human-readable summary to stderr.\n' +
+    '  --help, -h           This message.\n'
   );
   process.exit(0);
 }
@@ -318,7 +498,7 @@ if (!task || typeof task !== 'string' || task.trim().length === 0) {
   process.exit(2);
 }
 
-const result = scoreTask(task);
+const result = scoreTask(task, args);
 process.stdout.write(JSON.stringify(result, null, 2) + '\n');
 
 if (args.explain) {
