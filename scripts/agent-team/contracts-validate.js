@@ -25,8 +25,40 @@
 const fs = require('fs');
 const path = require('path');
 
-const TOOLKIT = process.env.HETS_TOOLKIT_DIR ||
-  path.join(process.env.HOME, 'Documents', 'claude-toolkit');
+// H.7.10 — path priority follows the same shape as mira's H-1 fix in
+// pre-compact-save.js: env var → cwd → walk-up from __dirname → hardcoded
+// LAST. Closes silent failure on non-author install paths (CI checkout,
+// arbitrary user install location). The hardcoded `~/Documents/claude-toolkit`
+// stays as final fallback for the author's machine.
+function findToolkitRoot() {
+  // 1. Explicit env var
+  if (process.env.HETS_TOOLKIT_DIR && fs.existsSync(process.env.HETS_TOOLKIT_DIR)) {
+    return process.env.HETS_TOOLKIT_DIR;
+  }
+  // 2. Plugin-loader env var
+  if (process.env.CLAUDE_PLUGIN_ROOT && fs.existsSync(process.env.CLAUDE_PLUGIN_ROOT)) {
+    return process.env.CLAUDE_PLUGIN_ROOT;
+  }
+  // 3. cwd if it looks like a toolkit checkout
+  const cwd = process.cwd();
+  if (fs.existsSync(path.join(cwd, 'skills', 'agent-team', 'SKILL.md'))) {
+    return cwd;
+  }
+  // 4. Walk up from __dirname looking for skills/agent-team/SKILL.md
+  let dir = __dirname;
+  for (let i = 0; i < 8; i++) {
+    if (fs.existsSync(path.join(dir, 'skills', 'agent-team', 'SKILL.md'))) {
+      return dir;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  // 5. Hardcoded fallback (author's machine)
+  return path.join(process.env.HOME, 'Documents', 'claude-toolkit');
+}
+
+const TOOLKIT = findToolkitRoot();
 const PATTERNS_DIR = path.join(TOOLKIT, 'skills', 'agent-team', 'patterns');
 const CONTRACTS_DIR = path.join(TOOLKIT, 'swarm', 'personas-contracts');
 const SKILL_MD = path.join(TOOLKIT, 'skills', 'agent-team', 'SKILL.md');
