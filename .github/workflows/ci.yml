@@ -20,8 +20,15 @@ jobs:
 
       - name: Run hook smoke tests
         run: |
-          bash install.sh --test 2>&1 | tee /tmp/smoke.log
-          # Verify the "12 passed, 0 failed" line is present
+          # H.7.9 fix: --hooks --test installs hooks first, then runs smoke.
+          # Plain --test (H.7.8 CI bug) tested already-installed hooks at
+          # $CLAUDE_DIR/hooks/scripts/, which doesn't exist on a clean CI
+          # checkout — the script bailed with the "test without --hooks
+          # tests already-installed hooks, not source" warning + exit 1.
+          # H.7.8's CI never validated against a fresh checkout because
+          # H.7.8 merged direct to main without going through CI itself.
+          bash install.sh --hooks --test 2>&1 | tee /tmp/smoke.log
+          # Verify the "Results: N passed, 0 failed" line is present
           grep -qE 'Results: [0-9]+ passed, 0 failed' /tmp/smoke.log
 
       - name: Run contracts-validate
