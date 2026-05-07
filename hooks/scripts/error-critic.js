@@ -25,9 +25,15 @@
 // consolidation. No subprocess LLM call — preserves the toolkit's
 // no-subprocess-LLM convention.
 //
-// State storage: TMPDIR-rooted so it doesn't pollute ~/.claude/ and gets
-// auto-cleaned on system reboot. Per-command keying via a stable hash of the
-// command string (tr-translated to alphanumeric + underscores).
+// State storage: TMPDIR-rooted, SESSION-SCOPED so cross-session counter leaks
+// don't escalate "first failure today" into [FAILURE-REPEATED]. H.7.10 fix
+// for mira C-1 retrospective finding: macOS `os.tmpdir()` returns
+// `/var/folders/<hash>/T/` which persists across reboots indefinitely (Linux
+// assumption broken). Defense-in-depth: session-reset.js also cleans
+// `.claude-toolkit-failures/` at SessionStart.
+//
+// Per-command keying via a stable hash of the command string. Per-session
+// scoping via SESSION_ID (CLAUDE_SESSION_ID env var or random 8-byte hex).
 //
 // Cross-platform: pure Node + path.join + os.tmpdir(). Works on macOS / Linux.
 
@@ -38,10 +44,40 @@ const crypto = require('crypto');
 const { log } = require('./_log.js');
 const logger = log('error-critic');
 
+// H.7.10 — withLock primitive for RMW race protection (mira C-2 fix).
+// Two candidate paths: in-repo (../../scripts/agent-team/_lib/lock) and
+// installed-plugin location (~/.claude/scripts/agent-team/_lib/lock).
+// Fallback: no-op (lock-not-available) so the hook never crashes — but logs
+// the fallback once so operators can fix the install.
+let withLock;
+try {
+  withLock = require('../../scripts/agent-team/_lib/lock').withLock;
+} catch {
+  try {
+    withLock = require(path.join(os.homedir(), '.claude', 'scripts', 'agent-team', '_lib', 'lock')).withLock;
+  } catch {
+    // Lock primitive unavailable — fallback no-op preserves H.7.7 behavior
+    // but loses RMW race protection. Logged once at module load.
+    withLock = (_lockPath, fn) => fn();
+    logger('lock_primitive_missing', {
+      tried: ['../../scripts/agent-team/_lib/lock', '~/.claude/scripts/agent-team/_lib/lock'],
+      fallback: 'noop',
+    });
+  }
+}
+
+// H.7.10 — session-scoped state. Cached at module load to ensure consistency
+// across hook fires within the same process. Falls back to random 8-byte hex
+// if no env var present (shouldn't happen in normal Claude Code session).
+const SESSION_ID = process.env.CLAUDE_SESSION_ID
+  || process.env.CLAUDE_CONVERSATION_ID
+  || crypto.randomBytes(8).toString('hex');
+
 // Tunables. Threshold of 2 mirrors cep's reference (any 2nd failure of the
 // SAME command is a signal worth escalating). LAST_N_ERRORS keeps the log
 // readable in the forcing instruction.
-const FAILURE_DIR = path.join(os.tmpdir(), '.claude-toolkit-failures');
+const FAILURE_DIR = path.join(os.tmpdir(), '.claude-toolkit-failures', SESSION_ID);
+const LOCK_PATH = path.join(FAILURE_DIR, '.lock');
 const ESCALATION_THRESHOLD = 2;
 const LAST_N_ERRORS = 5;
 const MAX_ERROR_BYTES = 800; // truncate long stderr to keep injection compact
@@ -171,36 +207,43 @@ process.stdin.on('end', () => {
     const countFile = path.join(FAILURE_DIR, `${key}.count`);
     const logFile = path.join(FAILURE_DIR, `${key}.log`);
 
-    // Read current count (0 if first failure).
+    // H.7.10 — wrap count + log RMW blocks in withLock to close mira C-2
+    // race finding. Concurrent PostToolUse fires (batched Bash, multi-agent
+    // HETS flows) previously caused lost-update undercount. Using the H.3.2
+    // canonical primitive from scripts/agent-team/_lib/lock.js.
     let count = 0;
-    try {
-      count = parseInt(fs.readFileSync(countFile, 'utf8').trim(), 10) || 0;
-    } catch {
-      count = 0;
-    }
-    count += 1;
-    fs.writeFileSync(countFile, String(count));
+    let kept = '';
+    withLock(LOCK_PATH, () => {
+      // Read current count (0 if first failure).
+      try {
+        count = parseInt(fs.readFileSync(countFile, 'utf8').trim(), 10) || 0;
+      } catch {
+        count = 0;
+      }
+      count += 1;
+      fs.writeFileSync(countFile, String(count));
 
-    // Append this failure's error to the rolling log. Trim to last N entries
-    // by reading + slicing on each write — simple, sufficient for our scale.
-    const stderr = toolResponse.stderr || toolResponse.error || '(no stderr captured)';
-    const truncated = truncateError(stderr);
-    const entry = `\n--- Failure #${count} at ${new Date().toISOString()} ---\nCommand: ${command}\n${truncated}\n`;
+      // Append this failure's error to the rolling log. Trim to last N entries
+      // by reading + slicing on each write — simple, sufficient for our scale.
+      const stderr = toolResponse.stderr || toolResponse.error || '(no stderr captured)';
+      const truncated = truncateError(stderr);
+      const entry = `\n--- Failure #${count} at ${new Date().toISOString()} ---\nCommand: ${command}\n${truncated}\n`;
 
-    // Read existing log, prepend, trim to last N entries (simple split by separator)
-    let existing = '';
-    try {
-      existing = fs.readFileSync(logFile, 'utf8');
-    } catch {
-      existing = '';
-    }
-    const combined = existing + entry;
-    // Keep only last LAST_N_ERRORS entries. Lookahead split keeps the
-    // "--- Failure #" prefix attached to each entry; filter ensures we
-    // drop any leading whitespace/empty fragment.
-    const entries = combined.split(/^(?=--- Failure #)/m).filter((s) => s.trim().startsWith('--- Failure #'));
-    const kept = entries.slice(-LAST_N_ERRORS).join('');
-    fs.writeFileSync(logFile, kept);
+      // Read existing log, prepend, trim to last N entries (simple split by separator)
+      let existing = '';
+      try {
+        existing = fs.readFileSync(logFile, 'utf8');
+      } catch {
+        existing = '';
+      }
+      const combined = existing + entry;
+      // Keep only last LAST_N_ERRORS entries. Lookahead split keeps the
+      // "--- Failure #" prefix attached to each entry; filter ensures we
+      // drop any leading whitespace/empty fragment.
+      const entries = combined.split(/^(?=--- Failure #)/m).filter((s) => s.trim().startsWith('--- Failure #'));
+      kept = entries.slice(-LAST_N_ERRORS).join('');
+      fs.writeFileSync(logFile, kept);
+    });
 
     logger('failure-recorded', { key, count, command: command.slice(0, 100) });
 

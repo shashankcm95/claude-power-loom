@@ -27,12 +27,51 @@ const { extractFilePaths } = require('./_lib/file-path-pattern');
 // The detection is best-effort: if the toolkit canonical path isn't present
 // in the user's repo (this hook may run from any cwd), state detection
 // silently no-ops and the hook behaves as before. Pure additive.
+//
+// H.7.10 — H-1 fix: path priority reordered (mira retrospective finding).
+// Previously hardcoded `~/Documents/claude-toolkit/` first, silently no-op
+// for non-author installs. Now: env vars → cwd → walk-up → hardcoded LAST.
+
+/**
+ * Walk up from __dirname looking for swarm/run-state. Returns null if not
+ * found within reasonable depth (handles installed-plugin layout where
+ * hooks/scripts are nested deeper than canonical-repo layout).
+ */
+function walkUpForRunState() {
+  let dir = __dirname;
+  for (let i = 0; i < 8; i++) {
+    const candidate = path.join(dir, 'swarm', 'run-state');
+    try {
+      if (fs.existsSync(candidate)) return candidate;
+    } catch { /* skip */ }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
+}
+
 const TOOLKIT_RUN_STATE_CANDIDATES = [
-  // Most common path on the author's machine; users may need to override.
-  path.join(os.homedir(), 'Documents', 'claude-toolkit', 'swarm', 'run-state'),
-  // Alternative if cwd happens to be the toolkit
+  // 1. Explicit env var (user-configurable; documented escape hatch).
+  process.env.CLAUDE_TOOLKIT_PATH
+    ? path.join(process.env.CLAUDE_TOOLKIT_PATH, 'swarm', 'run-state')
+    : null,
+  // 2. Plugin-loader env var (set by Claude Code when running as installed plugin).
+  process.env.CLAUDE_PLUGIN_ROOT
+    ? path.join(process.env.CLAUDE_PLUGIN_ROOT, 'swarm', 'run-state')
+    : null,
+  // 3. Current working directory (if Claude was invoked from inside the toolkit).
   path.join(process.cwd(), 'swarm', 'run-state'),
-];
+  // 4. Walk up from __dirname (handles arbitrary nesting in installed locations).
+  walkUpForRunState(),
+  // 5. Hardcoded fallback for the author's machine. Last resort, not first guess.
+  path.join(os.homedir(), 'Documents', 'claude-toolkit', 'swarm', 'run-state'),
+].filter(Boolean);
+
+// H.7.10 — H-2 fix: recency filter. Mira retrospective found 20 stale
+// runs back to May 1 marked "active". A 4-hour threshold matches typical
+// orchestration-phase wallclock; older mtime suggests stale not active.
+const MAX_ACTIVE_AGE_MS = 4 * 60 * 60 * 1000;
 
 /**
  * Detect any in-progress orchestration runs by listing swarm/run-state/
@@ -45,6 +84,7 @@ const TOOLKIT_RUN_STATE_CANDIDATES = [
  * @returns {Array<{runId: string, actors: number, mtime: number}>}
  */
 function detectActiveOrchestrationRuns() {
+  const now = Date.now();
   for (const baseDir of TOOLKIT_RUN_STATE_CANDIDATES) {
     try {
       if (!fs.existsSync(baseDir)) continue;
@@ -54,6 +94,10 @@ function detectActiveOrchestrationRuns() {
             const runDir = path.join(baseDir, runId);
             const stat = fs.statSync(runDir);
             if (!stat.isDirectory()) return null;
+            // H.7.10 H-2: recency filter — runs older than MAX_ACTIVE_AGE_MS
+            // are stale, not "active". Filters out the long-tail noise mira
+            // observed (20 stale runs going back to May 1).
+            if (now - stat.mtimeMs > MAX_ACTIVE_AGE_MS) return null;
             const actors = fs.readdirSync(runDir).filter((f) => f.startsWith('node-actor-') && f.endsWith('.md')).length;
             if (actors === 0) return null;
             return { runId, actors, mtime: stat.mtimeMs };
@@ -74,20 +118,45 @@ function detectActiveOrchestrationRuns() {
 }
 
 /**
- * Build a workflow-state suffix to append to the SAVE_PROMPT. Compact —
- * one section, max ~200 chars per active run. Only emitted when at least
- * one active run is detected; otherwise empty string (no noise).
+ * Build the SAVE_PROMPT body. When activeRuns has entries, the workflow-state
+ * is integrated as a NUMBERED 4th task INSIDE the prompt rather than appended
+ * as an unnumbered H2 suffix (H.7.10 C-3 fix per mira retrospective). This
+ * keeps formatting consistent with tasks 1-3 and ensures the orchestration
+ * context isn't buried after Claude may have started executing the primary
+ * 3-task instruction.
  *
  * @param {Array} activeRuns Output of detectActiveOrchestrationRuns()
- * @returns {string} Markdown-formatted suffix or empty string
+ * @returns {string} The full SAVE_PROMPT body (with optional 4th task)
  */
-function buildWorkflowStateSuffix(activeRuns) {
-  if (!activeRuns || activeRuns.length === 0) return '';
+function buildSavePrompt(activeRuns) {
+  const baseBody = `BEFORE COMPACTING — A checkpoint has been saved to ~/.claude/checkpoints/last-compact.json.
+
+Now do the intelligent part that only you can do:
+
+1. **Update project MEMORY.md** with: current task status, key decisions, discovered patterns, next steps.
+2. **Store in MemPalace** (if MCP available): session learnings, domain conventions, forged agent personality. If MemPalace is unavailable, write to ~/.claude/checkpoints/mempalace-fallback.md instead.
+3. **Self-improvement candidates**: patterns that recurred, gaps detected, rules to codify.`;
+
+  if (!activeRuns || activeRuns.length === 0) {
+    return baseBody + `
+
+The checkpoint file has the file paths and timestamp. You provide the meaning.`;
+  }
+
+  // Active orchestration runs — integrate as numbered 4th task.
   const lines = activeRuns.map((r) => {
     const ageMin = Math.round((Date.now() - r.mtime) / 60000);
-    return `  - \`${r.runId}\` (${r.actors} actor${r.actors === 1 ? '' : 's'} written; last update ${ageMin}m ago)`;
+    return `   - \`${r.runId}\` (${r.actors} actor${r.actors === 1 ? '' : 's'} written; last update ${ageMin}m ago)`;
   });
-  return `\n\n## Active orchestration runs (workflow state — H.7.7)\n\nThe following swarm/run-state runs have actor outputs but may be mid-cycle:\n\n${lines.join('\n')}\n\nIf compaction loses orchestration context, refer to the run-id directory directly: \`swarm/run-state/<run-id>/\`. Resume from the most recent actor file.`;
+
+  return baseBody + `
+4. **Active orchestration runs** (workflow state — H.7.7/H.7.10): the following swarm/run-state runs have actor outputs and are mid-cycle (within ${Math.round(MAX_ACTIVE_AGE_MS / 60000)}-minute recency window):
+
+${lines.join('\n')}
+
+   If compaction loses orchestration context, refer to the run-id directory directly: \`swarm/run-state/<run-id>/\`. Resume from the most recent actor file.
+
+The checkpoint file has the file paths and timestamp. You provide the meaning.`;
 }
 
 // Deterministic checkpoint: extract key signals from the input
@@ -131,16 +200,11 @@ function writeCheckpoint(checkpoint) {
   } catch { /* ignore trim errors */ }
 }
 
-// The prompt for Claude to do the intelligent part (MemPalace + memory)
-const SAVE_PROMPT = `BEFORE COMPACTING — A checkpoint has been saved to ~/.claude/checkpoints/last-compact.json.
-
-Now do the intelligent part that only you can do:
-
-1. **Update project MEMORY.md** with: current task status, key decisions, discovered patterns, next steps.
-2. **Store in MemPalace** (if MCP available): session learnings, domain conventions, forged agent personality. If MemPalace is unavailable, write to ~/.claude/checkpoints/mempalace-fallback.md instead.
-3. **Self-improvement candidates**: patterns that recurred, gaps detected, rules to codify.
-
-The checkpoint file has the file paths and timestamp. You provide the meaning.`;
+// H.7.10 C-3 fix: SAVE_PROMPT is now constructed dynamically by
+// buildSavePrompt(activeRuns) so workflow-state can integrate as a numbered
+// 4th task INSIDE the prompt rather than as an unnumbered H2 suffix. The
+// prior static const + post-string-concat shape buried the orchestration
+// context after Claude may already be executing the 3-task list.
 
 // H.4.1 — also run a self-improve consolidation scan at compaction. Same
 // candidate-paths resolution as auto-store-enrichment so it works in both
@@ -200,11 +264,12 @@ process.stdin.on('end', () => {
     logger('self_improve_scan_error', { error: err.message });
   }
 
-  // H.7.7: detect active orchestration runs for workflow-state-aware injection
-  let workflowSuffix = '';
+  // H.7.7 + H.7.10 C-3: detect active orchestration runs and integrate
+  // workflow-state as a numbered 4th task INSIDE buildSavePrompt rather
+  // than appending an unnumbered H2 suffix.
+  let activeRuns = [];
   try {
-    const activeRuns = detectActiveOrchestrationRuns();
-    workflowSuffix = buildWorkflowStateSuffix(activeRuns);
+    activeRuns = detectActiveOrchestrationRuns();
     if (activeRuns.length > 0) {
       logger('workflow_state_detected', { count: activeRuns.length, runIds: activeRuns.map((r) => r.runId) });
     }
@@ -212,10 +277,12 @@ process.stdin.on('end', () => {
     logger('workflow_state_error', { error: err.message });
   }
 
-  // Only emit SAVE_PROMPT when the checkpoint was actually written.
-  // Otherwise Claude would be told to reference a file that doesn't exist.
+  // H.7.10 C-3: emit SAVE_PROMPT (with optional integrated 4th task) only
+  // when the checkpoint was actually written. The error branch no longer
+  // glues workflow-state onto an inline error message — that previously
+  // produced an H2-after-error markdown break (mira finding).
   const suffix = checkpointOk
-    ? '\n\n---\n' + SAVE_PROMPT + workflowSuffix
-    : '\n\n---\n[pre-compact-save: checkpoint write failed — MemPalace instruction skipped to avoid hallucinated file references]' + workflowSuffix;
+    ? '\n\n---\n' + buildSavePrompt(activeRuns)
+    : '\n\n---\n[pre-compact-save: checkpoint write failed — MemPalace instruction skipped to avoid hallucinated file references]';
   process.stdout.write(input + suffix);
 });

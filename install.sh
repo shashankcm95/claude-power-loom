@@ -299,12 +299,16 @@ run_smoke_tests() {
   fi
 
   # Test 11 (H.7.7): error-critic Critic→Refiner — first failure stays silent
-  # (below escalation threshold). Wipe failure dir to ensure clean state.
+  # (below escalation threshold). H.7.10 update: use explicit CLAUDE_SESSION_ID
+  # so script's session-scoping (mira C-1 fix) gives both invocations the
+  # same subdir; without this, each invocation generates random hex SESSION_ID
+  # and the count never accumulates.
   local tmp_failures
   tmp_failures=$(node -e "console.log(require('os').tmpdir())")"/.claude-toolkit-failures"
   rm -rf "$tmp_failures"
+  local h77_session="test-h7-7-session-A"
   local h77_first_result
-  h77_first_result=$(echo '{"tool_name":"Bash","tool_input":{"command":"npm test"},"tool_response":{"stderr":"Error: failed","is_error":true}}' | node "$CLAUDE_DIR/hooks/scripts/error-critic.js" 2>/dev/null)
+  h77_first_result=$(echo '{"tool_name":"Bash","tool_input":{"command":"npm test"},"tool_response":{"stderr":"Error: failed","is_error":true}}' | CLAUDE_SESSION_ID="$h77_session" node "$CLAUDE_DIR/hooks/scripts/error-critic.js" 2>/dev/null)
   if [ -z "$h77_first_result" ]; then
     echo "  ✓ error-critic: H.7.7 first failure stays silent (below threshold)"
     passed=$((passed + 1))
@@ -314,9 +318,9 @@ run_smoke_tests() {
   fi
 
   # Test 12 (H.7.7): error-critic emits [FAILURE-REPEATED] forcing instruction
-  # on the SECOND failure of the same command
+  # on the SECOND failure of the same command. Same session as test 11.
   local h77_second_result
-  h77_second_result=$(echo '{"tool_name":"Bash","tool_input":{"command":"npm test"},"tool_response":{"stderr":"Error: failed again","is_error":true}}' | node "$CLAUDE_DIR/hooks/scripts/error-critic.js" 2>/dev/null)
+  h77_second_result=$(echo '{"tool_name":"Bash","tool_input":{"command":"npm test"},"tool_response":{"stderr":"Error: failed again","is_error":true}}' | CLAUDE_SESSION_ID="$h77_session" node "$CLAUDE_DIR/hooks/scripts/error-critic.js" 2>/dev/null)
   if echo "$h77_second_result" | grep -q 'FAILURE-REPEATED'; then
     echo "  ✓ error-critic: H.7.7 [FAILURE-REPEATED] forcing instruction on 2nd same-command failure"
     passed=$((passed + 1))
@@ -324,7 +328,25 @@ run_smoke_tests() {
     echo "  ✗ error-critic: H.7.7 [FAILURE-REPEATED] missing on 2nd failure — got: ${h77_second_result:0:80}"
     failed=$((failed + 1))
   fi
-  rm -rf "$tmp_failures"
+
+  # Test 13 (H.7.10): cross-session leak detection (mira C-1 retrospective fix).
+  # Tests 11+12 just got count=2 in session-A. Test 13 fires the SAME COMMAND
+  # in a DIFFERENT session (session-B) and verifies count starts fresh at 1
+  # (silent, below threshold) — NOT continuing from 2 (which would emit
+  # [FAILURE-REPEATED] and prove the leak still exists).
+  # Critical property: NO rm -rf between tests 12 and 13. State persistence
+  # across the test boundary is what catches the cross-session leak.
+  local h7_10_session="test-h7-10-session-B"
+  local h7_10_result
+  h7_10_result=$(echo '{"tool_name":"Bash","tool_input":{"command":"npm test"},"tool_response":{"stderr":"Error: failed in B","is_error":true}}' | CLAUDE_SESSION_ID="$h7_10_session" node "$CLAUDE_DIR/hooks/scripts/error-critic.js" 2>/dev/null)
+  if [ -z "$h7_10_result" ]; then
+    echo "  ✓ error-critic: H.7.10 cross-session leak fix — fresh session count starts at 1 (silent)"
+    passed=$((passed + 1))
+  else
+    echo "  ✗ error-critic: H.7.10 cross-session leak — session-B unexpectedly escalated; mira C-1 still present"
+    failed=$((failed + 1))
+  fi
+  rm -rf "$tmp_failures"  # cleanup all session subdirs at once
 
 
   echo ""

@@ -12,15 +12,22 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ### Added
 
+- **H.7.10** Mira retrospective fixes via `/build-plan` (recursive dogfood). Applies all 3 CRITICAL + 2 HIGH findings from mira's H.7.7+H.7.8 retrospective using the `/build-plan` flow shipped in H.7.9 — proves the abstraction is sound by eating own dogfood.
 - **H.7.9** HETS-in-plan-mode injection. NEW `commands/build-plan.md` (dual-gate slash command modeled on `/build-team`); NEW `skills/build-plan/SKILL.md`; NEW `swarm/plan-template.md` (canonical plan template with mandatory sections — Context / Routing Decision verbatim JSON / HETS Spawn Plan / Files / Phases / Verification / Out of Scope / Drift Notes); NEW `skills/agent-team/patterns/plan-mode-hets-injection.md` (16th pattern). Converts soft-norm plan-mode + HETS-spawn discipline (`rules/core/workflow.md`) into a sharper gate without merging it with the route-decide gate. Recursive-dogfood property: theo (architect) designed the pattern using the pattern; mira (different identity, same persona family) authored the H.7.7+H.7.8 retrospective that motivated it.
 - **`/plan` vs `/build-plan` decision tree** added to `rules/core/workflow.md`. Both coexist (additive). `/build-plan` Step 0's `root` recommendation redirects cleanly to `/plan`.
 - **Drift-note convention** in plan files — captures soft-norm-drift observations during plan work; feeds the auto-loop's session-end review per `rules/core/self-improvement.md`.
 - **H.7.7** substrate primitive additions (Critic→Refiner failure-consolidation hook + workflow-state-aware pre-compact). NEW `hooks/scripts/error-critic.js` (~210 LoC); workflow-state-aware `pre-compact-save.js` (+80 LoC); 2 new smoke tests (10 → 12).
 - **H.7.8** plugin-dev tooling discipline. NEW `.markdownlint.json`, `.editorconfig`, `.github/workflows/ci.yml` (3 parallel jobs: smoke / markdown-lint / json-validate). README CI status badge.
+- **install.sh test 13** — Cross-session leak detection (load-bearing property: state persistence across test boundary, NO rm-rf between tests 12 and 13).
 
-### Pending fixes (H.7.10)
+### Fixed (H.7.10)
 
-Mira's H.7.7+H.7.8 retrospective surfaced 3 CRITICAL + 2 HIGH bugs (TMPDIR session leak, RMW race, SAVE_PROMPT integration, path priority, recency filter). H.7.10 ships fixes via the new `/build-plan` flow as recursive dogfood.
+- **error-critic.js C-1 (TMPDIR session leak)** — Path now session-scoped: `${TMPDIR}/.claude-toolkit-failures/<SESSION_ID>/<key>.{count,log}`. SESSION_ID from `CLAUDE_SESSION_ID`/`CLAUDE_CONVERSATION_ID` env or random hex fallback. macOS-aware (was Linux-assumption broken).
+- **error-critic.js C-2 (RMW race)** — Count + log RMW blocks now wrapped in `withLock` from `scripts/agent-team/_lib/lock.js`. H.3.2 canonical primitive used across kb-resolver/budget-tracker/tree-tracker.
+- **session-reset.js C-1 defense-in-depth** — Cleans stale `.claude-toolkit-failures/<session-dir>/` entries > 1 day old at SessionStart.
+- **pre-compact-save.js C-3 (SAVE_PROMPT integration)** — Replaced static const + suffix-append with dynamic `buildSavePrompt(activeRuns)`. Workflow-state integrates as NUMBERED 4th task INSIDE the 1-3 list, not as unnumbered H2 suffix. Error branch no longer glues suffix to error text.
+- **pre-compact-save.js H-1 (path priority)** — `TOOLKIT_RUN_STATE_CANDIDATES` reordered: env vars (`CLAUDE_TOOLKIT_PATH`, `CLAUDE_PLUGIN_ROOT`) → cwd → walk-up from `__dirname` → hardcoded LAST. Closes silent no-op for non-author installs.
+- **pre-compact-save.js H-2 (recency filter)** — `MAX_ACTIVE_AGE_MS = 4 hours`; runs older than 4hr filtered out before being marked "active". Verified: 29 stale → 1 active in current state.
 
 ---
 

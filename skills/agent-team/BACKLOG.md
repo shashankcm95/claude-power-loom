@@ -2,6 +2,61 @@
 
 Deferred work from prior phases, captured here so nothing important gets silently dropped. Each entry: scope, rationale, dependencies, rough estimate.
 
+## Phase H.7.10 — Mira retrospective fixes via `/build-plan` (recursive dogfood) — SHIPPED
+
+**Status**: shipped per H.7.9 plan (`~/.claude/plans/flickering-crafting-star.md`). Recursive-dogfood demonstration: applies mira's 3 CRITICAL + 2 HIGH retrospective findings using the `/build-plan` flow shipped in H.7.9. The discipline gates (route-decide, plan mode, theo's existing design from H.7.9) all worked together.
+
+**What landed**:
+
+- **error-critic.js C-1 fix (session leak)** — TMPDIR path now session-scoped: `${TMPDIR}/.claude-toolkit-failures/<SESSION_ID>/<key>.{count,log}`. SESSION_ID resolved at module-load from `CLAUDE_SESSION_ID` / `CLAUDE_CONVERSATION_ID` env vars or random 8-byte hex fallback. Header comment updated to remove the false "auto-cleaned on system reboot" claim (Linux assumption broken on macOS where `os.tmpdir()` returns persistent `/var/folders/<hash>/T/`).
+- **error-critic.js C-2 fix (RMW race)** — Both count RMW (lines 175-182 in original) and rolling-log RMW (lines 191-203 in original) now wrapped in `withLock(LOCK_PATH, () => { ... })`. Imports `withLock` from `scripts/agent-team/_lib/lock.js` (H.3.2 canonical primitive used across kb-resolver/budget-tracker/tree-tracker). Two-tier require fallback: in-repo path → installed `~/.claude/` path → no-op fallback (logged once).
+- **session-reset.js C-1 defense-in-depth** — Cleans `.claude-toolkit-failures/<session-dir>` entries older than 1 day at SessionStart. Catches the edge case where SESSION_ID was unset and random hex IDs accumulated.
+- **pre-compact-save.js C-3 fix (SAVE_PROMPT integration)** — Replaced static `SAVE_PROMPT` const + post-string-concat `workflowSuffix` with dynamic `buildSavePrompt(activeRuns)` function. When active runs detected, workflow-state integrates as NUMBERED 4th task INSIDE the 1-3 task list (not appended as unnumbered H2 suffix). Error branch (checkpoint-write fail) no longer glues suffix onto error text — fixes the markdown-break bug.
+- **pre-compact-save.js H-1 fix (path priority)** — `TOOLKIT_RUN_STATE_CANDIDATES` reordered: (1) `CLAUDE_TOOLKIT_PATH` env var → (2) `CLAUDE_PLUGIN_ROOT/swarm/run-state` env var → (3) `process.cwd()/swarm/run-state` → (4) walk-up from `__dirname` (8-deep) → (5) hardcoded `~/Documents/claude-toolkit/...` LAST. Filters nulls. Closes the silent no-op for non-author installs.
+- **pre-compact-save.js H-2 fix (recency filter)** — Added `MAX_ACTIVE_AGE_MS = 4 * 60 * 60 * 1000` (4 hours). `detectActiveOrchestrationRuns` filters runs by `mtime` before counting actors. Verified empirically: 29 run dirs in current state → only 1 within 4hr window (was previously all 29 reported as "active").
+- **install.sh test 13** — NEW cross-session leak detection test. Tests 11+12 updated to set `CLAUDE_SESSION_ID="test-h7-7-session-A"` (so they work post-fix). Test 13 fires same command in `CLAUDE_SESSION_ID="test-h7-10-session-B"` WITHOUT rm-rf cleanup between tests 12 and 13 — load-bearing property: state persistence across the test boundary is what catches the cross-session leak. Pass criterion: session-B count starts fresh at 1 (silent), not continuing from session-A's count of 2.
+
+**Recursive-dogfood evidence (H.7.9 flow honored)**:
+
+1. `route-decide.js` invoked with `--task` (mira's fixes) and `--context` (H.7.9 ship + theo design). **Drift-note 4**: returned `root` confidence=0.625 score=0.112 — same dictionary gap as drift-note 1. CRITICAL/retrospective/race/leak signal tokens still missing. Captured for H.7.13 dictionary expansion.
+2. Multi-file rule respected (4 files modified) — no plan-mode re-entry needed since theo's design (in H.7.9 plan file) IS the architecture; implementation was mechanical.
+3. No new HETS architect spawn (theo's design exists; recursive-dogfood demonstrates the foundation works for "external-user" application).
+
+**Verification (per plan probes)**:
+
+- ✓ Probe 1: `bash install.sh --test` → **13/13 passing** (was 12/12; +1 for C-1 cross-session leak coverage)
+- ✓ Probe 2: `node scripts/agent-team/contracts-validate.js` → 0 violations
+- ✓ Probe 3: Mira's 5 findings re-verified against post-fix code — each citation either fixed (C-1/C-2/C-3/H-1/H-2) or is a comment update consistent with the fix
+- ✓ Probe 4: H-2 recency filter empirical check: 29 stale → 1 active in 4hr window
+- ✓ Probe 5: Convergence recording — done at commit time via `pattern-recorder.js record --paired-with 04-architect.mira --convergence agree` (theo agrees with mira's bug findings; the partial-disagree was about phase-bundling, which the split honored)
+
+**Convergence stance recorded**:
+
+`pattern-recorder.js record --task-signature h7.10-mira-fixes --persona 04-architect --identity 04-architect.theo --verdict pass --paired-with 04-architect.mira --convergence agree --findings-count 5 --file-citations 12`
+
+mira's 5 bug findings + theo's 5 fix designs = 1:1 mapping; all fixes verified. Convergence=agree on the fix designs (theo's partial-disagree was orthogonal — about phase-bundling, not about whether the bugs are real).
+
+**Invariants preserved**:
+
+- No subprocess LLM (deterministic withLock primitive only)
+- Schema-additive (no breaking changes to error-critic / pre-compact-save callers)
+- Defense-in-depth for C-1 (session-scoping at filename level + session-reset cleanup)
+- Fallback no-op for missing withLock (lock primitive unavailable → log once + proceed without race protection)
+
+**H.7.10 follow-ups (deferred)**:
+
+- **H.7.11**: Agent discipline pass + JSDoc (was tentatively H.7.10 in BACKLOG before this session's split)
+- **H.7.12**: Plan-template enforcement hook (theo's deferred Section C from H.7.9 design)
+- **H.7.13**: Route-decide dictionary expansion — drift-notes 1 and 4 both confirm the gap (CRITICAL/retrospective/race/leak/audit tokens)
+- **Document `CLAUDE_TOOLKIT_PATH` env var** in README (introduced by H-1 fix; user-facing escape hatch for non-canonical install paths)
+
+**Why this is the right shape**:
+
+- Recursive-dogfood property validated: H.7.9 foundation worked for "external-user" application of mira's fixes
+- All 5 mira findings load-bearing on substrate quality — none deferred
+- Test discipline upgraded: install.sh test 13 catches cross-session leak that previously hid behind rm-rf cleanup
+- Fourteenth distinct phase shape: substrate retrospective-fix application via new flow
+
 ## Phase H.7.9 — HETS-in-plan-mode injection (`/build-plan` + canonical plan template) — SHIPPED
 
 **Status**: shipped per approved plan (`~/.claude/plans/flickering-crafting-star.md`). Foundation phase of H.7.9+H.7.10 split (theo's architectural recommendation — see open question 5 in his deliverable). Plan-mode workflow honored properly: EnterPlanMode → Phase 1 (3 parallel Explore agents) → Phase 2 (architect spawn — theo, NOT mira since she designed the H.7.7+H.7.8 retrospective critique that motivates this) → Phase 3 plan-file write → ExitPlanMode user approval → execute.

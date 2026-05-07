@@ -70,6 +70,30 @@ try {
   }
 
   if (cleaned > 0) logger('cleanup', { staleFilesRemoved: cleaned });
+
+  // H.7.10 — defense-in-depth for mira C-1 (TMPDIR session leak in
+  // error-critic.js). error-critic.js is now session-scoped at filename
+  // level; this cleanup also removes stale session subdirs > 1 day old
+  // in case env var was unset and random hex IDs accumulated.
+  try {
+    const failureRoot = path.join(os.tmpdir(), '.claude-toolkit-failures');
+    if (fs.existsSync(failureRoot)) {
+      const sessionDirs = fs.readdirSync(failureRoot);
+      let staleSessions = 0;
+      for (const sessionDir of sessionDirs) {
+        const sessionPath = path.join(failureRoot, sessionDir);
+        try {
+          const stat = fs.statSync(sessionPath);
+          if (!stat.isDirectory()) continue;
+          if (now - stat.mtimeMs > ONE_DAY) {
+            fs.rmSync(sessionPath, { recursive: true, force: true });
+            staleSessions++;
+          }
+        } catch { /* skip on per-dir errors */ }
+      }
+      if (staleSessions > 0) logger('failure_dir_cleanup', { staleSessionsRemoved: staleSessions });
+    }
+  } catch { /* fail-open: never block SessionStart on cleanup errors */ }
 } catch (err) {
   logger('error', { error: err.message });
 }
