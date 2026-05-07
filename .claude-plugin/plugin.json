@@ -7,8 +7,8 @@
     "name": "Shashank Chandrashekar Murigappa",
     "url": "https://github.com/shashankcm95"
   },
-  "homepage": "https://github.com/shashankcm95/power-loom",
-  "repository": "https://github.com/shashankcm95/power-loom",
+  "homepage": "https://github.com/shashankcm95/claude-power-loom",
+  "repository": "https://github.com/shashankcm95/claude-power-loom",
   "license": "MIT",
   "hooks": "./hooks/hooks.json",
   "agents": "./agents/",
