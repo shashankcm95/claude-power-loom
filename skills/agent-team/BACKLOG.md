@@ -2,6 +2,25 @@
 
 Deferred work from prior phases, captured here so nothing important gets silently dropped. Each entry: scope, rationale, dependencies, rough estimate.
 
+## CS-13 — IRL test environment isolation (env-var completion)
+
+**Status**: partial — directory + 2 of 4 env vars work today. Open work for full isolation.
+
+**Why this exists**: User-task tests (real engineering tasks routed through the toolkit, vs toolkit-meta phase work) contaminate the substrate's trust formula state if they share storage with toolkit-meta verdicts. The URL shortener test (run-id `orch-user-task-url-shortener-20260507-062607`) demonstrated this: mira's tier dropped from approaching-high-trust to medium-trust based on user-task fail (A1 evidence-style), not toolkit-substrate fail.
+
+**Forward setup (DONE)**: `~/Documents/claude-toolkit-irl/` directory created with own `state/`, `run-state/`, `test-tasks/`. `HETS_IDENTITY_STORE` + `HETS_RUN_STATE_DIR` env vars route 2 of 4 data sinks correctly when set per-task before invoking HETS scripts.
+
+**Open work — env-var override for the remaining 2 sinks**:
+- `scripts/agent-team/spawn-recorder.js` hardcodes `~/.claude/spawn-history.jsonl`. Need: honor `HETS_SPAWN_HISTORY_PATH` env override (default: `~/.claude/spawn-history.jsonl`).
+- `scripts/agent-team/pattern-recorder.js` hardcodes `~/.claude/agent-patterns.json`. Need: honor `HETS_PATTERNS_PATH` env override (default: `~/.claude/agent-patterns.json`).
+- Pattern: read existing `_lib/runState.js` (H.5.5) for the env-var-with-default precedent.
+
+**Estimate**: ~30 LoC across 2 scripts, ~15 min. Trivial; should ship as a small phase soon.
+
+**Convention going forward** (until env-var work lands): user-task tests will continue contaminating the 2 unprotected files. Tag spawn-recorder + pattern-recorder entries with explicit `is_user_task: true` field so future cleanup or filtering can target them. Future tier-formula query could optionally exclude user-task entries.
+
+**Pre-separation historical contamination**: URL shortener test (2026-05-07) wrote verdicts for `04-architect.mira` (fail) + `03-code-reviewer.nova` (pass) to all 3 toolkit data files. Retained for audit; rollback gated on explicit user authorization since deletion of accumulated verdict history is a high-impact action (changes trust-formula state across multiple identities).
+
 ## Phase CS-6 — End-user USING.md walkthrough — SHIPPED
 
 **Status**: shipped via corrected autonomous-platform pattern (ari drafted; rafael challenged; root applied 3 inline revisions). Closes the persistent CS-6 BACKLOG item that's lived since H.2.x cross-phase chat-scan.
