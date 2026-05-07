@@ -6,7 +6,7 @@
 >
 > **Hooks before, persistence around, verification after** — compensates for LLM non-determinism at the seams without trying to replace the LLM.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-1.0.1-green.svg)](CHANGELOG.md) [![Plugin](https://img.shields.io/badge/Claude_Code-plugin-orange.svg)](.claude-plugin/plugin.json)
+[![CI](https://github.com/shashankcm95/claude-power-loom/actions/workflows/ci.yml/badge.svg)](https://github.com/shashankcm95/claude-power-loom/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-1.0.1-green.svg)](CHANGELOG.md) [![Plugin](https://img.shields.io/badge/Claude_Code-plugin-orange.svg)](.claude-plugin/plugin.json)
 
 ## Install
 
@@ -165,4 +165,4 @@ This work builds on community plugins and patterns that came before it. See [ATT
 
 ---
 
-**Repository**: https://github.com/shashankcm95/claude-power-loom
+**Repository**: <https://github.com/shashankcm95/claude-power-loom>

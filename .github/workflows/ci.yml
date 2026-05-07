@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  smoke:
+    name: Hook smoke + contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run hook smoke tests
+        run: |
+          bash install.sh --test 2>&1 | tee /tmp/smoke.log
+          # Verify the "12 passed, 0 failed" line is present
+          grep -qE 'Results: [0-9]+ passed, 0 failed' /tmp/smoke.log
+
+      - name: Run contracts-validate
+        run: |
+          node scripts/agent-team/contracts-validate.js 2>&1 | tee /tmp/contracts.log
+          grep -qE 'Total violations: 0' /tmp/contracts.log
+
+  markdown-lint:
+    name: Markdown lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # Use npx to run markdownlint-cli2 without forcing a local npm install.
+      # The .markdownlint.json at repo root is auto-discovered.
+      # Exclude swarm/ — those are historical phase findings docs; lint would
+      # require touching them, which dilutes their snapshot-at-phase property.
+      - name: Run markdownlint
+        run: npx --yes markdownlint-cli2 "**/*.md" "#node_modules" "#swarm"
+
+  json-validate:
+    name: JSON validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Validate every *.json file in the repo (excluding node_modules and
+      # transient state directories). Catches malformed plugin.json /
+      # marketplace.json / config-guard-patterns.json / hooks.json before
+      # they ship.
+      - name: Validate all JSON files
+        run: |
+          set -e
+          fail=0
+          for f in $(find . -name "*.json" -not -path "./node_modules/*" -not -path "./.git/*" -not -path "./swarm/run-state/*"); do
+            if ! python3 -m json.tool "$f" > /dev/null 2>&1; then
+              echo "INVALID: $f"
+              fail=1
+            fi
+          done
+          exit $fail
