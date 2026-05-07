@@ -126,9 +126,9 @@ Files read for context but NOT modified. Helps reviewers understand the blast ra
 
 ---
 
-## Schema validation (H.7.12 — tiered enforcement live)
+## Schema validation (H.7.12 — tiered enforcement live; H.7.17 — migrated to PostToolUse)
 
-Schema conformance is now enforced by `hooks/scripts/validators/validate-plan-schema.js` (PreToolUse:Edit|Write hook fires when `~/.claude/plans/*.md` or `.claude/plans/*.md` is written). Validation is **tiered** to match actual plan-writing variance — strict on truly load-bearing sections, conditional on new-style plans, hint-only on aspirational sections.
+Schema conformance is enforced by `hooks/scripts/validators/validate-plan-schema.js`. **H.7.17 migration**: hook now fires on PostToolUse:Edit|Write (was PreToolUse in H.7.12). H.7.12's PreToolUse choice was a conservative deviation from theo's H.7.9 Section C original spec — H.7.17 restored the original architectural intent after `claude-code-guide` confirmed PostToolUse:Write is supported by Claude Code. Hook fires AFTER `~/.claude/plans/*.md`, `.claude/plans/*.md`, or `$CLAUDE_PLAN_DIR/*.md` (drift-note 12) is written. Validation is **tiered** to match actual plan-writing variance — strict on truly load-bearing sections, conditional on new-style plans, hint-only on aspirational sections.
 
 ### Tier 1 — truly mandatory (always enforced; missing → `[PLAN-SCHEMA-DRIFT]`)
 
@@ -152,13 +152,14 @@ If "Routing Decision" string isn't present, the plan is treated as old-style and
 
 Missing Tier 3 sections produce a stderr `ℹ` message but no forcing instruction.
 
-### Hook behavior
+### Hook behavior (H.7.17)
 
-- **Never blocks**: hook always emits `decision: approve` JSON to stdout (file is written regardless)
-- **Forcing instruction goes to stderr**: `[PLAN-SCHEMA-DRIFT]` text emitted on stderr when Tier 1 or Tier 2 sections are missing
-- **Path filter**: only `~/.claude/plans/*.md` and `.claude/plans/*.md` writes trigger the hook
+- **Never blocks** (PostToolUse can't gate — file is already written): hook is purely informational
+- **Forcing instruction goes to STDOUT** (H.7.17 change from stderr): `[PLAN-SCHEMA-DRIFT]` text emitted on stdout when Tier 1 or Tier 2 sections are missing. Matches `error-critic.js` PostToolUse pattern.
+- **No `decision: approve` JSON**: PostToolUse doesn't expect/require it (H.7.17 removed)
+- **Path filter**: `~/.claude/plans/*.md`, `.claude/plans/*.md`, OR `$CLAUDE_PLAN_DIR/*.md` (H.7.15)
 - **Heading match**: H2-level (`##`), case-sensitive, with optional parenthetical suffix (e.g., "Out of Scope (Deferred)" matches "Out of Scope")
-- **Fail-open**: any error in the hook (parse failure, etc.) approves silently — discipline gate, not security gate
+- **Fail-open**: any error in the hook (parse failure, etc.) exits silently — discipline gate, not security gate. Logging-only failure mode (Write/Edit already completed).
 
 ### Manual scan (still recommended at ExitPlanMode for richer validation)
 

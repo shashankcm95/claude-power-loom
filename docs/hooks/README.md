@@ -28,6 +28,6 @@
 | 10 | `session-end-nudge.js` | Stop | H.1 baseline |
 | 11 | `session-self-improve-prompt.js` | UserPromptSubmit | H.4.1 |
 | 12 | `auto-store-enrichment.js` | Stop | H.4.1 |
-| 13 | `validators/validate-plan-schema.js` | PreToolUse | **H.7.12 (NEW)** — tiered plan-template enforcement |
+| 13 | `validators/validate-plan-schema.js` | PostToolUse | H.7.12 (NEW) — tiered plan-template enforcement; **H.7.17 (migrated PreToolUse → PostToolUse per theo's H.7.9 Section C original spec)** |
 
 > Up: [docs/](..)

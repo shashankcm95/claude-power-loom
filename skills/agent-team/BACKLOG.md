@@ -2,6 +2,69 @@
 
 Deferred work from prior phases, captured here so nothing important gets silently dropped. Each entry: scope, rationale, dependencies, rough estimate.
 
+## Phase H.7.17 — Migrate validate-plan-schema.js to PostToolUse:Write (closes drift-note 10 fully) — SHIPPED
+
+**Status**: shipped per approved plan. Closes drift-note 10 definitively (was partially closed in H.7.16 pending fresh-session test).
+
+### Definitive answer via claude-code-guide
+
+H.7.17 spawned the `claude-code-guide` agent for the question "Does Claude Code support PostToolUse:Write?" Answer: **yes**. PostToolUse matchers support any tool name (including `Write`/`Edit`); pipe-syntax (`Write|Edit`) works; hooks.json is re-read per tool call (NOT session-cached, contradicting my H.7.16 inference). The H.7.16 in-session test was inconclusive due to test-moment caching, NOT lack of dispatch.
+
+**Reference**: https://code.claude.com/docs/en/hooks.md (Matcher Patterns section, Common Patterns for PostToolUse)
+
+### What landed
+
+- **`hooks/hooks.json`**: moved validate-plan-schema.js entry from PreToolUse → PostToolUse. Matcher stays `Edit|Write`. Now PostToolUse has 2 entries: Bash (error-critic.js) + Edit|Write (validate-plan-schema.js).
+- **`hooks/scripts/validators/validate-plan-schema.js`** — output semantics adjusted for PostToolUse:
+  - **Removed** `{decision: "approve"}` JSON output (PostToolUse doesn't expect/require decision JSON; the operation already happened)
+  - **Moved** forcing instruction from stderr → stdout (matches error-critic.js PostToolUse pattern; Claude reads stdout as additional context)
+  - **Kept** Tier 3 informational on stderr (operator-visibility only)
+  - **Kept** path-filter, tier detection, isPlanPath logic unchanged
+  - Updated header comment with H.7.17 migration rationale
+- **`swarm/plan-template.md`**: updated "Schema validation" section — PreToolUse → PostToolUse; explicit hook behavior change documented
+- **`skills/agent-team/patterns/plan-mode-hets-injection.md`**: updated H.7.12 enforcement note with H.7.17 migration
+- **`docs/hooks/README.md`**: hook table row 13 — Event column PreToolUse → PostToolUse; phase notation updated
+
+### Verification
+
+- ✓ Probe 1: `bash install.sh --hooks --test` → 18/18 passing (regression — tests use `2>&1` merged stream check; transparent to stdout↔stderr move)
+- ✓ Probe 2: `node scripts/agent-team/contracts-validate.js` → 0 violations
+- ✓ Probe 3: `node scripts/agent-team/_h70-test.js` → 46/46 passing (regression — H.7.17 doesn't touch route-decide)
+- ✓ Probe 4: `node --check hooks/scripts/validators/validate-plan-schema.js` → syntax-ok
+- ✓ Probe 5: synthetic tier-1-missing PostToolUse:Write JSON piped to validator → `[PLAN-SCHEMA-DRIFT]` emitted on stdout (was stderr in PreToolUse)
+- ✓ Probe 6: synthetic compliant plan piped to validator → empty stdout (no JSON, no forcing instruction — PostToolUse is silent when nothing to say)
+- ✓ Probe 7: `python3 -m json.tool hooks/hooks.json` → valid JSON; PostToolUse array has 2 entries; PreToolUse no longer has validate-plan-schema
+
+### Drift-notes captured this phase
+
+- **Drift-note 24**: H.7.17 closes both drift-note 10 (PostToolUse:Write feasibility) AND drift-note 23 (in-session hooks.json caching) via single claude-code-guide consultation. Pattern: when uncertain about Claude Code behavior, the cheapest definitive answer is the claude-code-guide agent — faster than empirical testing AND more reliable (consults canonical docs at code.claude.com).
+- **Drift-note 25**: theo's H.7.9 Section C said "PostToolUse-on-Write hook is feasible" — that turned out to be CORRECT. H.7.12's PreToolUse choice was a conservative deviation due to my Phase 1 inventory finding zero PostToolUse:Write entries (which was just absence-of-need, not absence-of-support). Pattern: "no examples in our toolkit" ≠ "not supported". Audit other PreToolUse-vs-PostToolUse decisions in the toolkit for similar deviations from architectural intent.
+
+### Drift-notes closed
+
+- **Drift-note 10** (fully): PostToolUse:Write IS supported; validate-plan-schema.js migrated per theo's original spec
+- **Drift-note 23**: claude-code-guide says hooks.json is re-read per call, so caching wasn't the issue. H.7.16 test failure was likely test-moment-specific (e.g., race between `install.sh --hooks` re-installing hooks and the next Write tool firing).
+
+### Honest tradeoffs
+
+- **Behavior-preserving**: forcing instruction text identical; only stream changed (stderr → stdout). Tests use `2>&1` so transparent.
+- **Cleaner architecture**: PostToolUse for advisory linting (matches error-critic.js); PreToolUse reserved for actual gates that BLOCK (validate-no-bare-secrets, validate-frontmatter, fact-force-gate, config-guard).
+- **No risk of blocking**: PostToolUse can't block (operation already happened) — semantically clearer than PreToolUse-with-always-approve.
+- **claude-code-guide agent validated** as substrate-research tool — faster + more reliable than empirical hook tests for Claude Code behavior questions.
+
+### H.7.17 follow-ups (deferred)
+
+- **Audit other PreToolUse-vs-PostToolUse decisions** (drift-note 25): scan toolkit for other validators that may have made the same conservative-deviation choice.
+- **PostToolUse:Edit full-file validation**: current limitation — Edit hook only sees `tool_input.new_string` (the edit chunk), not full file. Carried over from PreToolUse implementation; not introduced by H.7.17. Future phase candidate if needed.
+
+### Why this is the right shape
+
+- Closes drift-note 10 definitively (was partially closed in H.7.16; now fully closed via claude-code-guide + migration)
+- Restores theo's H.7.9 Section C original architectural intent
+- Validates the claude-code-guide agent as a substrate-research tool
+- Cleaner architecture: PostToolUse for advisory linting; PreToolUse reserved for actual gates
+- Twenty-first distinct phase shape: original-architectural-intent restoration after empirical confirmation
+
 ## Phase H.7.16 — Substrate-meta routing detection (drift-note 9) + PostToolUse:Write investigation (drift-note 10) — SHIPPED
 
 **Status**: shipped per approved plan. Closes the two architectural/investigative drift-notes deferred from H.7.15. Architect: `04-architect.mira` (1,470-word design pass). Convergence with theo recorded as `agree`.

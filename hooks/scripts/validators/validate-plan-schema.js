@@ -1,35 +1,35 @@
 #!/usr/bin/env node
 
-// PreToolUse:Edit|Write validator (H.7.12): plan-template schema enforcement.
+// PostToolUse:Edit|Write validator (H.7.12 + H.7.17): plan-template schema enforcement.
 //
-// Closes theo's H.7.9 Section C deferral. Theo's design assumed PostToolUse:Write
-// would fire post-write to lint plan files; Phase 1 inventory revealed the toolkit
-// has no PostToolUse:Write entries (only PostToolUse:Bash). PreToolUse:Write matches
-// existing validator family precedent (validate-frontmatter-on-skills.js,
-// validate-no-bare-secrets.js).
+// Closes theo's H.7.9 Section C deferral. **H.7.17 migration**: this hook moved
+// from PreToolUse:Edit|Write (H.7.12 conservative path) to PostToolUse:Edit|Write
+// (theo's H.7.9 original spec). Phase 1 inventory in H.7.12 found zero PostToolUse:Write
+// entries in the toolkit, which I incorrectly inferred meant the matcher was
+// unsupported. claude-code-guide consultation in H.7.16 → H.7.17 confirmed
+// PostToolUse supports any tool name including Write/Edit; absence-of-need ≠
+// absence-of-support. Migration restores theo's original architectural intent.
 //
 // Tiered enforcement (H.7.12 — user-approved via AskUserQuestion):
 //   - Tier 1 (truly mandatory): Context, (Files To Modify OR Phases), Verification Probes
 //   - Tier 2 (conditional on new-style plan): Routing Decision, HETS Spawn Plan
 //   - Tier 3 (aspirational hints): Out of Scope, Drift Notes
 //
-// Tier 1 missing → emit `[PLAN-SCHEMA-DRIFT]` forcing instruction (stderr)
+// Tier 1 missing → emit `[PLAN-SCHEMA-DRIFT]` forcing instruction (stdout)
 // Tier 2 missing (only if "Routing Decision" string detected anywhere → new-style plan
-//   signal) → emit forcing instruction
+//   signal) → emit forcing instruction (stdout)
 // Tier 3 missing → stderr `ℹ` informational only; no forcing instruction
 //
-// Why stderr for forcing instruction (not stdout): PreToolUse hooks output a JSON
-// decision on stdout (`{decision: "approve"|"block"}`). Stderr is the available
-// stream for human/Claude-readable nudges that don't block. Tests merge streams
-// via `2>&1` to verify the marker.
-//
-// `decision: "approve"` is ALWAYS emitted — this hook NEVER blocks per H.7.12 plan.
-// User keeps autonomy; the forcing instruction is informational nudge, not gate.
+// **H.7.17 output semantics change**: PostToolUse hooks don't expect/require
+// JSON `decision` on stdout (unlike PreToolUse which gates the operation).
+// Forcing instruction now goes to STDOUT directly (matches error-critic.js
+// PostToolUse pattern). The hook NEVER blocks per design — and PostToolUse
+// can't block anyway (the Write/Edit already happened). User keeps autonomy.
 //
 // Mirrors the [PROMPT-ENRICHMENT-GATE] (H.4.x), [ROUTE-DECISION-UNCERTAIN] (H.7.5),
-// [CONFIRMATION-UNCERTAIN] (H.4.3), [FAILURE-REPEATED] (H.7.7), and [SELF-IMPROVE
-// QUEUE] (H.4.1) family — deterministic substrate detects pattern; Claude makes
-// semantic call. No subprocess LLM.
+// [CONFIRMATION-UNCERTAIN] (H.4.3), [FAILURE-REPEATED] (H.7.7), [SELF-IMPROVE
+// QUEUE] (H.4.1), and [ROUTE-META-UNCERTAIN] (H.7.16) family — deterministic
+// substrate detects pattern; Claude makes semantic call. No subprocess LLM.
 
 'use strict';
 
@@ -197,28 +197,27 @@ process.stdin.on('end', () => {
     const toolInput = data.tool_input || {};
     const filePath = toolInput.file_path || toolInput.path || '';
 
-    // Out of scope: only Edit + Write
+    // Out of scope: only Edit + Write (PostToolUse:Bash etc. shouldn't reach here
+    // per hooks.json matcher, but defensive check).
     if (toolName !== 'Write' && toolName !== 'Edit') {
-      process.stdout.write(JSON.stringify({ decision: 'approve' }));
+      // Silent — no JSON; PostToolUse doesn't expect it.
       return;
     }
 
     // Out of scope: not a plan path (silent — most file writes go through
     // this validator chain and are not plans).
     if (!isPlanPath(filePath)) {
-      process.stdout.write(JSON.stringify({ decision: 'approve' }));
       return;
     }
 
     // For Write: content is `tool_input.content`. For Edit: content surfaces
-    // via `new_string` (single edit) or via the file's existing content +
-    // edits (multi-edit case). For simplicity + match with smoke test
-    // shape, we only validate when content is directly available.
+    // via `new_string` (single edit). For multi-edit case we'd need to Read the
+    // file post-write — limitation carried over from PreToolUse implementation
+    // (out of scope per H.7.17 plan).
     const content = toolInput.content || toolInput.new_string || '';
     if (!content) {
-      // Edit without new_string (edge case) or empty Write — approve silently.
+      // Edit without new_string (edge case) or empty Write — silent.
       logger('approve', { filePath, reason: 'no_content_to_validate' });
-      process.stdout.write(JSON.stringify({ decision: 'approve' }));
       return;
     }
 
@@ -233,9 +232,10 @@ process.stdin.on('end', () => {
     }
 
     if (tier12HasMissing) {
-      // Emit forcing instruction to stderr (visible in hook output stream;
-      // never blocks per H.7.12 plan).
-      process.stderr.write(buildForcingInstruction(filePath, missing));
+      // H.7.17: emit forcing instruction to STDOUT (was stderr in PreToolUse).
+      // PostToolUse hooks output text directly to stdout — matches error-critic.js
+      // pattern. Claude reads stdout as additional context.
+      process.stdout.write(buildForcingInstruction(filePath, missing));
       logger('forcing-instruction-emitted', {
         filePath,
         tier1: missing.tier1,
@@ -249,12 +249,12 @@ process.stdin.on('end', () => {
       });
     }
 
-    // Always approve. Never block. User keeps autonomy.
-    process.stdout.write(JSON.stringify({ decision: 'approve' }));
+    // No `decision: approve` — PostToolUse doesn't gate; the Write/Edit already
+    // happened. Hook exits silently when compliant; emits forcing instruction
+    // text on stdout when missing Tier 1 or Tier 2 sections.
   } catch (err) {
-    // Fail-open: never block on hook errors. Discipline-gate semantics
-    // (this is not a security gate; missing nudge is acceptable).
+    // Fail-open: never throw on hook errors. PostToolUse failure mode is
+    // logging-only (the operation already completed).
     logger('error', { error: err.message });
-    process.stdout.write(JSON.stringify({ decision: 'approve' }));
   }
 });

@@ -75,16 +75,6 @@
             "timeout": 5
           }
         ]
-      },
-      {
-        "matcher": "Edit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/validators/validate-plan-schema.js",
-            "timeout": 5
-          }
-        ]
       }
     ],
     "PostToolUse": [
@@ -94,6 +84,16 @@
           {
             "type": "command",
             "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/error-critic.js",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/validators/validate-plan-schema.js",
             "timeout": 5
           }
         ]
