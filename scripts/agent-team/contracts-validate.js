@@ -301,7 +301,12 @@ validators['contract-skill-status-values'] = function () {
     } catch { return false; }
   })();
   if (!marketplaceCheckEnabled) {
-    process.stderr.write(`  ℹ ${path.basename('contract-skill-status-values')}: marketplace existence check skipped (no marketplaces installed at ${MARKETPLACE_BASE}); syntax validation still runs\n`);
+    // marketplace: declarations are informational soft dependencies (see
+    // contract-format.md). When no marketplaces are installed (CI, minimal
+    // user install), file-existence enforcement would produce false-positive
+    // "missing" violations for skills that aren't required for power-loom
+    // to function. Syntax validation of `marketplace:X/Y` format still runs.
+    process.stderr.write(`  ℹ contract-skill-status-values: marketplace declarations treated as informational; no marketplaces installed at ${MARKETPLACE_BASE} (this is normal in CI / minimal installs)\n`);
   }
   const violations = [];
   for (const { name, path: fp } of listContractFiles()) {

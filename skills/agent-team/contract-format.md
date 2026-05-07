@@ -60,7 +60,7 @@ The `skills.skill_status` map records where each skill name resolves. Three valu
 | Status | Meaning | Resolution path |
 |--------|---------|-----------------|
 | `available` | Skill is locally authored at `~/Documents/claude-toolkit/skills/<name>/SKILL.md` | Direct read |
-| `marketplace:<marketplace>/<plugin>` | Skill ships with a Claude Code plugin marketplace (e.g., `marketplace:knowledge-work-plugins/engineering`) | Plugin must be installed; invoke via `Skill` tool with namespaced name (e.g., `engineering:debug`) |
+| `marketplace:<marketplace>/<plugin>` | **Informational soft dependency** — documents that this skill is designed around an external marketplace plugin. Power-loom never hard-depends on external marketplaces; persona spawns regardless of whether the plugin is installed. If user has the plugin installed, invoke via `Skill` tool with namespaced name (e.g., `engineering:debug`). If not, treat like `not-yet-authored`. Validator checks file existence only when `~/.claude/plugins/marketplaces/` is non-empty (skips on CI / minimal installs). |
 | `not-yet-authored` | Promise mode — referenced but not yet written | H.2.5 skill-bootstrapping flow authors on first use (user-gated, per `patterns/skill-bootstrapping.md`) |
 
 Skill names follow conventions:
