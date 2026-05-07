@@ -126,18 +126,51 @@ Files read for context but NOT modified. Helps reviewers understand the blast ra
 
 ---
 
-## Schema validation (manual until H.7.12)
+## Schema validation (H.7.12 — tiered enforcement live)
 
-Until the PostToolUse-on-Write hook lands in H.7.12, schema conformance is checked at ExitPlanMode. Reviewer scans for:
+Schema conformance is now enforced by `hooks/scripts/validators/validate-plan-schema.js` (PreToolUse:Edit|Write hook fires when `~/.claude/plans/*.md` or `.claude/plans/*.md` is written). Validation is **tiered** to match actual plan-writing variance — strict on truly load-bearing sections, conditional on new-style plans, hint-only on aspirational sections.
 
-- ✓ Context section present + 2-3 sentences (not paragraph-length)
-- ✓ Routing Decision section contains verbatim JSON (NOT paraphrase)
-- ✓ HETS Spawn Plan present (table or "N/A" with rationale)
-- ✓ Files To Modify table has risk column populated
-- ✓ Phases include verification probes per phase
-- ✓ Drift Notes section present (may be empty for trivial phases)
+### Tier 1 — truly mandatory (always enforced; missing → `[PLAN-SCHEMA-DRIFT]`)
 
-If any are missing, plan is iterated before approval.
+- `## Context` (the "why")
+- ONE OF (`## Files To Modify` OR `## Phases`) (the "what")
+- `## Verification Probes` (the "how to confirm")
+
+### Tier 2 — conditional (enforced only if "Routing Decision" string detected anywhere in content)
+
+The presence of the literal string `Routing Decision` anywhere in the plan signals it's a new-style `/build-plan` output. Tier 2 then enforces:
+
+- `## Routing Decision`
+- `## HETS Spawn Plan`
+
+If "Routing Decision" string isn't present, the plan is treated as old-style and Tier 2 sections are not enforced.
+
+### Tier 3 — aspirational (informational stderr only; no `[PLAN-SCHEMA-DRIFT]`)
+
+- `## Out of Scope` / `## Out of Scope (Deferred)`
+- `## Drift Notes`
+
+Missing Tier 3 sections produce a stderr `ℹ` message but no forcing instruction.
+
+### Hook behavior
+
+- **Never blocks**: hook always emits `decision: approve` JSON to stdout (file is written regardless)
+- **Forcing instruction goes to stderr**: `[PLAN-SCHEMA-DRIFT]` text emitted on stderr when Tier 1 or Tier 2 sections are missing
+- **Path filter**: only `~/.claude/plans/*.md` and `.claude/plans/*.md` writes trigger the hook
+- **Heading match**: H2-level (`##`), case-sensitive, with optional parenthetical suffix (e.g., "Out of Scope (Deferred)" matches "Out of Scope")
+- **Fail-open**: any error in the hook (parse failure, etc.) approves silently — discipline gate, not security gate
+
+### Manual scan (still recommended at ExitPlanMode for richer validation)
+
+The hook checks section PRESENCE only. Reviewers should still verify:
+
+- Context section is 2-3 sentences (not paragraph-length)
+- Routing Decision section contains **verbatim** route-decide JSON (not paraphrase) — replay-ability for future audits
+- Files To Modify table has risk column populated
+- Phases include verification probes per phase
+- Drift Notes capture pattern-emergence observations
+
+If hook fires `[PLAN-SCHEMA-DRIFT]`, iterate the plan before approval.
 
 ## Cross-references
 
