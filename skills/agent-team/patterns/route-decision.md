@@ -87,6 +87,34 @@ Stress tests: empty prompt → exit 2; single-keyword prompt → root; multi-key
 
 The 7-dimension scoring at `scripts/agent-team/route-decide.js` is consumed by `commands/build-team.md` Step 0. Step 0 branches on the `recommendation` field returned by `route-decide.js --task X`, dispatching to one of three flows: `route` (continue to Step 1), `borderline` (escalate to user with score decomposition + 3-option menu), `root` (exit 0 with skip-orchestration message). The Step 0 bash flow uses fail-open default (missing script → assume `route`) to preserve pre-H.7.3 behavior on degraded installs. See `commands/build-team.md` Step 0 for the literal shell flow.
 
+## H.7.5 — Layered context-aware routing
+
+Phase H.7.5 closed a real-world false-negative: the H.7.4 task ("Empirical refit of weighted_trust_score weights from accumulated verdict data") scored 0 under H.7.3 because its routing signal lived in the **prior assistant turn**, not the bare task string. The fix is layered:
+
+### Layer A — `--context` flag
+
+`route-decide.js --task X --context Y` accepts free-form context (last 1-3 conversation turns, max 8K chars). Keyword regex runs against context too; results multiplied by `CONTEXT_WEIGHT_MULT = 0.5` (lower than task-derived; context is signal, not source-of-truth) and added to base score. Output JSON gets `context_provided` + `context_contributions` for transparency.
+
+### Layer B — Borderline-promotion rule (the load-bearing fix)
+
+The naïve `0.5x mult` doesn't fix the H.7.4 false-negative on its own — the math doesn't promote. mira (architect, H.7.5 design) ran the math empirically: bare task = 0.000; context standalone = 0.225; combined = 0.113 — still below 0.30 root threshold. Need an explicit promotion rule:
+
+> **If bare task is low-signal (`score_total < 0.10`) AND `context_score_raw >= 0.10`, force `recommendation = "borderline"` regardless of additive total.**
+
+Rationale: when the task itself has zero keyword signal but the conversation context has substantive signal, the right verdict is "uncertain — surface to user," not "default to root and pretend the context doesn't exist." Output JSON gains `borderline_promotion_applied: true` for audit.
+
+### Layer C — `[ROUTE-DECISION-UNCERTAIN]` forcing instruction
+
+When score_total ≤ 0.05 AND no `--context` was supplied AND not force-overridden AND wordCount ≥ 4, output JSON includes a `forcing_instruction` block telling Claude to consult prior context before defaulting to root. Mirrors `[PROMPT-ENRICHMENT-GATE]` and `[SELF-IMPROVE QUEUE]` patterns — structural reminder injected into Claude's flow; root makes the semantic call. **No subprocess LLM call** (preserves toolkit's deterministic-substrate convention).
+
+### Layer D — Workflow rule
+
+`rules/core/workflow.md`'s Route-Decision section gains H.7.5 conventions: always pass `--context` on conversation continuations; never silently default to root on UNCERTAIN; design prompts to embed the routing signal explicitly.
+
+### Why this stays within toolkit patterns
+
+The instinct of "consult an LLM for borderline cases" is correct in spirit but wrong for this toolkit. The substrate's pattern is **forcing-instruction injection into Claude's existing context, not subprocess LLM calls**. Layer C does that — it doesn't call out to an LLM; it nudges Claude (already running) to apply intent reasoning where the heuristic abstained.
+
 ## Related Patterns
 
 - [Tech-Stack Analyzer](tech-stack-analyzer.md) — what fires AFTER the route gate when the recommendation is `route`. The route gate prevents tech-stack-analyzer from running on tasks that don't warrant HETS routing.

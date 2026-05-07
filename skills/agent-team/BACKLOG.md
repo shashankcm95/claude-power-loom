@@ -2,6 +2,39 @@
 
 Deferred work from prior phases, captured here so nothing important gets silently dropped. Each entry: scope, rationale, dependencies, rough estimate.
 
+## Phase H.7.5 — Route-decision context-awareness + forcing-instruction fallback — SHIPPED
+
+**Status**: shipped via corrected autonomous-platform pattern (mira architect-only verdict; root applied implementation manually after kira spawn withdrawn). Closes the H.7.4 false-negative where bare task scored 0/root because routing signal lived in the prior turn.
+
+**What landed** (4 layers, no new substrate primitives, no subprocess LLM calls — all consistent with existing forcing-instruction-injection pattern):
+
+- **Layer A** — `route-decide.js --context "<text>"` accepts free-form context (max 8K chars); keyword regex runs against context with `CONTEXT_WEIGHT_MULT = 0.5` (lower than task-derived; context is signal, not source-of-truth). Output JSON gains `context_provided`, `context_score`, `context_contributions`, `context_truncated` for transparency.
+- **Layer B** — `skills/prompt-enrichment/SKILL.md` Step 0.5: read prior 1-3 transcript turns (~2K chars/turn, ~8K total) per user's H.7.5 directive ("we don't need the whole context, last one or maybe 2-3 responses"). Pass to route-decide as `--context`.
+- **Layer C** — **Borderline-promotion rule** (mira CRITICAL C-1, the load-bearing fix): bare-task naïve `0.5x mult` doesn't promote on its own — bare 0 + (0.225 × 0.5) = 0.113 still < 0.30 root threshold. Explicit promotion: when `score_total < 0.10` AND `context_score_raw >= 0.10`, force `recommendation = "borderline"` regardless of additive total. Output JSON gains `borderline_promotion_applied: true` for audit trail.
+- **Layer D** — `[ROUTE-DECISION-UNCERTAIN]` forcing instruction emitted when `score_total ≤ 0.05` AND no `--context` was supplied AND `wordCount ≥ 4`. Same pattern as `[PROMPT-ENRICHMENT-GATE]` / `[SELF-IMPROVE QUEUE]`: structural reminder injected into Claude's flow; root makes the semantic call. No subprocess LLM call.
+- **Workflow rule** (`rules/core/workflow.md`): 3 new bullets — always pass `--context` on continuations; never silently default to root on UNCERTAIN; embed routing signal explicitly in task strings.
+- **`commands/build-team.md` Step 0**: now reads `PRIOR_TURN_EXCERPT` env var; passes `--context` when set; handles UNCERTAIN before case dispatch.
+- **Pattern doc** (`patterns/route-decision.md`): new "H.7.5 — Layered context-aware routing" section documenting Layer A-D + mira's borderline-promotion math.
+- **`weights_version` bump**: `v1-theory-driven-2026-05-07` → `v1.1-context-aware-2026-05-07`.
+
+**Self-test (load-bearing — the H.7.4 false-negative replay)**:
+- Bare task "Empirical refit of weighted_trust_score weights from accumulated verdict data" → root, score=0, uncertain=true (regression preserved; gate emits forcing instruction)
+- Same task with `--context "Walk the 70 pattern entries... ~1-2 hr via orchestration."` → **borderline, score=0.112, borderline_promotion_applied=true** (THE FIX)
+
+**6-task H.7.3 regression sweep**: all 6 calibration tasks land at expected H.7.3 baselines under v1.1 (Express rate-limit borderline 0.325; React component root 0.15; k8s manifest route 0.625; BACKLOG cleanup root 0; USING.md walkthrough root 0; URL shortener borderline 0.40). No regressions on bare-task scoring.
+
+**Cycle data**: mira (04-architect, design pass) — 12 findings, 47 file citations, PASS, ~70K tokens, MEDIUM-TRUST tier. Full verification ran per H.7.1 medium-trust policy — A1/A2/A3 all pass clean (no spot-check skip; that was H.7.4's ari at HIGH-TRUST, not this phase). Implementation completed by root manually after kira spawn withdrawn (user requested "go on"; root applied edits directly to route-decide.js). Single-architect-only verdict run rather than 2-paired — orchestration pattern flexibly accommodates this.
+
+**Why this stays within toolkit patterns**: the instinct of "consult LLM for borderline cases" is correct in spirit but wrong shape — toolkit substrate is forcing-instruction injection into Claude's existing context, NOT subprocess LLM calls. Layer C does that pattern faithfully — it doesn't call out to an LLM; it nudges Claude (already running) to apply intent reasoning where the heuristic abstained.
+
+**Pattern generalization**: 7th phase shape via corrected autonomous-platform pattern. Closes H.7.3's R2 known-limit (pure-keyword routing can't capture subjective "complex UI state") for context-bearing follow-ups specifically. Mid-range borderline cases that should clearly route still depend on accurate keyword tagging — Layer C only fires on near-zero scores.
+
+**H.7.5 follow-ups (deferred to H.7.6+)**:
+- Auto-extract context from transcript by `route-decide.js` itself — would require route-decide to know about transcript paths (hook-territory work); defer
+- Per-user `HETS_WEIGHT_PROFILE` env override for context-multiplier tuning — defer until use case
+- Heavier semantic-similarity comparison against historical task signatures — optimization, not load-bearing
+- Layer C escalation on any borderline result (not just near-zero) — extend coverage; defer
+
 ## Phase H.7.4 — Empirical refit of weighted_trust_score weights — SHIPPED
 
 **Status**: shipped via corrected autonomous-platform pattern (ari design-review + evan implementation; convergence agree). Closes the H.6.6 commitment to design weights from data, not theory.
