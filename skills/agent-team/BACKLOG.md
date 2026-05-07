@@ -19,7 +19,7 @@ Deferred work from prior phases, captured here so nothing important gets silentl
   - Updated install instructions (`/plugin install power-loom`)
   - Note about GitHub repo name unchanged (deferred to future maintenance phase)
 
-**Subsequent rename of GitHub repo**: at v1.0.0 ship, the GitHub repo `shashankcm95/claude-skills-consolidated` was renamed to `shashankcm95/power-loom` (user-authorized). GitHub auto-redirects old URLs; existing bookmarks + phase-tag references continue to resolve via redirect. All in-repo URL references (plugin.json homepage/repository, README install instructions, CHANGELOG tag URLs, CONTRIBUTING remote ref) updated to canonical form.
+**Subsequent rename of GitHub repo**: at v1.0.0 ship, the GitHub repo `shashankcm95/claude-skills-consolidated` was renamed to `shashankcm95/claude-power-loom` (user-authorized). GitHub auto-redirects old URLs; existing bookmarks + phase-tag references continue to resolve via redirect. All in-repo URL references (plugin.json homepage/repository, README install instructions, CHANGELOG tag URLs, CONTRIBUTING remote ref) updated to canonical form.
 
 **What stayed unchanged**:
 

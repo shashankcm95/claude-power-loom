@@ -23,7 +23,7 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 - **Plugin renamed** from `claude-skills-consolidated` to `power-loom` (`.claude-plugin/plugin.json` `name` field; `marketplace.json` references). Industrial Revolution metaphor: power-loom (Edmund Cartwright, 1784) automated coordination of weaving; this plugin does the same for multi-agent coordination on Claude Code. Skill namespace migrates from `/claude-skills-consolidated:X` to `/power-loom:X`.
 - **Version** bumped from `0.5.0` to `1.0.0` (SemVer adopted; first stable release).
-- **GitHub repo renamed** from `shashankcm95/claude-skills-consolidated` to `shashankcm95/power-loom`. GitHub auto-redirects from old URL but URLs in the repo (homepage, install instructions, tag references) updated to the new canonical form. Phase tags + bookmarks under the old URL continue to resolve via redirect.
+- **GitHub repo renamed** from `shashankcm95/claude-skills-consolidated` to `shashankcm95/claude-power-loom`. GitHub auto-redirects from old URL but URLs in the repo (homepage, install instructions, tag references) updated to the new canonical form. Phase tags + bookmarks under the old URL continue to resolve via redirect.
 
 ### Architecture commitments held
 
@@ -108,8 +108,8 @@ See [skills/agent-team/BACKLOG.md](skills/agent-team/BACKLOG.md) for deferred it
 
 ---
 
-[1.0.0]: https://github.com/shashankcm95/power-loom/releases/tag/v1.0.0
-[0.8.0]: https://github.com/shashankcm95/power-loom/releases/tag/phase-H.4.3
-[0.7.0]: https://github.com/shashankcm95/power-loom/releases/tag/phase-H.7.4
-[0.6.0]: https://github.com/shashankcm95/power-loom/releases/tag/phase-CS-6
-[0.5.0]: https://github.com/shashankcm95/power-loom/releases/tag/phase-H.5.0
+[1.0.0]: https://github.com/shashankcm95/claude-power-loom/releases/tag/v1.0.0
+[0.8.0]: https://github.com/shashankcm95/claude-power-loom/releases/tag/phase-H.4.3
+[0.7.0]: https://github.com/shashankcm95/claude-power-loom/releases/tag/phase-H.7.4
+[0.6.0]: https://github.com/shashankcm95/claude-power-loom/releases/tag/phase-CS-6
+[0.5.0]: https://github.com/shashankcm95/claude-power-loom/releases/tag/phase-H.5.0

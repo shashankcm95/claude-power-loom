@@ -10,15 +10,17 @@
 
 ```bash
 # As an official Claude Code plugin (recommended)
-/plugin marketplace add shashankcm95/power-loom
+/plugin marketplace add shashankcm95/claude-power-loom
 /plugin install power-loom
 
 # Or via the legacy installer (kept for environments without /plugin support)
-git clone https://github.com/shashankcm95/power-loom.git ~/Documents/claude-toolkit
+git clone https://github.com/shashankcm95/claude-power-loom.git ~/Documents/claude-toolkit
 cd ~/Documents/claude-toolkit && ./install.sh --all
 ```
 
-> **Note on prior phase tags**: this repo was previously named `claude-skills-consolidated`. GitHub auto-redirects old URLs to the new canonical name; existing bookmarks and phase-tag references continue to resolve. v1.0.0 is the first stable release under the `power-loom` name.
+> **Why the GitHub repo and plugin names differ**: the GitHub repo is `claude-power-loom` (signals Claude-ecosystem affiliation in search/discovery) while the plugin is `power-loom` (the name you use after install — matches Anthropic marketplace convention where external plugins don't use the `claude-` prefix). This is a deliberate split: GitHub-level discoverability + marketplace-convention compliance.
+>
+> **Note on prior phase tags**: this repo was previously named `claude-skills-consolidated`. GitHub auto-redirects old URLs to the new canonical name; existing bookmarks and phase-tag references continue to resolve. v1.0.0 is the first stable release.
 
 After install, restart Claude Code (or run `/reload-plugins`).
 
@@ -93,7 +95,7 @@ Schema migrations are additive (per H.6.6 `_backfillSchema` pattern). Breaking c
 
 **HETS** (Hierarchical Engineering Team Simulation, Phase H.x): a separate layer for complex multi-step work — 12 specialist personas (5 auditors + 7 builders) with persistent named identities, content-addressed shared knowledge base, contract-verified outputs, asymmetric/symmetric pairing, trust-tiered verification, and integration with the `knowledge-work-plugins` marketplace. See [skills/agent-team/SKILL.md](skills/agent-team/SKILL.md).
 
-**Repository**: https://github.com/shashankcm95/power-loom
+**Repository**: https://github.com/shashankcm95/claude-power-loom
 
 ---
 
@@ -377,7 +379,7 @@ For non-technical users: **rules and hooks are always active**. You don't need t
 
 ```bash
 # Clone the repo
-git clone https://github.com/shashankcm95/power-loom.git ~/Documents/claude-toolkit
+git clone https://github.com/shashankcm95/claude-power-loom.git ~/Documents/claude-toolkit
 cd ~/Documents/claude-toolkit
 
 # Preview what would change
