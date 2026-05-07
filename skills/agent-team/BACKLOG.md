@@ -2,6 +2,58 @@
 
 Deferred work from prior phases, captured here so nothing important gets silently dropped. Each entry: scope, rationale, dependencies, rough estimate.
 
+## v1.0.0 — power-loom rename + SemVer adoption — SHIPPED
+
+**Status**: shipped root-direct (route-decide score 0.188). v1.0.0 marks the first stable release with explicit SemVer commitment + plugin rename.
+
+**What landed**:
+
+- **Plugin renamed** `claude-skills-consolidated` → **`power-loom`** in `.claude-plugin/plugin.json` and `marketplace.json`. Industrial Revolution metaphor: power-loom (Edmund Cartwright, 1784) automated coordination of weaving; this plugin does the same for multi-agent coordination on Claude Code.
+- **Version bumped** `0.5.0` → `1.0.0`.
+- **Skill namespace migrates** from `/claude-skills-consolidated:X` to `/power-loom:X` — much cleaner ergonomics (5 vs 26 chars before colon).
+- **NEW `CHANGELOG.md`** at repo root — aggregates phase tags into versioned releases (0.5.0 → 0.6.0 → 0.7.0 → 0.8.0 → 1.0.0) with Keep-a-Changelog format.
+- **README updates**:
+  - Title rename + power-loom Industrial Revolution metaphor opening
+  - NEW "How power-loom differs from comparable official marketplace plugins" section comparing to `code-review`, `hookify`, `feature-dev`, `claude-md-management`, `claude-code-setup`
+  - NEW "Stability commitment (v1.x)" section explicitly listing stable / evolving / experimental surface
+  - Updated install instructions (`/plugin install power-loom`)
+  - Note about GitHub repo name unchanged (deferred to future maintenance phase)
+
+**What stayed unchanged**:
+
+- GitHub repo URL (`github.com/shashankcm95/claude-skills-consolidated`) — backward-compat with phase tags + bookmarks; rename deferred to future maintenance phase
+- All historical phase descriptions in BACKLOG / SKILL.md (audit trail preserved; references to old name in past-tense narrative are accurate-at-the-time)
+- Code substrate — no functional changes; `tierOf` byte-for-byte unchanged; all 23 H.7.0 tests + 10 smoke tests pass
+- contracts-validate: 0 violations
+
+**Why the rename**:
+
+- Marketplace convention check: official Anthropic plugins don't use `claude-` prefix for external plugins (only `claude-md-management` and `claude-code-setup` use it among 35 first-party plugins; **0 of 16 external plugins** use `claude-` prefix). `claude-skills-consolidated` was inadvertently treading on Anthropic's namespace.
+- Memorability: `claude-skills-consolidated` is descriptive but unmemorable; `power-loom` is short, evocative, and metaphor-mapped tightly to the toolkit's actual coordination architecture.
+- Discoverability: `power-loom` is distinct from `loom` (Loom Inc., screen-recording tool — heavy SaaS dilution) and from `claude-*` namespace concerns.
+
+**Stability commitment going forward**:
+
+| Surface | Commitment in v1.x |
+|---------|-------------------|
+| Plugin manifest schema | Frozen |
+| Hook contracts (input/output JSON shapes) | Frozen |
+| Install paths | Frozen |
+| Public CLI surface | Frozen |
+| `tierOf` formula | Frozen byte-for-byte (H.4.2) |
+| Trust formula weights | Evolving under `WEIGHT_PROFILE_VERSION` |
+| Persona contracts | Schema-additive only |
+| Route-decide thresholds | Evolving under `weights_version` |
+| Breeding mechanics | Experimental |
+| Drift triggers | Experimental |
+| New trust axes (recency_decay, qualityTrend) | Experimental |
+
+**v1.0.0 follow-ups (deferred)**:
+
+- **GitHub repo rename** (`claude-skills-consolidated` → `power-loom`) — destructive operation; deferred until user explicitly authorizes. Currently the GitHub URL is a legacy reference; install paths + plugin namespace use `power-loom`.
+- **External user trial program** — N=0 today. v1.0.0 reflects engineering maturity; field-deployment volume requires solicitation.
+- **Submission to official Anthropic marketplace** via `clau.de/plugin-directory-submission` — separate operation from the v1 prep itself.
+
 ## Phase H.7.0 — Evolution loop + drift detection + multi-axis trust signal — SHIPPED
 
 **Status**: shipped via architect+builder pair-run (medium-trust × medium-trust). Closes the original H.6.6 chicken-breeding vision; bundles H.7.6 drift detection per user direction; adds 1 new score-affecting trust axis. Largest single phase ever shipped (~250 LoC code + 514 LoC tests + 210 LoC pattern doc).

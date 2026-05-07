@@ -1,8 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
-  "name": "claude-skills-consolidated",
-  "version": "0.5.0",
-  "description": "Deterministic operating substrate for Claude Code — hook-enforced rules (not advisory markdown), HETS multi-agent orchestration with persistent identity reputation + per-spawn budget enforcement, triple-contract output verifier, kb_scope enforcement, threshold-based auto self-improve loop, and chaos-test meta-validation. Hooks before, persistence around, verification after — compensates for LLM non-determinism at the seams without trying to replace the LLM.",
+  "name": "power-loom",
+  "version": "1.0.0",
+  "description": "Power loom for multi-agent Claude Code orchestration. The Industrial Revolution mechanized weaving in 1784 by replacing skilled hand-craft with deterministic, scalable production; power-loom does the same for multi-agent coordination — turning ad-hoc prompt orchestration into hook-enforced substrate with persistent identity reputation, contract verification, and chaos-tested patterns. Hooks before (deterministic rules), persistence around (cross-session identity + pattern history), verification after (triple-contract output checks). Compensates for LLM non-determinism at the seams without trying to replace the LLM.",
   "author": {
     "name": "Shashank Chandrashekar Murigappa",
     "url": "https://github.com/shashankcm95"

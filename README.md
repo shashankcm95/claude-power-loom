@@ -1,6 +1,8 @@
-# claude-skills-consolidated
+# power-loom
 
-> **Deterministic operating substrate for Claude Code** — hook-enforced rules (not advisory markdown), HETS multi-agent orchestration with persistent identity reputation + per-spawn budget enforcement, triple-contract output verifier, kb_scope enforcement, threshold-based auto self-improve loop, and chaos-test meta-validation.
+> **Power loom for multi-agent Claude Code orchestration.**
+>
+> The Industrial Revolution mechanized weaving in 1784 by replacing skilled hand-craft with deterministic, scalable production. **power-loom** does the same for multi-agent coordination on Claude Code — turning ad-hoc prompt orchestration into hook-enforced substrate with persistent identity reputation, contract verification, and chaos-tested patterns.
 >
 > **Hooks before, persistence around, verification after** — compensates for LLM non-determinism at the seams without trying to replace the LLM.
 
@@ -9,12 +11,14 @@
 ```bash
 # As an official Claude Code plugin (recommended)
 /plugin marketplace add shashankcm95/claude-skills-consolidated
-/plugin install claude-skills-consolidated
+/plugin install power-loom
 
 # Or via the legacy installer (kept for environments without /plugin support)
 git clone https://github.com/shashankcm95/claude-skills-consolidated.git ~/Documents/claude-toolkit
 cd ~/Documents/claude-toolkit && ./install.sh --all
 ```
+
+> **Why GitHub repo says `claude-skills-consolidated` while the plugin is `power-loom`?** Repository name is unchanged for backward-compat with prior phase tags + bookmarks; the plugin manifest renamed to `power-loom` at v1.0.0 (the H.7.0 evolution-loop ship). After install, skill namespace is `/power-loom:agent-team`, etc. Repo rename will happen in a future maintenance phase if/when warranted.
 
 After install, restart Claude Code (or run `/reload-plugins`).
 
@@ -40,6 +44,48 @@ Most public Claude Code plugins are SKILL.md prompt templates wrapped in a manif
 | **Pre-ship auditability** | Reads vibes | `node scripts/agent-team/contracts-validate.js` cross-checks 4 sources of truth; today reports 0 violations |
 
 If you want a single-file SKILL.md prompt template, this isn't it. If you want a substrate that wraps Claude Code's stateless LLM with deterministic gates + persistence + multi-agent verification, you're in the right place.
+
+## How power-loom differs from comparable official marketplace plugins
+
+The [official Anthropic marketplace](https://github.com/anthropics/claude-plugins-official) has 35 first-party + 16 external plugins. Several touch adjacent surface (multi-agent review, hook authoring, agent workflows). power-loom occupies a different category — **substrate, not single-feature workflow**. Concrete comparison:
+
+| Plugin | Their approach | power-loom approach |
+|--------|----------------|---------------------|
+| [`code-review`](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/code-review) (4 parallel agents + agent-self-scored confidence; PR-only) | Single-shot review per PR; no persistent identity; agent rates its own confidence 0–100 | **Persistent identity reputation** across sessions; trust formula derived from observed pass-rate (not self-rating); works on any task type, not just PRs |
+| [`hookify`](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/hookify) (create hooks from natural language) | Meta-tool to author NEW hooks via markdown configs | Curated set of **11 production-ready hooks** (fact-force-gate, config-guard, secrets validator, prompt-enrich-trigger, frontmatter validator, pre-compact checkpoint, auto-store-enrichment, console-log-check, session-reset, session-end-nudge, session-self-improve-prompt) |
+| [`feature-dev`](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/feature-dev) (exploration → architecture → review agents) | Workflow specifically for feature development | Substrate that ANY task runs on; not workflow-bound. Spawn an architect+builder pair-run for evolution loops, contract templates, intent layers — same primitive, different task. |
+| [`claude-md-management`](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/claude-md-management) (audit/maintain CLAUDE.md, capture session learnings) | Single-file maintenance + session capture | **Substrate-level**: hooks enforce read-before-edit (`fact-force-gate`); auto self-improve loop graduates patterns into rules under explicit risk taxonomy; not just CLAUDE.md scope |
+| [`claude-code-setup`](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/claude-code-setup) (recommends automations) | Recommends what to install | Provides the actual substrate to install. Bundle of hooks + skills + agents + commands ready to enable |
+
+The shared design ideas (multi-agent, hook-based enforcement, learning loop, automation recommendations) appear across the marketplace; the **cohesive deterministic-substrate framing** — combining all of: persistent identity, per-spawn budget enforcement, triple-contract verification with transcript provenance, kb_scope enforcement, trust-tiered verification policy, empirically-refit weighted trust formula, route-decision intelligence, breeding/specialization mechanics — does not.
+
+power-loom is the substrate other plugins could run on top of, not a replacement for them.
+
+## Stability commitment (v1.x)
+
+power-loom adopts SemVer at v1.0.0. Within v1.x:
+
+**Stable (frozen — no breaking changes):**
+
+- Plugin manifest schema (`.claude-plugin/plugin.json`)
+- Hook contracts (input JSON shape from Claude Code; output `decision: approve|block` shape)
+- Install paths (plugin marketplace + legacy installer)
+- Public CLI surface (`agent-identity {assign|stats|recommend-verification|breed}`; `pattern-recorder record`; `route-decide`; `contract-verifier`; `contracts-validate`)
+- The `tierOf` formula at `agent-identity.js:98-105` (binary cliff at `passRate ≥ 0.8` AND `verdicts ≥ 5`) — preserved byte-for-byte per the H.4.2 audit-transparency commitment
+
+**Evolving (under explicit version fields):**
+
+- Trust formula weights (`WEIGHT_PROFILE_VERSION`; today `"h7.0-multi-axis-v1"`; refit triggers when sample size justifies)
+- Persona contracts (schema-additive only; never delete fields; `_backfillSchema` handles legacy reads)
+- Route-decide thresholds (`weights_version`; today `"v1.1-context-aware-2026-05-07"`; calibration ongoing)
+
+**Experimental (explicitly not stable):**
+
+- Breeding mechanics (`agent-identity breed`) — manual subcommand today; auto-mode deferred to H.7.5+
+- Drift triggers (recalibration thresholds) — theory-driven defaults, refit when ≥3 high-trust identities have ≥30 verdicts
+- New trust axes (`recency_decay_factor`, `qualityTrend`) — observable today; not score-affecting until empirical thresholds met
+
+Schema migrations are additive (per H.6.6 `_backfillSchema` pattern). Breaking changes to the stable surface require v2. See [CHANGELOG.md](CHANGELOG.md) for version history.
 
 ## Two layers in one plugin
 

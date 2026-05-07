@@ -1,19 +1,20 @@
 {
-  "name": "claude-skills-consolidated-marketplace",
+  "name": "power-loom-marketplace",
   "owner": {
     "name": "Shashank Chandrashekar Murigappa",
     "url": "https://github.com/shashankcm95"
   },
   "plugins": [
     {
-      "name": "claude-skills-consolidated",
+      "name": "power-loom",
       "source": ".",
-      "description": "Deterministic operating substrate for Claude Code — hook-enforced rules, HETS multi-agent orchestration, triple-contract verifier, threshold-based auto self-improve loop, chaos-test meta-validation.",
+      "description": "Power loom for multi-agent Claude Code orchestration — hook-enforced substrate with persistent identity reputation, triple-contract verifier, threshold-based auto self-improve loop, and chaos-test meta-validation.",
       "category": "agent-orchestration",
       "tags": [
         "deterministic-substrate",
         "multi-agent",
         "hets",
+        "power-loom",
         "anti-hallucination",
         "self-improving"
       ]
