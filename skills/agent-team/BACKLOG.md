@@ -2,6 +2,50 @@
 
 Deferred work from prior phases, captured here so nothing important gets silently dropped. Each entry: scope, rationale, dependencies, rough estimate.
 
+## Phase H.7.7 — Substrate primitive additions (Critic→Refiner + workflow-state pre-compact) — SHIPPED
+
+**Status**: shipped root-direct (route-decide score 0.45 borderline; user pre-authorized via "let's continue with H.7.7"). Borrows two patterns from cep (claude-elixir-phoenix) into our substrate.
+
+**What landed**:
+
+- **NEW `hooks/scripts/error-critic.js`** (~210 LoC) — Critic→Refiner failure-consolidation hook (cites AutoHarness Lou et al. 2026 inline). PostToolUse on Bash; per-command state tracking in `${TMPDIR}/.claude-toolkit-failures/`; threshold-2 escalation; emits `[FAILURE-REPEATED]` forcing instruction (mirrors `[ROUTE-DECISION-UNCERTAIN]` / `[CONFIRMATION-UNCERTAIN]` shape — no subprocess LLM).
+- **Workflow-state-aware `hooks/scripts/pre-compact-save.js`** (+~80 LoC additive) — `detectActiveOrchestrationRuns()` walks `~/Documents/claude-toolkit/swarm/run-state/` for in-progress orchestrations; `buildWorkflowStateSuffix()` appends compact run-id list to SAVE_PROMPT only when active runs detected (no noise otherwise). Best-effort: silent no-op if toolkit canonical path not present.
+- **`hooks/hooks.json`** — new `PostToolUse` matcher for `Bash` → `error-critic.js`. Existing entries unchanged.
+- **`install.sh`** — 2 new smoke tests (Test 11 first-failure-silent + Test 12 [FAILURE-REPEATED]-on-2nd). Total: 10 → **12 tests**.
+- **NEW `docs/hooks/error-critic.md`** — full per-hook deep-dive (mechanism, state storage, tunables, failure-detection heuristics, smoke tests, related).
+- **`docs/hooks/README.md`** — updated to 12 hooks; H.7.7 entries marked NEW.
+- **`README.md`** — hook table updated 11 → 12 entries; error-critic row added with H.7.7 phase tag.
+
+**Scope-trim during execution**: 3 originally-planned items dropped after review found they were already done or low-leverage:
+- ❌ "Better error messages pass" — reviewed all 4 validators; they already have specific + actionable messages ("Read the file first ... then retry"; "Move secrets to env vars ... re-read the file"; etc.). No work needed.
+- ❌ "JSDoc on hook scripts" — marginal ROI; defer to a future code-quality phase or to H.7.10 agent-discipline pass.
+- ❌ "Inline academic citations" — already done in `agent-identity.js` for trust formula (Bacchelli & Bird MSR 2013, Cohen 1960, Krippendorff 2004, Pearson r at H.7.4). Only NEW citation needed: AutoHarness in `error-critic.js` — done inline.
+
+**Honest scope**: H.7.7 estimated at 6 hours; actual ~2 hours after scope-trim. The over-planned items were caught by inspection, not by spawning an architect.
+
+**Verification**:
+- 12/12 hook smoke tests pass (10 existing + 2 new)
+- contracts-validate: 0 violations
+- error-critic.js: 5 manual test cases verified (no failure → silent; 1st failure → silent; 2nd failure → escalation; different command → independent state; long stderr → truncated)
+- pre-compact-save.js: workflow-state detection verified against H.7.0 + H.7.5 + H.7.4 run-state directories
+
+**Pattern parallel** (forcing-instruction injection family):
+
+| Forcing instruction | Phase |
+|--------------------|-------|
+| `[PROMPT-ENRICHMENT-GATE]` | H.4.x |
+| `[ROUTE-DECISION-UNCERTAIN]` | H.7.5 |
+| `[CONFIRMATION-UNCERTAIN]` | H.4.3 |
+| **`[FAILURE-REPEATED]`** | **H.7.7** |
+| `[SELF-IMPROVE QUEUE]` | H.4.1 |
+
+5 forcing instruction patterns now ship in the substrate. Common shape: deterministic substrate detects a pattern; Claude does the semantic call. No subprocess LLM ever.
+
+**H.7.7 follow-ups (deferred)**:
+- Better failure-detection heuristics — current keyword filter (`error|failed|cannot|not found|undefined|exception`) may produce false positives on some CLI tools' warning stderr. Refit when noise observed.
+- Cross-session failure persistence — currently TMPDIR-rooted (clears on reboot). If repeat-failure-across-sessions becomes a real signal, move to `~/.claude/`.
+- Workflow-state injection on more events — pre-compact only; could extend to SessionStart for resuming after external context window flush.
+
 ## v1.0.0 — power-loom rename + SemVer adoption — SHIPPED
 
 **Status**: shipped root-direct (route-decide score 0.188). v1.0.0 marks the first stable release with explicit SemVer commitment + plugin rename.

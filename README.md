@@ -75,7 +75,7 @@ The toolkit has two distinct layers: **enforced** (hooks fire deterministically;
 
 ### 🔒 Enforced Layer (deterministic scripts)
 
-11 hook scripts with hard guarantees — pure logic, no LLM interpretation.
+12 hook scripts with hard guarantees — pure logic, no LLM interpretation.
 
 | Hook | Event | Guarantees |
 |------|-------|------------|
@@ -84,7 +84,8 @@ The toolkit has two distinct layers: **enforced** (hooks fire deterministically;
 | `config-guard.js` | PreToolUse | Blocks edits to linter/formatter configs |
 | `validate-no-bare-secrets.js` | PreToolUse | Blocks writes containing secret-shaped literals |
 | `validate-frontmatter-on-skills.js` | PreToolUse | Blocks skill/pattern .md files lacking YAML frontmatter |
-| `pre-compact-save.js` | PreCompact | Writes checkpoint file before context compression |
+| `error-critic.js` | PostToolUse | Critic→Refiner: emits `[FAILURE-REPEATED]` on 2nd same-command Bash failure (H.7.7) |
+| `pre-compact-save.js` | PreCompact | Writes checkpoint + workflow-state-aware injection (H.7.7) |
 | `console-log-check.js` | Stop | Warns about console.log in changed files |
 | `session-reset.js` | SessionStart | Resets fact-gate tracker, cleans stale state |
 | `session-end-nudge.js` | Stop | Injects pending-approval reminder at session end |
