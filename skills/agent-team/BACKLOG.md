@@ -19,9 +19,10 @@ Deferred work from prior phases, captured here so nothing important gets silentl
   - Updated install instructions (`/plugin install power-loom`)
   - Note about GitHub repo name unchanged (deferred to future maintenance phase)
 
+**Subsequent rename of GitHub repo**: at v1.0.0 ship, the GitHub repo `shashankcm95/claude-skills-consolidated` was renamed to `shashankcm95/power-loom` (user-authorized). GitHub auto-redirects old URLs; existing bookmarks + phase-tag references continue to resolve via redirect. All in-repo URL references (plugin.json homepage/repository, README install instructions, CHANGELOG tag URLs, CONTRIBUTING remote ref) updated to canonical form.
+
 **What stayed unchanged**:
 
-- GitHub repo URL (`github.com/shashankcm95/claude-skills-consolidated`) — backward-compat with phase tags + bookmarks; rename deferred to future maintenance phase
 - All historical phase descriptions in BACKLOG / SKILL.md (audit trail preserved; references to old name in past-tense narrative are accurate-at-the-time)
 - Code substrate — no functional changes; `tierOf` byte-for-byte unchanged; all 23 H.7.0 tests + 10 smoke tests pass
 - contracts-validate: 0 violations
@@ -50,9 +51,9 @@ Deferred work from prior phases, captured here so nothing important gets silentl
 
 **v1.0.0 follow-ups (deferred)**:
 
-- **GitHub repo rename** (`claude-skills-consolidated` → `power-loom`) — destructive operation; deferred until user explicitly authorizes. Currently the GitHub URL is a legacy reference; install paths + plugin namespace use `power-loom`.
 - **External user trial program** — N=0 today. v1.0.0 reflects engineering maturity; field-deployment volume requires solicitation.
 - **Submission to official Anthropic marketplace** via `clau.de/plugin-directory-submission` — separate operation from the v1 prep itself.
+- **Old phase-tag URL audit** — GitHub auto-redirects from `claude-skills-consolidated` → `power-loom`, but external indexers / cached pages may still surface old URLs for several weeks. Monitor and re-canonicalize if any external references break.
 
 ## Phase H.7.0 — Evolution loop + drift detection + multi-axis trust signal — SHIPPED
 

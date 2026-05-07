@@ -38,7 +38,7 @@ For phase work, scope is `phase-H.x.y` so commits remain auditable across the H.
 
 ## PR workflow
 
-The remote is `github.com/shashankcm95/claude-skills-consolidated`. Use `gh pr create` for every feature branch:
+The remote is `github.com/shashankcm95/power-loom` (renamed from `claude-skills-consolidated` at v1.0.0; GitHub auto-redirects old URLs). Use `gh pr create` for every feature branch:
 
 ```bash
 git checkout -b feat/phase-H.2.8-budget-extensions
