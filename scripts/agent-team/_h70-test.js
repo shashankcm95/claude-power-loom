@@ -501,6 +501,94 @@ console.log('\n[7] byte-for-byte tierOf invariance (1 test)');
   }
 }
 
+// ===== Section 6: H.7.11 route-decide dictionary expansion regression =====
+//
+// Added in H.7.11 (ari, 04-architect). Verifies:
+// (a) drift-note 1 + drift-note 4 tasks now route correctly post-expansion
+//     (were `root` 0.225 and 0.112 respectively under v1.1)
+// (b) H.7.3 6-task baseline scores remain unchanged (additive-only invariant)
+// (c) counter-signal probes still return root
+// (d) suppression check: stakes fires + compound_weak suppressed
+//
+// If a baseline shifts, the H.7.11 expansion regressed an existing routing
+// decision and the corresponding token addition needs reconsideration.
+
+console.log('\n[6] H.7.11 dictionary expansion regression (12 tests)');
+const routeDecide = require('./_lib/route-decide-export.js');
+
+// (a) Drift-note tasks — post-expansion projections per ari's design.
+// scoreTask takes a task STRING (positional arg), not an options object.
+const driftNote1Result = routeDecide.scoreTask(
+  'Phase H.7.9 — design + ship HETS-in-plan-mode injection bundled with mira retrospective CRITICAL fixes for H.7.7+H.7.8. Multi-file architectural design touching 7+ files.'
+);
+assert(
+  driftNote1Result.recommendation === 'borderline' || driftNote1Result.recommendation === 'route',
+  `H.7.11 drift-note 1: was root 0.225 → post-expansion borderline/route (got ${driftNote1Result.recommendation} ${driftNote1Result.score_total})`
+);
+
+const driftNote4Result = routeDecide.scoreTask(
+  "Apply mira's H.7.7+H.7.8 retrospective CRITICAL fixes — C-1 TMPDIR session leak in error-critic.js, C-2 RMW race in error-critic.js (read-then-write count without locking when PostToolUse fires concurrently), C-3 SAVE_PROMPT integration in pre-compact-save.js. Plus 2 HIGH fixes — H-1 path priority, H-2 recency filter. Multi-file edits across 4 hooks/scripts files."
+);
+assertEqual(
+  driftNote4Result.recommendation,
+  'route',
+  `H.7.11 drift-note 4: was root 0.112 → post-expansion route (got ${driftNote4Result.score_total})`
+);
+
+// (b) Six H.7.3 baseline tasks — scores must be byte-identical post-expansion.
+// Token additions only INCREASE possible matches; if a baseline shifts, an
+// added token erroneously matched it (regression).
+const baselines = [
+  { task: 'hello world', expectedScore: 0, expectedRec: 'root' },
+  { task: 'design pipeline orchestration with auth', expectedScore: 0.475, expectedRec: 'borderline' },
+  { task: 'design schema migration for production payments kubernetes auth tradeoffs', expectedScore: 0.85, expectedRec: 'route' },
+  { task: 'fix typo', expectedScore: 0, expectedRec: 'root' },
+  { task: 'USING.md walkthrough for end-user product engineer', expectedScore: 0.1, expectedRec: 'root' },
+  { task: 'design URL shortener with eviction policy and pagination', expectedScore: 0.225, expectedRec: 'root' },
+];
+for (const b of baselines) {
+  const r = routeDecide.scoreTask(b.task);
+  assertEqual(
+    r.score_total,
+    b.expectedScore,
+    `H.7.11 baseline regression: "${b.task.slice(0, 40)}" score unchanged from v1.1`
+  );
+  assertEqual(
+    r.recommendation,
+    b.expectedRec,
+    `H.7.11 baseline regression: "${b.task.slice(0, 40)}" recommendation unchanged from v1.1`
+  );
+}
+
+// (c) Counter-signal probes — polish-class tasks must stay root post-expansion
+const counterSignals = [
+  'Add JSDoc to scoreTask function',
+  'Polish frontmatter on pattern docs',
+];
+for (const task of counterSignals) {
+  const r = routeDecide.scoreTask(task);
+  assertEqual(
+    r.recommendation,
+    'root',
+    `H.7.11 counter-signal: "${task}" stays root post-expansion`
+  );
+}
+
+// (d) Suppression check: stakes fires (auth) + compound_weak (refactor) suppressed
+const suppressResult = routeDecide.scoreTask('refactor auth module');
+assertEqual(
+  suppressResult.scores_by_dim.compound_weak.suppressed_by_stakes,
+  true,
+  'H.7.11 suppression: compound_weak (refactor) suppressed when stakes (auth) fires'
+);
+
+// (e) WEIGHTS_VERSION bump verification
+assertEqual(
+  driftNote1Result.weights_version,
+  'v1.2-dict-expanded-2026-05-07',
+  'H.7.11 schema bump: WEIGHTS_VERSION → v1.2-dict-expanded-2026-05-07'
+);
+
 // ===== Summary =====
 
 console.log(`\n=== Summary ===`);

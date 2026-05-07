@@ -115,6 +115,53 @@ When score_total ≤ 0.05 AND no `--context` was supplied AND not force-overridd
 
 The instinct of "consult an LLM for borderline cases" is correct in spirit but wrong for this toolkit. The substrate's pattern is **forcing-instruction injection into Claude's existing context, not subprocess LLM calls**. Layer C does that — it doesn't call out to an LLM; it nudges Claude (already running) to apply intent reasoning where the heuristic abstained.
 
+## H.7.11 — Dictionary expansion (closes drift-notes 1 + 4)
+
+`weights_version` bumped: `v1.1-context-aware-2026-05-07` → `v1.2-dict-expanded-2026-05-07`. Strictly additive within keyword sets; no weight, threshold, dimension, or suppression-rule changes. Architect: `04-architect.ari` (paired with `04-architect.theo` via `--convergence agree`).
+
+### Empirical motivation
+
+Same session captured two false-negatives:
+
+- **Drift-note 1**: `route-decide.js --task "Phase H.7.9 — design + ship HETS-in-plan-mode injection bundled with mira retrospective CRITICAL fixes ..."` returned `root` (score 0.225). Genuinely architectural multi-file work; should have been at least `borderline`.
+- **Drift-note 4**: `route-decide.js --task "Apply mira's H.7.7+H.7.8 retrospective CRITICAL fixes — C-1 TMPDIR session leak, C-2 RMW race ..."` returned `root` (score 0.112). Substrate fix work with high stakes + audit signal; should have been `route`.
+
+Two empirical observations of the same gap class within one session is sufficient evidence for refit per H.7.4 precedent.
+
+### Per-dimension additions
+
+| Dimension | Tokens added | Closes |
+|-----------|--------------|--------|
+| `stakes` (0.25) | `critical`, `severity`, `race-condition`, `race condition`, `deadlock`, `leak`, `memory leak`, `session leak`, `breach`, `vulnerability`, `cve`, `exploit` | drift-note 4 |
+| `compound_strong` (0.15) | `race`, `concurrency`, `concurrent`, `locking`, `mutex`, `lock`, `RMW`, `read-modify-write`, `distributed`, `replication`, `transaction`, `atomic`, `idempotent`, `idempotency` | drift-note 4 |
+| `compound_weak` (0.075, suppressed by stakes) | `architectural`, `refactor`, `refactoring`, `restructure` | proactive |
+| `audit_binary` (0.20) | `retrospective`, `postmortem`, `post-mortem`, `root-cause`, `root cause`, `findings`, `review pass`, `audit pass` | drift-notes 1, 4 |
+| `scope_size` (0.075) | `across-files`, `hooks`, `scripts`, `callsites`, `callsite` | drift-note 4 |
+| `counter_signals` (-0.25) | `polish`, `polishing`, `jsdoc`, `docstring`, `frontmatter`, `comment`, `comments`, `formatting`, `lint`, `linting`, `prettier`, `rename`, `renaming`, `whitespace` | proactive |
+
+Three dimensions (`domain_novelty`, `convergence_value`, `user_facing_or_ux`) received **no additions** — drift-notes were familiar substrate work, not novelty / convergence-needing-evaluation / UX.
+
+### Verified projections
+
+- Drift-note 1: was `root` 0.225 → post-expansion `borderline` 0.525
+- Drift-note 4: was `root` 0.112 → post-expansion `route` 0.675
+- All 6 H.7.3 calibration baselines unchanged (additive-only invariant verified)
+- Counter-signal probes (`Add JSDoc to scoreTask function`, `Polish frontmatter on pattern docs`) stay `root` 0
+- Suppression check (`refactor auth module`) — `compound_weak` correctly suppressed (`suppressed_by_stakes: true`)
+
+### Tradeoffs (ari's honest read)
+
+- **Token cost**: ~1.8× substrate-phase token spend expected (drift-note class tasks now route at higher rate). Justified — these are exactly the cases where HETS earns its 30× cost ratio.
+- **Doesn't fix the deeper issue**: keyword heuristic ceiling remains. A phrase-level model or LLM tier-2 fallback would close more gaps; this is purely a dictionary fix. H.7.5's `[ROUTE-DECISION-UNCERTAIN]` forcing instruction is the substrate-correct shape for the deeper case.
+- **`refactor` ambiguity**: accepted because compound_weak suppression by stakes mitigates over-routing. Drop on FP regression observation.
+- **Bare `leak` FP risk**: accepted because compound forms (`session leak`, `memory leak`) listed first bias toward high-precision. Drop bare on FP regression.
+
+### Decline list (drift-notes flagged but ari rejected)
+
+- `bundled`, `bundle` — too ambiguous (webpack vs orchestration)
+- `meta-discipline` — too domain-specific to this toolkit
+- bare `fix`, `fixes` — too generic (every bug fix would over-route)
+
 ## Related Patterns
 
 - [Tech-Stack Analyzer](tech-stack-analyzer.md) — what fires AFTER the route gate when the recommendation is `route`. The route gate prevents tech-stack-analyzer from running on tasks that don't warrant HETS routing.

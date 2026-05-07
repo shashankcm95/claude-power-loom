@@ -2,6 +2,89 @@
 
 Deferred work from prior phases, captured here so nothing important gets silently dropped. Each entry: scope, rationale, dependencies, rough estimate.
 
+## Phase H.7.11 — Route-decide dictionary expansion (closes drift-notes 1 + 4) — SHIPPED
+
+**Status**: shipped per approved plan (`~/.claude/plans/flickering-crafting-star.md`). Pivoted from original H.7.11 (agent discipline + JSDoc) after Phase 1 inventory revealed agents were already in good shape and the JSDoc work was the very "marginal ROI" the H.7.7 BACKLOG flagged. User picked dictionary expansion via AskUserQuestion based on stronger empirical motivation (2 drift-note observations same session).
+
+### Phase-numbering reorg
+
+| Phase | Was | Now |
+|-------|-----|-----|
+| H.7.11 (this) | Agent discipline + JSDoc | **Route-decide dictionary expansion** |
+| H.7.12 | Plan-template enforcement hook | Plan-template enforcement hook (unchanged) |
+| H.7.13 | Route-decide dictionary expansion | Agent discipline + JSDoc (deferred) |
+
+### Architect verdict (ari, 04-architect)
+
+Per `route-decide.js:11-13` load-bearing comment, keyword adjustments require a new architect pass. Spawned `04-architect.ari` (theo and mira already engaged this session — fresh paired view). Convergence stance recorded: `pattern-recorder.js record --paired-with 04-architect.theo --convergence agree` (ari agrees with theo's H.7.3 architecture wholesale; partial-disagrees only with implicit "more keywords = always better" — declined `bundled`/`meta-discipline`/bare `fix` despite drift-note flagging).
+
+### What landed
+
+- **`scripts/agent-team/route-decide.js`**:
+  - `WEIGHTS_VERSION` bumped: `v1.1-context-aware-2026-05-07` → `v1.2-dict-expanded-2026-05-07`. Justified per H.7.3 retrospective comparability — dictionary IS part of the formula; v1.1 vs v1.2 routing decisions are not bit-equivalent.
+  - **5 dimensions expanded** (~50 new tokens):
+    - `stakes` (0.25): + severity-class (`critical`, `severity`), concurrency-failure-class (`race-condition`, `deadlock`, `*leak`), security-class (`breach`, `vulnerability`, `cve`, `exploit`)
+    - `compound_strong` (0.15): + concurrency cluster (`race`, `concurrency`, `concurrent`, `locking`, `mutex`, `lock`, `RMW`, `read-modify-write`) + complex-systems cluster (`distributed`, `replication`, `transaction`, `atomic`, `idempotent`, `idempotency`)
+    - `compound_weak` (0.075, suppressed by stakes): + `architectural`, `refactor`, `refactoring`, `restructure`
+    - `audit_binary` (0.20): largest expansion — 4 → 12 tokens. + `retrospective`, `postmortem`, `post-mortem`, `root-cause`, `root cause`, `findings`, `review pass`, `audit pass`
+    - `scope_size` (0.075): + `across-files`, `hooks`, `scripts`, `callsites`, `callsite`
+  - **`counter_signals` expanded** (`polish`, `polishing`, `jsdoc`, `docstring`, `frontmatter`, `comment`, `comments`, `formatting`, `lint`, `linting`, `prettier`, `rename`, `renaming`, `whitespace`) — catches polish-class work that would otherwise mis-route when phrased with substrate vocabulary
+  - 3 dimensions **received no additions** (`domain_novelty`, `convergence_value`, `user_facing_or_ux`) — drift-notes are familiar substrate work, not novelty / convergence-needing / UX
+- **`scripts/agent-team/_h70-test.js`** Section 6 (NEW): 9 H.7.11 regression tests covering drift-notes + 6 H.7.3 baselines + counter-signals + suppression + WEIGHTS_VERSION bump. Total: 32 → **41 passing**.
+- **`skills/agent-team/patterns/route-decision.md`**: appended H.7.11 section with empirical motivation, per-dimension additions table, verified projections, tradeoffs, decline list.
+
+### Verified projections (ari's design predictions confirmed empirically)
+
+- Drift-note 1 (H.7.9 task): was `root` 0.225 → post-expansion **`borderline` 0.525** ✓
+- Drift-note 4 (H.7.10 task): was `root` 0.112 → post-expansion **`route` 0.675** ✓
+- All 6 H.7.3 calibration baselines (`hello world`, `design pipeline orchestration with auth`, `design schema migration ...`, `fix typo`, `USING.md walkthrough ...`, `URL shortener with eviction policy`) **byte-identical** post-expansion (additive-only invariant)
+- Counter-signal probes (`Add JSDoc to scoreTask function`, `Polish frontmatter on pattern docs`, `rename foo to bar`, `small whitespace cleanup`) all stay `root` score 0
+- Suppression check (`refactor auth module`): `compound_weak` correctly `suppressed_by_stakes: true`; final score 0.15 → root
+
+### Verification
+
+- ✓ Probe 1: `bash install.sh --hooks --test` → 13/13 passing
+- ✓ Probe 2: `node scripts/agent-team/contracts-validate.js` → 0 violations
+- ✓ Probe 3: drift-note 1 task → `borderline` 0.525 (was `root` 0.225)
+- ✓ Probe 4: drift-note 4 task → `route` 0.675 (was `root` 0.112)
+- ✓ Probe 5: 6 H.7.3 baseline scores **byte-identical** (additive-only invariant)
+- ✓ Probe 6: counter-signal probes stay `root`
+- ✓ Probe 7: suppression check (`refactor auth module`) → `root` 0.15 with `compound_weak.suppressed_by_stakes: true`
+- ✓ Probe 8: `_h70-test.js` Section 1 (bucketTaskComplexity) — all 5 still pass; total 41/41
+
+### Honest tradeoffs (per ari's design Section F)
+
+- **Token-cost shift**: ~1.8× substrate-phase token spend expected. Modest; justified — drift-note class tasks are exactly where HETS earns its 30× cost ratio (mira C-1 caught a math bug; H.7.10 fixes prevented substrate quality decay).
+- **Doesn't fix the deeper issue**: keyword heuristic ceiling remains (theo's H.7.3 failure modes #2 + #5). A phrase-level model or LLM tier-2 fallback would close more gaps; this is purely a dictionary fix. H.7.5's `[ROUTE-DECISION-UNCERTAIN]` forcing instruction is the substrate-correct shape for the deeper case.
+- **`refactor` ambiguity accepted**: compound_weak suppression by stakes mitigates over-routing. Drop `refactor`/`refactoring` first if FP regression observed; keep `restructure` only.
+- **Bare `leak` FP risk accepted**: compound forms `session leak`/`memory leak` listed first bias toward high-precision. Drop bare `leak` first if FP regression observed.
+- **`weights_version` bump justified**: dictionary IS part of the formula; H.7.3+H.7.4+H.7.5 audit comparability requires the version anchor.
+
+### Decline list (drift-notes flagged but ari rejected)
+
+- `bundled`, `bundle` — too ambiguous (webpack bundle ≠ orchestration bundle)
+- `meta-discipline` — too domain-specific to this toolkit; would never fire on user tasks
+- bare `fix`, `fixes` — too generic; every bug fix would over-route
+
+### Drift-note 9 captured during this phase
+
+When an architect's load-bearing comment ("requires a new architect pass") fires, the route-decide gate on the architect-pass task itself may return `root` (it did for this task: 0.125, confidence 0.625). Pattern: substrate-meta work routes by the OLD dictionary, not the proposed new one. Catch-22 acceptable for one-shot expansions; persistent issue would need a "meta-architectural" routing axis. Future phase candidate.
+
+### H.7.11 follow-ups (deferred)
+
+- **H.7.12**: Plan-template enforcement hook (theo's H.7.9 Section C deferral) — PostToolUse-on-Write hook validating plan files match `swarm/plan-template.md` schema
+- **H.7.13**: Agent discipline + JSDoc (was originally H.7.11; pivoted) — frontmatter audit + JSDoc on hook scripts where coverage is sparse
+- **H.7.14 candidate**: Drift-note 6 audit (hardcoded toolkit paths across substrate scripts) — apply canonical findToolkitRoot() helper across `scripts/agent-team/`
+
+### Why this is the right shape
+
+- Closed the same-session empirical gap (2 drift-note observations of identical class)
+- Strictly additive — no weight/threshold/dimension changes; preserves H.7.3+H.7.4+H.7.5 architectural envelope
+- Architect-approved per theo's load-bearing comment requirement
+- Schema-additive version bump preserves audit trail
+- Honest about scope: dictionary fix, not a heuristic-ceiling fix
+- Fifteenth distinct phase shape: dictionary-refit driven by same-session empirical evidence
+
 ## Phase H.7.10 — Mira retrospective fixes via `/build-plan` (recursive dogfood) — SHIPPED
 
 **Status**: shipped per H.7.9 plan (`~/.claude/plans/flickering-crafting-star.md`). Recursive-dogfood demonstration: applies mira's 3 CRITICAL + 2 HIGH retrospective findings using the `/build-plan` flow shipped in H.7.9. The discipline gates (route-decide, plan mode, theo's existing design from H.7.9) all worked together.

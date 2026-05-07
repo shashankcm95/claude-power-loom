@@ -16,7 +16,7 @@
 
 // ---------- constants ----------
 
-const WEIGHTS_VERSION = 'v1.1-context-aware-2026-05-07';
+const WEIGHTS_VERSION = 'v1.2-dict-expanded-2026-05-07';
 
 // HIGH-1 + HIGH-2 + MEDIUM-1 + C-2 adjusted weights from theo's design.
 // Sums to 1.00 within decimal-precision tolerance after R1-R6 calibration.
@@ -60,12 +60,20 @@ const BORDERLINE_PROMOTION_THRESHOLD = 0.10;  // post-mult context_score floor
 
 const KEYWORDS = {
   // M-1: expanded Stakes set + R3: kubernetes/k8s/terraform/helm
+  // H.7.11 (ari): + severity-class (`critical`, `severity`), concurrency-failure-class
+  // (`race-condition`, `deadlock`, `*leak`), security-class (`breach`, `vulnerability`,
+  // `cve`, `exploit`). Closes drift-note 4 ("CRITICAL fixes" + "session leak").
   stakes: [
     'production', 'scalable', 'secure', 'reliable', 'compliance',
     'auth', 'authentication', 'authorization', 'payments', 'billing',
     'pii', 'encryption', 'secrets', 'tokens', 'oauth',
     'multi-tenant', 'rate-limit', 'rate limiting', 'availability', 'outage', 'incident',
     'kubernetes', 'k8s', 'terraform', 'helm',
+    // H.7.11 — drift-note-driven additions
+    'critical', 'severity',
+    'race-condition', 'race condition', 'deadlock',
+    'session leak', 'memory leak', 'leak',
+    'breach', 'vulnerability', 'cve', 'exploit',
   ],
   // M-2: textual signals only — NO substrate lookup
   domain_novelty: [
@@ -73,43 +81,76 @@ const KEYWORDS = {
     'new framework', 'first time', 'bleeding edge', 'cutting edge', 'not standard',
   ],
   // C-2: split compound into strong + weak
+  // H.7.11 (ari): + concurrency-cluster (`race`/`concurrency`/`concurrent`/`locking`/`mutex`/`lock`/`RMW`/`read-modify-write`)
+  // and complex-systems-cluster (`distributed`/`replication`/`transaction`/`atomic`/`idempotent`/`idempotency`).
+  // Closes drift-note 4 ("RMW race", "concurrent PostToolUse fires", "withLock").
   compound_strong: [
     'schema', 'migration', 'protocol', 'consensus', 'state-machine',
     'pipeline', 'data-model', 'event-sourcing',
+    // H.7.11 — concurrency cluster
+    'race', 'concurrency', 'concurrent', 'locking', 'mutex', 'lock',
+    'RMW', 'read-modify-write',
+    // H.7.11 — complex-systems cluster
+    'distributed', 'replication', 'transaction', 'atomic',
+    'idempotent', 'idempotency',
   ],
+  // H.7.11 (ari): + `architectural` (synonym of `architecture`), + `refactor`/`refactoring`/`restructure`.
+  // `refactor` is genuinely ambiguous; mitigated by compound_weak suppression-by-stakes.
+  // Drop `refactor`/`refactoring` first if FP regression observed.
   compound_weak: [
     'architecture', 'design', 'framework', 'system',
+    // H.7.11
+    'architectural', 'refactor', 'refactoring', 'restructure',
   ],
   // C-1: removed `review` from binary trigger; high-precision only
+  // H.7.11 (ari): + `retrospective` (drift-notes 1+4), + postmortem-cluster + root-cause-cluster + phrase-level (`review pass`/`audit pass`).
+  // Largest single-dim expansion: 4 → 12 tokens. Justified by the second-highest weight share (0.20).
   audit_binary: [
     'audit', 'compliance', 'certification', 'regulatory',
+    // H.7.11 — drift-note-driven + proactive
+    'retrospective', 'postmortem', 'post-mortem',
+    'root-cause', 'root cause',
+    'findings', 'review pass', 'audit pass',
   ],
   // Scope (multi-file / multi-component signals); R3: `manifest` included.
   // R1-derived: `endpoints`/`apis` (plural) are multi-component implications
   // — theo's R1 trace explicitly counts "Express API endpoints" as multi-
   // component. Plural-noun-API IS the multi-component signal.
+  // H.7.11 (ari): + substrate-file-type plurals (`hooks`/`scripts`) + spelling-normalized
+  // (`across-files`) + callsite plurals. Closes drift-note 4 ("4 hooks/scripts files").
   scope_size: [
     'multi-file', 'multi-component', 'cross-cutting',
     'end-to-end', 'pipeline', 'orchestration', 'service', 'manifest',
     'multiple files', 'across files', 'endpoints', 'apis',
+    // H.7.11
+    'across-files', 'hooks', 'scripts', 'callsites', 'callsite',
   ],
   // Convergence-value (non-obvious tradeoffs); R4 keyword additions
+  // H.7.11 (ari): no additions. Drift-notes are known-design execution, not convergence-needing.
   convergence_value: [
     'tradeoff', 'tradeoffs', 'options', 'compare', 'evaluate',
     'choice', 'choose between', 'decide between', 'eviction policy', 'consistency model',
     'pagination', 'search', 'service design', 'url shortener', 'state management',
   ],
   // R2: 7th dimension keywords (user-facing / UX / docs)
+  // H.7.11 (ari): no additions. Drift-notes are not UX work.
   user_facing_or_ux: [
     'user-facing', 'walkthrough', 'tutorial', 'onboarding', 'documentation',
     'component', 'ui', 'ux', 'accessibility', 'responsive',
   ],
   // HIGH-1: counter-signals expanded to BACKLOG-class
+  // H.7.11 (ari): + polish-class (`polish`/`polishing`/`jsdoc`/`docstring`/`frontmatter`/etc.).
+  // Catches the alternative-H.7.11 mechanical-polish work that would otherwise mis-route
+  // when phrased with substrate vocabulary. `rename` flagged borderline; drop first if FP.
   counter_signals: [
     'fix typo', 'small', 'tweak', 'experiment', 'prototype',
     'typo', 'prune', 'cleanup', 'delete entries', 'remove', 'stale',
     'one line', 'minor', 'trivial', 'quick fix', 'quick',
     'hello world',
+    // H.7.11 — polish-class
+    'polish', 'polishing', 'jsdoc', 'docstring', 'frontmatter',
+    'comment', 'comments', 'formatting', 'lint', 'linting', 'prettier',
+    'rename', 'renaming', 'whitespace',
   ],
   // HIGH-3: infra-implicit-stakes (independent of stakes match)
   infra_terms: [
