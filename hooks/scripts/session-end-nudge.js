@@ -27,6 +27,14 @@ const LOCK_FILE = STATE_FILE + '.lock';
 const LOCK_TIMEOUT_MS = 2000;
 const LOCK_STALE_MS = 10000;
 
+/**
+ * Sleep for the given number of milliseconds. Prefers `Atomics.wait` (true
+ * sleep) when available; falls back to a busy-wait spin loop. Used in the
+ * lock-acquisition retry loop.
+ *
+ * @param {number} ms Milliseconds to sleep
+ * @returns {void}
+ */
 function sleepMs(ms) {
   try {
     if (typeof SharedArrayBuffer === 'function' && typeof Atomics?.wait === 'function') {
@@ -38,6 +46,18 @@ function sleepMs(ms) {
   while (Date.now() < end) { /* spin */ }
 }
 
+/**
+ * Acquire the per-session state-file lock with stale-lock recovery.
+ * Uses the `wx` flag for atomic create-if-not-exists semantics. On
+ * EEXIST, checks the lock's mtime: if older than `LOCK_STALE_MS` (10s),
+ * the lock is reclaimed (assumes prior holder crashed or hung). Retries
+ * with exponential backoff until `LOCK_TIMEOUT_MS` (2s) elapses.
+ *
+ * Mirrors the same race-fix pattern from `prompt-pattern-store.js` and
+ * the H.3.2 `_lib/lock.js` primitive.
+ *
+ * @returns {boolean} true if lock acquired, false on timeout
+ */
 function acquireLock() {
   fs.mkdirSync(STATE_DIR, { recursive: true });
   const start = Date.now();
@@ -63,10 +83,24 @@ function acquireLock() {
   return false;
 }
 
+/**
+ * Release the per-session state-file lock. Idempotent — silently ignores
+ * "already released" cases (lock file may have been reclaimed by stale-lock
+ * recovery during a long-running operation).
+ *
+ * @returns {void}
+ */
 function releaseLock() {
   try { fs.unlinkSync(LOCK_FILE); } catch { /* gone — fine */ }
 }
 
+/**
+ * Load the per-session nudge state from disk. Returns a fresh state on
+ * any error (missing file, parse failure) — first-run case is the
+ * common path here.
+ *
+ * @returns {{count: number, nudged: boolean, sessionStart: number}}
+ */
 function loadState() {
   try {
     return JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
@@ -75,6 +109,17 @@ function loadState() {
   }
 }
 
+/**
+ * Atomically write the nudge state to disk. Uses tmp-file + rename
+ * pattern to avoid partial writes (concurrent readers see either old
+ * or new state, never a half-written file).
+ *
+ * Errors are logged but never thrown — state save is best-effort; the
+ * user's response still ships even if state persistence fails.
+ *
+ * @param {{count: number, nudged: boolean, sessionStart: number}} state
+ * @returns {void}
+ */
 function saveState(state) {
   try {
     fs.mkdirSync(STATE_DIR, { recursive: true });

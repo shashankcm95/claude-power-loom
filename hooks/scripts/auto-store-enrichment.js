@@ -33,12 +33,16 @@ function resolveStoreScript() {
 }
 const STORE_SCRIPT = resolveStoreScript();
 
-// G3: Strip fenced code blocks (``` ... ```) from text before scanning
-// for markers. Without this, every docs example, README excerpt, persona
-// file, or assistant explanation showing the marker format silently
-// writes a phantom pattern.
+/**
+ * Strip fenced code blocks (```...```) from text before marker scanning.
+ * Phase G3 hardening: without this, every docs example, README excerpt,
+ * persona file, or assistant explanation showing the [ENRICHED-PROMPT-...]
+ * marker format silently writes a phantom pattern to the store.
+ *
+ * @param {string} text Raw input text
+ * @returns {string} Text with all triple-backtick fenced blocks removed
+ */
 function stripCodeBlocks(text) {
-  // Remove triple-backtick fenced blocks (with optional language tag)
   return text.replace(/```[\s\S]*?```/g, '');
 }
 
@@ -49,9 +53,19 @@ const KNOWN_KEYS = new Set([
   'INSTRUCTIONS', 'CONTEXT', 'INPUT', 'OUTPUT',
 ]);
 
-// Parse [ENRICHED-PROMPT-START]...[ENRICHED-PROMPT-END] blocks from text.
-// G4: Refuse nested START markers — if a START is found within a block
-// before its matching END, the whole region is suspect and skipped.
+/**
+ * Parse [ENRICHED-PROMPT-START]...[ENRICHED-PROMPT-END] blocks from text.
+ * Phase G4 hardening: refuses nested START markers — if a START is found
+ * within a block before its matching END, the whole region is suspect
+ * and skipped (prevents inner-overrides-outer attacks where adversarial
+ * content embeds a fake START to hijack the outer block's RAW field).
+ *
+ * Each successfully extracted enrichment has the shape:
+ *   {raw, category, techniques, enriched, modified}
+ *
+ * @param {string} text Raw response text from Claude
+ * @returns {Array<{raw: string, category: string, techniques: string, enriched: string, modified: boolean}>} Detected enrichments (empty array if none)
+ */
 function extractEnrichments(text) {
   const cleaned = stripCodeBlocks(text);
   const enrichments = [];
@@ -104,9 +118,19 @@ function extractEnrichments(text) {
   return enrichments;
 }
 
-// G6: parseFields with KNOWN_KEYS allowlist. Lines like "HTTPS://x" no
-// longer match the field-key pattern — they continue the previous field's
-// value instead.
+/**
+ * Parse `KEY: value` lines into a fields object, with KNOWN_KEYS allowlist.
+ * Phase G6 hardening: lines like `HTTPS://example.com` no longer match the
+ * field-key pattern — they continue the previous field's value instead of
+ * being treated as a new field key (which previously caused URLs in the
+ * CONTEXT field to become phantom keys).
+ *
+ * Multi-line values are supported: any line that doesn't match a KNOWN_KEYS
+ * pattern is appended to the current field's value.
+ *
+ * @param {string} body The text between [ENRICHED-PROMPT-START] and [ENRICHED-PROMPT-END]
+ * @returns {Object<string, string>} Fields object keyed by uppercase field name
+ */
 function parseFields(body) {
   const fields = {};
   let currentKey = null;
@@ -127,7 +151,15 @@ function parseFields(body) {
   return fields;
 }
 
-// G1: spawnSync with explicit argv array — no shell, no injection surface.
+/**
+ * Store an extracted enrichment via the prompt-pattern-store CLI.
+ * Phase G1 hardening: uses spawnSync with explicit argv array (no shell,
+ * no injection surface). Returns null on any failure — caller should
+ * treat null as "skip and log"; never throws.
+ *
+ * @param {{raw: string, category: string, techniques: string, enriched: string, modified: boolean}} enrichment Extracted enrichment object from extractEnrichments
+ * @returns {string|null} Stdout from the store CLI on success, null on failure
+ */
 function storePattern(enrichment) {
   try {
     const args = [

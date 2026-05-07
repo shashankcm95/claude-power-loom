@@ -2,6 +2,86 @@
 
 Deferred work from prior phases, captured here so nothing important gets silently dropped. Each entry: scope, rationale, dependencies, rough estimate.
 
+## Phase H.7.13 — Agent discipline + JSDoc polish (closes H.7.7 deferral) — SHIPPED
+
+**Status**: shipped per approved plan. Closes the longest-deferred BACKLOG item: H.7.7 line 65 ("JSDoc on hook scripts — marginal ROI; defer to a future code-quality phase or to H.7.10 agent-discipline pass"). Was originally H.7.11 in BACKLOG before pivoted to dict expansion (which had stronger empirical motivation from drift-notes 1+4); now back to original scope as H.7.13 in the renumbered map.
+
+### Phase 1 inventory (re-used from earlier this session)
+
+Phase 1 was completed during the H.7.11 scope-decision via AskUserQuestion. Two findings:
+
+1. **Agents are already consistent** — all 5 toolkit agents at `agents/` (`architect.md`, `code-reviewer.md`, `optimizer.md`, `planner.md`, `security-auditor.md`) have IDENTICAL frontmatter (name, description, tools, model, color) and complete when-to-use/when-NOT-to-use guidance. **No agent work needed.**
+2. **JSDoc has real gaps** — ~40 missing function blocks across 6-7 hook scripts. Tier 1 (highest payoff): `session-end-nudge`, `auto-store-enrichment`, `fact-force-gate`. Tier 2: `error-critic` remaining beyond `commandKey`, `prompt-enrich-trigger`, `pre-compact-save` remaining beyond `walkUpForRunState`.
+
+### What landed
+
+Per-function JSDoc (@param/@returns + concise description) added to **7 files**:
+
+| File | Functions JSDoc'd | Notes |
+|------|-------------------|-------|
+| `hooks/scripts/session-end-nudge.js` | 5 (sleepMs, acquireLock, releaseLock, loadState, saveState) | Lock pattern with stale-lock recovery + atomic writes documented |
+| `hooks/scripts/auto-store-enrichment.js` | 4 (stripCodeBlocks, parseFields, storePattern, extractEnrichments) | Phase G hardening rationale captured in JSDoc; `extractEnrichments` returns shape documented |
+| `hooks/scripts/fact-force-gate.js` | 3 (loadTracker, saveTracker, normalizePath) | Atomic-write pattern + realpath fallback documented |
+| `hooks/scripts/prompt-enrich-trigger.js` | 8 (stripPolitenessPadding, hasFilePath, hasSpecificEntity, isObservationOnly, isVague, isShortAmbiguousConfirmation, buildConfirmationUncertainInstruction, buildForcingInstruction) | The vagueness-gate logic order documented in `isVague` |
+| `hooks/scripts/pre-compact-save.js` | 4 remaining (extractCheckpoint, writeCheckpoint, resolveSelfImproveScript, runSelfImproveScan) | walkUpForRunState + buildSavePrompt + detectActiveOrchestrationRuns already had JSDoc from H.7.10 |
+| `hooks/scripts/error-critic.js` | 4 enhanced from terse to substantive (isFailure, truncateError, atomicAppend, buildForcingInstruction) | Existing JSDoc was minimal; enhanced with rationale + family cross-references |
+| `hooks/scripts/_lib/file-path-pattern.js` | 1 (extractFilePaths with @example) | Top-of-file comment already extensive; added per-function JSDoc with example |
+
+**Total: 59 @param/@returns lines added** (counted via `grep -c '^\s*\* @\(param\|returns\)'`).
+
+### Files NOT modified
+
+- `agents/architect.md`, `code-reviewer.md`, `optimizer.md`, `planner.md`, `security-auditor.md` — Phase 1 confirmed already consistent
+- `hooks/scripts/console-log-check.js` — minimal scan logic; self-evident from naming
+- `hooks/scripts/config-guard.js` — short single function with extensive top-of-file comment
+- `hooks/scripts/session-reset.js` — try/catch monolith with clear intent (no exported functions)
+- `hooks/scripts/validators/validate-no-bare-secrets.js` — pattern-driven top-level work + comprehensive top comment
+- `hooks/scripts/validators/validate-frontmatter-on-skills.js` — concise, top comment covers concerns
+- `hooks/scripts/validators/validate-plan-schema.js` — already comprehensive JSDoc (shipped in H.7.12)
+
+### Meta-validation of H.7.11 v1.2 dict expansion
+
+Running route-decide on the H.7.13 task confirmed the H.7.11 expansion is doing its job:
+
+```
+recommendation: root | score=0.037 | confidence=0.875
+counter_signals: ["polish", "jsdoc", "comment", "formatting"]
+counter_signal_contribution: -0.25
+```
+
+The polish-class counter_signals correctly suppressed over-routing on this purely-mechanical work. Empirical confirmation that the H.7.11 expansion handles its intended cases — meta-validation in production.
+
+### Verification
+
+- ✓ Probe 1: `bash install.sh --hooks --test` → **17/17 passing** (regression — JSDoc is comments only; zero runtime effect)
+- ✓ Probe 2: `node scripts/agent-team/contracts-validate.js` → 0 violations
+- ✓ Probe 3: `node scripts/agent-team/_h70-test.js` → 41/41 passing (regression — H.7.13 doesn't touch route-decide)
+- ✓ Probe 4: `node --check` on all 7 modified files → syntax-ok
+- ✓ Probe 5: `grep -c '^\s*\* @\(param\|returns\)'` → 59 total @param/@returns lines
+
+### Drift-notes captured
+
+- **Drift-note 14**: Phase 1 inventory done earlier in session (during H.7.11 scope decision) re-used here. Pattern: when scope is pivoted between phases within a session, the original Phase 1 work is still valid as long as files weren't touched in between. H.7.10 + H.7.12 modified some hooks but the JSDoc gap shape was unchanged (those phases added new JSDoc'd functions; didn't fill the older gaps).
+- **Drift-note 15**: H.7.11 v1.2 dict expansion correctly suppressed over-routing on this polish task (counter_signals fired: `polish`, `jsdoc`, `comment`, `formatting`). Empirical confirmation — meta-validation of H.7.11 in production.
+
+### Honest tradeoffs
+
+- **Comments-only**: H.7.7 BACKLOG correctly flagged this as "marginal ROI" — JSDoc adds developer-experience value (IDE hover docs, reading flow) but no runtime change. Worth shipping to close the BACKLOG item; not load-bearing for substrate quality.
+- **Tier 3 skip list**: console-log-check, config-guard, session-reset, two existing validators all kept as-is. Their top-of-file comments are extensive enough; per-function JSDoc would be redundant given short bodies.
+- **No agent files touched**: Phase 1 confirmed; saved time vs over-engineering.
+
+### Why this is the right shape
+
+- Closes the longest-deferred BACKLOG item (H.7.7 → through H.7.11/12/13 it's been carried forward 6 phases)
+- Mechanical work; zero architectural risk; comments-only
+- Validates H.7.11 v1.2 dict expansion is working (counter_signals fired correctly)
+- Seventeenth distinct phase shape: code-quality polish closing substrate-debt item
+
+### H.7.13 follow-ups (deferred)
+
+- **JSDoc on `scripts/agent-team/*.js` CLI scripts** — separate phase candidate if needed; their top-of-file comments are already extensive
+- **TypeScript-style type annotations** — out of scope; toolkit is pure-JS by design
+
 ## Phase H.7.12 — Plan-template enforcement hook (tiered-mandatory + PreToolUse:Write + nudge) — SHIPPED
 
 **Status**: shipped per approved plan (`~/.claude/plans/flickering-crafting-star.md`). Closes theo's H.7.9 Section C deferral with honest revision based on Phase 1 inventory (PostToolUse:Write → PreToolUse:Write; flat schema → tiered).
