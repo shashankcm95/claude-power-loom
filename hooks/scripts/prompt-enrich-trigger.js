@@ -114,6 +114,16 @@ const POLITENESS_PREFIXES = [
   /^\s*(?:hey\s+|hi\s+|sorry\s+)/i,
 ];
 
+/**
+ * Iteratively strip leading politeness phrases from a prompt. Caps at 3
+ * passes to handle stacked politeness ("hey could you please ..."). Used
+ * by `isVague` to check whether an underneath-the-padding prompt is
+ * still vague (e.g., "would you mind fixing the auth" → "fixing the
+ * auth" → still vague verb-only).
+ *
+ * @param {string} prompt User prompt
+ * @returns {string} Prompt with leading politeness phrases removed and trimmed
+ */
 function stripPolitenessPadding(prompt) {
   let stripped = prompt;
   for (let i = 0; i < 3; i++) {
@@ -130,6 +140,18 @@ function stripPolitenessPadding(prompt) {
   return stripped.trim();
 }
 
+/**
+ * Detect whether the prompt contains a file path or recognizable
+ * project-structure path. URLs are stripped first (Phase-G hardening:
+ * "https://example.com" was previously matching `/example.com` and
+ * bypassing the vagueness gate). Recognizes:
+ * - Multi-segment Unix paths (`/foo/bar`)
+ * - Files with extensions (`/foo.ts`, `bar.js`)
+ * - Common project dirs (`src/`, `app/`, `tests/`, etc.)
+ *
+ * @param {string} prompt User prompt (URLs will be stripped before matching)
+ * @returns {boolean} true if a path-like signal is detected
+ */
 function hasFilePath(prompt) {
   // Phase-G: strip URLs FIRST before checking for paths. Otherwise
   // "https://example.com" matches hasFilePath via /example.com and
@@ -141,14 +163,20 @@ function hasFilePath(prompt) {
          /\b(src|app|lib|components?|pages?|api|tests?|hooks?|utils?|services?|controllers?|models?)\/\w+/i.test(noUrls);
 }
 
-// Phase-G8: hasSpecificEntity tightened. The previous version short-
-// circuited the gate on URLs alone, camelCase tokens like "fixIt", or
-// fenced code blocks — letting "fix it" + URL escape enrichment.
-//
-// New criteria require entity to provide REAL specificity (a recognized
-// identifier with multi-word camelCase OR a substantive backtick code
-// snippet OR a quoted string of meaningful length). URLs and lone-token
-// patterns no longer count.
+/**
+ * Detect substantive specificity signals in the prompt. Phase-G8 tightened
+ * version — URLs alone, lone-token camelCase ("fixIt"), and fenced code
+ * blocks no longer count (those used to let "fix it" + URL escape the
+ * vagueness gate). Recognizes:
+ * - PascalCase identifier ≥8 chars total ("MyController", "UserService")
+ * - camelCase identifier ≥8 chars total ("doSomething", "validateInput")
+ * - Function call syntax (`foo()`, `bar(x, y)`)
+ * - Substantive backtick code (≥4 chars between backticks)
+ * - Quoted string literals (≥5 chars between quotes)
+ *
+ * @param {string} prompt User prompt (URLs will be stripped before matching)
+ * @returns {boolean} true if a specificity signal is detected
+ */
 function hasSpecificEntity(prompt) {
   // Strip URLs first — they're not specificity (per Phase-G hacker finding).
   const text = prompt.replace(/https?:\/\/[^\s]+/gi, '');
@@ -170,10 +198,33 @@ function hasSpecificEntity(prompt) {
   return false;
 }
 
+/**
+ * Test whether the prompt matches an observation-only pattern (verb-less
+ * bug report like "build broken on main", "tests are failing").
+ * Observation-only prompts get treated as vague because they describe a
+ * symptom without specifying what action is wanted.
+ *
+ * @param {string} prompt User prompt
+ * @returns {boolean} true if prompt matches an OBSERVATION_PATTERNS regex
+ */
 function isObservationOnly(prompt) {
   return OBSERVATION_PATTERNS.some((p) => p.test(prompt));
 }
 
+/**
+ * The core vagueness gate. Returns true when the prompt should trigger
+ * enrichment. Logic order is significant:
+ *
+ *   1. Vague keywords (highest signal — fires before SKIP_PATTERNS so
+ *      "build broken" still gets caught despite verb-first form)
+ *   2. Observation-only patterns (verb-less bug reports)
+ *   3. Politeness-padded vague prompts (strips padding, re-checks)
+ *   4. SKIP_PATTERNS — clear command shapes that always pass
+ *   5. Length-based catch-all for very short prompts
+ *
+ * @param {string} prompt User prompt (raw, not pre-trimmed)
+ * @returns {boolean} true if enrichment should fire
+ */
 function isVague(prompt) {
   const trimmed = prompt.trim();
 
@@ -230,6 +281,18 @@ function isVague(prompt) {
 // [PROMPT-ENRICHMENT-GATE] / [ROUTE-DECISION-UNCERTAIN] / [SELF-IMPROVE QUEUE].
 const SOFT_CONFIRMATION_SIGNALS = /\b(yes|yep|yeah|yup|sure|ok|okay|absolutely|definitely|cool|nice|perfect|great|alright|got it|do|ship|proceed|continue|carry|go|let'?s|that)\b/i;
 
+/**
+ * Detect short ambiguous confirmation prompts that the strict SKIP_PATTERNS
+ * regex doesn't quite catch but that look confirmation-shaped enough to
+ * warrant the [CONFIRMATION-UNCERTAIN] forcing instruction (rather than
+ * the heavier full enrichment ceremony). Criteria:
+ * - Word count between 1 and 5 inclusive
+ * - At least one SOFT_CONFIRMATION_SIGNAL token (yes/yep/sure/ok/etc.)
+ * - No file path or specific entity (those signal a real request)
+ *
+ * @param {string} prompt User prompt
+ * @returns {boolean} true if short + confirmation-shaped + lacks specificity
+ */
 function isShortAmbiguousConfirmation(prompt) {
   const trimmed = prompt.trim();
   const wordCount = trimmed.split(/\s+/).filter(Boolean).length;
@@ -241,6 +304,16 @@ function isShortAmbiguousConfirmation(prompt) {
   return SOFT_CONFIRMATION_SIGNALS.test(trimmed);
 }
 
+/**
+ * Build the [CONFIRMATION-UNCERTAIN] forcing instruction. Lightweight nudge
+ * (vs the heavier [PROMPT-ENRICHMENT-GATE]) — tells Claude to consult the
+ * prior turn for intent rather than triggering full enrichment. Mirrors the
+ * forcing-instruction family pattern: deterministic substrate detected
+ * uncertainty; Claude makes the semantic call. No subprocess LLM.
+ *
+ * @param {string} rawPrompt User prompt (will be truncated to 200 chars + escaped)
+ * @returns {string} Forcing instruction text suitable for stdout injection
+ */
 function buildConfirmationUncertainInstruction(rawPrompt) {
   const safeSlice = rawPrompt.slice(0, 200).replace(/"/g, '\\"');
   return `[CONFIRMATION-UNCERTAIN]
@@ -258,6 +331,16 @@ This forcing instruction mirrors [ROUTE-DECISION-UNCERTAIN] (H.7.5) — the dete
 [/CONFIRMATION-UNCERTAIN]`;
 }
 
+/**
+ * Build the [PROMPT-ENRICHMENT-GATE] forcing instruction (the full
+ * enrichment ceremony). Tells Claude to look up existing patterns, build
+ * the 4-part enriched prompt wrapped in [ENRICHED-PROMPT-START/END]
+ * markers (which auto-store-enrichment.js consumes), show to the user,
+ * and wait for approval. Mirrors the broader forcing-instruction family.
+ *
+ * @param {string} rawPrompt User prompt (will be truncated to 200 chars + escaped)
+ * @returns {string} Forcing instruction text suitable for stdout injection
+ */
 function buildForcingInstruction(rawPrompt) {
   // Phase-C: slice BEFORE escape (avoids trailing backslash from \" at boundary)
   const safeSlice = rawPrompt.slice(0, 200).replace(/"/g, '\\"');

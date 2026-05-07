@@ -32,6 +32,19 @@ const WINDOWS_PATH = /[A-Za-z]:\\(?:[\w.-]+\\)+[\w.-]+\.\w{1,10}/g;
 // Path inside quotes can contain spaces.
 const QUOTED_PATH = /(?<=["'])(?:[\/]|[A-Za-z]:[\\\/])(?:[\w .-]+(?:[\/\\][\w .-]+)+)\.\w{1,10}(?=["'])/g;
 
+/**
+ * Extract file paths from arbitrary text. Returns a deduplicated Set so
+ * the same path mentioned multiple times in the input only counts once.
+ * Combines three patterns (Unix, Windows, Quoted-with-spaces) — see the
+ * header comment for what each catches and what's intentionally skipped.
+ *
+ * @example
+ *   extractFilePaths('See /Users/x/foo.ts and "C:\\My Files\\bar.js"')
+ *   // → Set { '/Users/x/foo.ts', 'C:\\My Files\\bar.js' }
+ *
+ * @param {string} text Arbitrary text (typically conversation or hook input)
+ * @returns {Set<string>} Deduplicated set of detected file paths (empty Set on falsy/non-string input)
+ */
 function extractFilePaths(text) {
   if (!text || typeof text !== 'string') return new Set();
   const paths = new Set();

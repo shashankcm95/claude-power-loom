@@ -159,7 +159,15 @@ ${lines.join('\n')}
 The checkpoint file has the file paths and timestamp. You provide the meaning.`;
 }
 
-// Deterministic checkpoint: extract key signals from the input
+/**
+ * Build a deterministic checkpoint from the conversation input that's
+ * about to be compacted. Captures: timestamp, cwd, mentioned file paths
+ * (top-20), context length, and a summary marker. Pure function — no I/O
+ * side effects (writeCheckpoint handles persistence).
+ *
+ * @param {string} inputText Full conversation context being compacted
+ * @returns {{timestamp: string, cwd: string, mentionedFiles: string[], contextLength: number, summary: string}} Checkpoint object
+ */
 function extractCheckpoint(inputText) {
   const timestamp = new Date().toISOString();
   const cwd = process.cwd();
@@ -175,6 +183,20 @@ function extractCheckpoint(inputText) {
   };
 }
 
+/**
+ * Persist a checkpoint to disk. Writes to two locations:
+ * - `~/.claude/checkpoints/last-compact.json` — overwritten each time
+ *   (most recent checkpoint, used by SAVE_PROMPT references)
+ * - `~/.claude/checkpoints/compact-history.jsonl` — append-only log
+ *   trimmed to last 50 entries
+ *
+ * Errors are silently swallowed at the directory-creation and history-
+ * trim layers (best-effort persistence; the SAVE_PROMPT emission gates
+ * on whether this function succeeded via the surrounding try/catch).
+ *
+ * @param {{timestamp: string, cwd: string, mentionedFiles: string[], contextLength: number, summary: string}} checkpoint Checkpoint to persist
+ * @returns {void}
+ */
 function writeCheckpoint(checkpoint) {
   // Write to a predictable location that survives compaction
   const checkpointDir = path.join(os.homedir(), '.claude', 'checkpoints');
@@ -206,9 +228,14 @@ function writeCheckpoint(checkpoint) {
 // prior static const + post-string-concat shape buried the orchestration
 // context after Claude may already be executing the 3-task list.
 
-// H.4.1 — also run a self-improve consolidation scan at compaction. Same
-// candidate-paths resolution as auto-store-enrichment so it works in both
-// repo + installed locations.
+/**
+ * Locate the `self-improve-store.js` CLI script across both the canonical
+ * repo path and the installed `~/.claude/scripts/` location. H.4.1
+ * pattern — mirrors auto-store-enrichment.js's `resolveStoreScript`. Used
+ * to trigger a consolidation scan at compaction time.
+ *
+ * @returns {string|null} Absolute path to self-improve-store.js, or null if not found
+ */
 function resolveSelfImproveScript() {
   const candidates = [
     path.join(__dirname, '..', '..', 'scripts', 'self-improve-store.js'),
@@ -221,6 +248,15 @@ function resolveSelfImproveScript() {
   return null;
 }
 
+/**
+ * Trigger a self-improve consolidation scan at compaction time. Per-signal
+ * counter bumps already happen turn-by-turn in the Stop hook; this is the
+ * heavier consolidation pass that applies thresholds + queues candidates.
+ * Best-effort: returns null on missing script, non-zero exit, or parse
+ * failure — never throws.
+ *
+ * @returns {object|null} Parsed scan result JSON, or null on any failure
+ */
 function runSelfImproveScan() {
   const script = resolveSelfImproveScript();
   if (!script) return null;

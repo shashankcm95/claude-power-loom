@@ -15,6 +15,13 @@ const logger = log('fact-force-gate');
 const SESSION_ID = process.env.CLAUDE_SESSION_ID || process.env.CLAUDE_CONVERSATION_ID || String(process.ppid || 'default');
 const TRACKER_PATH = path.join(os.tmpdir(), `claude-read-tracker-${SESSION_ID}.json`);
 
+/**
+ * Load the per-session read tracker from disk. Returns a fresh tracker on
+ * any error (missing file, parse failure) — first-run case is the common
+ * path. Tracker shape: `{ files: { [absPath]: <readTimestamp> }, sessionStart: <ts> }`.
+ *
+ * @returns {{files: Object<string, number>, sessionStart: number}}
+ */
 function loadTracker() {
   try {
     const raw = fs.readFileSync(TRACKER_PATH, 'utf8');
@@ -24,8 +31,17 @@ function loadTracker() {
   }
 }
 
+/**
+ * Atomically write the read tracker to disk via tmp-file + rename.
+ * Concurrent readers see either the old or new tracker, never a
+ * half-written file. Errors are logged but never thrown — tracker save
+ * is best-effort; the gate proceeds on errors via the surrounding
+ * try/catch fail-open path.
+ *
+ * @param {{files: Object<string, number>, sessionStart: number}} tracker State to persist
+ * @returns {void}
+ */
 function saveTracker(tracker) {
-  // Atomic write: write to temp file, then rename.
   const tmpFile = TRACKER_PATH + '.tmp.' + process.pid;
   try {
     fs.writeFileSync(tmpFile, JSON.stringify(tracker, null, 2));
@@ -36,6 +52,16 @@ function saveTracker(tracker) {
   }
 }
 
+/**
+ * Normalize a file path to its canonical absolute form. Resolves symlinks
+ * via `fs.realpathSync` when possible (so `Read` of a symlink and `Edit`
+ * of the target both hit the same tracker key). Falls back to
+ * `path.resolve` if realpath fails (e.g., file doesn't exist yet — Write
+ * to a new path is a normal case).
+ *
+ * @param {string} filePath Raw path from tool_input.file_path
+ * @returns {string} Canonical absolute path, or empty string if input was falsy
+ */
 function normalizePath(filePath) {
   if (!filePath) return '';
   const resolved = path.resolve(filePath);
