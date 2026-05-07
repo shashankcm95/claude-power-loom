@@ -282,6 +282,27 @@ validators['contract-skill-status-values'] = function () {
   // For 'available', the local skill must exist at skills/<name>/SKILL.md.
   // For 'marketplace:<x>/<y>', the file at marketplaces/<x>/<plugin>/skills/<y>/SKILL.md (or the
   // bare marketplace/<x>/skills/<y>/SKILL.md if y is a fully namespaced ref) must exist.
+  //
+  // H.7.10 — marketplace check is conditional on MARKETPLACE_BASE being
+  // populated. CI runners (and minimal user installs) don't have the
+  // knowledge-work-plugins marketplace installed; skipping the existence
+  // check there preserves repo-internal validation while not failing on
+  // an external-dependency gap. Syntax validation of `marketplace:X/Y`
+  // format ALWAYS runs — only the file-existence check is gated.
+  const marketplaceCheckEnabled = (() => {
+    try {
+      if (!fs.existsSync(MARKETPLACE_BASE)) return false;
+      // Has at least one marketplace subdir installed?
+      return fs.readdirSync(MARKETPLACE_BASE).some((d) => {
+        try {
+          return fs.statSync(path.join(MARKETPLACE_BASE, d)).isDirectory();
+        } catch { return false; }
+      });
+    } catch { return false; }
+  })();
+  if (!marketplaceCheckEnabled) {
+    process.stderr.write(`  ℹ ${path.basename('contract-skill-status-values')}: marketplace existence check skipped (no marketplaces installed at ${MARKETPLACE_BASE}); syntax validation still runs\n`);
+  }
   const violations = [];
   for (const { name, path: fp } of listContractFiles()) {
     const c = loadJson(fp);
@@ -328,7 +349,9 @@ validators['contract-skill-status-values'] = function () {
       // Skill name in spawn prompt = `<plugin>:<skill>`; we need to extract the skill name from `skill` (e.g., "engineering:debug" → "debug")
       const skillBase = skill.includes(':') ? skill.split(':')[1] : skill;
       const expectedPath = path.join(MARKETPLACE_BASE, marketplace, plugin, 'skills', skillBase, 'SKILL.md');
-      if (!fs.existsSync(expectedPath)) {
+      // H.7.10 — skip file-existence check when no marketplaces installed
+      // (CI / minimal-install case). Syntax was validated above.
+      if (marketplaceCheckEnabled && !fs.existsSync(expectedPath)) {
         violations.push({
           kind: 'marketplace-skill-missing',
           contract: name,
