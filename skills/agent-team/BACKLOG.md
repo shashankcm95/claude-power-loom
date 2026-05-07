@@ -2,6 +2,84 @@
 
 Deferred work from prior phases, captured here so nothing important gets silently dropped. Each entry: scope, rationale, dependencies, rough estimate.
 
+## Phase H.7.12 — Plan-template enforcement hook (tiered-mandatory + PreToolUse:Write + nudge) — SHIPPED
+
+**Status**: shipped per approved plan (`~/.claude/plans/flickering-crafting-star.md`). Closes theo's H.7.9 Section C deferral with honest revision based on Phase 1 inventory (PostToolUse:Write → PreToolUse:Write; flat schema → tiered).
+
+### Phase 1 inventory surfaced two architectural issues
+
+1. **PostToolUse:Write doesn't exist in the existing hook system** — only PostToolUse:Bash entries; pipe-syntax matchers are PreToolUse-only convention. Theo's H.7.9 spec assumed POST trigger; revised to PRE matching existing validator family (validate-frontmatter-on-skills.js, validate-no-bare-secrets.js).
+2. **Dogfood failure on H.7.11 plan** — the canonical template (8 mandatory sections) was too ambitious vs actual writing variance. The H.7.11 plan that just shipped was missing Routing Decision, HETS Spawn Plan, and Out of Scope. User picked tiered-mandatory approach via AskUserQuestion.
+
+### What landed
+
+- **NEW `hooks/scripts/validators/validate-plan-schema.js`** (~250 LoC) — PreToolUse:Edit|Write hook with tiered enforcement:
+  - **Tier 1 (truly mandatory)**: `Context`, (`Files To Modify` OR `Phases`), `Verification Probes` — missing any fires `[PLAN-SCHEMA-DRIFT]`
+  - **Tier 2 (conditional on new-style plan signal)**: `Routing Decision`, `HETS Spawn Plan` — fires only when literal string "Routing Decision" detected anywhere in content
+  - **Tier 3 (aspirational hints)**: `Out of Scope`, `Drift Notes` — stderr ℹ message only, no forcing instruction
+- **Path matcher**: `(?:^|/)\.claude/plans/[^/]+\.md$` (matches `~/.claude/plans/` AND project-relative `.claude/plans/`)
+- **Heading match**: H2-level only (`^## ...`), case-sensitive, optional parenthetical suffix (`(Deferred)` etc.)
+- **Never blocks**: always `decision: approve` JSON to stdout (file write proceeds)
+- **Forcing instruction goes to stderr**: `[PLAN-SCHEMA-DRIFT]` block follows error-critic.js shape (header + missing-sections list + numbered fix actions + footer reference to family pattern)
+
+- **`hooks/hooks.json`**: NEW PreToolUse matcher `Edit|Write` → `validators/validate-plan-schema.js`, timeout 5s (matches existing validator convention)
+- **`install.sh` tests 14–17 NEW**:
+  - Test 14: Compliant plan with all 8 sections → silent (no false positive)
+  - Test 15: Missing Tier 1 (Verification Probes absent) → `[PLAN-SCHEMA-DRIFT]` emitted
+  - Test 16: Tier 2 conditional — plan with "Routing Decision" string but missing `## HETS Spawn Plan` section → fires (new-style detection works)
+  - Test 17: Non-plan path (`/tmp/random-doc.md`) → silent (path filter excludes)
+  - Total: **17/17 passing** (was 13/13)
+- **Bonus install bug fix**: `install_hooks()` extended to copy `hooks/scripts/validators/*.js` AND `hooks/scripts/_lib/*.js` subdirectories. Pre-H.7.12, the legacy validators (`validate-no-bare-secrets.js`, `validate-frontmatter-on-skills.js`) were unreachable via `$CLAUDE_DIR/hooks/scripts/` — only the `${CLAUDE_PLUGIN_ROOT}` install path worked. This is a real gap revealed by H.7.12's smoke test discovery (test 14's `node $CLAUDE_DIR/.../validators/validate-plan-schema.js` invocation failed with MODULE_NOT_FOUND until the install fix landed).
+
+- **Doc updates**:
+  - `docs/hooks/README.md` — hook count 12 → 13; new validator row; updated H.7.10 phase tags on error-critic.js + pre-compact-save.js + session-reset.js
+  - `swarm/plan-template.md` — replaced "Schema validation (manual until H.7.12)" section with "Schema validation (H.7.12 — tiered enforcement live)" — explicit tier 1/2/3 documentation + manual-scan recommendation
+  - `skills/agent-team/patterns/plan-mode-hets-injection.md` — flipped "Schema drift on swarm/plan-template.md" deferral status to closed; documents tiered enforcement live
+  - SKILL.md / CHANGELOG.md / this BACKLOG entry
+
+### Drift-notes captured during this phase
+
+- **Drift-note 10**: theo's H.7.9 Section C said "PostToolUse:Write hook is feasible" but Phase 1 inventory found zero PostToolUse:Write entries in `hooks/hooks.json` — only PostToolUse:Bash exists. Whether Claude Code globally supports PostToolUse:Write is open empirical question. Workaround: PreToolUse:Write matches existing validator family. Architectural note for theo's future review: H.7.9 design assumed a trigger that may not exist.
+- **Drift-note 11**: dogfood failure on H.7.11 plan revealed canonical template too ambitious vs actual plan-writing discipline. Tiered enforcement is the honest fix — Tier 1 captures truly load-bearing, Tier 2 only enforces when /build-plan-style new-style detected, Tier 3 is hint-only.
+- **Drift-note 12**: validator scoping at `(?:^|/)\.claude/plans/[^/]+\.md$` may miss plan files at non-canonical paths (e.g., user's custom plan dir). Acceptable — toolkit convention is `~/.claude/plans/` per H.7.9 design.
+- **Drift-note 13 (NEW this phase)**: install_hooks() didn't copy validators/ subdirectory — pre-H.7.12 this meant legacy validators (no-bare-secrets, frontmatter-on-skills) only worked via plugin-load path, never via $CLAUDE_DIR. Revealed by H.7.12 smoke test failure (MODULE_NOT_FOUND on validate-plan-schema.js in test 14). Fixed inline. **Pattern**: install scripts that copy subdirectory-organized files need recursive logic; `*.js` glob only catches top-level files. Audit candidate: scan other install steps for similar single-level-glob patterns.
+
+### Verification
+
+- ✓ Probe 1: `bash install.sh --hooks --test` → **17/17 passing** (was 13/13; +4 H.7.12 tests)
+- ✓ Probe 2: `node scripts/agent-team/contracts-validate.js` → 0 violations
+- ✓ Probe 3: `node scripts/agent-team/_h70-test.js` → 41/41 passing (regression — H.7.12 doesn't touch route-decide)
+- ✓ Probe 4: Compliant new-style plan → silent (no false positive)
+- ✓ Probe 5: Missing Tier 1 → `[PLAN-SCHEMA-DRIFT]` with "Verification Probes" listed
+- ✓ Probe 6: Tier 2 conditional → fires only when "Routing Decision" string in content
+- ✓ Probe 7: Non-plan path → silent (path filter)
+- ✓ Probe 8: Old-style plan (no "Routing Decision" string) → Tier 2 not enforced
+
+### Honest tradeoffs
+
+- **Block-vs-warn**: chose warn (forcing instruction only); preserves user autonomy
+- **PreToolUse vs PostToolUse**: PreToolUse fires before write happens; could BLOCK if `decision: block` were used. We deliberately chose `decision: approve` always — never block. Functionally equivalent to a PostToolUse warning, just at a different lifecycle point.
+- **Stderr vs stdout for forcing instruction**: PreToolUse hooks output JSON to stdout (Claude Code's parser); stderr is the only available stream for human/Claude-readable nudges that don't block. Smoke tests use `2>&1` to merge.
+- **No retroactive H.7.11 plan rewrite**: forward-looking enforcement only. The H.7.11 plan stays as-is.
+- **Section presence vs content**: hook validates presence only ("Verification Probes" with body "TBD" passes). Semantic correctness deferred.
+
+### H.7.12 follow-ups (deferred to H.7.16+)
+
+- **Drift-note 10 deeper investigation**: verify whether Claude Code globally supports PostToolUse:Write; if yes, consider revising to POST (post-write linting at the moment of persistence). Architecturally cleaner if supported.
+- **Drift-note 11 deeper rationalization**: the canonical template might benefit from a second pass — should "Routing Decision" be elevated to a verbatim-required-when-/build-plan-used field rather than always-conditional? UX research candidate.
+- **Drift-note 12**: custom plan path validation (e.g., `~/my-plans/*.md`) requires either env-var override or markdown-frontmatter-based opt-in. Defer until user feedback.
+- **Drift-note 13**: audit other install steps for single-level-glob patterns missing subdirectories.
+- **Semantic correctness checks**: hook validates section presence only. Future phase: verify "Verification Probes" section contains testable assertions, etc.
+- **Auto-fix mode**: hook could rewrite the plan with empty stub sections inserted at appropriate locations. Future phase candidate.
+
+### Why this is the right shape
+
+- Closes theo's H.7.9 Section C deferral with honest revision (PreToolUse:Write vs spec'd PostToolUse:Write) backed by Phase 1 evidence
+- Tiered enforcement matches actual plan-writing variance — strict on truly-mandatory, conditional on new-style, hints on aspirational
+- No retroactive surgery: forward-looking enforcement; H.7.11 plan stays as-is
+- Bonus install bug discovery (drift-note 13) makes legacy validators reachable via $CLAUDE_DIR
+- Sixteenth distinct phase shape: enforcement-hook hardening of a previously-soft norm
+
 ## Phase H.7.11 — Route-decide dictionary expansion (closes drift-notes 1 + 4) — SHIPPED
 
 **Status**: shipped per approved plan (`~/.claude/plans/flickering-crafting-star.md`). Pivoted from original H.7.11 (agent discipline + JSDoc) after Phase 1 inventory revealed agents were already in good shape and the JSDoc work was the very "marginal ROI" the H.7.7 BACKLOG flagged. User picked dictionary expansion via AskUserQuestion based on stronger empirical motivation (2 drift-note observations same session).

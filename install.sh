@@ -113,6 +113,28 @@ install_hooks() {
   fi
   cp "${hook_files[@]}" "$CLAUDE_DIR/hooks/scripts/"
   chmod +x "$CLAUDE_DIR"/hooks/scripts/*.js
+  # H.7.12: also copy validators/ subdirectory (and _lib/ if present).
+  # Previously only top-level *.js were copied — the validator family at
+  # validators/ was unreachable via legacy installer + smoke tests.
+  if [ -d "$SCRIPT_DIR/hooks/scripts/validators" ]; then
+    mkdir -p "$CLAUDE_DIR/hooks/scripts/validators"
+    shopt -s nullglob
+    validator_files=("$SCRIPT_DIR"/hooks/scripts/validators/*.js)
+    shopt -u nullglob
+    if [ ${#validator_files[@]} -gt 0 ]; then
+      cp "${validator_files[@]}" "$CLAUDE_DIR/hooks/scripts/validators/"
+      chmod +x "$CLAUDE_DIR"/hooks/scripts/validators/*.js
+    fi
+  fi
+  if [ -d "$SCRIPT_DIR/hooks/scripts/_lib" ]; then
+    mkdir -p "$CLAUDE_DIR/hooks/scripts/_lib"
+    shopt -s nullglob
+    lib_files=("$SCRIPT_DIR"/hooks/scripts/_lib/*.js)
+    shopt -u nullglob
+    if [ ${#lib_files[@]} -gt 0 ]; then
+      cp "${lib_files[@]}" "$CLAUDE_DIR/hooks/scripts/_lib/"
+    fi
+  fi
   # Phase D: also copy config-guard-patterns.json (data file used by config-guard.js)
   if [ -f "$SCRIPT_DIR/hooks/config-guard-patterns.json" ]; then
     cp "$SCRIPT_DIR/hooks/config-guard-patterns.json" "$CLAUDE_DIR/hooks/"
@@ -347,6 +369,56 @@ run_smoke_tests() {
     failed=$((failed + 1))
   fi
   rm -rf "$tmp_failures"  # cleanup all session subdirs at once
+
+  # Test 14 (H.7.12): validate-plan-schema — compliant new-style plan stays silent
+  # Compliant plan has all Tier 1 + Tier 2 + Tier 3 sections + Routing Decision JSON
+  local h7_12_compliant_json='{"tool_name":"Write","tool_input":{"file_path":"/Users/foo/.claude/plans/h7-12-test.md","content":"# Title\n\n## Context\nbody\n\n## Routing Decision\nJSON block\n\n## HETS Spawn Plan\nN/A\n\n## Files To Modify\nfiles\n\n## Phases\nphases\n\n## Verification Probes\nprobes\n\n## Out of Scope\noos\n\n## Drift Notes\nnotes\n"}}'
+  local h7_12_compliant
+  h7_12_compliant=$(printf '%s' "$h7_12_compliant_json" | node "$CLAUDE_DIR/hooks/scripts/validators/validate-plan-schema.js" 2>&1)
+  if echo "$h7_12_compliant" | grep -q 'PLAN-SCHEMA-DRIFT'; then
+    echo "  ✗ validate-plan-schema: H.7.12 compliant plan emitted forcing instruction (false positive)"
+    failed=$((failed + 1))
+  else
+    echo "  ✓ validate-plan-schema: H.7.12 compliant new-style plan stays silent"
+    passed=$((passed + 1))
+  fi
+
+  # Test 15 (H.7.12): missing Tier 1 (Verification Probes absent) → forcing instruction
+  local h7_12_missing_t1_json='{"tool_name":"Write","tool_input":{"file_path":"/Users/foo/.claude/plans/h7-12-missing-t1.md","content":"# Title\n\n## Context\nbody\n\n## Files To Modify\nfiles\n"}}'
+  local h7_12_missing_t1
+  h7_12_missing_t1=$(printf '%s' "$h7_12_missing_t1_json" | node "$CLAUDE_DIR/hooks/scripts/validators/validate-plan-schema.js" 2>&1)
+  if echo "$h7_12_missing_t1" | grep -q '\[PLAN-SCHEMA-DRIFT\]' && echo "$h7_12_missing_t1" | grep -q 'Verification Probes'; then
+    echo "  ✓ validate-plan-schema: H.7.12 missing Tier 1 (Verification Probes) fires forcing instruction"
+    passed=$((passed + 1))
+  else
+    echo "  ✗ validate-plan-schema: H.7.12 Tier 1 missing should emit [PLAN-SCHEMA-DRIFT]"
+    failed=$((failed + 1))
+  fi
+
+  # Test 16 (H.7.12): Tier 2 conditional — fires only when "Routing Decision" string detected
+  # Plan mentions Routing Decision in body (signaling new-style) but missing HETS Spawn Plan section
+  local h7_12_missing_t2_json='{"tool_name":"Write","tool_input":{"file_path":"/Users/foo/.claude/plans/h7-12-missing-t2.md","content":"# Title\n\n## Context\nbody mentioning Routing Decision somewhere\n\n## Files To Modify\nfiles\n\n## Verification Probes\nprobes\n"}}'
+  local h7_12_missing_t2
+  h7_12_missing_t2=$(printf '%s' "$h7_12_missing_t2_json" | node "$CLAUDE_DIR/hooks/scripts/validators/validate-plan-schema.js" 2>&1)
+  if echo "$h7_12_missing_t2" | grep -q '\[PLAN-SCHEMA-DRIFT\]' && echo "$h7_12_missing_t2" | grep -q 'Tier 2'; then
+    echo "  ✓ validate-plan-schema: H.7.12 Tier 2 conditional fires on new-style plan missing HETS Spawn Plan"
+    passed=$((passed + 1))
+  else
+    echo "  ✗ validate-plan-schema: H.7.12 Tier 2 should fire when 'Routing Decision' string detected but section missing"
+    failed=$((failed + 1))
+  fi
+
+  # Test 17 (H.7.12): non-plan path stays silent (path filter excludes)
+  local h7_12_nonplan_json='{"tool_name":"Write","tool_input":{"file_path":"/tmp/random-doc.md","content":"random content with no sections"}}'
+  local h7_12_nonplan
+  h7_12_nonplan=$(printf '%s' "$h7_12_nonplan_json" | node "$CLAUDE_DIR/hooks/scripts/validators/validate-plan-schema.js" 2>&1)
+  if echo "$h7_12_nonplan" | grep -q 'PLAN-SCHEMA-DRIFT'; then
+    echo "  ✗ validate-plan-schema: H.7.12 non-plan path should be silent (path filter)"
+    failed=$((failed + 1))
+  else
+    echo "  ✓ validate-plan-schema: H.7.12 non-plan path stays silent (path filter excludes)"
+    passed=$((passed + 1))
+  fi
 
 
   echo ""
