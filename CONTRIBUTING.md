@@ -131,6 +131,7 @@ After CONTRIBUTING.md adoption, all prior phase commits were tagged in place (an
 | `phase-H.7.0-prep` | `1c5f7e5` | Hybrid quality factors + validation_sources registry — observability layer for H.7.0 evolution loop (5 axes captured per verdict; trust formula unchanged) |
 | `phase-H.7.1` | `9f41c07` | Asymmetric-challenger callsite wired into /build-team Step 7 — first phase via corrected autonomous-platform pattern (architect + 13-node-backend pair-run; convergence axis captured) |
 | `phase-H.7.2` | (TBD) | Theory-driven weighted trust score — second phase via corrected pattern; weighted_trust_score now surfaces alongside tierOf (unchanged); 11 builder verdicts toolkit-wide |
+| `phase-H.7.3` | (TBD) | Route-decision intelligence — deterministic 7-dimension gate at /build-team Step 0 (stakes/novelty/compound/audit/scope/convergence/user-facing); cuts over-routing on trivial tasks (BACKLOG cleanup root) and preserves under-routing protection on compound-stakes tasks (k8s manifest route, URL shortener borderline). theo-architect designed; noor implemented. **n=20 verdict milestone hit — H.7.4 empirical refit unblocked.** |
 | `phase-H.5.7` | (TBD) | Engineering-task contract template (shared generic, mirrors challenger.contract.json shape) + build-team Step 7 task-type heuristic + structural-code-review cross-link — closes M-5 from H.6.9 |
 | `phase-CS-6` | (TBD) | End-user USING.md walkthrough — first asymmetric architect+confused-user pair-run; ari hits HIGH-TRUST (first identity ever); HETS-on-git future-improvement BACKLOG entry bundled |
 

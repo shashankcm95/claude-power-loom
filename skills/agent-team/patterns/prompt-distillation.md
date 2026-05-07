@@ -2,7 +2,7 @@
 pattern: prompt-distillation
 status: active
 intent: Spawn prompt size scales inversely with (trust × familiarity).
-related: [trust-tiered-verification, agent-identity-reputation, persona-skills-mapping, content-addressed-refs, shared-knowledge-base]
+related: [trust-tiered-verification, agent-identity-reputation, persona-skills-mapping, content-addressed-refs, shared-knowledge-base, route-decision]
 ---
 
 ## Summary

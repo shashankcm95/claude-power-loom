@@ -16,6 +16,69 @@ If `$ARGUMENTS` is empty, ask one clarifying question (intent + domain) and stop
 
 ## Steps
 
+### 0. Route-decision gate (H.7.3)
+
+Before invoking tech-stack-analyzer (which is itself ~3K tokens for the analysis pass + spawns the team's identities), check whether this task warrants HETS routing at all. Many user prompts are better answered by root directly — over-routing burns ~30× tokens for ~3× failure-mode coverage on tasks that don't have ambiguous tradeoffs.
+
+If `$ARGUMENTS` contains the literal flag `--force-route`, skip Step 0 entirely and proceed to Step 1.
+
+```bash
+# H.7.3 — Route-decision gate. Pure-function score on 7 weighted dimensions.
+# Defaults to "route" (fail-open) if the script is missing.
+
+ROUTE_DECIDE_SCRIPT="$HOME/Documents/claude-toolkit/scripts/agent-team/route-decide.js"
+
+if [ ! -f "$ROUTE_DECIDE_SCRIPT" ]; then
+  echo "WARNING: route-decide.js not present at $ROUTE_DECIDE_SCRIPT; defaulting to route (fail-open to pre-H.7.3 behavior)"
+  ROUTE_DECISION="route"
+else
+  ROUTE_OUTPUT=$(node "$ROUTE_DECIDE_SCRIPT" --task "$TASK_DESCRIPTION")
+  ROUTE_DECISION=$(echo "$ROUTE_OUTPUT" | jq -r '.recommendation')
+  ROUTE_SCORE=$(echo "$ROUTE_OUTPUT" | jq -r '.score_total')
+  ROUTE_REASONING=$(echo "$ROUTE_OUTPUT" | jq -r '.reasoning')
+fi
+
+case "$ROUTE_DECISION" in
+  route)
+    # Continue to Step 1 (tech-stack-analyzer). No user gate here — the existing
+    # Step 5 USER GATE 1 is where the team plan gets reviewed.
+    echo "Route-decision: route (score=$ROUTE_SCORE) — proceeding to tech-stack-analyzer"
+    ;;
+
+  borderline)
+    # Surface decomposition to user; let them pick. The borderline band is exactly
+    # the cost-benefit-ambiguous case — root has no information advantage here.
+    echo ""
+    echo "Route-decision: BORDERLINE (score=$ROUTE_SCORE)"
+    echo "Reasoning: $ROUTE_REASONING"
+    echo ""
+    echo "This task is in the borderline band — HETS routing is cost-justified about"
+    echo "half the time. Pick one:"
+    echo "  [1] Route through HETS (full team spawn, ~30K-100K tokens)"
+    echo "  [2] Hand back to root (~3K tokens, no convergence signal)"
+    echo "  [3] Cancel"
+    # Implementer note: shell-driven prompts in /build-team are model-followed,
+    # not literally interactive. The chat agent reading this command emits the
+    # decomposition + the three-option menu and waits for the user's reply.
+    exit 0  # actual flow is the model waiting for user reply, not a literal shell exit
+    ;;
+
+  root)
+    # Hand back to root with skip-orchestration message. No team spawn.
+    echo ""
+    echo "Route-decision: ROOT (score=$ROUTE_SCORE)"
+    echo "Reasoning: $ROUTE_REASONING"
+    echo ""
+    echo "This task does not benefit from HETS routing. Root will handle it directly."
+    echo "If you disagree (e.g., the task has hidden complexity not captured by keywords),"
+    echo "re-invoke /build-team with --force-route or describe the constraints more explicitly."
+    exit 0
+    ;;
+esac
+```
+
+The chat agent (Claude reading `/build-team`) follows this flow on every invocation. The route-decision is a pre-flight check that runs BEFORE Step 1 (tech-stack-analyzer). If `--force-route` is passed by the user as an explicit override, skip this Step 0 entirely and proceed to Step 1.
+
 ### 1. Pre-flight check
 Verify the HETS substrate is ready:
 
@@ -185,6 +248,7 @@ Capability requests acquired in step 4 ARE allowed to land as committed file add
 - Not for one-off questions ("how do I write a regex for X?") — use plain Claude
 - Not for chaos-testing the toolkit itself — use `/chaos-test`
 - Not a substitute for explicit project planning when stakes are high — use `/plan` first if you want a written plan before spawning the team
+- Not a substitute for direct root response on trivial / single-file / non-architectural tasks — Step 0's route-decision gate handles this case automatically; the gate's output may recommend root-direct, in which case the user should accept the gate's recommendation rather than forcing a team spawn (use `--force-route` only when the user knows the task has hidden complexity not captured by keywords)
 
 ## Why a separate command vs always-on heuristic
 

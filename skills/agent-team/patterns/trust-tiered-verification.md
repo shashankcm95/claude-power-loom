@@ -2,7 +2,7 @@
 pattern: trust-tiered-verification
 status: active+enforced
 intent: Verification depth scales inversely with measured per-identity trust score.
-related: [agent-identity-reputation, asymmetric-challenger, hets, prompt-distillation]
+related: [agent-identity-reputation, asymmetric-challenger, hets, prompt-distillation, route-decision]
 ---
 
 ## Summary

@@ -30,3 +30,12 @@ Before deploying, follow the deploy-checklist skill for the full pre-deployment 
 - Any task touching ≥2 distinct files → enter plan mode first
 - Single-file changes, doc-only edits, trivial fixes → skip plan mode
 - When in doubt: enter plan mode (cheap insurance, expensive to skip)
+
+## Route-Decision for Non-Trivial Tasks
+
+- Before invoking `/build-team` or spawning sub-agents for a user task, run `node ~/Documents/claude-toolkit/scripts/agent-team/route-decide.js --task "<task>"` to get a routing recommendation
+- Recommendation `route` → spawn the team / use HETS orchestration
+- Recommendation `root` → answer directly; do not spawn sub-agents (over-routing wastes ~30× tokens for ~3× failure-mode coverage on trivial tasks)
+- Recommendation `borderline` → surface the score decomposition to the user and let them pick; do not silently default
+- Skip the gate when: task is invoked via `/chaos-test` (pre-routed), task is purely informational ("explain X"), task is a confirmation of a previously-discussed action ("yes, ship it"), task includes `--force-route` flag
+- When in doubt: the gate is cheap (<100ms, deterministic). Run it. The decomposition alone is useful for explaining the routing decision to the user.

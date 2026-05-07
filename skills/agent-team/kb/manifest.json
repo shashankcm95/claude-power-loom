@@ -14,7 +14,7 @@
         "http",
         "rate-limiting"
       ],
-      "lastUpdated": "2026-05-06T12:33:55.295Z"
+      "lastUpdated": "2026-05-07T12:30:13.871Z"
     },
     "backend-dev/jvm-runtime-basics": {
       "path": "backend-dev/jvm-runtime-basics.md",
@@ -29,7 +29,7 @@
         "threading",
         "starter"
       ],
-      "lastUpdated": "2026-05-06T12:33:55.300Z"
+      "lastUpdated": "2026-05-07T12:30:13.877Z"
     },
     "backend-dev/node-runtime-basics": {
       "path": "backend-dev/node-runtime-basics.md",
@@ -44,7 +44,7 @@
         "runtime",
         "async"
       ],
-      "lastUpdated": "2026-05-06T12:33:55.300Z"
+      "lastUpdated": "2026-05-07T12:30:13.877Z"
     },
     "backend-dev/spring-boot-essentials": {
       "path": "backend-dev/spring-boot-essentials.md",
@@ -58,7 +58,7 @@
         "spring-boot",
         "starter"
       ],
-      "lastUpdated": "2026-05-06T12:33:55.300Z"
+      "lastUpdated": "2026-05-07T12:30:13.877Z"
     },
     "data-dev/data-modeling-basics": {
       "path": "data-dev/data-modeling-basics.md",
@@ -72,7 +72,7 @@
         "warehouse",
         "starter"
       ],
-      "lastUpdated": "2026-05-06T12:33:55.301Z"
+      "lastUpdated": "2026-05-07T12:30:13.877Z"
     },
     "data-dev/orchestration-essentials": {
       "path": "data-dev/orchestration-essentials.md",
@@ -87,7 +87,20 @@
         "idempotency",
         "starter"
       ],
-      "lastUpdated": "2026-05-06T12:33:55.301Z"
+      "lastUpdated": "2026-05-07T12:30:13.878Z"
+    },
+    "hets/canonical-skill-sources": {
+      "path": "hets/canonical-skill-sources.md",
+      "version": 1,
+      "hash": "9f192b153991b17ca952a87175bbb816e8aa3de8dfabbd1aabbf3b2cf302dc62",
+      "shortHash": "9f192b15",
+      "tags": [
+        "hets",
+        "skill-forge",
+        "canonical-sources",
+        "evolution-loop-l2"
+      ],
+      "lastUpdated": "2026-05-07T12:30:13.878Z"
     },
     "hets/challenger-conventions": {
       "path": "hets/challenger-conventions.md",
@@ -100,7 +113,7 @@
         "asymmetric",
         "conventions"
       ],
-      "lastUpdated": "2026-05-06T12:33:55.301Z"
+      "lastUpdated": "2026-05-07T12:30:13.878Z"
     },
     "hets/identity-roster": {
       "path": "hets/identity-roster.md",
@@ -112,19 +125,19 @@
         "identity",
         "roster"
       ],
-      "lastUpdated": "2026-05-06T12:33:55.301Z"
+      "lastUpdated": "2026-05-07T12:30:13.879Z"
     },
     "hets/spawn-conventions": {
       "path": "hets/spawn-conventions.md",
       "version": 1,
-      "hash": "e069347b7ddb71dc4f8891dec1c35ea5cefcf3c207df3dd3a89ff807ea1bc914",
-      "shortHash": "e069347b",
+      "hash": "56bc8e175b10fe17a3d82cef07be20b83484a43722caceef71e70dfbb9dfc46c",
+      "shortHash": "56bc8e17",
       "tags": [
         "hets",
         "conventions",
         "spawn"
       ],
-      "lastUpdated": "2026-05-06T12:33:55.305Z"
+      "lastUpdated": "2026-05-07T12:30:13.879Z"
     },
     "hets/stack-skill-map": {
       "path": "hets/stack-skill-map.md",
@@ -138,7 +151,7 @@
         "mapping",
         "analyzer"
       ],
-      "lastUpdated": "2026-05-06T12:33:55.305Z"
+      "lastUpdated": "2026-05-07T12:30:13.879Z"
     },
     "hets/symmetric-pair-conventions": {
       "path": "hets/symmetric-pair-conventions.md",
@@ -151,7 +164,7 @@
         "low-trust",
         "conventions"
       ],
-      "lastUpdated": "2026-05-06T12:33:55.306Z"
+      "lastUpdated": "2026-05-07T12:30:13.879Z"
     },
     "infra-dev/kubernetes-essentials": {
       "path": "infra-dev/kubernetes-essentials.md",
@@ -165,7 +178,7 @@
         "k8s",
         "starter"
       ],
-      "lastUpdated": "2026-05-06T12:33:55.306Z"
+      "lastUpdated": "2026-05-07T12:30:13.879Z"
     },
     "infra-dev/observability-basics": {
       "path": "infra-dev/observability-basics.md",
@@ -180,7 +193,7 @@
         "sre",
         "starter"
       ],
-      "lastUpdated": "2026-05-06T12:33:55.307Z"
+      "lastUpdated": "2026-05-07T12:30:13.880Z"
     },
     "ml-dev/pipeline-essentials": {
       "path": "ml-dev/pipeline-essentials.md",
@@ -194,7 +207,7 @@
         "reproducibility",
         "starter"
       ],
-      "lastUpdated": "2026-05-06T12:33:55.307Z"
+      "lastUpdated": "2026-05-07T12:30:13.880Z"
     },
     "ml-dev/training-vs-inference": {
       "path": "ml-dev/training-vs-inference.md",
@@ -209,7 +222,7 @@
         "drift",
         "starter"
       ],
-      "lastUpdated": "2026-05-06T12:33:55.307Z"
+      "lastUpdated": "2026-05-07T12:30:13.880Z"
     },
     "mobile-dev/ios-app-architecture": {
       "path": "mobile-dev/ios-app-architecture.md",
@@ -223,7 +236,7 @@
         "mvvm",
         "tca"
       ],
-      "lastUpdated": "2026-05-06T12:33:55.307Z"
+      "lastUpdated": "2026-05-07T12:30:13.881Z"
     },
     "mobile-dev/swift-essentials": {
       "path": "mobile-dev/swift-essentials.md",
@@ -236,7 +249,7 @@
         "swift",
         "language"
       ],
-      "lastUpdated": "2026-05-06T12:33:55.308Z"
+      "lastUpdated": "2026-05-07T12:30:13.881Z"
     },
     "security-dev/auth-patterns": {
       "path": "security-dev/auth-patterns.md",
@@ -252,7 +265,7 @@
         "mfa",
         "starter"
       ],
-      "lastUpdated": "2026-05-06T12:33:55.308Z"
+      "lastUpdated": "2026-05-07T12:30:13.881Z"
     },
     "security-dev/threat-modeling-essentials": {
       "path": "security-dev/threat-modeling-essentials.md",
@@ -266,7 +279,7 @@
         "attack-trees",
         "starter"
       ],
-      "lastUpdated": "2026-05-06T12:33:55.308Z"
+      "lastUpdated": "2026-05-07T12:30:13.882Z"
     },
     "web-dev/react-essentials": {
       "path": "web-dev/react-essentials.md",
@@ -279,7 +292,7 @@
         "react",
         "javascript"
       ],
-      "lastUpdated": "2026-05-06T12:33:55.308Z"
+      "lastUpdated": "2026-05-07T12:30:13.882Z"
     },
     "web-dev/typescript-react-patterns": {
       "path": "web-dev/typescript-react-patterns.md",
@@ -293,20 +306,7 @@
         "typescript",
         "starter"
       ],
-      "lastUpdated": "2026-05-06T12:33:55.309Z"
-    },
-    "hets/canonical-skill-sources": {
-      "path": "hets/canonical-skill-sources.md",
-      "version": 1,
-      "hash": "9f192b153991b17ca952a87175bbb816e8aa3de8dfabbd1aabbf3b2cf302dc62",
-      "shortHash": "9f192b15",
-      "tags": [
-        "hets",
-        "skill-forge",
-        "canonical-sources",
-        "evolution-loop-l2"
-      ],
-      "lastUpdated": "2026-05-06T18:56:28.553Z"
+      "lastUpdated": "2026-05-07T12:30:13.882Z"
     }
   }
 }

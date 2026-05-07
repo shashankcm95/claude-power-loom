@@ -144,6 +144,62 @@ Re-verifying nova's exact same output against `engineering-task.contract.json` y
 - **Engineering-task contract for OLDER outputs**: F2 requires `identity` field, present only post-H.7.0 spawn convention. For pre-H.7.0 reports the audit contract still applies; future migration if older outputs need re-verification.
 - **Update `kb:hets/spawn-conventions`** to mention contract-selection-by-task-type as a discoverable convention (per H.6.9 M-1 follow-up).
 
+## Phase H.7.3 — Route-decision intelligence — SHIPPED
+
+**Status**: shipped via the corrected autonomous-platform pattern (theo designed; noor implemented; root coordinated). Closes the under-/over-routing tax surfaced by the URL-shortener pair-run (~93K tokens; ~30× cost ratio) + the BACKLOG-cleanup over-route from H.5.7 (4-persona team for 9-line doc surgery). **n=20 toolkit-wide builder verdict milestone** hit this phase — H.7.4 empirical refit unblocked.
+
+### What landed
+- `scripts/agent-team/route-decide.js` — pure-function CLI; 7 weighted dimensions + infra-lift + counter-signal + short-prompt penalty; emits `route|borderline|root` recommendation as JSON
+- `commands/build-team.md` Step 0 — bash flow with 3-branch dispatch (route → continue; borderline → user pick; root → exit 0 with skip-orchestration message); fail-open default if script missing
+- `commands/build-team.md` "What this command is NOT" — added 4th bullet on Step 0 gate behavior + `--force-route` escape
+- `skills/agent-team/patterns/route-decision.md` — new pattern doc at status `active+enforced` (substrate + callsite ship same phase per H.7.1 precedent)
+- `skills/agent-team/patterns/README.md` — added row 15 for Route-Decision pattern
+- `rules/core/workflow.md` — new "Route-Decision for Non-Trivial Tasks" section (soft rule for ad-hoc tasks outside /build-team)
+
+### Weights (v1 theory-driven; refit at H.7.4)
+| Dimension | Weight | Notes |
+|-----------|--------|-------|
+| stakes | 0.25 | 24 keywords incl. kubernetes/k8s/terraform/helm (R3 added) |
+| domain_novelty | 0.15 | textual signals only (no substrate lookup per M-2) |
+| compound_strong | 0.15 | schema/migration/protocol/consensus/state-machine/pipeline/etc. |
+| compound_weak | 0.075 | architecture/design/framework/system — SUPPRESSED if stakes fires (C-2) |
+| audit_binary | 0.20 | high-precision only — removed `review` (C-1) |
+| scope_size | 0.075 | manifest/endpoints/apis/cross-cutting/etc. |
+| convergence_value | 0.15 | tradeoffs/eviction policy/url shortener/state management (raised from 0.10 per HIGH-2) |
+| user_facing_or_ux | 0.10 | 7th dimension added per R2 calibration self-test |
+| infra_implicit_lift | +0.30 | k8s/kubernetes/terraform/helm/etc. (raised from 0.20 per R3) |
+| counter_signals | -0.25 | typo/prune/cleanup/stale/quick/etc. |
+| short_prompt_penalty | -0.10 | <5 words (R1) |
+
+Thresholds: ≥0.60 → route, ≤0.30 → root, between → borderline. Confidence = distance from nearest threshold normalized over 0.30 band.
+
+### Self-test calibration (theo's R1-R6 battery, all 6 land at expected)
+| # | Task | Expected | Actual | Match |
+|---|------|----------|--------|-------|
+| 1 | Express rate-limiting | borderline (R1) | 0.325 borderline | yes |
+| 2 | React component | root (R2 — known limit) | 0.15 root | yes |
+| 3 | k8s manifest | route (R3) | 0.625 route | yes |
+| 4 | BACKLOG cleanup | root (R4) | 0 root | yes |
+| 5 | USING.md walkthrough | root (R2 — known limit) | 0 root | yes |
+| 6 | URL shortener | borderline (R4) | 0.40 borderline | yes |
+
+### Theo-architect pushbacks (3 substantive vs user's plan)
+1. **C-1**: removed `review` from audit-binary trigger — overlaps "code review by Claude in chat" tasks root should handle
+2. **C-2**: split Compound into strong + weak with stakes-suppression — avoids double-count on system-design prompts (URL-shortener originally over-routed)
+3. **HIGH-2 + R4**: raised convergence-value weight + added URL-shortener-class keywords — convergence is the only dimension that uniquely justifies HETS
+
+### Convergence (theo design / noor implementation)
+- noor convergence: AGREE on theo's R1-R6 calibration set (5/6 tasks landed correctly out-of-the-box; +1 fix to scope_size keywords for endpoints/apis closed the Express case at 0.325 matching theo's prediction exactly)
+- noor convergence: AGREE on C-1, C-2, HIGH-2 pushbacks — the calibration validates them
+- noor implementation deviation: chose to apply infra-implicit-lift independent of multi-file scope precondition (per theo's R3 explicit recommendation); removed `multi-file scope` AND-gate
+
+### H.7.3 follow-ups (deferred)
+- **H.7.4 — Empirical refit**: n=20 verdicts now hit this phase; fit weights from accumulated `quality_factors_history`; compare theory-driven vs empirical-fit; document deltas
+- **`--force-route` flag wiring**: Step 0 dispatcher mentions the flag; full /build-team argument parsing for the flag deferred (one-line fix at task-entry)
+- **`HETS_WEIGHT_PROFILE` env override**: per-user calibration (security-engineer vs frontend-engineer profiles); future phase
+- **LLM-tier-2 fallback for borderline**: low-confidence borderline cases (tasks #2, #5 known-limits) could route to a quick LLM classifier; deferred — pure-keyword has reached its info ceiling per theo's analysis
+- **Borderline-frac monitoring**: if >40% of decisions land in borderline band, threshold bands need tightening; instrumentation needed
+
 ## Phase H.7.2 — Theory-driven weighted trust score — SHIPPED
 
 **Status**: shipped via corrected autonomous-platform pattern (mira designed; evan implemented; root coordinated). Closes the "rich measurement, binary signal" gap — quality axes now contribute to within-tier ranking without breaking the H.4.2 audit-transparency commitment.
