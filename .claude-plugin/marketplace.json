@@ -7,7 +7,7 @@
   "plugins": [
     {
       "name": "power-loom",
-      "source": ".",
+      "source": "./",
       "description": "Power loom for multi-agent Claude Code orchestration — hook-enforced substrate with persistent identity reputation, triple-contract verifier, threshold-based auto self-improve loop, and chaos-test meta-validation.",
       "category": "agent-orchestration",
       "tags": [

@@ -2,6 +2,18 @@
 
 Deferred work from prior phases, captured here so nothing important gets silently dropped. Each entry: scope, rationale, dependencies, rough estimate.
 
+## Phase H.7.22.1 — Marketplace source format hotfix — SHIPPED
+
+**Status**: hotfix on top of H.7.22 — caught when user attempted `/plugin install power-loom@power-loom-marketplace` post-migration and Claude Code rejected the install with: *"This plugin uses a source type your Claude Code version does not support."*
+
+**Root cause**: `.claude-plugin/marketplace.json` declared `"source": "."` for the plugin entry. Claude Code's plugin schema requires path-based sources to match `^\./.*` (must start with `./`). The `"."` value (no trailing slash) was rewritten to `"unsupported"` by the schema validator, surfacing the install error.
+
+**Fix**: change `"source": "."` → `"source": "./"` in `.claude-plugin/marketplace.json`. Manifest version bumped 1.1.0 → 1.1.1 so `/plugin update` detects the fix.
+
+**Why H.7.22's pre-approval verification missed this**: neither the architect-reviewer nor code-reviewer spawn was asked to check `marketplace.json` — they reviewed the plan + proposed code changes but not the manifest format. The new `contract-plugin-hook-deployment` validator (Phase 4 of H.7.22) checks deployment of `hooks.json` entries but doesn't validate `marketplace.json` schema. **Drift-note 42** captures this gap: extend `contracts-validate.js` with a marketplace-schema validator.
+
+**Verification**: claude-code-guide consulted to confirm `"./"` is the correct shape for path-based sources where the plugin root IS the marketplace root (vs `{"source":"github",...}` object form for remote marketplaces).
+
 ## Phase H.7.22 — System Design Principles + Plugin Distribution Validation + R/A/FT Primitives (closes drift-notes 33/34/36) — SHIPPED
 
 **Status**: shipped per approved plan. Two interlocking concerns merged into one phase.
@@ -65,6 +77,8 @@ Architect agent spawned in Phase 2 of plan-mode returned a meta-response about p
 - **38**: install.sh as legacy fallback creates UX fork — eventually deprecate (likely H.8.x)
 - **39**: Principle codification should also extend to other agents (planner, code-reviewer, optimizer, security-auditor) — H.7.22 only covers architect
 - **40**: Pre-approval verification (parallel architect + code-reviewer) should be codified as workflow rule — caught real bugs in this phase
+- **41**: Marketplace mirror staleness — third time the mirror needed manual `git pull` to pick up shipped phases. Cron/scheduled pull OR auto-pull on session-start. Sibling to drift-note 37 (CI manifest-version-bump).
+- **42**: Marketplace.json schema validation gap — H.7.22.1 hotfix surfaced that pre-approval verification didn't check `marketplace.json`. Extend `contract-plugin-hook-deployment` (or add new contract `contract-marketplace-schema`) to validate marketplace + plugin manifest format against Claude Code's schema. Would have caught the `"source": "."` issue before user-facing install failure.
 
 ### Out of scope (deferred)
 
