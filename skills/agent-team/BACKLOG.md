@@ -2,6 +2,56 @@
 
 Deferred work from prior phases, captured here so nothing important gets silently dropped. Each entry: scope, rationale, dependencies, rough estimate.
 
+## Phase H.7.21 — Edit-result scan in validate-no-bare-secrets + Convention E (closes drift-note 29) — SHIPPED
+
+**Status**: shipped per approved plan. Closes drift-note 29 from H.7.20 plan — audit of other PreToolUse validators for Edit-coverage gaps similar to drift-note 28.
+
+### The audit (Phase 1)
+
+| Validator | Pattern | Edit-result-aware? | Gap? |
+|-----------|---------|---------------------|------|
+| `validate-frontmatter-on-skills.js` | 1 (content-scan) | yes (H.7.20) | Closed |
+| `validate-no-bare-secrets.js` | 1 (content-scan) | NO — scanned `new_string` only | **YES** |
+| `config-guard.js` | 2 (tool-agnostic, path-based) | N/A | None — by design |
+| `fact-force-gate.js` | 2 (tool-agnostic, read-tracker) | N/A | None — by design |
+
+Drift-note 29 reduces to 1 real gap: `validate-no-bare-secrets.js` Edit branch scanned only `tool_input.new_string`, missing assignment-completion patterns where surrounding context creates the secret.
+
+### What landed
+
+- **`hooks/scripts/validators/validate-no-bare-secrets.js`** — Edit branch now reads existing file via `fs.readFileSync` + applies proposed edit (handles single Edit, `replace_all: true`, MultiEdit `edits[]` array) + scans the full post-edit result. Falls back to `new_string`-only scan if file unreadable (defensive). H.5.2 fail-CLOSED on parse error preserved. Header comment updated noting H.7.21 Edit-result-aware extension + cross-references H.7.20 sibling pattern + Convention E.
+- **`skills/agent-team/patterns/validator-conventions.md`** — Convention E added: "Edit-result-aware vs tool-agnostic validation." Two-pattern decision tree (content-scan vs tool-agnostic) + reference table classifying all 4 PreToolUse content/path validators. Convention D's reference table updated to reflect H.7.20 + H.7.21 matcher changes (validate-frontmatter-on-skills now `Edit|Write`, validate-no-bare-secrets now Edit-result-aware).
+- **`install.sh` Tests 24-26** — Edit-completes-assignment blocks; Edit-unrelated-text approves; Edit-with-pre-existing-secret blocks (pre-existing secrets surface in post-edit scan — desired security behavior).
+
+### Verification
+
+- ✓ Probe 1: `bash install.sh --hooks --test` → **26/26 passing** (was 23/23; +3 H.7.21 tests)
+- ✓ Probe 2: `node scripts/agent-team/contracts-validate.js` → 0 violations
+- ✓ Probe 3: `node scripts/agent-team/_h70-test.js` → 46/46 passing (regression — H.7.21 doesn't touch route-decide)
+- ✓ Probe 4: `node --check hooks/scripts/validators/validate-no-bare-secrets.js` → syntax-ok
+- ✓ Probe 5/6: manual stdin-pipe → Edit completes assignment blocks (matched `literal-secret-assignment`); Edit unrelated approves
+- ✓ Probe 7: manual `replace_all: true` → terminates correctly; all occurrences replaced via `split().join()`
+
+### Drift notes captured during H.7.21
+
+- **Drift-note 30**: side-effect of post-edit-result scan — Edits to files with pre-existing real-looking secrets will start blocking. This is desired (security gate), but may surface dormant issues in repos. Empirical monitoring needed: count `literal-secret-assignment` block events with `tool_name=Edit` after H.7.21 ships. If false-positive rate is high (placeholder values that look like secrets), tune `PLACEHOLDER_VALUES` set.
+- **Drift-note 31**: the 4-validator audit + Convention E codifies a pattern that should be checked at validator-creation time. Future validators should declare Pattern 1 (content-scan) or Pattern 2 (tool-agnostic) explicitly in their header comments. Convention extension candidate.
+- **Drift-note 32**: plan-doc-as-vector — bare secret literals in plan files trigger the validator and block plan-file Writes. This is desired behavior (validator should catch ANY Write of a bare secret), but it means plan documents must describe test fixtures abstractly. Captured as planning convention: plan files reference fixture shapes ("16-char `*_KEY` value"), not exact bytes. Test fixture exact bytes belong in `install.sh` / test files.
+
+### Why this is the right shape
+
+- Closes drift-note 29 with the natural fix: audit then targeted extension
+- 2 of 3 candidate validators needed NO change (audit confirmed by-design status) — avoided wasted work
+- Mechanical sibling to H.7.20: same read-file + apply-edit + scan-result pattern, applied to a different validator
+- Convention E codifies the audit as a recurring check, not a one-off: future validators must declare Pattern 1 or Pattern 2 at creation time
+- Twenty-fifth distinct phase shape: validator-pattern audit + targeted extension + Convention codification
+
+### Out of scope (deferred)
+
+- **MultiEdit beyond best-effort**: validator now iterates `edits[]` to produce running post-edit result. NotebookEdit (cell-based) stays as pessimistic JSON.stringify — separate redesign concern
+- **Pre-existing secrets in files NOT touched by an Edit**: validator only fires on Edit/Write. A file with a pre-existing secret that nobody edits stays as-is. Periodic-scan gate is a separate concern, not a hook gate
+- **`config-guard` + `fact-force-gate` modifications**: NONE per audit — both are tool-agnostic by design; documented in Convention E
+
 ## Phase H.7.20 — Extend validate-frontmatter-on-skills to Edit (closes drift-note 28) — SHIPPED
 
 **Status**: shipped per approved plan. Closes drift-note 28 captured during H.7.19 audit — validator's Edit-coverage gap.

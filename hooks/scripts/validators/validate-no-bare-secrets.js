@@ -5,6 +5,15 @@
 // triple-contract verification — operates at WRITE time, deterministically,
 // against direct file edits by Claude.
 //
+// H.7.21 EXTENSION: For Edit, scans the post-edit RESULT (existing file +
+// applied edit), not just `new_string`. Catches assignment completions —
+// e.g., Edit fills `*_KEY=` placeholder with a 16+ char value — where the
+// pre-H.7.21 validator only saw the bare inserted value and missed the
+// surrounding key prefix. Mirrors H.7.20 read-file + apply-edit + scan-
+// result pattern in validate-frontmatter-on-skills.js. Convention E in
+// skills/agent-team/patterns/validator-conventions.md documents the
+// 4-validator audit + decision tree (closes drift-note 29).
+//
 // Detected shapes (tunable; see SECRET_PATTERNS below):
 //   - Anthropic API keys:    sk-ant-...
 //   - Stripe live keys:      sk_live_..., rk_live_...
@@ -19,6 +28,7 @@
 // reports the detection pattern + offset, so log files / chat transcripts
 // don't preserve the exposed secret.
 
+const fs = require('fs');
 const { log } = require('../_log.js');
 const logger = log('validate-no-bare-secrets');
 
@@ -131,19 +141,58 @@ process.stdin.on('end', () => {
     // `new_string` + boolean `replace_all` — NOT a `replace_all_string` field.
     // The previous code referenced a non-existent field; only `new_string`
     // was effectively scanned. Worse, future multi-edit payloads (e.g.,
-    // `edits: [{old_string, new_string}]`) would silently bypass. Now: scan
-    // `new_string` for Edit, and pessimistically scan the entire `tool_input`
-    // JSON if the shape is unrecognized (defense in depth — false positives
-    // here are acceptable; missing a secret is not).
+    // `edits: [{old_string, new_string}]`) would silently bypass. H.5.2 fix:
+    // scan `new_string` for Edit, and pessimistically scan the entire
+    // `tool_input` JSON if the shape is unrecognized.
+    //
+    // H.7.21: extend Edit to scan post-edit RESULT (existing file + applied
+    // edit), not just `new_string`. Catches assignment completions where
+    // surrounding context creates the secret pattern. Falls back to
+    // `new_string`-only scan if file read fails (defensive). Defense in
+    // depth — false positives here are acceptable; missing a secret is not.
     let scanText = '';
     if (toolName === 'Write') {
       scanText = toolInput.content || '';
     } else if (toolName === 'Edit') {
-      scanText = toolInput.new_string || '';
-      // Multi-edit fallback: if `edits` array is present, concat all new strings.
-      if (Array.isArray(toolInput.edits)) {
-        for (const e of toolInput.edits) {
-          if (e && typeof e.new_string === 'string') scanText += '\n' + e.new_string;
+      // Try to read existing file to produce post-edit result.
+      let existing = null;
+      try {
+        existing = fs.readFileSync(filePath, 'utf8');
+      } catch {
+        /* file doesn't exist or unreadable — fall back to new_string-only */
+      }
+
+      if (existing !== null) {
+        // Apply edit(s) to produce post-edit result.
+        let result = existing;
+        if (Array.isArray(toolInput.edits)) {
+          // MultiEdit: apply each edit in sequence on the running result.
+          for (const e of toolInput.edits) {
+            if (e && typeof e.old_string === 'string' && typeof e.new_string === 'string') {
+              if (e.replace_all === true) {
+                result = result.split(e.old_string).join(e.new_string);
+              } else {
+                result = result.replace(e.old_string, e.new_string);
+              }
+            }
+          }
+        } else {
+          const oldStr = toolInput.old_string || '';
+          const newStr = toolInput.new_string || '';
+          if (toolInput.replace_all === true) {
+            result = result.split(oldStr).join(newStr);
+          } else {
+            result = result.replace(oldStr, newStr);
+          }
+        }
+        scanText = result;
+      } else {
+        // Fallback: scan new_string only (pre-H.7.21 behavior).
+        scanText = toolInput.new_string || '';
+        if (Array.isArray(toolInput.edits)) {
+          for (const e of toolInput.edits) {
+            if (e && typeof e.new_string === 'string') scanText += '\n' + e.new_string;
+          }
         }
       }
     } else if (toolName === 'NotebookEdit') {

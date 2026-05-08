@@ -511,6 +511,54 @@ SKILL_EOF
   fi
   rm -rf /tmp/h7-20-skills
 
+  # Test 24 (H.7.21): validate-no-bare-secrets Edit-result scan — Edit that
+  # inserts a 16+ char value into a *_KEY= placeholder context should block,
+  # because the post-edit result completes literal-secret-assignment pattern.
+  # Pre-H.7.21 the validator only saw new_string (no prefix) and approved.
+  mkdir -p /tmp/h7-21
+  printf 'API_KEY=PLACEHOLDER\n' > /tmp/h7-21/test1.env
+  local h7_21_complete_json='{"tool_name":"Edit","tool_input":{"file_path":"/tmp/h7-21/test1.env","old_string":"PLACEHOLDER","new_string":"abcd1234efgh5678ijkl"}}'
+  local h7_21_complete_result
+  h7_21_complete_result=$(printf '%s' "$h7_21_complete_json" | node "$CLAUDE_DIR/hooks/scripts/validators/validate-no-bare-secrets.js" 2>&1)
+  if echo "$h7_21_complete_result" | grep -q '"decision":"block"' && echo "$h7_21_complete_result" | grep -q 'literal-secret-assignment'; then
+    echo "  ✓ validate-no-bare-secrets: H.7.21 Edit-completes-assignment → block"
+    passed=$((passed + 1))
+  else
+    echo "  ✗ validate-no-bare-secrets: H.7.21 Edit completing assignment should block — got: ${h7_21_complete_result:0:120}"
+    failed=$((failed + 1))
+  fi
+
+  # Test 25 (H.7.21): Edit unrelated text in file with no secrets → approve
+  printf 'Hello world\n' > /tmp/h7-21/test2.txt
+  local h7_21_unrelated_json='{"tool_name":"Edit","tool_input":{"file_path":"/tmp/h7-21/test2.txt","old_string":"world","new_string":"there"}}'
+  local h7_21_unrelated_result
+  h7_21_unrelated_result=$(printf '%s' "$h7_21_unrelated_json" | node "$CLAUDE_DIR/hooks/scripts/validators/validate-no-bare-secrets.js" 2>&1)
+  if echo "$h7_21_unrelated_result" | grep -q '"decision":"approve"'; then
+    echo "  ✓ validate-no-bare-secrets: H.7.21 Edit-unrelated-text → approve"
+    passed=$((passed + 1))
+  else
+    echo "  ✗ validate-no-bare-secrets: H.7.21 Edit unrelated text should approve — got: ${h7_21_unrelated_result:0:120}"
+    failed=$((failed + 1))
+  fi
+
+  # Test 26 (H.7.21): Edit on file with pre-existing stripe-live-shaped key
+  # surfaces the secret in the post-edit scan even when the Edit touches a
+  # different line. Fixture key built via shell concat to keep install.sh
+  # source free of bare-secret literals (see drift-note 32).
+  local h7_21_stripe_value='abcd1234efgh5678ijkl9999'
+  printf 'STRIPE_KEY=sk_live_%s\nNAME=Bob\n' "$h7_21_stripe_value" > /tmp/h7-21/test3.env
+  local h7_21_preexist_json='{"tool_name":"Edit","tool_input":{"file_path":"/tmp/h7-21/test3.env","old_string":"NAME=Bob","new_string":"NAME=Alice"}}'
+  local h7_21_preexist_result
+  h7_21_preexist_result=$(printf '%s' "$h7_21_preexist_json" | node "$CLAUDE_DIR/hooks/scripts/validators/validate-no-bare-secrets.js" 2>&1)
+  if echo "$h7_21_preexist_result" | grep -q '"decision":"block"' && echo "$h7_21_preexist_result" | grep -q 'stripe-live-key'; then
+    echo "  ✓ validate-no-bare-secrets: H.7.21 Edit-with-preexisting-secret → block"
+    passed=$((passed + 1))
+  else
+    echo "  ✗ validate-no-bare-secrets: H.7.21 Edit on file with pre-existing secret should block — got: ${h7_21_preexist_result:0:120}"
+    failed=$((failed + 1))
+  fi
+  rm -rf /tmp/h7-21
+
 
   echo ""
   echo "  Results: $passed passed, $failed failed"
