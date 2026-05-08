@@ -14,6 +14,7 @@ Track which sources were processed in each session. Helps avoid re-processing an
 | 2026-05-08   | Authoring batch 2 | 2 docs shipped | -                | `crosscut/dependency-rule.md` (~440 lines, 5 sources) + `crosscut/deep-modules.md` (~330 lines, 4 sources). DIP/Dependency-Rule paired with the Ousterhout-vs-Martin tension explicit. |
 | 2026-05-08   | Authoring batch 3 | 2 docs shipped | -                | `crosscut/idempotency.md` (~470 lines, 5 sources) + `discipline/error-handling-discipline.md` (~410 lines, 6 sources). Idempotency + error-handling are paired — substrate's forcing-instruction layer is the load-bearing application of both. |
 | 2026-05-08   | Authoring batch 4 | 2 docs shipped | -                | `ai-systems/rag-anchoring.md` (~470 lines, 3 sources) + `discipline/trade-off-articulation.md` (~440 lines, 5 sources). RAG covers the substrate's actual domain; trade-off articulation codifies H.7.22 Principle Audit. |
+| 2026-05-08   | Authoring batch 5 | 2 docs shipped | -                | `discipline/reliability-scalability-maintainability.md` (~480 lines, 5 sources) + `crosscut/acyclic-dependencies.md` (~400 lines, 5 sources). R/S/M extends substrate's R/A/FT framing; ADP codifies the `_lib/` extraction discipline. |
 
 ## Pattern notes
 
@@ -228,8 +229,8 @@ Priority order based on consensus tracker. First-wave items have 2+ Tier-1+2 sou
 | 5 | End-to-End Error Handling | `discipline/error-handling-discipline.md` | substrate forcing-instruction layer IS this principle | **SHIPPED batch 3** |
 | 6 | RAG Anchoring | `ai-systems/rag-anchoring.md` | THE substrate-relevant pattern; this very KB IS a RAG implementation | **SHIPPED batch 4** |
 | 7 | Trade-off Discipline | `discipline/trade-off-articulation.md` | substrate H.7.22 Principle Audit IS this enforced; codify the substrate's own discipline | **SHIPPED batch 4** |
-| 8 | Reliability / Scalability / Maintainability | `discipline/reliability-scalability-maintainability.md` | substrate H.7.22 R/A/FT extension; align vocabulary | Pending |
-| 9 | Acyclic Dependencies | `crosscut/acyclic-dependencies.md` | Foundational; resolves drift-note 47 sibling concern | Pending |
+| 8 | Reliability / Scalability / Maintainability | `discipline/reliability-scalability-maintainability.md` | substrate H.7.22 R/A/FT extension; align vocabulary | **SHIPPED batch 5** |
+| 9 | Acyclic Dependencies | `crosscut/acyclic-dependencies.md` | Foundational; resolves drift-note 47 sibling concern | **SHIPPED batch 5** |
 | 10 | Stability Patterns | `discipline/stability-patterns.md` | substrate forcing-instructions ARE stability patterns; explicit codification | Pending |
 
 ### Completion progress
@@ -238,11 +239,12 @@ Priority order based on consensus tracker. First-wave items have 2+ Tier-1+2 sou
 - Batch 2: 2 docs shipped (Dependency Rule + Deep Modules)
 - Batch 3: 2 docs shipped (Idempotency + Error Handling)
 - Batch 4: 2 docs shipped (RAG Anchoring + Trade-off Articulation)
-- **Cumulative: 7 / 10 first-wave docs shipped (70%)**
+- Batch 5: 2 docs shipped (R/S/M + Acyclic Dependencies)
+- **Cumulative: 9 / 10 first-wave docs shipped (90%)**
 
 ### Pace observation
 
-~300-470 lines per doc; 2 docs per batch is sustainable. 3 first-wave docs remaining (R/S/M, Acyclic Dependencies, Stability Patterns). Likely 2 more batches.
+~300-490 lines per doc; 2 docs per batch is sustainable. 1 first-wave doc remaining (Stability Patterns). One more batch closes the first wave.
 
 ## Done log
 
@@ -255,5 +257,7 @@ Patterns shipped to `skills/agent-team/kb/architecture/`. Move entries here from
 | Deep Modules + Information Hiding | `architecture/crosscut/deep-modules.md` | Batch 2 (PR #104) | No — same |
 | Idempotency | `architecture/crosscut/idempotency.md` | Batch 3 (PR #105) | No — same |
 | End-to-End Error Handling | `architecture/discipline/error-handling-discipline.md` | Batch 3 (PR #105) | No — same |
-| RAG Anchoring | `architecture/ai-systems/rag-anchoring.md` | Batch 4 | No — same |
-| Trade-off Articulation | `architecture/discipline/trade-off-articulation.md` | Batch 4 | No — same |
+| RAG Anchoring | `architecture/ai-systems/rag-anchoring.md` | Batch 4 (PR #106) | No — same |
+| Trade-off Articulation | `architecture/discipline/trade-off-articulation.md` | Batch 4 (PR #106) | No — same |
+| Reliability/Scalability/Maintainability | `architecture/discipline/reliability-scalability-maintainability.md` | Batch 5 | No — same |
+| Acyclic Dependencies | `architecture/crosscut/acyclic-dependencies.md` | Batch 5 | No — same |

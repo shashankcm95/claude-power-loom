@@ -26,7 +26,7 @@ kb/architecture/
 │   ├── idempotency.md              [SHIPPED — batch 3; cross-cutting from data/]
 │   ├── anti-corruption-layer.md    [empty]
 │   │   # Package design (from Principles of Package Design — Noback)
-│   ├── acyclic-dependencies.md     [notes — first-wave]
+│   ├── acyclic-dependencies.md     [SHIPPED — batch 5]
 │   ├── release-reuse-equivalence.md [empty — second-wave]
 │   ├── common-reuse.md             [empty — second-wave]
 │   ├── common-closure.md           [empty — second-wave]
@@ -80,7 +80,7 @@ kb/architecture/
 │   ├── failure-mode-analysis.md    [empty]
 │   ├── trade-off-articulation.md   [SHIPPED — batch 4]
 │   ├── error-handling-discipline.md [SHIPPED — batch 3; from charlax+Clean Code+PoSD+others]
-│   ├── reliability-scalability-maintainability.md [notes — first-wave; from DDIA ch 1+SRE]
+│   ├── reliability-scalability-maintainability.md [SHIPPED — batch 5; from DDIA ch 1+SRE+others]
 │   ├── stability-patterns.md       [notes — first-wave; from Release It!+Hard Parts]
 │   └── clean-code-essentials.md    [empty — third-wave; from Clean Code+PoSD]
 │
