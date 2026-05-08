@@ -353,14 +353,14 @@ Q: Does the operation already proceed (pass-through or post-completion)?
 
 ### Failure modes if violated
 
-- **Class 1 with mechanical recovery**: operator drift (`[MARKDOWN-EMPHASIS-DRIFT]` pre-H.7.25) — Claude is asked to do work a script could do. Symptom: low landing rate, Claude ignoring instruction, misclassification by reviewers. **H.7.27 commitment**: migrate `[MARKDOWN-EMPHASIS-DRIFT]` to markdownlint pipeline absorption (preferred) or PreToolUse hard-gate (fallback).
+- **Class 1 with mechanical recovery**: operator drift — Claude is asked to do work a script could do. Symptom: low landing rate, Claude ignoring instruction, misclassification by reviewers. **Resolved in H.7.27**: `[MARKDOWN-EMPHASIS-DRIFT]` retired and detection absorbed by markdownlint MD037 in CI (empirically verified the same cluster pattern the hook detected triggers MD037). Migration shape "lint pipeline absorption" preferred over PreToolUse hard-gate for mechanical-recovery cases.
 - **Class 2 dressed as Class 1**: contributes to false count growth; future readers expect Claude-side action that never comes. Symptom: marker appears in retros but has no Claude-side work history. Pre-H.7.25, instructions 5+10 were mis-tagged as Class 1; reclassified by Convention G (no behavior change).
 - **Class 1 when variant fits**: silent failure. The bad operation already completed. Convention D's PreToolUse-vs-PostToolUse decision tree applies orthogonally.
 - **Variant when Class 1 fits**: friction. Every operation waits for blocking validation when advisory was sufficient (Convention D failure mode).
 
 ### Family cap rule
 
-When the active forcing-instruction count crosses **N=15** (current 9 active post-H.7.26 consolidation + 6 headroom), the next phase MUST include a family audit before adding a 16th. Cap rationale: 6-headroom over current 9 = ~7 phases at the observed 0.85-instructions/phase growth rate. Wider than 3-headroom (the original draft) which would have triggered within 1-2 phases — defeating the cap's purpose as a forcing function. Drift-note 56 captures the magic-number concern; revisit after first cap-triggered audit.
+When the active forcing-instruction count crosses **N=15** (current 8 active post-H.7.27 migration + 7 headroom), the next phase MUST include a family audit before adding a 16th. Cap rationale: 7-headroom over current 8 = ~8 phases at the observed 0.85-instructions/phase growth rate. Wider than 3-headroom (the original draft) which would have triggered within 1-2 phases — defeating the cap's purpose as a forcing function. Drift-note 56 captures the magic-number concern; revisit after first cap-triggered audit.
 
 ### Reference implementations
 
@@ -368,7 +368,7 @@ See `skills/agent-team/patterns/forcing-instruction-family.md` for per-instructi
 
 ### Phase
 
-Shipped: H.7.25 (closes drift-note 21 — forcing-instruction architectural smell retrospective + taxonomy + catalog) + H.7.26 (closes drift-note 57 — consolidation execution; 11 → 9 active markers).
+Shipped: H.7.25 (closes drift-note 21 — forcing-instruction architectural smell retrospective + taxonomy + catalog) + H.7.26 (closes drift-note 57 — consolidation execution; 11 → 9 active markers) + H.7.27 (closes architect FLAG #6 — `[MARKDOWN-EMPHASIS-DRIFT]` migrated to markdownlint MD037; 9 → 8 active markers).
 
 ## Related Patterns
 
@@ -379,4 +379,4 @@ Shipped: H.7.25 (closes drift-note 21 — forcing-instruction architectural smel
 
 ## Phase
 
-Shipped: H.7.15 (Conventions A + B); reinforced H.7.18 (Convention C); extended H.7.19 (Convention D); extended H.7.21 (Convention E — closes drift-note 29); extended H.7.25 (Convention G — closes drift-note 21); executed H.7.26 (Convention G consolidation — closes drift-note 57; 11 → 9 active markers).
+Shipped: H.7.15 (Conventions A + B); reinforced H.7.18 (Convention C); extended H.7.19 (Convention D); extended H.7.21 (Convention E — closes drift-note 29); extended H.7.25 (Convention G — closes drift-note 21); executed H.7.26 (Convention G consolidation — closes drift-note 57; 11 → 9 active markers); executed H.7.27 (Convention G mechanical-recovery migration — `[MARKDOWN-EMPHASIS-DRIFT]` to markdownlint MD037; 9 → 8 active markers).

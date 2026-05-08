@@ -2,6 +2,62 @@
 
 Deferred work from prior phases, captured here so nothing important gets silently dropped. Each entry: scope, rationale, dependencies, rough estimate.
 
+## Phase H.7.27 — `[MARKDOWN-EMPHASIS-DRIFT]` migration to markdownlint pipeline (closes architect FLAG #6) — SHIPPED
+
+**Status**: shipped per H.7.25 commitment. Mechanical migration of the misclassified Class 1 marker that the H.7.25 audit identified as wrong-tool. Per route-meta-uncertain forcing-instruction guidance: implementing an already-decided design — proceed root.
+
+### Empirical validation gate
+
+Before retiring the hook, ran the actual migration's correctness test: created a test fixture with the cluster pattern the hook used to detect (paragraph with multiple unbackticked underscore tokens), ran `npx markdownlint-cli2`, confirmed MD037 fires. Migration is safe — CI absorbs the detection.
+
+### What landed
+
+| Sub-phase | Scope | Key files |
+|-----------|-------|-----------|
+| 1 | Hook removal | `hooks/scripts/validators/validate-markdown-emphasis.js` deleted (~230 LoC); `hooks/hooks.json` PostToolUse `Edit\|Write` entry removed; `hooks/settings-reference.json` already had no entry (was a plugin-only hook) |
+| 2 | Catalog + Convention G | `forcing-instruction-family.md` (#8 marked RETIRED-in-H.7.27; Class 1 example list updated; "Active marker counts" table reflects H.7.27 = 8); `validator-conventions.md` Convention G failure-modes section reframed (resolved, not "committed"); cap rule reflects 8-active + 7-headroom state |
+| 3 | Manifest + tests + docs | `plugin.json` 1.3.2 → 1.3.3 (patch); install.sh tests 19-21 replaced with single MD037 absorption check; SKILL.md / BACKLOG.md / CHANGELOG.md |
+
+### Active marker count change
+
+| Phase | Active | Change |
+|-------|--------|--------|
+| H.7.25 | 11 | reference (peak) |
+| H.7.26 | 9 | -2: drift-note 57 consolidation |
+| **H.7.27 (this)** | **8** | -1: `[MARKDOWN-EMPHASIS-DRIFT]` migrated to markdownlint MD037 (lint pipeline absorbs detection) |
+
+### Why no spawn this phase
+
+Mechanical migration of an already-decided design (architect FLAG #6 commitment from H.7.25). Empirical validation gate (markdownlint MD037 catches the cluster pattern) ran before retirement; verified migration is safe. Per route-meta-uncertain guidance: "If task is mechanical implementation of an already-decided design, current recommendation likely correct — proceed."
+
+### Convention G validation
+
+Convention G's failure-modes section originally said: "**H.7.27 commitment**: migrate `[MARKDOWN-EMPHASIS-DRIFT]` to markdownlint pipeline absorption (preferred) or PreToolUse hard-gate (fallback)." H.7.27 confirmed the preferred shape (lint absorption) was correct. Section reframed from "committed" to "resolved" with the empirical-verification footnote. Future Class-1-with-mechanical-recovery cases should default to lint pipeline absorption.
+
+### Verification
+
+- ✓ install.sh smoke 36/36 (was 38/38; -3 retired tests 19-21; +1 new test 19 for MD037 absorption check)
+- ✓ 46/46 `_h70-test` regression preserved
+- ✓ 0 `pattern-related-bidirectional` violations
+- ✓ Empirical: `printf '# Test\\n\\nThis paragraph has HETS_TOOLKIT_DIR _h70-test _lib/ tokens.\\n' > /tmp/test.md && npx markdownlint-cli2 /tmp/test.md` → fires MD037 error
+- ✓ All 116 existing markdown files still lint-clean
+- ✓ `validate-markdown-emphasis.js` no longer in tree; `hooks.json` PostToolUse has 1 entry (was 2)
+
+### Soak-period entry conditions met
+
+H.7.25 set the conditions: "5+ phases with 0 new drift-notes captured before v2.0.0 release." H.7.27 closes the last committed drift-note arc (architect FLAG #6); zero new drift-notes captured this phase. **Soak period now active.**
+
+| Phase | New drift-notes | Cumulative since H.7.27 |
+|-------|------------------|--------------------------|
+| H.7.27 (this) | 0 | 0 / 5 needed for v2.0.0 |
+
+### Out of scope (deferred)
+
+- **`_lib/forcing-instruction.js` shared emission helper** — drift-note 47 sibling: defer until Class 1 has 7+ callers (currently 5 markers across 4 files post-H.7.27 — still under threshold)
+- **Cap rule N=15 empirical validation** — first audit when count crosses 15 will validate
+- **Drift-note 35** (Distribution chaos-test 4th orchestrator → v2.1.0)
+- **Drift-note 38** (install.sh deprecation cycle → H.8.x)
+
 ## Phase H.7.26 — Forcing-instruction consolidation execution (closes drift-note 57) — SHIPPED
 
 **Status**: shipped per H.7.25 commitments. Mechanical implementation of the two consolidation candidates surfaced by H.7.25's family-level audit. Per route-meta-uncertain forcing instruction guidance: this is mechanical implementation of an already-decided design — recommendation correct; proceed.

@@ -17,7 +17,7 @@ H.7.26 executed the two consolidation candidates surfaced by H.7.25: `[CONFIRMAT
 
 | Class | What | Layer | Examples |
 |-------|------|-------|----------|
-| **1** Advisory forcing instruction | Deterministic detection + semantic recovery | stdout (UserPromptSubmit / PostToolUse) | `[PROMPT-ENRICHMENT-GATE]` (with `tier:` discriminator post-H.7.26), `[ROUTE-DECISION-UNCERTAIN]`, `[FAILURE-REPEATED]`, `[PLAN-SCHEMA-DRIFT]`, `[ROUTE-META-UNCERTAIN]`, `[MARKDOWN-EMPHASIS-DRIFT]` |
+| **1** Advisory forcing instruction | Deterministic detection + semantic recovery | stdout (UserPromptSubmit / PostToolUse) | `[PROMPT-ENRICHMENT-GATE]` (with `tier:` discriminator post-H.7.26), `[ROUTE-DECISION-UNCERTAIN]`, `[FAILURE-REPEATED]`, `[PLAN-SCHEMA-DRIFT]`, `[ROUTE-META-UNCERTAIN]` |
 | **2** Operator notice | Status surface, no Claude action expected | stderr (SessionStart) preferred | `[SELF-IMPROVE QUEUE]`, `[MARKETPLACE-STALE]` |
 | **Class 1 textual variant on hard-gate substrate** | PreToolUse `decision: block` with structured prose | JSON `decision: block` reason | `[PRE-APPROVAL-VERIFICATION-NEEDED]` |
 
@@ -41,7 +41,7 @@ Aggregated landing rates per hook (24h sample, 2026-05-08): see "Per-instruction
 | 4 | `[FAILURE-REPEATED]` | H.7.7 | `hooks/scripts/error-critic.js` | ~16% (escalation events) | **KEEP** | Repeat-failure consolidation — deterministic detection (count ≥ 2) + Claude reasoning |
 | 6 | `[PLAN-SCHEMA-DRIFT]` | H.7.12 + H.7.17 | `hooks/scripts/validators/validate-plan-schema.js` | **80.8%** | **KEEP** | Highest landing rate; reference implementation for tier-1+tier-2 conditional structure |
 | 7 | `[ROUTE-META-UNCERTAIN]` | H.7.16 | `scripts/agent-team/route-decide.js` | (script-level) | **KEEP** | Substrate-meta catch-22 protection. Tier 2 narrowing recommendation: drop FP-prone meta phrases like "forcing instruction" (drift-note 58) |
-| 8 | `[MARKDOWN-EMPHASIS-DRIFT]` | H.7.18 | `hooks/scripts/validators/validate-markdown-emphasis.js` | ~22% | **KEEP, FLAG for migration** | Recovery is mechanical (wrap underscores), not semantic. **Wrong tool** — committed to H.7.27 migration (markdownlint pipeline preferred over PreToolUse hard-gate) |
+| 8 | `[MARKDOWN-EMPHASIS-DRIFT]` | H.7.18 | (RETIRED — was `hooks/scripts/validators/validate-markdown-emphasis.js`) | ~22% (when active) | **RETIRED in H.7.27 — migrated to markdownlint pipeline (MD037 in CI)** | Recovery was mechanical (wrap underscores), not semantic. Forcing-instruction was the wrong tool. Detection now absorbed by `markdownlint-cli2` MD037 rule (default-enabled in `.markdownlint.json`); CI's markdown-lint job catches the cluster pattern at PR time. Empirically verified the same fixture that triggered the hook also triggers MD037 |
 
 ### Class 2 — Operator notice
 
@@ -76,8 +76,8 @@ Aggregated landing rates per hook (24h sample, 2026-05-08): see "Per-instruction
 | Phase | Active | Change |
 |-------|--------|--------|
 | H.7.23.1 (peak) | 11 | reference point at drift-note 21 capture |
-| **H.7.26 (current)** | **9** | -2: `[CONFIRMATION-UNCERTAIN]` consolidated into `[PROMPT-ENRICHMENT-GATE]` `tier: short-confirm`; `[PLUGIN-NOT-LOADED]` retired |
-| H.7.27 (planned) | 8 | -1: `[MARKDOWN-EMPHASIS-DRIFT]` migrated to markdownlint pipeline |
+| H.7.26 | 9 | -2: `[CONFIRMATION-UNCERTAIN]` consolidated into `[PROMPT-ENRICHMENT-GATE]` `tier: short-confirm`; `[PLUGIN-NOT-LOADED]` retired |
+| **H.7.27 (current)** | **8** | -1: `[MARKDOWN-EMPHASIS-DRIFT]` retired — migrated to markdownlint MD037 (CI absorbs detection) |
 
 ### Cap rule
 
@@ -94,7 +94,7 @@ Drift-note 21 was captured H.7.18-ish noting the forcing-instruction count growt
 - **Catalog** (H.7.25 + H.7.26): this doc — per-instruction class assignment + verdicts + retirement status
 - **Cross-references** (H.7.25): each of the 9 emission files gets a one-line comment pointing at Convention G
 - **Consolidation execution** (H.7.26 — drift-note 57): #3 collapsed into #1 with `tier:` discriminator; #9 retired in favor of `session-reset.js` inverse-condition branch
-- **Deferred work**: H.7.27 `[MARKDOWN-EMPHASIS-DRIFT]` migration to markdownlint pipeline
+- **Misclassification migration** (H.7.27 — closes the H.7.25 architect FLAG #6 commitment): #8 `[MARKDOWN-EMPHASIS-DRIFT]` retired; detection absorbed by markdownlint MD037 in CI. Validates the audit's "wrong-tool" finding empirically (CI catches the same cluster pattern the hook detected).
 
 ## Related Patterns
 
@@ -103,4 +103,4 @@ Drift-note 21 was captured H.7.18-ish noting the forcing-instruction count growt
 
 ## Phase
 
-Shipped: H.7.25 (closes drift-note 21 — taxonomy + catalog) + H.7.26 (closes drift-note 57 — consolidation execution; 11 → 9 active markers).
+Shipped: H.7.25 (closes drift-note 21 — taxonomy + catalog) + H.7.26 (closes drift-note 57 — consolidation execution; 11 → 9 active markers) + H.7.27 (closes architect FLAG #6 — `[MARKDOWN-EMPHASIS-DRIFT]` migrated to markdownlint MD037; 9 → 8 active markers; soak-period entry conditions met).

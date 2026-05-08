@@ -107,16 +107,6 @@
             "timeout": 5
           }
         ]
-      },
-      {
-        "matcher": "Edit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/validators/validate-markdown-emphasis.js",
-            "timeout": 5
-          }
-        ]
       }
     ],
     "PreCompact": [
