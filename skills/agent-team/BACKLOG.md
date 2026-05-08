@@ -2,6 +2,45 @@
 
 Deferred work from prior phases, captured here so nothing important gets silently dropped. Each entry: scope, rationale, dependencies, rough estimate.
 
+## Phase H.7.23.1 — Auto-trigger /verify-plan via PreToolUse:ExitPlanMode gate — SHIPPED
+
+**Status**: shipped per user request to close the auto-triggering UX gap left by H.7.23.
+
+### What landed
+
+- NEW `hooks/scripts/validators/verify-plan-gate.js` (~140 LoC) — PreToolUse:ExitPlanMode hook
+- `hooks/hooks.json` adds the new PreToolUse matcher entry
+- `hooks/settings-reference.json` mirrors for legacy install
+- Manifest 1.2.0 → 1.2.1 (patch — UX completion of v1.2.0 promise)
+- 3 install.sh tests (33-35) — blocks/approves/bypass
+
+### How it works
+
+When Claude invokes ExitPlanMode, the hook:
+1. Finds the most-recently-modified plan file in `~/.claude/plans/` (or `$CLAUDE_PLAN_DIR/`)
+2. Checks if HETS-routed (HETS Spawn Plan substantive OR `recommendation: route`)
+3. Checks if `## Pre-Approval Verification` section is present
+4. If HETS-routed AND missing → BLOCK with `[PRE-APPROVAL-VERIFICATION-NEEDED]` (11th forcing instruction)
+5. Else → approve
+
+Block-and-retry pattern mirrors `fact-force-gate` "must Read before Edit." After Claude runs `/verify-plan` (which appends the required section), retrying ExitPlanMode passes silently.
+
+### Bypass
+
+`SKIP_VERIFY_PLAN=1` env var preserves user authority for explicit overrides.
+
+### Verification
+
+- ✓ 35/35 install.sh smoke (was 32/32; +3 H.7.23.1 tests)
+- ✓ All 5 manual probes: blocks-when-missing; approves-when-present; bypass works; out-of-scope tools approve; non-HETS plans approve
+- ✓ `node --check` syntax-OK
+- ✓ Plugin manifest valid JSON; CI workflows parse OK
+
+### Drift-note implications
+
+- Drift-note 21 (forcing-instruction architectural smell) — substrate is now at 11 forcing instructions. Future arc retrospective candidate gets stronger.
+- Drift-note 40 — fully closed (codification + auto-triggering both shipped).
+
 ## Phase H.7.23 — Distribution-channel + verification-discipline hardening (closes drift-notes 37/40/41/42/43/44) — SHIPPED
 
 **Status**: shipped per approved plan. Closes 6 drift-notes captured during the H.7.22 deployment story.

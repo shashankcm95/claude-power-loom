@@ -55,6 +55,18 @@
     ],
     "PreToolUse": [
       {
+        "matcher": "ExitPlanMode",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node HOME_DIR/.claude/hooks/scripts/validators/verify-plan-gate.js",
+            "timeout": 5
+          }
+        ],
+        "description": "H.7.23.1: blocks ExitPlanMode if active plan is HETS-routed AND missing ## Pre-Approval Verification section. Forces /verify-plan to run first (codifies drift-note 40 auto-triggering). Bypass via SKIP_VERIFY_PLAN=1 env var.",
+        "id": "exit-plan:verify-gate"
+      },
+      {
         "matcher": "Read|Edit|Write",
         "hooks": [
           {
