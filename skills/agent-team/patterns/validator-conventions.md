@@ -150,6 +150,66 @@ Apply when:
 - **Single-loose-tier**: real bugs get treated as "advisory"; CI catches them later at higher cost
 - **Tier explosion**: more than 3 tiers creates ambiguity ("is Tier 4 worse than Tier 2?"); cap at 2-3
 
+## Convention D — PreToolUse for gates, PostToolUse for advisory (H.7.19)
+
+Originated in H.7.12 → H.7.17 migration cycle, codified in H.7.19 after audit confirmed all 4 existing PreToolUse hooks are correctly placed.
+
+When adding a new validator hook, choose the layer based on **what happens if you DON'T block**.
+
+### Use PreToolUse when
+
+- The operation would cause **silent-failure** (e.g., skill silently doesn't load without frontmatter; H.5.2 fail-CLOSED on parse error to prevent secrets leakage on parse-error fallback)
+- The operation is a **security violation** (bare secrets in code; protected config modification with sensitive contents)
+- Recovery from the bad state is hard or expensive (file already on disk, secret already committed, skill already broken)
+- Output: `{decision: 'block', reason: '...'}` JSON to stdout. The `reason` explains how to fix.
+
+### Use PostToolUse when
+
+- The operation is fine to complete; you're surfacing **nuance** (style suggestions, schema reminders, MD037 catches)
+- The user can **iterate** (re-Write with backticks; re-Write with missing sections)
+- Forcing-instruction text on stdout suffices — no JSON gate needed
+- Output: forcing instruction text to stdout (no `decision:` JSON; PostToolUse doesn't expect it)
+
+### Decision tree
+
+```text
+Q: Does the bad operation cause silent failure or security violation?
+├── YES → PreToolUse (block to prevent it)
+└── NO  → Does the user need a nudge, schema reminder, or style hint?
+         ├── YES → PostToolUse (advisory; emit forcing instruction)
+         └── NO  → Don't add a hook
+```
+
+### Reference implementations
+
+**PreToolUse gates** (4 hooks, audited H.7.19):
+
+| Hook | Scope | Reason |
+|------|-------|--------|
+| `fact-force-gate` | Read\|Edit\|Write | Silent-failure-prevention — blocks Edit/Write of unread files (would assume stale state) |
+| `config-guard` | Edit\|Write | Security gate — blocks edits to protected config files (.env, .npmrc with secrets) |
+| `validators/validate-no-bare-secrets` | Edit\|Write | Security gate — blocks writes containing bare API keys/tokens. Per H.5.2: fail-CLOSED on parse error. |
+| `validators/validate-frontmatter-on-skills` | Write | Silent-failure-prevention — blocks Write of skill files without YAML frontmatter (skill silently doesn't load) |
+
+**PostToolUse advisory** (3 hooks):
+
+| Hook | Scope | Purpose |
+|------|-------|---------|
+| `error-critic` | Bash | Repeat-failure consolidation; emits `[FAILURE-REPEATED]` at threshold |
+| `validators/validate-plan-schema` | Edit\|Write | Tiered enforcement of plan-template schema (H.7.12 + H.7.17 migrated from PreToolUse) |
+| `validators/validate-markdown-emphasis` | Edit\|Write | MD037 catch via underscore-emphasis detection (H.7.18) |
+
+### Common deviation pattern (H.7.12 → H.7.17 lesson)
+
+H.7.12 chose PreToolUse:Write for `validate-plan-schema.js` because Phase 1 inventory found "no PostToolUse:Write entries in toolkit." This was a **conservative deviation** from theo's H.7.9 Section C original spec which said PostToolUse. The deviation persisted until H.7.17 when `claude-code-guide` consultation confirmed PostToolUse:Write IS supported.
+
+**Lesson**: "no examples in our toolkit" ≠ "not supported by Claude Code." When uncertain about Claude Code behavior, consult docs (or `claude-code-guide` agent — drift-note 24) rather than inferring from absence.
+
+### Failure modes if violated
+
+- **PostToolUse-when-should-be-PreToolUse**: silent failure or security incident reaches the file system before being caught. PostToolUse can't undo writes — only flag them.
+- **PreToolUse-when-should-be-PostToolUse**: friction (every edit waits for blocking validation when advisory was sufficient); validator complexity (must always emit `decision: approve` JSON for non-blocking paths; H.7.17's migration removed this complexity from `validate-plan-schema`).
+
 ## Related Patterns
 
 - [Route-Decision](route-decision.md) — also gates substantive work on environmental signals (the dictionary expansion v1.2 was about the gate being too aggressive in some cases; Convention A is the same lesson applied to validators)
@@ -159,4 +219,4 @@ Apply when:
 
 ## Phase
 
-Shipped: H.7.15 (Conventions A + B); reinforced H.7.18 (Convention C)
+Shipped: H.7.15 (Conventions A + B); reinforced H.7.18 (Convention C); extended H.7.19 (Convention D)

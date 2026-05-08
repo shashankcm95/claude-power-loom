@@ -43,6 +43,19 @@ Before deploying, follow the deploy-checklist skill for the full pre-deployment 
 - Drift notes feed the auto-loop's session-end review (`rules/core/self-improvement.md`).
 - Per the H.7.9 meta-discipline directive: conversations and tasks are the primary plugin testing framework; pattern-emergence observations promote to substrate refinement.
 
+## Hook layer placement (H.7.19)
+
+When adding a new validator hook to `hooks/hooks.json`, default to **PostToolUse** unless the hook MUST block to prevent silent-failure or security violation.
+
+**Decision tree** (matches `skills/agent-team/patterns/validator-conventions.md` Convention D):
+
+- **PreToolUse** when: silent-failure prevention (skill won't load, stale-state edit), security gate (secrets, protected configs), or recovery is hard/expensive
+- **PostToolUse** when: advisory linting, schema reminders, style suggestions — anything where the user can iterate
+
+**Common deviation to avoid**: H.7.12 chose PreToolUse for `validate-plan-schema.js` because the toolkit had zero PostToolUse:Write entries at the time. This was a conservative misreading — "no examples in our toolkit" ≠ "not supported by Claude Code." H.7.17 corrected the deviation after `claude-code-guide` consultation confirmed PostToolUse:Write works.
+
+**Lesson**: when uncertain about Claude Code hook semantics, consult the official docs (or `claude-code-guide` agent — drift-note 24) rather than inferring from absence in our codebase.
+
 ## Markdown emphasis discipline (H.7.18)
 
 When writing markdown (`.md` files), wrap underscore-bearing tokens in backticks. The markdown emphasis parser sees `_token_` as italic emphasis. When unbackticked tokens like `HETS_TOOLKIT_DIR`, `_h70-test`, `_lib/`, `RUN_STATE_BASE`, or `_readPersonaContract` appear in the same paragraph as another underscore (with whitespace between), markdownlint MD037 ("no-space-in-emphasis") triggers and CI fails.

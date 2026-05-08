@@ -2,6 +2,66 @@
 
 Deferred work from prior phases, captured here so nothing important gets silently dropped. Each entry: scope, rationale, dependencies, rough estimate.
 
+## Phase H.7.19 — PreToolUse-vs-PostToolUse audit + Convention D codification (closes drift-note 25) — SHIPPED
+
+**Status**: shipped per approved plan. Closes drift-note 25 from H.7.17 — audit other PreToolUse-vs-PostToolUse decisions for conservative deviations from architectural intent.
+
+### Audit results
+
+| Hook | Triggers `decision: block`? | Reason | Verdict |
+|------|----------------------------|--------|---------|
+| `fact-force-gate.js` | YES (line 116) | "You must Read \"$file\" before editing it." Prevents stale-state edits. | STAY PreToolUse — silent-failure-prevention gate |
+| `config-guard.js` | YES (line 78) | "Config file \"$file\" is protected." Prevents accidental modification of `.env`, `.npmrc`, etc. | STAY PreToolUse — security gate |
+| `validators/validate-no-bare-secrets.js` | YES (lines 181 + 193) | Bare API keys / tokens. Per H.5.2 hardening: fail-CLOSED on parse error. | STAY PreToolUse — security gate |
+| `validators/validate-frontmatter-on-skills.js` | YES (line 96) | Skills without YAML frontmatter silently fail to load. | STAY PreToolUse — silent-failure-prevention gate |
+
+**All 4 PreToolUse hooks correctly placed.** No migrations needed. The drift-note 25 lesson has been internalized post-H.7.17.
+
+Also audited PostToolUse hooks for vestigial PreToolUse code:
+
+- `error-critic.js` (PostToolUse:Bash): 0 `decision:` outputs. Clean.
+- `validate-plan-schema.js` (PostToolUse:Edit|Write per H.7.17): cleaned in H.7.17 migration.
+- `validate-markdown-emphasis.js` (PostToolUse:Edit|Write per H.7.18): clean as designed.
+
+**No code-level findings.** Pure documentation phase.
+
+### What landed
+
+- **`skills/agent-team/patterns/validator-conventions.md`**: NEW Convention D — PreToolUse for gates, PostToolUse for advisory. Decision tree + reference implementations table (4 PreToolUse + 3 PostToolUse hooks) + common deviation pattern (H.7.12 → H.7.17) + failure modes.
+- **`rules/core/workflow.md`**: NEW section "Hook layer placement (H.7.19)" with the same decision tree. Cross-references Convention D.
+- Phase docs: SKILL.md, BACKLOG.md (this entry), CHANGELOG.md.
+
+**No code changes.** No new hooks, no migrations.
+
+### Verification
+
+- ✓ Probe 1: `bash install.sh --hooks --test` → 21/21 passing (regression — H.7.19 doesn't touch hook code)
+- ✓ Probe 2: `node scripts/agent-team/contracts-validate.js` → 0 violations
+- ✓ Probe 3: `node scripts/agent-team/_h70-test.js` → 46/46 passing (regression)
+- ✓ Probe 4: `npx markdownlint-cli2` on modified docs → 0 errors
+
+### Drift-note captured this phase
+
+- **Drift-note 28**: `validate-frontmatter-on-skills.js` early-returns on `toolName !== 'Write'` (line 75) — only blocks Write events, not Edit. An Edit that removes frontmatter from an existing skill file silently passes. Separate concern from the Pre/Post-placement audit. H.7.20 candidate.
+
+### Honest scope discipline
+
+- **No bugs found in audit**: phase is honest documentation, not bug-hunt-pretending. The drift-note 25 lesson WAS already internalized post-H.7.17.
+- **Edit coverage gap (drift-note 28)**: discovered during audit but explicitly out of scope for THIS phase — separate concern (Pre/Post placement vs Edit/Write coverage). Captured for future phase.
+- **No UserPromptSubmit / Stop / SessionStart / PreCompact audit**: those have different semantics (not Pre/Post-tool); out of scope. Drift-note 25 was about the Pre/Post-tool dichotomy.
+
+### H.7.19 follow-ups (deferred)
+
+- **H.7.20 candidate**: drift-note 28 (validate-frontmatter Edit coverage gap)
+- **H.7.21+ candidate (future arc)**: drift-note 21 (forcing-instruction architectural smell — now 8 forcing instructions); drift-note 26 (decision-latency tracking — meta); drift-note 27 (over-fire monitoring on H.7.18 — wait for empirical data)
+
+### Why this is the right shape
+
+- Closes drift-note 25 with audit + codification (no code changes since audit found nothing to migrate)
+- Codifies Pre/Post placement criteria as Convention D — joins H.7.15 Conventions A+B + H.7.18 Convention C in `validator-conventions.md`
+- Honest scope: phase is mostly documentation; doesn't pretend to discover bugs that aren't there
+- Twenty-third distinct phase shape: audit-confirms-correctness + codify-pattern
+
 ## Phase H.7.18 — Markdown emphasis validator (closes drift-note 19) — SHIPPED
 
 **Status**: shipped per approved plan. Closes drift-note 19 from this session — the underscore-emphasis bug that bit me 3 times (H.7.14 commit b6e73ec; H.7.15 commits 6ad2299 + an earlier one). Each fix cost a few minutes; cumulative ~15-20 min + 3 extra CI rounds.
