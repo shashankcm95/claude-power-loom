@@ -28,7 +28,8 @@
     { "id": "F2", "check": "frontmatterHasFields", "args": { "fields": ["id", "role", "depth", "parent", "persona"] }, "required": true },
     { "id": "F3", "check": "outputLengthMin", "args": { "min": 2000 }, "required": true },
     { "id": "F4", "check": "containsKeywords", "args": { "keywords": ["coherence", "gap"] }, "required": false },
-    { "id": "F5", "check": "kb_scope_consumed", "required": true }
+    { "id": "F5", "check": "kb_scope_consumed", "required": true },
+    { "id": "F6", "check": "containsKeywords", "args": { "keywords": ["Principle Audit"] }, "required": true }
   ],
   "antiPattern": [
     { "id": "A1", "check": "noTextSimilarityToPriorRun", "args": { "threshold": 0.6 }, "severity": "warn" },

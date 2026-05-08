@@ -39,6 +39,18 @@
         ],
         "description": "H.4.1: on first prompt of session, inject pending self-improve queue if non-empty (closes the manual /self-improve loop)",
         "id": "prompt:self-improve-queue"
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node HOME_DIR/.claude/hooks/scripts/plugin-loaded-check.js",
+            "timeout": 5
+          }
+        ],
+        "description": "H.7.22: surface [PLUGIN-NOT-LOADED] forcing instruction when marketplace registered but plugin not enabled (closes drift-note 33 — observability without surfacing)",
+        "id": "prompt:plugin-loaded-check"
       }
     ],
     "PreToolUse": [

@@ -2,6 +2,80 @@
 
 Deferred work from prior phases, captured here so nothing important gets silently dropped. Each entry: scope, rationale, dependencies, rough estimate.
 
+## Phase H.7.22 — System Design Principles + Plugin Distribution Validation + R/A/FT Primitives (closes drift-notes 33/34/36) — SHIPPED
+
+**Status**: shipped per approved plan. Two interlocking concerns merged into one phase.
+
+### The dual problem
+
+**Concern 1 (urgent)**: For 42 sessions in 24h, every session-reset log entry recorded `pluginRoot:"(unset)"`, `looksLikePluginInstall:false`, `enabledPlugins:{}`. The plugin was never installed via `/plugin install power-loom@power-loom-marketplace`. Three PostToolUse hooks (H.7.7 / H.7.12 / H.7.18) never wired in real config — fire counts in logs were ALL from install.sh smoke tests.
+
+**Concern 2 (structural)**: SOLID/DRY/KISS/YAGNI/clean-code principles not codified in HETS substrate. `fundamentals.md` had KISS/DRY/YAGNI but missing SOLID; `architect.md` listed 5 design qualities but didn't name foundational principles or require Principle Audit; `04-architect.contract.json` had no principle-adherence check. Both shared root cause: discipline-by-default not codified.
+
+### What landed (6 phases)
+
+| Phase | Scope | Key files |
+|-------|-------|-----------|
+| 1 | Codify principles in HETS substrate | `fundamentals.md` (SOLID added); `system-design-principles.md` (NEW canonical reference); `architect.md` (layered Principles); `04-architect.contract.json` (F6 added); `super-agent.md` (Principle Adherence Summary) |
+| 2 | Plan-schema validator extension | `validate-plan-schema.js` Tier 1 conditional check |
+| 3 | Plugin deployment fix | `plugin.json` (1.0.0 → 1.1.0); `bin/migrate-to-plugin.sh` (NEW); `install.sh` banner; `README.md` |
+| 4 | R/A/FT contracts | `hooks/scripts/_lib/settings-reader.js` (NEW); `contract-plugin-hook-deployment` validator |
+| 5 | Surfacing nudge | `plugin-loaded-check.js` (NEW); `hooks.json` + `settings-reference.json` wiring; `session-reset.js` inverse condition |
+| 6 | Docs + tests + drift-notes + self-improve | SKILL.md / BACKLOG.md / CHANGELOG.md; install.sh tests; `/plugin` self-improve promoted |
+
+### R/A/FT mapping
+
+| Principle | Primitive |
+|-----------|-----------|
+| Reliability | `contract-plugin-hook-deployment` (every plugin hook deployed somewhere); matcher-drift detection; Principle Audit required in architect output |
+| Availability | Migration script (deterministic, user-confirmed, reversible); manifest version bump per phase; DRY `_lib/settings-reader.js` |
+| Fault tolerance | `[PLUGIN-NOT-LOADED]` forcing instruction (9th in family); legacy install.sh kept as fallback; inverse-condition stderr nudge |
+
+### Pre-Approval Verification — NEW PROCESS (drift-note 40)
+
+Per user request, parallel architect + code-reviewer spawn ran pre-ExitPlanMode and caught **4 HIGH/CRITICAL bugs** (3 bash bugs in migration script that would have shipped broken; 1 false-negative auto-pass in deployment validator) + 4 plan-honesty issues. All 15 fixes incorporated before user surfacing. This process should be codified in `rules/toolkit/core/workflow.md` for routed phases.
+
+### HETS architect spawn failure
+
+Architect agent spawned in Phase 2 of plan-mode returned a meta-response about plan-mode compliance instead of design output (drift-note 36). Root cause: `agents/architect.md` didn't require Principle Audit in output, and `04-architect.contract.json` had no functional check requiring it. Phase 1 fixes both — future architect spawns have explicit contract requirement.
+
+### Verification
+
+- ✓ install.sh smoke (was 26/26; +N H.7.22 tests; see Phase 6 for count)
+- ✓ `_h70-test` 46/46 (regression — H.7.22 doesn't touch route-decide)
+- ✓ contracts-validate emits 4 expected violations on dogfood machine (matcher-drift on validate-frontmatter + 3 unwired PostToolUse hooks). These clear after user runs migration + `/plugin install`.
+- ✓ `node --check` syntax-ok on all new JS
+- ✓ `bash -n` syntax-ok on migrate-to-plugin.sh
+- ✓ Manual probes: forcing instruction fires from plugin-loaded-check.js; session-reset stderr nudge fires; settings-reader correctly detects plugin-not-enabled state
+
+### Why this is the right shape
+
+- Closes immediate plugin-distribution bug AND prevents recurrence
+- Codifies discipline-by-default for architect-tier output (drift-note 39 captures expansion to other agents as future work)
+- R/A/FT principles mapped 1:1 to file changes
+- Reuses existing pattern infrastructure (contracts, forcing instructions, `_lib/`, validator-conventions)
+- Preserves legacy install.sh as fallback — graceful degradation
+- 26th distinct phase shape
+
+### Drift-notes captured during H.7.22
+
+- **35 (deferred not closed)**: Distribution chaos-test orchestrator → H.7.23 per YAGNI (Phase 4 contract catches the failure class)
+- **36 (closed)**: HETS architect agent meta-response failure — root cause was missing Principle Audit requirement in agent definition; Phase 1 fixes
+- **37**: Manifest version bump should be enforced by CI — add check that fails if `phase-H.X.Y` tag exists without manifest version bump
+- **38**: install.sh as legacy fallback creates UX fork — eventually deprecate (likely H.8.x)
+- **39**: Principle codification should also extend to other agents (planner, code-reviewer, optimizer, security-auditor) — H.7.22 only covers architect
+- **40**: Pre-approval verification (parallel architect + code-reviewer) should be codified as workflow rule — caught real bugs in this phase
+
+### Out of scope (deferred)
+
+- Distribution chaos-test orchestrator (H.7.23 candidate)
+- Convention F documentation (premature with single deployment-coverage validator)
+- Marketplace auto-update on schedule (manual `git pull` discipline + Phase 4 contract sufficient)
+- OpenTelemetry export of hook metrics (future phase)
+- Productionizing metric analysis script (deferred per user)
+- Removal of install.sh (deprecation cycle is future phase)
+- Cross-machine plugin install validation (single-machine for H.7.22)
+
 ## Phase H.7.21 — Edit-result scan in validate-no-bare-secrets + Convention E (closes drift-note 29) — SHIPPED
 
 **Status**: shipped per approved plan. Closes drift-note 29 from H.7.20 plan — audit of other PreToolUse validators for Edit-coverage gaps similar to drift-note 28.

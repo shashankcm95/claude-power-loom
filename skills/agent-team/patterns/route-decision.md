@@ -2,7 +2,7 @@
 pattern: route-decision
 status: active+enforced
 intent: Deterministic gate that decides whether a task warrants HETS routing vs root-direct response, scored on 7 weighted dimensions with two thresholds and a borderline band.
-related: [tech-stack-analyzer, trust-tiered-verification, prompt-distillation, validator-conventions]
+related: [tech-stack-analyzer, trust-tiered-verification, prompt-distillation, validator-conventions, system-design-principles]
 ---
 
 ## Summary

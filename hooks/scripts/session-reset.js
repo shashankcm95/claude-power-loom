@@ -51,6 +51,38 @@ try {
     logger('plugin_root_warning', { reason: 'unset_in_plugin_context' });
   }
 
+  // H.7.22 — inverse-condition stderr nudge (closes drift-note 33). When NOT
+  // running from a plugin install but the user HAS registered the marketplace,
+  // they intended the plugin path but never completed install. Surface this at
+  // session start as the earliest possible signal — the [PLUGIN-NOT-LOADED]
+  // forcing instruction (UserPromptSubmit) is the louder companion.
+  if (!looksLikePluginInstall) {
+    try {
+      // Lazy require — failure here must not crash session-reset.
+      const reader = require('./_lib/settings-reader.js');
+      const marketplaces = reader.getRegisteredMarketplaces();
+      const enabled = reader.isPluginEnabled('power-loom@power-loom-marketplace');
+      if (marketplaces.includes('power-loom-marketplace') && !enabled) {
+        process.stderr.write(
+          '[session-reset] NOTICE: power-loom-marketplace is registered in ' +
+          'settings.json but the plugin is not enabled. Hooks are firing via ' +
+          'the legacy install.sh path. Run `/plugin install ' +
+          'power-loom@power-loom-marketplace` to migrate (a forcing instruction ' +
+          'will surface in the UserPromptSubmit hook with full guidance).\n'
+        );
+        logger('plugin_not_loaded_inverse_warn', {
+          marketplaceRegistered: true,
+          pluginEnabled: false,
+          looksLikePluginInstall: false,
+        });
+      }
+    } catch (err) {
+      // settings-reader missing or unreadable — fail-open; the
+      // UserPromptSubmit hook will catch this on next prompt.
+      logger('inverse_warn_skipped', { reason: err.message });
+    }
+  }
+
   const tmpDir = os.tmpdir();
   const files = fs.readdirSync(tmpDir);
   const now = Date.now();

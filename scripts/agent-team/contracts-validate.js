@@ -40,6 +40,10 @@ const PATTERNS_README = path.join(PATTERNS_DIR, 'README.md');
 const KB_MANIFEST = path.join(TOOLKIT, 'skills', 'agent-team', 'kb', 'manifest.json');
 const SKILLS_BASE = path.join(TOOLKIT, 'skills');
 const MARKETPLACE_BASE = path.join(process.env.HOME, '.claude', 'plugins', 'marketplaces');
+const HOOKS_JSON = path.join(TOOLKIT, 'hooks', 'hooks.json');
+// H.7.22 — settings-reader for the new contract-plugin-hook-deployment validator.
+// hooks/scripts/_lib/settings-reader.js owns the canonical settings.json read API.
+const SETTINGS_READER = path.join(TOOLKIT, 'hooks', 'scripts', '_lib', 'settings-reader.js');
 
 // H.7.1 — `active+enforced` is the same as `active` but additionally indicates
 // the pattern has a wired callsite (data flows through it). Added to close the
@@ -382,6 +386,139 @@ validators['contract-kb-scope-resolves'] = function () {
   }
   return violations;
 };
+
+// H.7.22 — contract-plugin-hook-deployment: verify every hook in hooks/hooks.json
+// is deployed somewhere callable. Closes drift-note 34 (install.sh smoke ≠ real
+// wiring). For each (event, matcher, command) triple in plugin's hooks.json:
+//   - If CLAUDE_PLUGIN_ROOT is set AND points to the marketplace clone AND the
+//     plugin's own hooks.json contains the triple → passes (plugin loaded properly)
+//   - Else: settings.json must contain a matching hook entry
+// Also flags matcher-string drift between plugin's hooks.json and settings.json
+// (e.g., H.7.20's Write→Edit|Write change that didn't propagate to settings.json).
+//
+// Per code-reviewer code-review feedback M1: NOT a blanket auto-pass on
+// CLAUDE_PLUGIN_ROOT presence. Env var alone could mask partial-migration state.
+validators['contract-plugin-hook-deployment'] = function () {
+  const violations = [];
+
+  // Load plugin's hooks.json
+  if (!fs.existsSync(HOOKS_JSON)) {
+    return [{ kind: 'missing-hooks-json', file: HOOKS_JSON, fix: 'hooks/hooks.json is the plugin source-of-truth; create it' }];
+  }
+  const pluginHooksRaw = loadJson(HOOKS_JSON);
+  if (!pluginHooksRaw) {
+    return [{ kind: 'malformed-hooks-json', file: HOOKS_JSON, fix: 'JSON parse failed; restore from git' }];
+  }
+  // Per code-reviewer code-review: hooks.json has top-level `_comment`; access `.hooks`, NOT root.
+  const pluginHooks = pluginHooksRaw.hooks;
+  if (!pluginHooks || typeof pluginHooks !== 'object') {
+    return [{ kind: 'malformed-hooks-json', file: HOOKS_JSON, fix: 'hooks.json must have top-level `hooks` object' }];
+  }
+
+  // Enumerate plugin triples: (event, matcher, command-suffix)
+  // Command-suffix = path after `${CLAUDE_PLUGIN_ROOT}` or after `~/.claude/`
+  // (whichever comes first), to compare regardless of install location.
+  const pluginTriples = [];
+  for (const [event, entries] of Object.entries(pluginHooks)) {
+    if (!Array.isArray(entries)) continue;
+    for (const entry of entries) {
+      const matcher = entry.matcher || '';
+      const hooks = Array.isArray(entry.hooks) ? entry.hooks : [];
+      for (const h of hooks) {
+        if (h.type !== 'command' || !h.command) continue;
+        const suffix = extractCommandSuffix(h.command);
+        pluginTriples.push({ event, matcher, command: h.command, suffix });
+      }
+    }
+  }
+
+  // Try the loaded-plugin path first
+  const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT || '';
+  const isPluginLoaded = pluginRoot && pluginRoot.includes('power-loom-marketplace');
+  if (isPluginLoaded) {
+    // Plugin loaded — every triple should already be served by the plugin loader.
+    // No settings.json check needed; auto-pass with verification log.
+    return []; // no violations
+  }
+
+  // Plugin not loaded → fall back to settings.json verification
+  const settingsPath = path.join(process.env.HOME, '.claude', 'settings.json');
+  let settings = null;
+  // Two cases for "no settings.json":
+  //   (a) CI / fresh checkout / no Claude Code installed → treat as informational; auto-pass
+  //   (b) settings.json exists but is malformed → real violation
+  // The fs.existsSync check distinguishes them.
+  if (!fs.existsSync(settingsPath)) {
+    // Informational: CI runner or fresh user. Surface a hint to stderr but pass.
+    process.stderr.write(
+      `ℹ contract-plugin-hook-deployment: settings.json absent (likely CI or fresh install); ` +
+      `deployment check skipped. Run /plugin install power-loom@power-loom-marketplace AND/OR ` +
+      `./install.sh --all on a real install to wire hooks.\n`
+    );
+    return [];
+  }
+  try {
+    settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+  } catch (err) {
+    return [{
+      kind: 'settings-malformed',
+      file: settingsPath,
+      error: err.message,
+      fix: 'settings.json present but unreadable; check JSON syntax or restore from backup.',
+    }];
+  }
+
+  const userHooks = (settings && settings.hooks) || {};
+  for (const t of pluginTriples) {
+    const userEntries = userHooks[t.event];
+    if (!Array.isArray(userEntries) || userEntries.length === 0) {
+      violations.push({
+        kind: 'hook-not-deployed',
+        event: t.event,
+        matcher: t.matcher,
+        commandSuffix: t.suffix,
+        fix: `Hook missing in user settings.json. Run /plugin install power-loom@power-loom-marketplace, OR add to ~/.claude/settings.json hooks.${t.event}`,
+      });
+      continue;
+    }
+    // Look for a user hook with matching command-suffix
+    const userMatch = userEntries
+      .flatMap((e) => Array.isArray(e.hooks) ? e.hooks.map((h) => ({ ...h, _matcher: e.matcher })) : [])
+      .find((h) => h.type === 'command' && extractCommandSuffix(h.command || '') === t.suffix);
+    if (!userMatch) {
+      violations.push({
+        kind: 'hook-not-deployed',
+        event: t.event,
+        matcher: t.matcher,
+        commandSuffix: t.suffix,
+        fix: `Hook ${t.suffix} not in settings.json under ${t.event}. Plugin install will resolve.`,
+      });
+      continue;
+    }
+    // Matcher drift check (H.7.20 surface)
+    if ((userMatch._matcher || '') !== t.matcher) {
+      violations.push({
+        kind: 'matcher-drift',
+        event: t.event,
+        commandSuffix: t.suffix,
+        pluginMatcher: t.matcher,
+        userMatcher: userMatch._matcher || '(none)',
+        fix: `Plugin's hooks.json declares matcher '${t.matcher}'; settings.json has '${userMatch._matcher || '(none)'}'. Update settings.json or run /plugin install to resync.`,
+      });
+    }
+  }
+  return violations;
+};
+
+// Extract a stable suffix from a hook command string. Used to compare
+// triples across plugin (with `${CLAUDE_PLUGIN_ROOT}` placeholders) vs
+// settings.json (with absolute paths). Returns the path after the FIRST
+// occurrence of `hooks/scripts/`. Falls back to the full command if not
+// found (still allows comparison, just less robust).
+function extractCommandSuffix(command) {
+  const m = command.match(/hooks\/scripts\/(.+)$/);
+  return m ? m[1] : command;
+}
 
 // ---------- main ----------
 

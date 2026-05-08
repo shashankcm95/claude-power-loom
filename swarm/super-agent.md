@@ -148,6 +148,16 @@ biggest remaining concern, recommended next phase]
 ## Compliance Snapshot
 [Paste output of compliance-probe.sh, interpret it]
 
+## Principle Adherence Summary
+[Roll up Principle Audit findings across orchestrator outputs. Per
+H.7.22, every architect-tier design output (orchestrators + actors at
+architect persona) must include a `Principle Audit` section citing
+SOLID/DRY/KISS/YAGNI. Tally:
+- Outputs WITH explicit Principle Audit: N/M
+- Outputs MISSING Principle Audit: <list>
+- Most-cited principle violations across the run
+- Conflicts surfaced (e.g., KISS vs SRP) and how they were resolved]
+
 ## Recommended Next Phase
 [1-3 high-leverage changes, ranked by impact]
 ```

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-// PostToolUse:Edit|Write validator (H.7.12 + H.7.17): plan-template schema enforcement.
+// PostToolUse:Edit|Write validator (H.7.12 + H.7.17 + H.7.22): plan-template schema enforcement.
 //
 // Closes theo's H.7.9 Section C deferral. **H.7.17 migration**: this hook moved
 // from PreToolUse:Edit|Write (H.7.12 conservative path) to PostToolUse:Edit|Write
@@ -10,8 +10,16 @@
 // PostToolUse supports any tool name including Write/Edit; absence-of-need ≠
 // absence-of-support. Migration restores theo's original architectural intent.
 //
+// **H.7.22 extension**: Added conditional `Principle Audit` requirement. When
+// plan contains "HETS Spawn Plan" OR "Routing Decision" with route-recommendation,
+// the plan MUST include a `## Principle Audit` section citing SOLID/DRY/KISS/YAGNI.
+// Closes drift-note 13/14/15 (principles not codified in HETS substrate). See
+// `skills/agent-team/patterns/system-design-principles.md` for the canonical
+// principle reference.
+//
 // Tiered enforcement (H.7.12 — user-approved via AskUserQuestion):
 //   - Tier 1 (truly mandatory): Context, (Files To Modify OR Phases), Verification Probes
+//   - Tier 1 conditional (H.7.22): Principle Audit (when HETS-spawned or route-recommended)
 //   - Tier 2 (conditional on new-style plan): Routing Decision, HETS Spawn Plan
 //   - Tier 3 (aspirational hints): Out of Scope, Drift Notes
 //
@@ -64,6 +72,11 @@ const TIER_2_SECTIONS = ['Routing Decision', 'HETS Spawn Plan'];
 // Tier 3: aspirational hints (stderr only; no forcing instruction).
 const TIER_3_SECTIONS = ['Out of Scope', 'Drift Notes'];
 
+// H.7.22 — Principle Audit section. Required (Tier 1) when the plan involves
+// architectural decisions: HETS Spawn Plan present OR Routing Decision with
+// route recommendation. Closes drift-notes 13/14/15.
+const PRINCIPLE_AUDIT_SECTION = 'Principle Audit';
+
 /**
  * Test whether content has an H2-level heading matching `sectionName`.
  * Case-sensitive (markdown convention). Allows optional parenthetical suffix
@@ -112,6 +125,37 @@ function isNewStylePlan(content) {
 }
 
 /**
+ * H.7.22 — Principle Audit requirement detection. Returns true if the plan
+ * involves architectural decisions warranting an explicit Principle Audit:
+ *   (a) HETS Spawn Plan section present (architect-tier work), OR
+ *   (b) Routing Decision with `recommendation: route` (substantive work
+ *       triggering the gate's full HETS path)
+ *
+ * Plans not matching these stay Tier 1 unchanged — Principle Audit is NOT
+ * required for trivial fixes, mechanical extensions, or root-routed phases.
+ *
+ * @param {string} content Plan file content
+ * @returns {boolean} true if plan must include Principle Audit
+ */
+function requiresPrincipleAudit(content) {
+  // (a) HETS Spawn Plan section with SUBSTANTIVE body content (not just "N/A",
+  // "None", "Skip", etc.). The heading-with-stub-body case is for plans that
+  // declare "no HETS work" — Principle Audit not warranted there.
+  const hetsBodyRe = /^## HETS Spawn Plan\s*\n+\s*([^\n]+)/im;
+  const hetsMatch = content.match(hetsBodyRe);
+  if (hetsMatch) {
+    const firstBodyLine = hetsMatch[1].trim();
+    const stubPattern = /^(?:N\/?A|None|Skip|Skipped|Not applicable|--+|—+)\.?$/i;
+    if (firstBodyLine.length > 0 && !stubPattern.test(firstBodyLine)) {
+      return true;
+    }
+  }
+  // (b) Routing Decision contains `recommendation: route` (the substantive signal)
+  if (/recommendation['"]?\s*[:=]\s*['"]?route['"]?/i.test(content)) return true;
+  return false;
+}
+
+/**
  * Compute missing sections per tier.
  *
  * @param {string} content Plan file content
@@ -132,6 +176,14 @@ function checkTiers(content) {
   if (isNewStylePlan(content)) {
     for (const s of TIER_2_SECTIONS) {
       if (!hasH2Heading(content, s)) missing.tier2.push(s);
+    }
+  }
+
+  // Tier 1 conditional (H.7.22): Principle Audit required when plan involves
+  // architectural decisions (HETS Spawn Plan present OR route-recommended).
+  if (requiresPrincipleAudit(content)) {
+    if (!hasH2Heading(content, PRINCIPLE_AUDIT_SECTION)) {
+      missing.tier1.push(`${PRINCIPLE_AUDIT_SECTION} (HETS-spawned or route-recommended plan)`);
     }
   }
 

@@ -36,9 +36,23 @@ Use Architecture Decision Records:
 **Decision**: [What we chose]
 **Consequences**: [What follows from this choice]
 **Alternatives Considered**: [What we rejected and why]
+**Principle Audit**: [Decisions mapped to applied principles — see Principles section. Each decision must reference at least one foundational principle (SOLID/DRY/KISS/YAGNI) AND at least one design quality (Modularity/Scalability/Maintainability/Security/Performance). If a principle conflict exists, surface it.]
 ```
 
 ## Principles
+
+### Foundational principles (SOLID/DRY/KISS/YAGNI)
+
+The bedrock for any design output. Every ADR must cite at least one in its Principle Audit. Canonical reference: `skills/agent-team/patterns/system-design-principles.md`.
+
+- **SOLID** — Single Responsibility, Open/Closed, Liskov Substitution, Interface Segregation, Dependency Inversion. Structural shape of code.
+- **DRY** — Don't Repeat Yourself. Extract shared logic when repetition is real (3+ instances), not speculative.
+- **KISS** — Keep It Simple. Optimize for clarity over cleverness.
+- **YAGNI** — You Ain't Gonna Need It. Don't build for speculative future needs.
+
+### Design qualities (operational)
+
+Layered above the foundational principles. Each design decision should optimize for these in priority order based on the system's current bottleneck.
 
 1. **Modularity** — Single responsibility, clear interfaces, independent deployability
 2. **Scalability** — Horizontal scaling, stateless design, efficient queries

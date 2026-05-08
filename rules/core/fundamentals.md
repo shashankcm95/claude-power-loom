@@ -10,6 +10,16 @@ ALWAYS create new objects. NEVER mutate existing ones. Immutable data prevents h
 - **DRY**: Extract shared logic when repetition is real, not speculative.
 - **YAGNI**: Do not build features or abstractions before they are needed.
 
+## SOLID (object-oriented + functional decomposition)
+
+- **Single Responsibility**: Each module/function has one reason to change. If a hook script does two unrelated things, split it.
+- **Open/Closed**: Extend behavior by adding new code, not modifying existing code. New validators, new contracts, new patterns are added alongside — not by editing the existing.
+- **Liskov Substitution**: Subtypes must honor the contracts of their supertypes. Less applicable in untyped JS but holds for duck-typed interfaces (e.g., a forcing-instruction emitter must always emit valid JSON-on-stdout).
+- **Interface Segregation**: Don't force callers to depend on what they don't use. Prefer narrow named exports (`readSettings`, `isPluginEnabled`) over a single fat object.
+- **Dependency Inversion**: Depend on abstractions, not concretions. Hook scripts depend on `_log.js`, `findToolkitRoot()`, `_lib/settings-reader.js` — not on raw `fs`/`path` everywhere.
+
+When in doubt, see `skills/agent-team/patterns/system-design-principles.md` for the canonical reference with worked examples + violation patterns + cross-references to anti-patterns.
+
 ## File Organization
 
 Many small files over few large files:

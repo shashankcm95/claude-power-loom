@@ -10,21 +10,38 @@
 
 ## Install
 
-```bash
-# Via Claude Code's plugin system (works now — no Anthropic approval needed)
-/plugin marketplace add shashankcm95/claude-power-loom
-/plugin install power-loom
+**Canonical path — Claude Code plugin marketplace** (recommended for all users):
 
-# Or via the legacy installer (kept for environments without /plugin support)
+```bash
+/plugin marketplace add shashankcm95/claude-power-loom
+/plugin install power-loom@power-loom-marketplace
+```
+
+After install, restart Claude Code (or run `/reload-plugins`). Verify: hook scripts now resolve via `${CLAUDE_PLUGIN_ROOT}`, and `~/.claude/logs/session-reset.log` should show `pluginRoot` set + `looksLikePluginInstall: true`.
+
+**Legacy path — `install.sh`** (fallback for shell-only setup, CI provisioning, or environments without `/plugin` support):
+
+```bash
 git clone https://github.com/shashankcm95/claude-power-loom.git ~/Documents/claude-toolkit
 cd ~/Documents/claude-toolkit && ./install.sh --all
 ```
 
+The legacy path wires hooks directly into `~/.claude/settings.json`. It works but doesn't get `/plugin update` integration and requires manual re-runs to pick up new releases.
+
+**Migrating from legacy → plugin** (H.7.22):
+
+If you ran `install.sh` previously and want to switch to the plugin path, the substrate detects the legacy state and emits `[PLUGIN-NOT-LOADED]` at session start asking Claude to perform the migration. To migrate manually (outside Claude):
+
+```bash
+bash ~/Documents/claude-toolkit/bin/migrate-to-plugin.sh
+# follow prompts; backs up settings.json, clears legacy hooks block
+/plugin install power-loom@power-loom-marketplace
+# then restart your Claude Code session
+```
+
 > **Why repo and plugin names differ**: GitHub repo is `claude-power-loom` (Claude-ecosystem discovery via `claude-` prefix) while the plugin is `power-loom` (matches Anthropic marketplace convention — external plugins don't use `claude-`). Deliberate split: GitHub-level discoverability + marketplace-convention compliance.
 >
-> **Note on prior phase tags**: this repo was previously named `claude-skills-consolidated`. GitHub auto-redirects old URLs; existing bookmarks + phase-tag references continue to resolve. v1.0.0 is the first stable release.
-
-After install, restart Claude Code (or run `/reload-plugins`).
+> **Note on prior phase tags**: this repo was previously named `claude-skills-consolidated`. GitHub auto-redirects old URLs; existing bookmarks + phase-tag references continue to resolve. v1.0.0 is the first stable release; v1.1.0 (H.7.22) adds plugin distribution validation + R/A/FT primitives.
 
 **Using HETS on your real project?** See **[skills/agent-team/USING.md](skills/agent-team/USING.md)** — 7-step end-user walkthrough with a worked example. For toolkit-internals, continue reading.
 

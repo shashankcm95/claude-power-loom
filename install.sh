@@ -3,6 +3,18 @@ set -euo pipefail
 
 # claude-toolkit installer
 # Copies selected components into ~/.claude/ for global use.
+#
+# *** LEGACY INSTALL PATH (H.7.22) ***
+# This installer is kept as a FALLBACK for environments without Claude Code's
+# plugin system (e.g., shell-only setup, CI provisioning). The CANONICAL install
+# path is now via the Claude Code plugin marketplace:
+#
+#   /plugin install power-loom@power-loom-marketplace
+#
+# Plugin installs auto-resolve hook paths via ${CLAUDE_PLUGIN_ROOT}, get
+# automatic /plugin update support, and don't require manual settings.json
+# wiring. install.sh is retained for legacy use cases and CI smoke testing.
+# See README.md "Install" section for the plugin-vs-legacy decision tree.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAUDE_DIR="$HOME/.claude"
@@ -558,6 +570,72 @@ SKILL_EOF
     failed=$((failed + 1))
   fi
   rm -rf /tmp/h7-21
+
+  # Test 27 (H.7.22): plugin-loaded-check.js forcing instruction fires when
+  # marketplace registered + plugin disabled. Mock settings.json via temp HOME.
+  mkdir -p /tmp/h7-22-mock-home/.claude
+  cat > /tmp/h7-22-mock-home/.claude/settings.json <<'SETTINGS_EOF'
+{
+  "hooks": {},
+  "enabledPlugins": {},
+  "extraKnownMarketplaces": {
+    "power-loom-marketplace": {
+      "source": { "source": "github", "repo": "shashankcm95/claude-power-loom" }
+    }
+  }
+}
+SETTINGS_EOF
+  rm -f /tmp/plugin-loaded-check-*.marker
+  local h7_22_nudge_result
+  h7_22_nudge_result=$(HOME=/tmp/h7-22-mock-home echo '{"hook_event_name":"UserPromptSubmit"}' | HOME=/tmp/h7-22-mock-home node "$CLAUDE_DIR/hooks/scripts/plugin-loaded-check.js" 2>&1)
+  if echo "$h7_22_nudge_result" | grep -q '\[PLUGIN-NOT-LOADED\]'; then
+    echo "  ✓ plugin-loaded-check: H.7.22 fires [PLUGIN-NOT-LOADED] when registered+disabled"
+    passed=$((passed + 1))
+  else
+    echo "  ✗ plugin-loaded-check: H.7.22 should fire forcing instruction — got: ${h7_22_nudge_result:0:120}"
+    failed=$((failed + 1))
+  fi
+
+  # Test 28 (H.7.22): plugin-loaded-check silent when plugin enabled
+  cat > /tmp/h7-22-mock-home/.claude/settings.json <<'SETTINGS_EOF'
+{
+  "hooks": {},
+  "enabledPlugins": { "power-loom@power-loom-marketplace": true },
+  "extraKnownMarketplaces": {
+    "power-loom-marketplace": {
+      "source": { "source": "github", "repo": "shashankcm95/claude-power-loom" }
+    }
+  }
+}
+SETTINGS_EOF
+  rm -f /tmp/plugin-loaded-check-*.marker
+  local h7_22_silent_result
+  h7_22_silent_result=$(HOME=/tmp/h7-22-mock-home echo '{"hook_event_name":"UserPromptSubmit"}' | HOME=/tmp/h7-22-mock-home node "$CLAUDE_DIR/hooks/scripts/plugin-loaded-check.js" 2>&1)
+  if ! echo "$h7_22_silent_result" | grep -q '\[PLUGIN-NOT-LOADED\]'; then
+    echo "  ✓ plugin-loaded-check: H.7.22 silent when plugin enabled"
+    passed=$((passed + 1))
+  else
+    echo "  ✗ plugin-loaded-check: H.7.22 should be silent — got: ${h7_22_silent_result:0:120}"
+    failed=$((failed + 1))
+  fi
+  rm -rf /tmp/h7-22-mock-home /tmp/plugin-loaded-check-*.marker 2>/dev/null
+
+  # Test 29 (H.7.22): validate-plan-schema requires Principle Audit on HETS-routed plans
+  mkdir -p /tmp/h7-22-plan-test/.claude/plans
+  local h7_22_plan_no_audit='# Phase X — test\n\n## Context\nA test.\n\n## Routing Decision\n```json\n{ "recommendation": "route" }\n```\n\n## HETS Spawn Plan\nMira architect.\n\n## Files To Modify\nNone.\n\n## Verification Probes\nN/A.\n'
+  printf "%b" "$h7_22_plan_no_audit" > /tmp/h7-22-plan-test/.claude/plans/test-plan.md
+  local h7_22_plan_json
+  h7_22_plan_json=$(printf '{"tool_name":"Write","tool_input":{"file_path":"/tmp/h7-22-plan-test/.claude/plans/test-plan.md","content":%s}}' "$(printf "%b" "$h7_22_plan_no_audit" | node -e "let s='';process.stdin.on('data',c=>s+=c);process.stdin.on('end',()=>process.stdout.write(JSON.stringify(s)))")")
+  local h7_22_plan_result
+  h7_22_plan_result=$(echo "$h7_22_plan_json" | node "$CLAUDE_DIR/hooks/scripts/validators/validate-plan-schema.js" 2>&1)
+  if echo "$h7_22_plan_result" | grep -q 'Principle Audit'; then
+    echo "  ✓ validate-plan-schema: H.7.22 requires Principle Audit on HETS-routed plan"
+    passed=$((passed + 1))
+  else
+    echo "  ✗ validate-plan-schema: H.7.22 should flag missing Principle Audit — got: ${h7_22_plan_result:0:120}"
+    failed=$((failed + 1))
+  fi
+  rm -rf /tmp/h7-22-plan-test
 
 
   echo ""
