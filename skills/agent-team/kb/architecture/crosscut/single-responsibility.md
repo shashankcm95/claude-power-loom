@@ -22,7 +22,62 @@ status: active+enforced
 
 ## Summary
 
-A class, module, or transaction should have **one and only one reason to change**. Single Responsibility (SRP) is about *coupling reasons-to-change*, not about counting methods or doing one thing. Violations show up as: many constructor-injected dependencies (smell), util-bag modules that grow unboundedly, change amplification across unrelated concerns, or class names redundant with method names. Cited as the first SOLID principle and applies recursively at function / class / module / package / transaction / service granularities.
+**Principle**: A class should have one, and only one, reason to change. Recursive at function / class / module / package / transaction / service / architecture-quantum.
+**Test**: list the actors → if multiple, decompose by actor.
+**Smells**: 5+ constructor args; util-bag modules; class+method name redundancy.
+**Sources**: Martin (Clean Code ch 10) + Noback (PoPD ch 1) + Ousterhout (PoSD ch 4) + DDIA ch 7.
+**Substrate**: `_lib/` extraction (H.7.14); Convention G (H.7.25).
+
+## Quick Reference
+
+**Principle (Martin, Clean Code ch 10)**: A class should have one, and only one, reason to change.
+
+Equivalent at module / package / transaction / service / architecture-quantum scale. The load-bearing word is *reason* (or its proxy: *actor*, *task*, *consistency unit*).
+
+**The "reason to change" test**:
+
+1. List the actors (CFO / COO / CTO / Operations / Legal / etc.) requesting changes
+2. For each method, identify which actor's request would drive it
+3. Multiple actors → SRP violation; decompose by actor
+4. Naming exercise: can you name the module without "and" / "or"? `UserAccountAndPaymentManager` is a confession of violation
+
+**Top smells**:
+
+- 5+ constructor-injected dependencies (Noback, PoPD ch 1)
+- Class name redundant with method name (`Toasters.get_toaster()`) — charlax
+- Util-bag modules — `util.py` / `tools.py` / `lib.py` accumulating unrelated helpers — charlax
+- Temporal decomposition — modules organized by *when* operations happen, not *what* knowledge they encapsulate (Ousterhout, PoSD ch 5)
+- Cross-actor coupling visible in git log — one PR touches many files for one logical change
+
+**Refactoring patterns**:
+
+- **Extract Class** — split by actor; original delegates or composes via DI
+- **Extract Service** (architecture-level) — per Hard Parts ch 7 granularity disintegrators: code volatility / scalability / fault isolation / security / extensibility
+- **Compose / Inject** — original module becomes a composer holding references to extracted modules
+
+**SRP at granularities**:
+
+| Level | "Reason to change" expression | Source |
+|-------|-------------------------------|--------|
+| Function | Does one thing — describable without "and"/"or" | Clean Code ch 3 |
+| Class | One actor / change-driver | Clean Code ch 10 |
+| Module | One change-pressure (Common Closure) | Noback / Martin |
+| Package | One release reason | Noback CCP |
+| Bounded Context | One ubiquitous language | Evans (DDD) |
+| Transaction | One consistency unit | DDIA ch 7 |
+| Architecture Quantum | One deployable + scalable + fault-isolated unit | Hard Parts ch 2 |
+
+**Tensions**:
+
+- **Ousterhout's Deep Modules**: SRP is "one reason to change," NOT "small." Both views serve cognitive load reduction (see [deep-modules](deep-modules.md))
+- **DRY**: extract only when *knowledge* is duplicated, not just code (Pragmatic Programmer)
+- **Performance**: profile first; relax SRP locally where measured cost demands; document the deviation
+
+**Substrate examples**:
+
+- `_lib/` discipline (H.7.14): 6 hardcoded-path callers → one stable abstraction; one reason-to-change per primitive
+- Convention G class taxonomy (H.7.25): 3 forcing-instruction classes, each with one reason to exist; SRP applied at substrate-feature taxonomy
+- HETS persona contracts: each `*.contract.json` defines one persona's responsibility scope
 
 ## Intent
 

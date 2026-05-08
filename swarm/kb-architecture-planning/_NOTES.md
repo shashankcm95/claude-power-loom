@@ -254,6 +254,83 @@ First-wave authoring is complete. Decisions for next session:
 
 Recommend: pause authoring. First-wave is comprehensive enough to anchor most architectural decisions. Second-wave + integration are post-soak v2.1+ work.
 
+## Tier compression experiment (2026-05-08)
+
+User raised concern: per-injection token cost compounds across many HETS spawns; can we compress to reduce load?
+
+Initial counter-proposal: hyphen-shorthand with documented "ignore hyphens" convention. Pushed back: BPE tokenization may not favor hyphenated forms; activation-recognition on canonical phrases matters; maintainability cost.
+
+**Tested alternative on `crosscut/single-responsibility.md`**: tier the doc into 3 layers so retrieval can load only what's needed.
+
+### Tier structure
+
+| Tier | Content | When loaded |
+|------|---------|-------------|
+| 1 | `## Summary` (5-bullet form, dense) | Every kb_scope hit (cheap inline) |
+| 2 | `## Summary` + `## Quick Reference` (mid-density bullets) | Refresher / design-in-progress |
+| 3 | Full doc (current style — comprehensive prose) | Deep-dive authoring / comprehensive review |
+
+### Measurement results
+
+Approximate token counts (using char/4 heuristic; actual BPE tokenization may vary):
+
+| Tier | ~Tokens | % of full |
+|------|--------|-----------|
+| Tier 1 (Summary only) | ~120 | **2.0%** |
+| Tier 2 (Summary + Quick Ref) | ~830 | **13.8%** |
+| Tier 3 (Full doc) | ~6050 | 100% |
+
+### Frequency-weighted economics
+
+If retrieval system can target the right tier:
+
+```text
+Estimated injection mix:
+  80% Tier 1 (general anchoring)
+  15% Tier 2 (design-in-progress refresher)
+  5%  Tier 3 (deep-dive authoring)
+
+Frequency-weighted avg tokens loaded:
+  0.80 × 122 + 0.15 × 833 + 0.05 × 6048 = ~525 tokens
+
+vs. always loading full doc (current behavior):
+  ~6050 tokens
+
+Reduction: ~91% on average injection size
+```
+
+### Why this beats hyphen-shorthand
+
+- Summary itself didn't shrink much (~11% char reduction, similar token count). The win is **structural**, not lexical.
+- Tier 1 stays full-fidelity English; LLM activation recognition on canonical phrases preserved.
+- Authors can write naturally; reviewers can read naturally; no convention to memorize.
+- Compatible with prompt caching at the API level.
+- Compatible with future `kb-resolver cat-summary` / `cat-quick-ref` / `cat` capability.
+
+### What would need to change for the win to land
+
+The retrieval mechanism needs to be **tier-aware**:
+
+- `kb-resolver cat <id>` — current behavior (Tier 3 = full doc)
+- `kb-resolver cat-summary <id>` — NEW (Tier 1 = Summary only)
+- `kb-resolver cat-quick-ref <id>` — NEW (Tier 2 = Summary + Quick Reference)
+
+This is v2.1+ kb-resolver work; not implemented yet. The tier structure on disk is forward-compatible.
+
+### Decision
+
+Roll out tier structure to other 9 first-wave docs incrementally. The shape is good; token economics work; readability preserved.
+
+Substrate-track impact: zero. Documentation reorganization only; no runtime changes; soak counter unaffected.
+
+### Open follow-up
+
+When v2.1+ kb-resolver gets tier-aware loading, we should also implement:
+
+- `architecture-relevance-detector.js` — maps task signal → tier choice (general anchoring → Tier 1; design-in-progress → Tier 2; deep-dive → Tier 3)
+- HETS spawn flow defaults to Tier 1; escalate to Tier 2/3 on demand
+- Empirical token-cost measurement vs prior pattern
+
 ## Done log
 
 Patterns shipped to `skills/agent-team/kb/architecture/`. Move entries here from authoring queue when PR merges.
