@@ -2,6 +2,52 @@
 
 Deferred work from prior phases, captured here so nothing important gets silently dropped. Each entry: scope, rationale, dependencies, rough estimate.
 
+## Phase H.7.26 — Forcing-instruction consolidation execution (closes drift-note 57) — SHIPPED
+
+**Status**: shipped per H.7.25 commitments. Mechanical implementation of the two consolidation candidates surfaced by H.7.25's family-level audit. Per route-meta-uncertain forcing instruction guidance: this is mechanical implementation of an already-decided design — recommendation correct; proceed.
+
+### What landed (3 sub-phases)
+
+| Sub-phase | Scope | Key files |
+|-----------|-------|-----------|
+| 1 | `[CONFIRMATION-UNCERTAIN]` consolidation | `hooks/scripts/prompt-enrich-trigger.js` — unified marker with `tier: full-enrichment` / `tier: short-confirm` discriminator; `buildShortConfirmInstruction` replaces former `buildConfirmationUncertainInstruction`; log entries include `tier` field |
+| 2 | `[PLUGIN-NOT-LOADED]` retirement | `hooks/scripts/plugin-loaded-check.js` deleted; entry removed from `hooks/hooks.json` + `hooks/settings-reference.json`. State coverage preserved by `session-reset.js` inverse-condition stderr branch (Class 2 honest at SessionStart) |
+| 3 | Catalog + Convention G + manifest + tests | `forcing-instruction-family.md` (#3 + #9 marked RETIRED-in-H.7.26 with rationale; "Active marker counts" table added); `validator-conventions.md` Phase footers updated; `plugin.json` 1.3.1 → 1.3.2; `install.sh` tests 27-28 retired + test 10 updated to assert tier discriminator |
+
+### Active marker count change
+
+| Phase | Active | Change |
+|-------|--------|--------|
+| H.7.25 | 11 | reference (no consolidation work yet) |
+| **H.7.26 (this)** | **9** | -2: `[CONFIRMATION-UNCERTAIN]` → tier of `[PROMPT-ENRICHMENT-GATE]`; `[PLUGIN-NOT-LOADED]` retired |
+| H.7.27 (planned) | 8 | -1: `[MARKDOWN-EMPHASIS-DRIFT]` → markdownlint pipeline |
+
+### Why no spawn this phase
+
+Mechanical implementation of an already-decided design (drift-note 57 surfaced in H.7.25 architect ADR; verdicts approved in H.7.25 plan). Per the route-meta-uncertain forcing instruction's own guidance: "If task is mechanical implementation of an already-decided design, current recommendation likely correct — proceed." Pre-Approval Verification was honored at the design layer (H.7.25); execution is straightforward.
+
+### Verification
+
+- ✓ install.sh smoke 38/38 (was 40/40; -2 for retired tests 27-28; test 10 updated to new tier assertion)
+- ✓ 46/46 `_h70-test` regression preserved
+- ✓ 0 `pattern-related-bidirectional` violations
+- ✓ Manual probe: `echo '{"prompt":"go on"}' | node prompt-enrich-trigger.js` → emits `[PROMPT-ENRICHMENT-GATE]` with `tier: short-confirm`
+- ✓ Manual probe: `echo '{"prompt":"fix the bug"}' | node prompt-enrich-trigger.js` → emits `[PROMPT-ENRICHMENT-GATE]` with `tier: full-enrichment`
+- ✓ Manual probe: plugin-loaded-check.js no longer present in tree; hooks.json and settings-reference.json have UserPromptSubmit reduced to 2 entries (was 3)
+
+### Drift-note implications
+
+- **Drift-note 21** further closed (taxonomy + catalog + consolidation execution all shipped)
+- **Drift-note 57** fully closed
+- **Drift-note 47** (forcing-instruction shared helper) — still pending; revisit when Class 1 has 7+ callers (currently 5: prompt-enrich-trigger.js + route-decide.js × 2 + error-critic.js + validate-plan-schema.js + validate-markdown-emphasis.js — counting markers not files = 6; helpers extraction still premature)
+
+### Out of scope (deferred)
+
+- **H.7.27** committed: `[MARKDOWN-EMPHASIS-DRIFT]` migration to markdownlint pipeline
+- **Soak period** post-H.7.27: 5+ phases with 0 new drift-notes captured before v2.0.0
+- **Drift-note 35** (Distribution chaos-test 4th orchestrator → v2.1.0)
+- **Drift-note 38** (install.sh deprecation cycle → H.8.x)
+
 ## Phase H.7.25 — Forcing-instruction family retrospective + Convention G + catalog (closes drift-note 21) — SHIPPED
 
 **Status**: shipped per approved plan. Audits the 11-instruction family that drift-note 21 captured as "architectural smell" and reframes it from "band-aiding what should be hard gates" to "compositional growth that bifurcated into three semantic classes without an explicit taxonomy." Convention G ships the taxonomy; family catalog tracks per-instruction assignment.

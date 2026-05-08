@@ -1,22 +1,24 @@
 ---
 pattern: forcing-instruction-family
 status: active+enforced
-intent: Canonical catalog of the 11-instruction forcing-instruction family — the bracketed-marker text-emission mechanism (`[CATEGORY-NAME] ... [/CATEGORY-NAME]`) that grew across H.4.x → H.7.23.1. Per-instruction class assignment, landing-rate observations, phase-tag origins, and verdicts from the H.7.25 retrospective audit (drift-note 21 closure). Cross-referenced from Convention G in `validator-conventions.md` which codifies the three-class taxonomy.
+intent: Canonical catalog of the forcing-instruction family — the bracketed-marker text-emission mechanism (`[CATEGORY-NAME] ... [/CATEGORY-NAME]`) that grew across H.4.x → H.7.23.1 to 11 instructions, then consolidated to 9 active in H.7.26 (drift-note 57). Per-instruction class assignment, landing-rate observations, phase-tag origins, and verdicts from the H.7.25 retrospective audit + H.7.26 consolidation execution (drift-notes 21 + 57 closures). Cross-referenced from Convention G in `validator-conventions.md` which codifies the three-class taxonomy.
 related: [validator-conventions, route-decision]
 ---
 
 ## Summary
 
-The forcing-instruction family is the substrate's mechanism for "deterministic detection + Claude-side semantic recovery" — bracketed-marker text emitted to stdout (or stderr / `decision: block`) that Claude reads and acts on. The pattern grew from 1 instruction (H.4.x `[PROMPT-ENRICHMENT-GATE]`) to 11 across 9 hook scripts by H.7.23.1.
+The forcing-instruction family is the substrate's mechanism for "deterministic detection + Claude-side semantic recovery" — bracketed-marker text emitted to stdout (or stderr / `decision: block`) that Claude reads and acts on. The pattern grew from 1 instruction (H.4.x `[PROMPT-ENRICHMENT-GATE]`) to 11 across 9 hook scripts by H.7.23.1, then consolidated to **9 active** in H.7.26 (drift-note 57 closure).
 
 Drift-note 21 captured the count growth as "architectural smell." H.7.25 audited the family at family-level and reframed: the smell is **compositional**, not contaminating. The 11 instructions span **three semantically distinct response classes** that collapsed onto one mechanism without explicit taxonomy. Convention G (in `validator-conventions.md`) names the classes; this doc is the catalog of which instruction belongs to which.
+
+H.7.26 executed the two consolidation candidates surfaced by H.7.25: `[CONFIRMATION-UNCERTAIN]` (#3) collapsed into `[PROMPT-ENRICHMENT-GATE]` (#1) with a `tier:` discriminator (`tier: short-confirm` vs `tier: full-enrichment`), and `[PLUGIN-NOT-LOADED]` (#9) retired in favor of `session-reset.js`'s inverse-condition stderr branch (the same substrate state surfaced once at SessionStart instead of duplicated across UserPromptSubmit + SessionStart). Active count: 11 → 9.
 
 ## Three classes (per Convention G)
 
 | Class | What | Layer | Examples |
 |-------|------|-------|----------|
-| **1** Advisory forcing instruction | Deterministic detection + semantic recovery | stdout (UserPromptSubmit / PostToolUse) | `[PROMPT-ENRICHMENT-GATE]`, `[ROUTE-DECISION-UNCERTAIN]`, `[CONFIRMATION-UNCERTAIN]`, `[FAILURE-REPEATED]`, `[PLAN-SCHEMA-DRIFT]`, `[ROUTE-META-UNCERTAIN]`, `[MARKDOWN-EMPHASIS-DRIFT]` |
-| **2** Operator notice | Status surface, no Claude action expected | stderr (SessionStart) preferred | `[SELF-IMPROVE QUEUE]`, `[PLUGIN-NOT-LOADED]`, `[MARKETPLACE-STALE]` |
+| **1** Advisory forcing instruction | Deterministic detection + semantic recovery | stdout (UserPromptSubmit / PostToolUse) | `[PROMPT-ENRICHMENT-GATE]` (with `tier:` discriminator post-H.7.26), `[ROUTE-DECISION-UNCERTAIN]`, `[FAILURE-REPEATED]`, `[PLAN-SCHEMA-DRIFT]`, `[ROUTE-META-UNCERTAIN]`, `[MARKDOWN-EMPHASIS-DRIFT]` |
+| **2** Operator notice | Status surface, no Claude action expected | stderr (SessionStart) preferred | `[SELF-IMPROVE QUEUE]`, `[MARKETPLACE-STALE]` |
 | **Class 1 textual variant on hard-gate substrate** | PreToolUse `decision: block` with structured prose | JSON `decision: block` reason | `[PRE-APPROVAL-VERIFICATION-NEEDED]` |
 
 The third row is **not a peer Class 3** — it's a documented variant of Class 1 textual conventions applied on a hard-gate (PreToolUse `decision: block`) substrate. Single-instance is variant, not class.
@@ -33,9 +35,9 @@ Aggregated landing rates per hook (24h sample, 2026-05-08): see "Per-instruction
 
 | # | Marker | Phase | File | Landing rate | Verdict | Notes |
 |---|--------|-------|------|--------------|---------|-------|
-| 1 | `[PROMPT-ENRICHMENT-GATE]` | H.4.x | `hooks/scripts/prompt-enrich-trigger.js` | ~16% (hook-aggregated; per-marker via raw log) | **KEEP** | Vagueness genuinely heuristic; semantic recovery (4-part enrichment) only Claude can produce |
+| 1 | `[PROMPT-ENRICHMENT-GATE]` (post-H.7.26: `tier: full-enrichment` and `tier: short-confirm` body field) | H.4.x + H.7.26 consolidation | `hooks/scripts/prompt-enrich-trigger.js` | ~16% (hook-aggregated; per-marker via raw log) | **KEEP (consolidated)** | Vagueness genuinely heuristic; semantic recovery (4-part enrichment OR consult-prior-turn) only Claude can produce. H.7.26 absorbed former [CONFIRMATION-UNCERTAIN] as `tier: short-confirm` |
 | 2 | `[ROUTE-DECISION-UNCERTAIN]` | H.7.5 | `scripts/agent-team/route-decide.js` | (script-level; no hook log) | **KEEP** | Score abstained; recovery is `--context` re-invoke (Claude semantic call) |
-| 3 | `[CONFIRMATION-UNCERTAIN]` | H.4.3 | `hooks/scripts/prompt-enrich-trigger.js` | (subset of #1) | **CONSOLIDATE → #1 (deferred to H.7.26)** | Same hook, same layer, same "consult prior turn" semantic. Performative differentiation |
+| 3 | `[CONFIRMATION-UNCERTAIN]` | H.4.3 | `hooks/scripts/prompt-enrich-trigger.js` | (subset of #1) | **RETIRED in H.7.26 — consolidated into #1 as `tier: short-confirm`** | Same hook, same layer, same "consult prior turn" semantic. Performative differentiation removed; tier discriminator preserves the lighter semantic recovery path under unified marker |
 | 4 | `[FAILURE-REPEATED]` | H.7.7 | `hooks/scripts/error-critic.js` | ~16% (escalation events) | **KEEP** | Repeat-failure consolidation — deterministic detection (count ≥ 2) + Claude reasoning |
 | 6 | `[PLAN-SCHEMA-DRIFT]` | H.7.12 + H.7.17 | `hooks/scripts/validators/validate-plan-schema.js` | **80.8%** | **KEEP** | Highest landing rate; reference implementation for tier-1+tier-2 conditional structure |
 | 7 | `[ROUTE-META-UNCERTAIN]` | H.7.16 | `scripts/agent-team/route-decide.js` | (script-level) | **KEEP** | Substrate-meta catch-22 protection. Tier 2 narrowing recommendation: drop FP-prone meta phrases like "forcing instruction" (drift-note 58) |
@@ -46,7 +48,7 @@ Aggregated landing rates per hook (24h sample, 2026-05-08): see "Per-instruction
 | # | Marker | Phase | File | Landing rate | Verdict | Notes |
 |---|--------|-------|------|--------------|---------|-------|
 | 5 | `[SELF-IMPROVE QUEUE]` | H.4.1 | `hooks/scripts/session-self-improve-prompt.js` | ~12% | **KEEP, retag as Class 2** | Inbox notification, not action ask. Reclassify via Convention G; no behavior change |
-| 9 | `[PLUGIN-NOT-LOADED]` | H.7.22 | `hooks/scripts/plugin-loaded-check.js` | (low post-migration) | **CONSOLIDATE → #10 (deferred to H.7.26)** | Same substrate state as #10. Layer redundancy: SessionStart stderr (#10) + UserPromptSubmit stdout (#9). The doubling was intentional per H.7.22 design but reads as duplicated emission across two layers — collapse to #10 only |
+| 9 | `[PLUGIN-NOT-LOADED]` | H.7.22 | (RETIRED — was `hooks/scripts/plugin-loaded-check.js`) | (low post-migration) | **RETIRED in H.7.26 — same state covered by `session-reset.js` inverse-condition stderr branch** | Same substrate state as #10's adjacent inverse-condition branch. Layer redundancy collapsed: kept the SessionStart stderr (Class 2 honest); removed UserPromptSubmit stdout (Class 1 dressing on a Class 2 state). The duplication was intentional per H.7.22 but read as bifurcated emission — `session-reset.js` already fires the same nudge to stderr at the earliest possible signal |
 | 10 | `[MARKETPLACE-STALE]` | H.7.23 | `hooks/scripts/session-reset.js` | ~12% | **KEEP, retag as Class 2** | Status surface, no Claude action expected. Convention G reclassifies; no behavior change |
 
 ### Class 1 textual variant on hard-gate substrate
@@ -63,17 +65,19 @@ Aggregated landing rates per hook (24h sample, 2026-05-08): see "Per-instruction
 
 2. **The "smell" is compositional growth**, not band-aiding. Three classes accumulated under one mechanism without explicit taxonomy. Convention G names the classes; the catalog (this doc) tracks per-instruction class assignment.
 
-3. **Two consolidation candidates** — instructions 1+3 (same hook, same semantic) and 9+10 (same substrate state, redundant layer). Mechanical consolidation deferred to H.7.26.
+3. **Two consolidation candidates** — instructions 1+3 (same hook, same semantic) and 9+10 (same substrate state, redundant layer). **Both shipped in H.7.26**: #3 collapsed into #1 with `tier:` discriminator; #9 retired (state covered by `session-reset.js` inverse-condition branch).
 
 4. **One misclassification** — `[MARKDOWN-EMPHASIS-DRIFT]` (#8) has mechanical recovery (wrap underscores), not semantic. Forcing-instruction is the wrong tool. Migration committed to H.7.27.
 
 5. **Single-instance is variant, not class** — `[PRE-APPROVAL-VERIFICATION-NEEDED]` (#11) is the only `decision: block` reason borrowing forcing-instruction textual conventions. Documented as variant of Class 1 on hard-gate substrate, not as peer Class 3.
 
-### Post-H.7.26 active count
+### Active marker counts
 
-After consolidation (H.7.26): 11 → 9 active markers.
-
-After `[MARKDOWN-EMPHASIS-DRIFT]` migration (H.7.27): 9 → 8 active markers.
+| Phase | Active | Change |
+|-------|--------|--------|
+| H.7.23.1 (peak) | 11 | reference point at drift-note 21 capture |
+| **H.7.26 (current)** | **9** | -2: `[CONFIRMATION-UNCERTAIN]` consolidated into `[PROMPT-ENRICHMENT-GATE]` `tier: short-confirm`; `[PLUGIN-NOT-LOADED]` retired |
+| H.7.27 (planned) | 8 | -1: `[MARKDOWN-EMPHASIS-DRIFT]` migrated to markdownlint pipeline |
 
 ### Cap rule
 
@@ -81,15 +85,16 @@ Per Convention G: **max 15 active markers** before mandatory family-level audit.
 
 If first audit (when count crosses 15) goes well, the cap rule itself is empirically validated. If the audit forces meaningful consolidation again, the cap was the right preventative.
 
-## Drift-note 21 closure
+## Drift-note 21 + 57 closure
 
-Drift-note 21 was captured H.7.18-ish noting the forcing-instruction count growth. H.7.25 closes it with:
+Drift-note 21 was captured H.7.18-ish noting the forcing-instruction count growth. H.7.25 closed the taxonomy gap; H.7.26 closed the consolidation work:
 
-- **Reframe**: smell is compositional, not contaminating
-- **Codification**: Convention G (3 classes + decision tree + cap rule + failure modes) in `validator-conventions.md`
-- **Catalog**: this doc — per-instruction class assignment + verdicts
-- **Cross-references**: each of the 9 emission files gets a one-line comment pointing at Convention G
-- **Deferred work**: H.7.26 consolidation (#1+#3, #9 retire); H.7.27 `[MARKDOWN-EMPHASIS-DRIFT]` migration
+- **Reframe** (H.7.25): smell is compositional, not contaminating
+- **Codification** (H.7.25): Convention G (3 classes + decision tree + cap rule + failure modes) in `validator-conventions.md`
+- **Catalog** (H.7.25 + H.7.26): this doc — per-instruction class assignment + verdicts + retirement status
+- **Cross-references** (H.7.25): each of the 9 emission files gets a one-line comment pointing at Convention G
+- **Consolidation execution** (H.7.26 — drift-note 57): #3 collapsed into #1 with `tier:` discriminator; #9 retired in favor of `session-reset.js` inverse-condition branch
+- **Deferred work**: H.7.27 `[MARKDOWN-EMPHASIS-DRIFT]` migration to markdownlint pipeline
 
 ## Related Patterns
 
@@ -98,4 +103,4 @@ Drift-note 21 was captured H.7.18-ish noting the forcing-instruction count growt
 
 ## Phase
 
-Shipped: H.7.25 (closes drift-note 21).
+Shipped: H.7.25 (closes drift-note 21 — taxonomy + catalog) + H.7.26 (closes drift-note 57 — consolidation execution; 11 → 9 active markers).
