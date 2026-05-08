@@ -1,3 +1,8 @@
+---
+name: research-mode
+description: Anti-hallucination protocol for tasks where accuracy matters. Enforces evidence-first reasoning, source-cascade workflow, and explicit "I don't know" over speculation. Toggle on when fabricated facts cause real harm.
+---
+
 # Research Mode — Anti-Hallucination Protocol
 
 Enforces evidence-first reasoning when accuracy matters. Toggle on for tasks where fabricated facts cause real harm.

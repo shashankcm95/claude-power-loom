@@ -103,7 +103,9 @@ The H.7.18 `validate-markdown-emphasis.js` PostToolUse hook detects this pattern
 
 **For HETS-routed phases**, run `/verify-plan` before `ExitPlanMode`. The verification spawns architect + code-reviewer agents in parallel against the plan file, catches concrete bugs and plan-honesty issues, and appends a `## Pre-Approval Verification` section to the plan with structured findings.
 
-**Codifies drift-note 40**: pattern that caught 4 HIGH/CRITICAL bugs in H.7.22 + 5 substantive issues in H.7.23. In both cases, the verification was estimated at ~10-15 minutes and prevented hotfix rounds. The pattern pays for itself within the same phase.
+**Codifies drift-note 40**: pattern that caught 4 HIGH/CRITICAL bugs in H.7.22, 5 substantive issues in H.7.23, and 8 issues (1 FAIL + 7 FLAGs) in H.7.24. In all three cases, the verification was estimated at ~10-15 minutes and prevented hotfix rounds. The pattern continues to pay for itself within the same phase.
+
+**Principle codification scope (H.7.22 + H.7.24)**: foundational principles (SOLID/DRY/KISS/YAGNI) referenced from Layer 1 are codified across `agents/architect.md` (Layer 1+2 reference), `agents/planner.md`, `agents/code-reviewer.md`, `agents/optimizer.md`, `agents/security-auditor.md` (Layer 1 only). Persona contracts `04-architect.contract.json` (F6), `03-code-reviewer.contract.json` (F7), `12-security-engineer.contract.json` (F10) require explicit Principle Audit / Principle keyword presence in spawned actor output. Future agents that are design-shaped should follow architect's Layer 1+2 pattern (per drift-note 53 — captured H.7.24).
 
 **When the rule applies** — plan contains `## HETS Spawn Plan` (with substantive content, NOT "N/A") OR `Routing Decision` JSON has `"recommendation": "route"`. The plan-schema validator enforces this gate at PostToolUse — `[PLAN-SCHEMA-DRIFT]` fires if the section is missing.
 

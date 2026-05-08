@@ -1,3 +1,8 @@
+---
+name: agent-swarm
+description: Multi-agent workflow for large features that span many files and concern areas. Coordinates parallel sub-agents (architect / code-reviewer / planner) with role-scoped contracts and merge-back integration.
+---
+
 # Agent Swarm Orchestration
 
 Multi-agent workflow for large features that span many files and concern areas.

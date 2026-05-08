@@ -770,6 +770,55 @@ GATE_EOF
   fi
   rm -rf /tmp/h7-23-1-gate-test
 
+  # Test 36 (H.7.24): all SKILL.md files have frontmatter (drift-note 49 closure)
+  local h7_24_missing_frontmatter=0
+  for skill_file in $(find "$SCRIPT_DIR/skills" -name "SKILL.md" 2>/dev/null); do
+    local first_line
+    first_line=$(head -1 "$skill_file")
+    if [ "$first_line" != "---" ]; then
+      h7_24_missing_frontmatter=$((h7_24_missing_frontmatter + 1))
+    fi
+  done
+  if [ "$h7_24_missing_frontmatter" -eq 0 ]; then
+    echo "  ✓ skill-files-frontmatter: H.7.24 all SKILL.md files have frontmatter"
+    passed=$((passed + 1))
+  else
+    echo "  ✗ skill-files-frontmatter: H.7.24 $h7_24_missing_frontmatter SKILL.md file(s) missing frontmatter"
+    failed=$((failed + 1))
+  fi
+
+  # Test 37 (H.7.24): prompt-enrich-trigger SKIPs `?` (drift-note 52 closure)
+  local h7_24_qmark_result
+  h7_24_qmark_result=$(echo '{"prompt":"?"}' | node "$CLAUDE_DIR/hooks/scripts/prompt-enrich-trigger.js" 2>&1)
+  if [ -z "$h7_24_qmark_result" ] || ! echo "$h7_24_qmark_result" | grep -q 'PROMPT-ENRICHMENT-GATE'; then
+    echo "  ✓ prompt-enrich-trigger: H.7.24 single ? prompt does NOT fire enrichment gate"
+    passed=$((passed + 1))
+  else
+    echo "  ✗ prompt-enrich-trigger: H.7.24 ? should have been skipped — got: ${h7_24_qmark_result:0:120}"
+    failed=$((failed + 1))
+  fi
+
+  # Test 38 (H.7.24): contract-plugin-hook-deployment surfaces informational
+  # stderr when enabledPlugins truthy + CLAUDE_PLUGIN_ROOT unset (drift-note 50).
+  # Mock settings.json to set up the condition.
+  mkdir -p /tmp/h7-24-mock-home/.claude
+  cat > /tmp/h7-24-mock-home/.claude/settings.json <<'SETTINGS_EOF'
+{
+  "hooks": {},
+  "enabledPlugins": { "power-loom@power-loom-marketplace": true }
+}
+SETTINGS_EOF
+  local h7_24_enabled_result
+  h7_24_enabled_result=$(HOME=/tmp/h7-24-mock-home node "$SCRIPT_DIR/scripts/agent-team/contracts-validate.js" --scope contract-plugin-hook-deployment 2>&1 || true)
+  if echo "$h7_24_enabled_result" | grep -q 'enabledPlugins shows.*enabled'; then
+    echo "  ✓ contract-plugin-hook-deployment: H.7.24 informational stderr fires when enabledPlugins truthy"
+    passed=$((passed + 1))
+  else
+    echo "  ✗ contract-plugin-hook-deployment: H.7.24 informational message missing — got: ${h7_24_enabled_result:0:200}"
+    failed=$((failed + 1))
+  fi
+  rm -rf /tmp/h7-24-mock-home
+
 
   echo ""
   echo "  Results: $passed passed, $failed failed"

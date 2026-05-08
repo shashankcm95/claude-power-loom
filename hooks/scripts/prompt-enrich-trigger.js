@@ -70,6 +70,13 @@ const OBSERVATION_PATTERNS = [
 ];
 
 const SKIP_PATTERNS = [
+  // H.7.24 — drift-note 52: single-char `?` interjections (and `??`, `???`)
+  // are conversation-continuation queries that need full context to interpret;
+  // deterministic enrichment can't help. Per H.7.24 plan code-reviewer FAIL #3,
+  // narrowed from over-inclusive `^\s*[?!.]+\s*$` to `?`-only — single `.`,
+  // `!`, `...`, `?!` etc. may be legitimate prompts and stay subject to the
+  // length-based catch-all.
+  /^\s*\?+\s*$/,
   // Slash commands
   /^\s*\//,
   // Confirmation responses (Phase-C: extended with combinations and common phrases)

@@ -441,9 +441,37 @@ validators['contract-plugin-hook-deployment'] = function () {
     return []; // no violations
   }
 
-  // Plugin not loaded → fall back to settings.json verification
+  // H.7.24 — drift-note 50: when plugin appears enabled per settings.json
+  // (enabledPlugins truthy) but CLAUDE_PLUGIN_ROOT is unset (running outside
+  // session context), emit informational stderr noting state-suggests-active
+  // without claiming verified-deployed. Per H.7.24 plan code-reviewer FLAG #1:
+  // settings-side `enabledPlugins` truthy is a WEAKER signal than a plugin
+  // loader injecting CLAUDE_PLUGIN_ROOT — could mask a broken cache / failed
+  // install. So we DO NOT auto-pass here, just surface noise reduction.
   const settingsPath = path.join(process.env.HOME, '.claude', 'settings.json');
   let settings = null;
+  try {
+    if (fs.existsSync(settingsPath)) {
+      const settingsForEnabledCheck = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+      const enabled = settingsForEnabledCheck && settingsForEnabledCheck.enabledPlugins
+        && Boolean(settingsForEnabledCheck.enabledPlugins['power-loom@power-loom-marketplace']);
+      if (enabled) {
+        process.stderr.write(
+          `ℹ contract-plugin-hook-deployment: enabledPlugins shows ` +
+          `power-loom@power-loom-marketplace enabled; CLAUDE_PLUGIN_ROOT unset ` +
+          `(running outside plugin-loaded session). Settings-side state suggests ` +
+          `plugin should be active; full verification requires running from inside ` +
+          `a Claude Code session. The deployment check below is conservative.\n`
+        );
+        // Continue — don't auto-pass. Settings.json verification still runs below
+        // since enabledPlugins alone could mask a corrupted cache or failed install.
+      }
+    }
+  } catch {
+    // Defensive: fall through to the existing settings-not-found / malformed branches
+  }
+
+  // Plugin not loaded → fall back to settings.json verification
   // Two cases for "no settings.json":
   //   (a) CI / fresh checkout / no Claude Code installed → treat as informational; auto-pass
   //   (b) settings.json exists but is malformed → real violation

@@ -45,6 +45,8 @@ Use Architecture Decision Records:
 
 The bedrock for any design output. Every ADR must cite at least one in its Principle Audit. Canonical reference: `skills/agent-team/patterns/system-design-principles.md`.
 
+> **Reference shape note (H.7.24)**: This file (`agents/architect.md`) is the canonical Layer 1+2 reference shape. **Design-shaped agents** (future: e.g., a hypothetical `system-designer.md`) should follow the full Layer 1+2 pattern. **Non-design-shaped agents** follow Layer 1 only — see `agents/planner.md`, `agents/code-reviewer.md`, `agents/optimizer.md`, `agents/security-auditor.md` for the simplified treatment (foundational principles referenced; no Layer 2 design-quality framework).
+
 - **SOLID** — Single Responsibility, Open/Closed, Liskov Substitution, Interface Segregation, Dependency Inversion. Structural shape of code.
 - **DRY** — Don't Repeat Yourself. Extract shared logic when repetition is real (3+ instances), not speculative.
 - **KISS** — Keep It Simple. Optimize for clarity over cleverness.

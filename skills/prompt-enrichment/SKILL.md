@@ -1,3 +1,8 @@
+---
+name: prompt-enrichment
+description: Transform vague user prompts into structured 4-part prompts (task / scope / constraints / output). Reduces miscommunication and produces better outcomes by enforcing explicit framing before execution.
+---
+
 # Prompt Enrichment — Structured Prompt Builder
 
 Transform vague user prompts into structured, actionable prompts that reduce miscommunication and produce better outcomes. Uses a 4-part framework with technique selection.

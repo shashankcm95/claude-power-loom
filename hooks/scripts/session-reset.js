@@ -97,7 +97,24 @@ try {
       const mirrorPath = marketplaceReader.getMirrorRoot();
       if (mirrorPath) {
         const ageDays = marketplaceReader.getMirrorAgeDays(mirrorPath);
-        const STALE_THRESHOLD_DAYS = 7;
+        // H.7.24 — drift-note 46: env var override CLAUDE_MARKETPLACE_STALE_DAYS
+        // for the staleness threshold. Default 7 days. Per H.7.24 plan code-reviewer
+        // FLAG #4: validate input — `Number.isFinite(parsed) && parsed > 0`.
+        // Invalid (NaN / non-positive) → fall back to default with stderr warning
+        // so the user gets diagnostic feedback on bad config.
+        const rawThreshold = process.env.CLAUDE_MARKETPLACE_STALE_DAYS;
+        const parsedThreshold = rawThreshold ? parseInt(rawThreshold, 10) : NaN;
+        let STALE_THRESHOLD_DAYS = 7;
+        if (rawThreshold !== undefined && rawThreshold !== '') {
+          if (Number.isFinite(parsedThreshold) && parsedThreshold > 0) {
+            STALE_THRESHOLD_DAYS = parsedThreshold;
+          } else {
+            process.stderr.write(
+              `[session-reset] WARNING: CLAUDE_MARKETPLACE_STALE_DAYS="${rawThreshold}" ` +
+              `is invalid (must be positive integer). Falling back to default 7 days.\n`
+            );
+          }
+        }
         if (ageDays !== null && ageDays > STALE_THRESHOLD_DAYS) {
           process.stderr.write(
             '\n[MARKETPLACE-STALE]\n' +

@@ -35,6 +35,14 @@ jobs:
           # Need full tag info (including annotation) for the release notes.
           fetch-depth: 0
 
+      # H.7.24 — drift-note 51 fix: explicitly fetch all tag refs so annotated
+      # tag content is locally available. actions/checkout@v4 with fetch-depth:0
+      # fetches commits + branch refs but does NOT guarantee annotated tag
+      # objects. v1.2.0 + v1.2.1 releases shipped with empty annotation extraction
+      # and fell back to merge commit message ("v1.2.0 — Merge pull request...").
+      - name: Fetch annotated tags
+        run: git fetch origin --tags --force --prune
+
       - name: Extract tag info
         id: tag
         run: |
@@ -42,10 +50,21 @@ jobs:
           TAG_NAME="${GITHUB_REF#refs/tags/}"
           echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
 
-          # Extract annotation message (annotated tag content)
-          ANNOTATION=$(git tag -l --format='%(contents)' "$TAG_NAME")
+          # H.7.24 — drift-note 51 fix: switched from `git tag -l --format='%(contents)'`
+          # (returns empty in CI runners on annotated tags pushed via gh/CLI) to
+          # `git for-each-ref --format='%(contents)' "refs/tags/$TAG_NAME"` which
+          # reliably reads the tag object's annotation message.
+          #
+          # Per H.7.24 plan code-reviewer FLAG #2: lightweight tags (e.g., from
+          # `gh pr merge --tag` or GitHub's "create release from tag" UI) still
+          # produce empty `%(contents)`. The fallback to merge commit message
+          # remains as a safety net but warns operators about the lightweight-tag
+          # case so they know to push annotated tags going forward.
+          ANNOTATION=$(git for-each-ref --format='%(contents)' "refs/tags/$TAG_NAME")
           if [ -z "$ANNOTATION" ]; then
-            echo "::warning::Tag $TAG_NAME has no annotation. Falling back to commit message."
+            echo "::warning::Tag $TAG_NAME annotation empty. This typically means a"
+            echo "::warning::lightweight tag (e.g., from gh PR merge UI). Falling back"
+            echo "::warning::to commit message — push annotated tags via 'git tag -a' for richer Release notes."
             ANNOTATION=$(git log -1 --format='%B' "$TAG_NAME")
           fi
 

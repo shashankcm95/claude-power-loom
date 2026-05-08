@@ -1,3 +1,8 @@
+---
+name: swift-development
+description: Specialist skill for the 06-ios-developer HETS persona. Swift / SwiftUI / iOS conventions, value-type-first design, observable patterns, async/await idioms, and platform-specific testing. Loaded on demand via the Skill tool.
+---
+
 # Swift Development
 
 Specialist skill for the `06-ios-developer` HETS persona (and any other persona that needs Swift expertise). Loaded on demand via the `Skill` tool when the spawn prompt lists `swift-development` as required.

@@ -38,7 +38,8 @@
     { "id": "F6", "check": "containsKeywords", "args": { "keywords": ["threat"] }, "required": false },
     { "id": "F7", "check": "noUnrolledLoops", "args": { "maxRepetitions": 5 }, "required": true },
     { "id": "F8", "check": "noExcessiveNesting", "args": { "maxDepth": 4 }, "required": true },
-    { "id": "F9", "check": "kb_scope_consumed", "required": true }
+    { "id": "F9", "check": "kb_scope_consumed", "required": true },
+    { "id": "F10", "check": "containsKeywords", "args": { "keywords": ["Principle"] }, "required": false }
   ],
   "antiPattern": [
     { "id": "A1", "check": "claimsHaveEvidence", "severity": "fail" },

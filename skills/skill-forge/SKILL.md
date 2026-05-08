@@ -1,3 +1,8 @@
+---
+name: skill-forge
+description: Create specialized agents and skills on the fly when existing ones don't fit the task. Scaffolds the agent definition, persona contract, KB stubs, and integration wiring through a guided workflow.
+---
+
 # Skill Forge — Dynamic Agent & Skill Creation
 
 Create specialized agents and skills on the fly when existing ones don't fit the task.

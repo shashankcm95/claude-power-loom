@@ -1,3 +1,8 @@
+---
+name: self-improve
+description: Continuously evolve the toolkit by promoting proven patterns from session memory to permanent rules, and by forging new skills from recurring workflows. Triage queue for low/medium/high-risk candidates with explicit user approval gates for load-bearing promotions.
+---
+
 # Self-Improvement Loop — Memory to Rules Pipeline
 
 Continuously evolve the toolkit by promoting proven patterns from session memory to permanent rules, and by forging new skills from recurring workflows.

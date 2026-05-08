@@ -2,6 +2,51 @@
 
 Deferred work from prior phases, captured here so nothing important gets silently dropped. Each entry: scope, rationale, dependencies, rough estimate.
 
+## Phase H.7.24 — Substrate UX hardening 6-pack (closes drift-notes 39/46/49/50/51/52) — SHIPPED
+
+**Status**: shipped per approved plan. Post-major-cycle polish bundling 6 UX rough edges from H.7.22-H.7.23.1 cycle.
+
+### What landed
+
+| Sub-phase | Scope | Key files |
+|-----------|-------|-----------|
+| 1 | Principle codification for 4 non-architect agents | `agents/architect.md` (reference note); `agents/planner.md`, `code-reviewer.md`, `optimizer.md`, `security-auditor.md`; `03-code-reviewer.contract.json` F7; `12-security-engineer.contract.json` F10 |
+| 2 | Skill-files frontmatter audit (9 files) | All 9 fixed: prompt-enrichment / skill-forge / research-mode / fullstack-dev / agent-swarm / self-improve / swift-development / deploy-checklist / tech-stack-analyzer |
+| 3 | Mechanical fixes | `contracts-validate.js` (drift-note 50 informational stderr); `auto-release-on-tag.yml` (drift-note 51 git for-each-ref); `prompt-enrich-trigger.js` (drift-note 52 `?` SKIP); `session-reset.js` (drift-note 46 env var threshold) |
+| 4 | Docs + bump + tests | `workflow.md` codification scope note; `plugin.json` 1.2.1 → 1.3.0; SKILL.md/BACKLOG.md/CHANGELOG.md; install.sh tests 36-38 |
+
+### Pre-Approval Verification (3rd consecutive phase)
+
+Parallel architect + code-reviewer spawn caught 1 FAIL + 7 FLAGs. All 8 fixes incorporated before user surfacing:
+
+- **FAIL** (code-reviewer #3): `[?!.]+` regex over-inclusive vs YAGNI claim → narrowed to `?`-only
+- **FLAGs (code-reviewer)**: enabledPlugins masking, lightweight-tag fallback, parseInt edge cases
+- **FLAGs (architect)**: sub-phase ordering claim, cost estimate too tight (125→155 min), drift-note 53 enforcement, persona-contract coverage gap (12-security-engineer)
+
+Architect produced explicit Principle Audit per H.7.22 contract — 3-for-3 success rate post-fix to drift-note 36.
+
+### Verification
+
+- ✓ 38/38 install.sh smoke (was 35/35; +3 H.7.24 tests)
+- ✓ 46/46 `_h70-test` regression preserved
+- ✓ 0 violations from `contract-marketplace-schema`
+- ✓ 17/17 SKILL.md files now have frontmatter
+- ✓ `contract-plugin-hook-deployment` surfaces informational stderr correctly when enabledPlugins enabled + CLAUDE_PLUGIN_ROOT unset
+- ✓ `?` prompt no longer triggers vagueness gate
+- ✓ All new agent definition + persona contract changes parse OK
+
+### Drift-notes captured during H.7.24
+
+- **53**: architect.md added cross-reference note self-describing as Layer 1+2 canonical; future design-shaped agents follow full pattern, non-design follow Layer 1 only. Convention captured in-place rather than via separate validator.
+- **54**: 9 skill files predating H.7.20 validator — audit trail useful. CI step that fails on new SKILL.md without frontmatter is future phase candidate (post-H.7.24 since current state would now pass).
+
+### Out of scope (deferred)
+
+- Drift-note 21 (forcing-instruction smell — 11 instructions; future arc)
+- Drift-note 35 (Distribution chaos-test 4th orchestrator — v2.1.0)
+- Drift-note 38 (install.sh deprecation — H.8.x)
+- Drift-note 47 (`_lib/spawn-aggregator.js` extraction — wait for 4th caller)
+
 ## Phase H.7.23.1 — Auto-trigger /verify-plan via PreToolUse:ExitPlanMode gate — SHIPPED
 
 **Status**: shipped per user request to close the auto-triggering UX gap left by H.7.23.

@@ -1,3 +1,8 @@
+---
+name: fullstack-dev
+description: Server-first development workflow for Next.js + TypeScript projects. Encodes patterns for Server Components, route handlers, type-safe data flows, and testing strategy across the front-end / back-end boundary.
+---
+
 # Full-Stack Development Workflow
 
 Server-first development workflow for Next.js + TypeScript projects.

@@ -1,3 +1,8 @@
+---
+name: tech-stack-analyzer
+description: Orchestrator-side entry point for "build me X"-style tasks. Translates a user's task description into a concrete spawn plan — stack + required skills + suggested personas + missing-skill bootstrap prompts. Always pauses for user redirect before spawning the team.
+---
+
 # Tech-Stack Analyzer (HETS H.2.5)
 
 The orchestrator-side entry point for "build me X"-style tasks. Translates a user's task description into a concrete spawn plan: stack + required skills + suggested personas + missing-skill bootstrap prompts. Always pauses for user redirect before spawning the team.

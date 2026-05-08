@@ -1,3 +1,8 @@
+---
+name: deploy-checklist
+description: Verification workflow before shipping to production. Tests / lints / migrations / rollback plan / env config / secret rotation / observability spot-check — gated steps with explicit user approval before destructive actions.
+---
+
 # Pre-Deployment Checklist
 
 Verification workflow before shipping to production.
