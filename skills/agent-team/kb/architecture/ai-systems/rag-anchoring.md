@@ -23,7 +23,68 @@ status: active+enforced
 
 ## Summary
 
-Retrieval-Augmented Generation (RAG) **anchors LLM generation on curated content** rather than relying purely on the activation-mixture-distribution from training data. RAG doesn't give models new facts — it shifts which framing of facts gets activated during generation. Useful even on closed-book-known content because training data is broad and noisy (Kleppmann's exact quotes coexist with a million paraphrases and contradictions). Three retrieval methods (term-based BM25, embedding-based vector search, hybrid) plus chunking/query-rewriting optimization. The substrate's `kb/` is itself a RAG implementation; this `kb/architecture/` set is the upstream "curated corpus" we'll route to during HETS spawns when integration ships in v2.1+.
+**Principle**: RAG anchors LLM generation on curated content; doesn't give new facts but shifts which framing of facts gets activated during generation.
+**Why it works**: training data is broad and noisy (canonical text + paraphrases + tutorial mistakes); retrieval suppresses competing-but-wrong activations.
+**Three retrieval methods**: term-based BM25 (exact-match), embedding-based (semantic), hybrid (combines both).
+**Sources**: Huyen (AI Engineering ch 6 + 5 + 4) + Huyen (Designing ML Systems ch 6 + 8) + DDIA ch 3 + 11.
+**Substrate**: this `kb/architecture/` IS a RAG corpus; `kb-resolver` IS the retriever; `_routing.md` (planned) IS BM25 routing; forcing instructions ARE RAG-shaped reminders.
+
+## Quick Reference
+
+**Principle**: RAG (Retrieval-Augmented Generation) doesn't give the model new facts — it shifts which framing of facts gets activated during generation.
+
+**Why "the model already knows it" misses the point**:
+
+- Retrieval anchors *which version*: training data has canonical text plus every paraphrase; retrieval suppresses paraphrase activation
+- Retrieval handles updates: training data is frozen at cutoff; retrieval uses current content
+- Substrate-specific case: substrate's drift-notes / phase findings / authored docs aren't in any model's training data
+
+**Three retrieval methods**:
+
+| Method | Strength | Cost |
+|--------|----------|------|
+| Term-based (BM25) | Exact-match queries; deterministic; fast | No semantic understanding |
+| Embedding-based | Semantic search; paraphrase-tolerant | Embedding compute; harder to debug |
+| Hybrid | Both worlds | More compute; tuning fusion weight |
+
+**Optimization techniques**:
+
+- **Chunking**: recursive (by H2/paragraph), semantic, layout-aware
+- **Query rewriting**: decomposition, expansion (HyDE), multi-turn rewriting
+- **Contextual retrieval**: add metadata to chunks (title, section, position)
+- **Multimodal retrieval**: separate embeddings per modality
+
+**Five failure modes**:
+
+1. **Retrieval miss** — wrong chunks retrieved (mitigation: hybrid + query rewriting)
+2. **Retrieved chunk ignored** — model trusts prior over context (placement at start/end; explicit "Per retrieved" prompts)
+3. **Retrieval hallucination** — model paraphrases inaccurately (post-generation grounding eval)
+4. **Over-anchoring** — model can't generalize beyond corpus (hybrid grounding prompts)
+5. **Stale corpus** — index out of date (re-indexing pipeline; version metadata)
+
+**The Accuracy Cascade** (Huyen ch 6):
+
+10 steps × 95% per-step accuracy = 60% end-to-end. Multi-agent systems compound errors multiplicatively. RAG drops per-step rate; cascade tolerates more steps.
+
+**RAG vs Fine-tuning**:
+
+- RAG: information failures (model has wrong framing of known content)
+- Fine-tuning: behavior failures (model exhibits wrong patterns regardless of input)
+- Complementary, not alternative
+
+**Tensions**:
+
+- **RAG vs Inference Cost**: each retrieval costs latency + tokens; route deterministically (BM25) when possible
+- **RAG vs Long-Context**: models with 1M+ context can fit corpora directly; but inference cost scales with context length; RAG more efficient for large corpora
+- **RAG vs Determinism**: embedding retrieval is non-deterministic; prefer deterministic routing (BM25) for substrate-meta queries
+
+**Substrate examples**:
+
+- This `kb/architecture/` IS a RAG corpus — multi-source-synthesis docs anchored on canonical sources + substrate-specific drift-notes
+- `kb-resolver` IS the retriever: `cat`, `resolve <id>@<hash>` (verified retrieval), `snapshot`
+- `_routing.md` (planned per `_TAXONOMY.md`) IS BM25-style routing: task signal → kb refs to inject (e.g., "state mutation" → `crosscut/idempotency`)
+- Forcing instructions are RAG-shaped: `[PROMPT-ENRICHMENT-GATE]` tells Claude to consult prior turn + look up patterns; generates conditioned on retrieved content
+- Convention G class taxonomy IS deep abstraction enabling routing: classification grounded in substrate-curated taxonomy, not training-data activation
 
 ## Intent
 

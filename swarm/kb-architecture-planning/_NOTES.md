@@ -321,6 +321,25 @@ This is v2.1+ kb-resolver work; not implemented yet. The tier structure on disk 
 
 Roll out tier structure to other 9 first-wave docs incrementally. The shape is good; token economics work; readability preserved.
 
+### Rollout status — COMPLETE
+
+All 10 first-wave docs now have tier structure (Summary + Quick Reference + Full content):
+
+| Doc | Tier-compressed PR |
+|-----|---------------------|
+| crosscut/single-responsibility.md | #109 (initial experiment) |
+| crosscut/dependency-rule.md | #110 |
+| crosscut/deep-modules.md | #110 |
+| crosscut/idempotency.md | #110 |
+| discipline/error-handling-discipline.md | #111 |
+| discipline/trade-off-articulation.md | #111 |
+| discipline/reliability-scalability-maintainability.md | #111 |
+| crosscut/acyclic-dependencies.md | (this batch) |
+| discipline/stability-patterns.md | (this batch) |
+| ai-systems/rag-anchoring.md | (this batch) |
+
+Forward-compatible with v2.1+ kb-resolver tier-aware loading.
+
 Substrate-track impact: zero. Documentation reorganization only; no runtime changes; soak counter unaffected.
 
 ### Open follow-up

@@ -24,7 +24,58 @@ status: active+enforced
 
 ## Summary
 
-The dependency graph between packages / modules / components must be **acyclic** — a directed acyclic graph (DAG), no cycles. Cyclic dependencies make modules impossible to release independently, build atomically, or reason about in isolation. Per Martin (Clean Arch ch 14): "the morning after syndrome" — developers find their work broken because someone else changed a file in a cyclically-dependent module overnight. Resolution patterns: dependency inversion (introduce abstraction); extracting shared elements to a new package; mediator / chain-of-responsibility patterns. Substrate's `_lib/` extraction pattern (H.7.14 + others) IS acyclic-dependencies discipline applied at substrate scale — shared primitives extracted to depend-on-only-from-above.
+**Principle**: The dependency graph must be acyclic — a DAG, no cycles. Cycles make modules impossible to release independently, build atomically, or reason about in isolation.
+**Symptom**: Martin's "morning after syndrome" — your code breaks because someone changed a cyclically-dependent module overnight.
+**Resolution**: dependency inversion (introduce abstraction); extract shared module; mediator / event-dispatcher; merge tightly-coupled modules.
+**Sources**: Noback (PoPD ADP) + Martin (Clean Arch ch 14) + Ousterhout (PoSD ch 9) + Hard Parts ch 2+5 + charlax util-bag.
+**Substrate**: `_lib/` extraction (H.7.14) — 6 hardcoded-path callers → one stable abstraction; substrate is acyclic by construction.
+
+## Quick Reference
+
+**Principle (Martin / Noback)**: Allow no cycles in the component dependency graph.
+
+A DAG can be topologically sorted; a graph with cycles cannot. Apply at every granularity: class / module / package / service / build artifact.
+
+**The "Morning After Syndrome"** (Martin): cyclic deps cause unpredictable break-on-pull patterns; team learns to fear merge / pull; long-lived branches; lost velocity. The cause is bidirectional references in the compile-time graph.
+
+**Why cycles emerge** (innocent local decisions):
+
+- Bidirectional reference (A → B initially clean; A ← B added later)
+- Shared utility extraction that grows to call back into consumers
+- Helper class trap (helper imports A; A imports helper)
+- God module accumulating dependencies on everything
+
+**Six resolution patterns**:
+
+1. **Dependency Inversion** (most common) — introduce interface I; both A and B depend on I; no direct A↔B
+2. **Extract Common Module** — shared logic to module C; A → C ← B
+3. **Mediator Pattern** — M knows both A and B; A→M→B; A↔M↔B
+4. **Event Dispatcher** — each module emits/subscribes events; no compile-time references
+5. **Merge** (sometimes the right answer) — if cycle is signal that A+B are one thing, merge them
+6. **Refactor to single direction** — remove one of the bidirectional references entirely
+
+**Recognizing cycles**:
+
+- Static analysis: `dependency-cruiser` (JS/TS), `archunit` (Java), `import-linter` (Python)
+- Symptoms: "can't release X without Y"; "change to A breaks tests in B"; "must build everything in order"
+
+**Stable Dependencies Principle pairing** (Noback):
+
+I = C-out / (C-in + C-out); near 0 = stable, near 1 = unstable. Dependencies flow from less stable (high I) toward more stable (low I).
+
+**Tensions**:
+
+- **Convenience**: small contained cycles in single class are fine; cross-module cycles always need breaking
+- **DRY**: shared modules must depend ONLY on lower-level primitives; never call back into consumers
+- **Speed**: refactor to break cycles costs time; mark as drift-note; fix during next substantive change
+
+**Substrate examples**:
+
+- `_lib/` extraction (H.7.14): 6 hardcoded-path callers extracted; consumer scripts now depend on `_lib/toolkit-root.js`; abstraction depends on nothing in substrate; clean DAG
+- `_lib/` modules as stable sinks: lock.js, runState.js, file-path-pattern.js, toolkit-root.js, marketplace-state-reader.js, settings-reader.js — each high C-in, low C-out
+- Hook → validator dependency: hook depends on validator (loads it); validator doesn't depend on hook (no callback); preserved by design
+- Forcing instructions emit without referencing back: hook → text → stdout → Claude; no compile-time reference from hook to "what Claude did"
+- Drift-note 47 sibling concern: forcing-instruction shared helper extraction is a tracked ADP candidate (deferred until 7+ callers)
 
 ## Intent
 

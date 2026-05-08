@@ -24,7 +24,63 @@ status: active+enforced
 
 ## Summary
 
-Production systems fail in patterns. Per Nygard's *Release It!* — the canonical source — failures cascade in predictable ways: timeouts pile up; thread pools exhaust; resources leak; downstream slowness becomes upstream outage. **Stability patterns** are named, reusable defenses against these failure modes: Circuit Breaker, Bulkhead, Timeouts, Fail Fast, Steady State, Handshaking, Stranglers. Each pattern has a complementary anti-pattern (Integration Points, Cascading Failures, Users, Blocked Threads, Self-Denial Attacks, Scaling Effects). Substrate's forcing-instruction architecture, fail-open hooks, and Pre-Approval Verification ARE stability patterns applied to LLM-substrate domain.
+**Principle (Nygard)**: Production systems fail in patterns. Stability patterns are named, reusable defenses: Circuit Breaker, Bulkhead, Timeouts, Fail Fast, Steady State, Handshaking, Stranglers.
+**Anti-patterns** (each pattern's complement): Integration Points, Cascading Failures, Users, Blocked Threads, Self-Denial Attacks, Scaling Effects, Capacity.
+**Test**: every integration point has timeout + circuit breaker; every accumulating resource has purging; chaos-test reveals failure modes.
+**Sources**: Release It! (canonical) + SRE book + Hard Parts ch 12 + DDIA ch 5+8+11 + Pragmatic Programmer.
+**Substrate**: forcing instructions ARE stability patterns; fact-force-gate as bulkhead; Pre-Approval Verification as circuit breaker.
+
+## Quick Reference
+
+**Principle (Nygard, Release It!)**: Production systems fail in predictable ways. Patterns defend; anti-patterns describe the failure modes.
+
+**The pattern catalog**:
+
+| Pattern | What it defends |
+|---------|-----------------|
+| **Circuit Breaker** | Wraps call to unreliable downstream; trips when failure rate exceeds threshold; subsequent calls fail fast |
+| **Bulkhead** | Isolates resources (thread pools, processes, quotas); failure in one component doesn't propagate |
+| **Timeouts** | Every remote call has bounded wait; default of "wait forever" is a vector for cascading failures |
+| **Fail Fast** | Determine failure early; reject malformed inputs immediately; preserve resources for valid work |
+| **Steady State** | Every accumulating resource (logs, cache, connections) has a purging mechanism |
+| **Handshaking** | Server signals capacity (HTTP 429); client applies backpressure |
+| **Test Harness** | Production-like environments; expose production failure modes during dev |
+| **Stranglers** | Incremental migration; route traffic gradually; rollback per-feature |
+
+**The complementary anti-patterns**:
+
+- **Integration Points** — every external call is a potential failure source
+- **Cascading Failures** — single component outage propagates to take down the whole
+- **Users** — refresh-during-slowness; submit duplicates; pile up retries during outage
+- **Blocked Threads** — thread pool exhaustion during downstream slowness
+- **Self-Denial Attacks** — system attacks itself (cache miss thunder; deploy too fast; monitor too aggressively)
+- **Scaling Effects** — patterns that work at small scale fail at large scale
+- **Capacity** — running near limits leaves no headroom for the unexpected
+
+**Stability granularity**:
+
+- Process: timeouts, circuit breakers, bulkheads on RPC
+- Service: rate limiting, request queuing, graceful degradation
+- System: capacity planning, autoscaling, monitoring + alerting
+- Operational: deploy practices, rollback discipline, incident response
+
+**Tensions**:
+
+- **Stability vs Velocity**: full pattern suite slows iteration; scope to operational maturity
+- **Stability vs Simplicity**: each pattern adds complexity; only add where failure cost is real
+- **Stability vs Correctness**: circuit breakers cause "soft failures"; tier the response (critical vs degradable)
+- **Stability vs Idempotency**: stability patterns rely on idempotent retries (see [idempotency](../crosscut/idempotency.md))
+
+**Substrate examples**:
+
+- Forcing instructions IS stability: deterministic detect → trip → emit signal → outer layer (Claude) recovers; like circuit breaker
+- `fact-force-gate.js` as bulkhead: isolates "must Read before Edit" violations; fails fast on un-Read file
+- Pre-Approval Verification as circuit breaker: HETS-routed plans trigger architect+reviewer spawn before ExitPlanMode
+- Atomic-rename for tracker files: steady-state design; mid-write crashes don't corrupt
+- `_lib/lock.js` self-PID reclamation: fault tolerance; recovers from crashed lock holder
+- `error-critic.js` consolidation: circuit-breaker shape; rate-limited to once per session per key
+- Soak period as capacity buffer: don't ship major version until headroom validated empirically
+- H.7.27 markdown migration as strangler: verify markdownlint catches before retiring substrate hook; gradual cutover
 
 ## Intent
 
