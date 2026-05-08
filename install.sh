@@ -472,6 +472,45 @@ run_smoke_tests() {
     passed=$((passed + 1))
   fi
 
+  # Test 22 (H.7.20): validate-frontmatter-on-skills Edit coverage — Edit that
+  # REMOVES frontmatter should block. Setup temp skill file with valid frontmatter,
+  # send Edit JSON that removes the frontmatter block.
+  local h7_20_skill_dir="/tmp/h7-20-skills/skills/test"
+  mkdir -p "$h7_20_skill_dir"
+  cat > "$h7_20_skill_dir/SKILL.md" <<'SKILL_EOF'
+---
+name: test-skill
+description: H.7.20 test fixture
+---
+
+# Test Skill
+
+Body content here.
+SKILL_EOF
+  local h7_20_remove_json='{"tool_name":"Edit","tool_input":{"file_path":"/tmp/h7-20-skills/skills/test/SKILL.md","old_string":"---\nname: test-skill\ndescription: H.7.20 test fixture\n---\n\n","new_string":""}}'
+  local h7_20_remove_result
+  h7_20_remove_result=$(printf '%s' "$h7_20_remove_json" | node "$CLAUDE_DIR/hooks/scripts/validators/validate-frontmatter-on-skills.js" 2>&1)
+  if echo "$h7_20_remove_result" | grep -q '"decision":"block"'; then
+    echo "  ✓ validate-frontmatter-on-skills: H.7.20 Edit-removes-frontmatter → block"
+    passed=$((passed + 1))
+  else
+    echo "  ✗ validate-frontmatter-on-skills: H.7.20 Edit removing frontmatter should block — got: ${h7_20_remove_result:0:80}"
+    failed=$((failed + 1))
+  fi
+
+  # Test 23 (H.7.20): Edit that touches body but preserves frontmatter → approve
+  local h7_20_preserve_json='{"tool_name":"Edit","tool_input":{"file_path":"/tmp/h7-20-skills/skills/test/SKILL.md","old_string":"Body content here.","new_string":"Updated body content."}}'
+  local h7_20_preserve_result
+  h7_20_preserve_result=$(printf '%s' "$h7_20_preserve_json" | node "$CLAUDE_DIR/hooks/scripts/validators/validate-frontmatter-on-skills.js" 2>&1)
+  if echo "$h7_20_preserve_result" | grep -q '"decision":"approve"'; then
+    echo "  ✓ validate-frontmatter-on-skills: H.7.20 Edit-preserves-frontmatter → approve"
+    passed=$((passed + 1))
+  else
+    echo "  ✗ validate-frontmatter-on-skills: H.7.20 Edit preserving frontmatter should approve — got: ${h7_20_preserve_result:0:80}"
+    failed=$((failed + 1))
+  fi
+  rm -rf /tmp/h7-20-skills
+
 
   echo ""
   echo "  Results: $passed passed, $failed failed"

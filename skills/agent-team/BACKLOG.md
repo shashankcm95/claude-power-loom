@@ -2,6 +2,55 @@
 
 Deferred work from prior phases, captured here so nothing important gets silently dropped. Each entry: scope, rationale, dependencies, rough estimate.
 
+## Phase H.7.20 — Extend validate-frontmatter-on-skills to Edit (closes drift-note 28) — SHIPPED
+
+**Status**: shipped per approved plan. Closes drift-note 28 captured during H.7.19 audit — validator's Edit-coverage gap.
+
+### The gap
+
+Prior `validate-frontmatter-on-skills.js` early-returned on `toolName !== 'Write'` (line 75). Effect: an Edit that removed frontmatter from an existing skill file silently passed. The skill then silently failed to load via the resolver. This violated the silent-failure-prevention rationale that justifies this hook being PreToolUse per Convention D (H.7.19).
+
+### What landed
+
+- **`hooks/scripts/validators/validate-frontmatter-on-skills.js`** (~30 LoC additive):
+  - Extended `toolName` check from `'Write'` only to `'Write' || 'Edit'`
+  - For Write: existing logic (check `tool_input.content`)
+  - For Edit (NEW): read existing file from disk + apply proposed edit (`existing.replace(old_string, new_string)`) + check result has frontmatter
+  - If file doesn't exist (Edit will fail at tool layer): approve silently — not our concern
+  - Header comment updated noting H.7.20 Edit coverage extension
+- **`hooks/hooks.json`**: matcher updated `Write` → `Edit|Write` for the validate-frontmatter entry
+- **`install.sh` tests 22-23 NEW**:
+  - Test 22: Edit JSON that removes frontmatter → expect `decision: block`
+  - Test 23: Edit JSON that touches body but preserves frontmatter → expect `decision: approve`
+  - Total: 21/21 → 23/23 passing
+
+### Verification
+
+- ✓ Probe 1: `bash install.sh --hooks --test` → **23/23 passing** (was 21/21; +2 H.7.20 tests)
+- ✓ Probe 2: `node scripts/agent-team/contracts-validate.js` → 0 violations
+- ✓ Probe 3: `node scripts/agent-team/_h70-test.js` → 46/46 passing (regression — H.7.20 doesn't touch route-decide)
+- ✓ Probe 4: `node --check hooks/scripts/validators/validate-frontmatter-on-skills.js` → syntax-ok
+- ✓ Probe 5: `python3 -m json.tool hooks/hooks.json` → valid JSON; matcher = `Edit|Write`
+- ✓ Manual probe 6: Edit removing frontmatter → `{"decision":"block",...}` with frontmatter gate reason
+- ✓ Manual probe 7: Edit preserving frontmatter (touches body) → `{"decision":"approve"}`
+
+### Drift-note captured this phase
+
+- **Drift-note 29**: closing drift-note 28 reveals other PreToolUse validators may have similar Edit-coverage gaps. Specifically: `config-guard.js` (Edit|Write matcher already), `validate-no-bare-secrets.js` (Edit|Write already), `fact-force-gate.js` (Read|Edit|Write already). All three already have Edit in their matcher BUT may have content-extraction logic that only handles Write's `tool_input.content` shape, missing Edit's `tool_input.new_string` shape. H.7.21 audit candidate.
+
+### Honest scope discipline
+
+- **MultiEdit support**: NOT in scope. Claude Code's MultiEdit tool has different shape (`edits: [{old_string, new_string}, ...]`). Future candidate if needed.
+- **NotebookEdit support**: NOT in scope. Different content shape.
+- **Audit other validators (drift-note 29)**: explicitly deferred to H.7.21 — Edit-coverage gap audit across the validator family.
+
+### Why this is the right shape
+
+- Closes drift-note 28 with the natural fix (extend coverage to Edit)
+- Preserves Convention D placement (PreToolUse for silent-failure-prevention) — doesn't migrate
+- Mechanical: ~30 LoC validator change + hooks.json matcher tweak + 2 smoke tests
+- Twenty-fourth distinct phase shape: validator coverage extension
+
 ## Phase H.7.19 — PreToolUse-vs-PostToolUse audit + Convention D codification (closes drift-note 25) — SHIPPED
 
 **Status**: shipped per approved plan. Closes drift-note 25 from H.7.17 — audit other PreToolUse-vs-PostToolUse decisions for conservative deviations from architectural intent.

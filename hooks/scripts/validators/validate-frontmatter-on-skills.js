@@ -1,19 +1,24 @@
 #!/usr/bin/env node
 
-// PreToolUse:Write validator (H.4.2): blocks Write of skill files that lack
-// frontmatter. Skill loading expects YAML-style frontmatter (--- ... ---) at
-// the top of every SKILL.md / pattern doc; without it the skill resolver
-// surfaces silently-broken skills that look fine on disk but don't load.
+// PreToolUse:Edit|Write validator (H.4.2 + H.7.20): blocks Write/Edit of skill
+// files that lack frontmatter. Skill loading expects YAML-style frontmatter
+// (--- ... ---) at the top of every SKILL.md / pattern doc; without it the
+// skill resolver surfaces silently-broken skills that look fine on disk but
+// don't load.
 //
 // Scope:
 //   - file_path matches `**/skills/**/*.md`  → must have frontmatter
 //   - file_path matches `**/patterns/*.md`   → must have frontmatter
 //   - everything else                        → approve (out of scope)
 //
-// Edit is NOT validated — Edit can only modify files that exist, and a
-// pre-existing skill without frontmatter is a separate fix-it-with-Read-first
-// problem (already gated by fact-force-gate). We only enforce on Write.
+// **H.7.20 — Edit coverage extension**: prior version only validated Write.
+// An Edit that removes frontmatter (e.g., deletes the closing `---\n` line)
+// silently passed, leaving the skill broken on disk. H.7.20 extends to also
+// validate Edit by reading the existing file, applying the proposed edit
+// (`existing.replace(old_string, new_string)`), and checking the result.
+// Closes drift-note 28 captured during H.7.19 audit.
 
+const fs = require('fs');
 const path = require('path');
 const { log } = require('../_log.js');
 const logger = log('validate-frontmatter-on-skills');
@@ -72,8 +77,8 @@ process.stdin.on('end', () => {
     const toolInput = data.tool_input || {};
     const filePath = toolInput.file_path || toolInput.path || '';
 
-    if (toolName !== 'Write') {
-      // Out of scope — only Write triggers frontmatter check.
+    if (toolName !== 'Write' && toolName !== 'Edit') {
+      // Out of scope — only Write/Edit trigger frontmatter check.
       process.stdout.write(JSON.stringify({ decision: 'approve' }));
       return;
     }
@@ -84,14 +89,41 @@ process.stdin.on('end', () => {
       return;
     }
 
-    const content = toolInput.content || '';
+    // For Write: tool_input.content IS the new content.
+    // For Edit (H.7.20): read existing file from disk, apply the proposed
+    // edit, then check the result. Catches the case where Edit removes
+    // frontmatter from an existing skill.
+    let content = '';
+    if (toolName === 'Write') {
+      content = toolInput.content || '';
+    } else {
+      // Edit
+      let existing = '';
+      try {
+        existing = fs.readFileSync(filePath, 'utf8');
+      } catch {
+        // File doesn't exist — Edit will fail at tool layer, not our concern.
+        logger('approve', { filePath, reason: 'file_missing_edit_will_fail' });
+        process.stdout.write(JSON.stringify({ decision: 'approve' }));
+        return;
+      }
+      const oldString = toolInput.old_string || '';
+      const newString = toolInput.new_string || '';
+      // Apply the proposed edit. `replace` replaces first occurrence, which
+      // matches Edit's default semantics. For replace_all=true edits, multiple
+      // occurrences may exist but the frontmatter `---\n` boundary is
+      // typically unique-or-tied-together — first-replace check is a sound
+      // proxy for structural integrity.
+      content = existing.replace(oldString, newString);
+    }
+
     if (hasFrontmatter(content)) {
-      logger('approve', { filePath, reason: 'frontmatter_present' });
+      logger('approve', { filePath, reason: 'frontmatter_present', toolName });
       process.stdout.write(JSON.stringify({ decision: 'approve' }));
       return;
     }
 
-    logger('block', { filePath, reason: 'frontmatter_missing' });
+    logger('block', { filePath, reason: 'frontmatter_missing', toolName });
     process.stdout.write(JSON.stringify({
       decision: 'block',
       reason: [
