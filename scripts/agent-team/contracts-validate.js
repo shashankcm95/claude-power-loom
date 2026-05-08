@@ -520,6 +520,180 @@ function extractCommandSuffix(command) {
   return m ? m[1] : command;
 }
 
+// H.7.23 — contract-marketplace-schema: validate .claude-plugin/plugin.json
+// + marketplace.json against vendored schemas. Closes drift-note 42 (would
+// have caught all 3 H.7.22 hotfixes pre-ship: source format, path-prefix,
+// redundant fields).
+//
+// Per H.7.23 code-reviewer FAIL #1: NOT a general JSON Schema validator
+// (ajv unavailable; minimal subset understates work). Targets 3 specific
+// H.7.22 failure patterns:
+//   (1) marketplace.json source field must match ^\./.* (catches H.7.22.1)
+//   (2) plugin.json component-path fields if present must match ^\./.* (H.7.22.2)
+//   (3) plugin.json component-path fields are optional; flag when present
+//       but pointing at default locations — auto-discovery would handle them
+//       (catches H.7.22.3 redundancy; matches official anthropic plugin convention)
+//
+// Auto-pass conditions (CI fresh-checkout safety):
+//   - Vendored schemas absent (informational stderr; not a violation)
+//   - Schema files corrupt (try/catch around JSON.parse; fail-open with error)
+//   - Plugin/marketplace manifest absent (informational stderr; expected on
+//     a fresh checkout that hasn't fully bootstrapped yet)
+//
+// Convention A declared (repo-internal correctness — schemas vendored).
+const SCHEMAS_DIR = path.join(TOOLKIT, 'swarm', 'schemas');
+const PLUGIN_MANIFEST_PATH = path.join(TOOLKIT, '.claude-plugin', 'plugin.json');
+const MARKETPLACE_MANIFEST_PATH = path.join(TOOLKIT, '.claude-plugin', 'marketplace.json');
+
+const RELATIVE_PATH_PATTERN = /^\.\/.*/;
+const COMPONENT_PATH_FIELDS = ['hooks', 'agents', 'commands', 'skills'];
+
+validators['contract-marketplace-schema'] = function () {
+  const violations = [];
+  let schemasValidated = 0;
+
+  // Stderr informational on missing schemas — auto-pass (fresh-checkout safety)
+  const pluginSchemaPath = path.join(SCHEMAS_DIR, 'plugin-manifest.schema.json');
+  const marketSchemaPath = path.join(SCHEMAS_DIR, 'marketplace.schema.json');
+
+  const pluginSchemaExists = fs.existsSync(pluginSchemaPath);
+  const marketSchemaExists = fs.existsSync(marketSchemaPath);
+
+  if (!pluginSchemaExists || !marketSchemaExists) {
+    process.stderr.write(
+      `ℹ contract-marketplace-schema: vendored schemas missing in ${SCHEMAS_DIR}/ ` +
+      '(this is normal on fresh checkout / minimal install; run scripts/agent-team/refresh-plugin-schema.sh to vendor)\n'
+    );
+    return [];
+  }
+
+  // Validate the schemas themselves are parseable (defense-in-depth)
+  try {
+    JSON.parse(fs.readFileSync(pluginSchemaPath, 'utf8'));
+    JSON.parse(fs.readFileSync(marketSchemaPath, 'utf8'));
+  } catch (err) {
+    process.stderr.write(
+      `⚠ contract-marketplace-schema: vendored schema unparseable: ${err.message}. ` +
+      'Run scripts/agent-team/refresh-plugin-schema.sh to refetch.\n'
+    );
+    return [];
+  }
+
+  // Validate plugin.json
+  if (fs.existsSync(PLUGIN_MANIFEST_PATH)) {
+    let pluginManifest;
+    try {
+      pluginManifest = JSON.parse(fs.readFileSync(PLUGIN_MANIFEST_PATH, 'utf8'));
+    } catch (err) {
+      violations.push({
+        kind: 'plugin-manifest-malformed',
+        file: PLUGIN_MANIFEST_PATH,
+        error: err.message,
+        fix: 'plugin.json is not valid JSON — restore from git or fix syntax',
+      });
+      pluginManifest = null;
+    }
+
+    if (pluginManifest) {
+      // Pattern (2): component-path fields if present must match ^\./.*
+      // Pattern (3): redundancy — flag if fields present but pointing at defaults
+      for (const field of COMPONENT_PATH_FIELDS) {
+        if (pluginManifest[field] === undefined) continue;
+        const value = pluginManifest[field];
+
+        if (typeof value === 'string') {
+          if (!RELATIVE_PATH_PATTERN.test(value)) {
+            violations.push({
+              kind: 'plugin-component-path-format',
+              field,
+              value,
+              fix: `Plugin manifest '${field}' must match ^\\./.* per Claude Code schema. Got "${value}". Drop the field entirely if it points at the default location (claude auto-discovers).`,
+              ref: 'H.7.22.2 hotfix root cause',
+            });
+          }
+          // Pattern (3): redundancy detection
+          // Default discovery locations: hooks/hooks.json, agents/, commands/, skills/
+          const defaultPaths = {
+            hooks: ['./hooks/hooks.json'],
+            agents: ['./agents', './agents/'],
+            commands: ['./commands', './commands/'],
+            skills: ['./skills', './skills/'],
+          };
+          if ((defaultPaths[field] || []).some((d) => d === value)) {
+            violations.push({
+              kind: 'plugin-component-path-redundant',
+              field,
+              value,
+              severity: 'info',
+              fix: `Plugin manifest '${field}: "${value}"' matches the default auto-discovery location. Consider dropping the field — official anthropic plugins (code-review, feature-dev) declare zero component-path fields and rely on auto-discovery.`,
+              ref: 'H.7.22.3 hotfix root cause',
+            });
+          }
+        } else if (Array.isArray(value)) {
+          // Array form — each entry must match ^\./.*
+          value.forEach((entry, idx) => {
+            if (typeof entry !== 'string' || !RELATIVE_PATH_PATTERN.test(entry)) {
+              violations.push({
+                kind: 'plugin-component-path-format',
+                field,
+                value: entry,
+                index: idx,
+                fix: `Plugin manifest '${field}[${idx}]' must be a string matching ^\\./.*. Got: ${JSON.stringify(entry)}.`,
+              });
+            }
+          });
+        }
+      }
+      schemasValidated++;
+    }
+  } else {
+    process.stderr.write(`ℹ contract-marketplace-schema: ${PLUGIN_MANIFEST_PATH} not found (skipped)\n`);
+  }
+
+  // Validate marketplace.json
+  if (fs.existsSync(MARKETPLACE_MANIFEST_PATH)) {
+    let marketManifest;
+    try {
+      marketManifest = JSON.parse(fs.readFileSync(MARKETPLACE_MANIFEST_PATH, 'utf8'));
+    } catch (err) {
+      violations.push({
+        kind: 'marketplace-manifest-malformed',
+        file: MARKETPLACE_MANIFEST_PATH,
+        error: err.message,
+        fix: 'marketplace.json is not valid JSON',
+      });
+      marketManifest = null;
+    }
+
+    if (marketManifest) {
+      // Pattern (1): plugin entries' source field if string must match ^\./.*
+      const plugins = Array.isArray(marketManifest.plugins) ? marketManifest.plugins : [];
+      plugins.forEach((p, idx) => {
+        if (typeof p.source === 'string' && !RELATIVE_PATH_PATTERN.test(p.source)) {
+          violations.push({
+            kind: 'marketplace-source-format',
+            pluginIndex: idx,
+            pluginName: p.name || '(unnamed)',
+            value: p.source,
+            fix: `marketplace.json plugins[${idx}].source must match ^\\./.* per Claude Code schema. Got "${p.source}". Use "./" if plugin root is marketplace root.`,
+            ref: 'H.7.22.1 hotfix root cause',
+          });
+        }
+      });
+      schemasValidated++;
+    }
+  } else {
+    process.stderr.write(`ℹ contract-marketplace-schema: ${MARKETPLACE_MANIFEST_PATH} not found (skipped)\n`);
+  }
+
+  // Confirmation marker for tests (per H.7.23 code-reviewer FLAG #7)
+  if (schemasValidated > 0) {
+    process.stderr.write(`ℹ contract-marketplace-schema: schemas: ${schemasValidated} validated\n`);
+  }
+
+  return violations;
+};
+
 // ---------- main ----------
 
 function parseArgs(argv) {

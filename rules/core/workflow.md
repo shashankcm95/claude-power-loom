@@ -98,3 +98,29 @@ The H.7.18 `validate-markdown-emphasis.js` PostToolUse hook detects this pattern
 - **H.7.5 — Prompt design tip**: when crafting the gate's task string, embed the routing signal explicitly (e.g., "implement weighted-formula refit per H.7.4 plan via orchestration" beats bare "empirical refit"). Surface keywords help the deterministic layer; don't rely on the forcing-instruction fallback for cases where you already know the answer.
 - **H.7.16 — When output emits `[ROUTE-META-UNCERTAIN]`**: the task references substrate-meta tokens (`route-decide`, `weights_version`, `dict expansion`, `keyword set`, `forcing instruction`, etc.). The score may be biased low by the **substrate-meta routing catch-22** — when the proposed change modifies the routing scorer itself, the score above was computed using the CURRENT dictionary, which may not yet contain the tokens the proposed change would add. Apply judgment: if task is genuinely architect-shaped, escalate via `--force-route` or architect spawn (per `route-decide.js:11-13` load-bearing comment); if mechanical implementation of an already-decided design, current recommendation likely correct. The forcing instruction is advisory and does NOT alter the score or recommendation — score-additive guarantee preserved.
 - **H.7.16 — Co-firing**: `[ROUTE-META-UNCERTAIN]` can fire alongside `[ROUTE-DECISION-UNCERTAIN]` (zero signals AND substrate-meta detected) and alongside any recommendation tier. The two are independent; both can appear in the same JSON output.
+
+## Pre-approval verification (H.7.23)
+
+**For HETS-routed phases**, run `/verify-plan` before `ExitPlanMode`. The verification spawns architect + code-reviewer agents in parallel against the plan file, catches concrete bugs and plan-honesty issues, and appends a `## Pre-Approval Verification` section to the plan with structured findings.
+
+**Codifies drift-note 40**: pattern that caught 4 HIGH/CRITICAL bugs in H.7.22 + 5 substantive issues in H.7.23. In both cases, the verification was estimated at ~10-15 minutes and prevented hotfix rounds. The pattern pays for itself within the same phase.
+
+**When the rule applies** — plan contains `## HETS Spawn Plan` (with substantive content, NOT "N/A") OR `Routing Decision` JSON has `"recommendation": "route"`. The plan-schema validator enforces this gate at PostToolUse — `[PLAN-SCHEMA-DRIFT]` fires if the section is missing.
+
+**When it doesn't apply** — `root`-routed plans, hotfixes shipped without plan mode, doc-only edits. The validator's `requiresPrincipleAudit()` gate matches the same condition for both Principle Audit and Pre-Approval Verification.
+
+**Trust model** — section presence is taken as evidence of work having been done; strict spawn-verification was rejected as brittle (timestamps drift, run-IDs editable, tampering undetectable). The validator forces procedural discipline, not tamper-proof audit.
+
+See `commands/verify-plan.md` for the slash command, `skills/verify-plan/SKILL.md` for the procedure.
+
+## Schema-level questions (H.7.23)
+
+When a question concerns Claude Code's plugin manifest, settings.json schema, marketplace.json schema, or any other Claude Code configuration schema, **route through `general-purpose` subagent + `WebFetch` on `code.claude.com/docs`** rather than `claude-code-guide`.
+
+**Why** — H.7.22's three install-failure hotfixes (H.7.22.1/2/3) all happened because the `claude-code-guide` subagent gave wrong/conflicting advice on plugin manifest schema. The first round it confirmed `"./"` for marketplace source (correct). The second round it suggested `"agents": "agents"` (wrong — schema requires `^\./.*` regex; the right answer is to omit the field entirely since auto-discovery handles the default location).
+
+The general-purpose agent + `WebFetch` against canonical docs (`https://code.claude.com/docs/en/plugins-reference.md`, `https://www.schemastore.org/claude-code-plugin-manifest.json`) + cross-reference with working anthropic plugins (`anthropics/claude-plugins-official` like `code-review`, `feature-dev`) is the source-of-truth path for schema questions.
+
+**`claude-code-guide` is fine for** — Claude Code behavior questions (hook semantics, slash command precedence, MCP server discovery, etc.). Just not schemas.
+
+**Drift-note 43 codified** — schema source-of-truth.

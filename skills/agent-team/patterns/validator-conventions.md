@@ -98,6 +98,12 @@ When a validator skips a check, fires a soft warning, or otherwise produces stde
 ℹ validate-plan-schema: aspirational Tier 3 sections missing (no enforcement): Out of Scope, Drift Notes
 ```
 
+`contracts-validate.js` H.7.23 — `contract-marketplace-schema` validator:
+```
+ℹ contract-marketplace-schema: schemas: 2 validated
+ℹ contract-marketplace-schema: vendored schemas missing in swarm/schemas/ (this is normal on fresh checkout / minimal install; run scripts/agent-team/refresh-plugin-schema.sh to vendor)
+```
+
 Both messages: explain why, reference the relevant context, indicate expected vs unexpected.
 
 ### When this convention applies

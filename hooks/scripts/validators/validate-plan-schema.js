@@ -77,6 +77,16 @@ const TIER_3_SECTIONS = ['Out of Scope', 'Drift Notes'];
 // route recommendation. Closes drift-notes 13/14/15.
 const PRINCIPLE_AUDIT_SECTION = 'Principle Audit';
 
+// H.7.23 — Pre-Approval Verification section. Required (Tier 1, same gate as
+// Principle Audit) when plan is HETS-routed. Codifies drift-note 40: the
+// parallel architect + code-reviewer spawn pattern that caught real bugs
+// in H.7.22 + H.7.23 plans. Validator only checks for section PRESENCE,
+// not whether the spawn actually ran (presence-with-honest-disclaimer trust
+// model, same as Principle Audit; per H.7.23 code-reviewer FAIL #4 in the
+// pre-approval verification — strict spawn-verification was rejected as
+// brittle and tampering-undetectable).
+const PRE_APPROVAL_VERIFICATION_SECTION = 'Pre-Approval Verification';
+
 /**
  * Test whether content has an H2-level heading matching `sectionName`.
  * Case-sensitive (markdown convention). Allows optional parenthetical suffix
@@ -184,6 +194,11 @@ function checkTiers(content) {
   if (requiresPrincipleAudit(content)) {
     if (!hasH2Heading(content, PRINCIPLE_AUDIT_SECTION)) {
       missing.tier1.push(`${PRINCIPLE_AUDIT_SECTION} (HETS-spawned or route-recommended plan)`);
+    }
+    // H.7.23 — Pre-Approval Verification required on the SAME gate.
+    // Same trust model as Principle Audit: presence-only check.
+    if (!hasH2Heading(content, PRE_APPROVAL_VERIFICATION_SECTION)) {
+      missing.tier1.push(`${PRE_APPROVAL_VERIFICATION_SECTION} (HETS-spawned or route-recommended plan — invoke /verify-plan before ExitPlanMode)`);
     }
   }
 

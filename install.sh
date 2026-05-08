@@ -637,6 +637,59 @@ SETTINGS_EOF
   fi
   rm -rf /tmp/h7-22-plan-test
 
+  # Test 30 (H.7.23): contract-marketplace-schema validator passes on HEAD
+  # AND emits the "schemas: 2 validated" confirmation (per H.7.23 plan code-reviewer FLAG #7
+  # — assert validation actually ran, not just exit code 0)
+  local h7_23_schema_result
+  h7_23_schema_result=$(node "$SCRIPT_DIR/scripts/agent-team/contracts-validate.js" --scope contract-marketplace-schema 2>&1)
+  if echo "$h7_23_schema_result" | grep -q 'schemas: 2 validated' && echo "$h7_23_schema_result" | grep -q '0 violation'; then
+    echo "  ✓ contract-marketplace-schema: H.7.23 validates HEAD plugin.json + marketplace.json"
+    passed=$((passed + 1))
+  else
+    echo "  ✗ contract-marketplace-schema: H.7.23 failed — got: ${h7_23_schema_result:0:200}"
+    failed=$((failed + 1))
+  fi
+
+  # Test 31 (H.7.23): validate-plan-schema requires Pre-Approval Verification on HETS-routed plans
+  # (Tier 1 conditional — same gate as Principle Audit per H.7.22). Plan with HETS Spawn Plan
+  # + recommendation:route + Principle Audit but MISSING Pre-Approval Verification → fires drift.
+  mkdir -p /tmp/h7-23-plan-test/.claude/plans
+  local h7_23_plan_no_paver='# Phase X — test\n\n## Context\nA test.\n\n## Routing Decision\n```json\n{ "recommendation": "route" }\n```\n\n## HETS Spawn Plan\nMira architect — substantive content here.\n\n## Files To Modify\nNone.\n\n## Verification Probes\nN/A.\n\n## Principle Audit\nKISS, DRY, SOLID, YAGNI all checked.\n'
+  printf "%b" "$h7_23_plan_no_paver" > /tmp/h7-23-plan-test/.claude/plans/test-plan.md
+  local h7_23_plan_json
+  h7_23_plan_json=$(printf '{"tool_name":"Write","tool_input":{"file_path":"/tmp/h7-23-plan-test/.claude/plans/test-plan.md","content":%s}}' "$(printf "%b" "$h7_23_plan_no_paver" | node -e "let s='';process.stdin.on('data',c=>s+=c);process.stdin.on('end',()=>process.stdout.write(JSON.stringify(s)))")")
+  local h7_23_plan_result
+  h7_23_plan_result=$(echo "$h7_23_plan_json" | node "$CLAUDE_DIR/hooks/scripts/validators/validate-plan-schema.js" 2>&1)
+  if echo "$h7_23_plan_result" | grep -q 'Pre-Approval Verification'; then
+    echo "  ✓ validate-plan-schema: H.7.23 requires Pre-Approval Verification on HETS-routed plan"
+    passed=$((passed + 1))
+  else
+    echo "  ✗ validate-plan-schema: H.7.23 should flag missing Pre-Approval Verification — got: ${h7_23_plan_result:0:200}"
+    failed=$((failed + 1))
+  fi
+  rm -rf /tmp/h7-23-plan-test
+
+  # Test 32 (H.7.23): marketplace-state-reader functional probe — exposes
+  # getMirrorRoot, getMirrorAgeDays. Not testing the [MARKETPLACE-STALE]
+  # path directly (would require simulating a stale git clone) — instead
+  # verifying the helper module loads and resolves the live mirror.
+  local h7_23_reader_result
+  h7_23_reader_result=$(node -e "
+const r = require('$SCRIPT_DIR/hooks/scripts/_lib/marketplace-state-reader.js');
+const root = r.getMirrorRoot();
+if (!root) { console.log('NO-MIRROR'); process.exit(0); }
+const age = r.getMirrorAgeDays(root);
+if (age === null) { console.log('NO-AGE'); process.exit(0); }
+if (age >= 0) console.log('READER-OK age=' + age.toFixed(2));
+" 2>&1)
+  if echo "$h7_23_reader_result" | grep -qE 'READER-OK|NO-MIRROR'; then
+    echo "  ✓ marketplace-state-reader: H.7.23 module loads + resolves mirror state"
+    passed=$((passed + 1))
+  else
+    echo "  ✗ marketplace-state-reader: H.7.23 failed — got: ${h7_23_reader_result:0:120}"
+    failed=$((failed + 1))
+  fi
+
 
   echo ""
   echo "  Results: $passed passed, $failed failed"

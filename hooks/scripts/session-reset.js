@@ -83,6 +83,52 @@ try {
     }
   }
 
+  // H.7.23 — third diagnostic branch (closes drift-note 41): when plugin IS
+  // loaded AND running from the marketplace cache AND mirror clone HEAD is
+  // older than 7 days → emit `[MARKETPLACE-STALE]` to stderr (10th forcing
+  // instruction in the family).
+  //
+  // Per H.7.23 code-reviewer FAIL #2: timestamp-based check (no `git fetch`).
+  // Privacy + perf concern with fetch on every session-start. Local
+  // `git log -1 --format=%ct` is sufficient for the 7-day threshold.
+  if (looksLikePluginInstall) {
+    try {
+      const marketplaceReader = require('./_lib/marketplace-state-reader.js');
+      const mirrorPath = marketplaceReader.getMirrorRoot();
+      if (mirrorPath) {
+        const ageDays = marketplaceReader.getMirrorAgeDays(mirrorPath);
+        const STALE_THRESHOLD_DAYS = 7;
+        if (ageDays !== null && ageDays > STALE_THRESHOLD_DAYS) {
+          process.stderr.write(
+            '\n[MARKETPLACE-STALE]\n' +
+            '\n' +
+            `Marketplace mirror at ${mirrorPath} has not been updated for ` +
+            `${ageDays.toFixed(1)} days (threshold: ${STALE_THRESHOLD_DAYS}). ` +
+            'New plugin features and hook updates may be missing.\n' +
+            '\n' +
+            'To refresh:\n' +
+            `  cd ${mirrorPath} && git pull origin main\n` +
+            '  /plugin update power-loom@power-loom-marketplace\n' +
+            '\n' +
+            'This is the 10th forcing instruction in the family. The check is\n' +
+            'local-only (no `git fetch` on session-start — privacy + perf).\n' +
+            'Drift-note 46: 7-day threshold is a magic number; if over-fire\n' +
+            'rate is high, expose via env var.\n' +
+            '[/MARKETPLACE-STALE]\n\n'
+          );
+          logger('marketplace_stale_warn', {
+            mirrorPath,
+            ageDays: Number(ageDays.toFixed(2)),
+            thresholdDays: STALE_THRESHOLD_DAYS,
+          });
+        }
+      }
+    } catch (err) {
+      // marketplace-state-reader missing or git-call failed — fail-open.
+      logger('marketplace_stale_check_skipped', { reason: err.message });
+    }
+  }
+
   const tmpDir = os.tmpdir();
   const files = fs.readdirSync(tmpDir);
   const now = Date.now();

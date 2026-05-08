@@ -2,6 +2,64 @@
 
 Deferred work from prior phases, captured here so nothing important gets silently dropped. Each entry: scope, rationale, dependencies, rough estimate.
 
+## Phase H.7.23 — Distribution-channel + verification-discipline hardening (closes drift-notes 37/40/41/42/43/44) — SHIPPED
+
+**Status**: shipped per approved plan. Closes 6 drift-notes captured during the H.7.22 deployment story.
+
+### What landed (5 sub-phases, 17 files)
+
+| Sub-phase | Scope | Key files |
+|-----------|-------|-----------|
+| 1 | Schema vendor + readers | `swarm/schemas/{plugin-manifest,marketplace}.schema.json`; `swarm/schemas/README.md`; `scripts/agent-team/refresh-plugin-schema.sh`; `hooks/scripts/_lib/marketplace-state-reader.js` |
+| 2 | Validators wired | `contract-marketplace-schema` in `contracts-validate.js`; `validate-plan-schema.js` Pre-Approval Verification Tier 1; `session-reset.js` third diagnostic branch |
+| 3 | `/verify-plan` slash command + skill | `commands/verify-plan.md`; `skills/verify-plan/SKILL.md`; `scripts/agent-team/verify-plan-spawn.js` |
+| 4 | CI workflows | `.github/workflows/phase-tag-version-check.yml`; `.github/workflows/auto-release-on-tag.yml` |
+| 5 | Docs + bump + tests | `rules/core/workflow.md` (2 new sections); `validator-conventions.md` reference table; `plugin.json` 1.1.3→1.2.0; SKILL.md/BACKLOG.md/CHANGELOG.md; install.sh tests 30-32 |
+
+### Pre-Approval Verification (recursive dogfood)
+
+Parallel architect + code-reviewer spawn ran on this very plan AFTER initial draft + BEFORE ExitPlanMode. The very pattern this phase codifies. Caught **5 substantive issues** (3 FAIL: `ajv` unavailable, `git fetch` privacy concern, CHANGELOG format mismatch; 2 FLAG: estimate too tight, version bump magnitude) + **4 plan-honesty FLAGs** (audit self-rationalization, ordering claim overstated, scope-claim/delivery mismatch, unresolved design choice). All 8 fixes incorporated before user surfacing. **Drift-note 40 codification value confirmed empirically**: pattern paid for itself within the same phase that codifies it.
+
+### Architect spawn empirically validated
+
+H.7.22's fix to drift-note 36 (architect agent meta-response failure) confirmed working — architect produced structured ADR with explicit Principle Audit including KISS-vs-SRP conflict acknowledgment. No meta-response. Phase 1 of H.7.22 codified the contract; H.7.23 was the first phase to test it under load.
+
+### Verification
+
+- ✓ install.sh smoke 32/32 (was 29/29; +3 H.7.23 tests)
+- ✓ `_h70-test` 46/46 (regression — H.7.23 doesn't touch route-decide)
+- ✓ contracts-validate: 0 violations on HEAD; `contract-marketplace-schema` empirically catches H.7.22.1 failure pattern when seeded with the bug
+- ✓ Both vendored schemas (plugin-manifest + marketplace) valid JSON
+- ✓ Both CI workflow YAML files parse OK
+- ✓ Helper script + skill + slash command syntax-OK
+- ✓ marketplace-state-reader functional probe: resolves mirror, computes age in days
+
+### R/A/FT mapping
+
+| Principle | Primitive |
+|-----------|-----------|
+| Reliability | `contract-marketplace-schema` validator (catches H.7.22-class bugs pre-ship); `phase-tag-version-check.yml` (CI enforcement of version-bump-on-tag) |
+| Availability | Auto-release-on-tag workflow (manual `gh release create` no longer needed); `[MARKETPLACE-STALE]` 10th forcing instruction (proactive surfacing of mirror drift) |
+| Fault tolerance | `/verify-plan` slash command + skill (catch issues pre-ExitPlanMode); workflow rule routing schema questions to primary sources (avoid the `claude-code-guide` mis-routing that caused H.7.22.1/2/3) |
+
+### Drift-notes captured during H.7.23
+
+- **45**: Schema-vendoring upstream-drift maintenance debt — bi-monthly refresh is a soft norm that itself could drift. CI-scheduled refresh job is the durable answer (deferred per YAGNI). Captured for future arc.
+- **46**: `[MARKETPLACE-STALE]` 7-day threshold is a magic number; expose via env var if over-fire rate is high. Empirical signal candidate.
+- **47**: `verify-plan-spawn.js` as a 4th maintenance surface for spawn semantics (alongside `/build-team`, `/build-plan`, `/forge`). Convention extension candidate: extract `_lib/spawn-aggregator.js` if 4th caller emerges.
+- **48** (from pre-approval verification): "minimal subset of complex spec" framing should be challenged with "name 3 specific failure patterns this catches." Forcing concrete bug-class targeting over generic-validator framing.
+- **49** (NEW from H.7.23 dogfood): Legacy install (settings.json with `Write` matcher only) masked H.7.20's `Edit|Write` validator firing on Edit operations to skill files. Surfaced when `/reload-plugins` activated proper plugin matchers — `skills/agent-team/SKILL.md` had no frontmatter, validator blocked. **Fixed inline** by adding frontmatter to SKILL.md. **Audit candidate**: scan ALL skill files in the toolkit for missing frontmatter now that proper Edit-coverage is wired. The validator was correct; legacy wiring had been masking the gap.
+
+### Out of scope (deferred)
+
+- Schema-refresh CI-scheduled job (drift-note 45 — manual cadence sufficient for now)
+- `_lib/spawn-aggregator.js` extraction (drift-note 47 — wait for 4th caller)
+- Strict spawn-verification in validator (presence-only trust model accepted)
+- MEDIUM/HIGH severity tiers on Pre-Approval Verification validator (observe presence-only false-positive rate first)
+- Distribution chaos-test 4th orchestrator (drift-note 35 — v2.1.0 candidate)
+- Drift-note 39 (principle codification for non-architect agents — H.7.24)
+- Drift-note 49 broader audit (other skill files missing frontmatter — H.7.24 candidate)
+
 ## Phase H.7.22.1 — Marketplace source format hotfix — SHIPPED
 
 **Status**: hotfix on top of H.7.22 — caught when user attempted `/plugin install power-loom@power-loom-marketplace` post-migration and Claude Code rejected the install with: *"This plugin uses a source type your Claude Code version does not support."*

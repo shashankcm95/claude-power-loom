@@ -1,0 +1,63 @@
+name: Phase tag version-bump check
+
+# H.7.23 — Closes drift-note 37: enforce that every phase-H.* tag push is
+# accompanied by a plugin.json version bump. Catches the gap that let H.7.10
+# through H.7.21 ship without updating the manifest version (only H.7.22
+# bumped, in response to the user-facing install errors).
+#
+# Trigger: push of refs/tags/phase-H.* (covers phase-H.7.23, phase-H.7.22.1,
+# etc. — applies to ALL phase tags including hotfix-shaped ones, per H.7.23
+# plan code-reviewer FLAG #6 — H.7.22 hotfix series already set the precedent
+# of bumping on every phase tag).
+#
+# Failure mode: the check fails CI on the tag push (visible on the tag's
+# Actions page). Author can either retroactively bump manifest + force-push
+# the tag (NOT RECOMMENDED — destructive) OR cut a follow-up phase that
+# bumps + retags. The check is preventative; the failed run is the alarm.
+
+on:
+  push:
+    tags:
+      - "phase-H.*"
+
+jobs:
+  version-bump-check:
+    name: Verify plugin.json version bumped
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need parent commit to compare against
+          fetch-depth: 2
+
+      - name: Compare plugin.json version at HEAD vs HEAD~1
+        run: |
+          set -e
+          if ! command -v jq > /dev/null; then
+            echo "jq not available — installing..."
+            sudo apt-get update -qq && sudo apt-get install -y jq
+          fi
+
+          MANIFEST=".claude-plugin/plugin.json"
+          if [ ! -f "$MANIFEST" ]; then
+            echo "ERROR: $MANIFEST not found at HEAD"
+            exit 1
+          fi
+
+          HEAD_VERSION=$(jq -r '.version' "$MANIFEST")
+          PARENT_VERSION=$(git show HEAD~1:"$MANIFEST" 2>/dev/null | jq -r '.version' || echo "(unknown)")
+
+          echo "Plugin manifest version at HEAD:    $HEAD_VERSION"
+          echo "Plugin manifest version at HEAD~1:  $PARENT_VERSION"
+
+          if [ "$HEAD_VERSION" = "$PARENT_VERSION" ]; then
+            echo ""
+            echo "::error::Phase tag pushed without plugin.json version bump."
+            echo "::error::Drift-note 37 (H.7.23) requires every phase-H.* tag to"
+            echo "::error::correspond to a plugin manifest version increment."
+            echo "::error::Bump .claude-plugin/plugin.json version + retag."
+            exit 1
+          fi
+
+          echo ""
+          echo "✓ Version bumped ($PARENT_VERSION → $HEAD_VERSION) — phase tag is releasable."
