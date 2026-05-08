@@ -78,7 +78,7 @@ kb/architecture/
 │   ├── refusal-patterns.md         [empty]
 │   ├── adr-template.md             [empty]
 │   ├── failure-mode-analysis.md    [empty]
-│   ├── trade-off-articulation.md   [notes — first-wave]
+│   ├── trade-off-articulation.md   [SHIPPED — batch 4]
 │   ├── error-handling-discipline.md [SHIPPED — batch 3; from charlax+Clean Code+PoSD+others]
 │   ├── reliability-scalability-maintainability.md [notes — first-wave; from DDIA ch 1+SRE]
 │   ├── stability-patterns.md       [notes — first-wave; from Release It!+Hard Parts]
@@ -93,7 +93,7 @@ kb/architecture/
 │   └── architecture-quantum.md     [notes — second-wave; from Hard Parts]
 │
 └── ai-systems/                   [NEW BRANCH — substrate-uniquely-relevant]
-    ├── rag-anchoring.md            [notes — first-wave; substrate dogfood]
+    ├── rag-anchoring.md            [SHIPPED — batch 4; substrate dogfood]
     ├── agent-design.md             [notes — second-wave]
     ├── evaluation-under-nondeterminism.md [notes — second-wave]
     ├── inference-cost-management.md [notes — third-wave]
