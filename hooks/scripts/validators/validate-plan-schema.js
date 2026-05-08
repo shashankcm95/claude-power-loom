@@ -38,6 +38,12 @@
 // [CONFIRMATION-UNCERTAIN] (H.4.3), [FAILURE-REPEATED] (H.7.7), [SELF-IMPROVE
 // QUEUE] (H.4.1), and [ROUTE-META-UNCERTAIN] (H.7.16) family — deterministic
 // substrate detects pattern; Claude makes semantic call. No subprocess LLM.
+//
+// Forcing-instruction class: 1 (advisory) — emits [PLAN-SCHEMA-DRIFT]. Highest
+// landing rate in the family (~80% — fires on most plan files since Tier 1
+// sections are mandatory). Per Convention G (skills/agent-team/patterns/
+// validator-conventions.md). Catalog: skills/agent-team/patterns/forcing-
+// instruction-family.md.
 
 'use strict';
 

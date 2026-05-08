@@ -11,6 +11,11 @@
 // Weights, thresholds, keyword sets, and edge-case behavior are LOAD-BEARING
 // per theo's design — implementer (13-node-backend.noor) MUST NOT re-derive
 // them. Adjustments to keyword sets / weights require a new architect pass.
+//
+// Forcing-instruction class: 1 (advisory) — emits [ROUTE-DECISION-UNCERTAIN]
+// and [ROUTE-META-UNCERTAIN]. Per Convention G (skills/agent-team/patterns/
+// validator-conventions.md). Catalog: skills/agent-team/patterns/forcing-
+// instruction-family.md.
 
 'use strict';
 

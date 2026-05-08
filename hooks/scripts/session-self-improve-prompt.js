@@ -11,6 +11,12 @@
 //   - Best-effort: failures here never break the prompt pipeline; we always
 //     pass the user's prompt through unchanged.
 //   - Quiet when there's nothing to surface (no log spam, no injection).
+//
+// Forcing-instruction class: 2 (operator notice) — emits [SELF-IMPROVE QUEUE].
+// Status surface for pending self-improve candidates; NOT a Claude-side
+// semantic action ask. Per Convention G (skills/agent-team/patterns/validator-
+// conventions.md). Catalog: skills/agent-team/patterns/forcing-instruction-
+// family.md.
 
 const fs = require('fs');
 const path = require('path');

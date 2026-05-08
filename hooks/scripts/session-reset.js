@@ -3,6 +3,12 @@
 // SessionStart hook: resets the fact-forcing gate tracker.
 // Each new session starts with a clean slate — you must Read before Edit/Write.
 // Also cleans up stale tracker files from previous sessions.
+//
+// Forcing-instruction class: 2 (operator notice) — emits [MARKETPLACE-STALE]
+// when mirror clone HEAD is older than CLAUDE_MARKETPLACE_STALE_DAYS (default
+// 7 days). Status surface; not Claude-side action ask. Per Convention G
+// (skills/agent-team/patterns/validator-conventions.md). Catalog: skills/
+// agent-team/patterns/forcing-instruction-family.md.
 
 const fs = require('fs');
 const path = require('path');

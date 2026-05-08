@@ -11,6 +11,11 @@
 //
 // Detection is intentionally conservative: better to miss some vague prompts
 // than to over-flag every clear instruction.
+//
+// Forcing-instruction class: 1 (advisory) — emits [PROMPT-ENRICHMENT-GATE] and
+// [CONFIRMATION-UNCERTAIN]. Per Convention G (skills/agent-team/patterns/
+// validator-conventions.md). Catalog: skills/agent-team/patterns/forcing-
+// instruction-family.md.
 
 const fs = require('fs');
 const path = require('path');

@@ -31,6 +31,14 @@
 // 8th in the forcing-instruction family alongside [PROMPT-ENRICHMENT-GATE],
 // [ROUTE-DECISION-UNCERTAIN], [CONFIRMATION-UNCERTAIN], [FAILURE-REPEATED],
 // [SELF-IMPROVE QUEUE], [PLAN-SCHEMA-DRIFT], [ROUTE-META-UNCERTAIN].
+//
+// Forcing-instruction class: 1 (advisory) — emits [MARKDOWN-EMPHASIS-DRIFT].
+// **FLAGGED for migration in H.7.27** per Convention G failure-modes section
+// (recovery is mechanical — wrap underscores in backticks — not semantic;
+// wrong tool for forcing-instruction mechanism). Migration shape: prefer
+// markdownlint pipeline absorption over PreToolUse hard-gate. Per Convention
+// G (skills/agent-team/patterns/validator-conventions.md). Catalog: skills/
+// agent-team/patterns/forcing-instruction-family.md.
 
 'use strict';
 

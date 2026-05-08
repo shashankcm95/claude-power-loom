@@ -18,6 +18,15 @@
 //   - Falls back gracefully if settings-reader throws
 //   - 9th forcing instruction in family
 //   - Single Responsibility (SOLID): just plugin-load detection + nudge
+//
+// Forcing-instruction class: 2 (operator notice) — emits [PLUGIN-NOT-LOADED].
+// **FLAGGED for retirement in H.7.26** per Convention G — duplicate-emission
+// across layers (this UserPromptSubmit stdout + session-reset.js SessionStart
+// stderr both surface the same substrate state). Consolidate by retiring
+// this hook in favor of session-reset.js Class 2 [MARKETPLACE-STALE]-style
+// emission. Per Convention G (skills/agent-team/patterns/validator-
+// conventions.md). Catalog: skills/agent-team/patterns/forcing-instruction-
+// family.md.
 
 'use strict';
 

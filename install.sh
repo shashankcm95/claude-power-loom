@@ -819,6 +819,54 @@ SETTINGS_EOF
   fi
   rm -rf /tmp/h7-24-mock-home
 
+  # Test 39 (H.7.25): forcing-instruction-family.md exists AND lists all 11
+  # markers in TABLE-ROW context (per code-reviewer FLAG #3 — strengthen from
+  # presence-only grep to assert each marker appears in a markdown table cell,
+  # not just in prose). Closes drift-note 21 catalog completeness.
+  local h7_25_catalog="$SCRIPT_DIR/skills/agent-team/patterns/forcing-instruction-family.md"
+  local h7_25_markers="PROMPT-ENRICHMENT-GATE ROUTE-DECISION-UNCERTAIN CONFIRMATION-UNCERTAIN FAILURE-REPEATED SELF-IMPROVE PLAN-SCHEMA-DRIFT ROUTE-META-UNCERTAIN MARKDOWN-EMPHASIS-DRIFT PLUGIN-NOT-LOADED MARKETPLACE-STALE PRE-APPROVAL-VERIFICATION-NEEDED"
+  local h7_25_missing_markers=0
+  if [ ! -f "$h7_25_catalog" ]; then
+    h7_25_missing_markers=11
+  else
+    for marker in $h7_25_markers; do
+      # Match table-row line containing [MARKER-NAME] — line starts with `|`
+      # and contains `[${marker}` (allows backtick-wrapped markers like `[NAME]`)
+      if ! grep -qE "^\|.*\[${marker}" "$h7_25_catalog"; then
+        h7_25_missing_markers=$((h7_25_missing_markers + 1))
+      fi
+    done
+  fi
+  if [ "$h7_25_missing_markers" -eq 0 ]; then
+    echo "  ✓ forcing-instruction-family: H.7.25 catalog lists all 11 markers in table-row context"
+    passed=$((passed + 1))
+  else
+    echo "  ✗ forcing-instruction-family: H.7.25 catalog missing $h7_25_missing_markers marker(s) in table-row context"
+    failed=$((failed + 1))
+  fi
+
+  # Test 40 (H.7.25): Convention G section present in validator-conventions.md
+  # AND contains "Class 1", "Class 2", "decision tree", and "N=15" tokens
+  # (per code-reviewer FLAG #4 — assert structural completeness, not just
+  # heading presence). Closes drift-note 21 taxonomy codification.
+  local h7_25_conv="$SCRIPT_DIR/skills/agent-team/patterns/validator-conventions.md"
+  local h7_25_conv_missing=0
+  if [ ! -f "$h7_25_conv" ]; then
+    h7_25_conv_missing=4
+  else
+    grep -qE '## Convention G' "$h7_25_conv" || h7_25_conv_missing=$((h7_25_conv_missing + 1))
+    grep -qE 'Class 1' "$h7_25_conv" || h7_25_conv_missing=$((h7_25_conv_missing + 1))
+    grep -qE 'Class 2' "$h7_25_conv" || h7_25_conv_missing=$((h7_25_conv_missing + 1))
+    grep -qE 'decision tree' "$h7_25_conv" || h7_25_conv_missing=$((h7_25_conv_missing + 1))
+    grep -qE 'N=15' "$h7_25_conv" || h7_25_conv_missing=$((h7_25_conv_missing + 1))
+  fi
+  if [ "$h7_25_conv_missing" -eq 0 ]; then
+    echo "  ✓ convention-g: H.7.25 validator-conventions.md Convention G has all structural tokens (Class 1, Class 2, decision tree, N=15)"
+    passed=$((passed + 1))
+  else
+    echo "  ✗ convention-g: H.7.25 validator-conventions.md Convention G missing $h7_25_conv_missing structural token(s)"
+    failed=$((failed + 1))
+  fi
 
   echo ""
   echo "  Results: $passed passed, $failed failed"

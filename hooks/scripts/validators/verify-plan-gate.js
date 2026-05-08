@@ -14,9 +14,15 @@
 // hook now approves. User authority preserved via SKIP_VERIFY_PLAN=1 env var.
 //
 // 11th forcing instruction in family: [PRE-APPROVAL-VERIFICATION-NEEDED].
-// Drift-note 21 (forcing-instruction architectural smell) gets one notch
-// deeper — the substrate is increasingly text-instruction-shaped vs
-// hard-gate-shaped. Future-arc retrospective candidate.
+// Drift-note 21 (forcing-instruction architectural smell) closed by H.7.25
+// retrospective — see Convention G in `validator-conventions.md`.
+//
+// Forcing-instruction class: Class 1 textual variant on hard-gate substrate
+// (per Convention G). NOT a peer Class 3 — single-instance is variant, not
+// class. Codifies the pattern of borrowing Class 1 textual conventions for
+// PreToolUse `decision: block` reason fields. Per Convention G (skills/
+// agent-team/patterns/validator-conventions.md). Catalog: skills/agent-team/
+// patterns/forcing-instruction-family.md.
 
 'use strict';
 

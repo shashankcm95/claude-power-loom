@@ -2,6 +2,74 @@
 
 Deferred work from prior phases, captured here so nothing important gets silently dropped. Each entry: scope, rationale, dependencies, rough estimate.
 
+## Phase H.7.25 — Forcing-instruction family retrospective + Convention G + catalog (closes drift-note 21) — SHIPPED
+
+**Status**: shipped per approved plan. Audits the 11-instruction family that drift-note 21 captured as "architectural smell" and reframes it from "band-aiding what should be hard gates" to "compositional growth that bifurcated into three semantic classes without an explicit taxonomy." Convention G ships the taxonomy; family catalog tracks per-instruction assignment.
+
+### What landed (3 sub-phases)
+
+| Sub-phase | Scope | Key files |
+|-----------|-------|-----------|
+| 1 | Convention G + family catalog | NEW `skills/agent-team/patterns/forcing-instruction-family.md` (~200 LoC); `validator-conventions.md` Convention G section between E and Related Patterns (~120 LoC additive); both files frontmatter `related:` arrays bidirectional per code-reviewer FLAG #2 |
+| 2 | 9 cross-reference comments | `prompt-enrich-trigger.js`, `route-decide.js`, `error-critic.js`, `session-self-improve-prompt.js`, `validate-plan-schema.js`, `validate-markdown-emphasis.js`, `plugin-loaded-check.js`, `session-reset.js`, `verify-plan-gate.js` — placement after architecture comment block, before first declaration per code-reviewer FLAG #4 |
+| 3 | Docs + manifest bump + tests | `plugin.json` 1.3.0 → 1.3.1 (patch — documentation-only); SKILL.md / BACKLOG.md / CHANGELOG.md / patterns/README.md; install.sh tests 39-40 (table-row context + Convention G structural tokens) |
+
+### The 3-class taxonomy (Convention G)
+
+| Class | What | Layer | Examples |
+|-------|------|-------|----------|
+| **1 — Advisory forcing instruction** | Deterministic detection + semantic recovery | stdout (UserPromptSubmit / PostToolUse) | `[PROMPT-ENRICHMENT-GATE]`, `[FAILURE-REPEATED]`, `[PLAN-SCHEMA-DRIFT]`, `[ROUTE-DECISION-UNCERTAIN]`, `[ROUTE-META-UNCERTAIN]` |
+| **2 — Operator notice** | Status surface, no Claude action expected | stderr (SessionStart) preferred | `[SELF-IMPROVE QUEUE]`, `[MARKETPLACE-STALE]` |
+| **Class 1 textual variant on hard-gate substrate** | PreToolUse `decision: block` borrowing Class 1 textual conventions | JSON `decision: block` | `[PRE-APPROVAL-VERIFICATION-NEEDED]` |
+
+Per-instruction verdicts (8 KEEP, 1 KEEP+retag, 2 CONSOLIDATE-deferred, 1 KEEP+flag-migration):
+
+- **KEEP as-is (5 Class 1)**: `[PROMPT-ENRICHMENT-GATE]`, `[ROUTE-DECISION-UNCERTAIN]`, `[FAILURE-REPEATED]`, `[PLAN-SCHEMA-DRIFT]`, `[ROUTE-META-UNCERTAIN]`
+- **KEEP, retag as Class 2**: `[SELF-IMPROVE QUEUE]`, `[MARKETPLACE-STALE]`
+- **KEEP, recognized as Class 1 textual variant on hard-gate substrate**: `[PRE-APPROVAL-VERIFICATION-NEEDED]`
+- **CONSOLIDATE → H.7.26**: `[CONFIRMATION-UNCERTAIN]` → into `[PROMPT-ENRICHMENT-GATE]`; `[PLUGIN-NOT-LOADED]` → into `[MARKETPLACE-STALE]`
+- **KEEP, FLAG for H.7.27 migration**: `[MARKDOWN-EMPHASIS-DRIFT]` → markdownlint pipeline (preferred) or PreToolUse hard-gate (fallback)
+
+**Net post-H.7.26**: 11 → 9 active markers. **Net post-H.7.27**: 9 → 8 active markers. Cap rule **N=15** with mandatory audit-trigger structure prevents future undisciplined growth.
+
+### Pre-Approval Verification (4th consecutive phase)
+
+Parallel architect + code-reviewer spawn caught **7 FLAGs** (no FAILs, no BLOCKED). All 7 fixes incorporated before user surfacing:
+
+- **Architect FLAGs**: cap rule too thin at N=12 → bumped to N=15 (FLAG #3); single-instance Class 3 framing → recast as "Class 1 textual variant on hard-gate substrate" (FLAG #4); `[FAILURE-REPEATED]` "appropriate landing rate" needs empirical threshold → drift-note 59 captured (FLAG #2); `[MARKDOWN-EMPHASIS-DRIFT]` flag-only insufficient → committed to H.7.27 (FLAG #6)
+- **Code-reviewer FLAGs**: per-marker landing-rate data source unspecified → methodology section explicit (FLAG #1); `validator-conventions.md` `related:` frontmatter missing bidirectional update → both files explicit (FLAG #2); test 39 presence-only grep → strengthened to table-row context + Convention G structural tokens (FLAG #3, #4)
+
+Architect produced explicit Principle Audit per H.7.22 contract — **4-for-4 success rate** post-fix to drift-note 36.
+
+### Recursive dogfood
+
+`[ROUTE-META-UNCERTAIN]` (substrate-meta detection) fired DURING this phase's route-decide call (correctly) — substrate auditing itself catches its own meta-meta state. Drift-note 58: Tier 2 phrases (`forcing instruction`, `signal token`) FP-prone on retrospectives like H.7.25 itself; future tuning candidate.
+
+### Verification
+
+- ✓ 40/40 install.sh smoke (was 38/38; +2 H.7.25 tests)
+- ✓ 46/46 `_h70-test` regression preserved
+- ✓ 0 violations from `pattern-status-frontmatter` (new pattern doc has frontmatter) and `pattern-related-bidirectional` (cross-references reciprocal)
+- ✓ All 9 emission files contain the cross-ref comment (grep `Forcing-instruction class:`)
+- ✓ `forcing-instruction-family.md` lists all 11 markers in table-row context
+- ✓ Convention G renders with 3 classes + decision tree + cap rule N=15
+
+### Drift-notes captured during H.7.25
+
+- **56**: Cap rule N=15 is a magic number. Sibling to drift-note 46 (`[MARKETPLACE-STALE]` 7-day threshold). If first audit goes well, expose via env var or document the threshold rationale empirically.
+- **57**: H.7.26 candidate items emerging from H.7.25 retrospective — (a) consolidate `[CONFIRMATION-UNCERTAIN]` into `[PROMPT-ENRICHMENT-GATE]`; (b) retire `[PLUGIN-NOT-LOADED]` in favor of `[MARKETPLACE-STALE]`. Bundle.
+- **58**: `[ROUTE-META-UNCERTAIN]` Tier 2 phrases (`forcing instruction`, `signal token`) FP on retrospectives like H.7.25 itself. Consider narrowing Tier 2 in a future tuning pass; not blocking.
+- **59**: "Appropriate landing rate" claims for forcing instructions need an empirical threshold definition. Empirical bar candidate: <5% landing rate over 30+ days = candidate for retirement; ≥5% AND clear semantic recovery action = keep. Defer empirical validation to soak period.
+
+### Out of scope (deferred)
+
+- **H.7.26 candidate** (drift-note 57): Consolidation execution — collapse `[CONFIRMATION-UNCERTAIN]` into `[PROMPT-ENRICHMENT-GATE]`; retire `[PLUGIN-NOT-LOADED]` in favor of `[MARKETPLACE-STALE]`
+- **H.7.27 committed** (architect FLAG #6): `[MARKDOWN-EMPHASIS-DRIFT]` migration to markdownlint pipeline (preferred) or PreToolUse hard-gate (fallback)
+- **`_lib/forcing-instruction.js` shared emission helper** (drift-note 47 sibling) — defer until Class 1 has 7+ callers post-consolidation
+- **Cap rule N=15 empirical validation** — first audit when count crosses threshold validates (or invalidates) the choice
+- **Drift-note 35** (Distribution chaos-test 4th orchestrator — v2.1.0 candidate)
+- **Drift-note 38** (install.sh deprecation — H.8.x)
+
 ## Phase H.7.24 — Substrate UX hardening 6-pack (closes drift-notes 39/46/49/50/51/52) — SHIPPED
 
 **Status**: shipped per approved plan. Post-major-cycle polish bundling 6 UX rough edges from H.7.22-H.7.23.1 cycle.

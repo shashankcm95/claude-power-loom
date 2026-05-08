@@ -1,8 +1,8 @@
 ---
 pattern: validator-conventions
 status: active
-intent: Conventions A-E for hook validators. A separates repo-internal from external-dependency concerns; B governs self-documenting stderr; C codifies tiered enforcement; D codifies PreToolUse-vs-PostToolUse placement; E codifies Edit-result-aware vs tool-agnostic content scanning. Codifies lessons from H.7.10/H.7.12/H.7.18/H.7.19/H.7.20/H.7.21.
-related: [route-decision, structural-code-review, kb-scope-enforcement, system-design-principles]
+intent: Conventions A-G for hook validators. A separates repo-internal from external-dependency concerns; B governs self-documenting stderr; C codifies tiered enforcement; D codifies PreToolUse-vs-PostToolUse placement; E codifies Edit-result-aware vs tool-agnostic content scanning; G codifies the forcing-instruction class taxonomy (H.7.25). Codifies lessons from H.7.10/H.7.12/H.7.18/H.7.19/H.7.20/H.7.21/H.7.25.
+related: [route-decision, structural-code-review, kb-scope-enforcement, system-design-principles, forcing-instruction-family]
 ---
 
 ## Summary
@@ -307,6 +307,69 @@ Convention E is the runtime/coverage twin of Convention D's placement decision:
 
 A validator's correctness requires BOTH conventions. Wrong placement (D violation) misses the security/silent-failure window. Wrong content handling (E violation) silently passes Edit-completed violations.
 
+## Convention G — Forcing-instruction class taxonomy (H.7.25)
+
+Originated in H.7.25 retrospective on the 11-instruction count growth (drift-note 21 closure). Codifies the mechanism choice that earlier instructions made implicitly. Sibling document: `skills/agent-team/patterns/forcing-instruction-family.md` (per-instruction catalog).
+
+### Why this convention exists
+
+Between H.4.x and H.7.23.1, eleven `[BRACKET-MARKER]` text blocks accumulated across 9 hook scripts. They share visual shape but differ semantically along three axes: (a) does Claude take action, (b) where does the text go, (c) does the operation gate or pass through. Without explicit taxonomy, future hooks risk misclassification — and one already did (`[MARKDOWN-EMPHASIS-DRIFT]`, mechanical fix shoehorned into advisory shape).
+
+### The two classes (plus one variant)
+
+**Class 1 — Advisory forcing instruction** (deterministic detect + semantic recovery)
+
+- Use when: detection is deterministic but the recovery action requires Claude-side judgment (read context, decide between options, synthesize fix).
+- Layer: stdout (UserPromptSubmit or PostToolUse).
+- Marker shape: `[CATEGORY-NAME] ... [/CATEGORY-NAME]`.
+- Operation: pass-through (UserPromptSubmit) or already-completed (PostToolUse).
+- Reference: `[PROMPT-ENRICHMENT-GATE]`, `[ROUTE-DECISION-UNCERTAIN]`, `[FAILURE-REPEATED]`, `[PLAN-SCHEMA-DRIFT]`, `[ROUTE-META-UNCERTAIN]`.
+
+**Class 2 — Operator notice** (status surface, no Claude action)
+
+- Use when: substrate state changes that the human operator should know about, but no Claude-side semantic work is expected.
+- Layer: stderr (SessionStart) preferred; UserPromptSubmit stdout *only* when the notice's resolution requires Claude to perform an Edit (rare; documented in the hook's header comment).
+- Marker shape: same `[CATEGORY-NAME]` for visual consistency, but the body uses imperative language directed at the user, not at Claude.
+- Reference: `[SELF-IMPROVE QUEUE]`, `[MARKETPLACE-STALE]`.
+
+**Variant — Class 1 textual conventions on hard-gate substrate** (PreToolUse `decision: block`)
+
+- Use when: silent-failure or security violation would result if the operation proceeded; the recovery is well-defined and re-invocable.
+- Layer: PreToolUse, JSON `{decision: 'block', reason: '<forcing-shape text>'}`.
+- Marker shape: same `[CATEGORY-NAME]` block inside the `reason` field for textual consistency; Claude reads, complies, retries.
+- This is **not a peer Class 3** — single-instance is variant, not class. Document as Class 1 textual conventions applied to a different substrate (PreToolUse hard-gate).
+- Reference: `[PRE-APPROVAL-VERIFICATION-NEEDED]`.
+
+### Class selection decision tree
+
+```text
+Q: Does the operation already proceed (pass-through or post-completion)?
+├── NO  → Use Class 1 textual conventions on a PreToolUse decision:block
+│         (variant; reference: PRE-APPROVAL-VERIFICATION-NEEDED)
+└── YES → Q: Is Claude-side semantic work expected?
+          ├── YES → Class 1 (advisory forcing instruction)
+          └── NO  → Class 2 (operator notice)
+```
+
+### Failure modes if violated
+
+- **Class 1 with mechanical recovery**: operator drift (`[MARKDOWN-EMPHASIS-DRIFT]` pre-H.7.25) — Claude is asked to do work a script could do. Symptom: low landing rate, Claude ignoring instruction, misclassification by reviewers. **H.7.27 commitment**: migrate `[MARKDOWN-EMPHASIS-DRIFT]` to markdownlint pipeline absorption (preferred) or PreToolUse hard-gate (fallback).
+- **Class 2 dressed as Class 1**: contributes to false count growth; future readers expect Claude-side action that never comes. Symptom: marker appears in retros but has no Claude-side work history. Pre-H.7.25, instructions 5+10 were mis-tagged as Class 1; reclassified by Convention G (no behavior change).
+- **Class 1 when variant fits**: silent failure. The bad operation already completed. Convention D's PreToolUse-vs-PostToolUse decision tree applies orthogonally.
+- **Variant when Class 1 fits**: friction. Every operation waits for blocking validation when advisory was sufficient (Convention D failure mode).
+
+### Family cap rule
+
+When the active forcing-instruction count crosses **N=15** (current 9 active post-H.7.26 consolidation + 6 headroom), the next phase MUST include a family audit before adding a 16th. Cap rationale: 6-headroom over current 9 = ~7 phases at the observed 0.85-instructions/phase growth rate. Wider than 3-headroom (the original draft) which would have triggered within 1-2 phases — defeating the cap's purpose as a forcing function. Drift-note 56 captures the magic-number concern; revisit after first cap-triggered audit.
+
+### Reference implementations
+
+See `skills/agent-team/patterns/forcing-instruction-family.md` for per-instruction class assignment, landing-rate observations, phase-tag origins, and verdicts. Cross-reference comments in each emission file (`hooks/scripts/...`) point at this convention.
+
+### Phase
+
+Shipped: H.7.25 (closes drift-note 21 — forcing-instruction architectural smell retrospective).
+
 ## Related Patterns
 
 - [Route-Decision](route-decision.md) — also gates substantive work on environmental signals (the dictionary expansion v1.2 was about the gate being too aggressive in some cases; Convention A is the same lesson applied to validators)
@@ -316,4 +379,4 @@ A validator's correctness requires BOTH conventions. Wrong placement (D violatio
 
 ## Phase
 
-Shipped: H.7.15 (Conventions A + B); reinforced H.7.18 (Convention C); extended H.7.19 (Convention D); extended H.7.21 (Convention E — closes drift-note 29)
+Shipped: H.7.15 (Conventions A + B); reinforced H.7.18 (Convention C); extended H.7.19 (Convention D); extended H.7.21 (Convention E — closes drift-note 29); extended H.7.25 (Convention G — closes drift-note 21)

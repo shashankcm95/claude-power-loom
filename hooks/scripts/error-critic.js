@@ -36,6 +36,11 @@
 // scoping via SESSION_ID (CLAUDE_SESSION_ID env var or random 8-byte hex).
 //
 // Cross-platform: pure Node + path.join + os.tmpdir(). Works on macOS / Linux.
+//
+// Forcing-instruction class: 1 (advisory) — emits [FAILURE-REPEATED] on 2nd
+// same-command failure. Per Convention G (skills/agent-team/patterns/
+// validator-conventions.md). Catalog: skills/agent-team/patterns/forcing-
+// instruction-family.md.
 
 const fs = require('fs');
 const path = require('path');
