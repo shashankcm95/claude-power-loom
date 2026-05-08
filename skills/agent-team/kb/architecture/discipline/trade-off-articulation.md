@@ -23,7 +23,61 @@ status: active+enforced
 
 ## Summary
 
-Architecture is about managing trade-offs, not finding perfect solutions. Every major recommendation must explicitly state **what is sacrificed**. The Hard Parts position: "Everything in software architecture is a trade-off" — generic solutions are rarely useful in real-world architectures without applying additional situation-specific context. Articulation discipline = surfacing the trade-off explicitly (consistency vs availability, simplicity vs flexibility, maintainability vs developer velocity) rather than implicitly. The substrate codifies this via H.7.22's Principle Audit requirement on architect ADRs; Convention G's failure-modes section is articulation applied to the substrate's own taxonomy.
+**Principle (Hard Parts)**: "Everything in software architecture is a trade-off." Every recommendation must state what is SACRIFICED, not just what is gained.
+**Discipline**: surface trade-offs explicitly (consistency vs availability, simplicity vs flexibility) rather than implicitly.
+**Test**: when proposing X, can you state what's sacrificed under what context the trade is favorable, and unfavorable?
+**Sources**: Hard Parts (entire book + ch 1 + 15) + Fundamentals of Software Architecture + Pragmatic Programmer + PoSD ch 11 + DDIA ch 1.
+**Substrate**: H.7.22 Principle Audit IS this enforced; Convention G failure-modes; drift-notes as captured trade-offs.
+
+## Quick Reference
+
+**Principle**: Architecture is about managing trade-offs, not finding perfect solutions. Every major recommendation must articulate what is sacrificed.
+
+**The trade-off vocabulary**:
+
+| Trade-off | Source / Examples |
+|-----------|------------------|
+| Reliability vs Scalability vs Maintainability | DDIA ch 1 |
+| Consistency vs Availability (CAP) | DDIA ch 9 |
+| Coupling vs Cohesion | Hard Parts ch 7 |
+| Synchronous vs Asynchronous | Hard Parts ch 2 |
+| Atomic vs Eventual Consistency | DDIA ch 5 / Hard Parts ch 12 |
+| Orchestration vs Choreography | Hard Parts ch 11 |
+| Strict vs Loose Contracts | Hard Parts ch 13 |
+| Simplicity vs Flexibility (YAGNI vs Speculative Generality) | Pragmatic Programmer |
+
+**Six patterns for articulation**:
+
+1. **The "What's Sacrificed" Question** — articulate gain, sacrifice, favorable context, unfavorable context
+2. **The Trade-off Matrix** — rows = options; columns = quality attributes; cells = scores
+3. **Design It Twice** (Ousterhout PoSD ch 11) — design 2+ alternatives; compare on simplicity, generality, efficiency, sacrifice
+4. **ADR (Architecture Decision Record)** — context / decision / consequences / alternatives / status
+5. **Hostile Architect Workflow** — another role argues against the design; surfaces unstated trade-offs
+6. **Fitness Functions** — automated checks that an architectural quality is preserved
+
+**Top smells**:
+
+- "Always" / "never" recommendations (no context — articulation absent)
+- "Best practices" without "for what context"
+- Missing the sacrifice (proposal lists only benefits)
+- Strict-domination claims ("X is strictly better than Y")
+
+**Tensions**:
+
+- **Speed of decision**: scope articulation to decision impact; trivial decisions need none
+- **YAGNI**: articulation doesn't require building; document decisions even if not flexible
+- **Authority**: even when senior architect's call is right, articulation documents reasoning for future similar decisions
+
+**Apply when**: significant architectural decisions; comparing alternatives; team disagreements (surface underlying trade-off); retrospectives.
+
+**Substrate examples**:
+
+- H.7.22 Principle Audit requirement: architect ADRs MUST include explicit trade-off articulation; plan-schema validator enforces structurally
+- Convention G failure modes (H.7.25): articulates what's sacrificed if you violate the convention
+- 11 → 9 → 8 active marker count (H.7.26-H.7.27): each retirement was an articulated trade-off (performative-differentiation vs unified-marker; redundant-emission vs single-layer; forcing-instruction-shape vs lint-pipeline)
+- Drift-notes as captured-trade-offs convention: 60+ drift-notes through H.7.27 each capture an observed trade-off
+- Pre-Approval Verification 4-for-4 success: parallel architect + code-reviewer spawn surfaces trade-offs the architect missed
+- Soak period as time-bounded trade-off: gain (stability validation) vs sacrifice (deferred features); explicit time-bound prevents compounding
 
 ## Intent
 

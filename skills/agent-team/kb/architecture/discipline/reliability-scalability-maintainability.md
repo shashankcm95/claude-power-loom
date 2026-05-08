@@ -25,7 +25,57 @@ status: active+enforced
 
 ## Summary
 
-Per Kleppmann (DDIA ch 1): a system has three orthogonal quality concerns — **Reliability** (continues working in face of faults), **Scalability** (handles growth in load), and **Maintainability** (different people can productively work on it). They often pull in different directions; explicit articulation of which dominates in your context is the discipline. Substrate's own R/A/FT (Reliability / Availability / Fault-tolerance) framing from H.7.22 is a specialization — Availability is implicit in Reliability, Fault-tolerance is the mechanism. Maintainability is the substrate's hidden third dimension, made explicit by Convention G's taxonomy + drift-notes + Pre-Approval Verification process.
+**Principle (DDIA ch 1)**: System has three orthogonal quality concerns — Reliability (faults), Scalability (growth), Maintainability (productive evolution). Often pull in different directions; articulate which dominates.
+**Substrate's R/A/FT specialization**: Reliability + Availability + Fault-tolerance; Maintainability hidden but exhibited via Convention G + drift-notes + Pre-Approval Verification.
+**Test**: SLI/SLO defined? Load model documented? Maintainability self-test (new dev productive in N days)?
+**Sources**: DDIA ch 1 + SRE book (free) + Release It! + Pragmatic Programmer + Hard Parts.
+**Substrate**: H.7.22 R/A/FT codification; drift-note convention as maintainability primitive; soak period as reliability discipline.
+
+## Quick Reference
+
+**Principle**: A system has three orthogonal quality concerns — Reliability, Scalability, Maintainability — and they often conflict.
+
+**Reliability** (continues working in face of faults):
+
+- **Fault** = component deviation from spec; **Failure** = system-wide stop
+- Faults are inevitable; failures are preventable via fault-tolerance
+- Sources of faults: hardware, software, **human error** (leading cause in mature systems per SRE)
+- SLI / SLO / Error Budget discipline: error budget = 1 - SLO; spend on features when within, focus on reliability when over
+
+**Scalability** (handles growth):
+
+- Define load parameters first (req/sec, fan-out, concurrent users, etc.)
+- Optimize percentiles (p99+), not averages — tail latency dominates user-perceived performance
+- Vertical (bigger machines) vs Horizontal (more machines) vs Elastic (auto-scaling)
+- Hot-spot patterns are the usual scalability surprise (celebrity user, viral content)
+
+**Maintainability** (productive evolution):
+
+- **Maintenance is the dominant cost** — initial dev is 1-2y; maintenance is 5-20y
+- Three sub-properties (DDIA): Operability + Simplicity + Evolvability
+- Simplicity ≠ "no abstractions"; means hiding *unnecessary* complexity (per [deep-modules](../crosscut/deep-modules.md))
+
+**Tensions**:
+
+- **Reliability vs Scalability**: synchronous replication / strong consistency are reliable but unscalable
+- **Scalability vs Maintainability**: microservices scale better but harder to maintain
+- **Reliability vs Maintainability**: multi-region active-active is reliable but operationally complex
+
+**Patterns for managing R/S/M**:
+
+- Explicit articulation at decision time (per [trade-off-articulation](trade-off-articulation.md))
+- SLO-driven prioritization — error budget governs feature-vs-reliability balance
+- Maintainability investment proportional to expected lifetime
+- Reliability through redundancy at the right layer (storage / runtime / app)
+
+**Substrate examples**:
+
+- H.7.22 R/A/FT codification: Reliability via contract-plugin-hook-deployment + matcher-drift detection; Availability via migration script + version bumps; Fault-tolerance via [PLUGIN-NOT-LOADED] + inverse-condition stderr
+- Drift-note convention: 60+ drift-notes capture observed deviations + deferred work; future maintainers can answer "why is this so?"
+- Convention G (H.7.25): simplicity primitive — 3 named classes reduce cognitive load for understanding 11-instruction family
+- Pre-Approval Verification: evolvability primitive — substrate evolved 50+ phases without major rewrites because changes are vetted at architect layer
+- Plan-template enforcement: operability primitive — every plan has same shape; future readers navigate via section headings
+- Soak period commitment: reliability via empirical validation; "5+ phases with 0 new drift-notes" before v2.0 ships
 
 ## Intent
 

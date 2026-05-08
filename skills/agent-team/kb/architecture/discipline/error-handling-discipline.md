@@ -24,7 +24,54 @@ status: active+enforced
 
 ## Summary
 
-Handle errors at the **outer layers** of code, not the inner. Inner code lets errors propagate; the outermost meaningful layer (where context exists for handling) catches and decides. Even better: design errors out of existence (Ousterhout) where possible — eliminate the conditions that produce them. The wrong pattern is catching at every layer (catch-and-re-raise tower); the worst pattern is silencing exceptions (`except: pass`). Most distinctly: the inner layer NEVER has enough context to decide what to do about an error — only the outer layer (caller, request handler, top-level loop) does. Diabolic when violated; trivially correct when followed.
+**Principle**: Handle errors at the OUTER layers; inner code lets errors propagate. Only the outer layer (caller, request handler, top-level loop) has the context to decide.
+**Even better**: design errors out of existence (Ousterhout) — eliminate the conditions that produce them.
+**Wrong pattern**: catching at every layer (catch-and-re-raise tower). **Worst**: silencing exceptions (`except: pass`).
+**Sources**: PoSD ch 10 + Clean Code ch 7 + charlax error-handling-antipatterns + Pragmatic Programmer + Release It! + end-to-end-principle blog post.
+**Substrate**: forcing instructions IS this principle; fail-open hooks (graceful degradation WITH observability).
+
+## Quick Reference
+
+**Principle**: "Error handling and recovery are best done at the outer layers of your code base. This is known as the end-to-end principle." (charlax / programmingisterrible.com)
+
+**Why catching at every layer fails**:
+
+- **Catch-and-rethrow tower**: stack traces become cryptic; original error lost; each layer adds maintenance burden without value
+- **Silencing antipattern** ("the most diabolical Python antipattern" — realpython.com): debugging impossible; silent UX degradation; identification impossible; state corruption
+- **Unconstrained defensive programming**: low-level fallbacks become magical conventions; new developers don't know about them; silent degradation when upstream fails
+
+**Seven patterns for end-to-end error handling**:
+
+1. **Let inner layers propagate** — no try/except in the inner; let it raise
+2. **Catch at outermost meaningful layer** — request handler, event loop, orchestrator
+3. **Define errors out of existence** (Ousterhout PoSD ch 10) — design API so exceptions don't arise; clamp inputs; use Optional/sentinel objects
+4. **Mask exceptions at low levels** — when exception is well-defined and high level shouldn't see it (cache misses, retryable transients)
+5. **Aggregate exceptions at single point** — one catch block at request boundary
+6. **Re-raise immediately when you must catch** — bare `raise` preserves original
+7. **Crash the application** when the right call (OOM, invariant violations, config corruption)
+
+**Top smells**:
+
+- try/except in every function (most should let errors propagate)
+- Bare `except:` clauses (catches SystemExit, KeyboardInterrupt)
+- Catching exceptions you can't actually handle (returning sentinel that callers can't disambiguate)
+- Error messages that paraphrase the function name (no value-add)
+- "Graceful degradation" that hides the degradation (silent fallbacks)
+
+**Tensions**:
+
+- **Postel's Law**: applies at protocol boundaries (parse liberally); does NOT mean silently ignore internal errors
+- **Fail-Fast**: applies *inside* a process; end-to-end applies *across* layers; partners
+- **Defensive programming**: at system edges (input validation), not in the middle
+
+**Substrate examples**:
+
+- Forcing-instruction architecture IS end-to-end: substrate detects deterministically; emits structured signal; outer layer (Claude) decides recovery
+- Fail-open hook discipline: errors logged + operation continues — graceful degradation WITH observability (not silencing)
+- `error-critic.js` consolidation at outer Bash layer: aggregates failures at substrate-Bash boundary
+- `verify-plan-gate.js` workflow-level catch: catches "missing Pre-Approval Verification" at exit boundary, not at every plan-edit step
+- Atomic-rename for tracker files: lets atomic rename either succeed or fail entirely; doesn't try to recover from partial-write
+- `kb-resolver` content-hash mismatch: raises rather than silently returning drift; calling agent decides
 
 ## Intent
 
