@@ -17,11 +17,11 @@ This hybrid avoids the "where does Idempotency live?" duplication problem of pur
 kb/architecture/
 │
 ├── crosscut/                     [FLAT — applies across domains]
-│   ├── dependency-rule.md          [notes — first-wave]
-│   ├── deep-modules.md             [notes — first-wave; combines info-hiding]
-│   ├── information-hiding.md       [notes — may merge with deep-modules]
+│   ├── dependency-rule.md          [SHIPPED — batch 2]
+│   ├── deep-modules.md             [SHIPPED — batch 2; combines info-hiding]
+│   ├── information-hiding.md       [merged into deep-modules.md per Ousterhout's framing]
 │   ├── bounded-contexts.md         [notes — second-wave]
-│   ├── single-responsibility.md    [notes — first-wave priority 1]
+│   ├── single-responsibility.md    [SHIPPED — batch 1, PR #103]
 │   ├── trade-off-discipline.md     [notes — first-wave]
 │   ├── idempotency.md              [notes — first-wave; cross-cutting from data/]
 │   ├── anti-corruption-layer.md    [empty]
