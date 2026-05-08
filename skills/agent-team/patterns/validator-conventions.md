@@ -1,7 +1,7 @@
 ---
 pattern: validator-conventions
 status: active
-intent: Conventions for hook validators that mix repo-internal checks with external-dependency checks, plus self-documenting stderr message discipline. Codifies lessons learned from H.7.10 marketplace gating + H.7.12 plan-template enforcement.
+intent: Conventions A-E for hook validators. A separates repo-internal from external-dependency concerns; B governs self-documenting stderr; C codifies tiered enforcement; D codifies PreToolUse-vs-PostToolUse placement; E codifies Edit-result-aware vs tool-agnostic content scanning. Codifies lessons from H.7.10/H.7.12/H.7.18/H.7.19/H.7.20/H.7.21.
 related: [route-decision, structural-code-review, kb-scope-enforcement]
 ---
 
@@ -188,8 +188,8 @@ Q: Does the bad operation cause silent failure or security violation?
 |------|-------|--------|
 | `fact-force-gate` | Read\|Edit\|Write | Silent-failure-prevention — blocks Edit/Write of unread files (would assume stale state) |
 | `config-guard` | Edit\|Write | Security gate — blocks edits to protected config files (.env, .npmrc with secrets) |
-| `validators/validate-no-bare-secrets` | Edit\|Write | Security gate — blocks writes containing bare API keys/tokens. Per H.5.2: fail-CLOSED on parse error. |
-| `validators/validate-frontmatter-on-skills` | Write | Silent-failure-prevention — blocks Write of skill files without YAML frontmatter (skill silently doesn't load) |
+| `validators/validate-no-bare-secrets` | Edit\|Write | Security gate — blocks writes containing bare API keys/tokens. Per H.5.2: fail-CLOSED on parse error. H.7.21 extension: Edit scans post-edit result (existing file + applied edit), not just `new_string` — see Convention E. |
+| `validators/validate-frontmatter-on-skills` | Edit\|Write | Silent-failure-prevention — blocks Write/Edit of skill files without YAML frontmatter (skill silently doesn't load). H.7.20 extension: Edit reads file + applies proposed edit + checks result — see Convention E. |
 
 **PostToolUse advisory** (3 hooks):
 
@@ -210,6 +210,97 @@ H.7.12 chose PreToolUse:Write for `validate-plan-schema.js` because Phase 1 inve
 - **PostToolUse-when-should-be-PreToolUse**: silent failure or security incident reaches the file system before being caught. PostToolUse can't undo writes — only flag them.
 - **PreToolUse-when-should-be-PostToolUse**: friction (every edit waits for blocking validation when advisory was sufficient); validator complexity (must always emit `decision: approve` JSON for non-blocking paths; H.7.17's migration removed this complexity from `validate-plan-schema`).
 
+## Convention E — Edit-result-aware vs tool-agnostic validation (H.7.20 + H.7.21)
+
+Originated in H.7.19 audit (drift-note 28: `validate-frontmatter-on-skills` only fired on Write, missed Edit removing frontmatter). Closed in H.7.20. Drift-note 29 captured the sibling concern: do OTHER PreToolUse validators have similar Edit-coverage gaps? H.7.21 audited all 4 PreToolUse validators and found the gap is real for content-scanning validators but a non-issue for tool-agnostic ones.
+
+### Why this convention exists
+
+A validator that fires on `Edit|Write` (per Convention D's matcher choice) sees two different `tool_input` shapes:
+
+- **Write**: full file content in `tool_input.content`. Validator scans `content`, sees the entire post-write state.
+- **Edit**: only the diff in `tool_input.old_string` + `new_string` (or an `edits[]` array for MultiEdit). Validator scanning ONLY `new_string` sees the inserted bytes in isolation, missing surrounding file context.
+
+For content-scanning validators this asymmetry creates a coverage gap. Concrete examples found in the audit:
+
+- A file already contains a `*_KEY=` placeholder. Edit replaces the placeholder with a 16+ char value. The post-edit file has a complete secret-assignment line, but `new_string` alone is just the bare value (no key prefix) — the secret-assignment regex doesn't match.
+- A skill file with valid frontmatter. Edit removes the `---\n...\n---\n` block. The post-edit file has no frontmatter (skill silently doesn't load), but `new_string` is empty/whitespace — the validator sees nothing wrong.
+
+Path-based or session-state-based validators don't have this gap because they don't inspect content at all.
+
+### The convention
+
+Every PreToolUse validator that fires on Edit must declare which pattern it follows:
+
+**Pattern 1 — Content-scan (Edit-result-aware required)**
+
+The validator scans `tool_input.content` for Write. For Edit, it must:
+
+1. Read existing file from disk via `fs.readFileSync(filePath, 'utf8')` (wrap in try/catch — file may not exist for Edit semantics, fall back to `new_string`-only scan)
+2. Apply the proposed edit:
+   - Single edit, default: `result = existing.replace(old_string, new_string)`
+   - Single edit with `replace_all: true`: `result = existing.split(old_string).join(new_string)` (Node-safe `replaceAll` equivalent)
+   - MultiEdit (`edits[]`): apply each in sequence on the running result
+3. Scan the result instead of (or in addition to) the bare `new_string`
+
+Reference: `validate-frontmatter-on-skills.js` (H.7.20), `validate-no-bare-secrets.js` (H.7.21).
+
+**Pattern 2 — Tool-agnostic (no Edit-result concern)**
+
+The validator's check doesn't depend on file content at all. It inspects:
+
+- `tool_input.file_path` (path-based gating; e.g., "is this a protected config?")
+- Session state (e.g., "was this file Read before?")
+
+For these validators, Edit and Write trigger the same logic with no asymmetry. No code change needed for Edit coverage.
+
+Reference: `config-guard.js` (path-based), `fact-force-gate.js` (read-tracker).
+
+### Decision tree
+
+```text
+Q: Does the validator inspect tool_input.content / new_string?
+├── YES → Pattern 1 (content-scan): MUST handle Edit-result-aware scan
+│         - Read file + apply edit + scan result
+│         - Falls back to new_string-only if file unreadable
+└── NO  → Pattern 2 (tool-agnostic): no Edit-coverage concern
+          - Path-based: check file_path against patterns
+          - Session-state: check tracker / external signal
+```
+
+### Reference implementations
+
+H.7.21 audit findings — all 4 existing PreToolUse content/path validators classified:
+
+| Validator | Pattern | Edit-result-aware? | Status |
+|-----------|---------|---------------------|--------|
+| `validate-frontmatter-on-skills.js` | 1 (content-scan) | yes (H.7.20) | Closed |
+| `validate-no-bare-secrets.js` | 1 (content-scan) | yes (H.7.21) | Closed |
+| `config-guard.js` | 2 (tool-agnostic, path-based) | N/A | By design |
+| `fact-force-gate.js` | 2 (tool-agnostic, read-tracker) | N/A | By design |
+
+### When this convention applies
+
+Apply this convention at validator-creation time:
+
+- New validator scans content → declare Pattern 1 in header comment + implement read-file + apply-edit + scan-result for Edit branch
+- New validator only checks path or session state → declare Pattern 2 in header comment + no special Edit handling needed
+
+### Failure modes if violated
+
+- **Pattern 1 without Edit-result scan**: silent coverage gap. Edits that complete a violation by leveraging surrounding context bypass the validator entirely. Discovered via drift-notes 28 + 29.
+- **Pattern 2 with unnecessary Edit-result scan**: wasted complexity. The validator does work it doesn't need; risks introducing bugs in the file-read path that don't help the actual check.
+- **No declaration**: future maintainers (including a future Claude session) can't tell at a glance whether the validator needs Edit-result handling. Header-comment declaration is cheap insurance against drift.
+
+### How Convention E relates to the others
+
+Convention E is the runtime/coverage twin of Convention D's placement decision:
+
+- **Convention D**: Where does this hook fire? (PreToolUse vs PostToolUse)
+- **Convention E**: How does it actually inspect Edit operations? (Pattern 1 vs Pattern 2)
+
+A validator's correctness requires BOTH conventions. Wrong placement (D violation) misses the security/silent-failure window. Wrong content handling (E violation) silently passes Edit-completed violations.
+
 ## Related Patterns
 
 - [Route-Decision](route-decision.md) — also gates substantive work on environmental signals (the dictionary expansion v1.2 was about the gate being too aggressive in some cases; Convention A is the same lesson applied to validators)
@@ -219,4 +310,4 @@ H.7.12 chose PreToolUse:Write for `validate-plan-schema.js` because Phase 1 inve
 
 ## Phase
 
-Shipped: H.7.15 (Conventions A + B); reinforced H.7.18 (Convention C); extended H.7.19 (Convention D)
+Shipped: H.7.15 (Conventions A + B); reinforced H.7.18 (Convention C); extended H.7.19 (Convention D); extended H.7.21 (Convention E — closes drift-note 29)
