@@ -368,7 +368,7 @@ See `skills/agent-team/patterns/forcing-instruction-family.md` for per-instructi
 
 ### Phase
 
-Shipped: H.7.25 (closes drift-note 21 — forcing-instruction architectural smell retrospective).
+Shipped: H.7.25 (closes drift-note 21 — forcing-instruction architectural smell retrospective + taxonomy + catalog) + H.7.26 (closes drift-note 57 — consolidation execution; 11 → 9 active markers).
 
 ## Related Patterns
 
@@ -379,4 +379,4 @@ Shipped: H.7.25 (closes drift-note 21 — forcing-instruction architectural smel
 
 ## Phase
 
-Shipped: H.7.15 (Conventions A + B); reinforced H.7.18 (Convention C); extended H.7.19 (Convention D); extended H.7.21 (Convention E — closes drift-note 29); extended H.7.25 (Convention G — closes drift-note 21)
+Shipped: H.7.15 (Conventions A + B); reinforced H.7.18 (Convention C); extended H.7.19 (Convention D); extended H.7.21 (Convention E — closes drift-note 29); extended H.7.25 (Convention G — closes drift-note 21); executed H.7.26 (Convention G consolidation — closes drift-note 57; 11 → 9 active markers).

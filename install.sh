@@ -320,15 +320,17 @@ run_smoke_tests() {
     failed=$((failed + 1))
   fi
 
-  # Test 10 (H.4.3): prompt-enrich-trigger emits [CONFIRMATION-UNCERTAIN]
-  # for short ambiguous prompts that fail strict skip regex
+  # Test 10 (H.4.3 / H.7.26): prompt-enrich-trigger emits PROMPT-ENRICHMENT-GATE
+  # with `tier: short-confirm` discriminator for short ambiguous prompts that
+  # fail strict skip regex. H.7.26 consolidated former [CONFIRMATION-UNCERTAIN]
+  # into this tier of the unified marker (drift-note 57).
   local h43_uncertain_result
   h43_uncertain_result=$(echo '{"prompt":"go on"}' | node "$CLAUDE_DIR/hooks/scripts/prompt-enrich-trigger.js" 2>/dev/null)
-  if echo "$h43_uncertain_result" | grep -q 'CONFIRMATION-UNCERTAIN'; then
-    echo "  ✓ prompt-enrich-trigger: H.4.3 [CONFIRMATION-UNCERTAIN] forcing instruction"
+  if echo "$h43_uncertain_result" | grep -q 'PROMPT-ENRICHMENT-GATE' && echo "$h43_uncertain_result" | grep -q 'tier: short-confirm'; then
+    echo "  ✓ prompt-enrich-trigger: H.7.26 [PROMPT-ENRICHMENT-GATE] tier: short-confirm fires (consolidated from [CONFIRMATION-UNCERTAIN])"
     passed=$((passed + 1))
   else
-    echo "  ✗ prompt-enrich-trigger: H.4.3 [CONFIRMATION-UNCERTAIN] missing — got: ${h43_uncertain_result:0:80}"
+    echo "  ✗ prompt-enrich-trigger: H.7.26 short-confirm tier missing — got: ${h43_uncertain_result:0:120}"
     failed=$((failed + 1))
   fi
 
@@ -571,56 +573,12 @@ SKILL_EOF
   fi
   rm -rf /tmp/h7-21
 
-  # Test 27 (H.7.22): plugin-loaded-check.js forcing instruction fires when
-  # marketplace registered + plugin disabled. Mock settings.json via temp HOME.
-  mkdir -p /tmp/h7-22-mock-home/.claude
-  cat > /tmp/h7-22-mock-home/.claude/settings.json <<'SETTINGS_EOF'
-{
-  "hooks": {},
-  "enabledPlugins": {},
-  "extraKnownMarketplaces": {
-    "power-loom-marketplace": {
-      "source": { "source": "github", "repo": "shashankcm95/claude-power-loom" }
-    }
-  }
-}
-SETTINGS_EOF
-  rm -f /tmp/plugin-loaded-check-*.marker
-  local h7_22_nudge_result
-  h7_22_nudge_result=$(HOME=/tmp/h7-22-mock-home echo '{"hook_event_name":"UserPromptSubmit"}' | HOME=/tmp/h7-22-mock-home node "$CLAUDE_DIR/hooks/scripts/plugin-loaded-check.js" 2>&1)
-  if echo "$h7_22_nudge_result" | grep -q '\[PLUGIN-NOT-LOADED\]'; then
-    echo "  ✓ plugin-loaded-check: H.7.22 fires [PLUGIN-NOT-LOADED] when registered+disabled"
-    passed=$((passed + 1))
-  else
-    echo "  ✗ plugin-loaded-check: H.7.22 should fire forcing instruction — got: ${h7_22_nudge_result:0:120}"
-    failed=$((failed + 1))
-  fi
+  # H.7.26: tests 27-28 retired with plugin-loaded-check.js (drift-note 57
+  # consolidation — [PLUGIN-NOT-LOADED] retired in favor of session-reset.js
+  # inverse-condition stderr branch, which already covers the same substrate
+  # state. Test 29's H.7.22 Principle Audit assertion below is unaffected.
 
-  # Test 28 (H.7.22): plugin-loaded-check silent when plugin enabled
-  cat > /tmp/h7-22-mock-home/.claude/settings.json <<'SETTINGS_EOF'
-{
-  "hooks": {},
-  "enabledPlugins": { "power-loom@power-loom-marketplace": true },
-  "extraKnownMarketplaces": {
-    "power-loom-marketplace": {
-      "source": { "source": "github", "repo": "shashankcm95/claude-power-loom" }
-    }
-  }
-}
-SETTINGS_EOF
-  rm -f /tmp/plugin-loaded-check-*.marker
-  local h7_22_silent_result
-  h7_22_silent_result=$(HOME=/tmp/h7-22-mock-home echo '{"hook_event_name":"UserPromptSubmit"}' | HOME=/tmp/h7-22-mock-home node "$CLAUDE_DIR/hooks/scripts/plugin-loaded-check.js" 2>&1)
-  if ! echo "$h7_22_silent_result" | grep -q '\[PLUGIN-NOT-LOADED\]'; then
-    echo "  ✓ plugin-loaded-check: H.7.22 silent when plugin enabled"
-    passed=$((passed + 1))
-  else
-    echo "  ✗ plugin-loaded-check: H.7.22 should be silent — got: ${h7_22_silent_result:0:120}"
-    failed=$((failed + 1))
-  fi
-  rm -rf /tmp/h7-22-mock-home /tmp/plugin-loaded-check-*.marker 2>/dev/null
-
-  # Test 29 (H.7.22): validate-plan-schema requires Principle Audit on HETS-routed plans
+  # Test 27 (H.7.22): validate-plan-schema requires Principle Audit on HETS-routed plans
   mkdir -p /tmp/h7-22-plan-test/.claude/plans
   local h7_22_plan_no_audit='# Phase X — test\n\n## Context\nA test.\n\n## Routing Decision\n```json\n{ "recommendation": "route" }\n```\n\n## HETS Spawn Plan\nMira architect.\n\n## Files To Modify\nNone.\n\n## Verification Probes\nN/A.\n'
   printf "%b" "$h7_22_plan_no_audit" > /tmp/h7-22-plan-test/.claude/plans/test-plan.md

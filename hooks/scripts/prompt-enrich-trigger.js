@@ -12,10 +12,13 @@
 // Detection is intentionally conservative: better to miss some vague prompts
 // than to over-flag every clear instruction.
 //
-// Forcing-instruction class: 1 (advisory) — emits [PROMPT-ENRICHMENT-GATE] and
-// [CONFIRMATION-UNCERTAIN]. Per Convention G (skills/agent-team/patterns/
-// validator-conventions.md). Catalog: skills/agent-team/patterns/forcing-
-// instruction-family.md.
+// Forcing-instruction class: 1 (advisory) — emits [PROMPT-ENRICHMENT-GATE]
+// with `tier:` discriminator (`tier: short-confirm` or `tier: full-enrichment`).
+// H.7.26 consolidated [CONFIRMATION-UNCERTAIN] into [PROMPT-ENRICHMENT-GATE]
+// per drift-note 57 (closes performative differentiation between same-hook
+// same-layer same-semantic markers). Per Convention G (skills/agent-team/
+// patterns/validator-conventions.md). Catalog: skills/agent-team/patterns/
+// forcing-instruction-family.md.
 
 const fs = require('fs');
 const path = require('path');
@@ -284,13 +287,17 @@ function isVague(prompt) {
   return false;
 }
 
-// H.4.3: short ambiguous confirmation detector. Mirrors H.7.5's
-// [ROUTE-DECISION-UNCERTAIN] pattern: when the deterministic regex layer
-// abstains on a short prompt that has confirmation-shape signals, emit a
-// softer forcing instruction telling Claude to consult the prior turn for
-// intent (rather than the heavier full enrichment ceremony). NOT a
-// subprocess LLM call — same forcing-instruction-injection pattern as
-// [PROMPT-ENRICHMENT-GATE] / [ROUTE-DECISION-UNCERTAIN] / [SELF-IMPROVE QUEUE].
+// H.4.3 / H.7.26: short ambiguous confirmation detector. When the
+// deterministic regex layer abstains on a short prompt that has
+// confirmation-shape signals, emit [PROMPT-ENRICHMENT-GATE] with
+// `tier: short-confirm` body field (telling Claude to consult the prior turn
+// for intent rather than running the heavier full enrichment ceremony). NOT
+// a subprocess LLM call — same forcing-instruction-injection pattern as
+// [PROMPT-ENRICHMENT-GATE]/full / [ROUTE-DECISION-UNCERTAIN] / [SELF-IMPROVE
+// QUEUE]. Per H.7.26 (drift-note 57): unified under PROMPT-ENRICHMENT-GATE
+// with tier discriminator instead of separate [CONFIRMATION-UNCERTAIN]
+// marker — same hook, same layer, same semantic; performative differentiation
+// removed.
 const SOFT_CONFIRMATION_SIGNALS = /\b(yes|yep|yeah|yup|sure|ok|okay|absolutely|definitely|cool|nice|perfect|great|alright|got it|do|ship|proceed|continue|carry|go|let'?s|that)\b/i;
 
 /**
@@ -317,18 +324,21 @@ function isShortAmbiguousConfirmation(prompt) {
 }
 
 /**
- * Build the [CONFIRMATION-UNCERTAIN] forcing instruction. Lightweight nudge
- * (vs the heavier [PROMPT-ENRICHMENT-GATE]) — tells Claude to consult the
- * prior turn for intent rather than triggering full enrichment. Mirrors the
- * forcing-instruction family pattern: deterministic substrate detected
- * uncertainty; Claude makes the semantic call. No subprocess LLM.
+ * Build the [PROMPT-ENRICHMENT-GATE] forcing instruction with
+ * `tier: short-confirm` discriminator (H.7.26 consolidation of the former
+ * [CONFIRMATION-UNCERTAIN] marker — drift-note 57). Lightweight nudge —
+ * tells Claude to consult the prior turn for intent rather than triggering
+ * full enrichment. Mirrors the forcing-instruction family pattern:
+ * deterministic substrate detected uncertainty; Claude makes the semantic
+ * call. No subprocess LLM.
  *
  * @param {string} rawPrompt User prompt (will be truncated to 200 chars + escaped)
  * @returns {string} Forcing instruction text suitable for stdout injection
  */
-function buildConfirmationUncertainInstruction(rawPrompt) {
+function buildShortConfirmInstruction(rawPrompt) {
   const safeSlice = rawPrompt.slice(0, 200).replace(/"/g, '\\"');
-  return `[CONFIRMATION-UNCERTAIN]
+  return `[PROMPT-ENRICHMENT-GATE]
+tier: short-confirm
 
 This short prompt has confirmation-shape signals but didn't match strict skip regex. Before enriching, consult the PRIOR turn:
 
@@ -338,9 +348,9 @@ This short prompt has confirmation-shape signals but didn't match strict skip re
 
 Raw user prompt: "${safeSlice}"
 
-This forcing instruction mirrors [ROUTE-DECISION-UNCERTAIN] (H.7.5) — the deterministic layer abstained; root makes the semantic call by reading the prior turn rather than the bare prompt.
+This is the short-confirm tier of [PROMPT-ENRICHMENT-GATE] (H.7.26 consolidated the former [CONFIRMATION-UNCERTAIN] marker into this tier). Mirrors [ROUTE-DECISION-UNCERTAIN] (H.7.5) — deterministic layer abstained; root makes the semantic call by reading the prior turn rather than the bare prompt.
 
-[/CONFIRMATION-UNCERTAIN]`;
+[/PROMPT-ENRICHMENT-GATE]`;
 }
 
 /**
@@ -357,6 +367,7 @@ function buildForcingInstruction(rawPrompt) {
   // Phase-C: slice BEFORE escape (avoids trailing backslash from \" at boundary)
   const safeSlice = rawPrompt.slice(0, 200).replace(/"/g, '\\"');
   return `[PROMPT-ENRICHMENT-GATE]
+tier: full-enrichment
 
 The user's prompt has been flagged as VAGUE by the deterministic enrichment hook. Before acting, you MUST:
 
@@ -405,17 +416,19 @@ process.stdin.on('end', () => {
       return;
     }
 
-    // H.4.3: short ambiguous confirmation → softer forcing instruction.
-    // This catches the long tail of confirmation variants ("yeah do that",
-    // "go on then") that fail strict-regex skip but shouldn't trigger the
-    // full 4-part enrichment ceremony.
+    // H.4.3 / H.7.26: short ambiguous confirmation → short-confirm tier of
+    // PROMPT-ENRICHMENT-GATE. This catches the long tail of confirmation
+    // variants ("yeah do that", "go on then") that fail strict-regex skip
+    // but shouldn't trigger the full 4-part enrichment ceremony. Per H.7.26
+    // (drift-note 57) the former [CONFIRMATION-UNCERTAIN] marker collapsed
+    // into this tier — same hook, same layer, same semantic.
     if (isShortAmbiguousConfirmation(userPrompt)) {
-      log('injected', { instruction: 'CONFIRMATION-UNCERTAIN' });
-      process.stdout.write(buildConfirmationUncertainInstruction(userPrompt));
+      log('injected', { instruction: 'PROMPT-ENRICHMENT-GATE', tier: 'short-confirm' });
+      process.stdout.write(buildShortConfirmInstruction(userPrompt));
       return;
     }
 
-    log('injected', { instruction: 'PROMPT-ENRICHMENT-GATE' });
+    log('injected', { instruction: 'PROMPT-ENRICHMENT-GATE', tier: 'full-enrichment' });
     process.stdout.write(buildForcingInstruction(userPrompt));
   } catch (err) {
     log('error', { error: err.message });
