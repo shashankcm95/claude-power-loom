@@ -690,6 +690,86 @@ if (age >= 0) console.log('READER-OK age=' + age.toFixed(2));
     failed=$((failed + 1))
   fi
 
+  # Test 33 (H.7.23.1): verify-plan-gate blocks ExitPlanMode when plan is
+  # HETS-routed AND missing ## Pre-Approval Verification section
+  mkdir -p /tmp/h7-23-1-gate-test
+  cat > /tmp/h7-23-1-gate-test/test-plan.md <<'GATE_EOF'
+# Test plan
+
+## Context
+Test.
+
+## Routing Decision
+```json
+{ "recommendation": "route" }
+```
+
+## HETS Spawn Plan
+Mira architect — substantive content.
+
+## Files To Modify
+None.
+
+## Verification Probes
+N/A.
+
+## Principle Audit
+KISS, DRY checked.
+GATE_EOF
+  local h7_23_1_block_result
+  h7_23_1_block_result=$(echo '{"tool_name":"ExitPlanMode"}' | CLAUDE_PLAN_DIR=/tmp/h7-23-1-gate-test node "$CLAUDE_DIR/hooks/scripts/validators/verify-plan-gate.js" 2>&1)
+  if echo "$h7_23_1_block_result" | grep -q '"block"' && echo "$h7_23_1_block_result" | grep -q 'PRE-APPROVAL-VERIFICATION-NEEDED'; then
+    echo "  ✓ verify-plan-gate: H.7.23.1 blocks ExitPlanMode when verification missing"
+    passed=$((passed + 1))
+  else
+    echo "  ✗ verify-plan-gate: H.7.23.1 should block — got: ${h7_23_1_block_result:0:200}"
+    failed=$((failed + 1))
+  fi
+
+  # Test 34 (H.7.23.1): verify-plan-gate approves when section is present
+  cat >> /tmp/h7-23-1-gate-test/test-plan.md <<'GATE_EOF'
+
+## Pre-Approval Verification
+
+Verified by parallel spawn. Verdict: PASS.
+GATE_EOF
+  local h7_23_1_approve_result
+  h7_23_1_approve_result=$(echo '{"tool_name":"ExitPlanMode"}' | CLAUDE_PLAN_DIR=/tmp/h7-23-1-gate-test node "$CLAUDE_DIR/hooks/scripts/validators/verify-plan-gate.js" 2>&1)
+  if echo "$h7_23_1_approve_result" | grep -q '"approve"'; then
+    echo "  ✓ verify-plan-gate: H.7.23.1 approves when verification section present"
+    passed=$((passed + 1))
+  else
+    echo "  ✗ verify-plan-gate: H.7.23.1 should approve — got: ${h7_23_1_approve_result:0:200}"
+    failed=$((failed + 1))
+  fi
+
+  # Test 35 (H.7.23.1): verify-plan-gate respects SKIP_VERIFY_PLAN=1 bypass
+  cat > /tmp/h7-23-1-gate-test/test-plan.md <<'GATE_EOF'
+# Test plan
+## Context
+Test.
+## Routing Decision
+```json
+{ "recommendation": "route" }
+```
+## HETS Spawn Plan
+Mira architect — substantive content.
+## Files To Modify
+None.
+## Verification Probes
+N/A.
+GATE_EOF
+  local h7_23_1_bypass_result
+  h7_23_1_bypass_result=$(echo '{"tool_name":"ExitPlanMode"}' | SKIP_VERIFY_PLAN=1 CLAUDE_PLAN_DIR=/tmp/h7-23-1-gate-test node "$CLAUDE_DIR/hooks/scripts/validators/verify-plan-gate.js" 2>&1)
+  if echo "$h7_23_1_bypass_result" | grep -q '"approve"'; then
+    echo "  ✓ verify-plan-gate: H.7.23.1 SKIP_VERIFY_PLAN=1 bypass works"
+    passed=$((passed + 1))
+  else
+    echo "  ✗ verify-plan-gate: H.7.23.1 bypass should approve — got: ${h7_23_1_bypass_result:0:200}"
+    failed=$((failed + 1))
+  fi
+  rm -rf /tmp/h7-23-1-gate-test
+
 
   echo ""
   echo "  Results: $passed passed, $failed failed"
