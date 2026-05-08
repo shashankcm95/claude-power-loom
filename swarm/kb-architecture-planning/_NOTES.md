@@ -15,6 +15,7 @@ Track which sources were processed in each session. Helps avoid re-processing an
 | 2026-05-08   | Authoring batch 3 | 2 docs shipped | -                | `crosscut/idempotency.md` (~470 lines, 5 sources) + `discipline/error-handling-discipline.md` (~410 lines, 6 sources). Idempotency + error-handling are paired — substrate's forcing-instruction layer is the load-bearing application of both. |
 | 2026-05-08   | Authoring batch 4 | 2 docs shipped | -                | `ai-systems/rag-anchoring.md` (~470 lines, 3 sources) + `discipline/trade-off-articulation.md` (~440 lines, 5 sources). RAG covers the substrate's actual domain; trade-off articulation codifies H.7.22 Principle Audit. |
 | 2026-05-08   | Authoring batch 5 | 2 docs shipped | -                | `discipline/reliability-scalability-maintainability.md` (~480 lines, 5 sources) + `crosscut/acyclic-dependencies.md` (~400 lines, 5 sources). R/S/M extends substrate's R/A/FT framing; ADP codifies the `_lib/` extraction discipline. |
+| 2026-05-08   | Authoring batch 6 | 1 doc shipped — **first-wave COMPLETE** | -            | `discipline/stability-patterns.md` (~470 lines, 5 sources). Closes the 10-doc first-wave set. Forcing-instruction architecture codified as load-bearing stability-pattern application; substrate IS Release It!'s patterns applied to LLM domain. |
 
 ## Pattern notes
 
@@ -231,20 +232,27 @@ Priority order based on consensus tracker. First-wave items have 2+ Tier-1+2 sou
 | 7 | Trade-off Discipline | `discipline/trade-off-articulation.md` | substrate H.7.22 Principle Audit IS this enforced; codify the substrate's own discipline | **SHIPPED batch 4** |
 | 8 | Reliability / Scalability / Maintainability | `discipline/reliability-scalability-maintainability.md` | substrate H.7.22 R/A/FT extension; align vocabulary | **SHIPPED batch 5** |
 | 9 | Acyclic Dependencies | `crosscut/acyclic-dependencies.md` | Foundational; resolves drift-note 47 sibling concern | **SHIPPED batch 5** |
-| 10 | Stability Patterns | `discipline/stability-patterns.md` | substrate forcing-instructions ARE stability patterns; explicit codification | Pending |
+| 10 | Stability Patterns | `discipline/stability-patterns.md` | substrate forcing-instructions ARE stability patterns; explicit codification | **SHIPPED batch 6 — FIRST-WAVE COMPLETE** |
 
-### Completion progress
+### Completion progress — FIRST-WAVE COMPLETE
 
 - Batch 1: 1 doc shipped (SRP)
 - Batch 2: 2 docs shipped (Dependency Rule + Deep Modules)
 - Batch 3: 2 docs shipped (Idempotency + Error Handling)
 - Batch 4: 2 docs shipped (RAG Anchoring + Trade-off Articulation)
 - Batch 5: 2 docs shipped (R/S/M + Acyclic Dependencies)
-- **Cumulative: 9 / 10 first-wave docs shipped (90%)**
+- Batch 6: 1 doc shipped (Stability Patterns) — **FIRST-WAVE COMPLETE**
+- **Cumulative: 10 / 10 first-wave docs shipped (100%)**
 
-### Pace observation
+### What's next
 
-~300-490 lines per doc; 2 docs per batch is sustainable. 1 first-wave doc remaining (Stability Patterns). One more batch closes the first wave.
+First-wave authoring is complete. Decisions for next session:
+
+- Author second-wave patterns (architecture-styles/* — 6 docs from Mark Richards' free O'Reilly report; bounded-contexts; saga types; etc.)
+- OR pause authoring; integration phase planning (kb-resolver auto-extension, architecture-relevance-detector, ADR primitive) is v2.1+ work post-soak
+- OR maintenance / catalog work — README.md for the kb/architecture/ tree; cross-link audit; manifest.json registration prep
+
+Recommend: pause authoring. First-wave is comprehensive enough to anchor most architectural decisions. Second-wave + integration are post-soak v2.1+ work.
 
 ## Done log
 
@@ -259,5 +267,6 @@ Patterns shipped to `skills/agent-team/kb/architecture/`. Move entries here from
 | End-to-End Error Handling | `architecture/discipline/error-handling-discipline.md` | Batch 3 (PR #105) | No — same |
 | RAG Anchoring | `architecture/ai-systems/rag-anchoring.md` | Batch 4 (PR #106) | No — same |
 | Trade-off Articulation | `architecture/discipline/trade-off-articulation.md` | Batch 4 (PR #106) | No — same |
-| Reliability/Scalability/Maintainability | `architecture/discipline/reliability-scalability-maintainability.md` | Batch 5 | No — same |
-| Acyclic Dependencies | `architecture/crosscut/acyclic-dependencies.md` | Batch 5 | No — same |
+| Reliability/Scalability/Maintainability | `architecture/discipline/reliability-scalability-maintainability.md` | Batch 5 (PR #107) | No — same |
+| Acyclic Dependencies | `architecture/crosscut/acyclic-dependencies.md` | Batch 5 (PR #107) | No — same |
+| Stability Patterns | `architecture/discipline/stability-patterns.md` | Batch 6 — FIRST-WAVE COMPLETE | No — same |

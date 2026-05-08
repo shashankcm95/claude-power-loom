@@ -81,7 +81,7 @@ kb/architecture/
 │   ├── trade-off-articulation.md   [SHIPPED — batch 4]
 │   ├── error-handling-discipline.md [SHIPPED — batch 3; from charlax+Clean Code+PoSD+others]
 │   ├── reliability-scalability-maintainability.md [SHIPPED — batch 5; from DDIA ch 1+SRE+others]
-│   ├── stability-patterns.md       [notes — first-wave; from Release It!+Hard Parts]
+│   ├── stability-patterns.md       [SHIPPED — batch 6; FIRST-WAVE COMPLETE]
 │   └── clean-code-essentials.md    [empty — third-wave; from Clean Code+PoSD]
 │
 ├── architecture-styles/          [NEW BRANCH — from Mark Richards + Hard Parts]
