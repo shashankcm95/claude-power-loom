@@ -24,7 +24,72 @@ status: active+enforced
 
 ## Summary
 
-An operation is **idempotent** if applying it N times produces the same result as applying it once. Critical for any operation that may be retried — network calls, message-queue consumption, replicated writes, recovery semantics, retry-on-failure logic. The cost of non-idempotency is duplicate effects (double-charge, double-email, double-write) which corrupt state irreversibly. Achieved by techniques like dedupe-via-request-ID, UPSERT-with-natural-key, version vectors, conditional updates (compare-and-set), and the Outbox pattern. Idempotency lives at the architectural boundary between *at-least-once* delivery (which is what real systems provide) and *exactly-once* effect (which is what business logic needs).
+**Principle**: Operation `f` is idempotent if `f(f(x)) = f(x)` — applying N times = applying once. Critical for retried operations: network calls, queues, replicated writes.
+**Real-world reality**: at-least-once delivery is achievable; exactly-once isn't. Idempotency converts at-least-once into practical exactly-once.
+**Test**: invoke twice with same input; assert state identical to one invocation.
+**Sources**: DDIA ch 4 + 5 + 7 + 11 + Release It! + Clean Code ch 7 + Hard Parts ch 11+12.
+**Substrate**: atomic-rename for tracker files; verify-plan-gate block-and-retry; kb-resolver content-addressed refs.
+
+## Quick Reference
+
+**Principle**: An operation is idempotent if applying it N times produces the same result as applying it once.
+
+**HTTP method conventions** (RFC 9110):
+
+- Idempotent: GET, HEAD, PUT, DELETE, OPTIONS
+- Non-idempotent: POST (use Idempotency-Key header to absorb retries)
+
+**Database operations**:
+
+| Op | Idempotent? | Make idempotent via |
+|----|-------------|---------------------|
+| INSERT | No | UPSERT with UNIQUE constraint on natural key |
+| UPDATE | Often | UPDATE with deterministic WHERE |
+| DELETE | Yes | Second DELETE is no-op |
+| INCREMENT | No | Track operation IDs; reject duplicates |
+| COMPARE-AND-SWAP | Yes | Inherent (condition is the dedupe) |
+
+**Six patterns for achieving idempotency**:
+
+1. **Dedupe via Request ID** (most general) — Stripe-style Idempotency-Key
+2. **Natural-Key UPSERT** — `INSERT ... ON CONFLICT DO UPDATE`
+3. **Conditional Write (CAS)** — `UPDATE ... WHERE expected_old_value`
+4. **Event Sourcing** — store events; derive state via deterministic replay
+5. **Outbox Pattern** — atomically write business state + outbound message
+6. **Saga** (Hard Parts ch 12) — idempotent steps + compensating actions
+
+**Top pitfalls**:
+
+- "It's idempotent because we use PUT" — the IMPLEMENTATION must keep the promise
+- TTL too short for retry windows (24+ hours typical)
+- Forgetting non-idempotent side effects (DB write idempotent; email send isn't — outbox)
+- ABA in CAS (use monotonic version, not just value)
+- Returning None instead of raising (loses retry-time disambiguation)
+
+**Granularities**:
+
+| Layer | Idempotency expression |
+|-------|------------------------|
+| HTTP API | PUT/DELETE idempotent; POST requires Idempotency-Key |
+| Database | UPSERT, UPDATE-with-WHERE, COMPARE-AND-SET |
+| Message queue | Consumer dedupes by message ID |
+| Distributed transaction | Saga steps + compensations each idempotent |
+| File system | Atomic rename; content-addressed names |
+| RPC | Client-provided idempotency token |
+
+**Tensions**:
+
+- **Performance**: dedupe has cost; apply where duplicate cost > dedupe machinery cost
+- **Correctness under replay**: events / metrics need NON-idempotent semantic; use Outbox to convert at-least-once to exactly-once-effect
+- **Simplicity**: idempotency machinery is complexity; only add for retry-vulnerable operations
+
+**Substrate examples**:
+
+- Atomic-rename for tracker files (multiple hooks): filesystem-level idempotency
+- `verify-plan-gate.js` block-and-retry: heading-presence is the idempotency key
+- `error-critic.js` consolidation: dedupe via key (command + working dir + error pattern hash)
+- `kb-resolver` content-addressed refs: hash-pinned resolution; retrieving twice always returns same content
+- `auto-store-enrichment.js`: keyed on enriched prompt's normalized form; multiple Stop firings don't double-count
 
 ## Intent
 

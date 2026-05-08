@@ -22,7 +22,52 @@ status: active+enforced
 
 ## Summary
 
-A module is **deep** when its interface is simple and its implementation is powerful — high benefit (functionality provided) for low cost (interface complexity imposed on callers). Optimize for depth, not for "small." Shallow modules (small implementation, comparable-sized interface) accumulate cognitive load without providing real abstraction. Ousterhout calls excessive class decomposition "classitis" — the misreading of Clean Code's "small functions" rule that produces many tiny classes whose interfaces sum to greater complexity than one comprehensive class would impose. Deep modules pull complexity *downward* (the module developer absorbs it) so users see only a simple surface.
+**Principle (Ousterhout)**: Modules should be deep — simple interface, powerful implementation. Optimize for depth (benefit/cost ratio), not "small."
+**Counter-position**: Clean Code's "small functions" gospel produces classitis (excess decomposition); both views serve cognitive load reduction; depth subsumes both.
+**Test**: caller understands a deep module via interface alone; doesn't need internals.
+**Sources**: Ousterhout (PoSD ch 4-8) + Martin (Clean Code ch 3+10) + Pragmatic Programmer.
+**Substrate**: hook scripts as deep modules; forcing instructions as deep abstractions; Convention G class taxonomy.
+
+## Quick Reference
+
+**Principle (Ousterhout, PoSD ch 4)**: The best modules are deep — they have a lot of functionality behind a simple interface.
+
+Depth = benefit (functionality) / cost (interface complexity). Optimize for depth, not size.
+
+**Recognizing depth (canonical examples)**:
+
+- Unix file system API (open / read / write / close — vast functionality, tiny interface)
+- Garbage collector (one-method effective interface; profound implementation)
+- TCP (in-order reliable byte stream; hides packet ordering, retransmission, congestion)
+
+**Recognizing shallowness (anti-examples)**:
+
+- Classes that delegate everything to one collaborator (pass-through)
+- Get/Set bean classes — interface size = field count
+- Pass-through method classes — every public method invokes a similar internal method
+
+**Pull complexity downwards (rule of thumb)**:
+
+Pull down complexity if it (1) is closely related to existing functionality, (2) results in many simplifications elsewhere, (3) simplifies the interface.
+
+**Information hiding (the partner technique)**:
+
+- Hide implementation decisions: data structures, algorithms, error conditions
+- Information leakage = same knowledge in multiple modules
+- Avoid temporal decomposition (organize by knowledge, not time order)
+
+**Tension with Clean Code's "small functions"**:
+
+Both views serve cognitive load reduction. Resolution: depth subsumes both. Small functions are fine *within* deep modules; small *without* depth produces classitis (Ousterhout's term). Use depth as load-bearing metric, not function-line-count.
+
+**Apply when**: designing reusable modules / classes / libraries; public APIs; layer boundaries; refactoring "should I split this class?" decisions.
+
+**Substrate examples**:
+
+- Hook scripts: stdin JSON / stdout JSON contract (simple); rich validation logic (deep)
+- Forcing instructions: bracketed marker (simple); semantic recovery + substrate detection (deep)
+- kb-resolver: 5 subcommands (simple); content-addressing + manifest + snapshot (deep)
+- Convention G: 3-class taxonomy (simple); composing the substrate's full forcing-instruction family (deep)
 
 ## Intent
 

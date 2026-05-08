@@ -24,7 +24,68 @@ status: active+enforced
 
 ## Summary
 
-Source code dependencies must point **inward** toward higher-level policy. High-level modules should not depend on low-level modules; both should depend on abstractions. Abstractions should not depend on details; details should depend on abstractions. The principle exists at two granularities: **DIP** (class level — depend on interfaces, not concrete classes) and the **Dependency Rule** (architecture level — concentric circles where business rules sit at the center and infrastructure orbits outside). Violations let infrastructure decisions (database, framework, UI) bleed into business logic, making the system rigid, hard to test, and resistant to change.
+**Principle (Martin)**: Source code dependencies must point INWARD toward higher-level policy. Abstractions don't depend on details; details depend on abstractions.
+**Two granularities**: DIP (class level — depend on interfaces, not concretions) + Dependency Rule (architecture level — concentric circles, business rules at center, infrastructure outside).
+**Test**: business logic compiles without infrastructure on classpath.
+**Sources**: Martin (Clean Arch ch 5 + 21) + Noback (PoPD ch 5) + Ousterhout (PoSD ch 5+7) + Hard Parts ch 2.
+**Substrate**: kernel/userspace boundary (proto-OS); hooks-as-kernel; `_lib/` extraction (H.7.14); kb-resolver as stable abstraction.
+
+## Quick Reference
+
+**Principle (Martin, Clean Architecture)**: Source code dependencies must point INWARD toward higher-level policy. Abstractions should not depend on details; details should depend on abstractions.
+
+**The DIP rules**:
+
+- Don't refer to volatile concrete classes — refer to abstract interfaces instead
+- Don't derive from volatile concrete classes
+- Don't override concrete functions
+- Never mention the name of anything concrete and volatile
+
+**Inversion technique** (when A naturally wants B but B is more volatile):
+
+1. Define interface I in A's package, expressing only what A needs
+2. B implements I (in B's package)
+3. A depends on I; B depends on I
+4. Compile-time direction: B → A (inverted from natural inclination)
+5. Runtime: A still calls B's implementation polymorphically
+
+**Top smells**:
+
+- Business logic imports from infrastructure (`from sqlalchemy import` in `domain/`)
+- Framework annotations on domain entities (`@Entity`, `@JsonInclude`)
+- Tests need infrastructure to run (database, network, message broker)
+- `new` operators in high-level code (use Abstract Factory instead)
+- Cross-layer transitive dependencies
+
+**Refactoring patterns**:
+
+- **Extract Interface (Pull-Up)** — interface lives with consumer (more stable side)
+- **Add Abstract Factory** — defer concrete creation to outer layer
+- **Move Decision Outward** — push config / decisions to composition root
+- **Polymorphic Plugin** — common interface; variants implemented separately
+
+**Direction at granularities**:
+
+| Level | Direction expression |
+|-------|---------------------|
+| Class | DIP — depend on interfaces, not concretions (Martin / Noback) |
+| Module | Stable Dependencies Principle — depend on more stable than self (Noback) |
+| Package | Common Closure; cross-package deps point at stable abstractions |
+| Layer | The Dependency Rule (Clean Architecture concentric circles) |
+| Service | Static coupling — quanta depend on stable contracts (Hard Parts) |
+
+**Tensions**:
+
+- **Performance**: indirection has cost; profile + relax locally where measured
+- **YAGNI**: don't introduce interfaces speculatively; only when concrete need (testability, swap planned, multiple impls)
+- **Simplicity**: avoid "interface-itis" — only invert across volatility seams
+
+**Substrate examples**:
+
+- Kernel/userspace boundary (proto-OS): hooks/contracts/kb-resolver = stable kernel; user-extensions = volatile userspace; deps point inward
+- `_lib/` extraction (H.7.14): 6 hardcoded-path callers depend on `findToolkitRoot()` abstraction; abstraction doesn't depend on consumers
+- Forcing instructions: substrate emits text format; Claude reads + acts; substrate doesn't depend on Claude internals
+- HETS persona contracts: implementations depend on contract.json schema; schema doesn't depend on any specific persona
 
 ## Intent
 
