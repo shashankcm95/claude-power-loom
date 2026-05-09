@@ -77,7 +77,8 @@ Aggregated landing rates per hook (24h sample, 2026-05-08): see "Per-instruction
 |-------|--------|--------|
 | H.7.23.1 (peak) | 11 | reference point at drift-note 21 capture |
 | H.7.26 | 9 | -2: `[CONFIRMATION-UNCERTAIN]` consolidated into `[PROMPT-ENRICHMENT-GATE]` `tier: short-confirm`; `[PLUGIN-NOT-LOADED]` retired |
-| **H.7.27 (current)** | **8** | -1: `[MARKDOWN-EMPHASIS-DRIFT]` retired — migrated to markdownlint MD037 (CI absorbs detection) |
+| H.7.27 | 8 | -1: `[MARKDOWN-EMPHASIS-DRIFT]` retired — migrated to markdownlint MD037 (CI absorbs detection) |
+| **H.8.2 (current)** | **9** | +1: `[ADR-DRIFT-CHECK]` added — Class 1 advisory; surfaces active ADRs to Claude when editing files in their `files_affected` list. Cap rule N=15 still has 6-headroom. |
 
 ### Cap rule
 
@@ -103,4 +104,4 @@ Drift-note 21 was captured H.7.18-ish noting the forcing-instruction count growt
 
 ## Phase
 
-Shipped: H.7.25 (closes drift-note 21 — taxonomy + catalog) + H.7.26 (closes drift-note 57 — consolidation execution; 11 → 9 active markers) + H.7.27 (closes architect FLAG #6 — `[MARKDOWN-EMPHASIS-DRIFT]` migrated to markdownlint MD037; 9 → 8 active markers; soak-period entry conditions met).
+Shipped: H.7.25 (closes drift-note 21 — taxonomy + catalog) + H.7.26 (closes drift-note 57 — consolidation execution; 11 → 9 active markers) + H.7.27 (closes architect FLAG #6 — `[MARKDOWN-EMPHASIS-DRIFT]` migrated to markdownlint MD037; 9 → 8 active markers) + H.8.2 (`[ADR-DRIFT-CHECK]` added as 9th instruction — Class 1 advisory; ADR primitive substrate ship; cap rule N=15 still has 6-headroom).

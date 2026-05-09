@@ -887,6 +887,62 @@ SETTINGS_EOF
     failed=$((failed + 1))
   fi
 
+  # Test 47 (H.8.2): adr.js list returns the seed ADR-0001
+  local h8_2_list_result
+  h8_2_list_result=$(node "$SCRIPT_DIR/scripts/agent-team/adr.js" list 2>/dev/null)
+  if echo "$h8_2_list_result" | grep -q '"adr_id": "0001"' && echo "$h8_2_list_result" | grep -q 'fail open'; then
+    echo "  ✓ adr.js: H.8.2 list shows seed ADR-0001 (fail-open hook discipline)"
+    passed=$((passed + 1))
+  else
+    echo "  ✗ adr.js: H.8.2 list should include seed ADR-0001"
+    failed=$((failed + 1))
+  fi
+
+  # Test 48 (H.8.2): adr.js touched-by detects file in ADR-0001 files_affected
+  local h8_2_touched_result
+  h8_2_touched_result=$(node "$SCRIPT_DIR/scripts/agent-team/adr.js" touched-by hooks/scripts/fact-force-gate.js 2>/dev/null)
+  if echo "$h8_2_touched_result" | grep -q '"matched_count": 1' && echo "$h8_2_touched_result" | grep -q '"adr_id": "0001"'; then
+    echo "  ✓ adr.js: H.8.2 touched-by detects file in active ADR's files_affected"
+    passed=$((passed + 1))
+  else
+    echo "  ✗ adr.js: H.8.2 touched-by should match fact-force-gate.js to ADR-0001"
+    failed=$((failed + 1))
+  fi
+
+  # Test 49 (H.8.2): validate-adr-drift hook emits [ADR-DRIFT-CHECK] when
+  # editing an ADR-managed file
+  local h8_2_hook_result
+  h8_2_hook_result=$(echo '{"tool_name":"Edit","tool_input":{"file_path":"hooks/scripts/fact-force-gate.js"}}' | node "$CLAUDE_DIR/hooks/scripts/validators/validate-adr-drift.js" 2>/dev/null)
+  if echo "$h8_2_hook_result" | grep -q 'ADR-DRIFT-CHECK' && echo "$h8_2_hook_result" | grep -q 'ADR-0001'; then
+    echo "  ✓ validate-adr-drift: H.8.2 emits [ADR-DRIFT-CHECK] when editing ADR-managed file"
+    passed=$((passed + 1))
+  else
+    echo "  ✗ validate-adr-drift: H.8.2 should emit forcing instruction with ADR-0001 reference"
+    failed=$((failed + 1))
+  fi
+
+  # Test 50 (H.8.2): validate-adr-drift hook silent on non-ADR-managed files
+  local h8_2_silent_result
+  h8_2_silent_result=$(echo '{"tool_name":"Edit","tool_input":{"file_path":"some-random-file.txt"}}' | node "$CLAUDE_DIR/hooks/scripts/validators/validate-adr-drift.js" 2>/dev/null)
+  if ! echo "$h8_2_silent_result" | grep -q 'ADR-DRIFT-CHECK'; then
+    echo "  ✓ validate-adr-drift: H.8.2 silent (no forcing instruction) on non-ADR-managed file"
+    passed=$((passed + 1))
+  else
+    echo "  ✗ validate-adr-drift: H.8.2 should NOT emit forcing instruction on non-ADR-managed file"
+    failed=$((failed + 1))
+  fi
+
+  # Test 51 (H.8.2): validate-adr-drift respects SKIP_ADR_CHECK=1 bypass
+  local h8_2_bypass_result
+  h8_2_bypass_result=$(echo '{"tool_name":"Edit","tool_input":{"file_path":"hooks/scripts/fact-force-gate.js"}}' | SKIP_ADR_CHECK=1 node "$CLAUDE_DIR/hooks/scripts/validators/validate-adr-drift.js" 2>/dev/null)
+  if ! echo "$h8_2_bypass_result" | grep -q 'ADR-DRIFT-CHECK'; then
+    echo "  ✓ validate-adr-drift: H.8.2 SKIP_ADR_CHECK=1 bypass works"
+    passed=$((passed + 1))
+  else
+    echo "  ✗ validate-adr-drift: H.8.2 SKIP_ADR_CHECK=1 should suppress forcing instruction"
+    failed=$((failed + 1))
+  fi
+
   echo ""
   echo "  Results: $passed passed, $failed failed"
   [ "$failed" -gt 0 ] && echo "  ⚠ Some tests failed — check hook scripts and paths"
