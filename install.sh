@@ -1256,6 +1256,62 @@ EOF
   fi
   rm -rf "$T64_TMPDIR"
 
+  # Test 66: H.8.8 — validate-kb-doc.js fires [KB-DOC-INCOMPLETE] on incomplete kb/architecture doc
+  echo -n "  Test 66 (H.8.8 validate-kb-doc emits forcing instruction on incomplete kb doc): "
+  T66_TMPDIR=$(mktemp -d)
+  T66_KB_DOC="$T66_TMPDIR/kb/architecture/test/incomplete.md"
+  mkdir -p "$(dirname "$T66_KB_DOC")"
+  cat > "$T66_KB_DOC" <<EOF
+---
+kb_id: architecture/test/incomplete
+---
+
+## Summary
+
+This doc has frontmatter and a Summary but is missing tags, Quick Reference.
+EOF
+  T66_OUT=$(echo "{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$T66_KB_DOC\"}}" | node "$SCRIPT_DIR/hooks/scripts/validators/validate-kb-doc.js" 2>/dev/null)
+  T66_DECISION=$(echo "$T66_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('decision', ''))")
+  T66_HAS_MARKER=$(echo "$T66_OUT" | python3 -c "import json,sys; d=json.load(sys.stdin); print('[KB-DOC-INCOMPLETE]' in d.get('reason',''))")
+  if [ "$T66_DECISION" = "approve" ] && [ "$T66_HAS_MARKER" = "True" ]; then
+    echo "OK (approve + [KB-DOC-INCOMPLETE] marker)"
+    passed=$((passed + 1))
+  else
+    echo "FAIL: decision=$T66_DECISION marker=$T66_HAS_MARKER"
+    failed=$((failed + 1))
+  fi
+  rm -rf "$T66_TMPDIR"
+
+  # Test 67: H.8.8 — validate-kb-doc.js silent (no forcing instruction) on complete kb doc
+  echo -n "  Test 67 (H.8.8 validate-kb-doc silent on complete kb/architecture doc): "
+  T67_DOC="$SCRIPT_DIR/skills/agent-team/kb/architecture/crosscut/single-responsibility.md"
+  T67_OUT=$(echo "{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$T67_DOC\"}}" | node "$SCRIPT_DIR/hooks/scripts/validators/validate-kb-doc.js" 2>/dev/null)
+  T67_HAS_REASON=$(echo "$T67_OUT" | python3 -c "import json,sys; print('reason' in json.load(sys.stdin))")
+  if [ "$T67_HAS_REASON" = "False" ]; then
+    echo "OK (silent approve)"
+    passed=$((passed + 1))
+  else
+    echo "FAIL: complete kb doc emitted reason"
+    failed=$((failed + 1))
+  fi
+
+  # Test 68: H.8.8 — SKIP_KB_DOC_CHECK=1 bypass works
+  echo -n "  Test 68 (H.8.8 SKIP_KB_DOC_CHECK=1 bypass): "
+  T68_TMPDIR=$(mktemp -d)
+  T68_KB_DOC="$T68_TMPDIR/kb/architecture/test/incomplete.md"
+  mkdir -p "$(dirname "$T68_KB_DOC")"
+  echo "no frontmatter no sections" > "$T68_KB_DOC"
+  T68_OUT=$(echo "{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$T68_KB_DOC\"}}" | SKIP_KB_DOC_CHECK=1 node "$SCRIPT_DIR/hooks/scripts/validators/validate-kb-doc.js" 2>/dev/null)
+  T68_HAS_REASON=$(echo "$T68_OUT" | python3 -c "import json,sys; print('reason' in json.load(sys.stdin))")
+  if [ "$T68_HAS_REASON" = "False" ]; then
+    echo "OK (bypass works)"
+    passed=$((passed + 1))
+  else
+    echo "FAIL: bypass did not work"
+    failed=$((failed + 1))
+  fi
+  rm -rf "$T68_TMPDIR"
+
   # Test 65: H.8.7 — adr.js symlink defense (chaos M3)
   echo -n "  Test 65 (H.8.7 adr.js symlink defense; symlink in ADRS_DIR ignored): "
   T65_TMPDIR=$(mktemp -d)

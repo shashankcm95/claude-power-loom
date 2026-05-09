@@ -360,7 +360,7 @@ Q: Does the operation already proceed (pass-through or post-completion)?
 
 ### Family cap rule
 
-When the active forcing-instruction count crosses **N=15** (current 8 active post-H.7.27 migration + 7 headroom), the next phase MUST include a family audit before adding a 16th. Cap rationale: 7-headroom over current 8 = ~8 phases at the observed 0.85-instructions/phase growth rate. Wider than 3-headroom (the original draft) which would have triggered within 1-2 phases — defeating the cap's purpose as a forcing function. Drift-note 56 captures the magic-number concern; revisit after first cap-triggered audit.
+When the active forcing-instruction count crosses **N=15** (current 10 active post-H.8.8 + 5 headroom; was 8 post-H.7.27, 9 post-H.8.2, 10 post-H.8.8), the next phase MUST include a family audit before adding a 16th. Cap rationale: 7-headroom over current 8 = ~8 phases at the observed 0.85-instructions/phase growth rate. Wider than 3-headroom (the original draft) which would have triggered within 1-2 phases — defeating the cap's purpose as a forcing function. Drift-note 56 captures the magic-number concern; revisit after first cap-triggered audit.
 
 ### Reference implementations
 

@@ -78,7 +78,8 @@ Aggregated landing rates per hook (24h sample, 2026-05-08): see "Per-instruction
 | H.7.23.1 (peak) | 11 | reference point at drift-note 21 capture |
 | H.7.26 | 9 | -2: `[CONFIRMATION-UNCERTAIN]` consolidated into `[PROMPT-ENRICHMENT-GATE]` `tier: short-confirm`; `[PLUGIN-NOT-LOADED]` retired |
 | H.7.27 | 8 | -1: `[MARKDOWN-EMPHASIS-DRIFT]` retired — migrated to markdownlint MD037 (CI absorbs detection) |
-| **H.8.2 (current)** | **9** | +1: `[ADR-DRIFT-CHECK]` added — Class 1 advisory; surfaces active ADRs to Claude when editing files in their `files_affected` list. Cap rule N=15 still has 6-headroom. |
+| H.8.2 | 9 | +1: `[ADR-DRIFT-CHECK]` added — Class 1 advisory; surfaces active ADRs to Claude when editing files in their `files_affected` list. |
+| **H.8.8 (current)** | **10** | +1: `[KB-DOC-INCOMPLETE]` added — Class 1 advisory; surfaces missing structure (frontmatter `kb_id`/`tags`, `## Summary`/`## Quick Reference` sections) when editing `kb/architecture/**.md`. Closes chaos-20260508-191611-h83-trilogy theo F8 (substrate-enforced kb authoring discipline). Cap rule N=15 has 5-headroom. |
 
 ### Cap rule
 
