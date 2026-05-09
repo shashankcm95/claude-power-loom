@@ -101,6 +101,18 @@
         ],
         "description": "H.4.2: Block Write of skill/pattern .md files that lack YAML frontmatter (silently-broken skills are worse than visibly-broken ones).",
         "id": "pre:validate-frontmatter-on-skills"
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node HOME_DIR/.claude/hooks/scripts/validators/validate-adr-drift.js",
+            "timeout": 5
+          }
+        ],
+        "description": "H.8.2: Surface active ADRs whose files_affected include the file being edited; emits [ADR-DRIFT-CHECK] forcing instruction (Class 1 advisory). Bypass via SKIP_ADR_CHECK=1 env var.",
+        "id": "pre:validate-adr-drift"
       }
     ],
     "PreCompact": [
