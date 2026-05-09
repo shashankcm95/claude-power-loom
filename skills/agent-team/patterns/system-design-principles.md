@@ -2,7 +2,7 @@
 pattern: system-design-principles
 status: active+enforced
 intent: Canonical reference for system-design principles applied across the toolkit — SOLID + DRY + KISS + YAGNI + clean-code essentials. Architect agent + 04-architect HETS persona reference this when producing design output. Required reading before any architect-tier design work.
-related: [validator-conventions, structural-code-review, route-decision]
+related: [validator-conventions, structural-code-review, route-decision, research-plan-implement]
 ---
 
 ## Summary

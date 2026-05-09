@@ -1096,6 +1096,51 @@ PY
     fi
   fi
 
+  # Test 58: H.8.6 — three documentary persona contracts (14/15/16) present with documentary:true
+  echo -n "  Test 58 (H.8.6 documentary persona contracts present + documentary flag): "
+  T58_OK=true
+  for n in 14-codebase-locator 15-codebase-analyzer 16-codebase-pattern-finder; do
+    F="$SCRIPT_DIR/swarm/personas-contracts/${n}.contract.json"
+    if [ ! -f "$F" ]; then
+      T58_OK=false; break
+    fi
+    DOC_FLAG=$(python3 -c "import json; d=json.load(open('$F')); print(d.get('documentary', False))" 2>/dev/null)
+    if [ "$DOC_FLAG" != "True" ]; then
+      T58_OK=false; break
+    fi
+  done
+  if [ "$T58_OK" = "true" ]; then
+    echo "OK (14/15/16 present, documentary:true)"
+    passed=$((passed + 1))
+  else
+    echo "FAIL: missing contract or documentary flag"
+    failed=$((failed + 1))
+  fi
+
+  # Test 59: H.8.6 — RPI slash commands present (/research + /implement)
+  echo -n "  Test 59 (H.8.6 RPI slash commands /research + /implement present): "
+  if [ -f "$SCRIPT_DIR/commands/research.md" ] && [ -f "$SCRIPT_DIR/commands/implement.md" ]; then
+    echo "OK"
+    passed=$((passed + 1))
+  else
+    echo "FAIL: missing /research or /implement command"
+    failed=$((failed + 1))
+  fi
+
+  # Test 60: H.8.6 — thoughts/ filesystem layout
+  echo -n "  Test 60 (H.8.6 thoughts/ filesystem layout): "
+  if [ -d "$SCRIPT_DIR/swarm/thoughts/shared/research" ] \
+     && [ -d "$SCRIPT_DIR/swarm/thoughts/shared/plans" ] \
+     && [ -f "$SCRIPT_DIR/swarm/thoughts/README.md" ] \
+     && [ -f "$SCRIPT_DIR/swarm/thoughts/shared/research/README.md" ] \
+     && [ -f "$SCRIPT_DIR/swarm/thoughts/shared/plans/README.md" ]; then
+    echo "OK"
+    passed=$((passed + 1))
+  else
+    echo "FAIL: missing thoughts/ dir or README"
+    failed=$((failed + 1))
+  fi
+
   echo ""
   echo "  Results: $passed passed, $failed failed"
   [ "$failed" -gt 0 ] && echo "  Some tests failed — check hook scripts and paths"

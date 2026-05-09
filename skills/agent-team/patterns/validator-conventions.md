@@ -2,7 +2,7 @@
 pattern: validator-conventions
 status: active
 intent: Conventions A-G for hook validators. A separates repo-internal from external-dependency concerns; B governs self-documenting stderr; C codifies tiered enforcement; D codifies PreToolUse-vs-PostToolUse placement; E codifies Edit-result-aware vs tool-agnostic content scanning; G codifies the forcing-instruction class taxonomy (H.7.25). Codifies lessons from H.7.10/H.7.12/H.7.18/H.7.19/H.7.20/H.7.21/H.7.25.
-related: [route-decision, structural-code-review, kb-scope-enforcement, system-design-principles, forcing-instruction-family]
+related: [route-decision, structural-code-review, kb-scope-enforcement, system-design-principles, forcing-instruction-family, research-plan-implement]
 ---
 
 ## Summary

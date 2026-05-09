@@ -2,7 +2,7 @@
 pattern: forcing-instruction-family
 status: active+enforced
 intent: Canonical catalog of the forcing-instruction family — the bracketed-marker text-emission mechanism (`[CATEGORY-NAME] ... [/CATEGORY-NAME]`) that grew across H.4.x → H.7.23.1 to 11 instructions, then consolidated to 9 active in H.7.26 (drift-note 57). Per-instruction class assignment, landing-rate observations, phase-tag origins, and verdicts from the H.7.25 retrospective audit + H.7.26 consolidation execution (drift-notes 21 + 57 closures). Cross-referenced from Convention G in `validator-conventions.md` which codifies the three-class taxonomy.
-related: [validator-conventions, route-decision]
+related: [validator-conventions, route-decision, research-plan-implement]
 ---
 
 ## Summary

@@ -2,10 +2,7 @@
 name: plan-mode-hets-injection
 status: active
 phase: H.7.9
-related:
-  - route-decision
-  - asymmetric-challenger
-  - convergence-as-signal
+related: [route-decision, asymmetric-challenger, convergence-as-signal, research-plan-implement]
 ---
 
 # Plan-Mode HETS Injection

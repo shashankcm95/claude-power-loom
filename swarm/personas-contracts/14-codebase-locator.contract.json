@@ -1,0 +1,40 @@
+{
+  "agentId": "actor-codebase-locator",
+  "persona": "14-codebase-locator",
+  "role": "actor",
+  "documentary": true,
+  "_documentary_note": "Per H.8.6 RPI doctrine (humanlayer/advanced-context-engineering-for-coding-agents): documentary personas describe what exists; they do NOT critique, propose improvements, or perform root-cause analysis. That is the critic personas' job (architect, code-reviewer, security-engineer). Mixing documentation and critique in one context contaminates downstream reasoning. See patterns/research-plan-implement.md.",
+  "skills": {
+    "required": ["research-mode"],
+    "recommended": [],
+    "skill_status": {
+      "research-mode": "available"
+    }
+  },
+  "kb_scope": {
+    "default": [
+      "kb:hets/spawn-conventions"
+    ]
+  },
+  "budget": {
+    "tokens": 20000,
+    "extensible": true,
+    "maxExtensions": 1,
+    "extensionAmount": 10000
+  },
+  "functional": [
+    { "id": "F1", "check": "outputContainsFrontmatter", "required": true },
+    { "id": "F2", "check": "frontmatterHasFields", "args": { "fields": ["id", "role", "depth", "parent", "persona"] }, "required": true },
+    { "id": "F3", "check": "hasFileCitations", "args": { "min": 5 }, "required": true },
+    { "id": "F4", "check": "kb_scope_consumed", "required": true }
+  ],
+  "antiPattern": [
+    { "id": "A1", "check": "claimsHaveEvidence", "severity": "fail" },
+    { "id": "A2", "check": "noPaddingPhrases", "severity": "fail" },
+    { "id": "A3", "check": "noTextSimilarityToPriorRun", "args": { "threshold": 0.55 }, "severity": "warn" },
+    { "id": "A4", "check": "noCritiqueLanguage", "args": { "forbidden_phrases": ["should be", "could be improved", "recommend", "we should", "consider", "fix this", "this is wrong", "this is buggy", "needs refactoring"] }, "severity": "warn" }
+  ],
+  "fallbackAcceptable": [
+    "If asked to evaluate or critique what was found, decline and explicitly note that critique is the architect/code-reviewer's role; surface the request as a follow-up handoff for the critic phase."
+  ]
+}
