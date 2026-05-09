@@ -979,9 +979,126 @@ SETTINGS_EOF
     failed=$((failed + 1))
   fi
 
+  # Test 55: H.8.4 shell-injection regression coverage (chaos C1 fix)
+  echo -n "  Test 55 (H.8.4 shell-injection regression — adversarial fixture): "
+  # Pre-clean any leftover markers
+  rm -f /tmp/PWNED-t55-* 2>/dev/null
+  FIXTURE="$SCRIPT_DIR/swarm/test-fixtures/malicious-task-strings.json"
+  PAYLOADS_OK=true
+  for id in t55-01 t55-02 t55-03 t55-04 t55-05 t55-06; do
+    payload=$(node -e "console.log(JSON.parse(require('fs').readFileSync('$FIXTURE','utf8')).payloads.find(p=>p.id==='$id').payload)")
+    node "$SCRIPT_DIR/scripts/agent-team/build-spawn-context.js" --task "$payload" --format json >/dev/null 2>&1 || true
+  done
+  # Hook stdin path (t55-07)
+  hook_payload=$(node -e "console.log(JSON.parse(require('fs').readFileSync('$FIXTURE','utf8')).payloads.find(p=>p.id==='t55-07').payload)")
+  echo "{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$hook_payload\"}}" | node "$CLAUDE_DIR/hooks/scripts/validators/validate-adr-drift.js" >/dev/null 2>&1 || true
+  # Assert NO marker file was created
+  for marker in /tmp/PWNED-t55-01 /tmp/PWNED-t55-02 /tmp/PWNED-t55-03 /tmp/PWNED-t55-04 /tmp/PWNED-t55-05 /tmp/PWNED-t55-06 /tmp/PWNED-t55-07; do
+    if [ -f "$marker" ]; then PAYLOADS_OK=false; rm -f "$marker"; fi
+  done
+  if [ "$PAYLOADS_OK" = "true" ]; then
+    echo "OK"
+    passed=$((passed + 1))
+  else
+    echo "FAIL: shell injection succeeded — RCE regression!"
+    failed=$((failed + 1))
+  fi
+
+  # Test 56: H.8.4 non-ASCII chars in detector.js (chaos C2 prevention)
+  # Scoped to architecture-relevance-detector.js — the file that had the C2 bug.
+  # ROUTING_RULES is the load-bearing data; non-ASCII anywhere outside comments
+  # is suspicious in this file specifically. Other files (contract-verifier emojis,
+  # prompt-pattern-store control-char escapes) legitimately use non-ASCII.
+  # H.8.4 fix per blair post-fix review: BSD grep on macOS does not support -P.
+  # Delegated to python3 for cross-platform regex.
+  echo -n "  Test 56 (H.8.4 non-ASCII regex-literal invariant — detector.js): "
+  NONASCII=$(python3 - <<'PY' "$SCRIPT_DIR"
+import os, re, sys
+root = sys.argv[1]
+target = os.path.join(root, "scripts/agent-team/architecture-relevance-detector.js")
+hits = []
+nonascii_re = re.compile(r"[^\x00-\x7f]")
+in_block_comment = False
+try:
+    with open(target, "r", encoding="utf8") as fh:
+        for lineno, line in enumerate(fh, 1):
+            stripped = line.strip()
+            # Skip whole-line comments
+            if stripped.startswith("//") or stripped.startswith("*"):
+                continue
+            # Track multi-line /* ... */ blocks
+            if "/*" in line and "*/" not in line:
+                in_block_comment = True
+                continue
+            if in_block_comment:
+                if "*/" in line:
+                    in_block_comment = False
+                continue
+            # Strip inline /* ... */ block comments before scanning
+            scanline = re.sub(r"/\*.*?\*/", "", line)
+            # Strip inline // line comments before scanning
+            scanline = re.sub(r"//.*$", "", scanline)
+            if nonascii_re.search(scanline):
+                hits.append(f"{target}:{lineno}:{line.rstrip()[:120]}")
+except OSError:
+    pass
+print("\n".join(hits))
+PY
+)
+  if [ -z "$NONASCII" ]; then
+    echo "OK"
+    passed=$((passed + 1))
+  else
+    echo "FAIL: non-ASCII char in regex literal"
+    echo "$NONASCII" | head -5
+    failed=$((failed + 1))
+  fi
+
+  # Test 57: H.8.4 routing-rule count invariant (chaos CC1 prevention)
+  # H.8.4 fix per blair post-fix review: BSD grep on macOS does not support -P.
+  # Delegated to python3 for cross-platform regex.
+  echo -n "  Test 57 (H.8.4 routing-rule count invariant): "
+  CANONICAL=$(node "$SCRIPT_DIR/scripts/agent-team/architecture-relevance-detector.js" list-signals 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin).get('rule_count', -1))" 2>/dev/null || echo "-1")
+  if [ "$CANONICAL" -lt 1 ]; then
+    echo "FAIL: cannot read canonical rule_count"
+    failed=$((failed + 1))
+  else
+    DRIFT_REPORT=$(python3 - <<PY "$SCRIPT_DIR" "$CANONICAL"
+import os, re, sys
+root = sys.argv[1]
+canonical = sys.argv[2]
+docs = [
+    os.path.join(root, "CHANGELOG.md"),
+    os.path.join(root, "skills/agent-team/SKILL.md"),
+    os.path.join(root, "swarm/kb-architecture-planning/_NOTES.md"),
+    os.path.join(root, "README.md"),
+]
+pat = re.compile(r"(\d+)\s+routing\s+rules?", re.IGNORECASE)
+drift = []
+for doc in docs:
+    if not os.path.isfile(doc):
+        continue
+    with open(doc, "r", encoding="utf8") as fh:
+        for lineno, line in enumerate(fh, 1):
+            for m in pat.finditer(line):
+                if m.group(1) != canonical:
+                    drift.append(f"{doc}:{lineno}: says {m.group(1)}, canonical is {canonical}")
+print("\n".join(drift))
+PY
+)
+    if [ -z "$DRIFT_REPORT" ]; then
+      echo "OK ($CANONICAL rules)"
+      passed=$((passed + 1))
+    else
+      echo "FAIL: routing-rule count drift detected"
+      echo "$DRIFT_REPORT" | head -5
+      failed=$((failed + 1))
+    fi
+  fi
+
   echo ""
   echo "  Results: $passed passed, $failed failed"
-  [ "$failed" -gt 0 ] && echo "  ⚠ Some tests failed — check hook scripts and paths"
+  [ "$failed" -gt 0 ] && echo "  Some tests failed — check hook scripts and paths"
 }
 
 if [ $# -eq 0 ]; then

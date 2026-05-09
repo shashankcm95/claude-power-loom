@@ -51,8 +51,11 @@
 'use strict';
 
 const path = require('path');
-const { execSync } = require('child_process');
 const { findToolkitRoot } = require('./_lib/toolkit-root');
+// H.8.4: replaced execSync(string) with safe-exec helper (execFileSync array form).
+// The old string-build execSync paths were RCE-vulnerable to shell injection
+// (chaos C1 finding: `--task 'foo $(touch /tmp/PWNED) bar'` triggered RCE).
+const { invokeNodeJson, invokeNodeText } = require('./_lib/safe-exec');
 
 const TOOLKIT_ROOT = findToolkitRoot();
 const DETECTOR_PATH = path.join(TOOLKIT_ROOT, 'scripts', 'agent-team', 'architecture-relevance-detector.js');
@@ -67,41 +70,24 @@ const KB_RESOLVER_PATH = path.join(TOOLKIT_ROOT, 'scripts', 'agent-team', 'kb-re
  * Invoke a substrate script and parse its JSON output. Returns null on error
  * (caller decides whether to proceed without the data). Per ADR-0001:
  * fails open with stderr observability.
+ *
+ * H.8.4: delegates to invokeNodeJson (execFileSync, no shell) — fixes RCE.
  */
 function invokeJson(scriptPath, args, opts = {}) {
-  try {
-    const cmd = `node "${scriptPath}" ${args.map((a) => `"${a.replace(/"/g, '\\"')}"`).join(' ')}`;
-    const out = execSync(cmd, {
-      encoding: 'utf8',
-      timeout: opts.timeout || 5000,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-    return JSON.parse(out);
-  } catch (err) {
-    process.stderr.write(`build-spawn-context: ${path.basename(scriptPath)} failed: ${err.message}\n`);
-    return null;
-  }
+  return invokeNodeJson(scriptPath, args, opts);
 }
 
 /**
  * Invoke kb-resolver to fetch tier-loaded content. Returns content string
  * or null on error. The tier subcommand is one of: cat-summary, cat-quick-ref, cat.
+ *
+ * H.8.4: delegates to invokeNodeText (execFileSync, no shell) — fixes RCE.
  */
 function invokeKbResolver(kbId, tier) {
   const subcommand = tier === 'summary' ? 'cat-summary'
     : tier === 'quick-ref' ? 'cat-quick-ref'
     : 'cat';
-  try {
-    const cmd = `node "${KB_RESOLVER_PATH}" ${subcommand} "${kbId}"`;
-    return execSync(cmd, {
-      encoding: 'utf8',
-      timeout: 3000,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-  } catch (err) {
-    process.stderr.write(`build-spawn-context: kb-resolver ${subcommand} ${kbId} failed: ${err.message}\n`);
-    return null;
-  }
+  return invokeNodeText(KB_RESOLVER_PATH, [subcommand, kbId], { timeout: 3000 });
 }
 
 // ============================================================================

@@ -2,6 +2,35 @@
 
 Deferred work from prior phases, captured here so nothing important gets silently dropped. Each entry: scope, rationale, dependencies, rough estimate.
 
+## Phase H.8.4 — Shell injection RCE fix + Cyrillic homograph fix + routing rule count correction — SHIPPED
+
+**Status**: shipped. Hot-fix execution by 12-security-engineer.mio in response to chaos run chaos-20260508-191611-h83-trilogy. Pre-approval by 04-architect.mira + 03-code-reviewer.jade with NEEDS-REVISION; revised plan applied.
+
+**Chaos run closed**: chaos-20260508-191611-h83-trilogy (C1 RCE, C2 Cyrillic, CC1 count drift)
+**Pre-approval run**: h84-hotfix-20260508-194631
+
+### What landed
+
+| Sub-phase | Scope | Key files |
+|-----------|-------|-----------|
+| F1a | NEW shared safe-exec helper | `scripts/agent-team/_lib/safe-exec.js` |
+| F1b | Refactor build-spawn-context to use helper | `scripts/agent-team/build-spawn-context.js` |
+| F1c | Refactor validate-adr-drift to use helper | `hooks/scripts/validators/validate-adr-drift.js` |
+| F1d | Audit comments at 4 safe execSync sites | `hooks/scripts/console-log-check.js:18,29,34`, `hooks/scripts/_lib/marketplace-state-reader.js:50` |
+| F2 | Cyrillic homograph fix in detector | `scripts/agent-team/architecture-relevance-detector.js` |
+| F3 | Routing rule count 20 → 21 | `CHANGELOG.md`, `skills/agent-team/SKILL.md` |
+| T1 | Adversarial fixture + Tests 55-57 | `swarm/test-fixtures/malicious-task-strings.json`, `install.sh` |
+| M | Manifest bump + docs | `plugin.json` 1.7.0 → 1.7.1, `SKILL.md`, `CHANGELOG.md`, `BACKLOG.md` |
+
+### Candidates from chaos super-root (H.8.5+ work)
+
+The chaos super-root (`swarm/run-state/chaos-20260508-191611-h83-trilogy/node-super-root.md`) captured additional candidates beyond the 3 closed by H.8.4. Preserved here for triage:
+
+- **H.8.5 candidate**: Audit all other subprocess invocations across the toolkit for additional shell injection surface (beyond the two closed in H.8.4). Scope: any remaining `execSync(string)` calls with non-fixed-string arguments in hook scripts and agent scripts.
+- **H.8.6 candidate**: Extend Test 56 (non-ASCII regex-literal invariant) to also run in CI (pre-commit or PR check), so the Cyrillic homograph class of bug is caught before merge, not just at install-test time.
+- **H.8.7 candidate**: Add input validation in build-spawn-context.js for the `--task` argument length (reject absurdly long inputs that could be used as a denial-of-service vector against the timeout-wrapped subprocesses).
+- **H.8.8 candidate**: Investigate whether the `--files` comma-split in build-spawn-context.js needs path traversal sanitization (e.g., `../../etc/passwd` as a file argument) since it feeds into adr.js touched-by invocations.
+
 ## Phase H.7.27 — `[MARKDOWN-EMPHASIS-DRIFT]` migration to markdownlint pipeline (closes architect FLAG #6) — SHIPPED
 
 **Status**: shipped per H.7.25 commitment. Mechanical migration of the misclassified Class 1 marker that the H.7.25 audit identified as wrong-tool. Per route-meta-uncertain forcing-instruction guidance: implementing an already-decided design — proceed root.

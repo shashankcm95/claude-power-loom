@@ -47,6 +47,7 @@ function getMirrorRoot(marketplaceName) {
 function getMirrorHeadTimestamp(mirrorPath) {
   if (!mirrorPath || !fs.existsSync(mirrorPath)) return null;
   try {
+    // REVIEWED-SAFE H.8.4: fixed-string args; no shell-injection vector. Do not migrate to execFileSync without re-review.
     const out = execSync('git log -1 --format=%ct', {
       cwd: mirrorPath,
       encoding: 'utf8',

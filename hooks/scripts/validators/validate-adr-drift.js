@@ -22,15 +22,20 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
 const { log } = require('../_log.js');
 const logger = log('validate-adr-drift');
 
 // Same toolkit-root-finding as adr.js (for consistency)
 const { findToolkitRoot } = require('../../../scripts/agent-team/_lib/toolkit-root.js');
+const TOOLKIT_ROOT = findToolkitRoot();
+// H.8.4: use safe-exec helper (execFileSync array form) instead of execSync(string).
+// The old execSync string-build was RCE-vulnerable to shell injection via file_path
+// (chaos C1 finding; hook stdin is user-controlled). execFileSync with arg array
+// never passes args through a shell, eliminating injection risk.
+const { invokeNodeJson } = require(path.join(TOOLKIT_ROOT, 'scripts', 'agent-team', '_lib', 'safe-exec'));
 
 const ADRS_DIR = process.env.HETS_ADRS_DIR ||
-  path.join(findToolkitRoot(), 'swarm', 'adrs');
+  path.join(TOOLKIT_ROOT, 'swarm', 'adrs');
 
 /**
  * Emit the [ADR-DRIFT-CHECK] forcing instruction with details about
@@ -86,20 +91,16 @@ function buildForcingInstruction(filePath, matchedAdrs) {
  */
 function getAdrsTouchingFile(filePath) {
   if (!fs.existsSync(ADRS_DIR)) return [];
-  // Prefer invoking adr.js directly (single source of truth for the matching logic)
-  const adrJsPath = path.join(findToolkitRoot(), 'scripts', 'agent-team', 'adr.js');
+  // Prefer invoking adr.js directly (single source of truth for the matching logic).
+  // H.8.4: invokeNodeJson uses execFileSync with arg array — no shell injection.
+  const adrJsPath = path.join(TOOLKIT_ROOT, 'scripts', 'agent-team', 'adr.js');
   if (fs.existsSync(adrJsPath)) {
-    try {
-      const out = execSync(
-        `node "${adrJsPath}" touched-by "${filePath.replace(/"/g, '\\"')}"`,
-        { encoding: 'utf8', timeout: 3000 }
-      );
-      const result = JSON.parse(out);
+    const result = invokeNodeJson(adrJsPath, ['touched-by', filePath], { timeout: 3000 });
+    if (result !== null) {
       return result.adrs || [];
-    } catch (err) {
-      logger('cli_invoke_failed', { error: err.message, fallback: 'inline-scan' });
-      // Fall through to inline scanning
     }
+    logger('cli_invoke_failed', { fallback: 'inline-scan' });
+    // Fall through to inline scanning
   }
   // Inline fallback (less robust but keeps the hook functional)
   return [];

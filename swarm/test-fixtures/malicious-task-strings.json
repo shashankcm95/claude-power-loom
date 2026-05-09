@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "description": "Adversarial inputs for H.8.4 shell-injection regression coverage",
+  "payloads": [
+    { "id": "t55-01", "input_type": "task_arg", "payload": "foo $(touch /tmp/PWNED-t55-01) bar", "marker": "/tmp/PWNED-t55-01" },
+    { "id": "t55-02", "input_type": "task_arg", "payload": "foo `touch /tmp/PWNED-t55-02` bar", "marker": "/tmp/PWNED-t55-02" },
+    { "id": "t55-03", "input_type": "task_arg", "payload": "foo; touch /tmp/PWNED-t55-03; echo bar", "marker": "/tmp/PWNED-t55-03" },
+    { "id": "t55-04", "input_type": "task_arg", "payload": "foo | touch /tmp/PWNED-t55-04 | bar", "marker": "/tmp/PWNED-t55-04" },
+    { "id": "t55-05", "input_type": "task_arg", "payload": "foo && touch /tmp/PWNED-t55-05 || bar", "marker": "/tmp/PWNED-t55-05" },
+    { "id": "t55-06", "input_type": "files_arg", "payload": "a.js,$(touch /tmp/PWNED-t55-06),b.js", "marker": "/tmp/PWNED-t55-06" },
+    { "id": "t55-07", "input_type": "hook_stdin", "hook": "validate-adr-drift", "payload_field": "tool_input.file_path", "payload": "x.js$(touch /tmp/PWNED-t55-07)", "marker": "/tmp/PWNED-t55-07" }
+  ]
+}

@@ -95,7 +95,7 @@ const ROUTING_RULES = [
       /\bidempoten(?:t|cy|tly)\b/i,
       /\bUPSERT\b/,
       /\bcompare[-\s]and[-\s]set\b/i,
-      /\bouтbox\s+pattern\b/i,
+      /\boutbox\s+pattern\b/i,
       /\bsaga\s+pattern\b/i,
     ],
     refs: ['architecture/crosscut/idempotency'],

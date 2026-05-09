@@ -15,6 +15,7 @@ process.stdin.on('data', (chunk) => { input += chunk; });
 process.stdin.on('end', () => {
   try {
     // Get the git repo root for absolute path resolution
+    // REVIEWED-SAFE H.8.4: fixed-string args; no shell-injection vector. Do not migrate to execFileSync without re-review.
     const repoRoot = execSync('git rev-parse --show-toplevel 2>/dev/null || true', {
       encoding: 'utf8',
       timeout: 5000,
@@ -26,11 +27,13 @@ process.stdin.on('end', () => {
     }
 
     // Include both committed changes and new untracked files
+    // REVIEWED-SAFE H.8.4: fixed-string args; no shell-injection vector. Do not migrate to execFileSync without re-review.
     const committed = execSync('git diff --name-only HEAD 2>/dev/null || true', {
       encoding: 'utf8',
       timeout: 5000,
     }).trim().split('\n');
 
+    // REVIEWED-SAFE H.8.4: fixed-string args; no shell-injection vector. Do not migrate to execFileSync without re-review.
     const untracked = execSync('git ls-files --others --exclude-standard 2>/dev/null || true', {
       encoding: 'utf8',
       timeout: 5000,
