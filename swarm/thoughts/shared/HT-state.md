@@ -1,8 +1,8 @@
 ---
-last_updated: 2026-05-10T01:30:00-07:00
-last_session_phase: HT.0.4 SHIPPED — personas + contracts audit complete
+last_updated: 2026-05-10T08:30:00-07:00
+last_session_phase: HT.0.5a SHIPPED — KB + pattern docs audit complete
 git_branch_at_last_save: main
-git_commit_at_last_save: a8eea24
+git_commit_at_last_save: 85b70e6
 master_plan: swarm/thoughts/shared/plans/2026-05-09-HT.0-hardening-track-master-plan.md
 master_plan_status: approved
 v3_revision_pre_approval_run: ht0-master-plan-review-20260509-141613
@@ -11,19 +11,21 @@ ht_0_1_research_artifact: swarm/thoughts/shared/research/2026-05-09-HT.0.1-hooks
 ht_0_2_research_artifact: swarm/thoughts/shared/research/2026-05-09-HT.0.2-substrate-scripts-audit.md
 ht_0_3_research_artifact: swarm/thoughts/shared/research/2026-05-09-HT.0.3-slash-commands-audit.md
 ht_0_4_research_artifact: swarm/thoughts/shared/research/2026-05-09-HT.0.4-personas-contracts-audit.md
+ht_0_5a_research_artifact: swarm/thoughts/shared/research/2026-05-09-HT.0.5a-kb-patterns-audit.md
 ---
 
 # Hardening Track — Live State
 
 ## Where we are
 
-**Master plan status: APPROVED.** **HT.0.1 SHIPPED.** **HT.0.2 SHIPPED.** **HT.0.3 SHIPPED.** **HT.0.4 SHIPPED.** Two rounds of parallel pre-approval verification on the plan plus first four audit phases complete:
+**Master plan status: APPROVED.** **HT.0.1 SHIPPED.** **HT.0.2 SHIPPED.** **HT.0.3 SHIPPED.** **HT.0.4 SHIPPED.** **HT.0.5a SHIPPED.** Two rounds of parallel pre-approval verification on the plan plus first five audit phases complete:
 - Round 1 (theo + nova on v2): 24 FLAGs surfaced (10 HIGH, 7 MEDIUM, 7 LOW); v3 absorbed all HIGH FLAGs + most MEDIUM/LOW
 - Round 2 (ari + jade on v3): NEEDS-REVISION minor — 9 mechanical fixes + corrections; v3.1 absorbed all
 - HT.0.1 hooks layer audit: 22 files inventoried, 5 quality bars applied, 8 active forcing-instruction markers verified in hooks layer (10 family-wide), 4 doc-staleness gaps surfaced, forbidden-phrase grep gate passed clean
 - HT.0.2 substrate scripts audit: 27 files inventoried (9839 LoC; 2.81× HT.0.1 surface), 5 quality bars applied, 5 inline `parseFrontmatter` divergences post-H.8.7 mapped, subprocess invocation safety verified clean (no `execSync(string)` paths remain), kb-resolver/adr.js symlink-check parity verified (different shapes, same intent), forbidden-phrase grep gate passed clean
 - HT.0.3 slash commands audit: 13 files inventoried (1089 LoC; 11% of HT.0.2 surface), 5 quality bars applied, all referenced scripts/agents/skills resolve (17+ scripts, 5 agents, 4 skills, plus install.sh + plan-template + compliance-probe), `commands/build-team.md` Step 1.5 (H.8.5) wiring intact, `commands/research.md` ↔ `commands/implement.md` (H.8.6) RPI workflow consistency verified, 5-convention path-reference inconsistency mapped, forbidden-phrase grep gate passed clean
 - HT.0.4 personas + contracts audit: 33 files inventoried (2044 LoC; 21% of HT.0.2 surface), 5 quality bars applied, all 18 contract `kb_scope.default` refs resolve via kb-resolver, 13 functional + 6 antiPattern checks enumerated in contract-verifier, **`noCritiqueLanguage` antiPatternCheck unimplemented but referenced by all 3 documentary contracts (14/15/16) — H.3.6 dispatch path locks all documentary actor verdicts at `partial`**, master plan contract count off-by-one ("19" claimed, 18 actual), persona MD asymmetry for 14/15/16 surfaced per architect FLAG-2 (decision-required item for HT.0.9), forbidden-phrase grep gate passed clean **on first pass** (no rephrasing needed)
+- HT.0.5a KB + pattern docs audit: 54 files inventoried (8984 LoC; 91% of HT.0.2 surface — largest planned audit phase by file count), 5 quality bars applied, all 10 architecture KB docs carry H.8.0 tier structure (`## Summary` + `## Quick Reference`) per `validate-kb-doc.js:47` spec, all 22 non-architecture KB docs use original 2-section shape per `kb/README.md` template, **bidirectional `related:` validator clean (0 violations) confirms master plan claim of H.8.6 18→0 fix holds**, **11 broken forward references in 7 architecture KB docs to 8 non-existent `kb_id` targets** (validator skips because targets don't exist), 19/20 patterns use `pattern:`+`intent:` frontmatter shape (1 outlier `plan-mode-hets-injection.md` uses `name:`+`phase:`), 13/20 patterns conform to README.md "Full doc must include" spec (7 newer patterns use specialized shapes — catalog/convention-enumeration/evolution-history), `tier_token_targets:` empirical-measurement field absent in all 10 architecture KB docs, `stack-skill-map.md:73` references non-existent `14-python-backend` persona (slot occupied by H.8.6 documentary `14-codebase-locator`), `identity-roster.md` does not list `13-node-backend` roster (lags `agent-identity.js DEFAULT_ROSTERS`), 15 follow-up items for HT.0.9, forbidden-phrase grep gate passed clean **on first pass** (second consecutive phase to do so)
 
 H.8.x cleanup arc complete (PRs #117-#121 merged). Soak counter at 0/N from H.8.x runtime track.
 
@@ -38,7 +40,8 @@ H.8.x cleanup arc complete (PRs #117-#121 merged). Soak counter at 0/N from H.8.
 - [x] HT.0.2 — Substrate scripts audit (27 files; 5 inline `parseFrontmatter` divergences mapped; subprocess invocation surface clean; kb-resolver/adr.js symlink-check parity verified; 15 follow-up items for HT.0.9; forbidden-phrase grep gate passed clean)
 - [x] HT.0.3 — Slash commands audit (13 files; all script/agent/skill references resolve; build-team Step 1.5 + research/implement RPI workflow verified; 5 path-reference conventions mapped; 13 follow-up items for HT.0.9; forbidden-phrase grep gate passed clean)
 - [x] HT.0.4 — Personas + contracts audit (33 files: 18 contracts + 13 personas + super-agent.md; all 18 kb_scope.default refs resolve; documentary 14/15/16 asymmetry surfaced for HT.0.9 explicit decision; `noCritiqueLanguage` antiPatternCheck unimplemented gap mapped; master plan contract count off-by-one observed; 14 follow-up items for HT.0.9; forbidden-phrase grep gate passed clean on first pass)
-- [ ] HT.0.5 — KB + pattern docs audit
+- [x] HT.0.5a — KB + pattern docs audit (54 files: 1 KB README + 10 architecture KB + 6 hets KB + 16 stack-specific KB + 1 pattern README + 20 patterns; all 10 architecture KB carry H.8.0 tier structure; bidirectional `related:` validator clean; 11 broken forward refs to 8 non-existent kb_ids in architecture KB; 7/20 patterns diverge from README "Full doc must include" spec; `tier_token_targets:` empirical-measurement field absent in all 10 architecture KB; `stack-skill-map.md:73` `14-python-backend` slot collision; `identity-roster.md` 13-node-backend missing; 15 follow-up items for HT.0.9; forbidden-phrase grep gate passed clean on first pass — second consecutive phase)
+- [ ] HT.0.5b — SKILL.md + standalone skill packages audit
 - [ ] HT.0.6 — ADR system audit
 - [ ] HT.0.7 — Tests + CI audit
 - [ ] HT.0.8 — Cross-cutting four-dimensional audit
@@ -57,18 +60,19 @@ H.8.x cleanup arc complete (PRs #117-#121 merged). Soak counter at 0/N from H.8.
 - HT.0.2 research artifact: `swarm/thoughts/shared/research/2026-05-09-HT.0.2-substrate-scripts-audit.md` (27 files inventoried; documentary; forbidden-phrase grep gate passed)
 - HT.0.3 research artifact: `swarm/thoughts/shared/research/2026-05-09-HT.0.3-slash-commands-audit.md` (13 files inventoried; documentary; forbidden-phrase grep gate passed)
 - HT.0.4 research artifact: `swarm/thoughts/shared/research/2026-05-09-HT.0.4-personas-contracts-audit.md` (33 files inventoried; documentary; forbidden-phrase grep gate passed clean on first pass)
+- HT.0.5a research artifact: `swarm/thoughts/shared/research/2026-05-09-HT.0.5a-kb-patterns-audit.md` (54 files inventoried; documentary; forbidden-phrase grep gate passed clean on first pass — second consecutive phase)
 - Sub-plans: none yet (HT.0.9 produces first refactor backlog at `swarm/thoughts/shared/plans/2026-05-XX-HT.1-refactor-backlog.md`)
-- Last shipped: HT.0.4 commit (in this session) on `main` (will land at the cutover commit below)
+- Last shipped: HT.0.5a commit (in this session) on `main` (will land at the cutover commit below)
 
 ## Open questions / blockers
 
-None blocking. HT.0.1 + HT.0.2 + HT.0.3 + HT.0.4 shipped clean. HT.0.5a (KB + pattern docs audit) ready in next session, followed sequentially by HT.0.5b.
+None blocking. HT.0.1 + HT.0.2 + HT.0.3 + HT.0.4 + HT.0.5a shipped clean. HT.0.5b (SKILL.md + standalone skill packages audit) ready in next session.
 
 Soft items for HT-end retrospective:
-1. HT-state.md actually load-bearing? (theo FLAG-8 punt) — HT.0.1 + HT.0.2 + HT.0.3 + HT.0.4 dogfood: state file served as resume anchor in all four sessions (HT.0.2 + HT.0.3 ran continuous post-/compact via "continue" prompts; HT.0.4 ran post-/compact via "continue"). Consistent evidence for keep across 4 phases.
-2. Forbidden-phrase grep false-positive rate? (jade FLAG-3 + ari NEW-1) — HT.0.1 result: 2 matches, both legitimate (rephrased). HT.0.2 result: 2 matches, both legitimate (one paraphrased master-plan quote; one swapped "must be" → "is found as"). HT.0.3 result: 5 matches in initial sweep — 4 used "broken" from the literal master-plan special-focus bullet ("no broken refs") + 1 used "need to" inside a literal rule-file quote. All 5 paraphrased to documentary form. **HT.0.4 result: 0 matches on first pass — first phase to author clean without rephrasing.** Empirical FP rate after 4 phases: 0/9 (all 9 prior matches were real critique-language slips warranting rephrasing; HT.0.4 contributes 0 to numerator and denominator). Continue tracking.
-3. HT.0.5a → HT.0.5b sequencing actually 90-120 min? (ari NEW-3 — empirical answer at HT.0.5b end)
-4. Top-15 cap survives empirical pressure? (theo FLAG-6 / nova FLAG-6 — empirical answer at HT.0.9). HT.0.1: 15 items. HT.0.2: 15 items. HT.0.3: 13 items. HT.0.4: 14 items. 4-phase total: 57 follow-up items pre-deduplication. Many HT.0.4 items cross-reference HT.0.1/HT.0.2/HT.0.3 patterns (multi-responsibility variant, pre-H-phase-tag era cohort, path-convention divergence, claim-vs-implementation gaps) — HT.0.9 dedup will compress significantly.
+1. HT-state.md actually load-bearing? (theo FLAG-8 punt) — HT.0.1 + HT.0.2 + HT.0.3 + HT.0.4 + HT.0.5a dogfood: state file served as resume anchor in all five sessions (HT.0.2 + HT.0.3 ran continuous post-/compact via "continue" prompts; HT.0.4 + HT.0.5a both ran post-/compact via "continue"). Consistent evidence for keep across 5 phases.
+2. Forbidden-phrase grep false-positive rate? (jade FLAG-3 + ari NEW-1) — HT.0.1 result: 2 matches, both legitimate (rephrased). HT.0.2 result: 2 matches, both legitimate (one paraphrased master-plan quote; one swapped "must be" → "is found as"). HT.0.3 result: 5 matches in initial sweep — 4 used "broken" from the literal master-plan special-focus bullet ("no broken refs") + 1 used "need to" inside a literal rule-file quote. All 5 paraphrased to documentary form. **HT.0.4 result: 0 matches on first pass — first phase to author clean without rephrasing.** **HT.0.5a result: 0 matches on first pass — second consecutive phase clean on first pass.** Empirical FP rate after 5 phases: 0/9 (HT.0.4 + HT.0.5a contribute 0/0; the 9 prior matches were all real critique-language slips). The two consecutive clean passes suggest documentary discipline is being internalized at the authoring stage rather than at the gate stage. Continue tracking.
+3. HT.0.5a → HT.0.5b sequencing actually 90-120 min? (ari NEW-3 — empirical answer at HT.0.5b end). HT.0.5a wallclock from "continue" prompt to commit: ~45-50 min for the audit phase itself (post-/compact-fresh). Total HT.0.5a + HT.0.5b ETA tracks under the 120-min upper bound if HT.0.5b takes ≤75 min; SKILL.md is 41 phase entries plus standalone skill packages — comparable surface to HT.0.3.
+4. Top-15 cap survives empirical pressure? (theo FLAG-6 / nova FLAG-6 — empirical answer at HT.0.9). HT.0.1: 15 items. HT.0.2: 15 items. HT.0.3: 13 items. HT.0.4: 14 items. HT.0.5a: 15 items. 5-phase total: 72 follow-up items pre-deduplication. Many HT.0.5a items cross-reference HT.0.3 (path-convention divergence in 3 hets KB) and HT.0.4 (mechanical doc-staleness for `13-node-backend` not in `identity-roster.md`; `14-python-backend` slot collision with documentary 14-codebase-locator). HT.0.9 dedup will compress significantly.
 5. Decision on running optional chaos-test between HT.1.N completion and HT.2
 
 ## HT.0.1 follow-up items (for HT.0.9 synthesis)
@@ -122,6 +126,26 @@ Soft items for HT-end retrospective:
 - **Command cross-reference patterns vary**: H.7.x and H.8.x era commands use relative paths (`../skills/X/SKILL.md`); older commands use repo-relative or external references. Documentary observation.
 - **Build-team Step 1.5 H.8.5 wiring + research/implement H.8.6 RPI consistency both verified intact** (master plan special focus). Documentary item.
 
+## HT.0.5a follow-up items (for HT.0.9 synthesis)
+
+15 follow-up questions surfaced in `## Follow-up questions for plan phase` section of the HT.0.5a research artifact. Highlights:
+
+- **Architecture KB forward-reference resolution policy** (E.1, most weighty): 8 distinct non-existent `kb_id` targets (`agent-design`, `evaluation-under-nondeterminism`, `inference-cost-management`, `information-hiding`, `stable-dependencies`, `bounded-contexts`, `refactor`, `refusal-patterns`) referenced from 7 of 10 architecture KB docs (11 body refs + 5 frontmatter `related:` array entries). Bidirectional validator skips because targets don't exist. Author-the-missing vs prune-the-broken vs annotate-as-planned decision for HT.0.9.
+- **`tier_token_targets:` empirical-measurement gap (D.1)**: `validate-kb-doc.js:145` documents the field as optional. 0/10 architecture KB docs include it. Master plan H.0.5a special focus called for empirical telemetry; not present.
+- **`stack-skill-map.md:73` references non-existent `14-python-backend` persona (E.2)**: doc text predates H.8.6 documentary-persona slot allocation; slot 14 is now `14-codebase-locator`. Mechanical-fix candidate.
+- **`identity-roster.md` does not list `13-node-backend` roster (E.3)**: HT.0.4 confirmed `13-node-backend` is in `agent-identity.js DEFAULT_ROSTERS`; hets KB doc lags. Mechanical-fix candidate.
+- **`patterns/README.md:42-43` "Full doc must include" spec divergence (E.5)**: 7/20 patterns deviate (specialized shapes for catalog / convention-enumeration / evolution-history). Update README spec vs accept divergence vs normalize newer patterns — 3-option decision.
+- **`plan-mode-hets-injection.md` frontmatter shape outlier (B.3)**: uses `name:`+`phase:` shape; other 19 use `pattern:`+`intent:`. Substrate validator passes both. Normalize-vs-accept decision.
+- **`react-essentials.md` "planned" KB docs (E.4)**: 4 forward-references explicitly annotated "planned"; only `typescript-react-patterns` exists with similar name (different `kb_id`).
+- **3 hets KB docs hardcode `~/Documents/claude-toolkit/...` paths (E.6)**: cross-cutting consolidation candidate joining HT.0.3's 5-convention path-reference observation.
+- **`validator-conventions.md` Convention F gap (C.2)**: H2 sequence runs A, B, C, D, E, G with no F. Documentary observation.
+- **`route-decision.md` + `agent-identity-reputation.md` evolution-history sections (B.4)**: H.7.5/H.7.11/H.4.2/H.6.6/H.7.0 historic sections embedded in pattern docs. Pattern-doc-as-historical-ledger decision.
+- **`stack-skill-map.md` marketplace-plugin skill references (E.7)**: `engineering:debug`, `data:sql-queries`, etc. — runtime-resolution behavior depends on installed plugins. Cross-cutting check candidate for HT.0.7 or HT.0.8.
+- **Stack-specific + hets KB Tier 1 single-paragraph vs 5-bullet shape** (Bar B contrast): per `kb/README.md:25-31` template `## Summary (≤5 lines, distilled)`. Stack-specific docs use single dense paragraph rather than bulleted format. The H.8.0 5-bullet rule applies to architecture KB only.
+- **Pattern doc `## Phase` sections in 4 of 7 newer patterns**: `system-design-principles.md:159`, `validator-conventions.md:380`, `forcing-instruction-family.md:106`, `research-plan-implement.md:116` carry explicit `## Phase` body sections. Aligns with evolution-history concern.
+- **`canonical-skill-sources.md` LoC outlier in hets KB family (302 LoC vs avg 138)**: 2.2× the family average. Documentary observation; not against 800 LoC envelope.
+- **`kb/manifest.json` staleness signal (D.3)**: last-updated 2026-05-07 (3 days stale). Run `kb-resolver scan` and diff candidate for HT.0.9 or HT.2 substrate-state hygiene.
+
 ## HT.0.4 follow-up items (for HT.0.9 synthesis)
 
 14 follow-up questions surfaced in `## Follow-up questions for plan phase` section of the HT.0.4 research artifact. Highlights:
@@ -143,28 +167,27 @@ Soft items for HT-end retrospective:
 
 ## Next concrete step
 
-**Begin HT.0.5a — KB + pattern docs audit.** Per master plan v3.1 methodology (note: HT.0.5a + HT.0.5b sequencing per ari NEW-3 — sequential, not parallel; 5a-first because 5b cross-references pattern docs whose status accuracy is determined in 5a; total combined wallclock 90-120 min):
+**Begin HT.0.5b — SKILL.md + standalone skill packages audit.** Per master plan v3.1 methodology (HT.0.5a → HT.0.5b sequential per ari NEW-3; 5a established pattern `status:` accuracy + KB tier structure; 5b cross-references pattern docs already audited):
 
-1. New session: read `swarm/thoughts/shared/HT-state.md` (this file) — confirm HT.0.1 + HT.0.2 + HT.0.3 + HT.0.4 shipped status
-2. Read `swarm/thoughts/shared/plans/2026-05-09-HT.0-hardening-track-master-plan.md` — full master plan in context (HT.0.5a scope at line 300-312)
-3. Optional: skim HT.0.1-4 research artifacts for cross-references (HT.0.4's research artifact captures persona-pattern bridge gap as out-of-scope-but-flagged; HT.0.2 audited kb-resolver.js)
+1. New session (if /compact): read `swarm/thoughts/shared/HT-state.md` (this file) — confirm HT.0.1-5a shipped status
+2. Read `swarm/thoughts/shared/plans/2026-05-09-HT.0-hardening-track-master-plan.md` — full master plan in context (HT.0.5b scope at lines 314-322)
+3. Optional: skim HT.0.5a research artifact for pattern docs context (lines E.5 + B.4 enumerate the 7 specialized-shape patterns; SKILL.md phase entries may cross-reference these)
 4. Inventory the files in scope:
-   - `skills/agent-team/kb/architecture/**.md` (10 architecture KB docs)
-   - `skills/agent-team/kb/hets/*.md` + other kb subtrees (`mobile-dev/`, `backend-dev/`, `web-dev/`, `infra-dev/`, `ml-dev/`, `data-dev/`, `security-dev/`)
-   - `skills/agent-team/patterns/*.md` (20 patterns)
-   - `skills/agent-team/patterns/README.md` (the pattern table)
-5. Apply 5 quality bars (same methodology as HT.0.1 + HT.0.2 + HT.0.3 + HT.0.4)
-6. Special focus per master plan: every kb/architecture/ doc has H.8.0 tier structure (Summary / Quick Reference / Full body); H.8.8 hook now enforces this on Edit but pre-existing docs may have drift; bidirectional `related:` invariant clean (H.8.6 took violations 18 → 0; verify still 0); pattern `status:` accuracy (cs3 Track 1 found 9/13 patterns stuck at `implementing` despite shipping); pattern table in README.md matches frontmatter `status:` field of each pattern doc; KB tier-token-target measurements valid (the chaos quinn flagged "80/15/5 mix" as upgraded from "Estimated" to "Realistic" without empirical basis — has empirical telemetry materialized?); SKILL.md phase entries deferred to HT.0.5b
-7. **Circular-dependency disclosure (per architect DIP non-checkmark, master plan line 312)**: HT.0.5a is auditing the 10 KB architecture docs that the OTHER audit phases use as yardsticks. Quality bar is structural (tier compliance, status accuracy, bidirectional `related:`) rather than principle correctness — we audit the docs' shape, not their truth.
-8. Author research artifact at `swarm/thoughts/shared/research/2026-05-XX-HT.0.5a-kb-patterns-audit.md`
-9. Run forbidden-phrase grep gate before marking phase `[x]`
-10. Update HT-state.md cutover routine before session ends; chain HT.0.5b methodology entry pointing at SKILL.md + standalone skill packages
+   - `skills/agent-team/SKILL.md` (the 41-phase ledger — biggest single audit surface; expect ~1500-2500 LoC)
+   - `skills/*` non-agent-team skill packages: `prompt-enrichment/`, `research-mode/`, `fullstack-dev/`, `skill-forge/`, `deploy-checklist/`, `build-plan/`, `chaos-test/` (verify which exist via `ls skills/`)
+5. Apply 5 quality bars (same methodology as HT.0.1 + HT.0.2 + HT.0.3 + HT.0.4 + HT.0.5a)
+6. Special focus per master plan: SKILL.md phase entries — do all 41 entries have actual ship evidence (CHANGELOG cross-ref + git log)? Any phantom entries? Are skill packages self-consistent (SKILL.md frontmatter + body + invocation pattern)? Are deprecated skills retired cleanly?
+7. Author research artifact at `swarm/thoughts/shared/research/2026-05-XX-HT.0.5b-skill-md-skills-audit.md`
+8. Run forbidden-phrase grep gate before marking phase `[x]` (HT.0.4 + HT.0.5a both passed clean on first pass — empirical pattern is "documentary discipline now internalized at authoring stage")
+9. Update HT-state.md cutover routine before session ends; chain HT.0.6 methodology entry pointing at ADR system
 
-**Resume tip from HT.0.4 dogfood**: HT.0.4's parallel-batch reads (18 contracts + super-agent.md + agent-identity.js section in batch 1; 13 persona MDs in batch 2) worked cleanly (2044 LoC across 33 files). HT.0.5a has 10 KB architecture docs + ~20 pattern docs + ~10 hets/* + ~14 stack-specific kb docs ≈ ~54 files. Plan 2-3 parallel batches; KB docs are typically larger (200-600 LoC for full architecture docs vs 100-200 for patterns).
+**Resume tip from HT.0.5a dogfood**: HT.0.5a used mechanical extraction first (frontmatter via `awk`; H2 sections via `grep`; bidirectional validator via `node scripts/agent-team/contracts-validate.js`) for 80% of structural audit; targeted Read calls applied to representative docs for the remaining 20%. SKILL.md is one large file; expect Read-first methodology rather than mechanical-extraction-first. Standalone skill packages have SKILL.md frontmatter that is amenable to mechanical extraction.
 
-**/compact recommendation before starting HT.0.5a**: this session lands at ~70-80% post-cutover (HT.0.4 audit was smaller than HT.0.2 but ran without /compact between HT.0.3 and HT.0.4). HT.0.5a's expected surface (~54 files) is the largest planned audit phase. **Recommend /compact before HT.0.5a begins** to give the audit a fresh budget.
+**Note on HT.0.5a + HT.0.5b combined wallclock (ari NEW-3 90-120 min target)**: HT.0.5a took ~45-50 min (post-/compact-fresh; ~70-75% utilization at end). HT.0.5b ETA ~50-70 min depending on SKILL.md size + standalone skill count. Total tracks under 120-min upper bound.
 
-**Cumulative token cost expected for HT.0.5a**: ~25-35% utilization at start (state + master plan reads); ~70-80% at end if 54 files materialize at 200-LoC average. Largest planned audit phase by file count; comparable to HT.0.2's surface but more parallel-batched.
+**/compact recommendation before HT.0.5b**: this session lands at ~75-80% post-cutover. HT.0.5b reads the 1500-2500 LoC SKILL.md + smaller standalone skill packages — surface comparable to HT.0.3 but with one large file. **Light /compact recommendation** — running HT.0.5b clean post-/compact replicates the empirically-favorable HT.0.4 + HT.0.5a fresh-clean pattern (~50-55% start; ~70-80% end). Skipping /compact and running 5b continuous is acceptable if SKILL.md size lands under 2000 LoC; cutover ceiling is the constraint.
+
+**Cumulative token cost expected for HT.0.5b**: ~25-35% utilization at start if /compact between (state + master plan reads); ~65-75% at end if SKILL.md + ~5 standalone skills materialize cleanly.
 
 ## Drift-notes captured this run
 
@@ -194,6 +217,16 @@ HT.0.4 surfaced no NEW drift-notes — the 14 follow-up items extend the same al
 
 **Cross-phase observation (claim-vs-implementation gaps, escalating)**: HT.0.1 found 4 gaps (all doc-side staleness — comments, ADR-0001 list, settings-reference); HT.0.4 finds 2 gaps with semantic weight (master-plan count off-by-one is mechanical; `noCritiqueLanguage` unimplemented locks documentary verdicts at `partial`). The pattern shows variance — most gaps are mechanical doc-staleness; one (HT.0.4 E.2) is structural and impacts runtime verdict.
 
+HT.0.5a surfaced no NEW drift-notes — the 15 follow-up items extend the same already-known forms identified in HT.0.1-4 (forward-reference gaps, doc-staleness post-shipped-feature, frontmatter-shape divergence, hardcoded author-machine paths, evolution-history-sections-in-pattern-docs). All 15 land at HT.0.9 synthesis.
+
+**Pattern-level observation from HT.0.5a (forward-reference gap, structural)**: 7 of 10 architecture KB docs reference 8 distinct `kb_id` targets that have not been authored — `architecture/ai-systems/{agent-design, evaluation-under-nondeterminism, inference-cost-management}`, `architecture/crosscut/{information-hiding, stable-dependencies, bounded-contexts}`, `architecture/discipline/{refactor, refusal-patterns}`. Refs appear in both frontmatter `related:` arrays (5 entries) and body `## Related Patterns` sections (11 markdown links). The bidirectional `related:` validator skips refs to non-existent targets. The pattern is consistent with author intent — 6 of 10 architecture KB docs note "First-wave priority N of the authoring queue" in their `## Phase` body section, indicating a planned-but-deferred sister-doc cohort. HT.0.9 author-the-missing vs prune-the-broken vs annotate-as-planned decision.
+
+**Pattern-level observation from HT.0.5a (path-convention divergence, continuation)**: HT.0.3 found 5 distinct path conventions across `commands/*.md`. HT.0.5a finds 3 of 6 hets KB docs (`spawn-conventions.md`, `challenger-conventions.md`, `symmetric-pair-conventions.md`) hardcode `~/Documents/claude-toolkit/...` author-machine paths in code-block examples. The substrate scripts (HT.0.2-audited) use `findToolkitRoot()` for runtime resolution; the docs use hardcoded paths as readable convention. Cross-cutting consolidation candidate at HT.0.9.
+
+**Pattern-level observation from HT.0.5a (mechanical doc-staleness for shipped capabilities)**: `stack-skill-map.md:73` references future `14-python-backend` persona that conflicts with H.8.6's documentary `14-codebase-locator` slot allocation; `identity-roster.md` does not list `13-node-backend` roster despite the persona shipping in DEFAULT_ROSTERS (HT.0.4 confirmed). Pattern matches HT.0.1's ADR-0001 stale `files_affected` list and HT.0.4's literal session-id path in `05-honesty-auditor.md` — code shipped, downstream docs lagged.
+
+**Cross-phase observation (HT.0.1 + HT.0.2 + HT.0.3 + HT.0.4 + HT.0.5a, forbidden-phrase grep gate empirical pattern)**: HT.0.1 = 2 matches, HT.0.2 = 2 matches, HT.0.3 = 5 matches, HT.0.4 = 0 matches (clean first pass), HT.0.5a = 0 matches (clean first pass). Two consecutive clean-first-pass phases suggest documentary discipline is now internalized at the authoring stage rather than relying on the gate stage. Forbidden-phrase FP rate after 5 phases: 0/9 (all 9 prior matches were real critique-language slips warranting rephrasing).
+
 ## Cumulative token cost so far
 
 (Tracked at end of each session for empirical context-discipline data; informs whether the FIC 40-60% target is realistic given HT phase shape.)
@@ -205,3 +238,4 @@ HT.0.4 surfaced no NEW drift-notes — the 14 follow-up items extend the same al
 - Session of 2026-05-09 post-/compact (HT.0.2 substrate scripts audit): ~65-70% utilization at end. Started fresh post-/compact; read HT-state.md (cached from prior session) + master plan section + 27 files (9839 LoC; 2.81× HT.0.1 surface) in 5 parallel batches; ran 5-bar walkthrough; authored ~430-line research artifact; passed forbidden-phrase grep gate (2 matches, both legitimately rephrased — one paraphrased a master-plan quote, one swapped "must be" for "is found as"). Crossed 60% ceiling near artifact-authoring; landed at ~70% post-cutover. **Empirical data point: audit phases at 2.5-3× the HT.0.1 LoC surface land at 65-70% (above the 60% FIC ceiling). HT.0.3 is smaller (~12 markdown files vs 27 JS files); expect return to HT.0.1 envelope. The 60% target holds for typical audit shapes; large-LoC audit phases overshoot by ~10%.**
 - Session of 2026-05-09 continued (HT.0.3 slash commands audit, no /compact between HT.0.2 and HT.0.3): ~75-80% utilization at end. Continued from HT.0.2 ship state at ~70%; read 13 command files (1089 LoC; 11% of HT.0.2 surface) in single parallel-13 batch; ran 5-bar walkthrough; authored ~340-line research artifact; passed forbidden-phrase grep gate (5 matches, all legitimately rephrased: 4 used "broken" from literal master-plan bullet wording, 1 used "need to" inside a literal rule-file quote). Pre-cutover HT.0.3 was at ~75%; post-cutover ~80%. **Empirical data point: running TWO consecutive audit phases without /compact between them (HT.0.2 9839 LoC + HT.0.3 1089 LoC) lands at ~75-80% — above 60% ceiling but under context wall. The HT.0.3 small-surface advantage was partially absorbed by the carry-over from HT.0.2. Recommended discipline: /compact between consecutive audit phases when the prior phase exceeded 2× HT.0.1 surface. HT.0.4's larger expected surface (~33 files: 19 contracts + 13 personas + super-agent.md) suggests /compact before HT.0.4 starts.**
 - Session of 2026-05-10 post-/compact (HT.0.4 personas + contracts audit): ~70-75% utilization at end. Started fresh post-/compact; read HT-state.md + master plan section + 33 files (2044 LoC: 18 contracts + 13 persona MDs + super-agent.md + 200-line agent-identity.js section + 175-line contract-verifier section) in 2 parallel batches (19 + 13); ran 5-bar walkthrough; authored ~315-line research artifact; passed forbidden-phrase grep gate **clean on first pass** (0 matches, no rephrasing needed — first HT phase to do so). Empirical FP rate after 4 phases: 0/9 (HT.0.4 contributes 0 to numerator). **Empirical data point: post-/compact-fresh audit phase at 21% of HT.0.2 surface (2044 vs 9839 LoC) but with deeper conceptual analysis (cross-class shape divergence, claim-vs-implementation gap with severity weight) lands at ~70-75% — between HT.0.1 fresh-clean (~50-55%) and HT.0.2 fresh-clean (~65-70%). The 60% target holds for small audit phases (HT.0.1, HT.0.3-fresh); larger or deeper-analysis phases overshoot by 10-15%. /compact before HT.0.4 was the right call empirically.** Master plan special-focus item E.2 (`noCritiqueLanguage` claim-vs-implementation) is the most semantically weighty gap surfaced across 4 phases.
+- Session of 2026-05-10 post-/compact (HT.0.5a KB + pattern docs audit): ~70-75% utilization at end. Started fresh post-/compact; read HT-state.md + master plan section; used mechanical extraction (`awk`/`grep`) for frontmatter + H2 structure across all 54 files (8984 LoC) instead of full Read calls; ran `node scripts/agent-team/contracts-validate.js` for substrate-validator confirmation (0 violations on `pattern-related-bidirectional`, `pattern-status-readme-consistency`, `pattern-status-skill-md-consistency`, `contract-kb-scope-resolves`, `pattern-status-frontmatter`); targeted Read calls applied to 8 representative docs (single-responsibility, spawn-conventions, plan-mode-hets-injection, react-essentials, identity-roster, stack-skill-map, plus 7 pattern docs for H2 inventory) for the remaining 20% deeper inspection; authored ~365-line research artifact; passed forbidden-phrase grep gate **clean on first pass** (0 matches — second consecutive HT phase). Empirical FP rate after 5 phases: 0/9 (HT.0.4 + HT.0.5a both contribute 0). **Empirical data point: largest planned audit phase by file count (54 files; 91% of HT.0.2 LoC surface) handled efficiently via mechanical-extraction-first methodology — landed at same ~70-75% utilization as HT.0.4 (33 files; 21% of HT.0.2 LoC surface). The methodology shift (mechanical-first → targeted-Read-second) absorbed the file-count growth without proportional context cost. /compact before HT.0.5a was the right call.** Most weighty finding: 11 broken forward references in 7 of 10 architecture KB docs to 8 non-existent `kb_id` targets — bidirectional validator skips because targets don't exist; surfaces as documented gap not caught by substrate.
