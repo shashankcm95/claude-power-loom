@@ -943,6 +943,42 @@ SETTINGS_EOF
     failed=$((failed + 1))
   fi
 
+  # Test 52 (H.8.3): build-spawn-context composes detector + kb-resolver
+  # to produce structured spawn context with detected signals + loaded KB refs
+  local h8_3_compose_result
+  h8_3_compose_result=$(node "$SCRIPT_DIR/scripts/agent-team/build-spawn-context.js" --task "implement state mutation in distributed system with retry logic" --cap 2 2>/dev/null)
+  if echo "$h8_3_compose_result" | grep -q 'SPAWN CONTEXT' && echo "$h8_3_compose_result" | grep -q 'state-mutation' && echo "$h8_3_compose_result" | grep -q 'idempotency' && echo "$h8_3_compose_result" | grep -q 'Tier: summary'; then
+    echo "  ✓ build-spawn-context: H.8.3 composes detector + kb-resolver into spawn context"
+    passed=$((passed + 1))
+  else
+    echo "  ✗ build-spawn-context: H.8.3 should produce structured context with signals + KB"
+    failed=$((failed + 1))
+  fi
+
+  # Test 53 (H.8.3): build-spawn-context surfaces active ADRs when --files
+  # argument matches an ADR's files_affected list
+  local h8_3_adr_result
+  h8_3_adr_result=$(node "$SCRIPT_DIR/scripts/agent-team/build-spawn-context.js" --task "modify hook for new feature" --files "hooks/scripts/fact-force-gate.js" 2>/dev/null)
+  if echo "$h8_3_adr_result" | grep -q 'Active ADRs touching' && echo "$h8_3_adr_result" | grep -q 'ADR-0001' && echo "$h8_3_adr_result" | grep -q 'fail open'; then
+    echo "  ✓ build-spawn-context: H.8.3 surfaces active ADRs touching specified files"
+    passed=$((passed + 1))
+  else
+    echo "  ✗ build-spawn-context: H.8.3 should include active ADRs touching --files"
+    failed=$((failed + 1))
+  fi
+
+  # Test 54 (H.8.3): build-spawn-context --format json emits valid JSON
+  # with the expected top-level keys
+  local h8_3_json_result
+  h8_3_json_result=$(node "$SCRIPT_DIR/scripts/agent-team/build-spawn-context.js" --task "extract shared utility" --format json 2>/dev/null)
+  if echo "$h8_3_json_result" | python3 -c "import json,sys; d=json.load(sys.stdin); assert 'task' in d and 'detection' in d and 'kb_refs_loaded' in d and 'active_adrs' in d; print('OK')" 2>/dev/null | grep -q 'OK'; then
+    echo "  ✓ build-spawn-context: H.8.3 --format json emits valid structured output"
+    passed=$((passed + 1))
+  else
+    echo "  ✗ build-spawn-context: H.8.3 --format json should produce parseable JSON with required keys"
+    failed=$((failed + 1))
+  fi
+
   echo ""
   echo "  Results: $passed passed, $failed failed"
   [ "$failed" -gt 0 ] && echo "  ⚠ Some tests failed — check hook scripts and paths"
