@@ -43,6 +43,10 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { withLock } = require('./_lib/lock'); // H.3.2 (CS-1 code-reviewer X-3)
+// H.8.7 (chaos H4): shared frontmatter parser. Replaced inline parseFrontmatter
+// (see git history at H.8.6) — kb-resolver and adr.js previously had divergent
+// implementations with different bugs; single canonical source closes drift.
+const { parseFrontmatter } = require('./_lib/frontmatter');
 
 // H.7.14 — `KB_BASE` second fallback now uses shared `findToolkitRoot()` helper
 // (from `_lib/toolkit-root.js`) instead of hardcoded `~/Documents/claude-toolkit/`.
@@ -69,22 +73,10 @@ function parseArgs(argv) {
   return args;
 }
 
-function parseFrontmatter(text) {
-  if (!text.startsWith('---')) return { frontmatter: {}, body: text };
-  const end = text.indexOf('\n---', 3);
-  if (end === -1) return { frontmatter: {}, body: text };
-  const fm = {};
-  for (const line of text.slice(3, end).split('\n')) {
-    const m = line.match(/^([a-zA-Z_]+):\s*(.*)$/);
-    if (!m) continue;
-    let v = m[2].trim().replace(/^["']|["']$/g, '');
-    if (v.startsWith('[') && v.endsWith(']')) {
-      v = v.slice(1, -1).split(',').map((s) => s.trim().replace(/^["']|["']$/g, '')).filter(Boolean);
-    }
-    fm[m[1]] = v;
-  }
-  return { frontmatter: fm, body: text.slice(end + 4).trim() };
-}
+// H.8.7 (chaos H4): parseFrontmatter extracted to ./_lib/frontmatter.js
+// (see require at top of file). The previous inline implementation supported
+// only inline arrays and stripped null literals as plain strings; the canonical
+// parser supports block-lists, null → JS null, and digit-bearing keys.
 
 function shaHashBody(body) {
   return crypto.createHash('sha256').update(body, 'utf8').digest('hex');
@@ -166,9 +158,20 @@ function cmdCat(args) {
 /**
  * Extract a contiguous range of H2 sections from a doc body.
  *
- * Sections are bounded by `^## ` markers. Returns body content from the
- * START marker through the line BEFORE the END marker (exclusive). The
- * START section is included; the END section is not.
+ * Sections are bounded by `^## ` markers OUTSIDE fenced code blocks.
+ * Returns body content from the START marker through the line BEFORE
+ * the END marker (exclusive). The START section is included; the END
+ * section is not.
+ *
+ * H.8.7 fixes (chaos H1 + M2):
+ * - Fence-aware: lines starting with ``` toggle inFence state; section
+ *   boundaries inside fences are ignored. Previously, ``` ## Heading ```
+ *   inside a code block would falsely truncate the surrounding section.
+ * - Start-name precision: the start regex now requires the heading name
+ *   to be followed by end-of-string or whitespace + end-of-string only.
+ *   Previously, `## Summary` would falsely match `## Summary of Findings`
+ *   because of the `\b` word-boundary; now it matches `## Summary` and
+ *   `## Summary  ` (trailing whitespace) but NOT `## Summary of X`.
  *
  * Example: extractSections(body, 'Summary', 'Intent') returns text from
  * `## Summary` through the line before `## Intent`.
@@ -181,15 +184,42 @@ function cmdCat(args) {
 function extractSections(body, startName, endName) {
   const lines = body.split('\n');
   const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const startRe = new RegExp(`^## ${escapeRegExp(startName)}\\b`);
-  const endRe = endName ? new RegExp(`^## ${escapeRegExp(endName)}\\b`) : /^## /;
+  // H.8.7 M2: precise start match — name followed by EOL or trailing whitespace
+  // only. NOT prefix-match (which `\b` allowed for `Summary of Findings`).
+  const startRe = new RegExp(`^## ${escapeRegExp(startName)}\\s*$`);
+  // End is an open boundary (any H2 if endName null) or precise (named end).
+  const endRe = endName
+    ? new RegExp(`^## ${escapeRegExp(endName)}\\s*$`)
+    : /^## /;
+  // H.8.7 H1: track fence state so ``` blocks don't yield false section
+  // boundaries. A line starting with ``` toggles the state; only `^## `
+  // outside fences counts.
+  let inFence = false;
   let startIdx = -1;
   for (let i = 0; i < lines.length; i++) {
+    if (lines[i].startsWith('```')) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
     if (startRe.test(lines[i])) { startIdx = i; break; }
   }
   if (startIdx === -1) return null;
+  // Reset fence-state tracking for the end-search (in case the START
+  // section contains its own fenced block; we re-scan from startIdx+1
+  // tracking fences fresh).
+  inFence = false;
+  // Recheck whether the start line itself was inside a fence by walking
+  // from line 0 to startIdx and tracking; but since startIdx was matched
+  // OUTSIDE a fence above, it's by definition outside one. We track from
+  // scratch starting at startIdx+1.
   let endIdx = lines.length;
   for (let i = startIdx + 1; i < lines.length; i++) {
+    if (lines[i].startsWith('```')) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
     if (endRe.test(lines[i])) { endIdx = i; break; }
   }
   return lines.slice(startIdx, endIdx).join('\n').trimEnd() + '\n';

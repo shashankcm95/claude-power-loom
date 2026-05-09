@@ -24,58 +24,14 @@
 const fs = require('fs');
 const path = require('path');
 const { findToolkitRoot } = require('./_lib/toolkit-root');
+// H.8.7 (chaos H4): shared frontmatter parser; previously inline (see git
+// history at H.8.6). kb-resolver's inline parser had different bug surfaces.
+const { parseFrontmatter } = require('./_lib/frontmatter');
+// H.8.7 (chaos H5): cmdNew ID race; lock the read-then-write cycle.
+const { withLock } = require('./_lib/lock');
 
 const ADRS_DIR = process.env.HETS_ADRS_DIR ||
   path.join(findToolkitRoot(), 'swarm', 'adrs');
-
-// ============================================================================
-// FRONTMATTER PARSER (YAML subset; matches kb-resolver's parser style)
-// ============================================================================
-
-function parseFrontmatter(text) {
-  if (!text.startsWith('---')) return { frontmatter: {}, body: text };
-  const end = text.indexOf('\n---', 3);
-  if (end === -1) return { frontmatter: {}, body: text };
-  const fm = {};
-  const fmText = text.slice(3, end);
-  // Two-pass: scalar fields first, then list fields
-  const lines = fmText.split('\n');
-  let currentListKey = null;
-  for (const line of lines) {
-    if (line.match(/^\s+- /)) {
-      // List item under previous key
-      if (currentListKey) {
-        const item = line.replace(/^\s+- /, '').trim().replace(/^["']|["']$/g, '');
-        if (!Array.isArray(fm[currentListKey])) fm[currentListKey] = [];
-        fm[currentListKey].push(item);
-      }
-      continue;
-    }
-    const m = line.match(/^([a-zA-Z_]+):\s*(.*)$/);
-    if (!m) {
-      currentListKey = null;
-      continue;
-    }
-    const key = m[1];
-    let val = m[2].trim();
-    if (val === '' || val === null) {
-      // Likely start of a list block
-      currentListKey = key;
-      fm[key] = [];
-      continue;
-    }
-    currentListKey = null;
-    val = val.replace(/^["']|["']$/g, '');
-    // Inline list: [a, b, c]
-    if (val.startsWith('[') && val.endsWith(']')) {
-      fm[key] = val.slice(1, -1).split(',').map((s) => s.trim().replace(/^["']|["']$/g, '')).filter(Boolean);
-      continue;
-    }
-    if (val === 'null') val = null;
-    fm[key] = val;
-  }
-  return { frontmatter: fm, body: text.slice(end + 4).trim() };
-}
 
 // ============================================================================
 // ADR LISTING + READING
@@ -85,6 +41,18 @@ function listAdrFiles() {
   if (!fs.existsSync(ADRS_DIR)) return [];
   return fs.readdirSync(ADRS_DIR)
     .filter((f) => /^\d{4}-.+\.md$/.test(f))
+    // H.8.7 (chaos M3): symlink defense parity with kb-resolver. Skip any
+    // entry that is a symlink — prevents an attacker-planted symlink to
+    // outside ADRS_DIR from being loaded as an ADR. Use lstatSync (does
+    // not follow links).
+    .filter((f) => {
+      try {
+        const st = fs.lstatSync(path.join(ADRS_DIR, f));
+        return !st.isSymbolicLink();
+      } catch {
+        return false;
+      }
+    })
     .sort();
 }
 
@@ -103,7 +71,16 @@ function loadAllAdrs() {
 function isActive(adr) {
   const status = adr.frontmatter.status;
   const superseded = adr.frontmatter.superseded_by;
-  return status === 'accepted' && (!superseded || superseded === 'null');
+  // H.8.7 (chaos L1): the prior canonical parser inconsistently translated
+  // `null` literal — kb-resolver did not, adr.js did. The shared parser now
+  // translates `null` → JS null (canonical). Defensive: accept both forms
+  // for backward compat with existing on-disk ADRs that may have been
+  // parsed by either prior implementation.
+  const supersededIsEmpty = superseded === null
+    || superseded === undefined
+    || superseded === 'null'
+    || superseded === '';
+  return status === 'accepted' && supersededIsEmpty;
 }
 
 function findAdrById(idStr) {
@@ -135,54 +112,79 @@ function parseArgs(argv) {
   return args;
 }
 
+// H.8.7 (chaos H3): escape title for YAML interpolation. Previously, titles
+// containing `"` corrupted the frontmatter (closed the title field early,
+// injected attacker-controlled fields). Now escape `\` then `"` before
+// interpolation. Reject newlines as invalid title input.
+function escapeYamlString(s) {
+  return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
 function cmdNew(args) {
   const title = args.title;
   if (!title || title === true) {
     console.error('Usage: new --title "<title>"');
     process.exit(1);
   }
-  // Auto-increment ID
-  const existing = listAdrFiles();
-  let nextId = 1;
-  for (const f of existing) {
-    const m = f.match(/^(\d{4})-/);
-    if (m) {
-      const n = parseInt(m[1], 10);
-      if (n >= nextId) nextId = n + 1;
-    }
-  }
-  const padded = String(nextId).padStart(4, '0');
-  // Slug from title
-  const slug = title.toLowerCase()
-    .replace(/[^\w\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .slice(0, 50);
-  const filename = `${padded}-${slug}.md`;
-  const fpath = path.join(ADRS_DIR, filename);
-
-  // Read template
-  const templatePath = path.join(ADRS_DIR, '_TEMPLATE.md');
-  if (!fs.existsSync(templatePath)) {
-    console.error(`Template not found at ${templatePath}. Cannot create new ADR.`);
+  // H.8.7 H3: reject titles containing newlines (cannot safely embed in
+  // single-line YAML without block-scalar syntax).
+  if (title.includes('\n') || title.includes('\r')) {
+    console.error('Title cannot contain newlines. Use a single-line title.');
     process.exit(1);
   }
-  let template = fs.readFileSync(templatePath, 'utf8');
-  // Replace placeholders
-  template = template.replace('adr_id: NNNN', `adr_id: ${padded}`);
-  template = template.replace('title: "Imperative-form short title (e.g., \'Adopt fail-open hook discipline\')"', `title: "${title}"`);
-  template = template.replace('created: YYYY-MM-DD', `created: ${new Date().toISOString().slice(0, 10)}`);
 
+  // H.8.7 (chaos H5): wrap the read-then-write ID-claim cycle in a filesystem
+  // lock so concurrent invocations don't claim the same ID. Uses the same
+  // `_lib/lock.js` pattern as kb-resolver's manifest lock (H.3.2 lineage).
+  const lockPath = path.join(ADRS_DIR, '.cmdNew.lock');
   fs.mkdirSync(ADRS_DIR, { recursive: true });
-  if (fs.existsSync(fpath)) {
-    console.error(`ADR file already exists: ${fpath}. Refusing to overwrite.`);
-    process.exit(1);
-  }
-  fs.writeFileSync(fpath, template);
+
+  const result = withLock(lockPath, () => {
+    // Auto-increment ID (inside lock)
+    const existing = listAdrFiles();
+    let nextId = 1;
+    for (const f of existing) {
+      const m = f.match(/^(\d{4})-/);
+      if (m) {
+        const n = parseInt(m[1], 10);
+        if (n >= nextId) nextId = n + 1;
+      }
+    }
+    const padded = String(nextId).padStart(4, '0');
+    // Slug from title
+    const slug = title.toLowerCase()
+      .replace(/[^\w\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .slice(0, 50);
+    const filename = `${padded}-${slug}.md`;
+    const fpath = path.join(ADRS_DIR, filename);
+
+    // Read template
+    const templatePath = path.join(ADRS_DIR, '_TEMPLATE.md');
+    if (!fs.existsSync(templatePath)) {
+      console.error(`Template not found at ${templatePath}. Cannot create new ADR.`);
+      process.exit(1);
+    }
+    let template = fs.readFileSync(templatePath, 'utf8');
+    // Replace placeholders. Title gets YAML-escaped per H.8.7 H3 fix.
+    const safeTitle = escapeYamlString(title);
+    template = template.replace('adr_id: NNNN', `adr_id: ${padded}`);
+    template = template.replace('title: "Imperative-form short title (e.g., \'Adopt fail-open hook discipline\')"', `title: "${safeTitle}"`);
+    template = template.replace('created: YYYY-MM-DD', `created: ${new Date().toISOString().slice(0, 10)}`);
+
+    if (fs.existsSync(fpath)) {
+      console.error(`ADR file already exists: ${fpath}. Refusing to overwrite.`);
+      process.exit(1);
+    }
+    fs.writeFileSync(fpath, template);
+    return { padded, filename, fpath };
+  });
+
   console.log(JSON.stringify({
     action: 'new',
-    adr_id: padded,
-    filename,
-    fpath,
+    adr_id: result.padded,
+    filename: result.filename,
+    fpath: result.fpath,
     title,
   }, null, 2));
 }
@@ -242,12 +244,19 @@ function cmdTouchedBy(args) {
   //  - exact match
   //  - file is suffix of ADR entry (e.g., "fact-force-gate.js" matches "hooks/scripts/fact-force-gate.js")
   //  - ADR entry is suffix of file (rare, but possible if user passes absolute path)
+  // H.8.7 (chaos H2): path-segment-aware matching. Previous logic used
+  // bare `endsWith(p)` which produced false positives — `barfoo.js` matched
+  // an ADR entry `foo.js`; `passwd` matched `/etc/passwd`. Now require a
+  // path-separator boundary (`/` + entry) for suffix matches.
   const matches = adrs.filter((a) => {
     const affected = a.frontmatter.files_affected || [];
     return affected.some((p) => {
+      // Exact match
       if (p === file) return true;
-      if (file.endsWith('/' + p) || file.endsWith(p)) return true;
-      if (p.endsWith('/' + file) || p.endsWith(file)) return true;
+      // file is a deeper path that ends in entry: require '/' boundary
+      if (file.endsWith('/' + p)) return true;
+      // entry is a deeper path that ends in file: require '/' boundary
+      if (p.endsWith('/' + file)) return true;
       return false;
     });
   });
@@ -285,4 +294,4 @@ switch (cmd) {
 }
 
 // Export for testing / programmatic use
-module.exports = { loadAllAdrs, isActive, findAdrById, parseFrontmatter };
+module.exports = { loadAllAdrs, isActive, findAdrById };

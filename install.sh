@@ -1141,6 +1141,140 @@ PY
     failed=$((failed + 1))
   fi
 
+  # Test 61: H.8.7 — _lib/frontmatter.js extracted; consumers consume helper
+  echo -n "  Test 61 (H.8.7 _lib/frontmatter.js extracted; no inline parseFrontmatter in consumers): "
+  if [ -f "$SCRIPT_DIR/scripts/agent-team/_lib/frontmatter.js" ] \
+     && grep -q "require.*_lib/frontmatter" "$SCRIPT_DIR/scripts/agent-team/kb-resolver.js" \
+     && grep -q "require.*_lib/frontmatter" "$SCRIPT_DIR/scripts/agent-team/adr.js" \
+     && ! grep -qE '^function parseFrontmatter' "$SCRIPT_DIR/scripts/agent-team/kb-resolver.js" \
+     && ! grep -qE '^function parseFrontmatter' "$SCRIPT_DIR/scripts/agent-team/adr.js"; then
+    echo "OK"
+    passed=$((passed + 1))
+  else
+    echo "FAIL: helper missing or inline parseFrontmatter remains"
+    failed=$((failed + 1))
+  fi
+
+  # Test 62: H.8.7 — extractSections fence-aware (chaos H1)
+  echo -n "  Test 62 (H.8.7 extractSections fence-aware): "
+  T62_TMPDIR=$(mktemp -d)
+  T62_KBDIR="$T62_TMPDIR/kb"
+  mkdir -p "$T62_KBDIR/test"
+  cat > "$T62_KBDIR/test/fence.md" <<'EOF'
+---
+kb_id: test/fence
+---
+
+## Summary
+
+This is the summary.
+
+```
+## NotASection
+This is inside a code fence and must not be detected as a boundary.
+```
+
+## Quick Reference
+
+This is the quick reference.
+
+## Full Content
+
+This is the full content.
+EOF
+  T62_OUT=$(HETS_KB_DIR="$T62_KBDIR" node "$SCRIPT_DIR/scripts/agent-team/kb-resolver.js" cat-summary test/fence 2>/dev/null)
+  # Summary should include "## Summary" + body + the fenced block + closing fence
+  # Summary should NOT include "## Quick Reference" (it's the next real H2)
+  if echo "$T62_OUT" | grep -q "This is the summary" \
+     && echo "$T62_OUT" | grep -q "inside a code fence" \
+     && ! echo "$T62_OUT" | grep -q "This is the quick reference"; then
+    echo "OK"
+    passed=$((passed + 1))
+  else
+    echo "FAIL: extractSections fence-blindness regressed or other extraction issue"
+    failed=$((failed + 1))
+  fi
+  rm -rf "$T62_TMPDIR"
+
+  # Test 63: H.8.7 — touched-by path-segment-aware (chaos H2)
+  echo -n "  Test 63 (H.8.7 touched-by path-segment-aware; barfoo.js does NOT match foo.js): "
+  T63_TMPDIR=$(mktemp -d)
+  T63_ADRS="$T63_TMPDIR/adrs"
+  mkdir -p "$T63_ADRS"
+  cat > "$T63_ADRS/0099-test.md" <<'EOF'
+---
+adr_id: 0099
+title: "Test ADR for path-segment matching"
+status: accepted
+superseded_by: null
+files_affected:
+  - hooks/scripts/foo.js
+invariants_introduced:
+  - test invariant
+---
+## Context
+Test.
+EOF
+  T63_TRUE_POSITIVE=$(HETS_ADRS_DIR="$T63_ADRS" node "$SCRIPT_DIR/scripts/agent-team/adr.js" touched-by hooks/scripts/foo.js 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin).get('matched_count', -1))")
+  T63_FALSE_POSITIVE=$(HETS_ADRS_DIR="$T63_ADRS" node "$SCRIPT_DIR/scripts/agent-team/adr.js" touched-by hooks/scripts/barfoo.js 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin).get('matched_count', -1))")
+  if [ "$T63_TRUE_POSITIVE" = "1" ] && [ "$T63_FALSE_POSITIVE" = "0" ]; then
+    echo "OK (true-positive=1, false-positive=0)"
+    passed=$((passed + 1))
+  else
+    echo "FAIL: true=$T63_TRUE_POSITIVE (want 1), false=$T63_FALSE_POSITIVE (want 0)"
+    failed=$((failed + 1))
+  fi
+  rm -rf "$T63_TMPDIR"
+
+  # Test 64: H.8.7 — cmdNew YAML escaping (chaos H3)
+  echo -n "  Test 64 (H.8.7 cmdNew YAML escaping; title with quotes does not corrupt frontmatter): "
+  T64_TMPDIR=$(mktemp -d)
+  T64_ADRS="$T64_TMPDIR/adrs"
+  mkdir -p "$T64_ADRS"
+  cp "$SCRIPT_DIR/swarm/adrs/_TEMPLATE.md" "$T64_ADRS/_TEMPLATE.md" 2>/dev/null
+  T64_NEW=$(HETS_ADRS_DIR="$T64_ADRS" node "$SCRIPT_DIR/scripts/agent-team/adr.js" new --title 'Test "quoted" title' 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('filename', ''))")
+  if [ -n "$T64_NEW" ] && [ -f "$T64_ADRS/$T64_NEW" ]; then
+    # Verify the file has properly escaped title
+    T64_TITLE_LINE=$(grep '^title:' "$T64_ADRS/$T64_NEW")
+    if echo "$T64_TITLE_LINE" | grep -q 'Test \\"quoted\\" title'; then
+      # Verify the ADR loads cleanly
+      T64_LOAD=$(HETS_ADRS_DIR="$T64_ADRS" node "$SCRIPT_DIR/scripts/agent-team/adr.js" list 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin).get('count', -1))")
+      if [ "$T64_LOAD" = "1" ]; then
+        echo "OK (title escaped + ADR loads)"
+        passed=$((passed + 1))
+      else
+        echo "FAIL: ADR not loadable post-creation"
+        failed=$((failed + 1))
+      fi
+    else
+      echo "FAIL: title not escaped — got: $T64_TITLE_LINE"
+      failed=$((failed + 1))
+    fi
+  else
+    echo "FAIL: cmdNew did not produce file"
+    failed=$((failed + 1))
+  fi
+  rm -rf "$T64_TMPDIR"
+
+  # Test 65: H.8.7 — adr.js symlink defense (chaos M3)
+  echo -n "  Test 65 (H.8.7 adr.js symlink defense; symlink in ADRS_DIR ignored): "
+  T65_TMPDIR=$(mktemp -d)
+  T65_ADRS="$T65_TMPDIR/adrs"
+  T65_TARGET="$T65_TMPDIR/target"
+  mkdir -p "$T65_ADRS" "$T65_TARGET"
+  # Plant a symlink with valid-looking name pointing outside
+  ln -s "$T65_TARGET/0099-malicious.md" "$T65_ADRS/0099-malicious.md" 2>/dev/null
+  # touched-by + active should not crash + should not include the symlink as a loaded ADR
+  T65_LIST=$(HETS_ADRS_DIR="$T65_ADRS" node "$SCRIPT_DIR/scripts/agent-team/adr.js" list 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin).get('count', -1))")
+  if [ "$T65_LIST" = "0" ]; then
+    echo "OK (symlink filtered out)"
+    passed=$((passed + 1))
+  else
+    echo "FAIL: list count = $T65_LIST (want 0)"
+    failed=$((failed + 1))
+  fi
+  rm -rf "$T65_TMPDIR"
+
   echo ""
   echo "  Results: $passed passed, $failed failed"
   [ "$failed" -gt 0 ] && echo "  Some tests failed — check hook scripts and paths"
