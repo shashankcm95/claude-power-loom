@@ -8,7 +8,98 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
-## [unreleased] — 2026-05-10 — HT.1.12 Architecture KB forward-reference resolution
+## [1.12.0] — 2026-05-10 — HT.1.13 Slopfiles authoring discipline + ADR-0005 + rules/core refactor
+
+**Hardening Track refactor 13 of N.** Adopts `<important if "task involves X">...</important>` block-marker convention for always-on context surfaces (`rules/core/*.md`); authors ADR-0005 codifying slopfiles authoring discipline as substrate primitive (THIRD load-bearing ADR after ADR-0002 + ADR-0003). Closes HT.0.8 Size.3 most-weighty cross-cutting finding (always-on rules tax). Plugin manifest `1.11.3 → 1.12.0` (minor — additive substrate primitive + 2 NEW substrate-meta architecture docs).
+
+### Changed
+
+- **NEW ADR-0005**: `swarm/adrs/0005-slopfiles-authoring-discipline.md` — codifies slopfiles authoring discipline as substrate primitive. Ships at `status: accepted` directly per HT.1.7 precedent (per-phase pre-approval gate IS the acceptance ceremony; transient `proposed` introduces test-timing-window risk). 3 invariants: safety-critical content + authoring discipline (new content presumptively conditional) + predicate-vocabulary curation gate. Editorial-tier ADR distinct from ADR-0001 (technical) + ADR-0003 (governance) — INTRODUCES three-tier ADR taxonomy.
+
+- **rules/core/ partitioning** (per ADR-0005 invariant 1: safety-critical content invariant):
+  - `security.md` (29 LoC; **fully core-always** — security guardrails universally apply)
+  - `research-mode.md` (15 LoC; **fully core-always** — factual-claim discipline universally applies)
+  - `fundamentals.md` (58 LoC → 62 LoC with markup; ~51 LoC core-always: Immutability + Core Principles + SOLID + File Organization + Error Handling + Input Validation + Naming; ~7 LoC conditional Pre-Completion Checklist wrapped in `<important if "task involves multi-file changes (≥2 distinct files) or task is at completion">`). File Organization sizing kept core-always per architect MEDIUM-4 absorption (applies to single-file authoring too).
+  - `prompt-enrichment.md` (32 → 20 LoC; Sub-Agent Awareness ~3 LoC core-always; "When vague" workflow ~9 LoC wrapped in `<important if "task involves user-prompt-vagueness handling">`; Vagueness Detection Gate substrate-meta description migrated OUT to `swarm/architecture-substrate/prompt-enrichment-architecture.md`)
+  - `self-improvement.md` (60 → 38 LoC; Gap Detection + Throttle + Session-End Review + Pre-Compact Awareness ~15 LoC core-always; Forging Procedure ~7 LoC wrapped in `<important if "task involves Memory→Rule promotion or skill forge">`; Auto-loop infrastructure substrate-meta description migrated OUT to `swarm/architecture-substrate/auto-loop-infrastructure.md`)
+  - `workflow.md` (128 → 170 LoC including markup; ~3 LoC always-on intro; ~125 LoC functional content wrapped across 9 H2 sections under 9 unique predicates from 13-predicate starter vocabulary)
+
+- **NEW substrate-meta architecture namespace** at `swarm/architecture-substrate/`:
+  - `auto-loop-infrastructure.md` — H.4.1 hook coordination + threshold-based auto-promotion + CLI surface
+  - `prompt-enrichment-architecture.md` — vagueness detection gate + skip patterns + pattern-store auto-apply substrate
+  - Sibling cohort with `swarm/path-reference-conventions.md` (HT.1.10) — substrate-internal institutional architecture namespace, distinct from `skills/agent-team/kb/architecture/` (canonical knowledge) and `swarm/adrs/` (decision records)
+
+### 13-predicate starter vocabulary (per ADR-0005 invariant 3)
+
+Original 12 predicates + "task involves substrate-meta work" added per architect HIGH-3 absorption (workflow.md H.7.16/H.7.18 sections needed substrate-meta predicate). Vocabulary extensions go through ADR-update or code-review gate.
+
+### Drift-note 74 NEW (captured at sub-plan time via empirical pre-validation)
+
+**Title**: HT.0.8 always-on rules LoC count overstated vs empirical reality at HT.1.13.
+
+**Source**: HT.0.8 audit + HT-state.md cite "228 LoC ~3.5K tokens" across `rules/core/*.md` 6 files.
+
+**Empirical reality** (HT.1.13): **322 LoC** (+94 LoC; +41% understatement). Per-file: fundamentals (58) + prompt-enrichment (32) + research-mode (15) + security (29) + self-improvement (60) + workflow (128) = 322. Token estimate 322 × ~12 tokens/LoC ≈ 3870 tokens.
+
+**Root cause**: workflow.md likely grew via H.7.x additions post-2026-05-09 audit (H.7.5 Route-Decision detail; H.7.9 Plan Mode/HETS-aware; H.7.18 markdown emphasis; H.7.19 Hook layer placement; H.7.22-H.7.23 Pre-approval verification + schema-level questions). Most H.7.x additions touched workflow.md as the substrate-discipline ledger.
+
+**Sibling cohort with drift-notes 63 + 64 + 71 + 72** — five-instance pattern of audit measurement-methodology drift now established (function span detection HT.1.4 + LoC counting HT.1.5 + static-vs-dynamic regex classification HT.1.11 + forward-reference count HT.1.12 + always-on-rules LoC HT.1.13). HT.2 sweep candidate: re-validate other HT.0.x finding counts against current empirical state.
+
+### Per-phase pre-approval gate INVOKED (architect + code-reviewer parallel)
+
+Both reviewers returned APPROVED-with-revisions. **6 HIGH + 11 MEDIUM + 7 LOW FLAGs absorbed single-pass**; 2 HIGH FLAGs convergent across both reviewers:
+
+- **Convergent HIGH (path)**: KB destination `kb/architecture/substrate/` doesn't exist (architect HIGH-1) + KB taxonomy mismatch (architect HIGH-2) → pivoted to `swarm/architecture-substrate/` matching HT.1.10 path-conventions doc precedent
+- **Convergent HIGH (status)**: ADR-0005 ships at `status: proposed` would create test-timing-window failure (architect HIGH-4 + code-reviewer FLAG-2) → flipped to `accepted` directly per HT.1.7 precedent
+- Architect HIGH-3: predicate vocabulary missing substrate-meta — added 13th predicate
+- Code-reviewer FLAG-1 (HIGH): LoC accuracy in fundamentals.md split — recounted empirically; File Organization kept core-always per architect MEDIUM-4
+- 11 MEDIUM + 7 LOW FLAGs absorbed inline (invariant 4 dropped — meta-statement; editorial-tier framing added; token estimate methodology reframed to deterministic floor; rollback shape revised; markdownlint compat note added; etc.)
+
+Drift-note 40 codification value is now **9th consecutive phase** (per-phase pre-approval gate continues to pay across all load-bearing-ADR phases: HT.1.3 ADR-0002 + HT.1.5 + HT.1.7 ADR-0003 + HT.1.13 ADR-0005).
+
+### Methodology
+
+Per-phase pre-approval gate INVOKED with EXPLICIT decision rationale matrix per HT.1.6 convention. 5/5 triggers fired (substrate-fundament schema change INDIRECT + fresh design surface YES + institutional discipline encoding YES + multi-file coordination PARTIAL + HIGH-class bug catchable at design YES — safety-critical content boundary). Empirical pre-validation pattern is now **6-phase confirmed** (HT.1.8 + HT.1.9 + HT.1.10 + HT.1.11 + HT.1.12 + HT.1.13) — surfaced drift-note 74 at sub-plan time before implementation.
+
+### Verification
+
+- **72/72 install.sh smoke** (+2 NEW HT.1.13 tests: test 75 ADR-0005 accepted [count ≥ 2; includes ADR-0005] + test 76 `<important if>` block-marker count target band ≥ 8 ≤ 14)
+- **46/46 _h70-test.js asserts** (regression check; HT.1.13 doesn't touch agent-identity / its sub-modules)
+- **0 contracts-validate violations** excluding pre-existing 16 baseline
+- **ADR-0005 active for drift detection**: `adr.js touched-by rules/core/workflow.md` returns ADR-0005 with all 3 invariants
+- **markdownlint compatibility**: `MD033: false` already disabled in `.markdownlint.json` per code-reviewer FLAG-4 — `<important if>` block-marker syntax does not trigger MD033
+
+### Token-tax reduction estimate (per architect MEDIUM-5 absorption — methodology reframed)
+
+- **Deterministic floor (substrate-author-side)**: ~17% always-on reduction (~660 tokens/session always saved via out-of-rules migration of ~55 LoC substrate-meta content; independent of LLM compliance with `<important if>`)
+- **Best-effort upside (LLM-side)**: ~46% with full LLM compliance with `<important if>` predicates (~1810 tokens/session); realistic compliance rate unmeasured (HT.2 sweep candidate adds observability)
+- **Combined ceiling**: ~63% with full compliance
+
+### Why this matters
+
+- **Closes HT.0.8 Size.3 most-weighty cross-cutting finding** (always-on rules tax — first substrate-side response)
+- **Captures drift-note 74** (HT.0.8 LoC count overstated; sibling cohort with 63 + 64 + 71 + 72)
+- **THIRD load-bearing ADR introduced**: editorial-tier ADR taxonomy distinct from technical/governance — substrate now operates 3-tier ADR ledger
+- **Empirical pre-validation pattern is now 6-phase confirmed** (HT.1.8-1.13)
+- **NEW `swarm/architecture-substrate/` namespace** for substrate-meta institutional architecture documentation (sibling cohort with HT.1.10 path-reference-conventions doc)
+- **Forward-looking primitive readiness**: if Claude Code adds native `<important if>` parsing, substrate is already prepared
+- **Fifty-fourth distinct phase shape** in the HT track: slopfiles authoring discipline + editorial-tier ADR + substrate-meta out-of-rules migration + drift-note 74 captured at sub-plan time
+
+### Plugin manifest
+
+`1.11.3 → 1.12.0` (minor — additive substrate primitive: slopfiles authoring discipline + 2 NEW substrate-meta architecture docs). Rules-content shape is NOT versioned as public surface in this substrate's semver convention; user-facing API is CLI/hooks/scripts. Per architect MEDIUM-6 absorption.
+
+### Out of scope (deferred)
+
+- **Per-project rules layer** (`rules/typescript/`, `rules/web/`) — already project-conditional via Claude Code's rules layer; not auto-loaded into unrelated sessions
+- **`~/.claude/projects/<project>/memory/MEMORY.md`** user-memory layer — different surface; out of scope
+- **Automated lint enforcement of `<important if>` block-marker syntax** — HT.2 sweep candidate
+- **LLM compliance rate measurement** for `<important if>` predicates — HT.2 sweep candidate (adds observability for conditional-section-not-applied counter)
+- **Migration of additional always-on context surfaces** (CLAUDE.md project-level imports, etc.) — HT.2+ candidate
+
+---
+
+## [1.12.0-pre] — 2026-05-10 — HT.1.12 Architecture KB forward-reference resolution
 
 **Hardening Track refactor 12 of N.** Annotates 7 broken `related:` forward references across 5 of 10 architecture KBs to 5 unique non-existent `kb_id` targets via body-section migration per `react-essentials.md` precedent. Closes HT.0.5a E.1 most-weighty finding (bidirectional `related:` validator skips broken refs because targets don't exist). **No version bump** per pure-doc convention (matches HT.1.10 precedent).
 
@@ -88,7 +179,7 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
-## [unreleased] — 2026-05-10 — HT.1.11 Per-call regex compilation cleanup
+## [1.12.0-pre] — 2026-05-10 — HT.1.11 Per-call regex compilation cleanup
 
 **Hardening Track refactor 11 of N.** Targeted optimization across 6 sites with empirical-pre-validation-driven scope refinement. Closes HT.0.1 + HT.0.2 + HT.0.4 per-call regex compilation findings as targeted optimization (6 sites with actual migration value) rather than blanket sweep (would have over-applied to 3 Tier 4 sites without value). **No version bump** per pure-refactor convention (matches HT.1.2 + HT.1.8 + HT.1.9 precedents).
 

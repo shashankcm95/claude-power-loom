@@ -189,6 +189,37 @@ EOF
     failed=$((failed + 1))
   fi
 
+  # Test 75: HT.1.13 — ADR-0005 ships at status: accepted directly per HT.1.7
+  # precedent (per-phase pre-approval gate IS the acceptance ceremony).
+  # Validates `adr.js list --status accepted` returns count ≥ 2 (ADR-0003 +
+  # ADR-0005); ADR-0005 must be present by adr_id.
+  echo -n "  Test 75 (HT.1.13 ADR-0005 accepted; adr.js list --status accepted includes ADR-0005): "
+  T75_OUT=$(HETS_ADRS_DIR="$SCRIPT_DIR/swarm/adrs" node "$SCRIPT_DIR/scripts/agent-team/adr.js" list --status accepted 2>/dev/null)
+  T75_COUNT=$(echo "$T75_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('count', -1))")
+  T75_HAS_0005=$(echo "$T75_OUT" | python3 -c "import json,sys; d=json.load(sys.stdin); print('yes' if any(a.get('adr_id') == '0005' for a in d.get('adrs', [])) else 'no')")
+  if [ "$T75_COUNT" -ge "2" ] && [ "$T75_HAS_0005" = "yes" ]; then
+    echo "OK (count=$T75_COUNT, includes ADR-0005)"
+    passed=$((passed + 1))
+  else
+    echo "FAIL: count=$T75_COUNT, has_0005=$T75_HAS_0005 (want count≥2, has_0005=yes)"
+    failed=$((failed + 1))
+  fi
+
+  # Test 76: HT.1.13 — slopfiles `<important if>` block-marker count is within
+  # target band ≥ 8 and ≤ 14 (per architect LOW-2 absorption: tightened from
+  # loose ≥ 8 to also enforce upper bound to catch over-conditionalization).
+  # 14 is the post-HT.1.13 baseline (workflow.md 11 + fundamentals.md 1 +
+  # prompt-enrichment.md 1 + self-improvement.md 1).
+  echo -n "  Test 76 (HT.1.13 <important if> block-marker count in rules/core/ within target band): "
+  T76_COUNT=$(grep -rn "<important if" "$SCRIPT_DIR/rules/core/" 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$T76_COUNT" -ge "8" ] && [ "$T76_COUNT" -le "14" ]; then
+    echo "OK (count=$T76_COUNT; target ≥ 8 and ≤ 14)"
+    passed=$((passed + 1))
+  else
+    echo "FAIL: count=$T76_COUNT (want ≥ 8 and ≤ 14)"
+    failed=$((failed + 1))
+  fi
+
   # Test 65: H.8.7 — adr.js symlink defense (chaos M3)
   echo -n "  Test 65 (H.8.7 adr.js symlink defense; symlink in ADRS_DIR ignored): "
   T65_TMPDIR=$(mktemp -d)

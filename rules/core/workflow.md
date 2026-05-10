@@ -1,11 +1,19 @@
 # Development Workflow
 
+Per ADR-0005 slopfiles authoring discipline, sections below are wrapped in `<important if "task involves X">` predicates — apply each section only when its predicate matches the current task.
+
+<important if "task involves git commits, PRs, or branch operations">
+
 ## Git Conventions
 
 - Conventional commits: `feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`
 - Branch naming: `feat/short-description`, `fix/short-description`
 - PRs should be reviewable in one sitting (< 400 lines changed when possible)
 - Never force-push to shared branches without explicit confirmation
+
+</important>
+
+<important if "task involves running or writing tests">
 
 ## Testing Expectations
 
@@ -14,6 +22,10 @@
 - Integration tests for data flows crossing boundaries (API → DB → response)
 - Run the full test suite before marking work complete
 
+</important>
+
+<important if "task involves code review">
+
 ## Code Review Standards
 
 - No self-merge on shared repositories
@@ -21,9 +33,17 @@
 - Only flag issues you are > 80% confident about
 - Consolidate similar findings (not 5 separate "missing error handling" notes)
 
+</important>
+
+<important if "task involves deploying or release">
+
 ## Deploy
 
 Before deploying, follow the deploy-checklist skill for the full pre-deployment verification workflow.
+
+</important>
+
+<important if "task involves multi-file changes (≥2 distinct files)">
 
 ## Plan Mode for Multi-File Changes (H.7.9 — HETS-aware)
 
@@ -43,6 +63,10 @@ Before deploying, follow the deploy-checklist skill for the full pre-deployment 
 - Drift notes feed the auto-loop's session-end review (`rules/core/self-improvement.md`).
 - Per the H.7.9 meta-discipline directive: conversations and tasks are the primary plugin testing framework; pattern-emergence observations promote to substrate refinement.
 
+</important>
+
+<important if "task involves substrate-meta work (routing scorer, hook authoring, validator authoring, dictionary expansion, forcing-instruction class taxonomy)">
+
 ## Hook layer placement (H.7.19)
 
 When adding a new validator hook to `hooks/hooks.json`, default to **PostToolUse** unless the hook MUST block to prevent silent-failure or security violation.
@@ -55,6 +79,22 @@ When adding a new validator hook to `hooks/hooks.json`, default to **PostToolUse
 **Common deviation to avoid**: H.7.12 chose PreToolUse for `validate-plan-schema.js` because the toolkit had zero PostToolUse:Write entries at the time. This was a conservative misreading — "no examples in our toolkit" ≠ "not supported by Claude Code." H.7.17 corrected the deviation after `claude-code-guide` consultation confirmed PostToolUse:Write works.
 
 **Lesson**: when uncertain about Claude Code hook semantics, consult the official docs (or `claude-code-guide` agent — drift-note 24) rather than inferring from absence in our codebase.
+
+## Schema-level questions (H.7.23)
+
+When a question concerns Claude Code's plugin manifest, settings.json schema, marketplace.json schema, or any other Claude Code configuration schema, **route through `general-purpose` subagent + `WebFetch` on `code.claude.com/docs`** rather than `claude-code-guide`.
+
+**Why** — H.7.22's three install-failure hotfixes (H.7.22.1/2/3) all happened because the `claude-code-guide` subagent gave wrong/conflicting advice on plugin manifest schema. The first round it confirmed `"./"` for marketplace source (correct). The second round it suggested `"agents": "agents"` (wrong — schema requires `^\./.*` regex; the right answer is to omit the field entirely since auto-discovery handles the default location).
+
+The general-purpose agent + `WebFetch` against canonical docs (`https://code.claude.com/docs/en/plugins-reference.md`, `https://www.schemastore.org/claude-code-plugin-manifest.json`) + cross-reference with working anthropic plugins (`anthropics/claude-plugins-official` like `code-review`, `feature-dev`) is the source-of-truth path for schema questions.
+
+**`claude-code-guide` is fine for** — Claude Code behavior questions (hook semantics, slash command precedence, MCP server discovery, etc.). Just not schemas.
+
+**Drift-note 43 codified** — schema source-of-truth.
+
+</important>
+
+<important if "task involves markdown authoring">
 
 ## Markdown emphasis discipline (H.7.18)
 
@@ -78,12 +118,20 @@ Examples:
 
 The H.7.18 `validate-markdown-emphasis.js` PostToolUse hook detects this pattern and emits `[MARKDOWN-EMPHASIS-DRIFT]` for awareness. The hook is forward-looking; it doesn't auto-fix existing markdown.
 
+</important>
+
+<important if "task involves CI workflow or install.sh changes">
+
 ## CI infrastructure changes (H.7.15)
 
 - When adding CI workflows, install scripts, or other infrastructure that runs only at merge time / install time / CI time, **validate against a clean / non-author environment before merging**. The H.7.8 CI bug (PR #79 H.7.9 surfaced it: `bash install.sh --test` tested already-installed hooks at `$CLAUDE_DIR/hooks/scripts/`, which doesn't exist on a fresh CI checkout) and the `install_hooks` subdir-glob bug (H.7.12 surfaced it: `validators/` and `_lib/` subdirectories were never being copied) BOTH shipped because the original phases never ran the new infrastructure against a fresh environment.
 - **Dogfood discipline**: try the new workflow as if you were a new contributor / fresh CI runner / minimal-install user. Specifically: (1) run install.sh on a path that doesn't already have ~/.claude populated, OR (2) push the change to a feature branch and let CI run against a clean checkout BEFORE merging to main.
 - For subdir-related changes: explicitly verify subdirectories are copied (`ls $CLAUDE_DIR/<dir>/<subdir>/` should show files), not just the top-level glob.
 - Pattern audit: when extending an install step or CI workflow, scan the related code for similar single-level-glob assumptions (`for f in dir/*.js` vs `cp -r dir/`).
+
+</important>
+
+<important if "task involves invoking /build-team or sub-agent orchestration">
 
 ## Route-Decision for Non-Trivial Tasks
 
@@ -98,6 +146,10 @@ The H.7.18 `validate-markdown-emphasis.js` PostToolUse hook detects this pattern
 - **H.7.5 — Prompt design tip**: when crafting the gate's task string, embed the routing signal explicitly (e.g., "implement weighted-formula refit per H.7.4 plan via orchestration" beats bare "empirical refit"). Surface keywords help the deterministic layer; don't rely on the forcing-instruction fallback for cases where you already know the answer.
 - **H.7.16 — When output emits `[ROUTE-META-UNCERTAIN]`**: the task references substrate-meta tokens (`route-decide`, `weights_version`, `dict expansion`, `keyword set`, `forcing instruction`, etc.). The score may be biased low by the **substrate-meta routing catch-22** — when the proposed change modifies the routing scorer itself, the score above was computed using the CURRENT dictionary, which may not yet contain the tokens the proposed change would add. Apply judgment: if task is genuinely architect-shaped, escalate via `--force-route` or architect spawn (per `route-decide.js:11-13` load-bearing comment); if mechanical implementation of an already-decided design, current recommendation likely correct. The forcing instruction is advisory and does NOT alter the score or recommendation — score-additive guarantee preserved.
 - **H.7.16 — Co-firing**: `[ROUTE-META-UNCERTAIN]` can fire alongside `[ROUTE-DECISION-UNCERTAIN]` (zero signals AND substrate-meta detected) and alongside any recommendation tier. The two are independent; both can appear in the same JSON output.
+
+</important>
+
+<important if "task involves Hardening Track or HETS-routed phase">
 
 ## Pre-approval verification (H.7.23)
 
@@ -115,14 +167,4 @@ The H.7.18 `validate-markdown-emphasis.js` PostToolUse hook detects this pattern
 
 See `commands/verify-plan.md` for the slash command, `skills/verify-plan/SKILL.md` for the procedure.
 
-## Schema-level questions (H.7.23)
-
-When a question concerns Claude Code's plugin manifest, settings.json schema, marketplace.json schema, or any other Claude Code configuration schema, **route through `general-purpose` subagent + `WebFetch` on `code.claude.com/docs`** rather than `claude-code-guide`.
-
-**Why** — H.7.22's three install-failure hotfixes (H.7.22.1/2/3) all happened because the `claude-code-guide` subagent gave wrong/conflicting advice on plugin manifest schema. The first round it confirmed `"./"` for marketplace source (correct). The second round it suggested `"agents": "agents"` (wrong — schema requires `^\./.*` regex; the right answer is to omit the field entirely since auto-discovery handles the default location).
-
-The general-purpose agent + `WebFetch` against canonical docs (`https://code.claude.com/docs/en/plugins-reference.md`, `https://www.schemastore.org/claude-code-plugin-manifest.json`) + cross-reference with working anthropic plugins (`anthropics/claude-plugins-official` like `code-review`, `feature-dev`) is the source-of-truth path for schema questions.
-
-**`claude-code-guide` is fine for** — Claude Code behavior questions (hook semantics, slash command precedence, MCP server discovery, etc.). Just not schemas.
-
-**Drift-note 43 codified** — schema source-of-truth.
+</important>

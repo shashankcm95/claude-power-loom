@@ -1,21 +1,5 @@
 # Self-Improvement — Always Active
 
-## Auto-loop infrastructure (H.4.1)
-
-The self-improvement loop runs **automatically** via 3 hook integrations — you don't need to invoke `/self-improve` to keep the system learning. The hooks deterministically capture, consolidate, and surface candidates; `/self-improve` is now reserved for explicit triage + Memory→Rule promotion (the load-bearing stuff).
-
-| Layer | Hook | Trigger | Behavior |
-|-------|------|---------|----------|
-| Capture | `auto-store-enrichment.js` | Stop (every turn) | Bumps per-signal counters in `~/.claude/self-improve-counters.json` |
-| Consolidation | `auto-store-enrichment.js` | Stop (every 30th turn) | Triggers `self-improve-store scan` if turns since last scan ≥30 |
-| Consolidation | `pre-compact-save.js` | PreCompact | Same scan at compaction (catches both short + long sessions) |
-| Approval | `session-self-improve-prompt.js` | UserPromptSubmit (first prompt of session) | Injects pending queue as a single batched reminder; idempotent within session |
-
-**Threshold-based auto-promotion** (mirrors prompt-pattern-store's 5+-approval auto-apply):
-- Signal observed ≥5 times → queued candidate (needs approval)
-- Signal observed ≥10 times AND risk = `low` → auto-graduated, logged to `~/.claude/checkpoints/observations.log`
-- Risk taxonomy: low (auto), medium (prompt), high (always prompt — Memory→Rule, agent-evolution)
-
 ## Gap Detection
 
 Watch for these signals during work (observe silently, batch for session end):
@@ -41,20 +25,14 @@ The auto-loop already captures recurrence counts; your review is the qualitative
 
 When context is getting large, proactively save key decisions and patterns to MEMORY.md. If MemPalace MCP is available, store there too. If unavailable, write to `~/.claude/checkpoints/mempalace-fallback.md`.
 
-The PreCompact hook also triggers a self-improve consolidation scan deterministically — your work here is the LLM-only intelligent part (interpretation), not the bookkeeping.
+<important if "task involves Memory→Rule promotion or skill forge">
 
 ## Forging Procedure
 
 When forging is approved, follow the skill-forge skill for the full creation workflow.
 
-## Reading the queue
-
-If the SessionStart reminder shows pending candidates, you can inspect / act on them:
-
-```bash
-node ~/.claude/scripts/self-improve-store.js pending           # human-readable list
-node ~/.claude/scripts/self-improve-store.js promote --id X    # execute (low-risk only)
-node ~/.claude/scripts/self-improve-store.js dismiss --id X    # discard
-```
-
 For medium/high-risk promotions (skill forge, Memory→Rule, agent rewrite), invoke `/self-improve` for the full review workflow — those need explicit human reasoning, not just a CLI flag.
+
+</important>
+
+For substrate-internal architecture (auto-loop hooks + threshold-based auto-promotion + CLI surface for queue inspection), see `swarm/architecture-substrate/auto-loop-infrastructure.md`. Per ADR-0005 slopfiles authoring discipline, the substrate-meta description was migrated out of always-on rules to reduce session context tax.

@@ -47,6 +47,8 @@ Many small files over few large files:
 - Types/components: `PascalCase`
 - Constants: `UPPER_SNAKE_CASE`
 
+<important if "task involves multi-file changes (≥2 distinct files) or task is at completion">
+
 ## Pre-Completion Checklist
 
 - [ ] Code is readable and well-named
@@ -56,3 +58,5 @@ Many small files over few large files:
 - [ ] No hardcoded values (use constants/config)
 - [ ] No mutation (spread/map/filter instead)
 - [ ] Proper error handling at every level
+
+</important>
