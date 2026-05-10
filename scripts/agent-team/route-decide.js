@@ -289,9 +289,19 @@ function parseArgs(argv) {
 // Hyphens and spaces inside keywords are preserved; the surrounding word
 // boundary uses a custom non-letter / non-digit / non-underscore guard so
 // hyphenated keywords like `rate-limit` are matched as a single token.
+//
+// HT.1.11: memoize by keyword key. Previously this function recompiled the
+// regex on every call; `scoreTask` invokes ~90× per call (9 dims × ~10
+// keywords). Keyspace is bounded (~100 unique keywords across all KEYWORDS
+// dims + SUBSTRATE_META_TOKENS). Memoization eliminates per-call compile
+// after first invocation. Regex behavior unchanged.
+const _keywordRegexCache = new Map();
 function buildKeywordRegex(keyword) {
-  const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`(?:^|[^a-zA-Z0-9_])${escaped}(?=$|[^a-zA-Z0-9_])`, 'i');
+  if (!_keywordRegexCache.has(keyword)) {
+    const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    _keywordRegexCache.set(keyword, new RegExp(`(?:^|[^a-zA-Z0-9_])${escaped}(?=$|[^a-zA-Z0-9_])`, 'i'));
+  }
+  return _keywordRegexCache.get(keyword);
 }
 
 // Returns list of matched keywords in order encountered (for diagnostics).

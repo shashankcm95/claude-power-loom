@@ -181,16 +181,27 @@ function cmdCat(args) {
  * @param {string} endName - H2 heading name marking end (without `## `); pass null to extract through next H2 of any name
  * @returns {string|null} Extracted section text, or null if startName not found
  */
+// HT.1.11: memoize section-heading regex by name. Each call to extractSections
+// previously recompiled startRe + endRe; called per cmdCatSummary / cmdCatQuickRef
+// invocation. Keyspace is small (~5 unique section names: Summary, Quick Reference,
+// etc.). Memoization eliminates per-call compile after first invocation. Behavior
+// unchanged. Tier 3 cohort with validate-plan-schema + validate-kb-doc + verify-plan-gate.
+const _sectionRegexCache = new Map();
+function _getSectionRe(name) {
+  if (!_sectionRegexCache.has(name)) {
+    const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    _sectionRegexCache.set(name, new RegExp(`^## ${escapeRegExp(name)}\\s*$`));
+  }
+  return _sectionRegexCache.get(name);
+}
+
 function extractSections(body, startName, endName) {
   const lines = body.split('\n');
-  const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   // H.8.7 M2: precise start match — name followed by EOL or trailing whitespace
   // only. NOT prefix-match (which `\b` allowed for `Summary of Findings`).
-  const startRe = new RegExp(`^## ${escapeRegExp(startName)}\\s*$`);
+  const startRe = _getSectionRe(startName);
   // End is an open boundary (any H2 if endName null) or precise (named end).
-  const endRe = endName
-    ? new RegExp(`^## ${escapeRegExp(endName)}\\s*$`)
-    : /^## /;
+  const endRe = endName ? _getSectionRe(endName) : /^## /;
   // H.8.7 H1: track fence state so ``` blocks don't yield false section
   // boundaries. A line starting with ``` toggles the state; only `^## `
   // outside fences counts.

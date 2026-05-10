@@ -71,10 +71,17 @@ function requiresPrincipleAudit(content) {
  * @param {string} sectionName
  * @returns {boolean}
  */
+// HT.1.11: memoize section-heading regex by sectionName. Same shape as
+// validate-plan-schema.js + validate-kb-doc.js (Tier 3 cohort). Keyspace is
+// small (~10 unique section names across plan template). Memoization
+// eliminates per-call compile after first invocation. Behavior unchanged.
+const _sectionRegexCache = new Map();
 function hasH2Heading(content, sectionName) {
-  const escaped = sectionName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const re = new RegExp(`^## ${escaped}(?:\\s*\\([^)]*\\))?\\s*$`, 'm');
-  return re.test(content);
+  if (!_sectionRegexCache.has(sectionName)) {
+    const escaped = sectionName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    _sectionRegexCache.set(sectionName, new RegExp(`^## ${escaped}(?:\\s*\\([^)]*\\))?\\s*$`, 'm'));
+  }
+  return _sectionRegexCache.get(sectionName).test(content);
 }
 
 /**

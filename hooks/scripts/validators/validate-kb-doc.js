@@ -46,6 +46,12 @@ const KB_ARCHITECTURE_PATH_RE = /\/kb\/architecture\/[^/]+\/[^/]+\.md$/;
 const REQUIRED_FRONTMATTER_FIELDS = ['kb_id', 'tags'];
 const REQUIRED_SECTION_HEADINGS = ['Summary', 'Quick Reference'];
 
+// HT.1.11: memoize section-heading regex by sectionName. Previously each
+// call recompiled the regex; called ~2-5× per validate-kb-doc invocation
+// (once per required section: Summary, Quick Reference, etc.). Keyspace is
+// small (~5 unique section names). Memoization eliminates per-call compile.
+const _sectionRegexCache = new Map();
+
 /**
  * Check if a body has a top-level H2 section with the given name. Fence-aware
  * per H.8.7 chaos H1 fix (boundaries inside ``` blocks ignored).
@@ -55,9 +61,12 @@ const REQUIRED_SECTION_HEADINGS = ['Summary', 'Quick Reference'];
  * @returns {boolean}
  */
 function hasH2Section(body, sectionName) {
+  if (!_sectionRegexCache.has(sectionName)) {
+    const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    _sectionRegexCache.set(sectionName, new RegExp(`^## ${escapeRegExp(sectionName)}\\s*$`));
+  }
+  const sectionRe = _sectionRegexCache.get(sectionName);
   const lines = body.split('\n');
-  const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const sectionRe = new RegExp(`^## ${escapeRegExp(sectionName)}\\s*$`);
   let inFence = false;
   for (const line of lines) {
     if (line.startsWith('```')) {

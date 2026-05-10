@@ -8,6 +8,80 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [unreleased] — 2026-05-10 — HT.1.11 Per-call regex compilation cleanup
+
+**Hardening Track refactor 11 of N.** Targeted optimization across 6 sites with empirical-pre-validation-driven scope refinement. Closes HT.0.1 + HT.0.2 + HT.0.4 per-call regex compilation findings as targeted optimization (6 sites with actual migration value) rather than blanket sweep (would have over-applied to 3 Tier 4 sites without value). **No version bump** per pure-refactor convention (matches HT.1.2 + HT.1.8 + HT.1.9 precedents).
+
+### Changed
+
+- **Tier 1 (1 site; STATIC pattern promoted to module-top const)**: `scripts/agent-team/verify-plan-spawn.js` — `appendSection` previously created `new RegExp(...)` per call with a fully-static pattern (no template variables); now uses module-top regex literal `const PRE_APPROVAL_RE = /\n## Pre-Approval Verification[\s\S]*?(?=\n## |$)/g;`. Reset `lastIndex = 0` before `.test()` because `/g` flag retains state across consecutive calls on the same regex instance.
+
+- **Tier 2 (1 site; HOT memoization)**: `scripts/agent-team/route-decide.js` — `buildKeywordRegex` now memoizes by keyword key in module-scope `Map`. Previously recompiled regex on every call; `scoreTask` invokes ~90× per call (9 dims × ~10 keywords). Keyspace is bounded (~100 unique keywords across all KEYWORDS dims + SUBSTRATE_META_TOKENS). Memoization eliminates per-call compile after first invocation. Behavior unchanged.
+
+- **Tier 3 (4 sites; consistency win across validator family)**: section-name regex memoization with module-scope `Map` cache:
+  - `hooks/scripts/validators/validate-plan-schema.js` `hasH2Heading` — memoize section regex by sectionName
+  - `hooks/scripts/validators/validate-kb-doc.js` `hasH2Section` — memoize section regex by sectionName
+  - `hooks/scripts/validators/verify-plan-gate.js` `hasH2Heading` — memoize section regex by sectionName
+  - `scripts/agent-team/kb-resolver.js` `extractSections` — extract `_getSectionRe` helper memoizing both startName + endName regexes by name
+  Each site keeps its own per-module cache (per HT.1.8 "extract at 3+ callers" rule, 4 callers IS the threshold for shared `_lib/regex-cache.js` extraction — but extraction adds module-boundary indirection; deferred to HT.2 sweep candidate to keep HT.1.11 scope mechanical).
+
+### Drift-note 71 NEW (captured at sub-plan time via empirical pre-validation)
+
+**Title**: HT.0.1 + HT.0.2 + HT.0.4 "9 sites with per-call regex compilation" finding misframed; only 6 sites have migration value
+
+**Source**: HT.0.1 audit listed 5 hook-layer sites (validate-plan-schema, verify-plan-gate, validate-kb-doc, auto-store-enrichment, prompt-enrich-trigger); HT.0.2 listed `route-decide.js scoreTask`, `pattern-runner.js extractScenarios`, `kb-resolver.js extractSections`; HT.0.4 listed 4 sites in `contract-verifier.js`. Total ≥12 sites in audit framing.
+
+**Empirical reality** (post-empirical-pre-validation):
+- 1 site is STATIC (verify-plan-spawn.js — clear migration value; not even in original audit list)
+- 1 site is HOT dynamic (route-decide.js buildKeywordRegex — biggest win; in HT.0.2 list)
+- 4 sites are lukewarm dynamic (validate-plan-schema + validate-kb-doc + verify-plan-gate + kb-resolver — section-name memoization opportunity; consistency win)
+- 3 sites are NOT per-call (prompt-enrich-trigger module-level + config-guard config-load + contract-verifier:223 small keyspace; HT.0.4 sites 300/392/409 use static regex literals not `new RegExp()`)
+
+**Sibling cohort with drift-notes 63 + 64** (measurement-methodology codification target for HT.2): three convergent layers of audit measurement-methodology gap now captured: drift-note 64 = LoC counting; drift-note 63 = function span detection; drift-note 71 = static-vs-dynamic regex classification.
+
+### Implementation observation
+
+**JSDoc comment-containment caught at implementation time**: my edit pattern initially placed a memoization cache definition INSIDE an unclosed `/**` JSDoc block in `validate-kb-doc.js` (the cache was swallowed by the comment; runtime ReferenceError caused fail-open per ADR-0001 invariant 2; test 66 caught it via `decision=approve marker=False`). Fixed by closing the block before insertion.
+
+**Pattern-level observation**: empirical pre-validation eliminates PLAN-VS-REALITY drift-notes (audit framing accuracy) but doesn't catch IMPLEMENTATION-LEVEL bugs in the edit itself (like JSDoc comment-containment). A clean pre-validation phase doesn't guarantee 100% green first-pass at implementation — it ensures the plan is correct. The 3-tier verification (install.sh smoke + _h70-test + contracts-validate) is the safety net for implementation-level bugs. ADR-0001 fail-open invariant 2 prevented the bug from breaking sessions; test 66 caught it deterministically.
+
+### Methodology
+
+**Sub-plan-only** per HT.1.2 + HT.1.4 + HT.1.6 + HT.1.8 + HT.1.9 + HT.1.10 sub-plan-only precedent (now 6 consecutive sub-plan-only phases since HT.1.7's per-phase pre-approval gate). Mechanical refactor against well-bounded empirical inventory; no fresh design surface; no schema change; no institutional discipline encoding. Per-phase pre-approval gate skipped with EXPLICIT decision rationale matrix.
+
+**Empirical pre-validation pattern is now 4-phase confirmed** (HT.1.8 + HT.1.9 + HT.1.10 + HT.1.11): per-export / per-file / file-existence / per-site-static-vs-dynamic inventory verified BEFORE sub-plan flips draft → approved. All 4 phases surfaced sub-plan-time findings that refined scope vs the audit framing. Pattern naming candidate (HT.2 sweep target): "empirical pre-validation gate."
+
+### Verification
+
+- **70/70 install.sh smoke tests** (unchanged from HT.1.10; 1-test-failure caught + fixed mid-implementation due to JSDoc comment-containment bug; final 70/70 green)
+- **46/46 _h70-test.js asserts** (regression check; CRITICAL — exercises route-decide.js scoreTask via `_lib/route-decide-export.js` → `identity/trust-scoring.js`; behavior preservation verified)
+- **0 contracts-validate violations** excluding pre-existing 16 baseline
+- **6-site CLI smoke**: route-decide.js (memoized buildKeywordRegex returns recommendation), kb-resolver.js (extractSections preserves output for cat-summary), verify-plan-spawn.js (PRE_APPROVAL_RE module-top const loads cleanly)
+
+### Why this matters
+
+- **Closes HT.0.1 + HT.0.2 + HT.0.4 per-call regex findings** as targeted optimization (6 sites with value vs 9-12 in audit framing)
+- **Captures drift-note 71** (audit framing vs empirical reality gap; sibling cohort with drift-notes 63 + 64)
+- **Empirical pre-validation pattern is now 4-phase confirmed** (HT.1.8-1.11)
+- **Tier 2 memoization addresses the hot site** (route-decide.js buildKeywordRegex ~90×/scoreTask)
+- **Tier 3 memoization adds consistency** across the validator family (4 sites)
+- **Fifty-second distinct phase shape** in the HT track: per-call regex compilation cleanup with empirical-pre-validation-driven scope refinement + drift-note 71 captured at sub-plan time + JSDoc comment-containment caught + fixed at implementation time
+
+### Plugin manifest
+
+`1.11.3` unchanged (no version bump per pure-refactor convention).
+
+### Out of scope (deferred)
+
+- **prompt-enrich-trigger.js, config-guard.js, contract-verifier.js:223** — Tier 4 sites; not per-call dynamic in steady state
+- **Shared `_lib/regex-cache.js` extraction** — 4 callers IS the HT.1.8 "extract at 3+ callers" threshold; HT.2 sweep candidate to extract a shared utility
+- **`pattern-runner.js extractScenarios`** — uses static section-header regex literal; not per-call dynamic
+- **`auto-store-enrichment.js`** — uses static regex literals; not per-call dynamic
+- **`adr.js per-call full-tree read`** — different concern (file I/O caching); HT.2+ candidate
+- **`contracts-validate.js 4× pattern-file reads`** — different concern (file I/O caching); HT.2+ candidate
+
+---
+
 ## [1.11.3] — 2026-05-10 — HT.1.10 Path-convention consolidation (convention doc only)
 
 **Hardening Track refactor 10 of N.** Convention doc authoring per `decision-record-pattern: lightweight` shape — closes HT.0.3 + HT.0.4 + HT.0.5a path-convention findings as documentation rather than code change. Empirical pre-validation per HT.1.8/1.9 dogfooded pattern reveals that the apparent "5-convention inconsistencies" are intentional context-dependent semantic encoding (drift-note 70). Scope reduces from "convention doc + 8+ site sweep" to "convention doc only."

@@ -93,6 +93,13 @@ const PRINCIPLE_AUDIT_SECTION = 'Principle Audit';
 // brittle and tampering-undetectable).
 const PRE_APPROVAL_VERIFICATION_SECTION = 'Pre-Approval Verification';
 
+// HT.1.11: memoize section-heading regex by sectionName. Previously each
+// call to hasH2Heading recompiled the regex; called ~5× per validate-plan-schema
+// invocation (once per required section). Keyspace is bounded (~10 unique
+// section names across the canonical plan template). Memoization eliminates
+// per-call compile after first invocation.
+const _sectionRegexCache = new Map();
+
 /**
  * Test whether content has an H2-level heading matching `sectionName`.
  * Case-sensitive (markdown convention). Allows optional parenthetical suffix
@@ -103,10 +110,12 @@ const PRE_APPROVAL_VERIFICATION_SECTION = 'Pre-Approval Verification';
  * @returns {boolean} true if heading found
  */
 function hasH2Heading(content, sectionName) {
-  const escaped = sectionName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  // `^## SectionName$` or `^## SectionName (anything)$` — H2 only, no trailing text
-  const re = new RegExp(`^## ${escaped}(?:\\s*\\([^)]*\\))?\\s*$`, 'm');
-  return re.test(content);
+  if (!_sectionRegexCache.has(sectionName)) {
+    const escaped = sectionName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // `^## SectionName$` or `^## SectionName (anything)$` — H2 only, no trailing text
+    _sectionRegexCache.set(sectionName, new RegExp(`^## ${escaped}(?:\\s*\\([^)]*\\))?\\s*$`, 'm'));
+  }
+  return _sectionRegexCache.get(sectionName).test(content);
 }
 
 /**

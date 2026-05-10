@@ -25,6 +25,12 @@ const path = require('path');
 
 const PRE_APPROVAL_HEADER = '## Pre-Approval Verification';
 
+// HT.1.11: promoted from per-call `new RegExp(...)` to module-top regex
+// literal. Pattern is fully static (no template variables); compile-once at
+// module load is strictly better than compile-per-call. Used by appendSection
+// for idempotent re-run support.
+const PRE_APPROVAL_RE = /\n## Pre-Approval Verification[\s\S]*?(?=\n## |$)/g;
+
 function usage() {
   const prog = path.basename(process.argv[1] || 'verify-plan-spawn.js');
   console.error(`Usage: ${prog} <plan-path> <architect-findings-path> <code-reviewer-findings-path>`);
@@ -81,10 +87,13 @@ function appendSection(planPath, section) {
   const existing = readFile(planPath, 'plan');
   // If a Pre-Approval Verification section already exists, replace it
   // (idempotent re-run support — `/verify-plan` may be invoked multiple times).
-  const re = new RegExp(`\\n## Pre-Approval Verification[\\s\\S]*?(?=\\n## |$)`, 'g');
+  // HT.1.11: PRE_APPROVAL_RE is module-top const (was per-call new RegExp).
+  // Reset lastIndex because /g flag retains state across .test() + .replace() calls
+  // on the same regex instance (V8 caches the regex's internal state).
+  PRE_APPROVAL_RE.lastIndex = 0;
   let updated;
-  if (re.test(existing)) {
-    updated = existing.replace(re, '\n' + section.trim() + '\n');
+  if (PRE_APPROVAL_RE.test(existing)) {
+    updated = existing.replace(PRE_APPROVAL_RE, '\n' + section.trim() + '\n');
   } else {
     // Insert before "## Open design choices" if present, else at end.
     const insertBeforeRe = /\n## Open design choices/;
