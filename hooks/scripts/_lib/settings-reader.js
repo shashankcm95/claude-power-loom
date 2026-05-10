@@ -1,10 +1,12 @@
 // H.7.22 — DRY shared settings.json reader.
 //
-// Used by plugin-loaded-check.js (a hook) and contracts-validate.js (a substrate
-// script) to detect plugin-install state. Placed in hooks/scripts/_lib/ so the
-// hook can import via relative path without depending on findToolkitRoot()
-// resolution. The contracts-validator imports via absolute path through
-// findToolkitRoot() — symmetric to existing _lib usage.
+// Used by session-reset.js (a hook) to detect plugin-install state (per
+// HT.2.4 drift-note 69 refresh — was originally described as serving
+// plugin-loaded-check.js + contracts-validate.js; plugin-loaded-check.js
+// retired at H.7.26, and contracts-validate.js's SETTINGS_READER constant
+// was dead code removed at HT.2.4 drift-note 68). Placed in hooks/scripts/_lib/
+// so the hook can import via relative path without depending on
+// findToolkitRoot() resolution.
 //
 // SOLID Interface Segregation: 3 narrow named exports rather than a fat
 // SettingsManager. Callers use only what they need.

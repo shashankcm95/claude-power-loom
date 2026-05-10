@@ -8,6 +8,57 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [unreleased] — 2026-05-10 — HT.2.4 doc-lag sweep (drift-notes 68 + 69 closed; fourth HT.2 sub-phase)
+
+**HT.2 fourth sub-phase. Sub-plan-only methodology per HT.2 master plan methodology table line 330** (mechanical doc-lag cleanup; no fresh design surface; no option-axis fork; no behavior change). Closes 2 doc-lag drift-notes captured at HT.1.9 implementation. **No plugin manifest bump** per pure-doc convention (matches HT.1.10/HT.1.12/HT.1.14/HT.1.15/HT.2.1/HT.2.3 precedents).
+
+### What landed
+
+- **Drift-note 68 fix** — deleted dead `SETTINGS_READER` constant + 2-line H.7.22 comment from `scripts/agent-team/contracts-validate.js:51-53`. Empirical verification: `grep -n "SETTINGS_READER"` returned ONLY the definition line (zero usage substrate-wide). The H.7.22-anticipated `contract-plugin-hook-deployment` validator that did ship uses its own settings.json read path, not `settings-reader.js`'s exports. Replaced with 4-line HT.2.4 provenance comment for audit trail (net +1 LoC; substrate convention to preserve change discoverability from file alone).
+
+- **Drift-note 69 fix** — replaced stale active-consumer claim at `hooks/scripts/_lib/settings-reader.js:3-7`:
+  - **Before**: "Used by plugin-loaded-check.js (a hook) and contracts-validate.js (a substrate script) to detect plugin-install state."
+  - **After**: "Used by session-reset.js (a hook) to detect plugin-install state (per HT.2.4 drift-note 69 refresh — was originally described as serving plugin-loaded-check.js + contracts-validate.js; plugin-loaded-check.js retired at H.7.26, and contracts-validate.js's SETTINGS_READER constant was dead code removed at HT.2.4 drift-note 68)."
+  - Both stale claims empirically wrong: `plugin-loaded-check.js` retired at H.7.26 (per BACKLOG.md L340 + SKILL.md H.7.26 entry); `contracts-validate.js` SETTINGS_READER was dead code per drift-note 68. Actual consumer: `session-reset.js:68` (only empirical require site substrate-wide).
+
+### Empirical pre-validation pattern — 12-phase confirmed
+
+`contracts-validate.js:53` + `settings-reader.js:3` + `session-reset.js:68` live state read BEFORE sub-plan flipped draft → approved. Actual consumer chain mapped via `grep -rn "require.*settings-reader\|require.*_lib/settings" hooks/ scripts/`. Sibling-cohort pattern with HT.1.8-1.15 + HT.2.1-2.3.
+
+### Forbidden-phrase grep gate
+
+Sub-plan grep returned 2 matches both within past-state factual carve-out (describing observed past state "was apparently never implemented"; "was never implemented" — past-state descriptive, not prescriptive). Sub-plan PASSES.
+
+### Methodology
+
+Sub-plan-only per HT.2 master plan methodology table line 330 + HT.1.2/HT.1.4/HT.1.6/HT.1.8/HT.1.9/HT.2.2 precedent. Per-phase pre-approval skipped with EXPLICIT decision rationale matrix per HT.1.6 convention: mechanical surgical edits; no fresh design surface; no option-axis fork; no schema change; no behavior change; no institutional discipline encoding.
+
+### Verification
+
+- **install.sh smoke**: 75/75 (unchanged from HT.2.3; pure-doc cleanup; no behavior change)
+- **_h70-test.js asserts**: 63/63 (unchanged; HT.2.4 doesn't touch agent-identity / its sub-modules)
+- **contracts-validate.js violations**: 16 baseline only (no regression)
+
+### Plugin manifest
+
+`1.12.1` UNCHANGED per pure-doc convention (matches HT.1.10/HT.1.12/HT.1.14/HT.1.15/HT.2.1/HT.2.3 precedent — substrate-internal cleanup; no consumer-visible behavior change).
+
+### Wallclock
+
+~35 min end-to-end (sub-plan + empirical pre-validation ~15 min + 2 surgical edits ~5 min + verification ~5 min + cutover ~10 min).
+
+### Pattern-level observations
+
+- **Drift-note inventory closes to 0 active**: all 7 HT.1.4-HT.1.14 drift-notes RESOLVED (66 + 67 + 70 + 73 + 75 + 76 by implementation; 68 + 69 by doc-lag cleanup at HT.2.4; 63 + 64 + 65 + 71 + 72 + 74 codified as case studies at HT.2.1).
+- **HT.2.4 + HT.2.3 close the HT.2 substantive sweep**: only HT.2.5 (final sweep + soak gate readiness readout) remains.
+- **Provenance comment preservation pattern**: when deleting dead code, replace with a comment block documenting WHY removed + WHEN (drift-note ref). Improves audit-trail discoverability without git blame. HT.1.9 established the pattern for pruned `module.exports`; HT.2.4 dogfoods for dead constant.
+
+### Next
+
+**HT.2.5** — final sweep + soak gate readiness readout (sub-plan-only methodology; assessment phase; closes HT.2 unconditionally per architect MEDIUM-3 absorption at HT.2.0; soak gate readout published at `swarm/thoughts/shared/HT.2.5-soak-gate-readiness.md` as GREEN/YELLOW/RED informing next phase trajectory).
+
+---
+
 ## [unreleased] — 2026-05-10 — HT.2.3 hooks-discipline-edge sweep (drift-notes 67 + 75 closed; third HT.2 sub-phase; per-phase pre-approval UNCONDITIONAL)
 
 **HT.2 third sub-phase. Per-phase pre-approval gate INVOKED UNCONDITIONALLY per architect HIGH-2 absorption at HT.2.0 (option-axis design surface trigger on BOTH Part A + Part B).** Closes 2 hooks-discipline-edge drift-notes via Part A `_lib/lock.js` lazy parent-dir auto-creation + Part B `session-end-nudge.js` migration from inline lock primitive to shared `_lib/lock.js` primitives. **No plugin manifest bump** per architect HIGH-A1 absorption (pure-internal-refactor — Option A2 transparent + Option B2 no API surface; HT.1.10/HT.1.12/HT.1.14/HT.1.15 + HT.2.1 precedent).

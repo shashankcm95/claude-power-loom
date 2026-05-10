@@ -48,9 +48,10 @@ const KB_MANIFEST = path.join(TOOLKIT, 'skills', 'agent-team', 'kb', 'manifest.j
 const SKILLS_BASE = path.join(TOOLKIT, 'skills');
 const MARKETPLACE_BASE = path.join(process.env.HOME, '.claude', 'plugins', 'marketplaces');
 const HOOKS_JSON = path.join(TOOLKIT, 'hooks', 'hooks.json');
-// H.7.22 — settings-reader for the new contract-plugin-hook-deployment validator.
-// hooks/scripts/_lib/settings-reader.js owns the canonical settings.json read API.
-const SETTINGS_READER = path.join(TOOLKIT, 'hooks', 'scripts', '_lib', 'settings-reader.js');
+// HT.2.4 (drift-note 68): removed dead SETTINGS_READER constant that anticipated
+// a substrate-internal consumer never wired up — the contract-plugin-hook-deployment
+// validator that did ship (test 36 in install.sh) uses its own settings.json
+// read path, not settings-reader.js's exports.
 
 // H.7.1 — `active+enforced` is the same as `active` but additionally indicates
 // the pattern has a wired callsite (data flows through it). Added to close the
