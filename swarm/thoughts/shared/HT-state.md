@@ -2,7 +2,7 @@
 last_updated: 2026-05-10T19:30:00-07:00
 last_session_phase: HT.1.3 SHIPPED — agent-identity.js 5-module split + ADR-0002 (bridge-script entrypoint criterion) on `ht/1.3-agent-identity-split`; per-phase pre-approval gate ran 2026-05-10 (10 FLAGs absorbed single-pass; APPROVED); HT.1.4 next
 git_branch_at_last_save: ht/1.3-agent-identity-split
-git_commit_at_last_save: pending (this cutover commit will land HT.1.3)
+git_commit_at_last_save: 34fd929
 ht_1_3_decision: Option A — sub-plan + ADR-0002 + parallel architect+code-reviewer pre-approval + 5-module split (user-approved 2026-05-10; SHIPPED 2026-05-10)
 ht_1_3_branch_target: ht/1.3-agent-identity-split (active branch)
 ht_1_3_verify_verdict: APPROVED-with-revisions (both spawns first-pass; 10 FLAGs absorbed single-pass; no second-pass per FLAG severity profile)
