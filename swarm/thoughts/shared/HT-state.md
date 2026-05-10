@@ -2,7 +2,7 @@
 last_updated: 2026-05-10T22:30:00-07:00
 last_session_phase: HT.1.5 SHIPPED — commands/build-team.md 322 LoC + 6-responsibility split (third ADR-0002 application; markdown narrative + helper-script invocations post-split shape) on `ht/1.5-build-team-md-split`; per-phase pre-approval gate INVOKED per documented HT.1.5 methodology (parallel architect + code-reviewer; 9 FLAGs absorbed single-pass including 1 HIGH `$SCRIPT_DIR` runtime-failure catch); drift-note 64 captured during HT.1.5-verify (3-layer convergent measurement gap: HT.0.3 percentage + HT.0.9-verify FLAG-2 + HT.1.5 fence-line counting); HT.1.6 next
 git_branch_at_last_save: ht/1.5-build-team-md-split
-git_commit_at_last_save: db11886
+git_commit_at_last_save: 192c469
 ht_1_5_decision: Per-phase pre-approval INVOKED — sub-plan + parallel architect+code-reviewer (third ADR-0002 application validates cross-language framing empirically; helper-script API design fresh design surface) + markdown narrative + helper-script invocations post-split shape (5+1 subcommands; HT.1.5-verify shipped 2026-05-10; SHIPPED 2026-05-10)
 ht_1_5_branch_target: ht/1.5-build-team-md-split (active branch)
 ht_1_5_verify_verdict: APPROVED-with-revisions / NEEDS-REVISION (architect APPROVED-with-revisions; code-reviewer NEEDS-REVISION on HIGH severity $SCRIPT_DIR runtime-failure catch; 9 FLAGs absorbed single-pass; HIGH converged across both reviewers; no second-pass per FLAG severity profile)
