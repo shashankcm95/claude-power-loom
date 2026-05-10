@@ -32,7 +32,7 @@ Naming: `NNNN-imperative-short-title.md` where NNNN is zero-padded 4-digit ID, m
 ---
 adr_id: 0001                        # 4-digit ID; matches filename prefix
 title: "Short imperative title"
-status: proposed | accepted | superseded | deprecated
+status: proposed | accepted | seed | superseded | deprecated
 created: 2026-05-08
 author: 04-architect.theo           # persona/identity or human name
 superseded_by: null                 # or NNNN if superseded
@@ -49,10 +49,11 @@ related_kb: []
 
 1. **proposed** — ADR drafted; not yet in effect
 2. **accepted** — ADR approved; implementation can/has happened
-3. **superseded** — replaced by another ADR (set `superseded_by`)
-4. **deprecated** — no longer applies; not replaced
+3. **seed** — pre-existing discipline codified retroactively; the discipline existed before the ADR primitive shipped (e.g., ADR-0001 — fail-open hook discipline existed across 14 hooks before H.8.2's ADR system). Seed ADRs remain active for drift detection (per HT.1.7 Design B); the seed status discloses the retroactive codification at the schema level
+4. **superseded** — replaced by another ADR (set `superseded_by`)
+5. **deprecated** — no longer applies; not replaced
 
-Active ADRs are those with status `accepted` AND `superseded_by` is null.
+Active ADRs are those with status `accepted` OR `seed`, AND `superseded_by` is null. Both statuses participate in drift detection (`validate-adr-drift.js` PreToolUse hook); seed ADRs surface alongside their forward-looking governance siblings (e.g., editing a hook script touches both ADR-0001 seed and ADR-0003 accepted).
 
 ## CLI (adr.js)
 
@@ -68,7 +69,7 @@ node scripts/agent-team/adr.js list --status accepted
 node scripts/agent-team/adr.js read 0001
 node scripts/agent-team/adr.js read 1     # leading zeros optional
 
-# List currently active ADRs (status=accepted, not superseded)
+# List currently active ADRs (status=accepted OR seed, not superseded)
 node scripts/agent-team/adr.js active
 ```
 

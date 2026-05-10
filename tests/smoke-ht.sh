@@ -4,15 +4,16 @@
 # $passed and $failed counters via bash lexical-scope inheritance.
 #
 # Per HT.1.4 (ADR-0002 cross-language application — bash sourced-file
-# post-split shape). Test count: 5 (tests 69-70 — HT.1.1 noCritiqueLanguage;
+# post-split shape). Test count: 7 (tests 69-70 — HT.1.1 noCritiqueLanguage;
 # test 71 — HT.1.5 build-team-helpers.sh dispatch; test 72 — HT.1.6
 # documentary persona DEFAULT_ROSTERS + /research path-extraction integration;
-# test 65 — H.8.7 adr.js symlink defense, intentional trailer position per
-# HT.0.7 audit anomaly preservation).
+# tests 73-74 — HT.1.7 seed status enum + active-for-drift Design B; test 65 —
+# H.8.7 adr.js symlink defense, intentional trailer position per HT.0.7 audit
+# anomaly preservation).
 #
-# Source order: tests 69, 70, 71, 72 first (HT.1.x phase tests in numeric
-# order), then test 65 (H.8.7 trailer) last — preserves the original execution
-# order of run_smoke_tests pre-extraction.
+# Source order: tests 69, 70, 71, 72, 73, 74 first (HT.1.x phase tests in
+# numeric order), then test 65 (H.8.7 trailer) last — preserves the original
+# execution order of run_smoke_tests pre-extraction.
 #
 # DO NOT execute directly — depends on parent-scope `local passed`,
 # `local failed`, and `$CLAUDE_DIR` / `$SCRIPT_DIR` set by install.sh.
@@ -154,6 +155,39 @@ EOF
     failed=$((failed + 1))
   fi
   rm -f "$T72_STORE"
+
+  # Test 73: HT.1.7 — seed status enum in adr.js list filter. Validates that
+  # ADR-0001 retagged from `accepted` to `seed` (HT.1.7 Design B) is queryable
+  # via `adr.js list --status seed`. Reads the live `swarm/adrs/` directory.
+  echo -n "  Test 73 (HT.1.7 seed status enum; adr.js list --status seed returns ADR-0001): "
+  T73_OUT=$(HETS_ADRS_DIR="$SCRIPT_DIR/swarm/adrs" node "$SCRIPT_DIR/scripts/agent-team/adr.js" list --status seed 2>/dev/null)
+  T73_COUNT=$(echo "$T73_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('count', -1))")
+  T73_FIRST_ID=$(echo "$T73_OUT" | python3 -c "import json,sys; d=json.load(sys.stdin); adrs=d.get('adrs',[]); print(adrs[0]['adr_id'] if adrs else '')")
+  if [ "$T73_COUNT" = "1" ] && [ "$T73_FIRST_ID" = "0001" ]; then
+    echo "OK (count=1, adr_id=0001)"
+    passed=$((passed + 1))
+  else
+    echo "FAIL: count=$T73_COUNT, adr_id=$T73_FIRST_ID (want count=1, adr_id=0001)"
+    failed=$((failed + 1))
+  fi
+
+  # Test 74: HT.1.7 — seed ADRs participate in drift detection (Design B).
+  # Validates that `touched-by hooks/scripts/fact-force-gate.js` returns BOTH
+  # ADR-0001 (seed; mechanical discipline) AND ADR-0003 (accepted; governance
+  # commitment). isActive() widening at HT.1.7 admits seed status alongside
+  # accepted; both ADRs share the same files_affected list (14 hook scripts).
+  echo -n "  Test 74 (HT.1.7 seed active-for-drift; touched-by returns ADR-0001 + ADR-0003): "
+  T74_OUT=$(HETS_ADRS_DIR="$SCRIPT_DIR/swarm/adrs" node "$SCRIPT_DIR/scripts/agent-team/adr.js" touched-by hooks/scripts/fact-force-gate.js 2>/dev/null)
+  T74_COUNT=$(echo "$T74_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('matched_count', -1))")
+  T74_HAS_0001=$(echo "$T74_OUT" | python3 -c "import json,sys; d=json.load(sys.stdin); print('yes' if any(a.get('adr_id') == '0001' for a in d.get('adrs', [])) else 'no')")
+  T74_HAS_0003=$(echo "$T74_OUT" | python3 -c "import json,sys; d=json.load(sys.stdin); print('yes' if any(a.get('adr_id') == '0003' for a in d.get('adrs', [])) else 'no')")
+  if [ "$T74_COUNT" = "2" ] && [ "$T74_HAS_0001" = "yes" ] && [ "$T74_HAS_0003" = "yes" ]; then
+    echo "OK (matched_count=2, includes ADR-0001 seed + ADR-0003 accepted)"
+    passed=$((passed + 1))
+  else
+    echo "FAIL: count=$T74_COUNT, has_0001=$T74_HAS_0001, has_0003=$T74_HAS_0003 (want count=2, both yes)"
+    failed=$((failed + 1))
+  fi
 
   # Test 65: H.8.7 — adr.js symlink defense (chaos M3)
   echo -n "  Test 65 (H.8.7 adr.js symlink defense; symlink in ADRS_DIR ignored): "

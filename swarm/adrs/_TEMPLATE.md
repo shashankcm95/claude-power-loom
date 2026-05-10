@@ -1,6 +1,12 @@
 ---
 adr_id: NNNN
 title: "Imperative-form short title (e.g., 'Adopt fail-open hook discipline')"
+# status enum (5 values): proposed | accepted | seed | superseded | deprecated
+#   proposed   — drafted; not yet in effect
+#   accepted   — approved; implementation can/has happened
+#   seed       — pre-existing discipline codified retroactively (e.g., ADR-0001); still active for drift detection
+#   superseded — replaced by another ADR (set superseded_by)
+#   deprecated — no longer applies; not replaced
 status: proposed
 created: YYYY-MM-DD
 author: persona/identity (e.g., 04-architect.theo) or human-name

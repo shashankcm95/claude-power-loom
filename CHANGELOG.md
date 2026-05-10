@@ -8,6 +8,68 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [1.11.2] — 2026-05-10 — HT.1.7 ADR-0001 retroactive shape + ADR-0003 governance-tier forward-looking
+
+**Hardening Track refactor 7 of N.** Schema-level reshape of the ADR system to disclose ADR-0001's retroactive codification + author governance-tier ADR-0003 as forward-looking institutional commitment. Closes master plan v3.1 line 344 (chaos theo F4 finding) + HT.0.6 E.6 finding + HT.0.9-verify architect FLAG-1 committed-path resolution.
+
+### Changed
+
+- **`swarm/adrs/_TEMPLATE.md`** — frontmatter status comment header lists 5 enum values (was 4); explicit gloss for each.
+- **`swarm/adrs/_README.md`** — frontmatter status enum + Lifecycle list expanded from 4 to 5 statuses; "Active" definition widened to include `seed`; CLI example for `active` subcommand updated.
+- **`scripts/agent-team/adr.js`** — `isActive()` widened to admit `status: seed` alongside `status: accepted` (gated by empty `superseded_by`); top docstring updated. **Backward compat preserved**: existing `accepted` ADRs unaffected.
+- **`swarm/adrs/0001-substrate-fail-open-hook-discipline.md`** — retagged from `status: accepted` to `status: seed`; `related_adrs: []` → `related_adrs: [0003]` (bidirectional cross-reference); status notes append second entry recording the 2026-05-10 retag with rationale + cross-reference to ADR-0003.
+- **`tests/smoke-h8.sh`** — test 48 (H.8.2 touched-by) updated to assert `matched_count: 2` (was 1) post-HT.1.7 — reflects ADR-0001 + ADR-0003 sharing files_affected list.
+
+### Added
+
+- **NEW `swarm/adrs/0003-substrate-fail-open-hook-discipline-forward-looking.md`** — governance-tier ADR codifying institutional commitment + load-bearing code-review gate for fail-open hook discipline. Distinct scope from ADR-0001's mechanical discipline (technical-tier vs governance-tier). 2 invariants — institutional commitment (PR verification of all 4 ADR-0001 invariants) + governance gate (NEEDS-REVISION on missing verification). Ships at `status: accepted` directly per architect FLAG-6 + code-reviewer FLAG-1 convergent absorption (per-phase pre-approval gate IS the acceptance ceremony; transient `proposed` introduces test 74 timing-window failure + reproduces the retroactive-status-mismatch shape that HT.1.7 is fixing).
+- **NEW `seed` status enum value** in ADR system. Semantic: pre-existing discipline codified retroactively; the discipline existed before the ADR primitive shipped. **Design B chosen**: `seed` ADRs participate in drift detection (`isActive()` returns true; not museum-only). Preserves drift surface for retroactive ADRs alongside their forward-looking governance siblings.
+- **NEW install.sh smoke tests 73 + 74** at `tests/smoke-ht.sh`:
+  - Test 73: `adr.js list --status seed` returns count 1 (ADR-0001) post-retag
+  - Test 74: `adr.js touched-by hooks/scripts/fact-force-gate.js` returns matched_count 2 (ADR-0001 seed + ADR-0003 accepted) — validates Design B (seed active-for-drift)
+
+### Methodology
+
+**Per-phase pre-approval INVOKED** (3rd HT.1 phase invoking the gate; HT.1.3 + HT.1.5 + HT.1.7). Parallel architect (subagent_type: architect) + code-reviewer (subagent_type: code-reviewer) ran 2026-05-10 per HT.0.9-verify methodology. Both returned **APPROVED-with-revisions**; **7 unique FLAGs absorbed in single revision pass** (1 HIGH convergent across both reviewers + 4 MEDIUM + 2 LOW):
+
+- **HIGH (architect FLAG-6 + code-reviewer FLAG-1, convergent)**: ADR-0003 ships at `status: accepted` directly. Transient `proposed` would introduce test 74 timing-window failure (`isActive()` filters by accepted/seed; proposed excluded → `matched_count` would be 1 not 2) + reproduces the retroactive-status-mismatch shape that HT.1.7 is fixing. Resolved by recording proposed + accepted transitions as same-day status notes rather than authoring transient state on disk.
+- **MEDIUM (architect FLAG-3, load-bearing)**: ADR-0003 reframed as **governance-tier** ADR distinct from ADR-0001's **technical-tier** scope. Two distinct concerns (mechanical discipline vs institutional enforcement); collapsing into one ADR mixes scope. The governance/technical separation is genuinely ADR-worthy and avoids the "two ADRs saying the same thing" critique.
+- **MEDIUM (architect FLAG-2 + FLAG-4, convergent on FLAG-3 absorption)**: ADR-0003 `invariants_introduced` tightened from 4 forward-looking restatements to 2 governance-novel invariants (institutional commitment + code-review gate). ADR-0001's 4 mechanical invariants stay in ADR-0001; referenced by ID in ADR-0003 prose, NOT duplicated. Resolves drift-noise concern (overlapping-invariants critique).
+- **MEDIUM (architect FLAG-1)**: `seed` naming defended explicitly. Etymologically apt for "first / foundational discipline that pre-existed the ADR primitive." Alternatives (`retroactive` / `codified-retroactively` / `historical` / `legacy` / `archived`) considered + rejected: the first two over-rotate toward "process artifact" rather than "foundational discipline"; the latter three imply NO LONGER ACTIVE which contradicts Design B.
+- **MEDIUM (code-reviewer FLAG-3)**: `_README.md:71` (active CLI comment) updated as distinct from line 65 (`list --status accepted` filter example). Two distinct locations; both must reflect the schema extension.
+- **LOW (architect FLAG-5)**: ADR-0001 `related_adrs: []` → `related_adrs: [0003]`. Bidirectional machine-readable cross-reference.
+- **LOW (code-reviewer FLAG-6)**: Verification probe 7 corrected — `adr.js active` returns 2 ADRs post-HT.1.7 (ADR-0001 seed + ADR-0003 accepted; ADR-0002 remains `status: proposed` from HT.1.3 ship state — NOT included in active until separately promoted).
+
+### Verification
+
+- **70/70 install.sh smoke tests** (was 68/68; +2 HT.1.7 tests 73 + 74; test 48 updated to assert post-HT.1.7 matched_count 2)
+- **46/46 _h70-test.js asserts** (regression check; HT.1.7 doesn't touch `agent-identity.js` or its sub-modules)
+- **0 contracts-validate violations** excluding pre-existing 16 baseline
+- **All 12 verification probes pass** (per sub-plan): list returns 3 ADRs total; `--status seed` returns 1; `--status accepted` returns 1 (ADR-0003 — ADR-0002 still proposed); `active` returns 2 (ADR-0001 + ADR-0003); `touched-by hooks/scripts/fact-force-gate.js` returns matched_count 2; `read 0001` renders ADR-0001 with `status: seed` + appended status note; `read 0003` renders ADR-0003
+
+### Why this matters
+
+- **Closes master plan v3.1 special-focus item** at line 344 (chaos theo F4 — ADR-0001 retroactive shape refactor candidate)
+- **Closes HT.0.6 E.6 finding** (refactor candidate documented at audit time; documenting state at audit phase, fixing at refactor phase per master plan discipline)
+- **Closes HT.0.9-verify architect FLAG-1** (committed-path resolution: retag-in-place via `seed` enum; "OR ADR-0007 supersedes ADR-0001" branch removed)
+- **Backward-compatible schema extension**: existing `accepted` ADRs unchanged; new `seed` enum value is additive; `isActive()` widening preserves all existing behavior — verified empirically via `adr.js list --status accepted` returning ADR-0003 only (the new accepted ADR; ADR-0002 still `proposed` from HT.1.3 ship)
+- **Institutional discipline codified** for fail-open hook discipline going forward — load-bearing for all future hook authors + code reviewers as the substrate grows past the original 14 hooks
+- **Forty-eighth distinct phase shape** in the HT track: ADR system schema extension + retroactive shape disclosure + governance-tier forward-looking institutional commitment
+
+### Plugin manifest
+
+`1.11.1 → 1.11.2` (patch — additive substrate surface; new lifecycle status enum value; new governance-tier ADR; CLI/hook surface unchanged from consumers' POV; no behavior change visible to existing `accepted` ADRs).
+
+### Out of scope (deferred)
+
+- ADR-0001 + ADR-0003 `files_affected` 14-vs-16 mechanical doc-lag fix (HT.0.6 finding; HT.2 sweep)
+- "9th forcing instruction" stale claim in `_README.md:85` + `validate-adr-drift.js:75` (current count is 10 post-H.8.8; HT.2 sweep)
+- ADR-0001 invariant-3 phrasing nit re: `session-end-nudge.js:130,142` (`state_save_failed` vs literal `error`; HT.0.1 finding; HT.2 sweep)
+- Per-module unit tests for ADR system (HT.1.3 deferred per design; HT.2 sweep)
+- Automated lint check verifying ADR-0001's four mechanical invariants on hook file changes (drift-note candidate per ADR-0003 Open question; HT.2+ sweep target)
+
+---
+
 ## [Unreleased]
 
 ### Added

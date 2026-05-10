@@ -1,9 +1,9 @@
 ---
 adr_id: 0001
 title: "Substrate hooks fail open with observability, never crash sessions"
-status: accepted
+status: seed
 created: 2026-05-08
-author: substrate (codified retrospectively in H.8.2)
+author: substrate (codified retrospectively in H.8.2; retagged seed at HT.1.7 per ADR system enum extension)
 superseded_by: null
 files_affected:
   - hooks/scripts/fact-force-gate.js
@@ -25,7 +25,8 @@ invariants_introduced:
   - "Hooks that fail return decision: approve (PreToolUse) or exit cleanly (other lifecycles); never block on hook errors"
   - "Every fail-open path goes through `logger('error', ...)` so the failure is observable in `~/.claude/logs/<hook>.log`"
   - "Hard-block decisions (PreToolUse decision: block) are reserved for genuine policy violations, not hook errors"
-related_adrs: []
+related_adrs:
+  - 0003
 related_kb:
   - architecture/discipline/error-handling-discipline
   - architecture/discipline/stability-patterns
@@ -113,6 +114,7 @@ What we had before this decision. Rejected because:
 ## Status notes
 
 - 2026-05-08 — codified retrospectively in H.8.2 ADR primitive ship. The discipline existed across all 14 hook scripts already; this ADR documents and locks in the convention.
+- 2026-05-10 — retagged from `accepted` to `seed` per ADR system enum extension at HT.1.7. The retroactive shape (chaos theo F4 finding) is now machine-readable at the schema layer. ADR-0001 remains active for drift detection (Design B per HT.1.7 sub-plan); the `seed` status discloses that the discipline pre-existed the ADR primitive without retiring it from the live invariant-enforcement surface. Governance-tier forward-looking commitment captured in ADR-0003 (institutional commitment + code-review gate; non-overlapping scope from this ADR's mechanical discipline).
 
 ## Related work
 

@@ -96,14 +96,19 @@
     failed=$((failed + 1))
   fi
 
-  # Test 48 (H.8.2): adr.js touched-by detects file in ADR-0001 files_affected
+  # Test 48 (H.8.2 + HT.1.7 update): adr.js touched-by detects file in active
+  # ADRs' files_affected. Post-HT.1.7, matched_count is 2 because BOTH ADR-0001
+  # (seed; technical-tier mechanical discipline) AND ADR-0003 (accepted;
+  # governance-tier institutional commitment) share the same 14-hook
+  # files_affected list. Per HT.1.7 Design B, seed ADRs participate in drift
+  # detection alongside accepted ADRs.
   local h8_2_touched_result
   h8_2_touched_result=$(node "$SCRIPT_DIR/scripts/agent-team/adr.js" touched-by hooks/scripts/fact-force-gate.js 2>/dev/null)
-  if echo "$h8_2_touched_result" | grep -q '"matched_count": 1' && echo "$h8_2_touched_result" | grep -q '"adr_id": "0001"'; then
-    echo "  ✓ adr.js: H.8.2 touched-by detects file in active ADR's files_affected"
+  if echo "$h8_2_touched_result" | grep -q '"matched_count": 2' && echo "$h8_2_touched_result" | grep -q '"adr_id": "0001"' && echo "$h8_2_touched_result" | grep -q '"adr_id": "0003"'; then
+    echo "  ✓ adr.js: H.8.2 + HT.1.7 touched-by detects file in active ADRs (ADR-0001 seed + ADR-0003 accepted)"
     passed=$((passed + 1))
   else
-    echo "  ✗ adr.js: H.8.2 touched-by should match fact-force-gate.js to ADR-0001"
+    echo "  ✗ adr.js: H.8.2 + HT.1.7 touched-by should match fact-force-gate.js to BOTH ADR-0001 + ADR-0003"
     failed=$((failed + 1))
   fi
 

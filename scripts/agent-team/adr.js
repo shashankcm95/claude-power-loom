@@ -10,7 +10,7 @@
 //   new --title "<title>"       — create new ADR with auto-incremented ID
 //   list [--status S]           — list ADRs (optionally filtered)
 //   read <id>                   — print ADR content
-//   active                      — list currently active ADRs (status=accepted, no superseded_by)
+//   active                      — list currently active ADRs (status=accepted OR seed, no superseded_by; per HT.1.7 Design B)
 //   touched-by <file>           — list active ADRs whose files_affected include <file>
 //
 // The `touched-by` subcommand is consumed by validate-adr-drift.js
@@ -80,7 +80,13 @@ function isActive(adr) {
     || superseded === undefined
     || superseded === 'null'
     || superseded === '';
-  return status === 'accepted' && supersededIsEmpty;
+  // HT.1.7 (Design B): widen active-for-drift to admit `seed` ADRs alongside
+  // `accepted`. Seed ADRs (e.g., ADR-0001) codify pre-existing discipline
+  // retroactively; they remain load-bearing for drift detection because
+  // their files_affected entries still carry institutional invariants. The
+  // governance-tier ADR-0003 sibling does not replace ADR-0001's drift role
+  // — both surface in [ADR-DRIFT-CHECK] forcing instructions for shared files.
+  return (status === 'accepted' || status === 'seed') && supersededIsEmpty;
 }
 
 function findAdrById(idStr) {
