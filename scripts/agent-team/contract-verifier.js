@@ -430,6 +430,40 @@ const antiPatternChecks = Object.assign(Object.create(null), {
     }
     return { pass: true };
   },
+  // HT.1.1 — implements the H.8.6 RPI documentary-discipline check.
+  // Documentary personas (14-codebase-locator, 15-codebase-analyzer,
+  // 16-codebase-pattern-finder) declare this antiPattern as A4 with
+  // severity: warn. Until HT.1.1 the check name was unimplemented, so
+  // contract-verifier's H.3.6 dispatch path returned `unknown_check`,
+  // incrementing antiPatternWarns and locking documentary actor verdicts
+  // at `partial` (line 552-555 verdict logic; warns > 0 → not `pass`).
+  // Post-HT.1.1: clean documentary output → A4 pass → verdict can reach
+  // `pass`. Output containing forbidden phrases → A4 warn → verdict
+  // stays `partial`.
+  //
+  // Field naming: contracts declare `forbidden_phrases` (snake_case) per
+  // existing 14/15/16 contract authoring; we accept `forbiddenPhrases`
+  // (camelCase) defensively for forward compatibility. Default phrase
+  // list is the union most commonly used across the 3 contracts.
+  //
+  // Substring case-insensitive match — mirrors `noPaddingPhrases`
+  // convention above. Contract authors choose phrases unlikely to false-
+  // positive in documentary output; tighten phrases in the contract
+  // (NOT in code) if FP rate proves high in practice. Drift-note 60
+  // tracks the 4-sub-decision intersection that motivated this check.
+  noCritiqueLanguage: (cArgs) => {
+    const phrases = (cArgs && (cArgs.forbidden_phrases || cArgs.forbiddenPhrases)) || [
+      'should be', 'could be improved', 'recommend', 'we should',
+      'consider', 'fix this', 'this is wrong', 'this is buggy',
+      'needs refactoring', 'anti-pattern', 'smell', 'better approach',
+    ];
+    for (const phrase of phrases) {
+      if (body.toLowerCase().includes(phrase.toLowerCase())) {
+        return { pass: false, foundPhrase: phrase };
+      }
+    }
+    return { pass: true };
+  },
   acknowledgesFallback: () => {
     const constraintMentions = /\b(blocked|unavailable|denied|not\s+available|sandboxed)\b/i.test(body);
     if (!constraintMentions) return { pass: true, reason: 'no_constraints_encountered' };
