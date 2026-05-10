@@ -8,6 +8,61 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [1.12.1] — 2026-05-10 — HT.2.2 parseFrontmatter YAML 1.2 inline-comment strip (drift-note 73 closed; parser-discipline-edge HT.2.2 second HT.2 sub-phase)
+
+**HT.2 second sub-phase. Sub-plan-only methodology per HT.2 master plan methodology table line 328 (mechanical YAML 1.2 spec compliance; no fresh design surface; chaos-test mitigates regression risk).** Extends `scripts/agent-team/_lib/frontmatter.js parseFrontmatter` to honor YAML 1.2 §9.1.6 inline `#` comment semantics. **Plugin manifest patch bump 1.12.0 → 1.12.1** per code-reviewer HIGH-2 absorption at HT.2.0 (consumer-visible parser API behavior change — frontmatter inline `#` semantics change from "preserved as literal" to "YAML 1.2-spec comment-strip"; preserves pure-doc no-bump distinction per HT.1.10/HT.1.12/HT.1.14/HT.1.15 — HT.2.2 is NOT pure-doc since it changes parser behavior).
+
+### What landed
+
+- **NEW `_stripInlineComment(val)` helper** in `scripts/agent-team/_lib/frontmatter.js` (~25 LoC; quote-aware traversal). Strips `#` comments where preceded by whitespace; preserves `#` inside single-quoted + double-quoted scalars + bare scalars where `#` is not preceded by whitespace; documented gotcha for inline-array elements containing unquoted `# c` (per YAML 1.2 spec, treated as comment-truncation; use quoted form `[a, "b # c", d]` to embed).
+- **2 application sites in `parseFrontmatter`**:
+  - Main scalar value extraction — between `m[2].trim()` (line 60) and empty-value branch. Comments at value position (`key: # foo`) collapse to empty value → triggers existing block-list-start branch per YAML 1.2 spec.
+  - Block-list item extraction — between `.trim()` and `.replace(/^["']|["']$/g, '')` in the line-45 chain. Strip-comment runs BEFORE quote-strip so quote-protected `#` survives.
+- **`module.exports`** extended: `{ parseFrontmatter, _stripInlineComment }` (helper exported for substrate-internal reuse + future testing).
+- **8 NEW unit tests in `_h70-test.js` Section 8** validate: bare scalar trailing comment strip; inline array trailing comment preserves array; `#` inside double-quoted scalar preserved; `#` inside single-quoted scalar preserved; block-list item trailing comment strip; regression guard — comment-free frontmatter unchanged; bare `#` value → empty → block-list start; `#` not preceded by whitespace → literal.
+
+### Drift-note 73 RESOLVED-by-implementation
+
+drift-note 73 was captured at HT.1.12 mid-implementation when inline-comment frontmatter authoring (`  - architecture/ai-systems/agent-design  # planned — not yet authored`) revealed the parser limitation; HT.1.12 pivoted to body-section migration. HT.2 master plan §"Sub-phase 2 — HT.2.2 parser-discipline-edge sweep" routed the original parser limitation to HT.2.2. Now closed: future KB / ADR / pattern frontmatter authoring can use inline `#` comments per YAML 1.2 spec without ref-string contamination.
+
+### Empirical pre-validation pattern — 10-phase confirmed
+
+`parseFrontmatter` value-extraction sites read live before sub-plan flipped draft → approved. Insertion point at line 60 (`m[2].trim()`) + block-list extraction at line 45 confirmed. Sibling-cohort pattern with HT.1.8-1.15 + HT.2.1.
+
+### Forbidden-phrase grep gate
+
+Sub-plan grep returned 2 matches both within carve-outs: (1) line 20 — direct quote from YAML 1.2 spec §9.1.6 (quotation carve-out); (2) line 47 — plan-mode prescriptive language describing implementation sequencing (plan-mode carve-out per HT.1.3 / HT.2.0 / HT.2.1 precedent). Sub-plan PASSES.
+
+### Methodology
+
+- **Sub-plan-only** per HT.2 master plan methodology table line 328 + HT.1.2 + HT.1.4 + HT.1.6 + HT.1.8 + HT.1.9 sub-plan-only precedent (now 10 consecutive sub-plan-only phases since HT.1.7 with HT.1.13 + HT.2.1 as per-phase pre-approval invocations in between). Per-phase pre-approval skipped with EXPLICIT decision rationale matrix per HT.1.6 convention: mechanical YAML 1.2 spec compliance; no fresh design surface (algorithm is canonical quote-aware traversal); no option-axis fork; no schema change; no institutional discipline encoding. HIGH-class risk surface (regression on existing frontmatter) mitigated by chaos-test across all 4 frontmatter cohorts.
+
+### Verification
+
+- **install.sh smoke**: 73/73 (unchanged from HT.2.1; behavior-internal change; no new install.sh tests added)
+- **_h70-test.js asserts**: 54/54 (was 46/46; +8 HT.2.2 Section 8 unit tests)
+- **contracts-validate.js violations**: 16 baseline only (chaos-test PASS — no regression across ~58 frontmatter sources scanned: 33 KB docs + 21 pattern docs + 4 ADRs)
+
+### Plugin manifest
+
+`1.12.0` → `1.12.1` per code-reviewer HIGH-2 absorption at HT.2.0 master-plan pre-approval (consumer-visible parser API behavior change). Preserves pure-doc no-bump distinction per HT.1.10/HT.1.12/HT.1.14/HT.1.15 precedent — HT.2.2 is NOT pure-doc since it changes parser behavior.
+
+### Wallclock
+
+~75 min end-to-end (sub-plan + empirical pre-validation ~25 min + helper + 2 application sites + JSDoc ~20 min + 8 unit tests ~10 min + chaos-test + 3-tier verification ~10 min + cutover ~10 min).
+
+### Pattern-level observations
+
+- HT.2.2 closes drift-note 73 (parser-discipline-edge) as the second HT.2 sub-phase; remaining HT.2 inventory is hooks-discipline-edge (drift-notes 67 + 75; HT.2.3 with per-phase pre-approval UNCONDITIONAL per architect HIGH-2 at HT.2.0) + doc-lag (drift-notes 68 + 69; HT.2.4) + soak gate readiness (HT.2.5).
+- Empirical pre-validation pattern is now 10-phase confirmed (HT.1.8-1.15 + HT.2.1 + HT.2.2).
+- HT.2.2 is the first non-pure-doc HT.2 sub-phase — preserves pure-doc no-bump convention by being a parser-behavior-change phase rather than a doc-only phase; matches code-reviewer HIGH-2 absorption at HT.2.0 master plan.
+
+### Next
+
+HT.2.3 hooks-discipline-edge sweep (drift-notes 67 + 75; per-phase pre-approval UNCONDITIONAL per architect HIGH-2 absorption at HT.2.0). Part A: `_lib/lock.js withLock` fail-fast vs auto-mkdir parent option-axis fork on drift-note 75. Part B: `session-end-nudge.js` migration from inline lock primitive to `_lib/lock.js` (acquireLock + releaseLock direct usage per fail-soft contract) option-axis fork on drift-note 67.
+
+---
+
 ## [unreleased] — 2026-05-10 — HT.2.1 measurement-methodology codification doc (`swarm/measurement-methodology.md` — observed dogfooded practice across 9 case studies + 5 canonical patterns)
 
 **HT.2 first sub-phase. Per-phase pre-approval gate INVOKED per HT.1.10 convention-doc precedent.** Authors `swarm/measurement-methodology.md` (207 LoC) capturing observed dogfooded measurement-methodology practice across 9 case studies (6 active audit-method-and-currency / count-drift + option-axis-conflation drift-notes + 3 in-scope-resolution drift-notes) into a single substrate-internal convention doc. Third convention-doc institutional artifact in the `swarm/` namespace (sibling shape with HT.1.10 path-reference-conventions + HT.2.5 forthcoming soak-gate-readiness readout). **No version bump** per pure-doc convention (matches HT.1.10/HT.1.12/HT.1.15 precedents).

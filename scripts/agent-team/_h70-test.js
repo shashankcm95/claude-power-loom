@@ -636,6 +636,81 @@ assertEqual(
   'H.7.16 baseline: non-substrate-meta task → substrate_meta_detected = false'
 );
 
+// ===== Section 8: HT.2.2 parseFrontmatter YAML 1.2 inline-comment strip (8 tests) =====
+//
+// Added in HT.2.2 (drift-note 73). Verifies parseFrontmatter strips YAML 1.2
+// inline '#' comments per spec §9.1.6: '#' preceded by whitespace starts a
+// comment; '#' inside quoted scalars is literal; bare scalars containing '#'
+// (not preceded by whitespace) are preserved.
+
+console.log('\n[8] HT.2.2 parseFrontmatter YAML 1.2 inline-comment strip (8 tests)');
+
+const { parseFrontmatter } = require('./_lib/frontmatter');
+
+// Test 1: bare scalar with trailing # comment → strip
+const fm1 = parseFrontmatter('---\nkey: value # comment\n---\nbody');
+assertEqual(
+  fm1.frontmatter.key,
+  'value',
+  'HT.2.2 strip: bare scalar with trailing # comment → strip'
+);
+
+// Test 2: inline array with trailing # comment after closing ] → strip preserves array
+const fm2 = parseFrontmatter('---\nkey: [a, b, c] # provisional\n---\nbody');
+assertEqual(
+  fm2.frontmatter.key,
+  ['a', 'b', 'c'],
+  'HT.2.2 strip: inline array with trailing # comment → strip preserves array'
+);
+
+// Test 3: # inside double-quoted scalar → preserve
+const fm3 = parseFrontmatter('---\nkey: "value with # inside"\n---\nbody');
+assertEqual(
+  fm3.frontmatter.key,
+  'value with # inside',
+  'HT.2.2 strip: # inside double-quoted scalar → preserve'
+);
+
+// Test 4: # inside single-quoted scalar → preserve
+const fm4 = parseFrontmatter("---\nkey: 'value with # inside'\n---\nbody");
+assertEqual(
+  fm4.frontmatter.key,
+  'value with # inside',
+  'HT.2.2 strip: # inside single-quoted scalar → preserve'
+);
+
+// Test 5: block-list item with trailing # comment → strip
+const fm5 = parseFrontmatter('---\nkey:\n  - item1 # comment\n  - item2\n---\nbody');
+assertEqual(
+  fm5.frontmatter.key,
+  ['item1', 'item2'],
+  'HT.2.2 strip: block-list item with trailing # comment → strip'
+);
+
+// Test 6: regression guard — comment-free frontmatter unchanged
+const fm6 = parseFrontmatter('---\nkey1: value1\nkey2: [a, b]\nkey3:\n  - x\n  - y\n---\nbody');
+assertEqual(
+  fm6.frontmatter,
+  { key1: 'value1', key2: ['a', 'b'], key3: ['x', 'y'] },
+  'HT.2.2 regression: comment-free frontmatter unchanged'
+);
+
+// Test 7: bare # value (entire value is comment) → empty → block-list start
+const fm7 = parseFrontmatter('---\nkey: # entire line is comment\n  - x\n  - y\n---\nbody');
+assertEqual(
+  fm7.frontmatter.key,
+  ['x', 'y'],
+  'HT.2.2 strip: bare # value → empty → block-list start (per YAML 1.2)'
+);
+
+// Test 8: # not preceded by whitespace → literal (no strip)
+const fm8 = parseFrontmatter('---\nkey: a#b\n---\nbody');
+assertEqual(
+  fm8.frontmatter.key,
+  'a#b',
+  'HT.2.2 strip: # not preceded by whitespace → literal (no strip)'
+);
+
 // ===== Summary =====
 
 console.log(`\n=== Summary ===`);
