@@ -43,6 +43,12 @@ const OBSERVATIONS_LOG = path.join(HOME, '.claude', 'checkpoints', 'observations
 // H.5.3 (CS-3 hacker.kai H-1 + code-reviewer.blair H-2): emit a stderr warning
 // when the fallback no-op path is taken — silent degradation of an atomicity
 // guarantee was the load-bearing complaint. Operators now have visibility.
+//
+// HT.1.8: collapsed 3-tier require fallback (was: ~/.claude/... → __dirname/...
+// → no-op) to single-tier __dirname-relative require. The explicit ~/.claude/...
+// path was redundant — `__dirname`-relative resolution covers both deployed-
+// marketplace install (script at ~/.claude/scripts/) and local-checkout
+// (script at ~/Documents/claude-toolkit/scripts/) scenarios.
 let withLock;
 let _lockFallbackWarned = false;
 function _warnLockFallback() {
@@ -55,13 +61,9 @@ function _warnLockFallback() {
   );
 }
 try {
-  withLock = require(path.join(HOME, '.claude', 'scripts', 'agent-team', '_lib', 'lock')).withLock;
+  withLock = require('./agent-team/_lib/lock').withLock;
 } catch {
-  try {
-    withLock = require(path.join(__dirname, 'agent-team', '_lib', 'lock')).withLock;
-  } catch {
-    withLock = (_lockPath, fn) => { _warnLockFallback(); return fn(); };
-  }
+  withLock = (_lockPath, fn) => { _warnLockFallback(); return fn(); };
 }
 
 // Thresholds (tunable; tracked in BACKLOG.md for future tuning)

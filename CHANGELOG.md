@@ -8,6 +8,61 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [unreleased] — 2026-05-10 — HT.1.8 `withLock` DRY consolidation
+
+**Hardening Track refactor 8 of N.** Mechanical DRY consolidation of lock primitive across 3 substrate scripts. Closes HT.0.2 D.4 finding (3-site DRY divergence post-`_lib/lock.js` extraction at H.3.2) + HT.0.8 Trajectory.2 confirmation. **No version bump** per pure-refactor convention (matches HT.1.2 parseFrontmatter DRY precedent — substrate-internal restructuring; no consumer-visible surface change).
+
+### Changed
+
+- **`scripts/prompt-pattern-store.js`** — migrated from 50 LoC inline lock primitive to `_lib/lock.js` `withLock` shared helper. Dropped: `LOCK_TIMEOUT_MS`, `LOCK_STALE_MS` constants; `sleepMs` helper (only used by inline lock); `acquireLock`, `releaseLock`, `withLock` functions (lines 41-114). Added: `const { withLock } = require('./agent-team/_lib/lock');` near top imports. Call site at line 188 → 129 updated to `withLock(LOCK_PATH, () => { ... }, { maxWaitMs: LOCK_TIMEOUT_MS })` — preserves original 5000ms timeout via `{maxWaitMs}` opt (vs `_lib/lock.js`'s 3000ms default; 5000ms tolerance is load-bearing for high-contention spawn flow). LoC: 338 → 279 (-59 LoC). **Closes the 5000ms-vs-30000ms timeout divergence as load-bearing bug surface** — concurrent invocations could previously race past `_lib/lock.js`'s 3000ms default if prompt-pattern-store.js's primitive held for up to 30s before stale reclamation. PID-based stale detection (in `_lib/lock.js`) is strictly better than time-based 30s window (in prior inline impl) for single-machine substrate scripts: immediate reclamation after crash vs 30s grace window.
+
+- **`scripts/self-improve-store.js`** — collapsed 3-tier require fallback (lines 57-65) to 1-tier `__dirname`-relative require. The explicit `~/.claude/scripts/agent-team/_lib/lock` path attempt was redundant — `__dirname`-relative resolution covers both deployed-marketplace install (script at `~/.claude/scripts/`) and local-checkout (script at `~/Documents/claude-toolkit/scripts/`) scenarios. Preserved: `_warnLockFallback()` H.5.3 stderr warning (load-bearing observability per CS-3 hacker.kai H-1 + code-reviewer.blair H-2). LoC: 429 → 431 (+2; collapsed 9 LoC try-fallback to 2 LoC; added 9 LoC explanation comment for the rationale).
+
+- **`scripts/agent-team/spawn-recorder.js`** — added `_warnLockFallback()` stderr warning for parity with self-improve-store.js's H.5.3 fix. Closes the silent-degradation observability gap when `_lib/lock.js` is unreachable (the fallback path is unlikely to fire in practice since substrate always ships the helper, but the warning is institutional discipline per ADR-0001 invariant 3 spirit: every fail-open path must be observable). LoC: 370 → 388 (+18; warning function adds ~9 LoC; explanation comment adds ~9 LoC).
+
+### Added
+
+- None. Pure-refactor; substrate-internal DRY consolidation only. No new files; no new schema; no new ADR.
+
+### Drift-note 67 (NEW; deferred to HT.2 sweep)
+
+**Title**: `session-end-nudge.js` inline lock primitive — hook fail-soft contract divergence from `_lib/lock.js` `withLock()` exit-on-timeout
+
+**Why deferred**: `session-end-nudge.js` is a Stop hook with explicit fail-soft contract (passes input through silently on lock_timeout per ADR-0001 + ADR-0003 hook fail-soft invariant). `_lib/lock.js`'s `withLock()` wrapper calls `process.exit(2)` on timeout — incompatible with hook contract. Migration would require `acquireLock()` + `releaseLock()` direct usage (different pattern than other 8 consumers which use `withLock` wrapper) + preserve `log('lock_timeout', ...)` observability call + preserve fail-soft pass-through semantics. This is structurally distinct from HT.1.8's mechanical migration and warrants its own analysis. **HT.2 sweep candidate** alongside `error-critic.js` try-fallback (sibling concern — both are HOOK consumers with different fail-soft contract requirements than substrate-script consumers).
+
+### Methodology
+
+**Sub-plan-only** — mechanical DRY consolidation against established `_lib/lock.js` helper; no fresh design surface (PID-based vs time-based stale detection — `_lib/lock.js`'s PID-based is strictly better for single-machine substrate; timeout values preserved per-site via `{maxWaitMs}` opt); no schema change; no institutional discipline encoding. Per-phase pre-approval gate would not catch HIGH severity bugs that empirical smoke wouldn't catch. Matches HT.1.4 (mechanical bash extraction) + HT.1.6 (mechanical persona MD authoring) + HT.1.2 (parseFrontmatter DRY) precedents. EXPLICIT decision rationale matrix in sub-plan per HT.1.6 methodology.
+
+### Verification
+
+- **70/70 install.sh smoke tests** (unchanged from HT.1.7 — pure refactor; no test count delta)
+- **46/46 _h70-test.js asserts** (regression check; HT.1.8 doesn't touch agent-identity / its sub-modules)
+- **0 contracts-validate violations** excluding pre-existing 16 baseline
+- **3-site smoke**: `node scripts/prompt-pattern-store.js list` (lock acquired + released cleanly); `node scripts/self-improve-store.js pending` (1-tier require resolves correctly); `node scripts/agent-team/spawn-recorder.js --help` (lock primitive load + warning function compile-clean)
+
+### Why this matters
+
+- **Closes HT.0.2 D.4 finding** (3-site DRY divergence post-`_lib/lock.js` extraction at H.3.2)
+- **Closes HT.0.8 Trajectory.2 confirmation** (8 callers vs 1 inline + 2 try-fallback observation)
+- **Closes the 5000ms-vs-30000ms timeout divergence** as load-bearing bug surface
+- **Adds observability parity** to spawn-recorder.js (closes silent-degradation gap per ADR-0001 invariant 3 spirit; aligns with self-improve-store.js's H.5.3 fix)
+- **Mechanical refactor against established helper** — no fresh design surface; matches HT.1.2 + HT.1.4 + HT.1.6 sub-plan-only precedent
+- **Forty-ninth distinct phase shape** in the HT track: substrate-scripts DRY consolidation + observability parity addition + drift-note 67 captured for HOOK lock-primitive migration deferral
+
+### Plugin manifest
+
+`1.11.2` unchanged (no version bump; pure-refactor; matches HT.1.2 precedent).
+
+### Out of scope (deferred)
+
+- HOOK lock-primitive migrations (`session-end-nudge.js` + `error-critic.js`) — drift-note 67; HT.2 sweep candidates (different fail-soft hook contract than substrate-script consumers)
+- `_lib/lock.js` API extensions or behavioral changes
+- Logger-vs-console.error observability parity at the helper layer (HT.2+ sweep)
+- Per-module unit tests for `_lib/lock.js` (HT.2+ sweep)
+
+---
+
 ## [1.11.2] — 2026-05-10 — HT.1.7 ADR-0001 retroactive shape + ADR-0003 governance-tier forward-looking
 
 **Hardening Track refactor 7 of N.** Schema-level reshape of the ADR system to disclose ADR-0001's retroactive codification + author governance-tier ADR-0003 as forward-looking institutional commitment. Closes master plan v3.1 line 344 (chaos theo F4 finding) + HT.0.6 E.6 finding + HT.0.9-verify architect FLAG-1 committed-path resolution.

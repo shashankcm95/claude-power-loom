@@ -34,11 +34,29 @@ const os = require('os');
 
 // Reuse the shared lock primitive when available — prevents corruption
 // under concurrent writers (e.g., parallel orchestration tests).
+//
+// HT.1.8: added `_warnLockFallback()` stderr warning for parity with
+// self-improve-store.js's H.5.3 fix (CS-3 hacker.kai H-1 + code-reviewer.blair
+// H-2). Closes the silent-degradation observability gap when the helper
+// is unreachable — operators get visibility of the no-op fallback being
+// taken (the fallback path is unlikely to fire in practice since substrate
+// always ships `_lib/lock.js`, but the warning is institutional discipline
+// per ADR-0001 invariant 3 spirit: every fail-open path must be observable).
 let withLock;
+let _lockFallbackWarned = false;
+function _warnLockFallback() {
+  if (_lockFallbackWarned) return;
+  _lockFallbackWarned = true;
+  process.stderr.write(
+    '[spawn-recorder] WARNING: lock primitive (_lib/lock.js) unreachable; ' +
+    'using no-op fallback. Concurrent record operations may corrupt SPAWN_HISTORY. ' +
+    'Install or symlink the agent-team _lib helpers to enable real locking.\n'
+  );
+}
 try {
   withLock = require('./_lib/lock').withLock;
 } catch {
-  withLock = (_lockPath, fn) => fn();
+  withLock = (_lockPath, fn) => { _warnLockFallback(); return fn(); };
 }
 
 // CS-13: env-var override for IRL test isolation. Default keeps prior

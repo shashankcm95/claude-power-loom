@@ -36,82 +36,19 @@ try {
 }
 const log = makeLogger('prompt-pattern-store');
 
+// HT.1.8: migrated from inline lock primitive to `_lib/lock.js` `withLock`
+// shared helper. Drops 50 LoC own implementation (LOCK_TIMEOUT_MS,
+// LOCK_STALE_MS, sleepMs, acquireLock, releaseLock, withLock); preserves
+// 5000ms timeout via the `{maxWaitMs: 5000}` opt at the call site below.
+// _lib/lock.js's PID-based stale detection replaces the time-based 30s
+// stale window — strictly better for single-machine substrate scripts
+// (immediate reclamation after crash vs 30s grace window).
+const { withLock } = require('./agent-team/_lib/lock');
+
 const STORE_PATH = path.join(os.homedir(), '.claude', 'prompt-patterns.json');
 const LOCK_PATH = STORE_PATH + '.lock';
 const LOCK_TIMEOUT_MS = 5000;
-const LOCK_STALE_MS = 30000;
 const MAX_PATTERNS = 500; // F5: LRU eviction threshold
-
-// Phase-G2: portable sleep. Atomics.wait requires SharedArrayBuffer
-// which can be unavailable, AND can return immediately without sleeping
-// in non-waiting agent contexts (busy-spin at 100% CPU). Fallback to a
-// timed busy-wait loop if either fails.
-function sleepMs(ms) {
-  try {
-    if (typeof SharedArrayBuffer === 'function' && typeof Atomics?.wait === 'function') {
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
-      return;
-    }
-  } catch { /* fall through */ }
-  // Fallback: busy-wait. Not ideal but bounded by ms (capped at 200 caller-side).
-  const end = Date.now() + ms;
-  while (Date.now() < end) { /* intentional spin */ }
-}
-
-// Acquire an exclusive advisory lock by atomically creating a lockfile
-// (O_CREAT | O_EXCL via 'wx' flag). Retries with backoff if the lock is
-// held; clears stale locks (> 30s old). Returns true on success, false
-// on timeout. Caller MUST call releaseLock() in a finally block.
-function acquireLock() {
-  fs.mkdirSync(path.dirname(STORE_PATH), { recursive: true });
-  const start = Date.now();
-  let backoff = 10;
-  while (Date.now() - start < LOCK_TIMEOUT_MS) {
-    try {
-      const fd = fs.openSync(LOCK_PATH, 'wx');
-      fs.writeSync(fd, JSON.stringify({ pid: process.pid, started: Date.now() }));
-      fs.closeSync(fd);
-      return true;
-    } catch (err) {
-      if (err.code !== 'EEXIST') throw err;
-      // Lock exists. Check if it's stale.
-      // Phase-G9: stale-lock TOCTOU race fix. Wrap unlink in its own
-      // try/catch (separate from stat) and DON'T `continue` — fall through
-      // to sleep+retry. This avoids deleting a live lock that another
-      // process just took between our stat and unlink.
-      try {
-        const stat = fs.statSync(LOCK_PATH);
-        if (Date.now() - stat.mtimeMs > LOCK_STALE_MS) {
-          try { fs.unlinkSync(LOCK_PATH); } catch { /* beaten to it — fine */ }
-        }
-      } catch { /* lock vanished between EEXIST and stat — retry */ }
-      // Sleep before retry, regardless of stale-lock outcome
-      const sleep = Math.min(backoff, 200);
-      sleepMs(sleep);
-      backoff *= 2;
-    }
-  }
-  return false;
-}
-
-function releaseLock() {
-  try { fs.unlinkSync(LOCK_PATH); } catch { /* already gone — fine */ }
-}
-
-// Run a function under exclusive lock. Re-reads the store inside the lock
-// to close the TOCTOU window from the original load → mutate → save flow.
-function withLock(fn) {
-  if (!acquireLock()) {
-    log('lock_timeout', { timeout_ms: LOCK_TIMEOUT_MS });
-    console.error(`Error: could not acquire pattern store lock within ${LOCK_TIMEOUT_MS}ms`);
-    process.exit(2);
-  }
-  try {
-    return fn();
-  } finally {
-    releaseLock();
-  }
-}
 
 function loadStore() {
   try {
@@ -185,7 +122,11 @@ function cmdStore(args) {
     process.exit(1);
   }
 
-  withLock(() => {
+  // HT.1.8: pass {maxWaitMs: LOCK_TIMEOUT_MS} to preserve original 5000ms
+  // timeout (vs `_lib/lock.js`'s 3000ms default). The 5000ms tolerance is
+  // load-bearing for prompt-pattern-store's high-contention spawn flow
+  // where multiple parallel hooks may race for the lock.
+  withLock(LOCK_PATH, () => {
     // Load INSIDE the lock — this closes the TOCTOU race where two
     // concurrent stores both read count=N and both write count=N+1
     // (true count should be N+2).
@@ -241,7 +182,7 @@ function cmdStore(args) {
       tier: tierFor(1),
       pattern,
     }, null, 2));
-  });
+  }, { maxWaitMs: LOCK_TIMEOUT_MS });
 }
 
 function tierFor(approvalCount) {
