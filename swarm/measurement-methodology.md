@@ -2,9 +2,10 @@
 
 > **Status**: substrate-internal convention doc; sibling shape with `swarm/path-reference-conventions.md`
 > **Type**: lightweight institutional decision record (per `skills/agent-team/BACKLOG.md` `decision-record-pattern: lightweight` precedent)
+> **Editorial-tier shape**: observed-practice catalog per ADR-0004 taxonomy (technical / governance / editorial); NOT itself an editorial-tier ADR (which would require institutional commitment per ADR-0004 + ADR-0005 editorial-tier criteria). The doc describes what phases have done, not what future phases must do.
 > **NOT an ADR**: captures observed practice, not new institutional invariant
-> **Created**: 2026-05-10 (HT.2.1)
-> **Pattern enumeration**: APPENDABLE — future drift-notes may add patterns
+> **Created**: 2026-05-10 (HT.2.1; voice reframed at HT.3.2 to align with observation positioning per post-HT audit-followup Tier 2)
+> **Pattern enumeration**: APPENDABLE — described as such because HT.2.1 derived these from a 9-case-study cohort; future drift-notes have historically extended pattern catalogs in this way
 
 ## Audience
 
@@ -20,9 +21,9 @@ Observed dogfooded measurement-methodology practice from the HT.1 hardening trac
 ## What this doc does NOT prescribe
 
 - Prescriptive rules — future phases reference observed practice; nothing here binds them
-- Closed pattern enumeration — the pattern list is APPENDABLE; future drift-notes may add patterns (unlike `swarm/path-reference-conventions.md` whose 5 conventions are closed for the substrate's 5 contexts)
+- Closed pattern enumeration — the pattern list is APPENDABLE; historically (HT.2.1) phases derived 5 patterns from a 9-case-study cohort; future drift-notes have extended pattern catalogs in similar fashion (unlike `swarm/path-reference-conventions.md` whose 5 conventions are closed for the substrate's 5 contexts)
 - Automated lint enforcement — patterns are observational; not executable rules; substrate convention is to keep this kind of guidance in markdown form
-- Institutional commitment — not an ADR; substrate ADR ledger stays at 4 (ADR-0001/0002/0003/0005)
+- Institutional commitment — not an ADR; substrate ADR ledger is 5 (ADR-0001/0002/0003/0004/0005 post-HT.3.1 codification); this doc's editorial-tier shape (observed-practice catalog) is distinct from editorial-tier ADRs (institutional commitment around authoring discipline — see ADR-0005)
 
 ## Case studies — cohort-first ordering
 
@@ -99,29 +100,31 @@ HT.0.3 + HT.0.4 + HT.0.5a cited "5 path conventions" inconsistencies needing con
 
 `_lib/safe-exec.js` "1 caller post-H.8.4" → empirical "2 caller files / 3 actual call sites" — `build-spawn-context.js` (2 call sites at lines 77 + 90) + `validate-adr-drift.js` (1 call site at line 98). Resolution at HT.1.15: backlog spec option (a) "delete-and-migrate" pivoted to option (b/c) "keep + document"; lightweight BACKLOG canonical-pattern entry shipped. **Lesson**: caller-count empirical re-validation before "delete + migrate" decisions; grep ALL invocation forms (require + spawnSync + execFile + bash + comment references). **Cross-reference from Pattern 4**: this case study is the canonical example for Pattern 4 (Caller-count empirical re-validation) — see active-cohort patterns below. **Full detail**: see HT-state.md Highlights entry for HT.1.15.
 
-## Canonical patterns — observed practice
+## Canonical patterns observed in practice
 
-Five patterns derived from the case studies above. **The pattern list is APPENDABLE** — future drift-notes may add patterns.
+Five patterns derived from the case studies above. The pattern list is described as APPENDABLE — HT.2.1 derived these five from the 9-case-study cohort; the same growth shape applies forward (future drift-notes have historically extended pattern catalogs in this way).
 
 ### Pattern 1 — Inventory-via-grep + per-site classification
 
-Never cite a raw grep count without per-site classification. Classify per-site:
+Observed practice: when phase work involved a raw grep count, dogfooded approach added per-site classification along axes of:
 - **in-scope vs out-of-scope** for the action under consideration
 - **static-value vs hot-path vs lukewarm** for optimization actions
 - **live-call vs dead-code** for code-cleanup actions
 - **module-load-time vs per-call** for compilation/initialization actions
 
+Phases that adopted this pattern surfaced classification value at sub-plan time (typically pre-empted false in-scope counts from carrying into implementation).
+
 **Example**: case study 4 (drift-note 71) — HT.1.11 9-site grep → 4-tier classification → 6 sites with migration value.
 
 ### Pattern 2 — Audit-method-and-currency awareness
 
-Name the measurement method when citing — visual estimate, analytical claim, and fence-line empirical can yield different counts. AND: audit findings have audit-date currency; substrate evolves between audit-T and implementation-T+N; re-validate before treating as ground truth.
+Observed practice: phases citing measurement explicitly named the method — visual estimate, analytical claim, and fence-line empirical can yield different counts. Phases also re-validated audit-cited counts against substrate state at implementation-time-T+N rather than treating audit-T counts as ground truth.
 
-Method ladder (least → most reliable):
+Method ladder (least → most reliable, as observed across HT.1):
 - **Visual estimate**: rough order-of-magnitude scan; useful for prioritization, not for thresholds
 - **Analytical claim**: counted across a finding's named scope (e.g., "function `X`"); accurate only if scope is well-bounded
 - **Fence-line empirical**: `wc -l` or `grep -c` against the actual filesystem state at sub-plan time; the ground truth
-- **Audit-date currency**: any count cited in an audit was true at audit-T; substrate may have evolved since — re-run the empirical check at sub-plan time
+- **Audit-date currency**: any count cited in an audit was true at audit-T; substrate may have evolved since — empirical pre-validation at sub-plan time addressed this in the HT.1.8-1.15 cohort
 
 **Examples** (three case studies):
 - Case study 1 (drift-note 63): HT.0.9-verify FLAG-2 cited 537 LoC; empirical reality was 1188 LoC pre-HT.1.4 — visual-estimate-vs-fence-line gap (+121% understatement)
@@ -130,13 +133,13 @@ Method ladder (least → most reliable):
 
 ### Pattern 3 — Reference count grounding
 
-Count broken references against the actual filesystem at sub-plan time, not against the audit's expected target list. Audits authored at time T may have stale-by-time-T+N counts if the substrate tree shape evolved. This is distinct from Pattern 2's audit-date currency — Pattern 3 is about WHAT-IS-COUNTED (filesystem state) vs Pattern 2 is about WHEN-WAS-COUNTED (currency at audit time).
+Observed practice: phases counting broken references queried the actual filesystem at sub-plan time rather than relying on the audit's expected target list. Audits authored at time T can have stale-by-time-T+N counts if the substrate tree shape evolves. This is distinct from Pattern 2's audit-date currency — Pattern 3 is about WHAT-IS-COUNTED (filesystem state) vs Pattern 2's WHEN-WAS-COUNTED (currency at audit time).
 
 **Example**: case study 5 (drift-note 72) — HT.1.12 cutover claim 11/7/8 broken refs vs empirical 7/5/5 against actual filesystem.
 
 ### Pattern 4 — Caller-count empirical re-validation
 
-Before "delete + migrate" decisions, grep ALL invocation forms:
+Observed practice: phases authoring "delete + migrate" decisions grepped ALL invocation forms during sub-plan empirical pre-validation:
 - `require('./X')` (CommonJS)
 - `import` (ESM — none in substrate currently but future-proofing)
 - `spawnSync('node', [..., 'X', ...])` (subprocess)
@@ -144,19 +147,19 @@ Before "delete + migrate" decisions, grep ALL invocation forms:
 - `bash` invocation referencing X
 - Documentation / comment references (not invocations but document the consumer relationship)
 
-Search across ALL substrate directories — not just `scripts/agent-team/` (the most-common location); also `hooks/scripts/validators/` + `hooks/scripts/_lib/` + `tests/` + `commands/`. Caller files may live anywhere; raw grep count from a single directory is incomplete.
+The search spanned ALL substrate directories — not just `scripts/agent-team/` (the most-common location); also `hooks/scripts/validators/` + `hooks/scripts/_lib/` + `tests/` + `commands/`. Caller files can live anywhere; raw grep count from a single directory is incomplete.
 
-**Example**: case study 9 (drift-note 76) — HT.0.8 cited 1 caller for `_lib/safe-exec.js`; empirical reality 2 callers / 3 call sites — `build-spawn-context.js` (in `scripts/agent-team/`) + `validate-adr-drift.js` (in `hooks/scripts/validators/`). The HT.2.1 pre-approval gate itself demonstrated this pattern: code-reviewer HIGH-2 initially searched only `scripts/agent-team/` and reported `validate-adr-drift.js` as missing; empirical re-grep across full substrate confirmed the file exists at `hooks/scripts/validators/`. **The pattern is meta-applicable to the pre-approval gates themselves.**
+**Example**: case study 9 (drift-note 76) — HT.0.8 cited 1 caller for `_lib/safe-exec.js`; empirical reality 2 callers / 3 call sites — `build-spawn-context.js` (in `scripts/agent-team/`) + `validate-adr-drift.js` (in `hooks/scripts/validators/`). The HT.2.1 pre-approval gate itself demonstrated this pattern: code-reviewer HIGH-2 initially searched only `scripts/agent-team/` and reported `validate-adr-drift.js` as missing; empirical re-grep across full substrate confirmed the file exists at `hooks/scripts/validators/`. The pattern's meta-applicability to the pre-approval gates themselves is documented as a substrate observation, not a binding rule.
 
 ### Pattern 5 — Option-axis disambiguation
 
-When a decision-block enumerates N options, identify the underlying axes. Collapsed axes lead to silent decision gaps. A 3-option enumeration may actually be a 2×2 matrix with 1 axis silently undecided.
+Observed practice: phases encountering decision-blocks with N enumerated options checked for underlying axes. Collapsed axes can lead to silent decision gaps — a 3-option enumeration may actually be a 2×2 matrix with 1 axis silently undecided.
 
-Identify-axes checklist:
+Identify-axes heuristic (as practiced):
 - For each option, what attribute(s) does it commit to?
 - If two options share attribute X but differ in attribute Y, X and Y are independent axes
 - If three options share attribute X but differ in attribute Y, X is shared and Y is the axis being decided
-- If you cannot identify a single axis across all options, the enumeration likely conflates multiple axes
+- When phases could not identify a single axis across all options, the enumeration typically conflated multiple axes
 
 **Example**: case study 3 (drift-note 65) — HT.0.9-verify decision-block "3 options" → 2 independent axes (contract field shape × roster membership) → one axis silently undecided until runtime exposure.
 
@@ -183,25 +186,27 @@ All three shapes are valid. Pre-validation determines which applies (if any).
 
 ## Scope-axis disambiguation
 
-When an audit says "N candidates", clarify the scope axis:
+Observed practice: phases interpreting an audit's "N candidates" claim distinguished three scope axes:
 - **candidates-for-action**: how many will the action under consideration touch?
 - **candidates-for-consideration**: how many were inventoried (some may be filtered out as out-of-scope)?
 - **candidates-existing-empirically**: how many exist in the substrate right now?
 
-These can yield three different numbers. Specify which scope when citing.
+These can yield three different numbers in practice; phases that surfaced the scope distinction at sub-plan time reduced misframing at implementation.
 
 ## Cross-references
 
 - `swarm/path-reference-conventions.md` — sibling lightweight convention doc (HT.1.10; 203 LoC; 5 closed path conventions)
 - `swarm/thoughts/shared/HT-state.md` — canonical drift-note inventory source; lines 427-441 carry the empirical-grounding for all 9 case studies above
 - `skills/agent-team/BACKLOG.md` — lightweight institutional decision records (HT.1.6 documentary persona + HT.1.12 deferred-author-intent + HT.1.15 safe-exec canonical-pattern entries)
-- ADR ledger (4 ADRs; this doc is NOT ADR-shape — captures observed practice, not new institutional invariant):
+- ADR ledger (5 ADRs post-HT.3.1; this doc is NOT ADR-shape — captures observed practice, not new institutional invariant):
   - ADR-0001 substrate-fail-open-hook-discipline (technical)
   - ADR-0002 bridge-script-entrypoint-criterion (technical)
   - ADR-0003 substrate-fail-open-hook-discipline-forward-looking (governance)
+  - ADR-0004 adr-tier-taxonomy (governance; codifies the 3-tier ADR shape this doc references for its editorial-tier positioning)
   - ADR-0005 slopfiles-authoring-discipline (editorial)
 
 ## History
 
 - 2026-05-10 (HT.2.1): authored at substrate-time when the 9-case-study cohort had accumulated empirical mass across HT.1.4-1.15. Pattern 2 (Audit-method-and-currency awareness) reframed during pre-approval gate (architect HIGH-1 + code-reviewer HIGH-1 convergent absorption) from initial "LoC measurement disambiguation" framing to absorb audit-method gap + audit-date currency together; case study 1 (drift-note 63) reframed from function-span/feature-span to visual-vs-empirical-method gap.
-- **Future**: APPENDABLE — when new drift-notes surface that don't fit existing patterns, add new patterns to this doc with case study + observed-practice framing.
+- 2026-05-11 (HT.3.2): voice reframed from imperative ("Never cite...", "Name the measurement method...", "Before X, grep ALL invocation forms...", "When N enumerated options, identify the underlying axes", "Specify which scope when citing") to descriptive observed-practice ("Observed practice: phases that did X..."). Post-HT audit-followup Tier 2 institutional reframing surfaced the framing-vs-content contradiction: doc declared itself "captures observed practice, not new institutional invariant" but used imperative voice that read as institutional commitment. Reframe preserves the doc's existing "not an ADR" positioning by aligning voice with observation framing. ADR ledger count updated 4 → 5 (post-HT.3.1 codification of ADR-0004 tier taxonomy). Editorial-tier shape reference added at top per ADR-0004 taxonomy framing.
+- **Future**: pattern enumeration remains APPENDABLE; when new drift-notes surface that don't fit existing patterns, the substrate convention has been to add new patterns to this doc with case study + observed-practice framing, following the HT.2.1 derivation shape.

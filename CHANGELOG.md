@@ -8,6 +8,74 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [unreleased] — 2026-05-11 — HT.3.2 measurement-methodology.md reframe (post-HT audit-followup Tier 2; second of 3 sub-phases)
+
+**Post-HT audit-followup Tier 2 institutional reframing — second sub-phase.** HT.3.2 strips imperative voice from `swarm/measurement-methodology.md`'s 5 canonical patterns + Scope-axis disambiguation section, replacing with descriptive observed-practice voice. Closes the framing-vs-content contradiction surfaced by 5-agent chaos test + HETS code review (two senior-architect agents independently flagged the doc as "institutional commitment dressed as observed practice"). Preserves the doc's existing "not an ADR; captures observed practice, not new institutional invariant" positioning by aligning voice with observation framing. **No plugin manifest bump** per pure-doc convention (matches HT.1.10/HT.1.12/HT.2.4 precedent).
+
+### Context — Tier 2 institutional reframing continued
+
+HT.3.1 SHIPPED 2026-05-11 at `9ef0778` (ADR-0004 tier taxonomy codification + retroactive `tier` tags). HT.3.2 reframes measurement-methodology.md voice to match the doc's editorial-tier observed-practice positioning. The audit's flag: imperative voice ("Never cite a raw grep count..."; "Name the measurement method..."; "Before 'delete + migrate' decisions, grep ALL invocation forms"; "When a decision-block enumerates N options, identify the underlying axes"; "Specify which scope when citing") reads as institutional commitment despite the doc's explicit disclaim at line 25.
+
+### What landed
+
+- **5 canonical patterns reframed**: imperative voice → "Observed practice: phases that..." descriptive voice. Each pattern now describes what dogfooded phases did historically rather than prescribing what future phases must do. Examples preserved at end of each pattern.
+  - Pattern 1 (Inventory-via-grep + per-site classification): "Never cite a raw grep count without per-site classification. Classify per-site: [bullets]" → "Observed practice: when phase work involved a raw grep count, dogfooded approach added per-site classification along axes of: [bullets]. Phases that adopted this pattern surfaced classification value at sub-plan time."
+  - Pattern 2 (Audit-method-and-currency awareness): same shape — imperative voice softened to descriptive.
+  - Pattern 3 (Reference count grounding): same shape.
+  - Pattern 4 (Caller-count empirical re-validation): same shape.
+  - Pattern 5 (Option-axis disambiguation): same shape.
+
+- **Scope-axis disambiguation section reframed**: "When an audit says 'N candidates', clarify the scope axis: [3 bullets]. Specify which scope when citing." → "Observed practice: phases interpreting an audit's 'N candidates' claim distinguished three scope axes: [3 bullets]. These can yield three different numbers in practice; phases that surfaced the scope distinction at sub-plan time reduced misframing at implementation."
+
+- **Status header updated** (lines 5-9 frontmatter block): added Editorial-tier shape reference per ADR-0004 taxonomy ("observed-practice catalog per ADR-0004 taxonomy; NOT itself an editorial-tier ADR — would require institutional commitment per editorial-tier criteria"). Made the doc's positioning explicit relative to the codified tier taxonomy.
+
+- **Cross-references section updated** (lines 195-202): ADR ledger count 4 → 5 (post-HT.3.1 codification); ADR-0004 entry added with reference to its codification of editorial-tier framing this doc references.
+
+- **History entry added** documenting the HT.3.2 reframe + rationale (preserves the doc's "not an ADR" positioning by aligning voice with observation framing).
+
+### Empirical pre-validation pattern — 15-phase confirmed
+
+`swarm/measurement-methodology.md` lines 1-208 read live in HT.3.1 verification cycle; 5 patterns + Scope-axis section identified as imperative-voice sites; ADR ledger count stale post-HT.3.1 confirmed. Sibling-cohort with HT.1.8-1.15 + HT.2.1-2.5 + HT.3.1.
+
+### Forbidden-phrase grep gate
+
+Imperative-phrase check post-reframe: 1 match remains in History section's quoted reference to PRIOR imperative phrasings ("voice reframed from imperative (\"Never cite...\", \"Name the measurement method...\", ...) to descriptive observed-practice"). This is past-state factual reference per HT.2.4 carve-out precedent (describing observed past state, not prescriptive voice). All in-flight Pattern + Scope-axis prose now uses "Observed practice:" descriptive voice.
+
+### Methodology
+
+Sub-plan-only per HT.1.6 decision-rationale-matrix convention. 5 of 5 triggers absent (no fresh design surface — patterns authored at HT.2.1; reframe is voice-only; no schema change; no option-axis decision; no institutional discipline encoding — REVERSE, HT.3.2 REMOVES institutional-commitment voice to match observation positioning; no HIGH-class bug catchable at design). Net: pure-doc reframe per HT.2.4 + HT.1.10 precedent.
+
+### Verification
+
+- **install.sh smoke**: 75/75 (unchanged from HT.3.1; pure-doc reframe; no behavior surface)
+- **_h70-test.js asserts**: 64/64 (unchanged from HT.3.1)
+- **contracts-validate.js violations**: 16 baseline only (no regression)
+- **Imperative-phrase check** (`grep "Never cite\|Name the measurement method\|Count broken references against\|grep ALL invocation forms\|When a decision-block enumerates N options"`): 1 match (carve-out form — History section quoting past state)
+- **Observed-practice phrase check** (`grep -c "Observed practice:"`): 7 matches (≥5 expected — 5 patterns + Scope-axis + 1 incidental)
+- **ADR ledger count** (`grep "ADR ledger" swarm/measurement-methodology.md`): "5 ADRs" — was "4 ADRs"
+- **ADR-0004 reference** (`grep "ADR-0004" swarm/measurement-methodology.md`): present (status header + Cross-references + History)
+- **File size** (`wc -l swarm/measurement-methodology.md`): 212 LoC (was 208; +4 net for editorial-tier framing reference + history entry; well within ~210 ± 10 target)
+
+### Plugin manifest
+
+`1.12.3` UNCHANGED per pure-doc convention (matches HT.1.10/HT.1.12/HT.1.14/HT.1.15/HT.2.1/HT.2.3/HT.2.4 precedent — substrate-internal doc reframe; no consumer-visible behavior change).
+
+### Wallclock
+
+~30 min end-to-end (sub-plan + empirical pre-validation ~15 min + 11 file Edits ~10 min + verification + cutover ~5 min).
+
+### Pattern-level observations
+
+- **Framing-vs-content reframe pattern**: when a doc's self-declared positioning ("captures observed practice, not new institutional invariant") contradicts its voice ("Never cite a raw grep count..."), the reframe path is to strip imperative voice (preserves positioning + content) rather than promote to ADR (changes positioning; inflates ledger). HT.3.2 dogfoods this pattern. Future docs with similar voice-vs-positioning gaps can follow the same shape.
+- **ADR-bloat avoidance second application**: HT.0.9-verify FLAG-5 established "right-size — not every institutional decision needs an ADR" at HT.0.9. HT.3.2 applies the same discipline to measurement-methodology.md: not promoting to ADR-0006 keeps the substrate ledger at 5 ADRs (with HT.3.3's ADR-0002 status flip not adding new ADRs).
+- **Audit-followup Tier 2 second application**: cumulative tier shape — HT.3.1 closed schema-vs-prose gap; HT.3.2 closes framing-vs-content gap. Both are voice/schema alignment with existing institutional positioning, not new commitments. Pattern: external auditor surfacing institutional-framing gaps; substrate response is alignment, not new commitment.
+
+### Next
+
+**HT.3.3** — ADR-0002 status flip `proposed` → `accepted`. ADR-0002's `status: proposed` is stale — the per-phase pre-approval gate was completed at HT.1.3 ship + the criterion has been applied at HT.1.4 + HT.1.5. HT.3.3 flips status + updates author note + adds status-transition entry. Sub-plan-only mechanical 4-line edit.
+
+---
+
 ## [unreleased] — 2026-05-11 — HT.3.1 ADR tier taxonomy codification (post-HT audit-followup Tier 2; first of 3 sub-phases)
 
 **Post-HT audit-followup Tier 2 institutional reframing — first sub-phase.** HT.3.1 codifies the 3-tier ADR taxonomy (technical / governance / editorial) at schema level. The taxonomy has been operating in prose since HT.1.13 (ADR-0005 lines 60-66 declare it + map each existing ADR to a tier); HT.3.1 makes the mapping machine-readable via new frontmatter `tier` field + NEW ADR-0004 codifying the field requirement as governance-tier institutional commitment + retroactive tag on 4 existing ADRs (0001/0002 technical, 0003 governance, 0005 editorial). Sub-plan-only methodology per HT.1.7 ADR-system enum extension precedent (codification of pre-existing prose, not fresh institutional commitment).
