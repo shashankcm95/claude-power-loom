@@ -67,7 +67,7 @@ Roster names:
 ### Verification
 
 - 68/68 install.sh smoke (was 67/67; +1 test 72)
-- 46/46 _h70-test.js asserts (regression check; HT.1.6 doesn't touch trust-scoring / verdict / lifecycle paths beyond DEFAULT_ROSTERS additions which _h70-test.js consumes as-is via `ai.DEFAULT_ROSTERS`)
+- 46/46 `_h70-test.js` asserts (regression check; HT.1.6 doesn't touch trust-scoring / verdict / lifecycle paths beyond DEFAULT_ROSTERS additions which `_h70-test.js` consumes as-is via `ai.DEFAULT_ROSTERS`)
 - 0 contracts-validate violations excluding pre-existing 16 baseline
 - `assign --persona 14-codebase-locator` returns valid identity from {scout, nav, atlas} roster
 - Same for 15-codebase-analyzer + 16-codebase-pattern-finder
@@ -138,7 +138,7 @@ Empirical reality (HT.1.12): **7 broken refs across 5 of 10 architecture KBs to 
 ### Drift-notes captured during HT.1.12
 
 - **Drift-note 72**: HT.0.5a forward-reference count overstated. Cutover claimed 11 broken refs / 7 of 10 KBs / 8 unique targets; empirical reality is 7 broken refs / 5 of 10 KBs / 5 unique targets. Either original HT.0.5a count miscounted or the architecture tree shape changed between 2026-05-09 audit and 2026-05-10 implementation. HT.2 sweep candidate: re-validate other HT.0.x finding counts against current empirical state.
-- **Drift-note 73**: `parseFrontmatter` (`scripts/agent-team/_lib/frontmatter.js`) does NOT strip YAML inline `#` comments. Per YAML 1.2 spec, parsers SHOULD strip `#` comments outside quoted strings; the toolkit's hand-rolled subset parser does not. Surfaced when initial HT.1.12 attempt at frontmatter inline annotations (`  - architecture/ai-systems/agent-design  # planned`) caused the comment to contaminate the ref-string in `parseFrontmatter` output. Pivoted to body-section migration shape (Approach B). HT.2 sweep candidate: extend parseFrontmatter to strip inline `#` comments per YAML 1.2 (low-risk additive enhancement; chaos-test the change against existing KB + ADR + pattern frontmatter to verify no regression).
+- **Drift-note 73**: `parseFrontmatter` (`scripts/agent-team/_lib/frontmatter.js`) does NOT strip YAML inline `#` comments. Per YAML 1.2 spec, parsers SHOULD strip `#` comments outside quoted strings; the toolkit's hand-rolled subset parser does not. Surfaced when initial HT.1.12 attempt at frontmatter inline annotations (`- architecture/ai-systems/agent-design # planned`) caused the comment to contaminate the ref-string in `parseFrontmatter` output. Pivoted to body-section migration shape (Approach B). HT.2 sweep candidate: extend parseFrontmatter to strip inline `#` comments per YAML 1.2 (low-risk additive enhancement; chaos-test the change against existing KB + ADR + pattern frontmatter to verify no regression).
 
 ### Why lightweight BACKLOG entry vs full ADR
 
@@ -192,13 +192,13 @@ Both consumers have `H.8.4: ...safe-exec helper...` provenance comments — both
 | Bespoke timeout per call | NO | Helper accepts `opts.timeout` but if site needs per-iteration timeout variation, direct call is clearer |
 | Async / non-blocking spawn | NO | Helper uses `execFileSync` (synchronous); contract-verifier:650 uses `spawn` for non-blocking — different shape |
 | Stdin-feeding pattern | NO | Helper does `stdio: ['pipe', 'pipe', 'pipe']` without stdin write; pre-compact-save:267 + auto-store-enrichment:177 use this shape but feed stdin first |
-| Test-fixture invocations with custom env/cwd | NO | _h70-test.js + smoke-ht.sh use bespoke env vars (HETS_IDENTITY_STORE etc.) per fixture |
+| Test-fixture invocations with custom env/cwd | NO | `_h70-test.js` + smoke-ht.sh use bespoke env vars (HETS_IDENTITY_STORE etc.) per fixture |
 | Forwarding pattern (pattern-recorder.js spawn-recorder) | NO | Bespoke argv mutation; per-call observability tracking |
 
 **DO NOT migrate** the following spawnSync sites to helper (out of helper's contract):
 
 - `scripts/agent-team/pattern-recorder.js:185` (forwarding pattern)
-- `scripts/agent-team/_h70-test.js:240,383` (test-fixture invocations)
+- `scripts/agent-team/`_h70-test.js`:240,383` (test-fixture invocations)
 - `scripts/agent-team/contract-verifier.js:650` (non-blocking `spawn`)
 - `hooks/scripts/session-self-improve-prompt.js` (conditional invocation)
 - `hooks/scripts/auto-store-enrichment.js:177` (storePattern with stdin feed)
@@ -225,7 +225,7 @@ HT.0.8 cited "1 caller"; empirical 2 callers. Sibling cohort with measurement-me
 ### Verification
 
 - 73/73 install.sh smoke (unchanged from HT.1.14; pure-doc work; no behavior surface affected)
-- 46/46 _h70-test.js asserts (regression check)
+- 46/46 `_h70-test.js` asserts (regression check)
 - 0 contracts-validate violations excluding pre-existing 16 baseline
 - `_lib/safe-exec.js` exists + 2 consumers preserved (no code changes)
 
@@ -309,7 +309,7 @@ Convention G's failure-modes section originally said: "**H.7.27 commitment**: mi
 - ✓ install.sh smoke 36/36 (was 38/38; -3 retired tests 19-21; +1 new test 19 for MD037 absorption check)
 - ✓ 46/46 `_h70-test` regression preserved
 - ✓ 0 `pattern-related-bidirectional` violations
-- ✓ Empirical: `printf '# Test\\n\\nThis paragraph has HETS_TOOLKIT_DIR _h70-test _lib/ tokens.\\n' > /tmp/test.md && npx markdownlint-cli2 /tmp/test.md` → fires MD037 error
+- ✓ Empirical: the cluster pattern (paragraph containing `HETS_TOOLKIT_DIR` / `_h70-test` / `_lib/` tokens piped into `npx markdownlint-cli2`) fires MD037 error
 - ✓ All 116 existing markdown files still lint-clean
 - ✓ `validate-markdown-emphasis.js` no longer in tree; `hooks.json` PostToolUse has 1 entry (was 2)
 
@@ -697,7 +697,7 @@ Drift-note 29 reduces to 1 real gap: `validate-no-bare-secrets.js` Edit branch s
 
 - ✓ Probe 1: `bash install.sh --hooks --test` → **26/26 passing** (was 23/23; +3 H.7.21 tests)
 - ✓ Probe 2: `node scripts/agent-team/contracts-validate.js` → 0 violations
-- ✓ Probe 3: `node scripts/agent-team/_h70-test.js` → 46/46 passing (regression — H.7.21 doesn't touch route-decide)
+- ✓ Probe 3: `node scripts/agent-team/`_h70-test`.js` → 46/46 passing (regression — H.7.21 doesn't touch route-decide)
 - ✓ Probe 4: `node --check hooks/scripts/validators/validate-no-bare-secrets.js` → syntax-ok
 - ✓ Probe 5/6: manual stdin-pipe → Edit completes assignment blocks (matched `literal-secret-assignment`); Edit unrelated approves
 - ✓ Probe 7: manual `replace_all: true` → terminates correctly; all occurrences replaced via `split().join()`
@@ -748,7 +748,7 @@ Prior `validate-frontmatter-on-skills.js` early-returned on `toolName !== 'Write
 
 - ✓ Probe 1: `bash install.sh --hooks --test` → **23/23 passing** (was 21/21; +2 H.7.20 tests)
 - ✓ Probe 2: `node scripts/agent-team/contracts-validate.js` → 0 violations
-- ✓ Probe 3: `node scripts/agent-team/_h70-test.js` → 46/46 passing (regression — H.7.20 doesn't touch route-decide)
+- ✓ Probe 3: `node scripts/agent-team/`_h70-test`.js` → 46/46 passing (regression — H.7.20 doesn't touch route-decide)
 - ✓ Probe 4: `node --check hooks/scripts/validators/validate-frontmatter-on-skills.js` → syntax-ok
 - ✓ Probe 5: `python3 -m json.tool hooks/hooks.json` → valid JSON; matcher = `Edit|Write`
 - ✓ Manual probe 6: Edit removing frontmatter → `{"decision":"block",...}` with frontmatter gate reason
@@ -806,7 +806,7 @@ Also audited PostToolUse hooks for vestigial PreToolUse code:
 
 - ✓ Probe 1: `bash install.sh --hooks --test` → 21/21 passing (regression — H.7.19 doesn't touch hook code)
 - ✓ Probe 2: `node scripts/agent-team/contracts-validate.js` → 0 violations
-- ✓ Probe 3: `node scripts/agent-team/_h70-test.js` → 46/46 passing (regression)
+- ✓ Probe 3: `node scripts/agent-team/`_h70-test`.js` → 46/46 passing (regression)
 - ✓ Probe 4: `npx markdownlint-cli2` on modified docs → 0 errors
 
 ### Drift-note captured this phase
@@ -872,7 +872,7 @@ Audit recommendation: forward-only validator. Slight-strengthen: spot-fix the 4 
 
 - ✓ Probe 1: `bash install.sh --hooks --test` → **21/21 passing** (was 18/18; +3 H.7.18 tests)
 - ✓ Probe 2: `node scripts/agent-team/contracts-validate.js` → 0 violations
-- ✓ Probe 3: `node scripts/agent-team/_h70-test.js` → 46/46 passing (regression)
+- ✓ Probe 3: `node scripts/agent-team/`_h70-test`.js` → 46/46 passing (regression)
 - ✓ Probe 4: `node --check hooks/scripts/validators/validate-markdown-emphasis.js` → syntax-ok
 - ✓ Probe 5: synthetic Tier 1 cluster → `[MARKDOWN-EMPHASIS-DRIFT]` emitted with token list
 - ✓ Probe 6: synthetic backticked tokens → silent (no false positive)
@@ -930,7 +930,7 @@ H.7.17 spawned the `claude-code-guide` agent for the question "Does Claude Code 
 
 - ✓ Probe 1: `bash install.sh --hooks --test` → 18/18 passing (regression — tests use `2>&1` merged stream check; transparent to stdout↔stderr move)
 - ✓ Probe 2: `node scripts/agent-team/contracts-validate.js` → 0 violations
-- ✓ Probe 3: `node scripts/agent-team/_h70-test.js` → 46/46 passing (regression — H.7.17 doesn't touch route-decide)
+- ✓ Probe 3: `node scripts/agent-team/`_h70-test`.js` → 46/46 passing (regression — H.7.17 doesn't touch route-decide)
 - ✓ Probe 4: `node --check hooks/scripts/validators/validate-plan-schema.js` → syntax-ok
 - ✓ Probe 5: synthetic tier-1-missing PostToolUse:Write JSON piped to validator → `[PLAN-SCHEMA-DRIFT]` emitted on stdout (was stderr in PreToolUse)
 - ✓ Probe 6: synthetic compliant plan piped to validator → empty stdout (no JSON, no forcing instruction — PostToolUse is silent when nothing to say)
@@ -986,7 +986,7 @@ H.7.17 spawned the `claude-code-guide` agent for the question "Does Claude Code 
   - NEW `buildMetaForcingInstruction(tokens, score, recommendation)` — emits `[ROUTE-META-UNCERTAIN]` (7th in the forcing-instruction family alongside `[ROUTE-DECISION-UNCERTAIN]` H.7.5, `[PROMPT-ENRICHMENT-GATE]` H.4.x, `[CONFIRMATION-UNCERTAIN]` H.4.3, `[FAILURE-REPEATED]` H.7.7, `[SELF-IMPROVE QUEUE]` H.4.1, `[PLAN-SCHEMA-DRIFT]` H.7.12)
   - 3 NEW output JSON fields: `substrate_meta_detected`, `substrate_meta_tokens`, `meta_forcing_instruction` — pure additive; backward-compatible
 - **`rules/core/workflow.md`**: NEW bullet under "Route-Decision for Non-Trivial Tasks" — H.7.16 `[ROUTE-META-UNCERTAIN]` handling rule + co-firing semantics
-- **`scripts/agent-team/_h70-test.js` Section 7** (NEW): 3 tests with 5 assertions — H.7.11 retroactive (detection fires + ≥2 tokens), false-positive guard (`recommendation: 'root'` despite substrate-meta detection — counter_signals win), baseline (non-substrate-meta task → `false`)
+- **`scripts/agent-team/`_h70-test`.js` Section 7** (NEW): 3 tests with 5 assertions — H.7.11 retroactive (detection fires + ≥2 tokens), false-positive guard (`recommendation: 'root'` despite substrate-meta detection — counter_signals win), baseline (non-substrate-meta task → `false`)
 
 **Pure additive guarantee verified**: `WEIGHTS_VERSION` unchanged, all 6 H.7.3 calibration baselines byte-identical, recommendation logic untouched. New fields are advisory metadata only.
 
@@ -1012,7 +1012,7 @@ H.7.17 spawned the `claude-code-guide` agent for the question "Does Claude Code 
 
 - ✓ Probe 1: `bash install.sh --hooks --test` → 18/18 passing (regression — H.7.16 doesn't add hook tests)
 - ✓ Probe 2: `node scripts/agent-team/contracts-validate.js` → 0 violations
-- ✓ Probe 3: `node scripts/agent-team/_h70-test.js` → **46/46 passing** (was 41/41; +5 H.7.16 substrate-meta assertions)
+- ✓ Probe 3: `node scripts/agent-team/`_h70-test`.js` → **46/46 passing** (was 41/41; +5 H.7.16 substrate-meta assertions)
 - ✓ Probe 4: `node --check scripts/agent-team/route-decide.js` → syntax-ok
 - ✓ Probe 5: H.7.11-style task → `substrate_meta_detected: true`, tokens `['route-decide', 'route-decide.js', 'dict expansion']`
 - ✓ Probe 6: false-positive guard ("fix typo in route-decide.js") → `recommendation: root`, `substrate_meta_detected: true` (advisory)
@@ -1095,7 +1095,7 @@ mira agrees with theo's H.7.3 architecture wholesale; her design extends substra
 
 - ✓ Probe 1: `bash install.sh --hooks --test` → **18/18 passing** (was 17/17; +1 H.7.15 test for env-var path matching)
 - ✓ Probe 2: `node scripts/agent-team/contracts-validate.js` → 0 violations
-- ✓ Probe 3: `node scripts/agent-team/_h70-test.js` → 41/41 passing
+- ✓ Probe 3: `node scripts/agent-team/`_h70-test`.js` → 41/41 passing
 - ✓ Probe 4: `node --check hooks/scripts/validators/validate-plan-schema.js` → syntax-ok
 - ✓ Probe 5: synthetic plan write at custom path → forcing instruction fires
 - ✓ Probe 6: `npx markdownlint-cli2` on new pattern doc + workflow.md → 0 errors
@@ -1164,7 +1164,7 @@ mira agrees with theo's H.7.3 architecture wholesale; her design extends substra
 
 - ✓ Probe 1: `bash install.sh --hooks --test` → 17/17 passing (refactor regression)
 - ✓ Probe 2: `node scripts/agent-team/contracts-validate.js` → 0 violations
-- ✓ Probe 3: `node scripts/agent-team/_h70-test.js` → 41/41 passing
+- ✓ Probe 3: `node scripts/agent-team/`_h70-test`.js` → 41/41 passing
 - ✓ Probe 4: `node --check` on 7 .js files → syntax-ok
 - ✓ Probe 5: `findToolkitRoot()` returns canonical path on author's machine
 - ✓ Probe 6 (load-bearing): CI-environment simulation — `cd /tmp && node /path/scripts/agent-team/budget-tracker.js` works correctly (walk-up branch fires from script's `__dirname` heritage); `cd /tmp && node -e ".../findToolkitRoot()"` with HETS_TOOLKIT_DIR + CLAUDE_PLUGIN_ROOT cleared still resolves correctly via walk-up
@@ -1248,7 +1248,7 @@ The polish-class counter_signals correctly suppressed over-routing on this purel
 
 - ✓ Probe 1: `bash install.sh --hooks --test` → **17/17 passing** (regression — JSDoc is comments only; zero runtime effect)
 - ✓ Probe 2: `node scripts/agent-team/contracts-validate.js` → 0 violations
-- ✓ Probe 3: `node scripts/agent-team/_h70-test.js` → 41/41 passing (regression — H.7.13 doesn't touch route-decide)
+- ✓ Probe 3: `node scripts/agent-team/`_h70-test`.js` → 41/41 passing (regression — H.7.13 doesn't touch route-decide)
 - ✓ Probe 4: `node --check` on all 7 modified files → syntax-ok
 - ✓ Probe 5: `grep -c '^\s*\* @\(param\|returns\)'` → 59 total @param/@returns lines
 
@@ -1321,7 +1321,7 @@ The polish-class counter_signals correctly suppressed over-routing on this purel
 
 - ✓ Probe 1: `bash install.sh --hooks --test` → **17/17 passing** (was 13/13; +4 H.7.12 tests)
 - ✓ Probe 2: `node scripts/agent-team/contracts-validate.js` → 0 violations
-- ✓ Probe 3: `node scripts/agent-team/_h70-test.js` → 41/41 passing (regression — H.7.12 doesn't touch route-decide)
+- ✓ Probe 3: `node scripts/agent-team/`_h70-test`.js` → 41/41 passing (regression — H.7.12 doesn't touch route-decide)
 - ✓ Probe 4: Compliant new-style plan → silent (no false positive)
 - ✓ Probe 5: Missing Tier 1 → `[PLAN-SCHEMA-DRIFT]` with "Verification Probes" listed
 - ✓ Probe 6: Tier 2 conditional → fires only when "Routing Decision" string in content
@@ -1381,7 +1381,7 @@ Per `route-decide.js:11-13` load-bearing comment, keyword adjustments require a 
     - `scope_size` (0.075): + `across-files`, `hooks`, `scripts`, `callsites`, `callsite`
   - **`counter_signals` expanded** (`polish`, `polishing`, `jsdoc`, `docstring`, `frontmatter`, `comment`, `comments`, `formatting`, `lint`, `linting`, `prettier`, `rename`, `renaming`, `whitespace`) — catches polish-class work that would otherwise mis-route when phrased with substrate vocabulary
   - 3 dimensions **received no additions** (`domain_novelty`, `convergence_value`, `user_facing_or_ux`) — drift-notes are familiar substrate work, not novelty / convergence-needing / UX
-- **`scripts/agent-team/_h70-test.js`** Section 6 (NEW): 9 H.7.11 regression tests covering drift-notes + 6 H.7.3 baselines + counter-signals + suppression + WEIGHTS_VERSION bump. Total: 32 → **41 passing**.
+- **`scripts/agent-team/`_h70-test`.js`** Section 6 (NEW): 9 H.7.11 regression tests covering drift-notes + 6 H.7.3 baselines + counter-signals + suppression + WEIGHTS_VERSION bump. Total: 32 → **41 passing**.
 - **`skills/agent-team/patterns/route-decision.md`**: appended H.7.11 section with empirical motivation, per-dimension additions table, verified projections, tradeoffs, decline list.
 
 ### Verified projections (ari's design predictions confirmed empirically)
@@ -1712,7 +1712,7 @@ mira's 5 bug findings + theo's 5 fix designs = 1:1 mapping; all fixes verified. 
 - `scripts/agent-team/route-decide.js` — refactored: `if (require.main === module)` guard + `module.exports`. CLI byte-for-byte identical
 - `scripts/agent-team/agent-identity.js` (~671 LoC additive) — `WEIGHT_PROFILE_VERSION` bump to `"h7.0-multi-axis-v1"`; `WEIGHTS` += `task_complexity_weighted_pass: 0.10`; new helpers (`bucketTaskComplexity`, `computeTaskComplexityWeightedPass`, `computeRecencyDecay`, `computeQualityTrend`); `_backfillH66Schema` → `_backfillSchema` with H.7.0 fields; `cmdRecord` accepts `--verification-depth`; `cmdRecommendVerification` drift pre-check block; `cmdAssign` specialization-aware-pick; NEW `cmdBreed` with diversity-guard + population-cap + user-gate
 - `scripts/agent-team/pattern-recorder.js` (+24 LoC) — flag propagation
-- `scripts/agent-team/_h70-test.js` (NEW, 514 LoC) — 23 inline tests
+- `scripts/agent-team/`_h70-test`.js` (NEW, 514 LoC) — 23 inline tests
 - `skills/agent-team/patterns/agent-identity-reputation.md` (+~210 LoC) — new "Multi-Axis Trust Signal (H.7.0)" H2 section + L3 evolution-loop section flipped from DEFERRED to SHIPPED
 
 **Test results (all pass)**:
