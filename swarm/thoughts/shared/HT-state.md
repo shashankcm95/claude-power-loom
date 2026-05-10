@@ -36,10 +36,11 @@ ht_2_1_verify_spawns:
   - architect (1 HIGH + 3 MEDIUM + 2 LOW FLAGs)
   - code-reviewer (2 HIGH + 2 MEDIUM + 2 LOW FLAGs; 1 HIGH convergent with architect HIGH-1; 1 HIGH INVALIDATED post-empirical-re-verify)
 last_session_phase_prior: HT.2.2 SHIPPED — `parseFrontmatter` YAML 1.2 inline-comment strip on `ht/2.2-parsefrontmatter-yaml-comment-strip`; second HT.2 sub-phase complete. NEW `_stripInlineComment(val)` helper in `scripts/agent-team/_lib/frontmatter.js` (~25 LoC; quote-aware traversal); applied at main scalar value extraction + block-list item extraction. 8 NEW unit tests in `_h70-test.js` Section 8 (54/54 total, was 46/46). Chaos-test PASS — contracts-validate.js 16 baseline violations only (no regression across ~58 frontmatter sources). Sub-plan-only methodology per HT.2 master plan methodology table line 328. Plugin manifest patch bump 1.12.0 → 1.12.1 per code-reviewer HIGH-2 absorption at HT.2.0. drift-note 73 RESOLVED-by-implementation. HT.2.3 (hooks-discipline-edge sweep) next.
-git_branch_at_last_save: ht/3.2-measurement-methodology-reframe
-git_commit_at_last_save: 2018c53
+git_branch_at_last_save: ht/3.3-adr-0002-status-flip
+git_commit_at_last_save: 4a868c5
 ht_3_1_ship_commit: 9ef0778
 ht_3_2_ship_commit: 2018c53
+ht_3_3_ship_commit: 4a868c5
 ht_2_0_decision: Master-plan-only authoring with parallel architect + code-reviewer pre-approval gate INVOKED per master plan v3.1 + HT.1.3 + HT.1.7 + HT.1.13 precedent (substantive multi-sub-phase plan). Both spawns first-pass; 11 FLAGs absorbed single-pass (2 HIGH from each reviewer; 3 MEDIUM; 4 LOW; 1 convergent — phase count inconsistency). Code-reviewer HIGH-1 surfaced drift-note 66 was already resolved at HT.1.6 (HT-state.md inventory documentation lag); code-reviewer HIGH-2 surfaced pure-doc no-bump convention contradicted by proposed 5-patch progression. Architect HIGH-1 surfaced ADR-0005 mis-citation needing clarification; architect HIGH-2 surfaced HT.2.3 option-axis design surface required unconditional per-phase pre-approval. Plan shipped at status: approved post-FLAG-absorption. SHIPPED 2026-05-10.
 ht_2_0_branch_target: ht/2-master-plan (active branch)
 ht_2_0_verify_verdict: APPROVED-with-revisions (architect) + NEEDS-REVISION (code-reviewer); both first-pass; 11 FLAGs absorbed single-pass; no second-pass per FLAG severity profile
