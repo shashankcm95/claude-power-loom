@@ -2,9 +2,9 @@
 adr_id: 0002
 title: "Bridge-script entrypoint criterion: when multi-responsibility-at-bridge-script accumulates vs when split applies"
 tier: technical
-status: proposed
+status: accepted
 created: 2026-05-10
-author: root (HT.1.3 sub-plan; pending architect + code-reviewer per-phase pre-approval)
+author: root (HT.1.3 sub-plan + parallel architect + code-reviewer per-phase pre-approval gate; APPROVED-with-revisions; 10 FLAGs absorbed single-pass)
 superseded_by: null
 files_affected:
   - scripts/agent-team/agent-identity.js
@@ -122,6 +122,10 @@ Status quo path. Rejected because the substrate has already empirically demonstr
 ## Status notes
 
 - 2026-05-10 — proposed by root in HT.1.3 sub-plan; pending parallel architect + code-reviewer per-phase pre-approval per HT.0.9-verify methodology
+- 2026-05-10 — APPROVED-with-revisions at parallel architect + code-reviewer per-phase pre-approval gate (10 FLAGs absorbed single-pass; architect 6 FLAGs: 2 MEDIUM + 4 LOW / code-reviewer 5 FLAGs: 3 MEDIUM + 2 LOW; 1 MEDIUM convergent); criterion's first application at HT.1.3 agent-identity.js 5-module split shipped same day (commit `34fd929`)
+- 2026-05-10 — second application at HT.1.4 install.sh `run_smoke_tests` bash extraction (1188 LoC monolithic body → 5 phase-era sourced helper files; commit `0e50a46`); ADR-0002 cross-language framing validated empirically (Node.js → bash)
+- 2026-05-10 — third application at HT.1.5 `commands/build-team.md` markdown + helper-script extraction (322 LoC × 6 responsibilities → orchestrator narrative + `scripts/agent-team/build-team-helpers.sh`); per-phase pre-approval gate INVOKED for this third application per architect FLAG validating ADR-0002's cross-language framing; cross-language framing now empirically confirmed across 3 languages (Node.js + bash + markdown)
+- 2026-05-11 (HT.3.3) — status `proposed` → `accepted` per HT.1.7 + HT.1.13 + ADR-0005 same-day-acceptance convention precedent. ADR-0002 should have shipped at `status: accepted` directly at HT.1.3 per the convention; the convention crystallized at HT.1.7 (post-HT.1.3); HT.3.3 retrofits the status to bring ADR-0002 into the established convention. Three shipped applications across three languages confirm the criterion is load-bearing in substrate practice. Post-HT audit-followup Tier 2 institutional reframing third and final sub-phase; closes HT.3 cumulative.
 
 ## Related work
 

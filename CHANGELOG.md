@@ -8,6 +8,87 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [unreleased] — 2026-05-11 — HT.3.3 ADR-0002 status flip `proposed` → `accepted` (post-HT audit-followup Tier 2 third and final sub-phase; HT.3 CLOSED)
+
+**Post-HT audit-followup Tier 2 institutional reframing — third and final sub-phase; HT.3 CLOSED.** HT.3.3 flips ADR-0002 status `proposed` → `accepted` per HT.1.7 + HT.1.13 + ADR-0005 same-day-acceptance convention precedent. ADR-0002 should have shipped at `status: accepted` directly at HT.1.3 per the convention; the convention crystallized at HT.1.7 (post-HT.1.3); HT.3.3 retrofits the status to bring ADR-0002 into the established convention. Three shipped applications across three languages (HT.1.3 Node.js + HT.1.4 bash + HT.1.5 markdown) confirm the criterion is load-bearing in substrate practice. **No plugin manifest bump** per pure-doc/status-correction convention.
+
+### Context — Tier 2 institutional reframing closes
+
+HT.3.1 SHIPPED 2026-05-11 at `9ef0778` (ADR-0004 tier taxonomy codification — schema-vs-prose gap). HT.3.2 SHIPPED 2026-05-11 at `2018c53` (measurement-methodology.md reframe — framing-vs-content gap). HT.3.3 closes status-vs-reality gap (ADR-0002 status field aligned with shipped reality of 3 applications across 3 languages).
+
+### What landed
+
+- **ADR-0002 frontmatter status field flip** (line 5): `status: proposed` → `status: accepted`
+- **ADR-0002 frontmatter author field update** (line 6): drops "pending architect + code-reviewer per-phase pre-approval" tail; replaces with completion summary "+ parallel architect + code-reviewer per-phase pre-approval gate; APPROVED-with-revisions; 10 FLAGs absorbed single-pass"
+- **ADR-0002 Status notes section** — 4 new status-transition entries documenting:
+  - 2026-05-10 APPROVED-with-revisions at per-phase pre-approval gate (10 FLAGs absorbed; HT.1.3 first application + ship commit `34fd929`)
+  - 2026-05-10 second application at HT.1.4 install.sh bash extraction (commit `0e50a46`); cross-language framing validated empirically (Node.js → bash)
+  - 2026-05-10 third application at HT.1.5 commands/build-team.md markdown + helper-script extraction; cross-language framing confirmed across 3 languages
+  - 2026-05-11 (HT.3.3) status `proposed` → `accepted` retrofit per established convention; closes HT.3 cumulative
+
+### Empirical pre-validation pattern — 16-phase confirmed
+
+ADR-0002 frontmatter read live in HT.3.1 verification cycle (status: proposed confirmed); HT.1.3 + HT.1.4 + HT.1.5 ship commits located via `git log --all --oneline | grep`; criterion applications confirmed via HT-state.md `ht_1_3_decision` + `ht_1_4_decision` + `ht_1_5_decision` entries. Sibling-cohort with HT.1.8-1.15 + HT.2.1-2.5 + HT.3.1-3.3.
+
+### Forbidden-phrase grep gate
+
+Sub-plan body uses imperative voice in Implementation strategy ("Change X" / "Edit Y") — plan-mode prescriptive carve-out (4th form per HT.2.5 + HT.3.1 + HT.3.2 precedent). ADR-0002 status notes use past-tense factual voice (status-transition entries); no imperative voice; ADR-shape carve-out applies to Decision section but not to Status notes which are factual historical entries.
+
+### Methodology
+
+Sub-plan-only per HT.1.6 decision-rationale-matrix convention + HT.2.4 + HT.1.10 pure-doc precedent. 5 of 5 HT.1.6 triggers absent (status-correction; no fresh design surface — ADR content unchanged; no schema change — existing status enum supports `accepted`; no option-axis decision — single path per convention; no institutional discipline encoding — confirms existing acceptance; no HIGH-class bug catchable at design — 4-line mechanical edit).
+
+### Verification
+
+- **install.sh smoke**: 75/75 (unchanged from HT.3.2; pure-status-correction; no behavior surface)
+- **_h70-test.js asserts**: 64/64 (unchanged from HT.3.2)
+- **contracts-validate.js violations**: 16 baseline only (no regression)
+- **adr.js list --status proposed**: 0 (was 1 — ADR-0002 transitioned out)
+- **adr.js list --status accepted**: 4 (was 3 — ADR-0002 + 0003 + 0004 + 0005)
+- **adr.js active**: 5 (was 4 — seed ADR-0001 + 4 accepted now includes ADR-0002)
+
+### Plugin manifest
+
+`1.12.3` UNCHANGED per pure-doc/status-correction convention (matches HT.1.10/HT.1.12/HT.1.14/HT.1.15/HT.2.1/HT.2.3/HT.2.4/HT.3.2 precedent — pure substrate-internal status alignment; no consumer-visible behavior change).
+
+### Wallclock
+
+~20 min end-to-end (sub-plan + ADR-0002 edits ~10 min + verification + cutover ~10 min).
+
+### HT.3 cumulative reflections (post-HT audit-followup Tier 2 institutional reframing track)
+
+- **3 sub-phases shipped** (HT.3.1 + HT.3.2 + HT.3.3) closing three distinct institutional-gap shapes
+  - HT.3.1: schema-vs-prose gap (taxonomy declared in prose; codified at schema layer)
+  - HT.3.2: framing-vs-content gap (doc positioned as observation; voice was imperative)
+  - HT.3.3: status-vs-reality gap (ADR status `proposed` despite 3 shipped applications)
+- **~100 min wallclock cumulative across HT.3** (HT.3.1 ~50 min + HT.3.2 ~30 min + HT.3.3 ~20 min)
+- **Methodology distribution**: 3 of 3 sub-plan-only (no per-phase pre-approval gate invoked — each sub-phase had 5 of 5 HT.1.6 triggers absent or codification-only)
+- **Plugin manifest progression**: 1.12.2 → 1.12.3 (only HT.3.1 patched for additive schema field; HT.3.2 + HT.3.3 unchanged per pure-doc convention)
+- **ADR ledger growth**: 4 → 5 (HT.3.1 added ADR-0004; HT.3.3 confirmed ADR-0002's acceptance — total accepted ADRs now 4 / total active 5)
+- **Pattern-level signature**: audit-followup-driven institutional alignment (voice/schema/status aligned with existing positioning, not new commitments)
+
+### HT cumulative reflections (HT.0 + HT.1 + HT.2 + HT.3)
+
+- **HT.0** — 9 audit phases + HT.0.9-verify pre-approval gate
+- **HT.1** — 15 refactor phases (HT.1.1-1.15; top-15 backlog cap closed)
+- **HT.2** — 5 sub-phases (doc-lag + measurement-methodology + parser-discipline-edge + hooks-discipline-edge + soak gate)
+- **HT.3** — 3 Tier 2 institutional reframing sub-phases (codification + voice reframe + status flip) post-HT-closure driven by 5-agent chaos test + HETS code review external audit findings
+- **Substrate output**: 5 ADRs (technical/governance/editorial taxonomy now machine-readable at schema layer per ADR-0004) + 3 substrate convention docs + 3 lightweight BACKLOG decision-record-pattern entries
+- **Per-phase pre-approval gate institutional discipline** dogfooded across 7 invocations (HT.0.9-verify + HT.1.3 + HT.1.7 + HT.1.13 + HT.2.0 + HT.2.1 + HT.2.3); 100% single-pass FLAG absorption rate
+- **Empirical pre-validation pattern** 16-phase confirmed (HT.1.8-1.15 + HT.2.1-2.5 + HT.3.1-3.3); 100% green first-pass execution
+
+### Next
+
+**H.9.x candidate** — substrate ready for next-track trajectory transition. HT.3 CLOSED (Tier 2 institutional reframing complete). Suggested H.9.x focus areas (informational, not binding; per HT.2.5 readout + post-HT audit Tier 3 deferral):
+
+1. **error-critic.js fail-soft contract upgrade** — deferred from HT.2.3 per architect MEDIUM-A4 reframe
+2. **8 remaining unhardened `.tmp.<pid>` atomic-write sites** — deferred from HT.audit-followup Tier 1 (substrate-wide DRY consolidation candidate)
+3. **HT.0.5a Bar E forward references** — 7 broken `related:` refs to 5 non-existent kb_id targets
+4. **Atomics.wait true-sleep migration** in `_lib/lock.js` — deferred from HT.2.3 per architect MEDIUM-A1 with measurable trigger
+5. **8 audit MEDIUM/LOW findings** — acquireLock ENOTDIR + registry god-module + ADR-0005 verbal-tic stuff (deferred from post-HT audit Tier 3)
+
+---
+
 ## [unreleased] — 2026-05-11 — HT.3.2 measurement-methodology.md reframe (post-HT audit-followup Tier 2; second of 3 sub-phases)
 
 **Post-HT audit-followup Tier 2 institutional reframing — second sub-phase.** HT.3.2 strips imperative voice from `swarm/measurement-methodology.md`'s 5 canonical patterns + Scope-axis disambiguation section, replacing with descriptive observed-practice voice. Closes the framing-vs-content contradiction surfaced by 5-agent chaos test + HETS code review (two senior-architect agents independently flagged the doc as "institutional commitment dressed as observed practice"). Preserves the doc's existing "not an ADR; captures observed practice, not new institutional invariant" positioning by aligning voice with observation framing. **No plugin manifest bump** per pure-doc convention (matches HT.1.10/HT.1.12/HT.2.4 precedent).
