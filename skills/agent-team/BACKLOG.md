@@ -78,6 +78,10 @@ ADR institutional weight is appropriate when the decision is forward-looking + c
 
 Per HT.0.9-verify FLAG-5 right-sizing, this is the first of 3 lightweight BACKLOG entries planned across HT.1 (HT.1.6 + HT.1.12 deferred-author-intent precedent + HT.1.15 helper-deletion canonical pattern).
 
+### Cross-references (bidirectional per architect MEDIUM-2 absorption at HT.2.1)
+
+- `swarm/measurement-methodology.md` (HT.2.1) — observed dogfooded measurement-methodology practice across 9 case studies; this BACKLOG entry is referenced from there as part of the lightweight institutional decision record cohort
+
 ## Phase HT.1.12 — Architecture KB forward-reference resolution / deferred-author-intent shape — DECISION RECORD (lightweight)
 
 **Status**: shipped 2026-05-10. Second `decision-record-pattern: lightweight` entry in BACKLOG.md per HT.1.6 declaration (line 79: "first of 3 lightweight BACKLOG entries planned across HT.1 — HT.1.6 + HT.1.12 + HT.1.15"). Closes HT.0.5a E.1 most-weighty finding (bidirectional `related:` validator skips broken refs because targets don't exist).
@@ -144,6 +148,10 @@ Original HT.1.12 decision (per HT.0.9-verify FLAG-5 right-sizing) was: react-ess
 - The migration discipline (planned → authored → frontmatter migration) is straightforward enough to document in this one entry
 
 Per HT.0.9-verify FLAG-5 right-sizing, this is the second of 3 lightweight BACKLOG entries planned across HT.1 (HT.1.6 documentary persona class + HT.1.12 deferred-author-intent + HT.1.15 helper-deletion canonical pattern).
+
+### Cross-references (bidirectional per architect MEDIUM-2 absorption at HT.2.1)
+
+- `swarm/measurement-methodology.md` (HT.2.1) — observed dogfooded measurement-methodology practice across 9 case studies; drift-note 72 (forward-reference count overstated) is case study 5 in that doc
 
 ## Phase HT.1.15 — `_lib/safe-exec.js` adoption decision / canonical safe-subprocess pattern — DECISION RECORD (lightweight)
 
@@ -227,9 +235,13 @@ Per HT.0.9-verify FLAG-5 right-sizing — bounded scope (2 callers; helper-API s
 
 Per HT.0.9-verify FLAG-5 right-sizing, this is the **third and final** of 3 lightweight BACKLOG entries planned across HT.1 (HT.1.6 documentary persona class + HT.1.12 deferred-author-intent + HT.1.15 safe-exec adoption / canonical pattern). All 3 lightweight BACKLOG entries shipped; HT.0.9-verify right-sizing validated empirically.
 
+### Cross-references (bidirectional per architect MEDIUM-2 absorption at HT.2.1)
+
+- `swarm/measurement-methodology.md` (HT.2.1) — observed dogfooded measurement-methodology practice across 9 case studies; drift-note 76 (caller-count overstated) is case study 9 in that doc (dual-cohort: also Pattern 4 canonical example for caller-count empirical re-validation)
+
 ### Closes HT.1 backlog top-15 cap
 
-HT.1.15 is the final phase in the HT.1 backlog top-15 cap. Items 16+ deferred per HT.0.9 cap discipline. **HT.2 starts after this phase ships** — substantive doc-lag + measurement-methodology + parser-discipline-edge + hooks-discipline-edge codification phase with explicit per-drift-note action matrix for the 12-drift-note inventory (drift-notes 63 + 64 + 65 + 66 + 67 + 68 + 69 + 71 + 72 + 73 + 74 + 75; drift-note 70 RESOLVED in-scope at HT.1.10; drift-note 76 RESOLVED in-scope at HT.1.15).
+HT.1.15 is the final phase in the HT.1 backlog top-15 cap. Items 16+ deferred per HT.0.9 cap discipline. **HT.2 starts after this phase ships** — substantive doc-lag + measurement-methodology + parser-discipline-edge + hooks-discipline-edge codification phase with explicit per-drift-note action matrix. (Updated post-HT.2.0 master plan: inventory shrunk to 11 active drift-notes; drift-note 66 RESOLVED in-scope at HT.1.6 surfaced at HT.2.0 master-plan-pre-approval per code-reviewer HIGH-1 — total 3 in-scope resolutions: 66 + 70 + 76.)
 
 ## Phase H.8.4 — Shell injection RCE fix + Cyrillic homograph fix + routing rule count correction — SHIPPED
 

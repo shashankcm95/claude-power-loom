@@ -8,6 +8,67 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [unreleased] — 2026-05-10 — HT.2.1 measurement-methodology codification doc (`swarm/measurement-methodology.md` — observed dogfooded practice across 9 case studies + 5 canonical patterns)
+
+**HT.2 first sub-phase. Per-phase pre-approval gate INVOKED per HT.1.10 convention-doc precedent.** Authors `swarm/measurement-methodology.md` (207 LoC) capturing observed dogfooded measurement-methodology practice across 9 case studies (6 active audit-method-and-currency / count-drift + option-axis-conflation drift-notes + 3 in-scope-resolution drift-notes) into a single substrate-internal convention doc. Third convention-doc institutional artifact in the `swarm/` namespace (sibling shape with HT.1.10 path-reference-conventions + HT.2.5 forthcoming soak-gate-readiness readout). **No version bump** per pure-doc convention (matches HT.1.10/HT.1.12/HT.1.15 precedents).
+
+### What landed
+
+- **NEW `swarm/measurement-methodology.md`** (207 LoC) codifies:
+  - **9 case studies cohort-first**: active cohort (drift-notes 63 + 64 + 65 + 71 + 72 + 74) → in-scope-resolution cohort (drift-notes 66 + 70 + 76; drift-note 76 spans both as dual-cohort case study)
+  - **5 canonical patterns** (APPENDABLE — future drift-notes may add patterns): (1) Inventory-via-grep + per-site classification; (2) Audit-method-and-currency awareness (visual estimate ≠ analytical claim ≠ fence-line empirical + audit-date currency drift); (3) Reference count grounding; (4) Caller-count empirical re-validation (with meta-applicability to pre-approval gates themselves); (5) Option-axis disambiguation
+  - **Observed-practice framing** (NOT prescriptive rules) per architect MEDIUM-2 absorption at HT.2.0 — captures existing dogfooded practice, not new institutional invariant
+  - **Pre-validation-at-sub-plan-time** observed pattern from HT.1.8-1.15 dogfooded cohort
+  - **In-scope-resolution shapes**: reframe (drift-note 70) + already-resolved (66) + pivot (76)
+  - **Cross-references** to `swarm/path-reference-conventions.md` + HT-state.md drift-note inventory + 3 BACKLOG.md lightweight entries + 4 ADRs
+- **NEW bidirectional cross-references** per architect MEDIUM-2 absorption:
+  - `swarm/path-reference-conventions.md` (HT.1.10) → reverse-ref added in "Related work" section
+  - `skills/agent-team/BACKLOG.md` (HT.1.6 + HT.1.12 + HT.1.15 lightweight entries) → reverse-refs added
+
+### Drift-note 66 RESOLVED in-scope at HT.2.0 master-plan-pre-approval
+
+Code-reviewer HIGH-1 at HT.2.0 surfaced that drift-note 66 (`commands/research.md` `.full` → `.identity` jq path bug) was ALREADY RESOLVED at HT.1.6 (3-line fix shipped per HT-state.md line 96 + install.sh smoke test 72 closed integration-test gap). HT-state.md drift-note inventory section had documentation lag listing it as outstanding until HT.2.0 master-plan pre-approval. Drift-note inventory shrunk 12 → 11 active drift-notes; 3 in-scope-resolutions (66 + 70 + 76) all documented as case studies 7 + 8 + 9 in measurement-methodology doc.
+
+### Pattern 2 reframe — architect HIGH-1 + code-reviewer HIGH-1 convergent absorption
+
+Pattern 2 originally framed as "LoC measurement disambiguation" (function-span vs file-LoC vs feature-span). Both reviewers caught from different angles that the framing was empirically wrong: code-reviewer HIGH-1 verified `install.sh` is 311 LoC currently and `run_smoke_tests` starts at line 218 (max span 93 lines) — the 537 LoC the audit cited was simply WRONG; the empirical pre-HT.1.4 reality was 1188 LoC monolithic body; architect HIGH-1 noted Pattern 2 didn't actually flow from case study 1's lesson which was audit-count drift, not LoC-scope ambiguity. **Reframed**: Pattern 2 → "Audit-method-and-currency awareness" — name the measurement method (visual estimate ≠ analytical claim ≠ fence-line empirical) AND audit findings have audit-date currency. Case study 1 (drift-note 63) reframed as visual-vs-empirical-method gap. Three case studies map to Pattern 2: drift-notes 63 + 64 + 74.
+
+### Code-reviewer HIGH-2 INVALIDATED — Pattern 4 meta-applicability demonstration
+
+Code-reviewer HIGH-2 reported `validate-adr-drift.js` as missing from the substrate (would have invalidated case study 9's "2 callers" claim). Empirical re-grep across the full substrate confirmed the file exists at `hooks/scripts/validators/validate-adr-drift.js` (code-reviewer searched only `scripts/agent-team/` per Pattern 4 violation: caller files may live anywhere). The Pattern 4 example in the doc explicitly captures this meta-applicability: the canonical patterns apply to pre-approval reviews of the doc itself. 2 callers / 3 call sites empirically confirmed: build-spawn-context.js:77,90 (`invokeNodeJson` + `invokeNodeText`) + validate-adr-drift.js:98 (`invokeNodeJson`).
+
+### Methodology
+
+**Per-phase pre-approval gate INVOKED** per master plan v3.1 + HT.1.10 convention-doc precedent (5/5 triggers fired). 12 FLAGs absorbed single-pass (4 HIGH + 4 MEDIUM + 4 LOW; 1 convergent on Pattern 2 reframe; 1 INVALIDATED on code-reviewer HIGH-2). **Empirical pre-validation pattern is now 9-phase confirmed** (HT.1.8-1.15 + HT.2.1).
+
+### Verification
+
+- **73/73 install.sh smoke** (unchanged from HT.1.15; pure-doc work; no behavior surface affected)
+- **46/46 _h70-test.js asserts** (regression check)
+- **0 contracts-validate violations** excluding pre-existing 16 baseline
+- **Forbidden-phrase gate** on measurement-methodology.md: 0 matches (clean first-pass; validates observed-practice framing per architect MEDIUM-2)
+
+### Plugin manifest
+
+`1.12.0` unchanged (no version bump per pure-doc convention; matches HT.1.10 + HT.1.12 + HT.1.15 precedents per code-reviewer HIGH-2 absorption at HT.2.0).
+
+### Wallclock
+
+~135 min end-to-end: sub-plan + empirical pre-validation ~20 min + parallel pre-approval gate FLAG absorption ~50 min + measurement-methodology.md authoring ~40 min + bidirectional cross-refs ~10 min + verification + cutover ~15 min.
+
+### Pattern-level observations
+
+- **HT.2.1 dogfoods the substrate's measurement-methodology discipline at the pre-approval gate itself** — code-reviewer HIGH-2 was caused by single-directory grep (Pattern 4 violation: scripts/agent-team/ only); empirical re-grep across full substrate (hooks/scripts/validators/ included) confirmed file exists. The doc's Pattern 4 example explicitly captures this meta-applicability.
+- **Third convention-doc institutional artifact** in the `swarm/` namespace (HT.1.10 path-conventions + HT.2.1 measurement-methodology + HT.2.5 forthcoming soak-gate-readiness readout); substrate's lightweight-decision-record cohort now 3 BACKLOG.md entries + 2 convention docs = 5 lightweight institutional artifacts across HT.1 + HT.2.1 closing.
+- **Fifty-eighth distinct phase shape**: substrate-internal convention doc with observed-practice framing + 9-case-study cohort + APPENDABLE pattern enumeration + dual-cohort case study (drift-note 76 spans active + in-scope-resolution).
+- **Convergent FLAG absorption strengthened the case-study + pattern derivation** — both reviewers caught the same root issue from different angles; the convergent finding produced a cleaner reframe than either single reviewer's framing would have.
+
+### Next
+
+**HT.2.2** — `parseFrontmatter` YAML 1.2 inline-comment strip (drift-note 73; extend `scripts/agent-team/_lib/frontmatter.js` to strip YAML inline `#` comments per spec; chaos-test against existing KB + ADR + pattern + persona contract frontmatter; sub-plan only per master plan; consumer-visible parser API behavior change → patch bump 1.12.0 → 1.12.1).
+
+---
+
 ## [unreleased] — 2026-05-10 — HT.1.15 _lib/safe-exec.js adoption decision (keep at 2-caller scope + lightweight BACKLOG canonical-pattern entry)
 
 **Hardening Track refactor 15 of N. THIRD and FINAL lightweight institutional decision record per HT.1.6 BACKLOG.md declaration. CLOSES HT.1 backlog top-15 cap.** Documents canonical safe-subprocess pattern + adoption boundary; resolves drift-note 76 in-scope (sibling shape with HT.1.10 drift-note 70). **No version bump** per pure-doc convention (matches HT.1.10/1.12 precedents).

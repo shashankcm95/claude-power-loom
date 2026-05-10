@@ -196,8 +196,11 @@ Persona executes on the author's machine; reads source-tree files for documentar
 
 ## Related work
 
-- **Phase tags**: HT.0.3 (commands path-reference findings); HT.0.4 (persona MD mixed conventions); HT.0.5a (KB hets docs hardcoded paths); HT.1.5 (`$HOME`-aware convention applied to `commands/build-team.md` slash-command bash); HT.1.10 (this doc)
+- **Phase tags**: HT.0.3 (commands path-reference findings); HT.0.4 (persona MD mixed conventions); HT.0.5a (KB hets docs hardcoded paths); HT.1.5 (`$HOME`-aware convention applied to `commands/build-team.md` slash-command bash); HT.1.10 (this doc); HT.2.1 (`swarm/measurement-methodology.md` sibling convention doc)
 - **Drift-notes**: 70 (this doc resolves)
-- **`decision-record-pattern: lightweight` precedents**: HT.1.6 BACKLOG.md documentary persona class entry (first lightweight decision record); this doc (second lightweight decision record); future entries per HT.0.9-verify FLAG-5 right-sizing
+- **`decision-record-pattern: lightweight` precedents**: HT.1.6 BACKLOG.md documentary persona class entry (first lightweight decision record); this doc (second lightweight decision record); HT.1.12 + HT.1.15 BACKLOG.md entries (3 total lightweight decision records across HT.1 closed cohort per HT.0.9-verify FLAG-5 right-sizing); `swarm/measurement-methodology.md` (HT.2.1 — third substrate-internal convention doc; sibling shape with this doc; captures observed measurement-methodology practice across 9 case studies)
+- **Sibling convention docs** (`swarm/` namespace; lightweight institutional decision records; NOT ADR-shape):
+  - `swarm/path-reference-conventions.md` (this doc; HT.1.10; 203 LoC; 5 closed path conventions)
+  - `swarm/measurement-methodology.md` (HT.2.1; ~207 LoC; APPENDABLE 5-pattern enumeration with 9 case studies)
 - **Substrate runtime resolution**: `_lib/toolkit-root.js` `findToolkitRoot()` (H.7.14 extraction) — the runtime counterpart to documentation conventions
 - **Slash-command-context catch**: HT.1.5-verify code-reviewer Q4 HIGH severity finding ($SCRIPT_DIR not set in slash-command context) drove the Convention 3 ($HOME-aware) choice for build-team-helpers.sh
