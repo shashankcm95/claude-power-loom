@@ -365,10 +365,22 @@ EOF
   # `*.sh` additions), pipe to `xargs` → `npx --yes shellcheck --severity=error`.
   # First-run on a fresh machine may take ~10-15s to download shellcheck binary
   # into npx cache; subsequent runs are ~1-2s. Acceptable smoke-harness latency.
-  echo -n "  Test 81 (H.9.1 shellcheck error-severity in local smoke harness; npx shellcheck against substrate .sh files): "
+  echo -n "  Test 81 (H.9.1 shellcheck error-severity in local smoke harness; system shellcheck preferred, npx fallback): "
   # H.9.6.2: see Test 80 comment for `|| T81_EXIT=$?` rationale.
+  # H.9.12.1 hotfix: prefer system `shellcheck` binary over `npx --yes shellcheck`.
+  # The npm `shellcheck` package downloads a Haskell binary from GitHub
+  # releases on first use; CI runners hit intermittent `socket hang up` on
+  # the GitHub download (Test 81 CI failure 2026-05-11). System binary
+  # (apt-installed in CI workflow per .github/workflows/ci.yml) skips the
+  # network dep entirely. Local macOS dev: `brew install shellcheck` once
+  # avoids npx download too; npx remains the fallback for environments
+  # without either.
   T81_EXIT=0
-  T81_OUT=$(cd "$SCRIPT_DIR" && find . -name "*.sh" -not -path "./node_modules/*" -not -path "./.git/*" -print0 | xargs -0 npx --yes shellcheck --severity=error 2>&1) || T81_EXIT=$?
+  if command -v shellcheck >/dev/null 2>&1; then
+    T81_OUT=$(cd "$SCRIPT_DIR" && find . -name "*.sh" -not -path "./node_modules/*" -not -path "./.git/*" -print0 | xargs -0 shellcheck --severity=error 2>&1) || T81_EXIT=$?
+  else
+    T81_OUT=$(cd "$SCRIPT_DIR" && find . -name "*.sh" -not -path "./node_modules/*" -not -path "./.git/*" -print0 | xargs -0 npx --yes shellcheck --severity=error 2>&1) || T81_EXIT=$?
+  fi
   if [ $T81_EXIT -eq 0 ]; then
     echo "OK (substrate shellcheck clean at error severity; 0 errors)"
     passed=$((passed + 1))
@@ -537,7 +549,18 @@ EOF
   touch "$h99_log"
   echo "$$" > "$h99_failure_dir/.lock"
   trap 'rm -f "$h99_failure_dir/.lock" 2>/dev/null' EXIT
-  h99_log_size_before=$(stat -f %z "$h99_log" 2>/dev/null || stat -c %s "$h99_log" 2>/dev/null || echo 0)
+  # H.9.12.1 hotfix: cascade ORDER matters for Linux/macOS portability.
+  # Linux GNU stat: `stat -c %s` is the byte-size printf format; `-f` means
+  # `--file-system` (filesystem status, multi-line output starting with
+  # "  File: ..."). macOS BSD stat: `stat -f %z` is byte-size; `-c` errors.
+  # Trying `-f %z` first on Linux EXITS 0 with non-numeric output (treats `%z`
+  # as a path, succeeds-with-fs-status on $h99_log), so the cascade short-
+  # circuits with garbage data. Then arithmetic `$((after - before))` parses
+  # "File" from output as unbound variable under `set -u`. Putting `-c %s`
+  # FIRST: Linux succeeds immediately; macOS errors on `-c` and falls through
+  # to `-f %z` which works. Both yield numeric strings. Was introduced at
+  # H.9.9 (fa3722a) Test 85 authoring; CI surfaced 2026-05-11.
+  h99_log_size_before=$(stat -c %s "$h99_log" 2>/dev/null || stat -f %z "$h99_log" 2>/dev/null || echo 0)
   h99_start_ms=$(node -e "console.log(Date.now())")
   H99_EXIT=0
   h99_result=$(echo '{"tool_name":"Bash","tool_input":{"command":"npm test"},"tool_response":{"stderr":"Error: failed","is_error":true}}' | CLAUDE_SESSION_ID="$h99_session" node "$SCRIPT_DIR/hooks/scripts/error-critic.js" 2>/dev/null) || H99_EXIT=$?
@@ -545,7 +568,7 @@ EOF
   h99_elapsed_ms=$((h99_end_ms - h99_start_ms))
   rm -f "$h99_failure_dir/.lock"
   trap - EXIT
-  h99_log_size_after=$(stat -f %z "$h99_log" 2>/dev/null || stat -c %s "$h99_log" 2>/dev/null || echo 0)
+  h99_log_size_after=$(stat -c %s "$h99_log" 2>/dev/null || stat -f %z "$h99_log" 2>/dev/null || echo 0)
   h99_log_delta=$((h99_log_size_after - h99_log_size_before))
   if [ $h99_log_delta -gt 0 ]; then
     h99_log_has_timeout=$(tail -c $((h99_log_delta + 100)) "$h99_log" 2>/dev/null | grep -c 'lock_timeout' || echo 0)

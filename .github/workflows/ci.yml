@@ -18,6 +18,13 @@ jobs:
         with:
           node-version: "20"
 
+      # H.9.12.1 hotfix: install shellcheck via apt so Test 81 uses the
+      # system binary (avoids `npx --yes shellcheck` GitHub-release binary
+      # download which intermittently fails with `socket hang up` on CI
+      # runners). Saves ~10-15s per CI run vs npx download too.
+      - name: Install shellcheck (apt)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+
       - name: Run hook smoke tests
         run: |
           # H.7.9 fix: --hooks --test installs hooks first, then runs smoke.
