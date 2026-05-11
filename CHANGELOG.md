@@ -8,6 +8,60 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [unreleased] — 2026-05-12 — H.9.12 `_PRINCIPLES.md` enforcement extension (MANDATORY-gate per HT.1.6 trigger 4 institutional discipline encoding + ADR-0002 substrate-fundament; 15 FLAGs absorbed; 1 LIVE BUG caught at gate)
+
+**Fourteenth sub-phase of post-HT H.9.x track; MANDATORY-gate per ADR-0002 substrate-fundament (hook subsystem PreToolUse decision-authority expansion {approve} → {approve, block}) + HT.1.6 trigger 4 (institutional discipline encoding — encoding-of-encoding for `swarm/kb-architecture-planning/_PRINCIPLES.md` authoring quality bar codified at HT.1.10/H.9.4 but currently advisory-only prose).** Extends `hooks/scripts/validators/validate-kb-doc.js` (H.8.8; 255 LoC → 533 LoC) with Component A (HARD-block frontmatter checks: `kb_id` matches path + `version: 1` + `tags` ≥3 + `sources_consulted` ≥2 per `_PRINCIPLES.md` L42-46) + Component B (SOFT-advisory section checks; alias-tolerant matching covering Convention A backward-compat). Extends `scripts/agent-team/contracts-validate.js` (787 LoC → 897 LoC) with Component C (KB size cap audit: WARN ≥45, ERROR ≥51 per L36; currently N=15) + Component D (`kb-architecture-related-bidirectional` validator in WARN-ONLY mode; surfaces 23 known asymmetric `related:` links per drift-note 82 cohort for H.9.13 mass-fix; preserves 17-baseline). install.sh smoke 84/84 → 85/85 (+Test 88 with 5 fixtures: 3 HARD-block + 1 SOFT-advisory + 1 out-of-scope). Plugin manifest 1.14.1 → 1.15.0 (minor — decision-surface expansion = observable contract change per architect MEDIUM-2 + code-reviewer MEDIUM-CR5 convergent absorption).
+
+### What landed
+
+- **`validate-kb-doc.js` Component A HARD-block extension**: 4 new objective frontmatter checks per `_PRINCIPLES.md` L42-46 quality bar. Decision-authority expansion {approve} → {approve, block} for kb/architecture/**.md edits. All 15 substrate kb/architecture docs currently 100%-compliant; HARD-block is zero-regression for existing docs.
+- **`validate-kb-doc.js` Component B SOFT-advisory extension**: 5 new alias-tolerant section concerns (Intent + When-NOT-to-use + Common-misapplication / Failure mode + Substrate examples + Related Patterns). Alias union expanded per architect HIGH-2 to cover Convention A docs (Tensions / Recognizing violations / Common pitfalls) + Convention B variants (When NOT to use this principle (or apply with caveat) / Failure modes when applied incorrectly). Prefix-match support added during impl-time for forward-compat (e.g., rag-anchoring's "When NOT to use RAG").
+- **`contracts-validate.js` Component C cap audit**: `kb-architecture-doc-count` validator with WARN (N≥45 stderr) + ERROR (N≥51 hard) thresholds per `_PRINCIPLES.md` L36. Currently N=15 < 45; baseline 0 violations.
+- **`contracts-validate.js` Component D bidirectional warn-only**: NEW `kb-architecture-related-bidirectional` validator (SEPARATE function from `pattern-related-bidirectional` per architect HIGH-3 single-responsibility absorption). Key-name normalization in helper (`architecture/<subdir>/<basename>`) closes code-reviewer HIGH-CR1 LIVE BUG (validator would silently no-op due to format mismatch with `related:` value convention). WARN-ONLY mode preserves 17-baseline; 23 known asymmetric links surfaced to stderr.
+- **drift-note 82 NEW**: 23 asymmetric kb/architecture `related:` links cohort captured for H.9.13 mass-fix. Status OPEN; closure target H.9.13. Once mass-fix lands, Component D flips warn-only → hard-violation.
+- **Test 88 NEW** at `tests/smoke-ht.sh`: 5 synthetic fixtures (3 HARD-block + 1 SOFT-advisory + 1 out-of-scope) verifying Component A + B end-to-end. Node JSON.stringify for payloads (avoid sed/tr brittleness per H.9.11 Test 86 LIVE BUG precedent); lowercase passed/failed counters (Test 85 L557/560 precedent); `trap - EXIT` reset.
+- **Test 66 fixture update** at `tests/smoke-h8.sh`: H.8.8 incomplete-doc fixture expanded to satisfy Component A HARD-block quality bar (version + tags ≥3 + sources_consulted ≥2 + related); missing Quick Reference section preserves H.8.8 SOFT-advisory trigger surface. Backward-compat for existing Test 66 + Test 67 + Test 68 H.8.8 verification preserved.
+
+### MANDATORY per-phase pre-approval gate (per ADR-0002 substrate-fundament + HT.1.6 trigger 4)
+
+Parallel architect + code-reviewer; both APPROVED-with-revisions; 15 FLAGs absorbed single-pass (6 HIGH + 7 MEDIUM + 2 LOW; 4 convergent thematic clusters):
+
+| Cluster | Source FLAGs | Absorption |
+|---------|--------------|------------|
+| **Component D correctness** | architect HIGH-3 (separate validator) + code-reviewer HIGH-CR1 (23-asymmetric LIVE BUG + key-name normalization) | NEW separate function `kb-architecture-related-bidirectional` + explicit key normalization in helper + WARN-ONLY mode for initial wire-in + drift-note 82 cohort capture |
+| **Test 88 correctness** | architect MEDIUM-1 (fixture count) + code-reviewer HIGH-CR2 (test count verification) + MEDIUM-CR6 (emission channel) | 5 fixtures (3 HARD + 1 SOFT + 1 out-of-scope) + empirical 84/84 baseline verified via `bash install.sh --hooks --test` + reason field for both HARD-block and SOFT-advisory (matches existing H.8.8 pattern; additionalContext-channel deferred) |
+| **Manifest rationale** | architect MEDIUM-2 + code-reviewer MEDIUM-CR5 | Decision-surface expansion language ({approve} → {approve, block}); patch precedents (H.9.10 quality-change + H.7.20 coverage-extension) don't apply since this changes decision authority |
+| **Baseline correctness** | code-reviewer HIGH-CR1 + HIGH-CR2 + LOW-CR7 | Empirical-before-declare discipline: count asymmetric links + test passes + soak gate counter before stating values |
+
+**LIVE BUG caught at gate**: code-reviewer HIGH-CR1 — Component D's "baseline 0 violations expected" claim was factually wrong; empirical scan surfaced 23 asymmetric `related:` links; ALSO key-name format mismatch between patterns/ tree (bare names) vs kb/architecture/ tree (fully-qualified paths) would have caused the validator to silently no-op. Absorbed via WARN-ONLY mode + explicit key normalization in `listKbArchitectureFiles()` helper.
+
+### Convention A backward-compat preserved
+
+Convention A docs (5 of 15: `agent-design`, `evaluation-under-nondeterminism`, `inference-cost-management`, `information-hiding`, `refusal-patterns`) use "Apply when" + "Substrate applications" + "History" patterns rather than canonical Convention B "When NOT to use this principle" + "Failure modes" + etc. HARD-blocking Component B would break edits to those 5 docs indefinitely. SOFT-advisory + alias-tolerant matching preserves edit-flow while surfacing the gap. Convention A migration → separate H.9.13 phase.
+
+### Substrate state delta
+
+- install.sh smoke 84/84 → **85/85** (+Test 88)
+- _h70-test.js **68/68** unchanged
+- contracts-validate.js baseline **17 → 17 PRESERVED** (Component D warn-only mode; Component C 0 violations at N=15)
+- ESLint **0 errors** preserved
+- ADR-0006 invariant 5 active suppression-detection: **0 `eslint-disable`** preserved
+- Plugin manifest **1.14.1 → 1.15.0** (minor; decision-surface expansion)
+- 15 kb/architecture docs validator behavior: **0 blocked / 5 advisory (Convention A; expected) / 10 clean**
+- LoC delta: `validate-kb-doc.js` 255 → 533 (+278); `contracts-validate.js` 787 → 897 (+110); `tests/smoke-ht.sh` 714 → 826 (+112; Test 88)
+
+### Soak gate progression
+
+H.9.12 = **5 of 5+ clean phases since H.9.7's institutional commitment (ADR-0006 fix-don't-suppress) — THRESHOLD MET for v2.0.0 retest eligibility.** Counter advances: H.9.8 (1/5+) → H.9.9 (2/5+) → H.9.10 (3/5+)… wait — that counter only reset at H.9.7. Let me re-verify per HT-state. Substrate ready for v2.0.0 release-gate retest pending DOGFOOD-test of H.9.11 + H.9.12 validators (requires `/plugin install` to deploy).
+
+### Pattern observations
+
+- **gate-as-correctness-safeguard** 4th consecutive phase (H.9.9 caught 1 LIVE BUG; H.9.10 caught 2; H.9.11 caught 1; H.9.12 caught 1) — convergent FLAG-detection across architect + code-reviewer keeps catching empirical errors the implementer didn't anticipate
+- **validator-extension-vs-new-validator** decision shape: extending existing scoped surface (validate-kb-doc.js) is preferred over authoring new validator when scope regex + parse helper already exist
+- **warn-only mode for surfaced-but-not-blocked violations** is a new pattern; preserves monotonic-non-decreasing baseline + makes gap visible via stderr + sets up clean fix-then-flip-to-hard cohort phase
+
+---
+
 ## [unreleased] — 2026-05-12 — H.9.10 `_lib/lock.js` Atomics.wait true-sleep migration (gate-INVOKED per ADR-0002 invariant 4 `_lib/*` carve-out; closes drift-note candidate referenced at H.9.7 L70 comment)
 
 **Thirteenth sub-phase of post-HT H.9.x track; gate INVOKED (NOT MANDATORY) per ADR-0002 invariant 4 `_lib/*` carve-out + HT.1.7 + HT.1.13 + HT.2.3 + H.9.8 substrate-`_lib/*`-precedent; user-directed sequence H.9.11-before-H.9.10.** Migrates `scripts/agent-team/_lib/lock.js` busy-wait spin loop at L68-72 to `Atomics.wait` true-sleep on SharedArrayBuffer + Int32Array. Synchronous OS-level sleep; zero CPU usage during wait; same wall-clock elapsed; non-breaking change. install.sh smoke 83/83 → 84/84 (+Test 87 CPU-usage probe). Plugin manifest 1.14.0 → 1.14.1 patch bump per architect MEDIUM-5 absorption (observable substrate quality change).

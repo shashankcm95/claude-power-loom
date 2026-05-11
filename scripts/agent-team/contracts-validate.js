@@ -45,6 +45,14 @@ const CONTRACTS_DIR = path.join(TOOLKIT, 'swarm', 'personas-contracts');
 const SKILL_MD = path.join(TOOLKIT, 'skills', 'agent-team', 'SKILL.md');
 const PATTERNS_README = path.join(PATTERNS_DIR, 'README.md');
 const KB_MANIFEST = path.join(TOOLKIT, 'skills', 'agent-team', 'kb', 'manifest.json');
+// H.9.12 Component C + D: kb/architecture/ root for cap-check + bidirectional
+// `related:` validator. Mirror of `skills/agent-team/kb/architecture/` layout
+// validated by validate-kb-doc.js (PreToolUse path scope).
+const KB_ARCHITECTURE_BASE = path.join(TOOLKIT, 'skills', 'agent-team', 'kb', 'architecture');
+// H.9.12 Component C: KB size cap thresholds per _PRINCIPLES.md L36
+// "If we hit 50, audit before adding 51". WARN at 90% capacity; ERROR at L36 cap.
+const KB_ARCHITECTURE_CAP_WARN = 45;
+const KB_ARCHITECTURE_CAP_ERROR = 51;
 const SKILLS_BASE = path.join(TOOLKIT, 'skills');
 const MARKETPLACE_BASE = path.join(process.env.HOME, '.claude', 'plugins', 'marketplaces');
 const HOOKS_JSON = path.join(TOOLKIT, 'hooks', 'hooks.json');
@@ -73,6 +81,31 @@ function listContractFiles() {
   return fs.readdirSync(CONTRACTS_DIR)
     .filter((f) => f.endsWith('.contract.json'))
     .map((f) => ({ name: f.replace(/\.contract\.json$/, ''), path: path.join(CONTRACTS_DIR, f) }));
+}
+
+// H.9.12 Component C + D: walk kb/architecture/<subdir>/*.md tree. Returns
+// entries with `kbId` derived from path (architecture/<subdir>/<basename>)
+// to match the value format used in `related:` arrays (gate code-reviewer
+// HIGH-CR1 absorption — key-name normalization required else validator
+// silently no-ops on all cross-references).
+function listKbArchitectureFiles() {
+  if (!fs.existsSync(KB_ARCHITECTURE_BASE)) return [];
+  const entries = [];
+  for (const sub of fs.readdirSync(KB_ARCHITECTURE_BASE)) {
+    const dir = path.join(KB_ARCHITECTURE_BASE, sub);
+    try {
+      if (!fs.statSync(dir).isDirectory()) continue;
+    } catch { continue; }
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.endsWith('.md')) continue;
+      const basename = f.replace(/\.md$/, '');
+      entries.push({
+        kbId: `architecture/${sub}/${basename}`,
+        path: path.join(dir, f),
+      });
+    }
+  }
+  return entries;
 }
 
 function loadJson(p) {
@@ -206,6 +239,83 @@ validators['pattern-related-bidirectional'] = function () {
           fix: `Add "${name}" to ${target}.md frontmatter "related" array`,
         });
       }
+    }
+  }
+  return violations;
+};
+
+// H.9.12 Component C: KB architecture doc count cap per _PRINCIPLES.md L36
+// "If we hit 50, audit before adding 51". HARD-error at N≥51 (counts toward
+// totalViolations + non-zero exit); WARN at N≥45 (90% capacity; stderr only).
+// Validator-per-concern convention (separate from kb-architecture-related-
+// bidirectional per architect HIGH-3 + code-reviewer HIGH-CR1 absorption).
+validators['kb-architecture-doc-count'] = function () {
+  const violations = [];
+  const entries = listKbArchitectureFiles();
+  const count = entries.length;
+  if (count >= KB_ARCHITECTURE_CAP_ERROR) {
+    violations.push({
+      kind: 'kb-architecture-doc-count-exceeded',
+      count,
+      cap: KB_ARCHITECTURE_CAP_ERROR,
+      fix: `kb/architecture/ contains ${count} docs; per _PRINCIPLES.md L36 audit before exceeding 50. Either consolidate existing docs or document the cap increase in a new _PRINCIPLES.md decision.`,
+    });
+  } else if (count >= KB_ARCHITECTURE_CAP_WARN) {
+    // Warn-mode: stderr only; does NOT contribute to totalViolations.
+    process.stderr.write(`  ⚠ kb-architecture-doc-count: ${count}/${KB_ARCHITECTURE_CAP_ERROR} docs (≥${KB_ARCHITECTURE_CAP_WARN} warn threshold reached; cap audit per _PRINCIPLES.md L36)\n`);
+  }
+  return violations;
+};
+
+// H.9.12 Component D: bidirectional `related:` validation extended to
+// kb/architecture/ tree. WARN-ONLY MODE for initial wire-in: surfaces known
+// asymmetric links via stderr but does NOT increment totalViolations
+// (preserves contracts-validate.js 17-baseline monotonic-non-decreasing
+// invariant). Drift-note 82 captures the cohort for H.9.13 mass-fix; once
+// closed, this validator flips from warn-only to hard-violation.
+//
+// Key-name normalization (gate code-reviewer HIGH-CR1 LIVE BUG absorption):
+// listKbArchitectureFiles() returns `kbId: architecture/<subdir>/<basename>`
+// matching the `related:` value format used in kb/architecture frontmatter.
+// Without this, the `if (!relatedMap.has(target)) continue` guard would
+// silently skip every cross-reference, making the validator a no-op.
+//
+// Separate function from pattern-related-bidirectional (gate architect
+// HIGH-3 absorption — validator-per-concern convention per
+// kb/architecture/discipline/single-responsibility.md; clean violation
+// attribution; matches L188 + L214 separation pattern).
+validators['kb-architecture-related-bidirectional'] = function () {
+  // WARN-ONLY: violations array intentionally always empty for H.9.12.
+  // H.9.13 closure flips this to hard-violation mode.
+  const violations = [];
+  const relatedMap = new Map();
+  for (const { kbId, path: fp } of listKbArchitectureFiles()) {
+    try {
+      const { frontmatter: fm } = parseFrontmatter(fs.readFileSync(fp, 'utf8'));
+      const related = Array.isArray(fm.related) ? fm.related : (fm.related ? [fm.related] : []);
+      relatedMap.set(kbId, new Set(related));
+    } catch { /* corrupt frontmatter or read error; skip — fail-soft */ }
+  }
+  const asymmetricLinks = [];
+  for (const [kbId, related] of relatedMap.entries()) {
+    for (const target of related) {
+      // Skip references outside kb/architecture tree (cross-tree refs allowed)
+      if (!relatedMap.has(target)) continue;
+      const reverse = relatedMap.get(target);
+      if (!reverse.has(kbId)) {
+        asymmetricLinks.push({ from: kbId, to: target });
+      }
+    }
+  }
+  // Emit stderr warnings for visibility (institutional discipline encoding);
+  // drift-note 82 cohort captured for H.9.13 mass-fix.
+  if (asymmetricLinks.length > 0) {
+    process.stderr.write(`  ⚠ kb-architecture-related-bidirectional (WARN-ONLY MODE per H.9.12; drift-note 82 cohort): ${asymmetricLinks.length} asymmetric link(s) — cohort for H.9.13 mass-fix\n`);
+    for (const link of asymmetricLinks.slice(0, 10)) {
+      process.stderr.write(`      ${link.from} → ${link.to} (no back-link)\n`);
+    }
+    if (asymmetricLinks.length > 10) {
+      process.stderr.write(`      ... and ${asymmetricLinks.length - 10} more (see drift-note 82 for full cohort)\n`);
     }
   }
   return violations;

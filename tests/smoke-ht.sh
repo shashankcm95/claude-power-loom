@@ -712,3 +712,125 @@ EOF
     failed=$((failed + 1))
   fi
   rm -rf "$T65_TMPDIR"
+
+  # Test 88: H.9.12 — _PRINCIPLES.md enforcement extension to validate-kb-doc.js
+  # Verifies Components A (HARD-block frontmatter) + B (SOFT-advisory sections)
+  # via 5 synthetic stdin payloads (NEVER-real paths under /tmp/h912-fixture/).
+  #
+  # Per H.9.11 Test 86 + H.9.10 Test 87 precedent: lowercase passed/failed
+  # counters (Test 85 L557/560); Node JSON.stringify for event payloads
+  # (avoid sed/tr/printf brittleness); trap-EXIT-reset; synthetic-fixture-only.
+  #
+  # 5 fixtures per H.9.12 gate architect MEDIUM-1 + code-reviewer MEDIUM-CR6:
+  #   F1: missing version: → block (Component A)
+  #   F2: tags only 2 entries → block (Component A)
+  #   F3: sources_consulted only 1 entry → block (Component A)
+  #   F4: valid frontmatter but missing "When NOT to use" → approve + advisory (Component B)
+  #   F5: out-of-scope path → approve no advisory (regex scope guard)
+  echo -n "  Test 88 (H.9.12 validate-kb-doc.js _PRINCIPLES.md enforcement; 5 fixtures: HARD-block + SOFT-advisory + out-of-scope): "
+  T88_RESULT=$(node -e "
+    const { spawnSync } = require('child_process');
+    const validator = '$SCRIPT_DIR/hooks/scripts/validators/validate-kb-doc.js';
+    const fixtures = [
+      {
+        name: 'F1_missing_version',
+        payload: {
+          tool_name: 'Write',
+          tool_input: {
+            file_path: '/tmp/h912-fixture/skills/agent-team/kb/architecture/test/no-version.md',
+            content: '---\nkb_id: architecture/test/no-version\ntags:\n  - a\n  - b\n  - c\nsources_consulted:\n  - x\n  - y\n---\n## Summary\nf\n## Quick Reference\nb\n## Intent\nz\n## When NOT to use\nf\n## Failure modes\nb\n## Substrate applications\nz'
+          }
+        },
+        expectDecision: 'block',
+        expectReasonContains: 'version'
+      },
+      {
+        name: 'F2_tags_too_few',
+        payload: {
+          tool_name: 'Write',
+          tool_input: {
+            file_path: '/tmp/h912-fixture/skills/agent-team/kb/architecture/test/tags-2.md',
+            content: '---\nkb_id: architecture/test/tags-2\nversion: 1\ntags:\n  - a\n  - b\nsources_consulted:\n  - x\n  - y\n---\n## Summary\nf\n## Quick Reference\nb'
+          }
+        },
+        expectDecision: 'block',
+        expectReasonContains: 'tags'
+      },
+      {
+        name: 'F3_sources_too_few',
+        payload: {
+          tool_name: 'Write',
+          tool_input: {
+            file_path: '/tmp/h912-fixture/skills/agent-team/kb/architecture/test/sources-1.md',
+            content: '---\nkb_id: architecture/test/sources-1\nversion: 1\ntags:\n  - a\n  - b\n  - c\nsources_consulted:\n  - x\n---\n## Summary\nf'
+          }
+        },
+        expectDecision: 'block',
+        expectReasonContains: 'sources_consulted'
+      },
+      {
+        name: 'F4_missing_when_not_section',
+        payload: {
+          tool_name: 'Write',
+          tool_input: {
+            file_path: '/tmp/h912-fixture/skills/agent-team/kb/architecture/test/no-when-not.md',
+            content: '---\nkb_id: architecture/test/no-when-not\nversion: 1\ntags:\n  - a\n  - b\n  - c\nsources_consulted:\n  - x\n  - y\nrelated:\n  - architecture/other/foo\n---\n## Summary\nf\n## Quick Reference\nb\n## Intent\nz\n## Failure modes\nb\n## Substrate applications\nz'
+          }
+        },
+        expectDecision: 'approve',
+        expectReasonContains: 'KB-DOC-INCOMPLETE'
+      },
+      {
+        name: 'F5_out_of_scope',
+        payload: {
+          tool_name: 'Write',
+          tool_input: {
+            file_path: '/tmp/h912-fixture/some-other-dir/test.md',
+            content: 'foo bar baz'
+          }
+        },
+        expectDecision: 'approve',
+        expectReasonAbsent: true
+      }
+    ];
+    const results = [];
+    for (const f of fixtures) {
+      const r = spawnSync('node', [validator], { input: JSON.stringify(f.payload), encoding: 'utf8' });
+      if (r.status !== 0) {
+        results.push({ name: f.name, ok: false, why: 'non-zero exit: ' + r.status, stderr: r.stderr });
+        continue;
+      }
+      let out;
+      try { out = JSON.parse(r.stdout); }
+      catch (e) {
+        results.push({ name: f.name, ok: false, why: 'json-parse-fail: ' + e.message, stdout: r.stdout.slice(0, 100) });
+        continue;
+      }
+      if (out.decision !== f.expectDecision) {
+        results.push({ name: f.name, ok: false, why: 'decision-mismatch: got ' + out.decision + ' want ' + f.expectDecision });
+        continue;
+      }
+      if (f.expectReasonAbsent && out.reason) {
+        results.push({ name: f.name, ok: false, why: 'reason-present-but-should-be-absent' });
+        continue;
+      }
+      if (f.expectReasonContains && (!out.reason || !out.reason.includes(f.expectReasonContains))) {
+        results.push({ name: f.name, ok: false, why: 'reason-missing-content: want ' + f.expectReasonContains });
+        continue;
+      }
+      results.push({ name: f.name, ok: true });
+    }
+    const passes = results.filter(r => r.ok).length;
+    const fails = results.filter(r => !r.ok);
+    console.log(JSON.stringify({ passes, total: fixtures.length, fails }));
+  " 2>&1)
+  T88_PASSES=$(echo "$T88_RESULT" | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print(d.get('passes'))" 2>/dev/null)
+  T88_TOTAL=$(echo "$T88_RESULT" | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print(d.get('total'))" 2>/dev/null)
+  T88_FAILS=$(echo "$T88_RESULT" | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print(json.dumps(d.get('fails', [])))" 2>/dev/null)
+  if [ "$T88_PASSES" = "5" ] && [ "$T88_TOTAL" = "5" ]; then
+    echo "OK (5/5 fixtures: HARD-block ×3 + SOFT-advisory ×1 + out-of-scope ×1 all match expected decisions)"
+    passed=$((passed + 1))
+  else
+    echo "FAIL: $T88_PASSES/$T88_TOTAL passes; fails=$T88_FAILS [raw: ${T88_RESULT:0:200}]"
+    failed=$((failed + 1))
+  fi

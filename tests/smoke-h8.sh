@@ -462,6 +462,9 @@ EOF
   rm -rf "$T64_TMPDIR"
 
   # Test 66: H.8.8 — validate-kb-doc.js fires [KB-DOC-INCOMPLETE] on incomplete kb/architecture doc
+  # H.9.12 update: fixture frontmatter expanded to satisfy Component A HARD-block
+  # quality bar (version + tags ≥3 + sources_consulted ≥2 per _PRINCIPLES.md L42-46);
+  # missing Quick Reference section preserves the H.8.8 SOFT-advisory trigger surface.
   echo -n "  Test 66 (H.8.8 validate-kb-doc emits forcing instruction on incomplete kb doc): "
   T66_TMPDIR=$(mktemp -d)
   T66_KB_DOC="$T66_TMPDIR/kb/architecture/test/incomplete.md"
@@ -469,11 +472,21 @@ EOF
   cat > "$T66_KB_DOC" <<EOF
 ---
 kb_id: architecture/test/incomplete
+version: 1
+tags:
+  - test
+  - h88-fixture
+  - incomplete
+sources_consulted:
+  - "Test source 1"
+  - "Test source 2"
+related:
+  - architecture/test/other
 ---
 
 ## Summary
 
-This doc has frontmatter and a Summary but is missing tags, Quick Reference.
+This doc has frontmatter and a Summary but is missing Quick Reference (preserves H.8.8 SOFT-advisory trigger surface; Component A HARD-block satisfied).
 EOF
   T66_OUT=$(echo "{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$T66_KB_DOC\"}}" | node "$SCRIPT_DIR/hooks/scripts/validators/validate-kb-doc.js" 2>/dev/null)
   T66_DECISION=$(echo "$T66_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('decision', ''))")
