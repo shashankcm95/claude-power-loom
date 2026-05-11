@@ -25,6 +25,10 @@ const { withLock } = require('./_lib/lock'); // H.3.2 (CS-1 code-reviewer X-3)
 // scripts; now single-sourced via _lib/runState.js (closes "_lib/ is a
 // directory of one" finding).
 const { runStateDir } = require('./_lib/runState');
+// H.9.8: migrated from inline atomic-write pattern (Class B substrate
+// try-catch-cleanup-throw) to shared helper. Cleanup-on-error absorbed into
+// helper post-condition; defensive mkdirSync preserved per HT.2.3 HIGH-A2.
+const { writeAtomic } = require('./_lib/atomic-write');
 
 function treePath(runId) {
   return path.join(runStateDir(runId), 'tree.json');
@@ -47,15 +51,9 @@ function load(runId) {
 // (tmp + rename, no lock); withTreeLock wraps the WHOLE RMW at the callsite.
 function writeTreeAtomic(runId, tree) {
   const p = treePath(runId);
+  // H.9.8: defensive mkdirSync preserved per HT.2.3 HIGH-A2 (helper covers).
   fs.mkdirSync(path.dirname(p), { recursive: true });
-  const tmp = p + '.tmp.' + process.pid;
-  try {
-    fs.writeFileSync(tmp, JSON.stringify(tree, null, 2));
-    fs.renameSync(tmp, p);
-  } catch (err) {
-    try { fs.unlinkSync(tmp); } catch { /* ignore */ }
-    throw err;
-  }
+  writeAtomic(p, tree);
 }
 
 // 15s timeout (vs default 3s) to match budget-tracker — chaos-test convention

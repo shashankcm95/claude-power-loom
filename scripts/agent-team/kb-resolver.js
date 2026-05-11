@@ -43,6 +43,9 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { withLock } = require('./_lib/lock'); // H.3.2 (CS-1 code-reviewer X-3)
+// H.9.8: migrated 2 sites (writeManifestAtomic Class A1 lock-wrapped +
+// cmdSnapshot Class A2 standalone CLI) from inline atomic-write pattern.
+const { writeAtomic } = require('./_lib/atomic-write');
 // H.8.7 (chaos H4): shared frontmatter parser. Replaced inline parseFrontmatter
 // (see git history at H.8.6) — kb-resolver and adr.js previously had divergent
 // implementations with different bugs; single canonical source closes drift.
@@ -95,11 +98,12 @@ function loadManifest() {
 // to prevent two concurrent `scan` invocations from clobbering each other.
 const MANIFEST_LOCK = MANIFEST_PATH + '.lock';
 function writeManifestAtomic(manifest) {
+  // H.9.8: defensive mkdirSync preserved per HT.2.3 HIGH-A2
+  // (KB_BASE === path.dirname(MANIFEST_PATH); helper covers but explicit
+  // decision-to-not-delete avoids future drift-note surfacing).
   fs.mkdirSync(KB_BASE, { recursive: true });
   withLock(MANIFEST_LOCK, () => {
-    const tmp = MANIFEST_PATH + '.tmp.' + process.pid;
-    fs.writeFileSync(tmp, JSON.stringify(manifest, null, 2));
-    fs.renameSync(tmp, MANIFEST_PATH);
+    writeAtomic(MANIFEST_PATH, manifest);
   });
 }
 
@@ -404,9 +408,9 @@ function cmdSnapshot(args) {
       }])
     ),
   };
-  const tmp = snapshotPath + '.tmp.' + process.pid;
-  fs.writeFileSync(tmp, JSON.stringify(snapshot, null, 2));
-  fs.renameSync(tmp, snapshotPath);
+  // H.9.8: migrated to writeAtomic; Class A2 standalone CLI (no envelope;
+  // helper auto-mkdir covers parent dir).
+  writeAtomic(snapshotPath, snapshot);
   console.log(JSON.stringify({
     action: 'snapshot',
     runId,

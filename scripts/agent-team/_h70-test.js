@@ -818,6 +818,47 @@ assert(
 );
 try { fs.rmSync(path.dirname(lockTest4Dir), { recursive: true, force: true }); } catch { /* cleanup: fixture dir may not exist if test errored early */ }
 
+// ===== Section 10: H.9.8 _lib/atomic-write.js cleanup-on-error post-condition (2 tests) =====
+// LOW-7 absorption: monkey-patch real-fs pattern (consistent with file's
+// real-fs throughout; no mock-fs library introduced). Verifies Option A
+// helper enhancement (cleanup-on-error semantic) absorbs the prior Class B
+// caller-side unlinkSync(tmp) bookkeeping into helper post-condition.
+
+const { writeAtomic: writeAtomicH98, writeAtomicString: writeAtomicStringH98 } = require('./_lib/atomic-write');
+
+// Test 65 (Section 10.1): writeAtomic cleans up tmp on renameSync failure
+const h98TmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'h98-cleanup-rename-'));
+const h98Target1 = path.join(h98TmpDir, 'test.json');
+const origRenameSync65 = fs.renameSync;
+fs.renameSync = () => { throw new Error('Mock rename failure (H.9.8 test 65)'); };
+let h98Test65Threw = false;
+try {
+  try { writeAtomicH98(h98Target1, { test: true }); } catch (_e) { h98Test65Threw = true; }
+} finally {
+  fs.renameSync = origRenameSync65;
+}
+const h98Test65TmpFiles = fs.readdirSync(h98TmpDir).filter((f) => f.includes('.tmp.'));
+assert(h98Test65Threw, 'H.9.8 test 65: writeAtomic re-throws on renameSync failure');
+assertEqual(h98Test65TmpFiles.length, 0, 'H.9.8 test 65: tmp file cleaned up after renameSync failure');
+fs.rmSync(h98TmpDir, { recursive: true, force: true });
+
+// Test 66 (Section 10.2): writeAtomicString cleans up tmp on writeFileSync failure
+const h98TmpDir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'h98-cleanup-write-'));
+const h98Target2 = path.join(h98TmpDir2, 'test.txt');
+const origWriteFileSync66 = fs.writeFileSync;
+fs.writeFileSync = () => { throw new Error('Mock writeFileSync failure (H.9.8 test 66)'); };
+let h98Test66Threw = false;
+try {
+  try { writeAtomicStringH98(h98Target2, 'test content'); } catch (_e) { h98Test66Threw = true; }
+} finally {
+  fs.writeFileSync = origWriteFileSync66;
+}
+const h98Test66TmpFiles = fs.readdirSync(h98TmpDir2).filter((f) => f.includes('.tmp.'));
+assert(h98Test66Threw, 'H.9.8 test 66: writeAtomicString re-throws on writeFileSync failure');
+// Note: writeFileSync mocked to throw means no tmp file was written; cleanup unlinkSync targets nonexistent path; nested try catches ENOENT silently
+assertEqual(h98Test66TmpFiles.length, 0, 'H.9.8 test 66: no tmp file exists after writeFileSync failure (write never happened)');
+fs.rmSync(h98TmpDir2, { recursive: true, force: true });
+
 // ===== Summary =====
 
 console.log(`\n=== Summary ===`);

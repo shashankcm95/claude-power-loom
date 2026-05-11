@@ -23,6 +23,8 @@ const path = require('path');
 const { withLock } = require('./_lib/lock'); // H.3.2 (CS-1 hacker.zoe CRIT-4)
 // H.5.5 (CS-2/CS-3 theo HIGH): single-source RUN_STATE_BASE via _lib/runState.
 const { runStateDir } = require('./_lib/runState');
+// H.9.8: migrated writeBudgetsAtomic (Class A1 lock-wrapped) to shared helper.
+const { writeAtomic } = require('./_lib/atomic-write');
 
 // H.7.14 — `CONTRACTS_BASE` second fallback now uses shared `findToolkitRoot()`
 // helper (from `_lib/toolkit-root.js`) instead of hardcoded path.
@@ -66,10 +68,9 @@ function loadBudgets(runId) {
 // across processes.)
 function writeBudgetsAtomic(runId, data) {
   const fp = budgetFilePath(runId);
+  // H.9.8: defensive mkdirSync preserved per HT.2.3 HIGH-A2 (helper covers).
   fs.mkdirSync(path.dirname(fp), { recursive: true });
-  const tmp = fp + '.tmp.' + process.pid;
-  fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
-  fs.renameSync(tmp, fp);
+  writeAtomic(fp, data);
 }
 
 // Helper to lock the whole RMW cycle on the budget file for a run.

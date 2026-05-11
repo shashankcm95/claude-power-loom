@@ -8,6 +8,75 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [unreleased] — 2026-05-12 — H.9.8 atomic-write DRY 9-site consolidation + helper API additive cleanup-on-error + H.9.7.1-equivalent yaml-lint hotfix-fold
+
+**Tenth sub-phase of post-HT H.9.x track; substantive multi-site `_lib/*` migration + helper API additive enhancement; FIRST post-H.9.7 clean phase toward v2.0.0 soak gate.** Migrates 9 substrate sites to `scripts/agent-team/_lib/atomic-write.js` shared helper (8 originally enumerated in helper's 2026-05-10 header inventory + 9th gate-surfaced site `quality-factors-backfill.js:124-128` via code-reviewer HIGH-CR3 catch — closes WEAKEST tmp form bare `.tmp` no pid suffix). install.sh smoke 81/81 unchanged. `_h70-test.js` 64 → 68 (+4 from 2 new cleanup-on-error tests). Plugin manifest 1.13.0 → 1.13.1 (patch — helper API contract additive; cleanup-on-error post-condition strictly strengthens).
+
+### What landed
+
+- **Helper Option A enhancement** in `scripts/agent-team/_lib/atomic-write.js` — `writeAtomic` + `writeAtomicString` now wrap `writeFileSync` + `renameSync` in try-catch; on failure attempt `fs.unlinkSync(tmp)` best-effort (nested try; ignored if cleanup itself fails) then re-throw original. Cleanup-on-error post-condition strictly strengthens; uniform across 12 post-H.9.8 consumers (4 existing + 8 new files / 9 new sites)
+- **9 sites migrated** across 8 consumer files:
+  - Class A1 lock-wrapped (drop-in inside `withLock` callback): `kb-resolver.js:97` (writeManifestAtomic) + `budget-tracker.js:70` (writeBudgetsAtomic)
+  - Class A2 standalone CLI bare-write: `kb-resolver.js:407` (cmdSnapshot) + `quality-factors-backfill.js:124` (NEW per HIGH-CR3; closes weakest-tmp-form)
+  - Class B substrate try-catch-cleanup-throw (wrappers dropped entirely; cleanup absorbed into helper): `prompt-pattern-store.js:62` + `tree-tracker.js:48` (writeTreeAtomic)
+  - Class C hook fail-soft try-catch-log (wrappers preserved per ADR-0001/0003; log events `atomic_write_failed` + `state_save_failed` preserved as test-surface): `session-reset.js:35` + `fact-force-gate.js:44` (saveTracker) + `session-end-nudge.js:64` (saveState)
+- **Defensive mkdirSync calls preserved at 5 of 9 sites** per HT.2.3 HIGH-A2 substrate convention (helper auto-mkdir covers but explicit-decision-to-not-delete avoids future drift-note surfacing)
+- **Test 65 + Test 66** in `_h70-test.js` Section 10: monkey-patch real-fs cleanup-on-error verification (per LOW-7 absorption: `_h70-test.js` uses real-fs throughout; no mock-fs library introduced; `fs.renameSync` / `fs.writeFileSync` reassigned to throw + restored in `finally` block)
+- **H.9.7.1-equivalent hotfix folded into H.9.8 cutover** — live smoke at H.9.8 verify-phase surfaced 4 pre-existing YAML 1.2 violations in HT-state.md from H.9.7 cutover narrative:
+  - literal `\u`/`\x`/`\*`/`\t` escape sequences in double-quoted YAML strings (escaped via double-backslash per YAML 1.2 spec)
+  - duplicate `last_session_phase_priors:` key at L6 (4th recurrence of H.9.5-original bug pattern; H.9.6.1 fixed once; H.9.7 reintroduced; deleted duplicate opener)
+  - truncated/unclosed `h_9_6_2_decision:` value stub at L72 (deleted)
+- **Drift-note 80 NEW capture**: cutover-edit-time YAML-violation pattern recurring 4×; codification (BACKLOG narrative-quoting convention; YAML 1.2 spec at install.sh smoke Test 83) does NOT enforce author discipline; need deterministic PreToolUse YAML validator on HT-state.md edits OR pre-commit hook. Cohort with drift-note 78 (ledger-write convention enforcement gap) + drift-note 79 (CONFIG_GUARD_BOOTSTRAP env-var). H.9.11 PreToolUse ADR-status validator scope expansion candidate
+
+### Per-phase pre-approval gate (INVOKED per HT.1.7 + HT.1.13 + HT.2.3 substrate-`_lib/*`-DRY-consolidation precedent)
+
+Parallel architect + code-reviewer; both APPROVED-with-revisions; 8 FLAGs absorbed single-pass:
+
+- **Architect** (3 MEDIUM + 2 LOW):
+  - MED-1: Class A taxonomy split A1 (lock-wrapped) vs A2 (standalone-CLI) — folded into Pending-sites table
+  - MED-2: JSON-indent explicit Probe 9 (vs trust-the-reviewer) — folded into Verification probes §
+  - MED-3: helper-internal log telemetry drift-note framing — folded into Out-of-scope §
+  - LOW-1: Option C (parameterized cleanup) explicit rejection paragraph — folded into Option-axis §
+  - LOW-2: `_h70-test.js` baseline count verification — verified at implementation: was 64; now 68
+- **Code-reviewer** (3 HIGH + 2 MEDIUM + 2 LOW):
+  - **HIGH-CR1 + HIGH-CR2**: mkdirSync-drop contradiction (replacement specs silently dropped calls while §Out-of-scope said `defensive double-mkdir preserved`); absorbed via uniform PRESERVE-all-mkdirSync per HT.2.3 HIGH-A2 substrate convention
+  - **HIGH-CR3**: 9th uncounted site `quality-factors-backfill.js:124-128` — exact HT.2.3 HIGH-CR2 analogue; INCLUDED in scope as Class A2 standalone CLI; closes weakest-tmp-form
+  - MED-4: session-end-nudge per-site JSON-indent note — folded into replacement spec
+  - MED-5: kb-resolver:97 Class-A → A1 relabel — folded into taxonomy (convergent with MED-1)
+  - LOW-6: aggregate LoC delta math correction (-25 → -12 after mkdirSync preservation + 9th site) — folded
+  - LOW-7: test-shape monkey-patch real-fs (not mock-fs framing) — folded into Tests-added §
+
+Convergent FLAGs: MED-1+MED-5 Class A taxonomy split + MED-2+MED-4 JSON-indent verification treatment. Both reviewers concur on absorb-FLAGs-first verdict.
+
+### ADR-0006 self-empirical validation
+
+My own H.9.8 test code violated ADR-0006 invariant 1 (caught error `e` not `_e`); Test 84 ESLint surfaced before commit; rename to `_e` resolved. **Lint-surfaces-real-bugs property holds at 5th consecutive lint-application phase** (H.9.0 markdownlint / H.9.1 shellcheck / H.9.5 yaml-lint / H.9.7 ESLint / H.9.8 ESLint catches own test code). User reframe "fix before it gets out of control" validated empirically by my own work landing this same phase.
+
+### Methodology
+
+Sub-plan + per-phase pre-approval gate INVOKED per HT.1.7 + HT.1.13 + HT.2.3 substrate-`_lib/*`-DRY-consolidation precedent (NOT ADR-0002 per invariant 4 `_lib/*` carve-out). Option-axis design surface (cleanup-on-error semantic preservation across 4 error-handling sub-classes A1/A2/B/C) IS the gate trigger.
+
+### Verification
+
+3-tier verification PASS: 81/81 install.sh smoke (unchanged) + 68/68 `_h70-test.js` (was 64; +4 from 2 new monkey-patch real-fs cleanup-on-error tests; each test has 2 assertions) + 16-baseline contracts-validate. Helper LoC 84 → 99. 12 atomic-write consumers grep-confirmed. 0 substrate inline atomic-write patterns remaining (only `_lib/atomic-write.js` body matches; 3 excluded patterns: self-improve-store.js quarantine renames + `_log.js` log rotation). Test 83 yaml-lint clean post-hotfix-fold.
+
+### Plugin manifest
+
+`1.13.0` → `1.13.1` (patch — helper API contract additive; cleanup-on-error post-condition observably strengthens; HT.2.2 substrate-helper-API-additive patch bump precedent).
+
+### Pattern-level observations
+
+1. **HT.2.3-HIGH-CR2-analogue catch** — sub-plan-listed inventory miscount caught by gate's live grep against substrate state. Gate works as designed for exactly this failure mode (2nd occurrence; 1st was HT.2.3's 8 → 10 consumer count correction)
+2. **Codification-doesn't-enforce pattern recurrence** — 4 consecutive cutover-edit-time YAML violations confirm BACKLOG narrative-quoting convention codification is insufficient without deterministic enforcement hook. Drift-note 80 escalates urgency
+3. **Hotfix-fold-pre-ship convenience pattern** — when hotfix scope is small AND pre-ship, fold into cutover commit vs separate hotfix branch. H.9.6.1 was post-ship discovery (separate hotfix branch correct); H.9.7.1-equivalent at H.9.8 was pre-ship discovery (fold-into-cutover correct)
+4. **Empirical pre-validation pattern 28-phase confirmed** (HT.1.8-1.15 + HT.2.1-2.5 + HT.3.1-3.3 + H.9.0-H.9.8)
+
+### Soak gate impact
+
+H.9.8 is CLEAN-toward-v2.0.0 (NO new ADR; NO new substrate convention doc; NO schema change; helper API additive cleanup-on-error post-condition strengthens; architect verdict at gate). Counter advances 0 → 1/5+ post-H.9.7 reset. Next: H.9.9 error-critic.js fail-soft contract upgrade (MANDATORY gate per ADR-0002 substrate-fundament + ADR-0001 invariants).
+
+---
+
 ## [unreleased] — 2026-05-11 — H.9.7 ESLint v9 baseline + NEW ADR-0006 fix-don't-suppress institutional commitment
 
 **Ninth sub-phase of post-HT H.9.x track; FIRST mandatory-gate phase per H.9.5.1 architect re-bucket; substrate-as-testing-framework reframe encoding at JavaScript content layer.** User directive at H.9.7 entry crystallized a new institutional principle: "the approach should never be to suppress and move on. It should always be fix before it gets out of control. we need to bake this into our plugin contract so we can increase reliability." Codified as NEW ADR-0006 (governance-tier; 6th ADR). install.sh smoke 79/79 → 81/81 (+2 tests). Plugin manifest 1.12.3 → 1.13.0 (minor — substantive substrate-fundament addition).

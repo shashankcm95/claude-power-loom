@@ -15,6 +15,11 @@ const path = require('path');
 const os = require('os');
 const { log } = require('./_log.js');
 const logger = log('session-reset');
+// H.9.8: migrated tracker write (Class C hook fail-soft; outer try at L35
+// preserved as fail-soft envelope per ADR-0001/0003) from inline atomic-write
+// pattern to shared helper. Cross-tree relative require mirrors HT.2.3 Part B
+// + session-self-improve-prompt.js precedents.
+const { writeAtomic } = require('../../scripts/agent-team/_lib/atomic-write');
 
 const SESSION_ID = process.env.CLAUDE_SESSION_ID || process.env.CLAUDE_CONVERSATION_ID || String(process.ppid || 'default');
 const TRACKER_PATH = path.join(os.tmpdir(), `claude-read-tracker-${SESSION_ID}.json`);
@@ -33,14 +38,13 @@ const looksLikePluginInstall = SCRIPT_DIR.includes('/plugins/') || SCRIPT_DIR.in
 const placeholderUnexpanded = PLUGIN_ROOT.includes('${') || PLUGIN_ROOT === '';
 
 try {
-  // Use the same atomic-rename pattern that fact-force-gate uses on this file
-  // (writers must be consistent or readers see partial JSON).
-  const tmpPath = TRACKER_PATH + '.tmp.' + process.pid;
-  fs.writeFileSync(tmpPath, JSON.stringify({
+  // H.9.8: migrated to writeAtomic (writers + readers must be consistent or
+  // readers see partial JSON; fact-force-gate.js also migrated as part of
+  // H.9.8 — both now use the shared atomic-write helper).
+  writeAtomic(TRACKER_PATH, {
     files: {},
     sessionStart: Date.now(),
-  }, null, 2));
-  fs.renameSync(tmpPath, TRACKER_PATH);
+  });
   logger('reset', {
     sessionId: SESSION_ID,
     pluginRoot: PLUGIN_ROOT || '(unset)',

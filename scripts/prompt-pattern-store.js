@@ -44,6 +44,11 @@ const log = makeLogger('prompt-pattern-store');
 // stale window — strictly better for single-machine substrate scripts
 // (immediate reclamation after crash vs 30s grace window).
 const { withLock } = require('./agent-team/_lib/lock');
+// H.9.8: migrated from inline tmp+writeFileSync+renameSync atomic-write
+// pattern (Class B substrate try-catch-cleanup-throw) to shared helper.
+// Cleanup-on-error absorbed into helper post-condition; defensive mkdirSync
+// preserved per HT.2.3 HIGH-A2 substrate convention.
+const { writeAtomic } = require('./agent-team/_lib/atomic-write');
 
 const STORE_PATH = path.join(os.homedir(), '.claude', 'prompt-patterns.json');
 const LOCK_PATH = STORE_PATH + '.lock';
@@ -59,15 +64,11 @@ function loadStore() {
 }
 
 function saveStore(store) {
-  const tmpFile = STORE_PATH + '.tmp.' + process.pid;
+  // H.9.8: migrated to _lib/atomic-write.js writeAtomic; defensive mkdirSync
+  // preserved per HT.2.3 HIGH-A2 substrate convention (helper covers but
+  // explicit-decision-to-not-delete avoids future drift-note surfacing).
   fs.mkdirSync(path.dirname(STORE_PATH), { recursive: true });
-  try {
-    fs.writeFileSync(tmpFile, JSON.stringify(store, null, 2));
-    fs.renameSync(tmpFile, STORE_PATH);
-  } catch (err) {
-    try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
-    throw err;
-  }
+  writeAtomic(STORE_PATH, store);
 }
 
 // Normalize prompts for fuzzy comparison.

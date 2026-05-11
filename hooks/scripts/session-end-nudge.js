@@ -26,6 +26,10 @@ const path = require('path');
 const os = require('os');
 const { log: makeLogger } = require('./_log.js');
 const { acquireLock, releaseLock } = require('../../scripts/agent-team/_lib/lock');
+// H.9.8: migrated saveState (Class C hook fail-soft; function-scoped try-catch
+// + log('state_save_failed') preserved; STATE_DIR mkdirSync preserved per
+// HT.2.3 HIGH-A2 convention). Independent of lock primitive migration at HT.2.3.
+const { writeAtomic } = require('../../scripts/agent-team/_lib/atomic-write');
 const log = makeLogger('session-end-nudge');
 
 const NUDGE_THRESHOLD = parseInt(process.env.CLAUDE_SESSION_NUDGE_THRESHOLD || '10', 10);
@@ -63,10 +67,14 @@ function loadState() {
  */
 function saveState(state) {
   try {
+    // H.9.8: defensive STATE_DIR mkdirSync preserved per HT.2.3 HIGH-A2
+    // (STATE_DIR === path.dirname(STATE_FILE); helper covers but explicit
+    // decision-to-not-delete). Migrated atomic-write to writeAtomic;
+    // compact JSON.stringify(state) → JSON.stringify(state, null, 2) (helper
+    // enforces 2-space indent; loadState() at L47 uses JSON.parse so
+    // semantically equivalent).
     fs.mkdirSync(STATE_DIR, { recursive: true });
-    const tmp = STATE_FILE + '.tmp.' + process.pid;
-    fs.writeFileSync(tmp, JSON.stringify(state));
-    fs.renameSync(tmp, STATE_FILE);
+    writeAtomic(STATE_FILE, state);
   } catch (err) {
     log('state_save_failed', { error: err.message });
   }

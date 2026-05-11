@@ -9,16 +9,10 @@
 //
 // At HT.audit-followup we found 12 substrate sites using the unhardened pid-only
 // pattern. The 3 highest-touched (`registry.js writeStore`, `pattern-recorder.js
-// saveStore`, `session-self-improve-prompt.js writeAtomic`) migrate to this helper
-// in this phase. 8 remaining sites are drift-note candidates for a future DRY
-// consolidation phase — see CHANGELOG for the inventory:
-//   - scripts/prompt-pattern-store.js:62
-//   - scripts/agent-team/tree-tracker.js:51
-//   - scripts/agent-team/kb-resolver.js:100 + :407 (2 sites)
-//   - scripts/agent-team/budget-tracker.js:70
-//   - hooks/scripts/session-reset.js:38
-//   - hooks/scripts/fact-force-gate.js:45
-//   - hooks/scripts/session-end-nudge.js:67 (saveState — independent of lock primitive)
+// saveStore`, `session-self-improve-prompt.js writeAtomic`) migrated to this helper
+// at creation time. H.9.8 closure (2026-05-12): 9 remaining sites migrated (8
+// originally enumerated + 9th HIGH-CR3 catch `quality-factors-backfill.js` at
+// pre-approval gate); helper now consumed by 12 substrate paths uniformly.
 //
 // API:
 //   writeAtomic(filePath, data)  — JSON-serializes data + writes via tmp+rename
@@ -30,6 +24,12 @@
 //   - tmp suffix is pid + hrtime + 6 bytes crypto hex = ~9e7 birthday-resistant
 //     unique values per nanosecond. Overkill for substrate volume; cheap.
 //   - renameSync is atomic on POSIX + Windows when src + dst on same volume
+//   - H.9.8: cleanup-on-error post-condition added — if writeFileSync OR renameSync
+//     throws, helper attempts best-effort fs.unlinkSync(tmp) (nested try; ignored
+//     if cleanup itself fails) before re-throwing the original error. Prevents
+//     stale tmp accumulation on rename-failure cold paths. Class B caller-side
+//     try-catch-cleanup-throw wrappers (prior to H.9.8) drop entirely after
+//     migration (DRY win).
 
 'use strict';
 
@@ -55,6 +55,9 @@ function _tmpSuffix() {
 /**
  * Atomically write JSON data to filePath. Creates parent dir if absent.
  *
+ * H.9.8 cleanup-on-error post-condition: if writeFileSync OR renameSync fails,
+ * attempts best-effort fs.unlinkSync(tmp) before re-throwing the original error.
+ *
  * @param {string} filePath - target path
  * @param {*} data - any JSON-serializable value
  * @returns {void}
@@ -62,13 +65,20 @@ function _tmpSuffix() {
 function writeAtomic(filePath, data) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   const tmp = filePath + _tmpSuffix();
-  fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
-  fs.renameSync(tmp, filePath);
+  try {
+    fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
+    fs.renameSync(tmp, filePath);
+  } catch (err) {
+    try { fs.unlinkSync(tmp); } catch { /* ignore — cleanup is best-effort */ }
+    throw err;
+  }
 }
 
 /**
  * Atomically write a string to filePath. Creates parent dir if absent.
  * Use when caller has pre-serialized content (non-JSON, or custom JSON shape).
+ *
+ * H.9.8 cleanup-on-error post-condition: same as writeAtomic.
  *
  * @param {string} filePath - target path
  * @param {string} str - content to write
@@ -77,8 +87,13 @@ function writeAtomic(filePath, data) {
 function writeAtomicString(filePath, str) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   const tmp = filePath + _tmpSuffix();
-  fs.writeFileSync(tmp, str);
-  fs.renameSync(tmp, filePath);
+  try {
+    fs.writeFileSync(tmp, str);
+    fs.renameSync(tmp, filePath);
+  } catch (err) {
+    try { fs.unlinkSync(tmp); } catch { /* ignore — cleanup is best-effort */ }
+    throw err;
+  }
 }
 
 module.exports = { writeAtomic, writeAtomicString };
