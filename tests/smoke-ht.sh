@@ -393,6 +393,46 @@ EOF
     failed=$((failed + 1))
   fi
 
+  # Test 83: H.9.5 — yaml-lint on substrate frontmatter (sibling format-discipline
+  # 4th application; closes YAML content-format-time discipline gap analogous to
+  # H.9.0 markdownlint + H.9.1 shellcheck + H.9.2 JSON syntax). Substrate has 130
+  # .md files with YAML frontmatter; H.9.5 ensures all are strict YAML 1.2 valid.
+  # Empirical pre-validation surfaced 12 files with narrative-with-embedded-colons
+  # patterns (HT-state.md + 11 plan files); H.9.5 migration wrapped 223 narrative
+  # values in double quotes + converted internal `"..."` to `` `...` `` (semantic-
+  # preserving) + consolidated 8 duplicate `last_session_phase_prior:` keys in
+  # HT-state.md into a single block-list under `last_session_phase_priors:`.
+  # Substrate's `parseFrontmatter` already strips outer "..." (impl line 142);
+  # block-list shape handled per HT.2.2 impl. No parser change required.
+  # Validates:
+  #   (a) Extract frontmatter from each .md with `---` markers
+  #   (b) yaml-lint each extracted frontmatter as a standalone YAML doc
+  #   (c) Exit code 0 — all substrate frontmatter parses as valid YAML 1.2
+  # Approach: mktemp dir + walk substrate via find + extract via awk + pipe all
+  # to yaml-lint (single invocation across all extracted files for speed).
+  # First-run on fresh machine takes ~10-15s downloading yaml-lint via npx;
+  # subsequent runs are ~3-5s. Acceptable smoke-harness latency.
+  echo -n "  Test 83 (H.9.5 yaml-lint on substrate frontmatter; extracted .md frontmatter blocks): "
+  T83_TMPDIR=$(mktemp -d)
+  T83_COUNT=0
+  while IFS= read -r T83_FILE; do
+    if head -1 "$T83_FILE" 2>/dev/null | grep -q "^---$"; then
+      T83_COUNT=$((T83_COUNT + 1))
+      awk 'BEGIN{state=0} /^---$/ { if(state==0){state=1;next}; if(state==1){state=2;exit} } state==1' "$T83_FILE" > "$T83_TMPDIR/fm-$T83_COUNT.yaml"
+    fi
+  done < <(find "$SCRIPT_DIR" -name "*.md" -not -path "*/node_modules/*" -not -path "*/.git/*" -not -path "*/swarm/run-state/*")
+  T83_OUT=$(npx --yes yaml-lint "$T83_TMPDIR"/fm-*.yaml 2>&1)
+  T83_EXIT=$?
+  rm -rf "$T83_TMPDIR"
+  if [ $T83_EXIT -eq 0 ]; then
+    echo "OK (substrate frontmatter YAML 1.2 valid; $T83_COUNT files checked, 0 errors)"
+    passed=$((passed + 1))
+  else
+    echo "FAIL: yaml-lint reported frontmatter errors"
+    echo "$T83_OUT" | tail -10
+    failed=$((failed + 1))
+  fi
+
   # Test 65: H.8.7 — adr.js symlink defense (chaos M3)
   echo -n "  Test 65 (H.8.7 adr.js symlink defense; symlink in ADRS_DIR ignored): "
   T65_TMPDIR=$(mktemp -d)

@@ -8,6 +8,84 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [unreleased] — 2026-05-11 — H.9.5 yaml-lint on substrate frontmatter — sibling format-discipline 4th application + strict YAML 1.2 conformance refactor
+
+**Fifth sub-phase of post-HT H.9.x track per user-reframed v2.0 trajectory.** H.9.5 closes a real substrate coverage gap: substrate frontmatter (130 `.md` files) was permissively parseable by substrate's own `parseFrontmatter` but rejected by strict YAML 1.2 parsers (yaml-lint, python yaml, js-yaml). Migration wraps 223 narrative scalar values + block-list items in double-quoted form across 12 files; consolidates 8 duplicate `last_session_phase_prior:` keys in HT-state.md into a single block-list under `last_session_phase_priors:`. Adds Test 83 with `npx --yes yaml-lint` on extracted frontmatter blocks; asserts exit 0. install.sh smoke 78/78 → 79/79. **No plugin manifest bump** per pure-content-migration convention.
+
+### Context — user reframe at v2.0 trajectory
+
+Per user: "let the drift notes continue. the goal is not to just show 5 clean passes. But this is actually an underlying testing framework as well." Clean-phase counter is admin proxy for "no new institutional commitments to soak"; the substantive goal is closing real coverage gaps. H.9.5 attacks coverage: substrate becomes strict YAML 1.2 conformant — future standard-tooling consumers (yamllint, python yaml, js-yaml, jq -y, GitHub Actions YAML linting) work without substrate-specific adapters.
+
+### What yaml-lint baseline surfaced
+
+`npx --yes yaml-lint` against 130 substrate frontmatter blocks surfaced 12 failing files:
+
+- `swarm/thoughts/shared/HT-state.md`
+- 11 `swarm/thoughts/shared/plans/*.md` plan files (HT.1.10, HT.1.12, HT.1.13, HT.2.3, HT.3.2, HT.3.3, H.9.0, H.9.1, H.9.2, H.9.3, H.9.4)
+
+Two distinct YAML-invalidity patterns:
+
+1. **Narrative scalar values with embedded colons** — substrate's ledger writing convention puts long prose with `:` characters inline as YAML scalar values; YAML parsers see `:` as key-value separator
+2. **Duplicate mapping keys** — HT-state.md had 8 duplicate `last_session_phase_prior:` keys (substrate stack convention); YAML disallows
+
+### What landed
+
+- **Migration script 1** (`scripts/h95-fix-frontmatter.js`, deleted post-ship): walked 12 failing files; wrapped 223 narrative entries (199 scalar + 24 block-list) in double-quoted form; replaced internal `"..."` with `` `...` `` (semantic-preserving for substrate inline-code convention); skipped already-YAML-valid forms (empty / inline array / already-quoted / numeric / boolean / null / timestamp / git hash)
+- **Migration script 2** (`scripts/h95-fix-htstate-dupkeys.js`, deleted post-ship): consolidated 8 duplicate `last_session_phase_prior:` keys in HT-state.md into a single block-list under `last_session_phase_priors:` (plural); positioned immediately after `last_session_phase:`. **No programmatic consumers** (verified via grep on `scripts/` + `hooks/`); rename + reshape is safe.
+- **Test 83 in `tests/smoke-ht.sh`** — extracts frontmatter from each `.md` with `---` markers via `awk` to a temp directory; pipes all to `npx --yes yaml-lint`; asserts exit 0. install.sh smoke count 78/78 → 79/79.
+- **Both migration scripts deleted post-ship** — one-time utilities; their work is recorded in this CHANGELOG + sub-plan + ship commit.
+
+### Why no parser change
+
+Substrate's `parseFrontmatter` already handles wrapped values:
+- Outer double-quote / single-quote stripping at impl line 142 (`val.replace(/^["']|["']$/g, '')`)
+- Block-list shape at impl lines 104-114
+
+Wrapping narrative values in `"..."` produces no runtime behavior regression. Block-list shape preserved semantically (each prior entry preserved as separate list item). No parser enhancement needed.
+
+### Methodology
+
+Sub-plan-only per HT.1.6 decision-rationale-matrix + HT.1.10/HT.1.12/HT.2.4/H.9.0-H.9.4 pure-process/doc precedent. 5 of 5 triggers absent. Per-phase pre-approval gate skipped with EXPLICIT decision rationale matrix per HT.1.6 convention.
+
+### Substantive-vs-clean revisited
+
+H.9.5 is *substantive* (223 frontmatter values rewrapped + 8 duplicate-key consolidation + new gate) BUT *clean* (no schema/ADR/convention change). Per user reframe: clean-phase counter tracks `no new institutional commitments`; H.9.5 doesn't add one. Substrate continues consolidation through H.9.6 → H.9.14 before v2.0.0 tag.
+
+### Soak gate
+
+H.9.5 = **6 of 5+ clean phases** since HT.3.1 (threshold met since H.9.4). Progression: H.9.0 → H.9.1 → H.9.2 → H.9.3 → H.9.4 → H.9.5. Roadmap: H.9.6 extend Test 80 scope; H.9.7 ESLint baseline; H.9.8 atomic-write DRY; H.9.9 error-critic fail-soft; H.9.10 Atomics.wait; H.9.11 ADR-status hook; H.9.12 `_PRINCIPLES.md` enforcement; H.9.13 Tier-3 sweep; H.9.14 regex perf; then v2.0.0 tag.
+
+### Verification
+
+- **install.sh smoke**: 79/79 (was 78/78; +1 Test 83)
+- **_h70-test.js asserts**: 64/64 (unchanged)
+- **contracts-validate.js violations**: 16 baseline only (no regression; `parseFrontmatter` produces identical parsed values for wrapped/unwrapped inputs)
+- **yaml-lint on 130 frontmatter blocks**: 0 errors (was 12 failing)
+- **markdownlint (Test 80)**: 0 errors (unchanged)
+- **shellcheck (Test 81)**: 0 errors (unchanged)
+- **jq empty (Test 82)**: 0 errors (unchanged)
+
+### Plugin manifest
+
+`1.12.3` UNCHANGED per pure-content-migration convention.
+
+### Wallclock
+
+~90 min end-to-end.
+
+### Pattern-level observations
+
+- **Substantive-coverage-gap-closure phase shape**: H.9.5 demonstrates substrate's "actually underlying testing framework" framing — closes a real cross-tooling gap (substrate frontmatter ↔ standard YAML parsers) rather than padding the clean-phase counter.
+- **One-time migration scripts at substrate path + deleted post-ship**: H.9.5 introduces a transparency pattern for content migrations. Scripts written to `scripts/h95-*.js` (auditable in transcript); applied; deleted. Future migrations may follow this pattern. The fact-force-gate hook blocked execution of `/tmp` scripts (correct safety) — H.9.5 surfaced the convention that one-time migration scripts belong in `scripts/` (substrate path) for transparency.
+- **Substrate convention rename**: `last_session_phase_prior:` × N → `last_session_phase_priors:` block list. First HT-state.md schema-like change in the H.9.x track; verified safe via grep-of-no-consumers.
+- **Empirical pre-validation pattern 22-phase confirmed** (HT.1.8-1.15 + HT.2.1-2.5 + HT.3.1-3.3 + H.9.0-H.9.5). yaml-lint baseline surfaced exact 12 failing files + their 2 distinct invalidity patterns before migration.
+
+### Next
+
+**H.9.6** — extend Test 80 markdownlint scope to `swarm/kb-architecture-planning/` (H.9.4 drift-note candidate; closes the markdownlint blind-spot where swarm/ planning docs are unchecked despite being substrate-authored content).
+
+---
+
 ## [unreleased] — 2026-05-11 — H.9.4 Pending docs completion — `_TAXONOMY.md` + `_NOTES.md` status drift + `_routing.md` planning doc — lands 5/5+ soak gate
 
 **Fifth sub-phase of post-HT H.9.x track; pure-doc completion phase. v2.0.0 SOAK GATE THRESHOLD MET.** H.9.4 closes the explicit "pending docs related work" surfaced by user after H.9.3 ship. Three components bundled as 1 atomic docs-completion phase: (a) `swarm/kb-architecture-planning/_TAXONOMY.md` status update reflecting H.9.3 ships (5 entries); (b) `swarm/kb-architecture-planning/_NOTES.md` updates — session log batch row + Information Hiding pattern entry update + 3 ai-systems candidate entries → SHIPPED; (c) NEW `swarm/kb-architecture-planning/_routing.md` planning doc (~200 LoC) closing 6 forward-references in `rag-anchoring.md` for the substrate's planned BM25-style routing infrastructure. Lands **5 of 5+ clean phases since HT.3.1** — v2.0.0 release gate retest GREEN-eligible. **No plugin manifest bump** per pure-doc convention.
