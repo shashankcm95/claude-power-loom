@@ -2831,6 +2831,35 @@ Useful signal for "is the HETS substrate being used or just sitting there?" — 
 
 **Estimate**: ~1 hr.
 
+### HT.1.12-followup — Author 5 planned KB targets (deferred-author-intent → authoring queue)
+
+**Status**: HT.1.12 (shipped 2026-05-10) annotated 7 broken `related:` refs across 5 architecture KBs with inline `# planned — not yet authored` comments per deferred-author-intent shape (chosen over body-section migration to preserve graph-walk semantics for any future bidirectional validator extension). The 5 target KBs remain unauthored. Bidirectional `related:` validator at `contracts-validate.js:187` skips broken refs silently when targets don't exist — no active enforcement surface for authoring follow-through.
+
+**Scope**: Author the 5 planned KB targets per HT.1.12 plan annotations:
+
+| # | KB target | Referenced from |
+|---|-----------|-----------------|
+| 1 | `architecture/ai-systems/agent-design` | `rag-anchoring.md` |
+| 2 | `architecture/ai-systems/evaluation-under-nondeterminism` | `rag-anchoring.md` |
+| 3 | `architecture/ai-systems/inference-cost-management` | `rag-anchoring.md` |
+| 4 | `architecture/crosscut/information-hiding` | `deep-modules.md` + `dependency-rule.md` |
+| 5 | `architecture/discipline/refusal-patterns` | `error-handling-discipline.md` + `trade-off-articulation.md` |
+
+Authoring shape per existing KB conventions (frontmatter with `kb_id` + `related:` + content sections — see existing 10 architecture KBs for template). Inline `# planned — not yet authored` annotations get REMOVED from source KBs once targets are authored, per HT.1.12 migration discipline: "when a planned KB is authored, references migrate from inline annotations INTO the frontmatter `related:` array (and bidirectional partners likewise add the new ref); the body-section listing shrinks as authoring progresses".
+
+**Dependencies**: None blocking. Each KB is independent and can ship in any order. Pure-doc work; no schema change; no runtime behavior change.
+
+**Estimate**: ~30-60 min per KB depending on depth (5 × 30-60 min = ~2.5-5 hrs total). Smaller KBs ~30 min; substantive KBs ~60 min.
+
+**Why deferred**: HT.1.12 explicitly chose annotation-over-authoring to bound scope. The forward-references were placed deliberately as authorial intent markers; authoring them is independent substantive work that doesn't gate any active substrate operation. Per HT.1.12 sub-plan rationale: "deferred-author-intent has documentary value per react-essentials.md precedent" (HT.0.5a E.4).
+
+**Phase candidacy**: Suitable for H.9.x trajectory (substantive pure-doc work; clean phase toward v2.0.0 since no new ADR / schema / convention). Could ship as 1 batched phase (all 5 authored together; more efficient) or 5 separate phases (1 per KB; gives 5 separate clean-phase counts toward v2.0.0 soak gate). Latter optimizes soak gate progression; former optimizes wallclock.
+
+**Cross-references**:
+
+- `swarm/thoughts/shared/plans/2026-05-10-HT.1.12-kb-forward-refs.md` — HT.1.12 sub-plan with deferred-author-intent shape rationale + annotation approach decision matrix
+- HT.1.12 BACKLOG decision-record entry (this file, above) — codifies the shape; this CS-13-equivalent entry tracks the deferred authoring work itself
+
 ## How to use this backlog
 
 1. When an item becomes blocking, promote it to a phase in SKILL.md

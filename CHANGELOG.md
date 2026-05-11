@@ -8,6 +8,78 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [unreleased] — 2026-05-11 — H.9.2 JSON syntax in local verification harness (sibling format-discipline 3rd application under H.9.0 + H.9.1)
+
+**Third sub-phase of post-HT H.9.x track; sibling format-discipline 3rd application.** H.9.2 establishes substrate-wide JSON syntax gate at local-verification layer for substrate `*.json` files, paralleling H.9.0's markdownlint addition for `*.md` and H.9.1's shellcheck addition for `*.sh`. Adds Test 82 to `tests/smoke-ht.sh` running `find . -name "*.json" -not -path "./node_modules/*" -not -path "./.git/*" -not -path "./swarm/run-state/*" -print0 | xargs -0 -n1 jq empty` against 30 substrate-active `.json` files; asserts exit 0. install.sh smoke 77/77 → 78/78. Adds BACKLOG.md `HT.1.12-followup` deferred-work entry tracking 5 unauthored planned KB targets (`agent-design`, `evaluation-under-nondeterminism`, `inference-cost-management`, `information-hiding`, `refusal-patterns`). **No plugin manifest bump** per pure-process-improvement convention.
+
+### Context — distinguishing characteristic: purely preventive
+
+Where H.9.0 surfaced 22 existing markdownlint errors + H.9.1 surfaced 78 existing shellcheck errors (both substantive cleanup-and-gate ships), H.9.2 surfaces 0 existing errors at baseline. The substrate's 30 substrate-active `.json` files (configs at `.claude-plugin/` + `hooks/` + root; persona contracts at `swarm/personas-contracts/`; schemas at `swarm/schemas/`; test fixtures at `swarm/test-fixtures/`) are all syntax-clean — substrate scripts JSON.parse() configs at load time, so syntax errors would already fail at runtime.
+
+H.9.2's value is establishing the gate BEFORE drift accumulates rather than fixing existing drift. This is the cleanest possible "sibling format-discipline" shape: pure preventive gate; mechanical 1-test addition; zero substrate content changes.
+
+### Empirical pre-validation
+
+JSON baseline run live at H.9.2 implementation: 49 total `.json` files; 19 in `swarm/run-state/` excluded (chaos test artifacts may contain non-JSON when capturing stderr alongside stdout — verified at `swarm/run-state/chaos-20260505-095622-cs3/kb-snapshot.json` which contains "Usage: sna..." command-help-message captured as run state); 30 substrate-active files parsed cleanly via `jq empty`. jq availability verified (`/usr/bin/jq` v1.7.1-apple on macOS; jq pre-installed on GitHub Actions ubuntu-latest CI image).
+
+### What landed
+
+- **Test 82 in `tests/smoke-ht.sh`** — `find . -name "*.json" -not -path "./node_modules/*" -not -path "./.git/*" -not -path "./swarm/run-state/*" -print0 | xargs -0 -n1 jq empty` (future-extensible to new `.json` additions); asserts exit 0 + reports file count on success. install.sh smoke count 77/77 → 78/78.
+
+- **BACKLOG.md `HT.1.12-followup` deferred-work entry** — tracks 5 unauthored planned KB targets per HT.1.12 plan annotations. CS-X-style deferred-work shape (not lightweight decision record — proper deferred-authoring queue entry). Closes the user-visible docs-pass-incomplete gap by promoting the deferred items to BACKLOG.md inventory (rather than living only in HT.1.12 plan annotations).
+
+### Why jq (tool-choice rationale)
+
+`jq empty FILE` — pre-installed on macOS + Ubuntu CI; 1-line pipeline shape; fast compiled binary. Rejected alternatives: `node -e '...'` inline walker (bash-quoting fragile for multi-line scripts); `npx jsonlint` (overkill for syntax-only check; slower per-invocation); standalone `scripts/json-syntax-check.js` (adds substrate file beyond H.9.0/H.9.1 tool-call shape). jq is the most pragmatic given availability on every relevant platform.
+
+### Why JSON syntax (not full JSON lint)
+
+JSON lint dimensions: (1) syntax (parseable by `JSON.parse()` / `jq empty`), (2) style (indentation, trailing whitespace), (3) schema. H.9.2 gates dimension 1 only — minimum-viable preventive gate matching H.9.0 + H.9.1's "fundamental layer" approach. Style is rejected because JSON syntax is rigid (cosmetic noise has low value). Schema is already covered by `contracts-validate.js` for persona contracts + plugin manifest schemas.
+
+### Methodology
+
+Sub-plan-only per HT.1.6 decision-rationale-matrix convention. 5 of 5 triggers absent (mirrors H.9.1 Test 81 shape; no fresh design surface; no schema change; no option-axis decision — tool choice documented; no institutional discipline encoding — sibling pattern under H.9.0 + H.9.1 inherits the H.9.0 BACKLOG entry without adding to it; no HIGH-class bug catchable at design). Pure-process-improvement per H.9.0 + H.9.1 / HT.1.10 / HT.2.4 precedent.
+
+### Soak gate impact
+
+H.9.2 is a **CLEAN phase** toward v2.0.0:
+- No new ADR (ledger stays at 5)
+- No new substrate convention doc (3 unchanged)
+- No schema change
+- No institutional commitment (Test 82 + BACKLOG deferred-work entry are mechanical additions; no new invariant)
+
+H.9.2 counts as **3 of 5+ clean phases** needed since HT.3.1 (last institutional commitment — ADR-0004 codification). 2 more clean phases needed before v2.0.0 release gate retests GREEN.
+
+### Verification
+
+- **install.sh smoke**: 78/78 (was 77/77; +1 Test 82)
+- **_h70-test.js asserts**: 64/64 (unchanged)
+- **contracts-validate.js violations**: 16 baseline only (no regression)
+- **jq empty against 30 substrate `.json` files**: exit 0 (purely preventive — no current drift)
+- **Test 82 inline output**: "OK (substrate JSON syntax clean; 30 files checked, 0 errors)"
+
+### Plugin manifest
+
+`1.12.3` UNCHANGED per pure-process-improvement convention.
+
+### Wallclock
+
+~30 min end-to-end.
+
+### Pattern-level observations
+
+- **Sibling format-discipline 3rd application**: H.9.0 markdown + H.9.1 shell + H.9.2 JSON. Sibling pattern continues to surface gaps mechanically; each phase adds 1 test + 0-78 content fixes depending on existing drift state.
+- **Purely preventive gate shape** (new this phase): H.9.2 establishes a gate with 0 existing drift to fix. Distinguishes from H.9.0 + H.9.1 (both substantive cleanup-and-gate). Demonstrates the format-discipline pattern at its cleanest shape: 1-test addition; zero substrate content changes.
+- **Tool-choice rationale matrix codification**: jq vs Node-inline vs npx-jsonlint vs standalone-script — 4 alternatives weighed with explicit pros/cons. Decision documented in sub-plan + ledger; matches HT.1.6 decision-rationale-matrix convention applied at tool-selection layer.
+- **Deferred-work BACKLOG entry as scope-bundling**: HT.1.12-followup entry (5 unauthored planned KBs) bundled with H.9.2 ship per user explicit request. Demonstrates BACKLOG.md's role as deferred-work inventory (not just decision-record archive).
+- **Empirical pre-validation pattern 19-phase confirmed** (HT.1.8-1.15 + HT.2.1-2.5 + HT.3.1-3.3 + H.9.0 + H.9.1 + H.9.2). Live JSON baseline (49 total / 30 active / 0 errors / 1 chaos artifact excluded) surfaced exact scope before implementation.
+
+### Next
+
+**H.9.3+** — sibling format-discipline 4th candidate (yamllint on frontmatter / ESLint on `.js` substrate / shellcheck warning-level promotion) OR substantive H.9.x trajectory work per HT.2.5 readout focus areas (error-critic.js fail-soft + 8 atomic-write sites + Atomics.wait + Tier-3 audit findings + ADR drift-detection enhancement). Soak gate progress: 3/5+ clean phases since HT.3.1.
+
+---
+
 ## [unreleased] — 2026-05-11 — H.9.1 shellcheck in local verification harness (sibling format-discipline pattern under H.9.0)
 
 **Second sub-phase of post-HT H.9.x track; sibling pattern under H.9.0.** H.9.1 establishes shellcheck at local-verification layer for substrate `*.sh` files, paralleling H.9.0's markdownlint addition for `*.md`. Adds Test 81 to `tests/smoke-ht.sh` running `npx --yes shellcheck --severity=error` against 10 substrate `*.sh` files (enumerated via `find` + `xargs` for future-extensibility); asserts exit 0. Adds `# shellcheck shell=bash` + `# shellcheck disable=SC2168` directives to `tests/smoke-h{4,7,8,ht}.sh` resolving 78 false-positive error-level findings caused by shellcheck's inability to follow `install.sh run_smoke_tests()` source-context. **No plugin manifest bump** per pure-process-improvement convention.

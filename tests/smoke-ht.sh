@@ -363,6 +363,36 @@ EOF
     failed=$((failed + 1))
   fi
 
+  # Test 82: H.9.2 — JSON syntax in local smoke harness (sibling format-discipline
+  # 3rd application; closes JSON content-format-time discipline gap analogous to
+  # H.9.0 markdownlint + H.9.1 shellcheck). Substrate has 30 substrate-active
+  # *.json files (configs at .claude-plugin/, hooks/, .markdownlint.json; persona
+  # contracts at swarm/personas-contracts/; schemas at swarm/schemas/; test
+  # fixtures at swarm/test-fixtures/) + 19 swarm/run-state/ chaos-artifact JSON
+  # files excluded (chaos test outputs may contain non-JSON when capturing stderr
+  # alongside stdout; not active substrate). H.9.2 baseline: 30 files, 0 errors
+  # — purely preventive gate (no current drift to fix; establishes gate before
+  # drift accumulates).
+  # Validates:
+  #   (a) jq empty parses every substrate-active *.json file as valid JSON
+  #   (b) Exit code 0 — substrate JSON syntax clean
+  # Approach: enumerate via `find` (excludes node_modules/.git/swarm/run-state) +
+  # pipe to `xargs -n1 jq empty` (jq pre-installed on macOS + Ubuntu CI). Each
+  # file parsed individually; xargs continues on failure + propagates non-zero
+  # exit code if any file fails.
+  echo -n "  Test 82 (H.9.2 JSON syntax in local smoke harness; jq empty against substrate .json files): "
+  T82_OUT=$(cd "$SCRIPT_DIR" && find . -name "*.json" -not -path "./node_modules/*" -not -path "./.git/*" -not -path "./swarm/run-state/*" -print0 | xargs -0 -n1 jq empty 2>&1)
+  T82_EXIT=$?
+  T82_COUNT=$(cd "$SCRIPT_DIR" && find . -name "*.json" -not -path "./node_modules/*" -not -path "./.git/*" -not -path "./swarm/run-state/*" | wc -l | tr -d ' ')
+  if [ $T82_EXIT -eq 0 ]; then
+    echo "OK (substrate JSON syntax clean; $T82_COUNT files checked, 0 errors)"
+    passed=$((passed + 1))
+  else
+    echo "FAIL: jq reported JSON syntax errors"
+    echo "$T82_OUT" | tail -5
+    failed=$((failed + 1))
+  fi
+
   # Test 65: H.8.7 — adr.js symlink defense (chaos M3)
   echo -n "  Test 65 (H.8.7 adr.js symlink defense; symlink in ADRS_DIR ignored): "
   T65_TMPDIR=$(mktemp -d)
