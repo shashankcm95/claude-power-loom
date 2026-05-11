@@ -318,14 +318,23 @@ EOF
   # surfaced by 2026-05-11 CI markdown-lint failure post-HT.3.3 merge: 22 MD037/MD038
   # errors had accumulated across HT ledger entries because markdownlint wasn't in
   # local verification — CI was the sole enforcer + ran only on push to main).
+  # H.9.6 (2026-05-11): scope extended to include swarm/kb-architecture-planning/
+  # planning docs (was excluded by blanket "#swarm" — H.9.4 surfaced the gap when
+  # explicit lint on the 3 modified docs caught MD056 + MD037 issues that Test 80
+  # didn't see; post-compact cumulative-audit confirmed scope right-sized).
   # Validates:
   #   (a) markdownlint-cli2 runs against substrate markdown via same command CI uses
+  #       PLUS swarm/kb-architecture-planning/ planning docs (5 underscore-prefix
+  #       planning artifacts + README); swarm/ otherwise excluded (chaos-run-state
+  #       noise + research/plan/HT-state narrative with carve-out backtick patterns)
   #   (b) Exit code 0 — substrate markdown lint clean
-  # Approach: invoke same command as `.github/workflows/ci.yml` Markdown lint job.
+  # Approach: invoke same command as `.github/workflows/ci.yml` Markdown lint job,
+  # plus an explicit swarm/kb-architecture-planning/**/*.md include glob (markdownlint-cli2
+  # ordered globs: explicit include before "#swarm" exclude takes precedence).
   # First-run on a fresh machine may take ~5-10s to fetch markdownlint-cli2 into
   # npx cache; subsequent runs are ~2-3s. Acceptable smoke-harness latency.
-  echo -n "  Test 80 (H.9.0 markdownlint in local smoke harness; npx markdownlint-cli2 against substrate): "
-  T80_OUT=$(cd "$SCRIPT_DIR" && npx --yes markdownlint-cli2 "**/*.md" "#node_modules" "#swarm" 2>&1)
+  echo -n "  Test 80 (H.9.0+H.9.6 markdownlint in local smoke harness; substrate + swarm/kb-architecture-planning/): "
+  T80_OUT=$(cd "$SCRIPT_DIR" && npx --yes markdownlint-cli2 "**/*.md" "swarm/kb-architecture-planning/**/*.md" "#node_modules" "#swarm" 2>&1)
   T80_EXIT=$?
   if [ $T80_EXIT -eq 0 ]; then
     echo "OK (substrate markdown lint clean; 0 errors)"

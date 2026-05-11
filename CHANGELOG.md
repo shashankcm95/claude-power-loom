@@ -8,6 +8,86 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [unreleased] — 2026-05-11 — H.9.6 extend Test 80 markdownlint scope to `swarm/kb-architecture-planning/` — closes H.9.4 drift-note candidate
+
+**Seventh sub-phase of post-HT H.9.x track per user-reframed v2.0 trajectory; mechanical scope extension.** H.9.6 closes the H.9.4 drift-note candidate captured at HT-state.md line 61 (`drift-note candidate to extend Test 80 scope to include swarm/kb-architecture-planning/`). Single-line edit at `tests/smoke-ht.sh:328` adds explicit include glob `swarm/kb-architecture-planning/**/*.md` positioned before existing `#swarm` exclude (markdownlint-cli2 ordered-glob semantics: explicit include before broader exclude takes precedence). install.sh smoke 79/79 unchanged; file count 130 → 134. **No plugin manifest bump** per pure-process-improvement convention.
+
+### Context — drift-note-to-fix cycle
+
+H.9.4 surfaced the scope gap when explicit markdownlint on the 3 modified docs in `swarm/kb-architecture-planning/` caught MD056 + MD037 issues that Test 80 didn't catch (blanket `#swarm` exclude in Test 80 included all planning docs). Captured as drift-note candidate at HT-state.md line 61.
+
+Post-compact cumulative-audit at H.9.5.1 (architect FLAG d) confirmed scope right-sized: include `swarm/kb-architecture-planning/` only; don't broaden to whole `swarm/`. Broader scope would surface 1 legacy MD037 error in `swarm/H.5.7-findings.md` + reproduce H.9.4/H.9.5 multi-component-atomic-ship antipattern.
+
+H.9.6 lands the narrow fix.
+
+### What landed
+
+Single-line glob addition in `tests/smoke-ht.sh:328`:
+
+```diff
+-T80_OUT=$(cd "$SCRIPT_DIR" && npx --yes markdownlint-cli2 "**/*.md" "#node_modules" "#swarm" 2>&1)
++T80_OUT=$(cd "$SCRIPT_DIR" && npx --yes markdownlint-cli2 "**/*.md" "swarm/kb-architecture-planning/**/*.md" "#node_modules" "#swarm" 2>&1)
+```
+
+Plus comment block updated (lines 317-327) noting H.9.6 extension + ordered-glob discipline. Plus echo label updated: `Test 80 (H.9.0+H.9.6 ...; substrate + swarm/kb-architecture-planning/)`.
+
+### Empirical pre-validation
+
+Live markdownlint probe surfaced 0 errors at swarm/kb-architecture-planning/ baseline:
+
+- `swarm/kb-architecture-planning/*.md`: 0 errors / 6 files (`README.md` + `_NOTES.md` + `_PRINCIPLES.md` + `_SOURCES.md` + `_TAXONOMY.md` + `_routing.md`)
+- `swarm/adrs/*.md`: 0 errors / 7 files (probed; NOT in H.9.6 scope per narrow framing)
+- `swarm/personas/*.md`: 0 errors / 16 files (probed; NOT in H.9.6 scope)
+- `swarm/*.md` root: 1 error in `swarm/H.5.7-findings.md` MD037 legacy (probed; NOT in H.9.6 scope)
+
+24-phase empirical pre-validation pattern confirmed.
+
+### Methodology
+
+Sub-plan-only per HT.1.6 decision-rationale-matrix + H.9.0-H.9.5.1 pure-process/doc precedent. 5 of 5 triggers absent. Per-phase pre-approval gate skipped with EXPLICIT decision rationale matrix per HT.1.6 convention.
+
+### Substantive-vs-clean
+
+H.9.6 is mechanical pure-process-improvement. Counts as 8 of 5+ clean phases since HT.3.1.
+
+### Soak gate
+
+H.9.6 = **8 of 5+ clean phases** since HT.3.1. Threshold met since H.9.4. Progression: H.9.0 → H.9.1 → H.9.2 → H.9.3 → H.9.4 → H.9.5 → H.9.5.1 → H.9.6.
+
+Roadmap: H.9.7 ESLint baseline (MANDATORY-gate per H.9.5.1 re-bucket); H.9.8 atomic-write DRY (gate); **H.9.9 error-critic fail-soft (MANDATORY GATE per ADR-0002)**; H.9.10-H.9.14 + v2.0.0 tag.
+
+### Verification
+
+- **install.sh smoke**: 79/79 (unchanged from H.9.5.1; pure-process-improvement phase with no new test)
+- **_h70-test.js asserts**: 64/64 (unchanged)
+- **contracts-validate.js violations**: 16 baseline only
+- **markdownlint Test 80 extended scope**: 0 errors across 134 files (was 130)
+- **shellcheck (Test 81)**: 0 errors (unchanged)
+- **jq empty (Test 82)**: 0 errors (unchanged)
+- **yaml-lint (Test 83)**: 0 errors (unchanged)
+
+**Note**: validate-adr-drift test (Test 49 in smoke-h8.sh) is a pre-existing transient flake on cold runs due to 3000ms `invokeNodeJson` timeout calling `adr.js touched-by`; observed during H.9.5.1 + H.9.6 verification runs (1 fail then 5/5 consecutive warm-run passes). Orthogonal to H.9.6; candidate for drift-note 77 extension or future H.9.x phase (raise timeout to 5000ms; or migrate to direct fs read of ADR frontmatter).
+
+### Plugin manifest
+
+`1.12.3` UNCHANGED per pure-process-improvement convention.
+
+### Wallclock
+
+~30 min end-to-end.
+
+### Pattern-level observations
+
+- **Drift-note-to-fix latency**: H.9.4 surfaced drift-note candidate; post-compact cumulative-audit at H.9.5.1 confirmed scope right-sized; H.9.6 lands the narrow fix. Drift-note-→-audit-confirms-→-fix cycle codifies 3-step institutional pattern.
+- **Narrow-scope-preferred over broader-scope** per architect post-compact-audit recommendation. Future expansion to swarm/adrs/ + swarm/personas/ + swarm/*.md root is defensible but deferred to avoid H.9.4/H.9.5 multi-component-atomic-ship antipattern.
+- **markdownlint-cli2 ordered-glob discipline**: explicit include before broader exclude takes precedence; convention encoded inline in Test 80 comment for future readers.
+
+### Next
+
+**H.9.7** — ESLint baseline on substrate `.js` files. **MANDATORY-gate per H.9.5.1 architect re-bucket FLAG** (lint config decisions = institutional discipline encoding). Requires parallel architect + code-reviewer pre-approval before substantive work begins.
+
+---
+
 ## [unreleased] — 2026-05-11 — H.9.5.1 absorb post-compact audit FLAGs — codifies H.9.5 narrative-quoting convention as 5th lightweight BACKLOG decision-record entry
 
 **Sixth sub-phase of post-HT H.9.x track per user-reframed v2.0 trajectory; pure-doc absorb-FLAGs phase.** Post-compact parallel architect + code-reviewer cumulative-trajectory audit of H.9.0-H.9.5 (option b per pre-compaction user direction `let's go with b + c just to be safe`) completed; architect verdict `minor-correction-needed / absorb-FLAGs-first` (1 HIGH + 1 MEDIUM + 1 LOW); code-reviewer verdict `semantically-lossless / proceed-with-H.9.6` (0 HIGH + 2 MEDIUM + 1 LOW). H.9.5.1 absorbs the architect HIGH FLAG by codifying as the 5th lightweight BACKLOG decision-record entry. install.sh smoke 79/79 unchanged. **No plugin manifest bump** per pure-doc absorb-FLAGs convention.
