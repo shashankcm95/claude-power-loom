@@ -16,6 +16,7 @@ Track which sources were processed in each session. Helps avoid re-processing an
 | 2026-05-08   | Authoring batch 4 | 2 docs shipped | -                | `ai-systems/rag-anchoring.md` (~470 lines, 3 sources) + `discipline/trade-off-articulation.md` (~440 lines, 5 sources). RAG covers the substrate's actual domain; trade-off articulation codifies H.7.22 Principle Audit. |
 | 2026-05-08   | Authoring batch 5 | 2 docs shipped | -                | `discipline/reliability-scalability-maintainability.md` (~480 lines, 5 sources) + `crosscut/acyclic-dependencies.md` (~400 lines, 5 sources). R/S/M extends substrate's R/A/FT framing; ADP codifies the `_lib/` extraction discipline. |
 | 2026-05-08   | Authoring batch 6 | 1 doc shipped — **first-wave COMPLETE** | -            | `discipline/stability-patterns.md` (~470 lines, 5 sources). Closes the 10-doc first-wave set. Forcing-instruction architecture codified as load-bearing stability-pattern application; substrate IS Release It!'s patterns applied to LLM domain. |
+| 2026-05-11   | Authoring batch H.9.3 (post-HT.1.12 deferred-author-intent followup) | 5 docs shipped | -            | `crosscut/information-hiding.md` (273 LoC; Parnas CACM 1972 + PoSD ch 5) — standalone rather than merged-into-deep-modules per original taxonomy plan; `discipline/refusal-patterns.md` (281 LoC; Constitutional AI + Anthropic Claude docs); `ai-systems/agent-design.md` (326 LoC; ReAct + Toolformer + AI Engineering ch 6 + Anthropic Building Effective Agents); `ai-systems/evaluation-under-nondeterminism.md` (316 LoC; AI Engineering ch 4 + DMLS + HELM); `ai-systems/inference-cost-management.md` (278 LoC; AI Engineering ch 5+6+8 + Anthropic API docs). Total 1474 LoC. Closes HT.1.12-followup BACKLOG entry + 7 forward-refs in 5 source KBs migrated from `## Related KB docs (planned)` body sections into frontmatter `related:` arrays. |
 
 ## Pattern notes
 
@@ -65,13 +66,13 @@ Format per entry. Append new entries to the bottom of this section.
 - **Anti-pattern**: shallow modules; pass-through methods that just delegate; too-fine-grained class decomposition.
 - **Notes**: Deep modules pull complexity DOWN — module developer takes on complexity so users see simple interface. Clean Code's "small functions" pulls complexity UP — exposes more interfaces.
 
-### Information Hiding (Ousterhout)
-- **Taxonomy slot**: `crosscut/information-hiding`
-- **Sources**: A Philosophy of Software Design ch 5 (Ousterhout) [Tier 1 via alysivji]; Clean Architecture (Martin) — boundaries chapters [Tier 1]
-- **Tier**: 1 (canonical)
+### Information Hiding (Parnas 1972 + Ousterhout PoSD ch 5) — SHIPPED H.9.3
+- **Taxonomy slot**: `crosscut/information-hiding` — SHIPPED as standalone KB (273 LoC) rather than merged into deep-modules per Ousterhout's framing; Parnas 1972 paper anchors the doc; Ousterhout PoSD ch 5 + Martin Clean Architecture ch 5 + Pragmatic Programmer cited
+- **Sources**: Parnas (CACM Dec 1972 — foundational decomposition paper); A Philosophy of Software Design ch 5 (Ousterhout) [Tier 1]; Clean Architecture (Martin) ch 5 [Tier 1]; Pragmatic Programmer
+- **Tier**: 1 (canonical foundational paper + canonical modern restatement)
 - **Key claim**: A module should hide implementation decisions. Information leakage = same knowledge required in multiple places. `private` declarations don't hide anything; what's hidden must be the design decision itself.
 - **Failure mode if violated**: Two functions both knowing the same file format → change one breaks the other. Decision propagation across modules requires touching N files for one logical change.
-- **Substrate relevance**: substrate's `_lib/` extraction (H.7.14) is information hiding — `findToolkitRoot()` is the hidden decision; callers don't know how it's computed.
+- **Substrate relevance**: substrate's `_lib/` extraction (H.7.14) is information hiding — `findToolkitRoot()` is the hidden decision; callers don't know how it's computed. `_lib/lock.js`, `_lib/frontmatter.js`, `_lib/safe-exec.js`, `_lib/atomic-write.js` each hide a substrate concern.
 - **Anti-pattern**: temporal decomposition (structuring code by time order of operations rather than by knowledge boundaries).
 
 ### Idempotency
@@ -159,9 +160,9 @@ Patterns surfaced from Mark Richards' free O'Reilly report (via ahmedhammad97/So
 ### NEW BRANCH: `ai-systems/`
 Patterns surfaced from Designing ML Systems (Huyen) + AI Engineering (Huyen):
 - `ai-systems/rag-anchoring.md` — RAG architecture, retrieval methods, optimization
-- `ai-systems/agent-design.md` — agent patterns, planning, reflection, accuracy cascade
-- `ai-systems/evaluation-under-nondeterminism.md` — AI-as-judge, comparative evaluation, biases
-- `ai-systems/inference-cost-management.md` — TTFT, TPOT, batching, prompt caching, model routing
+- `ai-systems/agent-design.md` — SHIPPED H.9.3 (326 LoC; ReAct + Toolformer + AI Engineering ch 6 + Anthropic Building Effective Agents); covers agent loop primitive, workflow-vs-agent distinction, ReAct pattern, tool-use design, budget shape, failure modes
+- `ai-systems/evaluation-under-nondeterminism.md` — SHIPPED H.9.3 (316 LoC; AI Engineering ch 4 + DMLS ch 6+8 + State of GPT + HELM); covers 3 eval types, non-determinism sources, LLM-as-judge + biases, drift detection across 3 sources
+- `ai-systems/inference-cost-management.md` — SHIPPED H.9.3 (278 LoC; AI Engineering ch 5+6+8 + Anthropic API docs + OpenAI Cookbook); covers 5 cost levers, agent-loop amortization, default-max-model anti-pattern, context bloat anti-pattern
 - `ai-systems/drift-detection.md` — distribution shifts, training-serving skew, monitoring
 - `ai-systems/training-serving-skew.md` — feature engineering pitfalls
 - `ai-systems/prompt-engineering-defenses.md` — prompt injection, jailbreaking, defensive prompting

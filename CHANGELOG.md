@@ -8,6 +8,88 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [unreleased] — 2026-05-11 — H.9.4 Pending docs completion — `_TAXONOMY.md` + `_NOTES.md` status drift + `_routing.md` planning doc — lands 5/5+ soak gate
+
+**Fifth sub-phase of post-HT H.9.x track; pure-doc completion phase. v2.0.0 SOAK GATE THRESHOLD MET.** H.9.4 closes the explicit "pending docs related work" surfaced by user after H.9.3 ship. Three components bundled as 1 atomic docs-completion phase: (a) `swarm/kb-architecture-planning/_TAXONOMY.md` status update reflecting H.9.3 ships (5 entries); (b) `swarm/kb-architecture-planning/_NOTES.md` updates — session log batch row + Information Hiding pattern entry update + 3 ai-systems candidate entries → SHIPPED; (c) NEW `swarm/kb-architecture-planning/_routing.md` planning doc (~200 LoC) closing 6 forward-references in `rag-anchoring.md` for the substrate's planned BM25-style routing infrastructure. Lands **5 of 5+ clean phases since HT.3.1** — v2.0.0 release gate retest GREEN-eligible. **No plugin manifest bump** per pure-doc convention.
+
+### Context — docs-state drift enumeration
+
+Post-H.9.3 ship surfaced 3 docs-state drift items + 1 unauthored forward-reference cluster:
+
+1. **`_TAXONOMY.md` status drift** (5 entries stale):
+   - `crosscut/information-hiding.md` marked `[merged into deep-modules.md per Ousterhout's framing]` but shipped as standalone 273-LoC KB at H.9.3
+   - `discipline/refusal-patterns.md` marked `[empty]` but shipped as 281-LoC KB at H.9.3
+   - `ai-systems/agent-design.md`, `evaluation-under-nondeterminism.md`, `inference-cost-management.md` marked `[notes — second/third-wave]` but all shipped at H.9.3 (326 + 316 + 278 LoC)
+
+2. **`_NOTES.md` updates needed**:
+   - Session log missing batch H.9.3 row (1 row addition)
+   - Information Hiding pattern entry (lines 68-77) needs SHIPPED-as-standalone update (pattern was authored as standalone rather than merged)
+   - 3 ai-systems candidate entries (lines 162-164) need SHIPPED status with LoC + source citations
+
+3. **`_routing.md` forward-references** (6× in `kb/architecture/ai-systems/rag-anchoring.md` lines 30, 85, 175, 299, 301, 412): substrate's planned BM25-style routing infrastructure planning doc; never authored
+
+4. **`agent-identity.js:1674` stale-comment HT.2-doc-sweep-candidate** (per HT.1.3 plan footnote): verified RESOLVED at HT.1.3 — file now 152 LoC post-5-module split; line 1674 no longer exists
+
+### What landed
+
+- **`_TAXONOMY.md` 3 Edits** — 5 entry status updates (information-hiding + refusal-patterns + 3 ai-systems entries via grouped edit)
+
+- **`_NOTES.md` 3 Edits** — session log batch H.9.3 row addition + Information Hiding pattern header update + 3 ai-systems candidate entries → SHIPPED batch
+
+- **NEW `swarm/kb-architecture-planning/_routing.md`** (~200 LoC) — planning doc establishing:
+  - Routing model: tuple `(signal_pattern, kb_id, priority, rationale)` with 3-level priority enum
+  - Routing table draft: ~20 entries across crosscut + discipline + ai-systems signal classes; each entry has explicit rationale
+  - Consumer specification: planned `kb-resolver route` subcommand (v2.1+) + `build-spawn-context.js` integration
+  - Migration plan: current static `kb_scope.default` → v2.1+ routing-driven + deny-list overrides
+  - Maintenance discipline: PR-level review; per-row rationale + test cases; quarterly false-positive/negative audit
+  - 6 open questions deferred to v2.1+ runtime integration
+
+Authored as PLANNING doc per the underscore-prefix convention in `swarm/kb-architecture-planning/` (alongside `_TAXONOMY.md`, `_SOURCES.md`, `_PRINCIPLES.md`, `_NOTES.md`). Runtime integration deferred to v2.1+ post-soak.
+
+### Methodology
+
+Sub-plan-only per HT.1.6 decision-rationale-matrix + HT.1.10/HT.1.12/HT.2.4/H.9.3 pure-doc precedent. 5 of 5 triggers absent (no fresh design surface — `_routing.md` uses existing underscore-prefix planning-doc convention; no schema change; no option-axis decision — three components well-bounded; no institutional discipline encoding — routing maintenance inherits existing PR-review + `_PRINCIPLES.md` authoring discipline; no HIGH-class bug catchable at design). Per-phase pre-approval gate skipped with EXPLICIT decision rationale matrix per HT.1.6 convention.
+
+### Soak gate impact — THRESHOLD MET
+
+H.9.4 is a **CLEAN phase** toward v2.0.0:
+- No new ADR (ledger stays at 5)
+- No new substrate convention doc (`_routing.md` is a planning doc within existing `swarm/kb-architecture-planning/` convention; not a NEW convention doc like measurement-methodology.md)
+- No schema change
+- No institutional commitment
+
+H.9.4 counts as **5 of 5+ clean phases** since HT.3.1 (last institutional commitment — ADR-0004 codification). **v2.0.0 SOAK GATE THRESHOLD MET** — substrate ready for v2.0.0 release gate retest. Progression: H.9.0 (1/5+) → H.9.1 (2/5+) → H.9.2 (3/5+) → H.9.3 (4/5+) → H.9.4 (5/5+).
+
+### Verification
+
+- **install.sh smoke**: 78/78 (unchanged from H.9.3; H.9.4 adds no new tests)
+- **_h70-test.js asserts**: 64/64 (unchanged)
+- **contracts-validate.js violations**: 16 baseline only (no regression)
+- **markdownlint on swarm/kb-architecture-planning/*.md**: 0 errors (after MD056 + MD037 fixes to `_routing.md` — pipe-in-regex needed `\|` escape; `_routing.md` references in History needed backtick-wrap to avoid emphasis-pair fires)
+- **Test 80 (substrate markdownlint, kb/ tree)**: 0 errors (unchanged; `swarm/` excluded from Test 80 scope)
+- **Test 81 + 82**: 0 errors (unchanged)
+
+### Plugin manifest
+
+`1.12.3` UNCHANGED per pure-doc convention.
+
+### Wallclock
+
+~75-90 min end-to-end (`_routing.md` authoring 40 min + `_TAXONOMY.md` + `_NOTES.md` updates 15 min + MD056/MD037 surgical fixes 5 min + sub-plan + ledger 25 min).
+
+### Pattern-level observations
+
+- **Pending-docs-completion phase shape**: H.9.4 demonstrates that user-stated "pending docs work" can be bundled as 1 atomic completion phase when scope is well-bounded (3 components; all pure-doc; no schema/ADR/convention impact). Closes the user-visible gap atomically rather than spreading across phases.
+- **swarm/ excluded from substrate markdownlint scope** — H.9.4 surfaced this: Test 80 globs `**/*.md "#node_modules" "#swarm"`, so swarm/ docs aren't lint-checked by the local smoke harness. Explicit markdownlint on swarm/kb-architecture-planning/*.md caught MD056 (pipe-in-regex table-column-count) + MD037 (emphasis-pair underscore-wrap) issues that Test 80 wouldn't have caught. Drift-note candidate: extend Test 80 scope to include swarm/kb-architecture-planning/ (vs whole-swarm scope which would include chaos-run-state noise).
+- **Empirical pre-validation pattern 21-phase confirmed** (HT.1.8-1.15 + HT.2.1-2.5 + HT.3.1-3.3 + H.9.0-H.9.4). Live docs-state drift enumeration; `_routing.md` cross-reference count verified (6× in rag-anchoring); stale-comment HT.2-doc-sweep-candidate verified RESOLVED at HT.1.3.
+- **Documentation-as-substrate-convention pattern**: `_routing.md` joins `_TAXONOMY.md` + `_SOURCES.md` + `_PRINCIPLES.md` + `_NOTES.md` as the 5th planning doc in `swarm/kb-architecture-planning/`. The underscore-prefix convention encodes "planning artifact" status; substrate's runtime tools (`kb-resolver`, `build-spawn-context.js`) consume `kb/` content but NOT `_-`prefix planning docs — clear separation of authoring discipline (planning) vs runtime consumption (kb).
+
+### Next
+
+**H.9.5+** — sibling format-discipline 4th application (yamllint on frontmatter / ESLint baseline on `.js` substrate) OR substantive H.9.x trajectory work per HT.2.5 readout focus areas (error-critic.js fail-soft + 8 atomic-write sites + Atomics.wait + Tier-3 audit findings + ADR drift-detection enhancement). **With H.9.4 = 5/5+ clean phases, v2.0.0 release gate retest is GREEN-eligible** — substrate could tag v2.0.0 at user's discretion OR continue consolidation with additional clean phases.
+
+---
+
 ## [unreleased] — 2026-05-11 — H.9.3 KB authoring batch (5 planned KB targets) — closes HT.1.12-followup docs-pass-incomplete gap
 
 **Fourth sub-phase of post-HT H.9.x track; substantive pure-doc batch authoring.** H.9.3 closes the user-visible docs-pass-incomplete gap surfaced at H.9.1 retrospective + promoted to BACKLOG.md HT.1.12-followup entry at H.9.2. Authors all 5 planned architecture KB targets at substantive depth (~280-330 LoC each; total 1474 LoC of new architectural content); migrates planned-refs from `## Related KB docs (planned, not yet authored)` body sections in 5 source KBs into frontmatter `related:` arrays (bidirectional graph convention restored). Substrate's `contracts-validate.js` bidirectional `related:` validator no longer silent on these refs — all 5 target `kb_id`s now exist + surfaced by graph walk. **No plugin manifest bump** per pure-doc convention.
