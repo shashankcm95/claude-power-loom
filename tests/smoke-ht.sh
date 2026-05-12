@@ -42,9 +42,11 @@ EOF
 The function getCwd at src/util.js:42 returns the current working directory.
 The caller at src/main.js:10 passes the result to processFile.
 EOF
-  T69_OUT=$(node "$SCRIPT_DIR/scripts/agent-team/contract-verifier.js" --contract "$T69_CONTRACT" --output "$T69_OUTPUT" 2>/dev/null)
-  T69_VERDICT=$(echo "$T69_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('verdict', ''))")
-  T69_A4_STATUS=$(echo "$T69_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('antiPattern', {}).get('A4', {}).get('status', ''))")
+  # H.9.16 drift-note 78(a) safe-pattern: source T_EXIT=0 + || T_EXIT=$?; downstream || true.
+  T69_EXIT=0
+  T69_OUT=$(node "$SCRIPT_DIR/scripts/agent-team/contract-verifier.js" --contract "$T69_CONTRACT" --output "$T69_OUTPUT" 2>/dev/null) || T69_EXIT=$?
+  T69_VERDICT=$(echo "$T69_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('verdict', ''))" 2>/dev/null) || true
+  T69_A4_STATUS=$(echo "$T69_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('antiPattern', {}).get('A4', {}).get('status', ''))" 2>/dev/null) || true
   if [ "$T69_VERDICT" = "pass" ] && [ "$T69_A4_STATUS" = "pass" ]; then
     echo "OK (verdict=pass + A4=pass)"
     passed=$((passed + 1))
@@ -76,10 +78,12 @@ EOF
 The function getCwd at src/util.js:42 returns the cwd. This should be refactored
 to use a more idiomatic shape per the existing convention at src/main.js:10.
 EOF
-  T70_OUT=$(node "$SCRIPT_DIR/scripts/agent-team/contract-verifier.js" --contract "$T70_CONTRACT" --output "$T70_OUTPUT" 2>/dev/null)
-  T70_VERDICT=$(echo "$T70_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('verdict', ''))")
-  T70_A4_STATUS=$(echo "$T70_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('antiPattern', {}).get('A4', {}).get('status', ''))")
-  T70_A4_FOUND=$(echo "$T70_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('antiPattern', {}).get('A4', {}).get('foundPhrase', ''))")
+  # H.9.16 drift-note 78(a) safe-pattern: source T_EXIT=0 + || T_EXIT=$?; downstream || true.
+  T70_EXIT=0
+  T70_OUT=$(node "$SCRIPT_DIR/scripts/agent-team/contract-verifier.js" --contract "$T70_CONTRACT" --output "$T70_OUTPUT" 2>/dev/null) || T70_EXIT=$?
+  T70_VERDICT=$(echo "$T70_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('verdict', ''))" 2>/dev/null) || true
+  T70_A4_STATUS=$(echo "$T70_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('antiPattern', {}).get('A4', {}).get('status', ''))" 2>/dev/null) || true
+  T70_A4_FOUND=$(echo "$T70_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('antiPattern', {}).get('A4', {}).get('foundPhrase', ''))" 2>/dev/null) || true
   if [ "$T70_VERDICT" = "partial" ] && [ "$T70_A4_STATUS" = "warn" ] && [ "$T70_A4_FOUND" = "should be" ]; then
     echo "OK (verdict=partial + A4=warn + foundPhrase=should be)"
     passed=$((passed + 1))
@@ -98,9 +102,9 @@ EOF
     echo "FAIL: helper script missing at $T71_HELPER"
     failed=$((failed + 1))
   else
-    # --help (exits 0): direct capture is set-e-safe
-    T71_HELP_OUT=$(bash "$T71_HELPER" --help 2>/dev/null)
-    T71_HELP_EXIT=$?
+    # H.9.16 drift-note 78(a) safe-pattern: defense-in-depth despite --help-exits-0 invariant.
+    T71_HELP_EXIT=0
+    T71_HELP_OUT=$(bash "$T71_HELPER" --help 2>/dev/null) || T71_HELP_EXIT=$?
     # Unknown subcommand (exits 1): wrap in if-form to bypass install.sh's `set -e`
     if T71_UNKNOWN_OUT=$(bash "$T71_HELPER" __nonexistent_subcommand__ 2>&1 >/dev/null); then
       T71_UNKNOWN_EXIT=0
@@ -132,9 +136,11 @@ EOF
   echo -n "  Test 72 (HT.1.6 documentary persona DEFAULT_ROSTERS + /research integration): "
   T72_STORE=$(mktemp -u)
   HETS_IDENTITY_STORE="$T72_STORE" node "$SCRIPT_DIR/scripts/agent-team/agent-identity.js" init >/dev/null 2>&1
-  T72_OUT=$(HETS_IDENTITY_STORE="$T72_STORE" node "$SCRIPT_DIR/scripts/agent-team/agent-identity.js" assign --persona 14-codebase-locator --task ht-1-6-test 2>&1)
-  T72_IDENTITY=$(echo "$T72_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('identity', ''))" 2>/dev/null)
-  T72_PERSONA=$(echo "$T72_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('persona', ''))" 2>/dev/null)
+  # H.9.16 drift-note 78(a) safe-pattern: source T_EXIT=0 + || T_EXIT=$?; downstream || true.
+  T72_EXIT=0
+  T72_OUT=$(HETS_IDENTITY_STORE="$T72_STORE" node "$SCRIPT_DIR/scripts/agent-team/agent-identity.js" assign --persona 14-codebase-locator --task ht-1-6-test 2>&1) || T72_EXIT=$?
+  T72_IDENTITY=$(echo "$T72_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('identity', ''))" 2>/dev/null) || true
+  T72_PERSONA=$(echo "$T72_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('persona', ''))" 2>/dev/null) || true
   # Use if-form to bypass install.sh's `set -e` propagation when grep finds 0 matches
   # (grep -c emits "0" + exits 1; combined with `|| echo "?"` the substitution would
   # capture both grep's "0" + echo's "?" = "0\n?" which breaks string equality below).
@@ -162,9 +168,11 @@ EOF
   # ADR-0001 retagged from `accepted` to `seed` (HT.1.7 Design B) is queryable
   # via `adr.js list --status seed`. Reads the live `swarm/adrs/` directory.
   echo -n "  Test 73 (HT.1.7 seed status enum; adr.js list --status seed returns ADR-0001): "
-  T73_OUT=$(HETS_ADRS_DIR="$SCRIPT_DIR/swarm/adrs" node "$SCRIPT_DIR/scripts/agent-team/adr.js" list --status seed 2>/dev/null)
-  T73_COUNT=$(echo "$T73_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('count', -1))")
-  T73_FIRST_ID=$(echo "$T73_OUT" | python3 -c "import json,sys; d=json.load(sys.stdin); adrs=d.get('adrs',[]); print(adrs[0]['adr_id'] if adrs else '')")
+  # H.9.16 drift-note 78(a) safe-pattern: source T_EXIT=0 + || T_EXIT=$?; downstream || true.
+  T73_EXIT=0
+  T73_OUT=$(HETS_ADRS_DIR="$SCRIPT_DIR/swarm/adrs" node "$SCRIPT_DIR/scripts/agent-team/adr.js" list --status seed 2>/dev/null) || T73_EXIT=$?
+  T73_COUNT=$(echo "$T73_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('count', -1))" 2>/dev/null) || true
+  T73_FIRST_ID=$(echo "$T73_OUT" | python3 -c "import json,sys; d=json.load(sys.stdin); adrs=d.get('adrs',[]); print(adrs[0]['adr_id'] if adrs else '')" 2>/dev/null) || true
   if [ "$T73_COUNT" = "1" ] && [ "$T73_FIRST_ID" = "0001" ]; then
     echo "OK (count=1, adr_id=0001)"
     passed=$((passed + 1))
@@ -179,10 +187,12 @@ EOF
   # commitment). isActive() widening at HT.1.7 admits seed status alongside
   # accepted; both ADRs share the same files_affected list (14 hook scripts).
   echo -n "  Test 74 (HT.1.7 seed active-for-drift; touched-by returns ADR-0001 + ADR-0003): "
-  T74_OUT=$(HETS_ADRS_DIR="$SCRIPT_DIR/swarm/adrs" node "$SCRIPT_DIR/scripts/agent-team/adr.js" touched-by hooks/scripts/fact-force-gate.js 2>/dev/null)
-  T74_COUNT=$(echo "$T74_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('matched_count', -1))")
-  T74_HAS_0001=$(echo "$T74_OUT" | python3 -c "import json,sys; d=json.load(sys.stdin); print('yes' if any(a.get('adr_id') == '0001' for a in d.get('adrs', [])) else 'no')")
-  T74_HAS_0003=$(echo "$T74_OUT" | python3 -c "import json,sys; d=json.load(sys.stdin); print('yes' if any(a.get('adr_id') == '0003' for a in d.get('adrs', [])) else 'no')")
+  # H.9.16 drift-note 78(a) safe-pattern: source T_EXIT=0 + || T_EXIT=$?; downstream || true.
+  T74_EXIT=0
+  T74_OUT=$(HETS_ADRS_DIR="$SCRIPT_DIR/swarm/adrs" node "$SCRIPT_DIR/scripts/agent-team/adr.js" touched-by hooks/scripts/fact-force-gate.js 2>/dev/null) || T74_EXIT=$?
+  T74_COUNT=$(echo "$T74_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('matched_count', -1))" 2>/dev/null) || true
+  T74_HAS_0001=$(echo "$T74_OUT" | python3 -c "import json,sys; d=json.load(sys.stdin); print('yes' if any(a.get('adr_id') == '0001' for a in d.get('adrs', [])) else 'no')" 2>/dev/null) || true
+  T74_HAS_0003=$(echo "$T74_OUT" | python3 -c "import json,sys; d=json.load(sys.stdin); print('yes' if any(a.get('adr_id') == '0003' for a in d.get('adrs', [])) else 'no')" 2>/dev/null) || true
   if [ "$T74_COUNT" = "2" ] && [ "$T74_HAS_0001" = "yes" ] && [ "$T74_HAS_0003" = "yes" ]; then
     echo "OK (matched_count=2, includes ADR-0001 seed + ADR-0003 accepted)"
     passed=$((passed + 1))
@@ -196,9 +206,11 @@ EOF
   # Validates `adr.js list --status accepted` returns count ≥ 2 (ADR-0003 +
   # ADR-0005); ADR-0005 must be present by adr_id.
   echo -n "  Test 75 (HT.1.13 ADR-0005 accepted; adr.js list --status accepted includes ADR-0005): "
-  T75_OUT=$(HETS_ADRS_DIR="$SCRIPT_DIR/swarm/adrs" node "$SCRIPT_DIR/scripts/agent-team/adr.js" list --status accepted 2>/dev/null)
-  T75_COUNT=$(echo "$T75_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('count', -1))")
-  T75_HAS_0005=$(echo "$T75_OUT" | python3 -c "import json,sys; d=json.load(sys.stdin); print('yes' if any(a.get('adr_id') == '0005' for a in d.get('adrs', [])) else 'no')")
+  # H.9.16 drift-note 78(a) safe-pattern: source T_EXIT=0 + || T_EXIT=$?; downstream || true.
+  T75_EXIT=0
+  T75_OUT=$(HETS_ADRS_DIR="$SCRIPT_DIR/swarm/adrs" node "$SCRIPT_DIR/scripts/agent-team/adr.js" list --status accepted 2>/dev/null) || T75_EXIT=$?
+  T75_COUNT=$(echo "$T75_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('count', -1))" 2>/dev/null) || true
+  T75_HAS_0005=$(echo "$T75_OUT" | python3 -c "import json,sys; d=json.load(sys.stdin); print('yes' if any(a.get('adr_id') == '0005' for a in d.get('adrs', [])) else 'no')" 2>/dev/null) || true
   if [ "$T75_COUNT" -ge "2" ] && [ "$T75_HAS_0005" = "yes" ]; then
     echo "OK (count=$T75_COUNT, includes ADR-0005)"
     passed=$((passed + 1))
@@ -231,14 +243,16 @@ EOF
   echo -n "  Test 77 (HT.1.14 bumpBatch in-process call returns expected shape): "
   T77_TMPDIR=$(mktemp -d)
   mkdir -p "$T77_TMPDIR/.claude/checkpoints"
+  # H.9.16 drift-note 78(a) safe-pattern: source T_EXIT=0 + || T_EXIT=$?; downstream || true.
+  T77_EXIT=0
   T77_OUT=$(HOME="$T77_TMPDIR" node -e "
     const s = require('$SCRIPT_DIR/scripts/self-improve-store.js');
     const r = s.bumpBatch(['filePath:/tmp/foo.js', 'command:/test']);
     process.stdout.write(JSON.stringify(r));
-  " 2>/dev/null)
-  T77_TURN=$(echo "$T77_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('turnCounter', -1))" 2>/dev/null)
-  T77_BUMPED=$(echo "$T77_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('signalsBumped', -1))" 2>/dev/null)
-  T77_HAS_SHOULDSCAN=$(echo "$T77_OUT" | python3 -c "import json,sys; print('yes' if 'shouldScan' in json.load(sys.stdin) else 'no')" 2>/dev/null)
+  " 2>/dev/null) || T77_EXIT=$?
+  T77_TURN=$(echo "$T77_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('turnCounter', -1))" 2>/dev/null) || true
+  T77_BUMPED=$(echo "$T77_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('signalsBumped', -1))" 2>/dev/null) || true
+  T77_HAS_SHOULDSCAN=$(echo "$T77_OUT" | python3 -c "import json,sys; print('yes' if 'shouldScan' in json.load(sys.stdin) else 'no')" 2>/dev/null) || true
   rm -rf "$T77_TMPDIR"
   if [ "$T77_TURN" = "1" ] && [ "$T77_BUMPED" = "2" ] && [ "$T77_HAS_SHOULDSCAN" = "yes" ]; then
     echo "OK (turnCounter=1, signalsBumped=2, shouldScan in result)"
@@ -258,11 +272,12 @@ EOF
   echo -n "  Test 78 (HT.2.3 session-end-nudge.js auto-mkdir on absent sessions/ dir): "
   T78_TMPDIR=$(mktemp -d)
   # Note: do NOT pre-create $T78_TMPDIR/.claude/sessions — that's what we're testing
+  # H.9.16 drift-note 78(a) safe-pattern: 3-line dead-code replacement (separate T_EXIT=$? was unreachable under set -e); downstream || true.
+  T78_EXIT=0
   T78_OUT=$(echo "input-line-1" | HOME="$T78_TMPDIR" CLAUDE_SESSION_ID=t78-test \
-    node "$SCRIPT_DIR/hooks/scripts/session-end-nudge.js" 2>/dev/null)
-  T78_EXIT=$?
+    node "$SCRIPT_DIR/hooks/scripts/session-end-nudge.js" 2>/dev/null) || T78_EXIT=$?
   T78_STATE_FILE="$T78_TMPDIR/.claude/sessions/nudge-t78-test.json"
-  T78_COUNT=$(python3 -c "import json; print(json.load(open('$T78_STATE_FILE')).get('count', -1))" 2>/dev/null)
+  T78_COUNT=$(python3 -c "import json; print(json.load(open('$T78_STATE_FILE')).get('count', -1))" 2>/dev/null) || true
   if [ "$T78_EXIT" = "0" ] && [ "$T78_OUT" = "input-line-1" ] && [ "$T78_COUNT" = "1" ]; then
     echo "OK (exit=0, stdout=input, auto-mkdir created sessions/ + state file count=1)"
     passed=$((passed + 1))
@@ -289,10 +304,11 @@ EOF
   T79_CHILD_PID=$!
   echo "$T79_CHILD_PID" > "$T79_LOCK"
   T79_START=$(date +%s)
+  # H.9.16 drift-note 78(a) safe-pattern: 3-line dead-code replacement (separate T_EXIT=$? was unreachable under set -e).
+  T79_EXIT=0
   T79_OUT=$(echo "input-line-2" | HOME="$T79_TMPDIR" CLAUDE_SESSION_ID=t79-test \
     CLAUDE_SESSION_NUDGE_THRESHOLD=10 \
-    node "$SCRIPT_DIR/hooks/scripts/session-end-nudge.js" 2>/dev/null)
-  T79_EXIT=$?
+    node "$SCRIPT_DIR/hooks/scripts/session-end-nudge.js" 2>/dev/null) || T79_EXIT=$?
   T79_END=$(date +%s)
   T79_ELAPSED=$((T79_END - T79_START))
   # kill + wait must tolerate killed-child exit codes under `set -euo pipefail`:
@@ -669,6 +685,8 @@ EOF
   T87_TMP=$(mktemp -d)
   trap 'rm -rf "$T87_TMP"' EXIT
   T87_LOCK="$T87_TMP/h910-lock"
+  # H.9.16 drift-note 78(a) safe-pattern: source T_EXIT=0 + || T_EXIT=$?; downstream || true.
+  T87_EXIT=0
   T87_RESULT=$(node -e "
     const fs = require('fs');
     const path = require('path');
@@ -702,13 +720,13 @@ EOF
     try { child.kill(); } catch {}
     // got should be false (timed out); cpuFraction should be <0.1 (10%)
     console.log(JSON.stringify({ got, elapsedMs, cpuUs, cpuFraction }));
-  " 2>&1)
+  " 2>&1) || T87_EXIT=$?
   rm -rf "$T87_TMP"
   trap - EXIT
-  T87_GOT=$(echo "$T87_RESULT" | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print(d.get('got'))" 2>/dev/null)
-  T87_ELAPSED=$(echo "$T87_RESULT" | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print(d.get('elapsedMs'))" 2>/dev/null)
-  T87_CPU=$(echo "$T87_RESULT" | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print(d.get('cpuFraction'))" 2>/dev/null)
-  T87_CPU_OK=$(echo "$T87_RESULT" | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print(1 if d.get('cpuFraction', 1) < 0.1 else 0)" 2>/dev/null)
+  T87_GOT=$(echo "$T87_RESULT" | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print(d.get('got'))" 2>/dev/null) || true
+  T87_ELAPSED=$(echo "$T87_RESULT" | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print(d.get('elapsedMs'))" 2>/dev/null) || true
+  T87_CPU=$(echo "$T87_RESULT" | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print(d.get('cpuFraction'))" 2>/dev/null) || true
+  T87_CPU_OK=$(echo "$T87_RESULT" | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print(1 if d.get('cpuFraction', 1) < 0.1 else 0)" 2>/dev/null) || true
   if [ "$T87_GOT" = "False" ] && [ "$T87_CPU_OK" = "1" ]; then
     echo "OK (got=false elapsed=${T87_ELAPSED}ms cpu_fraction=${T87_CPU} < 0.1 = <10% CPU true-sleep confirmed)"
     passed=$((passed + 1))
@@ -726,7 +744,8 @@ EOF
   # Plant a symlink with valid-looking name pointing outside
   ln -s "$T65_TARGET/0099-malicious.md" "$T65_ADRS/0099-malicious.md" 2>/dev/null
   # touched-by + active should not crash + should not include the symlink as a loaded ADR
-  T65_LIST=$(HETS_ADRS_DIR="$T65_ADRS" node "$SCRIPT_DIR/scripts/agent-team/adr.js" list 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin).get('count', -1))")
+  # H.9.16 drift-note 78(a) safe-pattern: inline-pipeline cmd-sub suffix || true.
+  T65_LIST=$(HETS_ADRS_DIR="$T65_ADRS" node "$SCRIPT_DIR/scripts/agent-team/adr.js" list 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin).get('count', -1))" 2>/dev/null) || true
   if [ "$T65_LIST" = "0" ]; then
     echo "OK (symlink filtered out)"
     passed=$((passed + 1))
@@ -751,6 +770,8 @@ EOF
   #   F4: valid frontmatter but missing "When NOT to use" → approve + advisory (Component B)
   #   F5: out-of-scope path → approve no advisory (regex scope guard)
   echo -n "  Test 88 (H.9.12 validate-kb-doc.js _PRINCIPLES.md enforcement; 5 fixtures: HARD-block + SOFT-advisory + out-of-scope): "
+  # H.9.16 drift-note 78(a) safe-pattern: source T_EXIT=0 + || T_EXIT=$?; downstream || true.
+  T88_EXIT=0
   T88_RESULT=$(node -e "
     const { spawnSync } = require('child_process');
     const validator = '$SCRIPT_DIR/hooks/scripts/validators/validate-kb-doc.js';
@@ -846,10 +867,10 @@ EOF
     const passes = results.filter(r => r.ok).length;
     const fails = results.filter(r => !r.ok);
     console.log(JSON.stringify({ passes, total: fixtures.length, fails }));
-  " 2>&1)
-  T88_PASSES=$(echo "$T88_RESULT" | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print(d.get('passes'))" 2>/dev/null)
-  T88_TOTAL=$(echo "$T88_RESULT" | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print(d.get('total'))" 2>/dev/null)
-  T88_FAILS=$(echo "$T88_RESULT" | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print(json.dumps(d.get('fails', [])))" 2>/dev/null)
+  " 2>&1) || T88_EXIT=$?
+  T88_PASSES=$(echo "$T88_RESULT" | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print(d.get('passes'))" 2>/dev/null) || true
+  T88_TOTAL=$(echo "$T88_RESULT" | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print(d.get('total'))" 2>/dev/null) || true
+  T88_FAILS=$(echo "$T88_RESULT" | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print(json.dumps(d.get('fails', [])))" 2>/dev/null) || true
   if [ "$T88_PASSES" = "5" ] && [ "$T88_TOTAL" = "5" ]; then
     echo "OK (5/5 fixtures: HARD-block ×3 + SOFT-advisory ×1 + out-of-scope ×1 all match expected decisions)"
     passed=$((passed + 1))
@@ -870,6 +891,8 @@ EOF
   # passed/failed counters; restore BEFORE asserting (defensive cleanup even
   # if assertion fails — ensures no permanent doc state change on test failure).
   echo -n "  Test 89 (H.9.14 kb-architecture-related-bidirectional HARD-violation regression; fault-injection + restore): "
+  # H.9.16 drift-note 78(a) safe-pattern: source T_EXIT=0 + || T_EXIT=$?; downstream || true.
+  T89_EXIT=0
   T89_RESULT=$(node -e "
     const fs = require('fs');
     const { execSync } = require('child_process');
@@ -908,7 +931,7 @@ EOF
     if (postBaseline.asymCount !== 0) { console.log('FAIL: post-restore asym expected 0 got ' + postBaseline.asymCount); process.exit(1); }
     if (postBaseline.total !== preBaseline.total) { console.log('FAIL: post-restore Total expected ' + preBaseline.total + ' got ' + postBaseline.total); process.exit(1); }
     console.log('OK (preBaseline=' + preBaseline.total + '; fault: exit=' + fault.exitCode + ' asym=' + fault.asymCount + ' total=' + fault.total + '; postBaseline=' + postBaseline.total + ')');
-  " 2>&1)
+  " 2>&1) || T89_EXIT=$?
   if echo "$T89_RESULT" | grep -q "^OK"; then
     echo "$T89_RESULT"
     passed=$((passed + 1))
@@ -932,6 +955,8 @@ EOF
 
   # Test 90: parseFrontmatter CRLF normalization (VAL-1)
   echo -n "  Test 90 (H.9.15 parseFrontmatter CRLF normalization; VAL-1): "
+  # H.9.16 drift-note 78(a) safe-pattern: source T_EXIT=0 + || T_EXIT=$?; downstream || true.
+  T90_EXIT=0
   T90_RESULT=$(node -e "
     const { parseFrontmatter } = require('$SCRIPT_DIR/scripts/agent-team/_lib/frontmatter.js');
     const lf = '---\nkb_id: test/x\nversion: 1\n---\nbody';
@@ -941,11 +966,13 @@ EOF
     if (a.frontmatter.kb_id !== 'test/x' || b.frontmatter.kb_id !== 'test/x') { console.log('FAIL: kb_id mismatch lf=' + a.frontmatter.kb_id + ' crlf=' + b.frontmatter.kb_id); process.exit(1); }
     if (a.frontmatter.version !== 1 || b.frontmatter.version !== 1) { console.log('FAIL: version mismatch lf=' + a.frontmatter.version + ' crlf=' + b.frontmatter.version); process.exit(1); }
     console.log('OK (LF + CRLF both parse correctly; numeric coercion applied)');
-  " 2>&1)
+  " 2>&1) || T90_EXIT=$?
   if echo "$T90_RESULT" | grep -q "^OK"; then echo "$T90_RESULT"; passed=$((passed + 1)); else echo "FAIL: $T90_RESULT"; failed=$((failed + 1)); fi
 
   # Test 91: parseFrontmatter BOM strip (VAL-6)
   echo -n "  Test 91 (H.9.15 parseFrontmatter BOM strip; VAL-6): "
+  # H.9.16 drift-note 78(a) safe-pattern: source T_EXIT=0 + || T_EXIT=$?; downstream || true.
+  T91_EXIT=0
   T91_RESULT=$(node -e "
     const { parseFrontmatter } = require('$SCRIPT_DIR/scripts/agent-team/_lib/frontmatter.js');
     const bom = '﻿---\nkb_id: test/x\nversion: 1\n---\nbody';
@@ -953,11 +980,13 @@ EOF
     if (r.frontmatter.kb_id !== 'test/x') { console.log('FAIL: BOM-prefixed doc kb_id=' + r.frontmatter.kb_id); process.exit(1); }
     if (r.frontmatter.version !== 1) { console.log('FAIL: BOM-prefixed doc version=' + r.frontmatter.version); process.exit(1); }
     console.log('OK (BOM stripped; frontmatter parsed correctly)');
-  " 2>&1)
+  " 2>&1) || T91_EXIT=$?
   if echo "$T91_RESULT" | grep -q "^OK"; then echo "$T91_RESULT"; passed=$((passed + 1)); else echo "FAIL: $T91_RESULT"; failed=$((failed + 1)); fi
 
   # Test 92: parseFrontmatter block-scalar warning + null sentinel (VAL-2)
   echo -n "  Test 92 (H.9.15 parseFrontmatter block-scalar warning + null sentinel; VAL-2): "
+  # H.9.16 drift-note 78(a) safe-pattern: source T_EXIT=0 + || T_EXIT=$?; downstream || true.
+  T92_EXIT=0
   T92_RESULT=$(node -e "
     const { spawnSync } = require('child_process');
     const r = spawnSync('node', ['-e', \"const { parseFrontmatter } = require('$SCRIPT_DIR/scripts/agent-team/_lib/frontmatter.js'); const r = parseFrontmatter('---\\\nkey: |-\\\n---\\\nbody'); console.log(JSON.stringify({val: r.frontmatter.key}));\"], { encoding: 'utf8' });
@@ -967,11 +996,13 @@ EOF
     const parsed = JSON.parse(stdout.trim());
     if (parsed.val !== null) { console.log('FAIL: expected null sentinel, got ' + JSON.stringify(parsed.val)); process.exit(1); }
     console.log('OK (block-scalar warning emitted + null sentinel stored)');
-  " 2>&1)
+  " 2>&1) || T92_EXIT=$?
   if echo "$T92_RESULT" | grep -q "^OK"; then echo "$T92_RESULT"; passed=$((passed + 1)); else echo "FAIL: $T92_RESULT"; failed=$((failed + 1)); fi
 
   # Test 93: parseFrontmatter numeric coercion (VAL-5 atomic part)
   echo -n "  Test 93 (H.9.15 parseFrontmatter numeric coercion w/ leading-zero exclusion; VAL-5): "
+  # H.9.16 drift-note 78(a) safe-pattern: source T_EXIT=0 + || T_EXIT=$?; downstream || true.
+  T93_EXIT=0
   T93_RESULT=$(node -e "
     const { parseFrontmatter } = require('$SCRIPT_DIR/scripts/agent-team/_lib/frontmatter.js');
     const r = parseFrontmatter('---\ncoerce_int: 1\ncoerce_zero: 0\ncoerce_float: 1.5\npreserve_leading_zero: 0001\npreserve_quoted: \"1\"\n---');
@@ -982,11 +1013,13 @@ EOF
     if (typeof fm.preserve_leading_zero !== 'string' || fm.preserve_leading_zero !== '0001') { console.log('FAIL: preserve_leading_zero typeof=' + typeof fm.preserve_leading_zero + ' val=' + fm.preserve_leading_zero); process.exit(1); }
     if (typeof fm.preserve_quoted !== 'string' || fm.preserve_quoted !== '1') { console.log('FAIL: preserve_quoted typeof=' + typeof fm.preserve_quoted + ' val=' + fm.preserve_quoted); process.exit(1); }
     console.log('OK (numeric coercion applied to unquoted non-leading-zero only)');
-  " 2>&1)
+  " 2>&1) || T93_EXIT=$?
   if echo "$T93_RESULT" | grep -q "^OK"; then echo "$T93_RESULT"; passed=$((passed + 1)); else echo "FAIL: $T93_RESULT"; failed=$((failed + 1)); fi
 
   # Test 94: validate-kb-doc tilde-fence support (VAL-3)
   echo -n "  Test 94 (H.9.15 validate-kb-doc tilde-fence section detection; VAL-3): "
+  # H.9.16 drift-note 78(a) safe-pattern: source T_EXIT=0 + || T_EXIT=$?; downstream || true.
+  T94_EXIT=0
   T94_RESULT=$(node -e "
     const { spawnSync } = require('child_process');
     const validator = '$SCRIPT_DIR/hooks/scripts/validators/validate-kb-doc.js';
@@ -996,11 +1029,13 @@ EOF
     const out = JSON.parse(r.stdout || '{}');
     if (out.decision !== 'approve') { console.log('FAIL: decision=' + out.decision + ' reason=' + (out.reason || '').slice(0, 200)); process.exit(1); }
     console.log('OK (tilde fence content not counted as section; required sections outside fence detected)');
-  " 2>&1)
+  " 2>&1) || T94_EXIT=$?
   if echo "$T94_RESULT" | grep -q "^OK"; then echo "$T94_RESULT"; passed=$((passed + 1)); else echo "FAIL: $T94_RESULT"; failed=$((failed + 1)); fi
 
   # Test 95: validate-no-bare-secrets OpenAI sk-/sk-proj- block (SEC-1)
   echo -n "  Test 95 (H.9.15 validate-no-bare-secrets OpenAI sk-/sk-proj-; SEC-1): "
+  # H.9.16 drift-note 78(a) safe-pattern: source T_EXIT=0 + || T_EXIT=$?; downstream || true.
+  T95_EXIT=0
   T95_RESULT=$(node -e "
     const { spawnSync } = require('child_process');
     const validator = '$SCRIPT_DIR/hooks/scripts/validators/validate-no-bare-secrets.js';
@@ -1011,11 +1046,13 @@ EOF
     if (out.decision !== 'block') { console.log('FAIL: decision=' + out.decision + ' (expected block on OpenAI key)'); process.exit(1); }
     if (!(out.reason || '').includes('OpenAI')) { console.log('FAIL: reason missing OpenAI mention; got: ' + (out.reason || '').slice(0, 200)); process.exit(1); }
     console.log('OK (OpenAI sk-proj- pattern blocked; reason mentions OpenAI)');
-  " 2>&1)
+  " 2>&1) || T95_EXIT=$?
   if echo "$T95_RESULT" | grep -q "^OK"; then echo "$T95_RESULT"; passed=$((passed + 1)); else echo "FAIL: $T95_RESULT"; failed=$((failed + 1)); fi
 
   # Test 96: validate-no-bare-secrets PEM private key block (SEC-1)
   echo -n "  Test 96 (H.9.15 validate-no-bare-secrets PEM private key; SEC-1): "
+  # H.9.16 drift-note 78(a) safe-pattern: source T_EXIT=0 + || T_EXIT=$?; downstream || true.
+  T96_EXIT=0
   T96_RESULT=$(node -e "
     const { spawnSync } = require('child_process');
     const validator = '$SCRIPT_DIR/hooks/scripts/validators/validate-no-bare-secrets.js';
@@ -1026,12 +1063,14 @@ EOF
     if (out.decision !== 'block') { console.log('FAIL: decision=' + out.decision); process.exit(1); }
     if (!(out.reason || '').toLowerCase().includes('pem')) { console.log('FAIL: reason missing PEM mention'); process.exit(1); }
     console.log('OK (PEM private key block fired)');
-  " 2>&1)
+  " 2>&1) || T96_EXIT=$?
   if echo "$T96_RESULT" | grep -q "^OK"; then echo "$T96_RESULT"; passed=$((passed + 1)); else echo "FAIL: $T96_RESULT"; failed=$((failed + 1)); fi
 
   # Test 97: validate-no-bare-secrets _HERE placeholder approve (SEC-3)
   # Note: source uses string concat to avoid Edit-time validator trip
   echo -n "  Test 97 (H.9.15 validate-no-bare-secrets _here placeholder; SEC-3): "
+  # H.9.16 drift-note 78(a) safe-pattern: source T_EXIT=0 + || T_EXIT=$?; downstream || true.
+  T97_EXIT=0
   T97_RESULT=$(node -e "
     const { spawnSync } = require('child_process');
     const validator = '$SCRIPT_DIR/hooks/scripts/validators/validate-no-bare-secrets.js';
@@ -1041,12 +1080,14 @@ EOF
     const out = JSON.parse(r.stdout || '{}');
     if (out.decision !== 'approve') { console.log('FAIL: decision=' + out.decision + ' (expected approve on placeholder)'); process.exit(1); }
     console.log('OK (your_api_key_here placeholder correctly approved)');
-  " 2>&1)
+  " 2>&1) || T97_EXIT=$?
   if echo "$T97_RESULT" | grep -q "^OK"; then echo "$T97_RESULT"; passed=$((passed + 1)); else echo "FAIL: $T97_RESULT"; failed=$((failed + 1)); fi
 
   # Test 98: validate-no-bare-secrets changeme_* prefix approve (SEC-4)
   # Note: source uses string concat to avoid Edit-time validator trip
   echo -n "  Test 98 (H.9.15 validate-no-bare-secrets changeme_* prefix; SEC-4): "
+  # H.9.16 drift-note 78(a) safe-pattern: source T_EXIT=0 + || T_EXIT=$?; downstream || true.
+  T98_EXIT=0
   T98_RESULT=$(node -e "
     const { spawnSync } = require('child_process');
     const validator = '$SCRIPT_DIR/hooks/scripts/validators/validate-no-bare-secrets.js';
@@ -1056,11 +1097,13 @@ EOF
     const out = JSON.parse(r.stdout || '{}');
     if (out.decision !== 'approve') { console.log('FAIL: decision=' + out.decision + ' (expected approve on changeme_*)'); process.exit(1); }
     console.log('OK (changeme_* prefix correctly approved)');
-  " 2>&1)
+  " 2>&1) || T98_EXIT=$?
   if echo "$T98_RESULT" | grep -q "^OK"; then echo "$T98_RESULT"; passed=$((passed + 1)); else echo "FAIL: $T98_RESULT"; failed=$((failed + 1)); fi
 
   # Test 99: console-log-check false-positive prevention (CLC-1)
   echo -n "  Test 99 (H.9.15 console-log-check false-positive layered defense; CLC-1): "
+  # H.9.16 drift-note 78(a) safe-pattern: source T_EXIT=0 + || T_EXIT=$?; downstream || true.
+  T99_EXIT=0
   T99_RESULT=$(node -e "
     const test = (line) => {
       const trimmed = line.trimStart();
@@ -1084,11 +1127,13 @@ EOF
     }
     if (fails.length > 0) { console.log('FAIL: ' + fails.join('; ')); process.exit(1); }
     console.log('OK (6/6 layered defense cases pass)');
-  " 2>&1)
+  " 2>&1) || T99_EXIT=$?
   if echo "$T99_RESULT" | grep -q "^OK"; then echo "$T99_RESULT"; passed=$((passed + 1)); else echo "FAIL: $T99_RESULT"; failed=$((failed + 1)); fi
 
   # Test 100: error-critic commandKey contract (CHA-1)
   echo -n "  Test 100 (H.9.15 error-critic commandKey whitespace normalization contract; CHA-1): "
+  # H.9.16 drift-note 78(a) safe-pattern: source T_EXIT=0 + || T_EXIT=$?; downstream || true.
+  T100_EXIT=0
   T100_RESULT=$(node -e "
     const crypto = require('crypto');
     const commandKey = (cmd) => crypto.createHash('sha256').update(cmd.trim().replace(/\s+/g, ' ')).digest('hex').slice(0, 12);
@@ -1100,12 +1145,14 @@ EOF
     if (a !== b || a !== c || a !== d) { console.log('FAIL: whitespace variants differ'); process.exit(1); }
     if (a === e) { console.log('FAIL: case variants merged (CHA-1 decision: case preserved)'); process.exit(1); }
     console.log('OK (whitespace normalized; case preserved per CHA-1)');
-  " 2>&1)
+  " 2>&1) || T100_EXIT=$?
   if echo "$T100_RESULT" | grep -q "^OK"; then echo "$T100_RESULT"; passed=$((passed + 1)); else echo "FAIL: $T100_RESULT"; failed=$((failed + 1)); fi
 
   # Test 101: validate-no-bare-secrets DB-style password special chars (SEC-1 char-class)
   # Note: source uses string concat to avoid Edit-time validator trip on KEY=value
   echo -n "  Test 101 (H.9.15 validate-no-bare-secrets DB-style password special chars; SEC-1): "
+  # H.9.16 drift-note 78(a) safe-pattern: source T_EXIT=0 + || T_EXIT=$?; downstream || true.
+  T101_EXIT=0
   T101_RESULT=$(node -e "
     const { spawnSync } = require('child_process');
     const validator = '$SCRIPT_DIR/hooks/scripts/validators/validate-no-bare-secrets.js';
@@ -1115,6 +1162,44 @@ EOF
     const out = JSON.parse(r.stdout || '{}');
     if (out.decision !== 'block') { console.log('FAIL: decision=' + out.decision + ' (expected block per SEC-1 char-class widening)'); process.exit(1); }
     console.log('OK (DB-style password with special chars blocked)');
-  " 2>&1)
+  " 2>&1) || T101_EXIT=$?
   if echo "$T101_RESULT" | grep -q "^OK"; then echo "$T101_RESULT"; passed=$((passed + 1)); else echo "FAIL: $T101_RESULT"; failed=$((failed + 1)); fi
+
+  # Test 102: H.9.16 — drift-note 78(a) closure regression. Proves end-to-end that the
+  # safe-pattern (`T_EXIT=0; T_OUT=$(...) || T_EXIT=$?`) catches set -e + cmd-sub failure
+  # WITHOUT aborting the script silently, AND the downstream `|| true` suffix lets the
+  # parse-of-empty-input fail-soft. Pre-H.9.6.2 reproduction: `set -euo pipefail;
+  # FOO=$(false); echo unreachable` does NOT print "unreachable" — set -e fires on the
+  # cmd-sub assignment. H.9.6.2 designed the safe-pattern; H.9.15 + H.9.16 expanded it.
+  # Test 102 ensures any future regression of the pattern is caught at smoke time.
+  echo -n "  Test 102 (H.9.16 drift-note 78(a) closure regression; safe-pattern catches set -e + cmd-sub failure): "
+  T102_TMPDIR=$(mktemp -d)
+  # Belt-and-suspenders cleanup: EXIT trap handles abort during sub-shell;
+  # explicit rm post-extract handles normal path. Both safe to invoke (trap then
+  # `trap -` then rm is idempotent on already-cleaned tmpdir).
+  trap 'rm -rf "$T102_TMPDIR"' EXIT
+  # Simulate the safe-pattern in a sub-shell with `set -euo pipefail`:
+  (
+    set -euo pipefail
+    T_EXIT=0
+    T_OUT=$(/usr/bin/false 2>&1) || T_EXIT=$?
+    if [ "$T_EXIT" -eq 0 ]; then
+      echo "BAD: expected non-zero exit from /usr/bin/false"
+      exit 99
+    fi
+    # Verify downstream parse also fail-soft via || true (empty input → python3 fails)
+    T_PARSE=$(echo "$T_OUT" | python3 -c "import sys; print(sys.stdin.read())" 2>/dev/null) || true
+    echo "exit=$T_EXIT parse_len=${#T_PARSE}"
+  ) > "$T102_TMPDIR/result.txt" 2>&1
+  T102_EXIT=$?
+  T102_RESULT=$(cat "$T102_TMPDIR/result.txt" 2>/dev/null || echo "ERROR")
+  trap - EXIT
+  rm -rf "$T102_TMPDIR"
+  if [ "$T102_EXIT" = "0" ] && echo "$T102_RESULT" | grep -q "^exit=1 parse_len=0$"; then
+    echo "OK (safe-pattern caught /usr/bin/false exit=1 without aborting set -e; downstream parse fail-soft via || true)"
+    passed=$((passed + 1))
+  else
+    echo "FAIL: expected exit=0 + 'exit=1 parse_len=0', got exit=$T102_EXIT result='$T102_RESULT'"
+    failed=$((failed + 1))
+  fi
 

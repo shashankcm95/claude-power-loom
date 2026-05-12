@@ -387,7 +387,9 @@ This is the quick reference.
 
 This is the full content.
 EOF
-  T62_OUT=$(HETS_KB_DIR="$T62_KBDIR" node "$SCRIPT_DIR/scripts/agent-team/kb-resolver.js" cat-summary test/fence 2>/dev/null)
+  # H.9.16 drift-note 78(a) safe-pattern: T62_EXIT=0; T_OUT=$(...) || T_EXIT=$? (set -e + cmd-sub).
+  T62_EXIT=0
+  T62_OUT=$(HETS_KB_DIR="$T62_KBDIR" node "$SCRIPT_DIR/scripts/agent-team/kb-resolver.js" cat-summary test/fence 2>/dev/null) || T62_EXIT=$?
   # Summary should include "## Summary" + body + the fenced block + closing fence
   # Summary should NOT include "## Quick Reference" (it's the next real H2)
   if echo "$T62_OUT" | grep -q "This is the summary" \
@@ -420,8 +422,9 @@ invariants_introduced:
 ## Context
 Test.
 EOF
-  T63_TRUE_POSITIVE=$(HETS_ADRS_DIR="$T63_ADRS" node "$SCRIPT_DIR/scripts/agent-team/adr.js" touched-by hooks/scripts/foo.js 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin).get('matched_count', -1))")
-  T63_FALSE_POSITIVE=$(HETS_ADRS_DIR="$T63_ADRS" node "$SCRIPT_DIR/scripts/agent-team/adr.js" touched-by hooks/scripts/barfoo.js 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin).get('matched_count', -1))")
+  # H.9.16 drift-note 78(a) safe-pattern: inline-pipeline cmd-subs suffix || true (parse-of-empty-input fail-soft).
+  T63_TRUE_POSITIVE=$(HETS_ADRS_DIR="$T63_ADRS" node "$SCRIPT_DIR/scripts/agent-team/adr.js" touched-by hooks/scripts/foo.js 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin).get('matched_count', -1))" 2>/dev/null) || true
+  T63_FALSE_POSITIVE=$(HETS_ADRS_DIR="$T63_ADRS" node "$SCRIPT_DIR/scripts/agent-team/adr.js" touched-by hooks/scripts/barfoo.js 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin).get('matched_count', -1))" 2>/dev/null) || true
   if [ "$T63_TRUE_POSITIVE" = "1" ] && [ "$T63_FALSE_POSITIVE" = "0" ]; then
     echo "OK (true-positive=1, false-positive=0)"
     passed=$((passed + 1))
@@ -437,13 +440,16 @@ EOF
   T64_ADRS="$T64_TMPDIR/adrs"
   mkdir -p "$T64_ADRS"
   cp "$SCRIPT_DIR/swarm/adrs/_TEMPLATE.md" "$T64_ADRS/_TEMPLATE.md" 2>/dev/null
-  T64_NEW=$(HETS_ADRS_DIR="$T64_ADRS" node "$SCRIPT_DIR/scripts/agent-team/adr.js" new --title 'Test "quoted" title' 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('filename', ''))")
+  # H.9.16 drift-note 78(a) safe-pattern: inline-pipeline cmd-sub suffix || true.
+  T64_NEW=$(HETS_ADRS_DIR="$T64_ADRS" node "$SCRIPT_DIR/scripts/agent-team/adr.js" new --title 'Test "quoted" title' 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('filename', ''))" 2>/dev/null) || true
   if [ -n "$T64_NEW" ] && [ -f "$T64_ADRS/$T64_NEW" ]; then
     # Verify the file has properly escaped title
-    T64_TITLE_LINE=$(grep '^title:' "$T64_ADRS/$T64_NEW")
+    # H.9.16 drift-note 78(a) safe-pattern: grep cmd-sub suffix || true (grep exits 1 on no-match aborts under set -e).
+    T64_TITLE_LINE=$(grep '^title:' "$T64_ADRS/$T64_NEW" 2>/dev/null) || true
     if echo "$T64_TITLE_LINE" | grep -q 'Test \\"quoted\\" title'; then
       # Verify the ADR loads cleanly
-      T64_LOAD=$(HETS_ADRS_DIR="$T64_ADRS" node "$SCRIPT_DIR/scripts/agent-team/adr.js" list 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin).get('count', -1))")
+      # H.9.16 drift-note 78(a) safe-pattern: inline-pipeline cmd-sub suffix || true.
+      T64_LOAD=$(HETS_ADRS_DIR="$T64_ADRS" node "$SCRIPT_DIR/scripts/agent-team/adr.js" list 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin).get('count', -1))" 2>/dev/null) || true
       if [ "$T64_LOAD" = "1" ]; then
         echo "OK (title escaped + ADR loads)"
         passed=$((passed + 1))
@@ -488,9 +494,11 @@ related:
 
 This doc has frontmatter and a Summary but is missing Quick Reference (preserves H.8.8 SOFT-advisory trigger surface; Component A HARD-block satisfied).
 EOF
-  T66_OUT=$(echo "{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$T66_KB_DOC\"}}" | node "$SCRIPT_DIR/hooks/scripts/validators/validate-kb-doc.js" 2>/dev/null)
-  T66_DECISION=$(echo "$T66_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('decision', ''))")
-  T66_HAS_MARKER=$(echo "$T66_OUT" | python3 -c "import json,sys; d=json.load(sys.stdin); print('[KB-DOC-INCOMPLETE]' in d.get('reason',''))")
+  # H.9.16 drift-note 78(a) safe-pattern: source T_EXIT=0 init + || T_EXIT=$? suffix; downstream || true.
+  T66_EXIT=0
+  T66_OUT=$(echo "{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$T66_KB_DOC\"}}" | node "$SCRIPT_DIR/hooks/scripts/validators/validate-kb-doc.js" 2>/dev/null) || T66_EXIT=$?
+  T66_DECISION=$(echo "$T66_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('decision', ''))" 2>/dev/null) || true
+  T66_HAS_MARKER=$(echo "$T66_OUT" | python3 -c "import json,sys; d=json.load(sys.stdin); print('[KB-DOC-INCOMPLETE]' in d.get('reason',''))" 2>/dev/null) || true
   if [ "$T66_DECISION" = "approve" ] && [ "$T66_HAS_MARKER" = "True" ]; then
     echo "OK (approve + [KB-DOC-INCOMPLETE] marker)"
     passed=$((passed + 1))
@@ -503,8 +511,10 @@ EOF
   # Test 67: H.8.8 — validate-kb-doc.js silent (no forcing instruction) on complete kb doc
   echo -n "  Test 67 (H.8.8 validate-kb-doc silent on complete kb/architecture doc): "
   T67_DOC="$SCRIPT_DIR/skills/agent-team/kb/architecture/crosscut/single-responsibility.md"
-  T67_OUT=$(echo "{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$T67_DOC\"}}" | node "$SCRIPT_DIR/hooks/scripts/validators/validate-kb-doc.js" 2>/dev/null)
-  T67_HAS_REASON=$(echo "$T67_OUT" | python3 -c "import json,sys; print('reason' in json.load(sys.stdin))")
+  # H.9.16 drift-note 78(a) safe-pattern: source T_EXIT=0 init + || T_EXIT=$? suffix; downstream || true.
+  T67_EXIT=0
+  T67_OUT=$(echo "{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$T67_DOC\"}}" | node "$SCRIPT_DIR/hooks/scripts/validators/validate-kb-doc.js" 2>/dev/null) || T67_EXIT=$?
+  T67_HAS_REASON=$(echo "$T67_OUT" | python3 -c "import json,sys; print('reason' in json.load(sys.stdin))" 2>/dev/null) || true
   if [ "$T67_HAS_REASON" = "False" ]; then
     echo "OK (silent approve)"
     passed=$((passed + 1))
@@ -519,8 +529,10 @@ EOF
   T68_KB_DOC="$T68_TMPDIR/kb/architecture/test/incomplete.md"
   mkdir -p "$(dirname "$T68_KB_DOC")"
   echo "no frontmatter no sections" > "$T68_KB_DOC"
-  T68_OUT=$(echo "{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$T68_KB_DOC\"}}" | SKIP_KB_DOC_CHECK=1 node "$SCRIPT_DIR/hooks/scripts/validators/validate-kb-doc.js" 2>/dev/null)
-  T68_HAS_REASON=$(echo "$T68_OUT" | python3 -c "import json,sys; print('reason' in json.load(sys.stdin))")
+  # H.9.16 drift-note 78(a) safe-pattern: source T_EXIT=0 init + || T_EXIT=$? suffix; downstream || true.
+  T68_EXIT=0
+  T68_OUT=$(echo "{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$T68_KB_DOC\"}}" | SKIP_KB_DOC_CHECK=1 node "$SCRIPT_DIR/hooks/scripts/validators/validate-kb-doc.js" 2>/dev/null) || T68_EXIT=$?
+  T68_HAS_REASON=$(echo "$T68_OUT" | python3 -c "import json,sys; print('reason' in json.load(sys.stdin))" 2>/dev/null) || true
   if [ "$T68_HAS_REASON" = "False" ]; then
     echo "OK (bypass works)"
     passed=$((passed + 1))

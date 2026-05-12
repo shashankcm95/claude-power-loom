@@ -8,6 +8,108 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [unreleased] — 2026-05-12 — H.9.16 Drift-notes 78(a)/79/81 closure (1 CLOSE + 2 DEFER with documented rationale; INVOKED gate; 7 FLAGs absorbed; manifest unchanged at 1.16.0; soak gate 6/5+ → 7/5+ STRENGTHENED)
+
+**INVOKED-gate phase per HT.1.6 triggers 3 (option-axis: close-vs-defer per drift-note) + 4 mild (institutional discipline encoding via defer rationales)**. Closes drift-note 78(a) via mechanical safe-pattern sweep across smoke test harness; defers drift-notes 79 + 81 with explicit activation criteria codified in HT-state.md ledger. Sets up H.9.17 (v2.0.0 release prep + tag).
+
+### What landed
+
+**Component A — `tests/smoke-h8.sh` safe-pattern sweep (13 sites)**:
+
+- 4 source `_OUT=$()` sites (T62 + T66/T67/T68): H.9.6.2 pattern (`T_EXIT=0` init + `|| T_EXIT=$?` suffix)
+- 4 downstream parse sites (T66_DECISION/T66_HAS_MARKER + T67_HAS_REASON + T68_HAS_REASON): `|| true` suffix per HIGH-CR1 absorption
+- 5 inline-pipeline cmd-subs (T63_TRUE_POSITIVE/T63_FALSE_POSITIVE + T64_NEW/T64_TITLE_LINE/T64_LOAD): `|| true` suffix per MEDIUM-CR2 absorption
+- All python3 invocations now uniformly include `2>/dev/null` per MEDIUM-D4 absorption (stderr-redirect parity)
+
+**Component B — `tests/smoke-ht.sh` safe-pattern sweep (26 source + ~25 downstream + 1 inline = ~52 sites)**:
+
+- 7 source `_OUT=$()` sites (T69/T70/T72/T73/T74/T75/T77): standard 2-line addition
+- 2 source `_OUT=$()` sites with 3-line replacement (T78/T79): existing `T_EXIT=$?` separate-line pattern was dead code under set -e (H.9.6.2 empirical reproduction confirms); replaced with safe-pattern variant (preserves T_EXIT semantics for downstream test logic)
+- 1 source brittle direct-capture (T71): defense-in-depth per MEDIUM-CR3 (current `--help-exits-0` invariant correct today; safe-pattern eliminates per-site reasoning burden)
+- 15 source `_RESULT=$()` sites (T87-T101): bulk Python regex sweep per H.9.6.2 mechanical pattern
+- ~25 downstream `T_X_Y=$(echo "$T_X..." | python3 -c "..." 2>/dev/null)` parses: `|| true` suffix
+- 1 inline-pipeline T65_LIST per LOW-CR4 absorption: `|| true` suffix
+- All python3 invocations uniformly include `2>/dev/null`
+
+**Component C — HT-state.md drift_notes_inventory closure (Python surgical cutover; drift-note 80 vigilance)**:
+
+- drift-note 78(a) CLOSED at H.9.16 (~67 site sweep across smoke-h8.sh + smoke-ht.sh)
+- drift-note 79 DEFERRED with codified activation criteria (revisit if 2nd config-bootstrap scenario emerges OR substrate consumer reports config-guard blocking legitimate workflow; H.9.7 ship commit `7e0aa1b` referenced as bootstrap-workaround precedent per LOW-A1 absorption)
+- drift-note 81 DEFERRED with codified activation criteria (revisit at ESLint v10 release; substrate phase intending major-version migration triggers ~30 min focused re-validation)
+- Open drift-notes: 3 → 0 (all resolved CLOSE or DEFER-with-criteria); Closed cumulative: 78(b) + 80 + 82 + 78(a); Deferred cumulative: 79 + 81
+- Soak gate counter: 6/5+ STRENGTHENED → 7/5+ STRENGTHENED (substantive — drift-note cohort closure is substrate-discipline-advance, not state-restoration)
+
+**Component D — `tests/smoke-ht.sh` Test 102 fault-injection regression (NEW; +Test 102)**:
+
+- Proves end-to-end that safe-pattern catches `set -e + cmd-sub` failure WITHOUT aborting silently
+- AND downstream `|| true` suffix lets parse-of-empty-input fail-soft
+- Belt-and-suspenders cleanup per LOW-D5 absorption (EXIT trap handles sub-shell abort; explicit rm post-extract handles normal path)
+- Pre-H.9.6.2 reproduction: `set -euo pipefail; FOO=$(false); echo unreachable` does NOT print — set -e fires on cmd-sub assignment
+- Test 102 ensures any future regression of the pattern is caught at smoke time
+
+**Component E — Plugin manifest NO-BUMP decision**:
+
+- `.claude-plugin/plugin.json` stays at 1.16.0 (test-harness hardening; no observable contract change)
+- Matches H.9.6.2 / H.9.8 / H.9.10 internal-change precedent (no bump for test-internal discipline)
+- v2.0.0 will be tagged at H.9.17 (manifest 1.16.0 → 2.0.0 major)
+
+### Methodology
+
+- Sub-plan: `swarm/thoughts/shared/plans/2026-05-12-H.9.16-drift-notes-closure.md` (gate verdict: APPROVED-with-revisions)
+- INVOKED parallel architect + code-reviewer pre-approval gate (single-pass; lightweight; ~30-40 min total)
+- 7 FLAGs absorbed single-pass (1 HIGH-CR1 + 3 MEDIUM-CR2/CR3/D4 + 3 LOW-CR4/A1/D5)
+- Drift-note 78(a) closure scope expanded from initial 29 sites estimate to ~67 actual sites post-gate (CR feedback caught smoke-h8 downstream gap + inline pipelines + T65_LIST + T78/T79 3-line replacement nuance)
+
+### Critical gate catches
+
+- **HIGH-CR1**: smoke-h8.sh downstream parse scope gap (4 sites) — absorbed; extended Component A
+- **MEDIUM-CR2**: smoke-h8.sh 5 additional inline pipelines outside original scope — absorbed
+- **MEDIUM-CR3**: code-reviewer claimed T78/T79 "already protected" via separate `T_EXIT=$?` — verification confirmed pattern is DEAD CODE under set -e (cmd-sub failure aborts before next line); absorbed as 3-line→2-line replacement preserving T_EXIT semantics
+- **MEDIUM-D4**: stderr-redirect parity check — uniformly added `2>/dev/null` to python3 invocations during sweep
+- **LOW-CR4**: T65_LIST inline pipeline added to scope
+- **LOW-A1**: H.9.7 ship commit hash `7e0aa1b` referenced in drift-note 79 defer rationale
+- **LOW-D5**: Test 102 belt-and-suspenders cleanup comment added
+
+### Verification
+
+98/98 → **99/99** install.sh smoke (+Test 102) + 67/67 `_h70-test.js` (unchanged) + 17-baseline `contracts-validate.js` (unchanged) + 0 ESLint errors + 0 `eslint-disable` directives (ADR-0006 invariant 5) + markdownlint 0 errors + yaml-lint PASS + shellcheck 0 errors on modified smoke files.
+
+### Soak gate counter
+
+**6/5+ STRENGTHENED → 7/5+ STRENGTHENED** — H.9.16 is substantive (drift-note cohort closure with deferred-rationale codification = institutional commitment advance), not hotfix-cohort. Preserves v2.0.0 retest eligibility; widens margin over threshold.
+
+### Drift-notes inventory
+
+**Pre-H.9.16**: 3 OPEN (78(a) + 79 + 81); 3 CLOSED cumulative (78(b) + 80 + 82); 0 DEFERRED.
+
+**Post-H.9.16**: **0 OPEN**; 4 CLOSED cumulative (78(a) + 78(b) + 80 + 82); 2 DEFERRED with activation criteria (79 + 81). Substrate clean for v2.0.0 tag (no unresolved drift-notes).
+
+### Pattern observations
+
+- **Pattern-level observation 1**: gate-caught-regression-or-scope-expansion 6th consecutive phase (H.9.10 + H.9.11 + H.9.12 + H.9.14 + H.9.15 + H.9.16). Each phase's gate caught either LIVE BUG (H.9.10-15) or scope gap (H.9.16). INVOKED-gate cost vs ship-correctness payoff empirically validated.
+- **Pattern-level observation 2**: 3-line dead-code pattern (separate `T_EXIT=$?` line after unguarded cmd-sub) is a sibling-failure-mode of drift-note 78(a) — the appearance of safety-pattern without empirical reproduction can mask latent set -e failures. Future audits should treat any post-cmd-sub `$?` capture line as suspect-by-default.
+- **Pattern-level observation 3**: bulk Python regex sweep + targeted Edit reads is a more efficient pattern than pure Edit-call cascade for mechanical sweeps with shared shape across 10+ sites (T87-T101). LoC efficiency: ~3x faster execution.
+- **Pattern-level observation 4**: defer-with-codified-activation-criteria is the right substrate discipline for "no active fault but worth tracking" surfaces. Prevents premature implementation creating new bypass surfaces (drift-note 79 security argument) AND prevents drop-from-ledger when no real trigger exists (drift-note 81 future-proofing).
+
+### Files modified
+
+- `tests/smoke-h8.sh` (+38/-14 LoC; 13 sites)
+- `tests/smoke-ht.sh` (+195/-68 LoC; ~52 sites + Test 102)
+- `swarm/thoughts/shared/HT-state.md` (Python surgical cutover; 5 new keys + drift-notes inventory + soak counter)
+- `CHANGELOG.md` (this entry)
+- `skills/agent-team/SKILL.md` (ledger single-line prepend)
+- NEW: `swarm/thoughts/shared/plans/2026-05-12-H.9.16-drift-notes-closure.md` (sub-plan with flag_absorption_record)
+
+**Total LoC delta**: ~+165/-82 (~+83 net) across 5 modified files + new sub-plan (~360 LoC).
+
+**Estimated wallclock**: ~2-2.5h end-to-end (sub-plan + INVOKED gate + ~67-site sweep + Test 102 + verification + ledger + cutover).
+
+**Eighty-seventh distinct phase shape**: drift-note-cohort-closure-via-mechanical-sweep-plus-defer-with-criteria. Penultimate pre-v2.0.0 phase.
+
+**Next**: H.9.17 v2.0.0 release prep — CHANGELOG v2.0.0 consolidation entry + README badge update + manifest 1.16.0 → 2.0.0 + v2.0.0 git tag + push. NO migration guide (substrate has no external users yet per user directive). User-action: new Claude Code session for live-hook end-to-end verification post-tag.
+
+---
+
 ## [unreleased] — 2026-05-12 — H.9.15 Pre-v2.0.0 Chaos Findings Closure (20 findings: 2 CRITICAL + 8 HIGH + 10 MEDIUM; MANDATORY gate; 22 FLAGs absorbed; 1 LIVE BUG caught; manifest 1.15.1 → 1.16.0 minor)
 
 **MANDATORY-gate phase per ADR-0002 substrate-fundament (touches security-critical hook + shared `_lib/frontmatter.js`) + 4/5 HT.1.6 triggers**. Closes ALL 20 findings from pre-v2.0.0 chaos test batch (4-auditor swarm). Sets up H.9.16 (drift-notes 78(a)/79/81 closure) → H.9.17 (v2.0.0 release prep + tag).
