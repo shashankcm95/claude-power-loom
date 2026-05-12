@@ -2,7 +2,7 @@
 
 > Returns to README: [../../README.md](../../README.md)
 
-Skills are markdown procedures Claude matches to tasks contextually. They contain step-by-step workflows that complement the rules.
+Skills are markdown procedures Claude matches to tasks contextually. They contain step-by-step workflows that complement the rules. The table below shows highlight skills; see `skills/` directory for the full list of 17 skills shipped at v2.0.0.
 
 | Skill | What it does |
 |-------|-------------|

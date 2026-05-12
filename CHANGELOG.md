@@ -10,6 +10,85 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [2.0.1] — 2026-05-12 — H.9.18 v2.0.1 docs-pass (post-v2.0.0 staleness correction; hotfix-class; 20 files updated)
+
+**HOTFIX-CLASS doc-only patch** closing user-flagged gap from H.9.17. After v2.0.0 shipped, user noted: "I also meant to do a docs verification and readme updation". H.9.17 release ceremony focused on top-level artifacts (CHANGELOG consolidation + manifest 1.16.0 → 2.0.0 + README badge + v2.0.0 tag) but missed updating deep doc content (counts in README + docs/) which had accumulated staleness across the H.9.x track.
+
+### Scope (post-Explore-agent comprehensive audit)
+
+Initial plan covered 4 files. User pushback ("we have multiple folders under docs. Are all of them included") triggered comprehensive `docs/` audit via Explore agent — 26 files surveyed across 7 subdirectories — revealing 20-file scope.
+
+**Files updated**:
+
+- `README.md`: 12 edits (count corrections + stability commitment v1.x → v2.x rewrite + v2.0.0 milestone reference + hook table extension with 5 missing validators + L9 badge 2.0.0 → 2.0.1)
+- `docs/README.md`: 4 edits (hook + persona + skill counts + stability link label)
+- `docs/architecture/two-layers.md`: substrate/HETS count corrections
+- `docs/development/README.md`: audit-flagged but verified clean
+- `docs/hooks/README.md`: count + full table rewrite with hooks.json-authoritative 17 entries; removed nonexistent `validate-markdown-emphasis.js`
+- `docs/hooks/overview.md`: count + H.9.x additions documented
+- `docs/reference/commands.md`: 8 → 13 commands
+- `docs/reference/project-structure.md`: hook + command + skill + persona count corrections
+- `docs/reference/README.md`: stability-commitment link label v1.x → v2.x
+- `docs/reference/stability-commitment.md`: full v1.x → v2.x rewrite + new "v2.0.0 → v2.x roadmap" section with forward-deferred-with-criteria (drift-note 79 + 81)
+- `docs/skills/README.md` + `docs/skills/overview.md`: 15 → 17 skills + "highlights" disclaimer
+- `docs/agents/README.md` + `docs/agents/overview.md`: persona count corrections + skill section count
+- `docs/architecture/hets.md`: 12 → 16 personas (5+8+3 split) + 11 → 21 patterns + phase status H.2.4 → H.9.17 + v2.0.0 SHIPPED
+- `CONTRIBUTING.md`: release-tags history reflecting v0.5.0 → v1.0.0 → v2.0.0
+- `.claude-plugin/plugin.json`: 2.0.0 → 2.0.1 patch
+- `swarm/thoughts/shared/HT-state.md`: H.9.18 surgical Python cutover (4 new `h_9_18_*` keys + drift-note 80 dup-key check 0 dups; soak counter UNCHANGED 8/5+ STRENGTHENED ×3 per hotfix-class precedent)
+- `CHANGELOG.md`: this entry
+- `skills/agent-team/SKILL.md`: ledger single-line prepend
+
+### Cross-cutting staleness themes fixed
+
+1. **Hook count confusion** (5 files): "11 deterministic hooks" → "17 hook registrations across 6 events; 18 script files (11 top-level + 7 validators)"
+2. **HETS persona undercount** (3 files): "12-13 personas" → "16 personas (5 auditors + 8 builders + 3 codebase-investigators) + 2 templates = 18 contracts"
+3. **Skills undercount** (3 files): "15 skills" → "17 skills"
+4. **Commands undercount** (2 files): "8-9 commands" → "13 slash commands"
+5. **Version title staleness** (2 files): "(v1.x)" stability commitment titles → "(v2.x)"
+6. **Patterns count** (1 file): "11 patterns" → "21 patterns"
+7. **Release-tag history** (CONTRIBUTING.md): "future v0.1.0, v0.2.0" → actual history through v2.0.0
+
+### Authoritative ground-truth (verified via direct ls + hooks.json parsing)
+
+- 18 hook script files (11 top-level + 7 validators)
+- 17 hook registrations across 6 events (per `hooks/hooks.json`): SessionStart:1 + UserPromptSubmit:2 + PreToolUse:8 + PostToolUse:2 + PreCompact:1 + Stop:3
+- 17 skills, 5 agents, 13 commands, 8 rules (6 core + 1 typescript + 1 web)
+- 18 persona contract files (16 personas + challenger + engineering-task templates)
+- 21 patterns in `skills/agent-team/patterns/`
+
+### Why hotfix-class (no formal gate)
+
+Per HT.1.6 5-trigger framework: 0/5 triggers fire (mechanical doc work; no design surface; no `_lib/*` change; option-axis resolved at plan-time; no new institutional commitment; no HIGH-class bug). Plan-mode user approval IS the gate. Matches H.9.13 / H.9.14.1 / H.9.12.1 precedent.
+
+### Verification
+
+99/99 install.sh smoke unchanged + 67/67 _h70-test.js unchanged + 17-baseline contracts-validate unchanged + 0 ESLint errors + 0 eslint-disable directives (ADR-0006 invariant 5) + markdownlint + yaml-lint + shellcheck PASS + HT-state.md drift-note 80 vigilance 0 duplicate top-level YAML keys.
+
+### Soak gate counter
+
+**UNCHANGED at 8/5+ STRENGTHENED ×3** (hotfix-class doc-only doesn't advance counter per H.9.13/H.9.14.1 precedent; preserves v2.0.0 retest eligibility).
+
+### Drift-notes inventory
+
+Unchanged from H.9.16: 0 OPEN; 4 CLOSED cumulative (78(a) + 78(b) + 80 + 82); 2 DEFERRED with codified activation criteria (79 + 81).
+
+### Pattern observations
+
+1. **Post-release docs-staleness pattern**: major release ceremony focused on top-level artifacts; deep doc content slipped. Reusable lesson for future major releases: include comprehensive docs audit as a Component-level item in release plan, not a post-ship hotfix.
+2. **Initial-scope-too-narrow self-correction**: first proposed plan covered 4 files; user pushback expanded scope to 20 files via Explore-agent audit. Lesson: when user says "all the X", do a comprehensive read-only audit BEFORE proposing scope.
+3. **PR-first discipline carries over from H.9.17**: branch + CI-on-branch + USER GO before tag is the right v2.x release ceremony pattern.
+
+### Eighty-ninth distinct phase shape
+
+Post-release docs-pass hotfix correcting user-flagged staleness across comprehensive scope.
+
+### Next
+
+After CI green on branch: USER GO/NO-GO on v2.0.1 tag push. Then user-action: fresh CC session for live-hook end-to-end verification.
+
+---
+
 ## [2.0.0] — 2026-05-12 — v2.0.0 substrate release (first SemVer-committed major; consolidates H.7.x → H.9.x track; 17 phases + 6+ hotfixes shipped since v1.0.0)
 
 **First SemVer-committed major release of power-loom (claude-power-loom)**. Substrate is empirically validated across 17+ phases of MANDATORY + INVOKED + no-formal-gate ships. ALL chaos findings (20 from pre-v2.0.0 audit batch) CLOSED at H.9.15. ALL drift-notes RESOLVED (4 CLOSED + 2 DEFERRED-with-codified-activation-criteria + 0 OPEN) at H.9.16.

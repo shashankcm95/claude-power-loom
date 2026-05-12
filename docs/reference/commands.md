@@ -2,7 +2,7 @@
 
 > Returns to README: [../../README.md](../../README.md)
 
-### Commands (8) — The Manual Shortcut Layer
+### Commands (13) — The Manual Shortcut Layer
 
 Commands are `.md` files invoked by typing `/command-name`. They're explicit triggers; the same behaviors are also available as automatic rules where appropriate.
 

@@ -6,7 +6,7 @@
 >
 > **Hooks before, persistence around, verification after** — compensates for LLM non-determinism at the seams without trying to replace the LLM.
 
-[![CI](https://github.com/shashankcm95/claude-power-loom/actions/workflows/ci.yml/badge.svg)](https://github.com/shashankcm95/claude-power-loom/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-2.0.0-green.svg)](CHANGELOG.md) [![Plugin](https://img.shields.io/badge/Claude_Code-plugin-orange.svg)](.claude-plugin/plugin.json)
+[![CI](https://github.com/shashankcm95/claude-power-loom/actions/workflows/ci.yml/badge.svg)](https://github.com/shashankcm95/claude-power-loom/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-2.0.1-green.svg)](CHANGELOG.md) [![Plugin](https://img.shields.io/badge/Claude_Code-plugin-orange.svg)](.claude-plugin/plugin.json)
 
 ## Install
 
@@ -41,7 +41,7 @@ bash ~/Documents/claude-toolkit/bin/migrate-to-plugin.sh
 
 > **Why repo and plugin names differ**: GitHub repo is `claude-power-loom` (Claude-ecosystem discovery via `claude-` prefix) while the plugin is `power-loom` (matches Anthropic marketplace convention — external plugins don't use `claude-`). Deliberate split: GitHub-level discoverability + marketplace-convention compliance.
 >
-> **Note on prior phase tags**: this repo was previously named `claude-skills-consolidated`. GitHub auto-redirects old URLs; existing bookmarks + phase-tag references continue to resolve. v1.0.0 is the first stable release; v1.1.0 (H.7.22) adds plugin distribution validation + R/A/FT primitives.
+> **Note on prior phase tags**: this repo was previously named `claude-skills-consolidated`. GitHub auto-redirects old URLs; existing bookmarks + phase-tag references continue to resolve. v1.0.0 is the first stable release; v1.1.0 (H.7.22) added plugin distribution validation + R/A/FT primitives; **v2.0.0 (H.9.17; 2026-05-12)** is the first SemVer-committed major after the H.9.x substrate-hardening track — 99/99 install.sh smoke + 0 OPEN drift-notes + all 20 chaos findings closed + soak gate counter 8/5+ STRENGTHENED ×3.
 
 **Using HETS on your real project?** See **[skills/agent-team/USING.md](skills/agent-team/USING.md)** — 7-step end-user walkthrough with a worked example. For toolkit-internals, continue reading.
 
@@ -51,7 +51,7 @@ Most public Claude Code plugins are SKILL.md prompt templates wrapped in a manif
 
 | Capability | Most plugins | This plugin |
 |------------|--------------|-------------|
-| **Hook-layer enforcement** | 0–2 hooks (or just logging) | **11 deterministic hooks** across 5 lifecycle events |
+| **Hook-layer enforcement** | 0–2 hooks (or just logging) | **17 hook registrations** across 6 lifecycle events (18 hook scripts: 11 top-level + 7 validators) |
 | **Multi-agent coordination** | Single-agent prompt | **HETS substrate**: 13 personas with persistent named identities, spawn-tree tracking, per-spawn budget enforcement, asymmetric/symmetric challenger pairing, trust-tiered verification depth |
 | **Output verification** | None | **Triple contract** (functional + anti-pattern + structural checks) runs against every actor output |
 | **Persistence across sessions** | Stateless prompts | `~/.claude/agent-identities.json` accumulates trust scores, skill-invocation history. Pass-rate trust formula is **explicitly documented**, not a black-box weighting |
@@ -69,22 +69,22 @@ The [official Anthropic marketplace](https://github.com/anthropics/claude-plugin
 | Plugin | Their approach | power-loom approach |
 |--------|----------------|---------------------|
 | [`code-review`](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/code-review) | Single-shot PR review; no persistent identity | **Persistent identity reputation** across sessions; trust formula derived from observed pass-rate |
-| [`hookify`](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/hookify) | Meta-tool to author NEW hooks | Curated set of **11 production-ready hooks** |
+| [`hookify`](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/hookify) | Meta-tool to author NEW hooks | Curated set of **18 production-ready hook scripts** (11 top-level + 7 validators) |
 | [`feature-dev`](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/feature-dev) | Workflow for feature development | Substrate that ANY task runs on |
 | [`claude-md-management`](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/claude-md-management) | Single-file maintenance | **Substrate-level**: hooks enforce read-before-edit; auto self-improve loop with risk taxonomy |
 | [`claude-code-setup`](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/claude-code-setup) | Recommends what to install | Provides the actual substrate to install |
 
 The **cohesive deterministic-substrate framing** — combining persistent identity + per-spawn budget + triple-contract + kb_scope + trust-tiered verification + empirical refit + breeding mechanics — does not exist elsewhere in the marketplace. power-loom is the substrate other plugins could run on top of, not a replacement for them.
 
-## Stability commitment (v1.x)
+## Stability commitment (v2.x)
 
-power-loom adopts SemVer at v1.0.0. Within v1.x:
+power-loom shipped **v2.0.0 on 2026-05-12** after the H.9.x substrate-hardening track (chaos findings closure + drift-notes resolution + release-ceremony). Within v2.x:
 
-- **Stable (frozen)**: plugin manifest schema, hook contracts, install paths, public CLI surface, the `tierOf` formula at `agent-identity.js:98-105` (byte-frozen per H.4.2 audit-transparency commitment)
-- **Evolving (under explicit version fields)**: trust formula weights (`WEIGHT_PROFILE_VERSION`), persona contracts (schema-additive only), route-decide thresholds (`weights_version`)
-- **Experimental**: breeding mechanics (`agent-identity breed`), drift triggers, new trust axes (`recency_decay_factor`, `qualityTrend`)
+- **Stable (frozen)**: plugin manifest schema, hook contracts, install paths, public CLI surface, the `tierOf` formula at `agent-identity.js:98-105` (byte-frozen per H.4.2 audit-transparency commitment), ADR-0001 fail-soft hook invariants, ADR-0002 substrate-fundament `_lib/*` carve-out, ADR-0006 fix-don't-suppress invariant 5 (0 `eslint-disable` directives across substrate), drift-note 80 vigilance (HT-state.md surgical cutover pattern)
+- **Evolving (under explicit version fields)**: trust formula weights (`WEIGHT_PROFILE_VERSION`), persona contracts (schema-additive only), route-decide thresholds (`weights_version`), validator extensions (additive HARD-block + SOFT-advisory checks)
+- **Experimental**: breeding mechanics (`agent-identity breed`), drift triggers, new trust axes (`recency_decay_factor`, `qualityTrend`), forward-deferred drift-notes with activation criteria (CONFIG_GUARD_BOOTSTRAP env-var; ESLint v10 globals re-validation)
 
-Schema migrations are additive. Breaking changes require v2. Full details in [docs/reference/stability-commitment.md](docs/reference/stability-commitment.md).
+Schema migrations are additive within v2.x. Breaking changes require v3. Full details in [docs/reference/stability-commitment.md](docs/reference/stability-commitment.md).
 
 ## What's inside
 
@@ -92,7 +92,7 @@ The toolkit has two distinct layers: **enforced** (hooks fire deterministically;
 
 ### 🔒 Enforced Layer (deterministic scripts)
 
-12 hook scripts with hard guarantees — pure logic, no LLM interpretation.
+18 hook scripts (11 top-level + 7 validators) registered as 17 hook entries across 6 lifecycle events — pure logic, no LLM interpretation.
 
 | Hook | Event | Guarantees |
 |------|-------|------------|
@@ -108,6 +108,13 @@ The toolkit has two distinct layers: **enforced** (hooks fire deterministically;
 | `session-end-nudge.js` | Stop | Injects pending-approval reminder at session end |
 | `session-self-improve-prompt.js` | UserPromptSubmit | Surfaces self-improve queue on first prompt of session |
 | `auto-store-enrichment.js` | Stop | Stores prompt enrichments + bumps self-improve counters |
+| `validate-yaml-frontmatter.js` | PreToolUse:Edit\|Write | Blocks duplicate top-level YAML keys in HT-state.md (H.9.11; drift-note 80 closure) |
+| `validate-kb-doc.js` | PreToolUse:Edit\|Write | HARD-block frontmatter quality (kb_id + version + tags ≥3 + sources_consulted ≥2) + SOFT-advisory section presence (H.8.8 + H.9.12) |
+| `validate-adr-drift.js` | PreToolUse:Edit\|Write | Enforces per-phase pre-approval gate for substrate-fundament changes |
+| `validate-plan-schema.js` | PreToolUse:ExitPlanMode | Validates plan schema before exit; forcing-instruction on schema violation (HT.1.4) |
+| `verify-plan-gate.js` | PreToolUse:Edit\|Write | Ensures plan-mode approval ceremony before substantive code changes |
+
+(7 validators live in `hooks/scripts/validators/`; 11 top-level hooks live in `hooks/scripts/`. Registration count is 17 across 6 events per `hooks/hooks.json`.)
 
 [Per-hook deep-dives → docs/hooks/](docs/hooks/)
 
@@ -118,12 +125,12 @@ These shape Claude's reasoning but **can be skipped** by the LLM under pressure.
 | Layer | Count | Invocation | Compliance |
 |-------|-------|------------|------------|
 | **Rules** (always-on text) | 6 | Injected into every session | LLM may skip |
-| **Skills** (workflow guides) | 15 | Claude matches to tasks | LLM may skip |
+| **Skills** (workflow guides) | 17 | Claude matches to tasks | LLM may skip |
 | **Agents** (scoped specialists) | 5 | Claude delegates when needed | LLM may skip |
-| **Commands** (manual shortcuts) | 9 | User types `/command-name` | User-driven |
-| **HETS personas** (specialist team) | 13 + challenger template | Spawn via `agent-team` skill; identity assigned per spawn | Contract-verified post-hoc, trust-tiered |
+| **Commands** (manual shortcuts) | 13 | User types `/command-name` | User-driven |
+| **HETS personas** (specialist team) | 16 (5 auditors + 8 builders + 3 codebase-investigators) + challenger + engineering-task templates = 18 contracts | Spawn via `agent-team` skill; identity assigned per spawn | Contract-verified post-hoc, trust-tiered |
 
-**The honest takeaway**: the value of the substrate is concentrated in the 11 hooks. Rules/skills/agents add useful context but rely on instruction-following. If a behavior must always happen, build a hook for it. **HETS adds verifiable multi-agent coordination on top** — outputs are checked against per-persona contracts (functional + anti-pattern checks), so even though individual agents may skip instructions, the team-level verdict is deterministic.
+**The honest takeaway**: the value of the substrate is concentrated in the 17 hook registrations (18 scripts). Rules/skills/agents add useful context but rely on instruction-following. If a behavior must always happen, build a hook for it. **HETS adds verifiable multi-agent coordination on top** — outputs are checked against per-persona contracts (functional + anti-pattern checks), so even though individual agents may skip instructions, the team-level verdict is deterministic.
 
 [Agents overview](docs/agents/overview.md) · [Skills overview](docs/skills/overview.md) · [Commands reference](docs/reference/commands.md) · [Rules reference](docs/reference/rules.md)
 
@@ -162,11 +169,11 @@ These limitations are intentional architecture decisions, not gaps to fix.
 ## Project layout
 
 - `.claude-plugin/plugin.json` + `marketplace.json` — plugin manifests
-- `hooks/` — 11 deterministic hook scripts (Node.js)
+- `hooks/` — 18 deterministic hook scripts (11 top-level in `hooks/scripts/` + 7 validators in `hooks/scripts/validators/`; 17 registrations across 6 lifecycle events per `hooks/hooks.json`)
 - `agents/` — 5 specialist agent definitions
-- `skills/` — 15 skill workflows (including `agent-team/` for HETS)
-- `commands/` — 9 slash commands
-- `rules/` — 6 always-on guidance rules
+- `skills/` — 17 skill workflows (including `agent-team/` for HETS)
+- `commands/` — 13 slash commands
+- `rules/` — 8 always-on guidance rules (6 core + 1 typescript + 1 web stack-specific)
 - `scripts/agent-team/` — HETS substrate (~6K LoC: trust formula, contract verifier, route-decide, breeding mechanics)
 - `swarm/` — personas, contracts, and findings docs
 

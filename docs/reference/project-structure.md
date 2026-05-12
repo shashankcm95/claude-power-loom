@@ -11,10 +11,10 @@ claude-toolkit/
 │   ├── typescript/          # 1 language-specific rule
 │   └── web/                 # 1 framework-specific rule
 ├── hooks/
-│   ├── scripts/             # 11 hook scripts (incl. validators/) + _log.js helper + prompt-pattern-store CLI
+│   ├── scripts/             # 18 hook script files: 11 top-level (10 hooks + _log.js helper) + 7 validators in validators/ (registered as 17 hook entries across 6 lifecycle events per hooks.json)
 │   └── settings-reference.json  # Hook config template
-├── commands/                # 8 slash command definitions (incl. /chaos-test)
-├── skills/                  # 9 skill workflow guides
+├── commands/                # 13 slash command definitions (incl. /chaos-test, /build-plan, /build-team, /self-improve, /forge, etc.)
+├── skills/                  # 17 skill workflow guides
 │   ├── agent-team/          # HETS (Hierarchical Engineering Team Simulation)
 │   │   ├── SKILL.md         #   Architecture + phase status
 │   │   ├── BACKLOG.md       #   Deferred work catalog
@@ -25,8 +25,8 @@ claude-toolkit/
 │   │   └── role-templates/  #   PM / senior / engineer role templates
 │   └── swift-development/   # First specialist skill (worked example for builder family)
 ├── swarm/
-│   ├── personas/            # 12 persona docs (5 auditors + 7 builders)
-│   ├── personas-contracts/  # 12 persona contracts + 1 challenger template
+│   ├── personas/            # 16 persona docs (5 auditors + 8 builders + 3 codebase-investigators)
+│   ├── personas-contracts/  # 18 contract files (16 personas + challenger + engineering-task templates)
 │   ├── super-agent.md       # Super-agent (depth-0) workflow doc
 │   ├── orchestrator.md      # Orchestrator (depth-1) workflow doc
 │   ├── hierarchical-aggregate.js  # Cross-run delta analyzer

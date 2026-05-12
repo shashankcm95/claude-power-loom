@@ -1,6 +1,6 @@
 # Skills — Workflow Layer
 
-15 skills covering domain workflows (development, security, deployment, etc.).
+17 skills covering domain workflows (development, security, deployment, plan-mode tooling, agent-team, etc.).
 
 - [Skills overview](overview.md)
 

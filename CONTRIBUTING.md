@@ -34,7 +34,7 @@ For phase work, scope is `phase-H.x.y` so commits remain auditable across the H.
   - Format: `phase-H.x.y` (matches commit scope; e.g., `phase-H.2.8`)
   - Annotated (`-a` flag), with one-line description in the message
   - Apply at the moment the phase's branch merges to main
-- **Release tags** (future): `v0.1.0`, `v0.2.0`, etc. Adopt semver once we have a stable surface (~Phase H.3+).
+- **Release tags**: SemVer-tagged releases at major milestones. History: `v0.5.0` (Initial Claude Code plugin packaging; H.5.0) → `v0.6.0` (Substrate maturity cycle; H.5.1 through CS-6) → `v0.7.0` (Trust formula evolution; H.7.x arc through H.7.4) → `v0.8.0` (multi-phase session) → `v1.0.0` (`power-loom` rename + evolution-loop ship; 2026-05-07) → `v1.1.0` through `v1.12.1` (HT.x track) → **`v2.0.0`** (first SemVer-committed major after H.9.x substrate-hardening track; 2026-05-12). Within-major increments (patch + minor) follow [SemVer](https://semver.org); see [docs/reference/stability-commitment.md](docs/reference/stability-commitment.md).
 
 ## PR workflow
 

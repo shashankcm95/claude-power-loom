@@ -13,19 +13,19 @@ Substrate-level design and load-bearing decisions.
 
 ## Hooks
 
-The deterministic enforcement layer (11 hook scripts).
+The deterministic enforcement layer (18 hook scripts: 11 top-level + 7 validators in `hooks/scripts/validators/`; registered as 17 hook entries across 6 lifecycle events per `hooks/hooks.json`).
 
 - [Hooks overview + per-hook deep-dives](hooks/overview.md)
 
 ## Agents
 
-The specialist layer (5 generic engineering personas, 13 HETS personas).
+The specialist layer (5 generic engineering personas, 16 HETS personas + 2 templates = 18 persona contracts in `swarm/personas-contracts/`).
 
 - [Agents overview](agents/overview.md)
 
 ## Skills
 
-The workflow layer (15 skills covering domain workflows).
+The workflow layer (17 skills covering domain workflows).
 
 - [Skills overview](skills/overview.md)
 
@@ -35,7 +35,7 @@ The workflow layer (15 skills covering domain workflows).
 
 ## Reference
 
-- [Stability commitment (v1.x)](reference/stability-commitment.md) — Stable / evolving / experimental classification
+- [Stability commitment (v2.x)](reference/stability-commitment.md) — Stable / evolving / experimental classification (post-v2.0.0)
 - [Project structure](reference/project-structure.md) — Repository layout walkthrough
 - [Commands reference](reference/commands.md) — Slash commands shipped with the plugin
 - [Rules reference](reference/rules.md) — Always-on guidance rules

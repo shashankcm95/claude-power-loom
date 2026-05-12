@@ -2,9 +2,9 @@
 
 > Returns to README: [../../README.md](../../README.md) | Up: [docs/](..)
 
-### Hooks (11) — The Deterministic Layer
+### Hooks (17 registrations) — The Deterministic Layer
 
-11 hook entries across 5 lifecycle events (1 SessionStart + 2 UserPromptSubmit + 4 PreToolUse + 1 PreCompact + 3 Stop). The 6 below are the original substrate; H.4.1 added `session-self-improve-prompt.js` (UserPromptSubmit) + augmented `auto-store-enrichment.js` and `pre-compact-save.js` with self-improve loop logic; H.4.2 added 2 validators under `hooks/scripts/validators/` (PreToolUse:Edit/Write). All 11 wire via `hooks/hooks.json` (plugin install) or `~/.claude/settings.json` (legacy install).
+17 hook entries across 6 lifecycle events (1 SessionStart + 2 UserPromptSubmit + 8 PreToolUse + 2 PostToolUse + 1 PreCompact + 3 Stop). The 6 below are the original H.1 substrate; H.4.1 added `session-self-improve-prompt.js` (UserPromptSubmit) + augmented `auto-store-enrichment.js` and `pre-compact-save.js` with self-improve loop logic; H.4.2 added 2 validators under `hooks/scripts/validators/`; H.7.x + H.8.x + H.9.x added 5 more validators (`validate-plan-schema.js` H.7.12; `verify-plan-gate.js` H.7.12 + H.7.17; `validate-kb-doc.js` H.8.8 + H.9.12; `validate-yaml-frontmatter.js` H.9.11 closing drift-note 80; `validate-adr-drift.js` for per-phase pre-approval gate). All 17 wire via `hooks/hooks.json` (plugin install) or `~/.claude/settings.json` (legacy install). Full registration table: [docs/hooks/README.md](README.md).
 
 Hook scripts run as external Node.js processes triggered by Claude Code's lifecycle events. They're the only layer with hard guarantees — pure logic, no LLM interpretation.
 

@@ -4,23 +4,24 @@
 
 ### HETS — Hierarchical Engineering Team Simulation (Phase H.x)
 
-A separate layer for tasks too complex for a single agent. Implements the architecture documented in [skills/agent-team/SKILL.md](skills/agent-team/SKILL.md) and the 11-pattern library at [skills/agent-team/patterns/](skills/agent-team/patterns/).
+A separate layer for tasks too complex for a single agent. Implements the architecture documented in [skills/agent-team/SKILL.md](skills/agent-team/SKILL.md) and the 21-pattern library at [skills/agent-team/patterns/](skills/agent-team/patterns/).
 
-**Components shipped across phases H.1 → H.2.4** (current; full phase log in [skills/agent-team/SKILL.md](skills/agent-team/SKILL.md) and [skills/agent-team/BACKLOG.md](skills/agent-team/BACKLOG.md)):
+**Components shipped across phases H.1 → H.9.17** (v2.0.0 SHIPPED 2026-05-12; full phase log in [skills/agent-team/SKILL.md](skills/agent-team/SKILL.md) and [skills/agent-team/BACKLOG.md](skills/agent-team/BACKLOG.md)):
 
 | Layer | Count | Lives at |
 |-------|-------|----------|
-| **Personas** | 12 (5 auditor + 7 builder) + 1 challenger template | `swarm/personas/`, `swarm/personas-contracts/` |
-| **Patterns library** | 11 (HETS, asymmetric-challenger, trust-tiered-verification, convergence-as-signal, persona-skills-mapping, agent-identity-reputation, meta-validation, prompt-distillation, shared-knowledge-base, content-addressed-refs, skill-bootstrapping, tech-stack-analyzer) | `skills/agent-team/patterns/` |
-| **Shared KB** | 18 docs across 7 domains (hets, mobile-dev, web-dev, backend-dev, ml-dev, infra-dev, data-dev, security-dev) | `skills/agent-team/kb/` |
-| **Scripts** | 5 (tree-tracker, contract-verifier, pattern-recorder, agent-identity, kb-resolver) | `scripts/agent-team/` |
+| **Personas** | 16 (5 auditor + 8 builder + 3 codebase-investigator) + 2 templates (challenger + engineering-task) = 18 contracts | `swarm/personas/`, `swarm/personas-contracts/` |
+| **Patterns library** | 21 architectural patterns (HETS, asymmetric-challenger, trust-tiered-verification, convergence-as-signal, persona-skills-mapping, agent-identity-reputation, meta-validation, prompt-distillation, shared-knowledge-base, content-addressed-refs, skill-bootstrapping, tech-stack-analyzer, plan-mode-hets-injection, etc.) | `skills/agent-team/patterns/` |
+| **Shared KB** | Multi-domain docs across 9 domains (architecture, hets, mobile-dev, web-dev, backend-dev, ml-dev, infra-dev, data-dev, security-dev) | `skills/agent-team/kb/` |
+| **Scripts** | HETS substrate scripts (tree-tracker, contract-verifier, pattern-recorder, agent-identity, kb-resolver, route-decide, adr, etc.) | `scripts/agent-team/` |
 | **Persistent state** | Per-identity reputation, per-persona pattern history, KB manifest | `~/.claude/agent-identities.json`, `~/.claude/agent-patterns.json`, `skills/agent-team/kb/manifest.json` |
 
 **Key features:**
 
-- **12 specialist personas in two families**:
+- **16 specialist personas in three families**:
   - **Auditor family** (chaos-test focused): `01-hacker`, `02-confused-user`, `03-code-reviewer`, `04-architect`, `05-honesty-auditor`
-  - **Builder family** (product focused): `06-ios-developer`, `07-java-backend`, `08-ml-engineer`, `09-react-frontend`, `10-devops-sre`, `11-data-engineer`, `12-security-engineer`
+  - **Builder family** (product focused): `06-ios-developer`, `07-java-backend`, `08-ml-engineer`, `09-react-frontend`, `10-devops-sre`, `11-data-engineer`, `12-security-engineer`, `13-node-backend`
+  - **Codebase-investigator family** (research focused): `14-codebase-locator`, `15-codebase-analyzer`, `16-codebase-pattern-finder`
 - **Persistent named identities**: each persona has a roster of identities (e.g. `04-architect` → `mira`, `theo`, `ari`); each accumulates per-instance trust + skill-invocation history across runs ("I trust mira" becomes meaningful)
 - **Verifiable contracts**: every output checked against functional + anti-pattern checks (`prototype-pollution-safe verifier with 11 check types`)
 - **Content-addressed KB**: SHA-256 refs (`kb:web-dev/react-essentials@a3f1b2c4`) frozen-per-run via snapshots — same content always produces same hash, cross-project reuse falls out for free

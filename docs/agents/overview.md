@@ -16,5 +16,5 @@ Each agent is a `.md` file with YAML frontmatter declaring its name, description
 
 ---
 
-### Skills (9) — The Workflow Layer
+### Skills (17) — The Workflow Layer
 
