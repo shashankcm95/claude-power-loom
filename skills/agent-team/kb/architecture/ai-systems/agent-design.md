@@ -19,6 +19,7 @@ related:
   - architecture/discipline/refusal-patterns
   - architecture/crosscut/single-responsibility
   - architecture/crosscut/deep-modules
+  - architecture/ai-systems/inference-cost-management
 status: active+enforced
 ---
 
@@ -284,6 +285,22 @@ Mitigation: ground budget in eval data (what tasks need how much); soft cap warn
 - **Designing tool surfaces**: apply the deep-module principle — narrow interface, rich implementation, clear failure observations
 - **Production agent deployment**: budget along all 4 axes (token, step, tool, wall-clock); log + monitor each
 - **Eval design**: separate workflow-style eval (deterministic) from agent-style eval (run-dependent); use task-completion + step-efficiency as agent-specific metrics
+
+## When NOT to use this principle (or apply with caveat)
+
+**Don't apply when**:
+
+- **Simple deterministic workflows** — a fixed-step pipeline beats an agent loop on latency, cost, and reproducibility. Use Workflow (per Anthropic's Workflow-vs-Agent distinction) when steps + branching are knowable upfront.
+- **Latency-critical paths (<500ms budgets)** — agent loops amortize inference across multiple LLM calls; the ReAct minimum is ~2-3 calls per step. Even at 200ms/call, the loop floor is ~600ms — already above tight latency SLOs.
+- **Single-tool one-shot calls** — if the task is "call tool X with these args, return result," the agent loop overhead (reason → act → observe → reason → finish) is pure tax. Call the tool directly from non-LLM code.
+- **High-stakes irreversible actions without checkpoint design** — agent loops without explicit confirmation gates can compound errors (agentic file deletion; chained transactions). If you can't add HIL or rollback, prefer Workflow.
+
+**Apply with caveat when**:
+
+- **Mixed deterministic + open-ended sub-tasks** — use Workflow as the outer shell, Agent for the open-ended inner sub-tasks. Don't agent-ify the whole pipeline.
+- **Cost-sensitive products** — bound the loop iterations explicitly (`max_iterations`); add per-step token budgets; route trivial sub-tasks to smaller models. See `inference-cost-management` for the cost-lever framework.
+
+**Cross-reference**: `inference-cost-management` treats agent loops as the highest-leverage cost amortization lever — but also the highest-cost anti-pattern when defaulted-to. The agent vs workflow decision IS the cost decision in most LLM systems.
 
 ## Substrate applications
 

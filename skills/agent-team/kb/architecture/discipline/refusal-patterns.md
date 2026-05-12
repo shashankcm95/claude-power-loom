@@ -17,6 +17,7 @@ related:
   - architecture/discipline/error-handling-discipline
   - architecture/discipline/trade-off-articulation
   - architecture/crosscut/single-responsibility
+  - architecture/ai-systems/agent-design
 status: active+enforced
 ---
 
@@ -240,6 +241,21 @@ Mitigation: state scope as *what the system DOES*, not *what it DOESN'T*. Positi
 - **Designing eval methodology**: include refusal-specific eval sets (acceptable + unacceptable cases); track refusal rate as a first-class metric.
 - **Production auditing**: review observed refusals + accepted-edge-cases. Refusal is a security-relevant surface; treat its evolution as security-relevant.
 - **Scoping new features**: ask "what should this surface refuse?" before "what should this surface do?" The refusal boundary is half the design.
+
+## When NOT to use this principle (or apply with caveat)
+
+**Don't apply when**:
+
+- **Capabilities the model HAS but UX wants to deny** — hide via system prompt or product layer, not substrate refusal. Substrate refusal at the boundary creates "the model refuses" UX confusion when the model would happily comply if asked differently.
+- **Soft-policy domains where false-positive refusal cost > false-negative acceptance cost** — creative writing assistants, brainstorming tools, exploratory analysis. Over-refusal kills the product. The right surface is graduated assistance + escape valves, not refusal.
+- **Safety axis where the model has trained refusal already** — adding a substrate refusal layer creates double-refusal (model refuses → substrate also refuses) + UX confusion (which layer rejected?). Defer to model behavior unless you have specific cases the model misses.
+
+**Apply with caveat when**:
+
+- **Capability or scope refusals** (the 2nd and 3rd taxonomy axes) — substrate is the right layer because the model literally cannot do the thing (capability) or the product shouldn't (scope). Make the refusal explicit + actionable ("X is out of scope; here's what you can do instead").
+- **Compliance-mandated refusals** — substrate must record the refusal for audit. Even if the model would refuse, log it; even if the model would accept, refuse-and-log at substrate.
+
+**Cross-reference**: `error-handling-discipline` treats refusal as a structured error response — same patterns apply: clear surfacing, observability, recoverable when possible, consistent across phrasings. Refusal IS error-handling for the "we won't do this" class of error.
 
 ## Substrate applications
 

@@ -17,6 +17,13 @@ related:
   - architecture/crosscut/dependency-rule
   - architecture/crosscut/deep-modules
   - architecture/crosscut/acyclic-dependencies
+  - architecture/crosscut/idempotency
+  - architecture/crosscut/information-hiding
+  - architecture/ai-systems/agent-design
+  - architecture/ai-systems/rag-anchoring
+  - architecture/discipline/error-handling-discipline
+  - architecture/discipline/refusal-patterns
+  - architecture/discipline/trade-off-articulation
 status: active+enforced
 ---
 

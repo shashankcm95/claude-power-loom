@@ -19,6 +19,9 @@ related:
   - architecture/crosscut/dependency-rule
   - architecture/discipline/error-handling-discipline
   - architecture/discipline/stability-patterns
+  - architecture/discipline/reliability-scalability-maintainability
+  - architecture/ai-systems/evaluation-under-nondeterminism
+  - architecture/ai-systems/inference-cost-management
 status: active+enforced
 ---
 

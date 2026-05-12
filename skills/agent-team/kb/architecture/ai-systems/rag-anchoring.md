@@ -18,6 +18,7 @@ related:
   - architecture/ai-systems/agent-design
   - architecture/ai-systems/evaluation-under-nondeterminism
   - architecture/ai-systems/inference-cost-management
+  - architecture/discipline/stability-patterns
 status: active+enforced
 ---
 

@@ -215,6 +215,21 @@ The second-most-common failure: stuffing the prompt with "just in case" content.
 - **Comparing models**: don't just compare quality — compare cost-per-quality (eval pass rate / dollar)
 - **Building agent loops**: budget step count + context size; mitigate quadratic-amortization with compression
 
+## When NOT to use this principle (or apply with caveat)
+
+**Don't apply when**:
+
+- **Prototyping phase** — premature cost optimization in a pre-PMF prototype trades correctness for savings on the wrong axis. Defer cost-management until the loop shape stabilizes (post-MVP, when token-burn-per-feature is measurable).
+- **Correctness-critical paths where lever trade-offs degrade quality** — model downsize on a regulatory-compliance check, prompt truncation on a legal-summarization task, retrieval-only on a multi-hop reasoning chain. The cost saved is worth less than the correctness lost.
+- **Single-call workflows where amortization doesn't apply** — the agent-loop amortization lever requires multi-step loops to recover its inference investment. A one-shot call has nothing to amortize.
+
+**Apply with caveat when**:
+
+- **Latency-bound paths** — cost-optimization via model downsize often also reduces latency (smaller model = faster inference). Verify the cost/quality trade-off doesn't break the latency SLO before applying.
+- **Multi-tenant systems** — per-tenant cost shaping (different model tiers, different cache hit rates) requires routing logic that itself adds cost. Profile before adding the routing layer.
+
+**Cross-reference**: `agent-design` treats agent loops as the highest-leverage cost amortization mechanism — but defaulted-max-agent is also the most expensive anti-pattern. The agent vs workflow decision IS the cost decision in most LLM systems.
+
 ## Substrate applications
 
 ### `budget-tracker.js` per-spawn accounting

@@ -19,6 +19,9 @@ related:
   - architecture/crosscut/deep-modules
   - architecture/crosscut/acyclic-dependencies
   - architecture/crosscut/information-hiding
+  - architecture/crosscut/idempotency
+  - architecture/ai-systems/rag-anchoring
+  - architecture/discipline/trade-off-articulation
 status: active+enforced
 ---
 

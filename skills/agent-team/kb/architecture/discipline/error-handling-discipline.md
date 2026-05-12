@@ -19,6 +19,8 @@ related:
   - architecture/crosscut/single-responsibility
   - architecture/discipline/stability-patterns
   - architecture/discipline/refusal-patterns
+  - architecture/discipline/reliability-scalability-maintainability
+  - architecture/ai-systems/evaluation-under-nondeterminism
 status: active+enforced
 ---
 

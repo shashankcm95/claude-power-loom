@@ -8,6 +8,45 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [unreleased] — 2026-05-12 — H.9.13 Convention A section migration + drift-note 82 cohort mass-fix (mechanical hotfix-cohort; NO formal gate per 0 of 5 HT.1.6 triggers; closes drift-note 82 OPEN → CLOSED-at-H.9.13)
+
+**Mechanical doc-only mass-fix** closing two H.9.12-surfaced cohort gaps: (a) Convention A → Convention B section convergence across 5 kb/architecture docs; (b) drift-note 82 asymmetric `related:` link cohort (23 back-links restored across 9 destination docs). No substrate runtime change; no manifest bump; no per-phase gate. Files modified: 11 kb/architecture/ docs (5 Convention A + 9 Convention B receivers with 2 overlap = 11 unique) + new sub-plan.
+
+### What landed
+
+- **Convention A → Convention B section convergence (Component A)**: 5 docs gained the strict `## When NOT to use this principle (or apply with caveat)` heading required by `_PRINCIPLES.md` L48-54 quality bar. Each section ~30-40 LoC of "don't apply when / apply with caveat / cross-reference" structure following `single-responsibility.md` precedent. Affected: `ai-systems/agent-design`, `ai-systems/evaluation-under-nondeterminism`, `ai-systems/inference-cost-management`, `crosscut/information-hiding`, `discipline/refusal-patterns`. H.9.12 SOFT-advisory now drift-protection (was: backlog-surfacer).
+- **drift-note 82 cohort mass-fix (Component B)**: 23 asymmetric `related:` links closed via reciprocal back-link entries in 9 destination docs. Aggregated: `crosscut/single-responsibility` +7; `crosscut/deep-modules` +2; `crosscut/dependency-rule` +3; `crosscut/idempotency` +3; `discipline/error-handling-discipline` +2; `discipline/trade-off-articulation` +3; `discipline/refusal-patterns` +1; `ai-systems/agent-design` +1; `ai-systems/rag-anchoring` +1. Bidirectional graph fully restored across kb/architecture/ tree. `kb-architecture-related-bidirectional` validator now reports `0 violation(s)` (was: 23 asymmetric via WARN-ONLY stderr).
+- **Sub-plan authored** at `swarm/thoughts/shared/plans/2026-05-12-H.9.13-convention-a-cohort-cleanup.md` per H.9.10-onward precedent (project-tracked; survives compaction; visible to chaos-tests + agent-team consumers).
+
+### Why no gate / no manifest bump
+
+- 0 of 5 HT.1.6 triggers fire: no fresh design surface (applying existing Convention B pattern + already-codified bidirectional invariant); no schema change (`related:` array shape unchanged); no option-axis (each missing back-link has exactly one correct fix); no institutional discipline encoding (applying H.9.12's encoding, not adding new); LOW HIGH-class bug risk (editorial-content quality mitigated by author-authority + post-edit validator regression scan)
+- Pure doc-only edits; substrate runtime code unchanged; no observable contract change; mirrors H.9.12.1 hotfix precedent (1.15.0 unchanged)
+
+### Verification
+
+- install.sh smoke: 85/85 passed, 0 failed (unchanged)
+- _h70-test.js: 67/67 passed (unchanged)
+- contracts-validate.js: 17 baseline preserved
+- **kb-architecture-related-bidirectional: 0 violation(s)** (was: 23 asymmetric)
+- markdownlint: 0 errors on 15 kb/architecture/ files
+- Synthetic stdin probe on `agent-design.md` post-edit: `decision: approve` with empty stderr (no SOFT-advisory triggered; Convention B compliance verified)
+
+### Pattern observation
+
+**Warn-only-then-fix-then-flip pattern complete**: H.9.12 introduced WARN-ONLY mode (surfaced 23 asymmetric without blocking); H.9.13 fixes the cohort (asymmetric=0); H.9.14 deferred to flip WARN-ONLY → HARD-violation (regression protection now safe because baseline=0). This pattern is reusable for any "introduce-new-invariant-on-non-conforming-substrate" scenario.
+
+### Substrate state delta
+
+- install.sh smoke: 85/85 (unchanged)
+- _h70-test.js: 67/67 (unchanged)
+- contracts-validate.js: 17-baseline (unchanged); `kb-architecture-related-bidirectional` 0 (was: 23 asymmetric)
+- Plugin manifest: 1.15.0 (unchanged)
+- Soak gate counter: **5/5+ THRESHOLD MET** (unchanged; hotfix-cohort does NOT advance counter per H.9.12.1 precedent)
+- Drift-notes: 79 + 78(a) + 81 OPEN; **82 CLOSED-at-H.9.13** (was: OPEN at H.9.12); 80 + 78(b) CLOSED
+
+---
+
 ## [unreleased] — 2026-05-11 — H.9.12.1 CI hotfix (single-commit `main` per H.9.6.1 precedent; closes Test 85 stat-cascade Linux/macOS portability bug + Test 81 shellcheck binary download network failure)
 
 **Single-commit hotfix on `main`** closing two latent CI failures surfaced post-H.9.12 push. No substrate runtime change; no manifest bump; no per-phase gate (0 of 5 HT.1.6 triggers fire). Files modified: `tests/smoke-ht.sh` (cascade reorder + system-shellcheck preference) + `.github/workflows/ci.yml` (apt-install shellcheck).

@@ -18,6 +18,9 @@ related:
   - architecture/crosscut/dependency-rule
   - architecture/crosscut/single-responsibility
   - architecture/discipline/refusal-patterns
+  - architecture/crosscut/acyclic-dependencies
+  - architecture/ai-systems/evaluation-under-nondeterminism
+  - architecture/ai-systems/inference-cost-management
 status: active+enforced
 ---
 

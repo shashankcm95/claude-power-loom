@@ -248,6 +248,21 @@ The most insidious failure: a hosted model is updated silently; your previous ev
 - **Post-deploy monitoring**: eval cadence + drift alerting; bisect across the three drift sources when regressions surface
 - **Eval-driven development**: treat eval as part of the test suite; gate deploys on eval pass rates
 
+## When NOT to use this principle (or apply with caveat)
+
+**Don't apply when**:
+
+- **Deterministic systems** — legacy code paths, non-LLM components, pure-function pipelines have stable output for fixed input. Traditional unit/integration tests cover correctness; nondet-aware eval adds sampling cost without signal gain.
+- **One-shot demos or prototypes** — the sampling cost of N-trial eval (typically N≥10) exceeds value when the artifact is throwaway. Acceptance criterion = "looks reasonable on the demo path."
+- **Tasks with hard ground truth and no LLM in the loop** — if you can compute correctness deterministically (math result, parsed JSON validity), use exact-match assertion. LLM-as-judge adds nondeterminism + cost without resolving an underdetermined criterion.
+
+**Apply with caveat when**:
+
+- **Mixed LLM + deterministic pipelines** — eval the LLM stage with nondet awareness (N-trial + judge), eval downstream deterministic stages with traditional assertions. Don't blanket-apply LLM-as-judge where it's unneeded.
+- **High-sample-cost domains (long-context, expensive model)** — reduce N but increase trial diversity (vary temperature, prompt phrasing, seed) to maintain coverage without linear cost growth.
+
+**Cross-reference**: `error-handling-discipline` treats eval as the contract that drives substrate response. The eval defines what "correct" means; error-handling defines what happens when the substrate observes incorrectness. They're paired surfaces, not interchangeable.
+
 ## Substrate applications
 
 ### Chaos test runs as eval batches

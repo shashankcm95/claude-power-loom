@@ -17,6 +17,8 @@ related:
   - architecture/crosscut/single-responsibility
   - architecture/crosscut/dependency-rule
   - architecture/crosscut/information-hiding
+  - architecture/crosscut/acyclic-dependencies
+  - architecture/ai-systems/agent-design
 status: active+enforced
 ---
 

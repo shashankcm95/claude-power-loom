@@ -227,6 +227,21 @@ Sometimes a performance problem requires understanding what's inside a module. I
 - **Splitting a class**: per Parnas's criterion, split by *what each piece would hide*, not by *what each piece would do procedurally*.
 - **Reviewing API surfaces**: every public method is a permanent commitment to a piece of revealed information. Is each one necessary?
 
+## When NOT to use this principle (or apply with caveat)
+
+**Don't apply when**:
+
+- **Open-source APIs / public contracts** — consumers need stability guarantees that require *more* exposure, not less. Hiding internals is fine; hiding contract surfaces breaks downstream code on every refactor.
+- **Cross-team interfaces with mature consumers** — if Team B has already absorbed the exposure cost (built against your current surface, has integration tests), additional hiding creates churn without benefit. The cost is borne; the work is recovering value from it.
+- **Performance-critical hot paths where abstraction dominates** — rarely truly applicable; usually a hidden-tradeoff anti-pattern where "performance" excuses skipping decomposition. Profile first.
+
+**Apply with caveat when**:
+
+- **Internal modules with multiple stakeholders** — hide aggressively but document the contract surface clearly. The hiding-vs-exposure decision is per-stakeholder, not per-module.
+- **Refactoring from low-hiding legacy** — increase hiding incrementally (one consumer at a time), not in a single big-bang. The risk is breaking downstream code paths you didn't know existed.
+
+**Cross-reference**: `single-responsibility` defines WHAT to hide (the boundary follows the actor / reason-to-change). Information hiding implements SRP at the module surface — it's the mechanism, SRP is the principle. They co-vary: when SRP is violated, hiding becomes harder; when hiding is poor, SRP violations leak across boundaries.
+
 ## Substrate applications
 
 ### Hook scripts as opaque validators
