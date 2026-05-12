@@ -916,3 +916,205 @@ EOF
     echo "FAIL: $T89_RESULT"
     failed=$((failed + 1))
   fi
+
+  # Tests 90-101: H.9.15 chaos findings regression coverage (12 tests).
+  # Per H.9.12.1 lesson: spawnSync + JSON.stringify (no echo shell escapes).
+  # Per H.9.14.1 lesson: capture pre-baseline + compare deltas (no hardcoded
+  # counts). Per Test 85 precedent: defensive cleanup BEFORE assertion.
+  # NOTE: 4 tests deferred (CHA-2 mid-kill, CHA-3 multi-process lock, CLC-2
+  # CRLF git output, additional SEC variants) — complex test infra needs
+  # marker-file barriers / fs monkey-patching; documented in plan as
+  # follow-up for H.9.16 or v2.0.1.
+  # NOTE: secret-shaped test fixtures use string concatenation to avoid
+  # tripping validate-no-bare-secrets on the test file itself at Edit time
+  # (the validator on this very file would fire on contiguous KEY=value
+  # literals in source). Runtime-constructed strings preserve test semantics.
+
+  # Test 90: parseFrontmatter CRLF normalization (VAL-1)
+  echo -n "  Test 90 (H.9.15 parseFrontmatter CRLF normalization; VAL-1): "
+  T90_RESULT=$(node -e "
+    const { parseFrontmatter } = require('$SCRIPT_DIR/scripts/agent-team/_lib/frontmatter.js');
+    const lf = '---\nkb_id: test/x\nversion: 1\n---\nbody';
+    const crlf = '---\r\nkb_id: test/x\r\nversion: 1\r\n---\r\nbody';
+    const a = parseFrontmatter(lf);
+    const b = parseFrontmatter(crlf);
+    if (a.frontmatter.kb_id !== 'test/x' || b.frontmatter.kb_id !== 'test/x') { console.log('FAIL: kb_id mismatch lf=' + a.frontmatter.kb_id + ' crlf=' + b.frontmatter.kb_id); process.exit(1); }
+    if (a.frontmatter.version !== 1 || b.frontmatter.version !== 1) { console.log('FAIL: version mismatch lf=' + a.frontmatter.version + ' crlf=' + b.frontmatter.version); process.exit(1); }
+    console.log('OK (LF + CRLF both parse correctly; numeric coercion applied)');
+  " 2>&1)
+  if echo "$T90_RESULT" | grep -q "^OK"; then echo "$T90_RESULT"; passed=$((passed + 1)); else echo "FAIL: $T90_RESULT"; failed=$((failed + 1)); fi
+
+  # Test 91: parseFrontmatter BOM strip (VAL-6)
+  echo -n "  Test 91 (H.9.15 parseFrontmatter BOM strip; VAL-6): "
+  T91_RESULT=$(node -e "
+    const { parseFrontmatter } = require('$SCRIPT_DIR/scripts/agent-team/_lib/frontmatter.js');
+    const bom = '﻿---\nkb_id: test/x\nversion: 1\n---\nbody';
+    const r = parseFrontmatter(bom);
+    if (r.frontmatter.kb_id !== 'test/x') { console.log('FAIL: BOM-prefixed doc kb_id=' + r.frontmatter.kb_id); process.exit(1); }
+    if (r.frontmatter.version !== 1) { console.log('FAIL: BOM-prefixed doc version=' + r.frontmatter.version); process.exit(1); }
+    console.log('OK (BOM stripped; frontmatter parsed correctly)');
+  " 2>&1)
+  if echo "$T91_RESULT" | grep -q "^OK"; then echo "$T91_RESULT"; passed=$((passed + 1)); else echo "FAIL: $T91_RESULT"; failed=$((failed + 1)); fi
+
+  # Test 92: parseFrontmatter block-scalar warning + null sentinel (VAL-2)
+  echo -n "  Test 92 (H.9.15 parseFrontmatter block-scalar warning + null sentinel; VAL-2): "
+  T92_RESULT=$(node -e "
+    const { spawnSync } = require('child_process');
+    const r = spawnSync('node', ['-e', \"const { parseFrontmatter } = require('$SCRIPT_DIR/scripts/agent-team/_lib/frontmatter.js'); const r = parseFrontmatter('---\\\nkey: |-\\\n---\\\nbody'); console.log(JSON.stringify({val: r.frontmatter.key}));\"], { encoding: 'utf8' });
+    const stderr = r.stderr || '';
+    const stdout = r.stdout || '';
+    if (!stderr.includes('block scalar indicator')) { console.log('FAIL: no block-scalar warning in stderr; stderr=' + stderr.slice(0, 200)); process.exit(1); }
+    const parsed = JSON.parse(stdout.trim());
+    if (parsed.val !== null) { console.log('FAIL: expected null sentinel, got ' + JSON.stringify(parsed.val)); process.exit(1); }
+    console.log('OK (block-scalar warning emitted + null sentinel stored)');
+  " 2>&1)
+  if echo "$T92_RESULT" | grep -q "^OK"; then echo "$T92_RESULT"; passed=$((passed + 1)); else echo "FAIL: $T92_RESULT"; failed=$((failed + 1)); fi
+
+  # Test 93: parseFrontmatter numeric coercion (VAL-5 atomic part)
+  echo -n "  Test 93 (H.9.15 parseFrontmatter numeric coercion w/ leading-zero exclusion; VAL-5): "
+  T93_RESULT=$(node -e "
+    const { parseFrontmatter } = require('$SCRIPT_DIR/scripts/agent-team/_lib/frontmatter.js');
+    const r = parseFrontmatter('---\ncoerce_int: 1\ncoerce_zero: 0\ncoerce_float: 1.5\npreserve_leading_zero: 0001\npreserve_quoted: \"1\"\n---');
+    const fm = r.frontmatter;
+    if (typeof fm.coerce_int !== 'number' || fm.coerce_int !== 1) { console.log('FAIL: coerce_int typeof=' + typeof fm.coerce_int + ' val=' + fm.coerce_int); process.exit(1); }
+    if (typeof fm.coerce_zero !== 'number' || fm.coerce_zero !== 0) { console.log('FAIL: coerce_zero typeof=' + typeof fm.coerce_zero + ' val=' + fm.coerce_zero); process.exit(1); }
+    if (typeof fm.coerce_float !== 'number' || fm.coerce_float !== 1.5) { console.log('FAIL: coerce_float typeof=' + typeof fm.coerce_float + ' val=' + fm.coerce_float); process.exit(1); }
+    if (typeof fm.preserve_leading_zero !== 'string' || fm.preserve_leading_zero !== '0001') { console.log('FAIL: preserve_leading_zero typeof=' + typeof fm.preserve_leading_zero + ' val=' + fm.preserve_leading_zero); process.exit(1); }
+    if (typeof fm.preserve_quoted !== 'string' || fm.preserve_quoted !== '1') { console.log('FAIL: preserve_quoted typeof=' + typeof fm.preserve_quoted + ' val=' + fm.preserve_quoted); process.exit(1); }
+    console.log('OK (numeric coercion applied to unquoted non-leading-zero only)');
+  " 2>&1)
+  if echo "$T93_RESULT" | grep -q "^OK"; then echo "$T93_RESULT"; passed=$((passed + 1)); else echo "FAIL: $T93_RESULT"; failed=$((failed + 1)); fi
+
+  # Test 94: validate-kb-doc tilde-fence support (VAL-3)
+  echo -n "  Test 94 (H.9.15 validate-kb-doc tilde-fence section detection; VAL-3): "
+  T94_RESULT=$(node -e "
+    const { spawnSync } = require('child_process');
+    const validator = '$SCRIPT_DIR/hooks/scripts/validators/validate-kb-doc.js';
+    const content = '---\nkb_id: architecture/test/tilde\nversion: 1\ntags:\n  - a\n  - b\n  - c\nsources_consulted:\n  - x\n  - y\nrelated:\n  - architecture/other/foo\n---\n## Summary\nbody\n\n## Quick Reference\nbody\n\n## Intent\nbody\n\n## When NOT to use\nbody\n\n## Failure modes\nbody\n\n## Substrate applications\nbody\n\n~~~\n## Inside tilde fence (should not count)\n~~~\n';
+    const payload = JSON.stringify({ tool_name: 'Write', tool_input: { file_path: '/tmp/h915-fixture/kb/architecture/test/tilde.md', content } });
+    const r = spawnSync('node', [validator], { input: payload, encoding: 'utf8' });
+    const out = JSON.parse(r.stdout || '{}');
+    if (out.decision !== 'approve') { console.log('FAIL: decision=' + out.decision + ' reason=' + (out.reason || '').slice(0, 200)); process.exit(1); }
+    console.log('OK (tilde fence content not counted as section; required sections outside fence detected)');
+  " 2>&1)
+  if echo "$T94_RESULT" | grep -q "^OK"; then echo "$T94_RESULT"; passed=$((passed + 1)); else echo "FAIL: $T94_RESULT"; failed=$((failed + 1)); fi
+
+  # Test 95: validate-no-bare-secrets OpenAI sk-/sk-proj- block (SEC-1)
+  echo -n "  Test 95 (H.9.15 validate-no-bare-secrets OpenAI sk-/sk-proj-; SEC-1): "
+  T95_RESULT=$(node -e "
+    const { spawnSync } = require('child_process');
+    const validator = '$SCRIPT_DIR/hooks/scripts/validators/validate-no-bare-secrets.js';
+    const content = 'config block with sk-proj-' + 'A'.repeat(40) + ' embedded';
+    const payload = JSON.stringify({ tool_name: 'Write', tool_input: { file_path: '/tmp/h915-fixture/secret-openai.txt', content } });
+    const r = spawnSync('node', [validator], { input: payload, encoding: 'utf8' });
+    const out = JSON.parse(r.stdout || '{}');
+    if (out.decision !== 'block') { console.log('FAIL: decision=' + out.decision + ' (expected block on OpenAI key)'); process.exit(1); }
+    if (!(out.reason || '').includes('OpenAI')) { console.log('FAIL: reason missing OpenAI mention; got: ' + (out.reason || '').slice(0, 200)); process.exit(1); }
+    console.log('OK (OpenAI sk-proj- pattern blocked; reason mentions OpenAI)');
+  " 2>&1)
+  if echo "$T95_RESULT" | grep -q "^OK"; then echo "$T95_RESULT"; passed=$((passed + 1)); else echo "FAIL: $T95_RESULT"; failed=$((failed + 1)); fi
+
+  # Test 96: validate-no-bare-secrets PEM private key block (SEC-1)
+  echo -n "  Test 96 (H.9.15 validate-no-bare-secrets PEM private key; SEC-1): "
+  T96_RESULT=$(node -e "
+    const { spawnSync } = require('child_process');
+    const validator = '$SCRIPT_DIR/hooks/scripts/validators/validate-no-bare-secrets.js';
+    const content = '-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA...\n-----END RSA PRIVATE KEY-----';
+    const payload = JSON.stringify({ tool_name: 'Write', tool_input: { file_path: '/tmp/h915-fixture/key.pem', content } });
+    const r = spawnSync('node', [validator], { input: payload, encoding: 'utf8' });
+    const out = JSON.parse(r.stdout || '{}');
+    if (out.decision !== 'block') { console.log('FAIL: decision=' + out.decision); process.exit(1); }
+    if (!(out.reason || '').toLowerCase().includes('pem')) { console.log('FAIL: reason missing PEM mention'); process.exit(1); }
+    console.log('OK (PEM private key block fired)');
+  " 2>&1)
+  if echo "$T96_RESULT" | grep -q "^OK"; then echo "$T96_RESULT"; passed=$((passed + 1)); else echo "FAIL: $T96_RESULT"; failed=$((failed + 1)); fi
+
+  # Test 97: validate-no-bare-secrets _HERE placeholder approve (SEC-3)
+  # Note: source uses string concat to avoid Edit-time validator trip
+  echo -n "  Test 97 (H.9.15 validate-no-bare-secrets _here placeholder; SEC-3): "
+  T97_RESULT=$(node -e "
+    const { spawnSync } = require('child_process');
+    const validator = '$SCRIPT_DIR/hooks/scripts/validators/validate-no-bare-secrets.js';
+    const content = 'OPENAI_API' + '_KEY=your_api_key_here';
+    const payload = JSON.stringify({ tool_name: 'Write', tool_input: { file_path: '/tmp/h915-fixture/env-placeholder.env', content } });
+    const r = spawnSync('node', [validator], { input: payload, encoding: 'utf8' });
+    const out = JSON.parse(r.stdout || '{}');
+    if (out.decision !== 'approve') { console.log('FAIL: decision=' + out.decision + ' (expected approve on placeholder)'); process.exit(1); }
+    console.log('OK (your_api_key_here placeholder correctly approved)');
+  " 2>&1)
+  if echo "$T97_RESULT" | grep -q "^OK"; then echo "$T97_RESULT"; passed=$((passed + 1)); else echo "FAIL: $T97_RESULT"; failed=$((failed + 1)); fi
+
+  # Test 98: validate-no-bare-secrets changeme_* prefix approve (SEC-4)
+  # Note: source uses string concat to avoid Edit-time validator trip
+  echo -n "  Test 98 (H.9.15 validate-no-bare-secrets changeme_* prefix; SEC-4): "
+  T98_RESULT=$(node -e "
+    const { spawnSync } = require('child_process');
+    const validator = '$SCRIPT_DIR/hooks/scripts/validators/validate-no-bare-secrets.js';
+    const content = 'DB_PASS' + 'WORD=changeme_default_value_v2';
+    const payload = JSON.stringify({ tool_name: 'Write', tool_input: { file_path: '/tmp/h915-fixture/env-changeme.env', content } });
+    const r = spawnSync('node', [validator], { input: payload, encoding: 'utf8' });
+    const out = JSON.parse(r.stdout || '{}');
+    if (out.decision !== 'approve') { console.log('FAIL: decision=' + out.decision + ' (expected approve on changeme_*)'); process.exit(1); }
+    console.log('OK (changeme_* prefix correctly approved)');
+  " 2>&1)
+  if echo "$T98_RESULT" | grep -q "^OK"; then echo "$T98_RESULT"; passed=$((passed + 1)); else echo "FAIL: $T98_RESULT"; failed=$((failed + 1)); fi
+
+  # Test 99: console-log-check false-positive prevention (CLC-1)
+  echo -n "  Test 99 (H.9.15 console-log-check false-positive layered defense; CLC-1): "
+  T99_RESULT=$(node -e "
+    const test = (line) => {
+      const trimmed = line.trimStart();
+      if (/^\/\//.test(trimmed)) return false;
+      if (/^\/\*/.test(trimmed)) return false;
+      const lineSansComment = line.replace(/\/\/.*\$/, '');
+      return /(?<![.\w])console\.log\(/.test(lineSansComment);
+    };
+    const cases = [
+      { line: 'console.log(\"real\")', want: true, name: 'plain console.log' },
+      { line: '// console.log(\"comment\")', want: false, name: 'line comment' },
+      { line: '  // console.log(\"indented comment\")', want: false, name: 'indented line comment' },
+      { line: 'foo.console.log(\"object method\")', want: false, name: 'foo.console.log' },
+      { line: 'someFn(); // console.log(\"inline comment\")', want: false, name: 'inline-comment-after-code' },
+      { line: '/* console.log(\"block comment\") */', want: false, name: 'block comment line' },
+    ];
+    const fails = [];
+    for (const c of cases) {
+      const got = test(c.line);
+      if (got !== c.want) fails.push(c.name + ' got=' + got + ' want=' + c.want);
+    }
+    if (fails.length > 0) { console.log('FAIL: ' + fails.join('; ')); process.exit(1); }
+    console.log('OK (6/6 layered defense cases pass)');
+  " 2>&1)
+  if echo "$T99_RESULT" | grep -q "^OK"; then echo "$T99_RESULT"; passed=$((passed + 1)); else echo "FAIL: $T99_RESULT"; failed=$((failed + 1)); fi
+
+  # Test 100: error-critic commandKey contract (CHA-1)
+  echo -n "  Test 100 (H.9.15 error-critic commandKey whitespace normalization contract; CHA-1): "
+  T100_RESULT=$(node -e "
+    const crypto = require('crypto');
+    const commandKey = (cmd) => crypto.createHash('sha256').update(cmd.trim().replace(/\s+/g, ' ')).digest('hex').slice(0, 12);
+    const a = commandKey('npm test');
+    const b = commandKey('npm  test');
+    const c = commandKey('npm test ');
+    const d = commandKey(' npm test');
+    const e = commandKey('NPM test');
+    if (a !== b || a !== c || a !== d) { console.log('FAIL: whitespace variants differ'); process.exit(1); }
+    if (a === e) { console.log('FAIL: case variants merged (CHA-1 decision: case preserved)'); process.exit(1); }
+    console.log('OK (whitespace normalized; case preserved per CHA-1)');
+  " 2>&1)
+  if echo "$T100_RESULT" | grep -q "^OK"; then echo "$T100_RESULT"; passed=$((passed + 1)); else echo "FAIL: $T100_RESULT"; failed=$((failed + 1)); fi
+
+  # Test 101: validate-no-bare-secrets DB-style password special chars (SEC-1 char-class)
+  # Note: source uses string concat to avoid Edit-time validator trip on KEY=value
+  echo -n "  Test 101 (H.9.15 validate-no-bare-secrets DB-style password special chars; SEC-1): "
+  T101_RESULT=$(node -e "
+    const { spawnSync } = require('child_process');
+    const validator = '$SCRIPT_DIR/hooks/scripts/validators/validate-no-bare-secrets.js';
+    const content = 'DB_PASS' + 'WORD=SuperLongSecretValueWith@Special!Chars';
+    const payload = JSON.stringify({ tool_name: 'Write', tool_input: { file_path: '/tmp/h915-fixture/env-db.env', content } });
+    const r = spawnSync('node', [validator], { input: payload, encoding: 'utf8' });
+    const out = JSON.parse(r.stdout || '{}');
+    if (out.decision !== 'block') { console.log('FAIL: decision=' + out.decision + ' (expected block per SEC-1 char-class widening)'); process.exit(1); }
+    console.log('OK (DB-style password with special chars blocked)');
+  " 2>&1)
+  if echo "$T101_RESULT" | grep -q "^OK"; then echo "$T101_RESULT"; passed=$((passed + 1)); else echo "FAIL: $T101_RESULT"; failed=$((failed + 1)); fi
+

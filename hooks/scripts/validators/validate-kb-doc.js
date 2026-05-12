@@ -141,7 +141,10 @@ function hasH2Section(body, sectionName) {
   const lines = body.split('\n');
   let inFence = false;
   for (const line of lines) {
-    if (line.startsWith('```')) {
+    // H.9.15 VAL-3: tilde fences `~~~` are valid CommonMark fenced code blocks
+    // alongside backtick fences. Previous fence-toggle missed tilde fences →
+    // sections inside tilde fences false-negatived as present.
+    if (line.startsWith('```') || line.startsWith('~~~')) {
       inFence = !inFence;
       continue;
     }
@@ -165,7 +168,10 @@ function hasH2SectionPrefix(body, prefix) {
   const lines = body.split('\n');
   let inFence = false;
   for (const line of lines) {
-    if (line.startsWith('```')) {
+    // H.9.15 VAL-3: tilde fences `~~~` are valid CommonMark fenced code blocks
+    // alongside backtick fences. Previous fence-toggle missed tilde fences →
+    // sections inside tilde fences false-negatived as present.
+    if (line.startsWith('```') || line.startsWith('~~~')) {
       inFence = !inFence;
       continue;
     }
@@ -199,11 +205,17 @@ function checkHardBlockFrontmatter(frontmatter, filePath) {
   }
 
   // _PRINCIPLES.md L43: version: 1
+  // H.9.15 VAL-5: strict type enforcement per YAML 1.2 spec. parseFrontmatter
+  // now returns JS number for unquoted integer scalars; string for quoted.
+  // Reject quoted-string `version: "1"` even though Number("1")===1 — strict
+  // type ensures canonical authoring. Atomic with parseFrontmatter Option A
+  // numeric coercion (Component A); without that, this check would HARD-block
+  // ALL docs (CR-LIVE-1 gate-caught LIVE BUG).
   const version = frontmatter.version;
   if (version === undefined || version === null) {
-    violations.push({ field: 'version', reason: `missing (expected: ${HARD_BLOCK_BOUNDS.expectedVersion})` });
-  } else if (Number(version) !== HARD_BLOCK_BOUNDS.expectedVersion) {
-    violations.push({ field: 'version', reason: `value '${version}' invalid (expected: ${HARD_BLOCK_BOUNDS.expectedVersion})` });
+    violations.push({ field: 'version', reason: `missing (expected: number ${HARD_BLOCK_BOUNDS.expectedVersion})` });
+  } else if (typeof version !== 'number' || version !== HARD_BLOCK_BOUNDS.expectedVersion) {
+    violations.push({ field: 'version', reason: `value '${version}' (${typeof version}) invalid (expected: unquoted number ${HARD_BLOCK_BOUNDS.expectedVersion})` });
   }
 
   // _PRINCIPLES.md L44: tags ≥3 entries
@@ -214,10 +226,16 @@ function checkHardBlockFrontmatter(frontmatter, filePath) {
   }
 
   // _PRINCIPLES.md L45+L56: sources_consulted ≥2 entries
+  // H.9.15 VAL-7: distinguish "missing" from "not an array" from "below min"
+  // for clearer error messages. Previous "count 0" was misleading when single
+  // string was provided as value.
   const sourcesConsulted = frontmatter.sources_consulted;
-  if (!Array.isArray(sourcesConsulted) || sourcesConsulted.length < HARD_BLOCK_BOUNDS.sourcesConsultedMin) {
-    const actualCount = Array.isArray(sourcesConsulted) ? sourcesConsulted.length : 0;
-    violations.push({ field: 'sources_consulted', reason: `count ${actualCount} below minimum ${HARD_BLOCK_BOUNDS.sourcesConsultedMin} (per _PRINCIPLES.md L45+L56 "Cites at least 2 Tier-1 or Tier-2 sources")` });
+  if (sourcesConsulted == null) {
+    violations.push({ field: 'sources_consulted', reason: `missing; minimum ${HARD_BLOCK_BOUNDS.sourcesConsultedMin} entries required (per _PRINCIPLES.md L45+L56 "Cites at least 2 Tier-1 or Tier-2 sources")` });
+  } else if (!Array.isArray(sourcesConsulted)) {
+    violations.push({ field: 'sources_consulted', reason: `single ${typeof sourcesConsulted} value (expected array); minimum ${HARD_BLOCK_BOUNDS.sourcesConsultedMin} entries required (per _PRINCIPLES.md L45+L56)` });
+  } else if (sourcesConsulted.length < HARD_BLOCK_BOUNDS.sourcesConsultedMin) {
+    violations.push({ field: 'sources_consulted', reason: `count ${sourcesConsulted.length} below minimum ${HARD_BLOCK_BOUNDS.sourcesConsultedMin} (per _PRINCIPLES.md L45+L56)` });
   }
 
   return violations;

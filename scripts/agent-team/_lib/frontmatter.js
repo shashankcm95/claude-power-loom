@@ -90,6 +90,14 @@ function _stripInlineComment(val) {
  * @returns {{frontmatter: object, body: string}} parsed structure
  */
 function parseFrontmatter(text) {
+  // H.9.15 VAL-1: normalize CRLF → LF before any parsing. JS regex `$` without
+  // `m` flag does not match before `\r`; CRLF docs silently dropped scalar
+  // fields (chaos VAL-1 finding). Always normalize input first.
+  if (text.includes('\r\n')) text = text.replace(/\r\n/g, '\n');
+  // H.9.15 VAL-6: strip BOM if present. validate-yaml-frontmatter.js had H.5.3
+  // BOM-strip; parseFrontmatter was missing this. Node fs.readFileSync(...,
+  // 'utf8') preserves UTF-8 BOM as U+FEFF in the JS string.
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
   if (!text.startsWith('---')) return { frontmatter: {}, body: text };
   const end = text.indexOf('\n---', 3);
   if (end === -1) return { frontmatter: {}, body: text };
@@ -98,6 +106,9 @@ function parseFrontmatter(text) {
   const fmText = text.slice(3, end);
   const lines = fmText.split('\n');
   let currentListKey = null;
+  // H.9.15 VAL-2 regex: covers all YAML 1.2 chomping indicators
+  // (strip `|-`/`>-`, clip `|`/`>`, keep `|+`/`>+`).
+  const BLOCK_SCALAR_INDICATORS = /^\|[-+]?$|^>[-+]?$/;
 
   for (const line of lines) {
     // Block-list item under previous list key
@@ -138,7 +149,23 @@ function parseFrontmatter(text) {
     }
     currentListKey = null;
 
-    // Strip surrounding quotes (single or double)
+    // H.9.15 VAL-2: detect block scalar indicators. Substrate authoring
+    // convention is single-line quoted scalars per _PRINCIPLES.md; block
+    // scalars are out of scope. Previous behavior silently stored the
+    // literal indicator (e.g., '|-') as the value, cascading to false-
+    // positive HARD-blocks in validators. Now: log warning to stderr +
+    // store null (validators treat null as malformed-frontmatter → fail-
+    // soft, not HARD-block — preserves substrate fail-soft contract).
+    if (BLOCK_SCALAR_INDICATORS.test(val)) {
+      process.stderr.write(`[parseFrontmatter] warning: block scalar indicator '${val}' for key '${key}' not supported; storing null (H.9.15 VAL-2)\n`);
+      fm[key] = null;
+      continue;
+    }
+
+    // Strip surrounding quotes (single or double). Track whether value was
+    // quoted — H.9.15 VAL-5 (numeric coercion below) only fires on UNQUOTED
+    // numeric scalars per YAML 1.2 spec (quoted scalars are strings).
+    const wasQuoted = /^["'].*["']$/.test(val);
     val = val.replace(/^["']|["']$/g, '');
 
     // Inline array: [a, b, c]
@@ -154,6 +181,39 @@ function parseFrontmatter(text) {
     // didn't translate, adr.js translated; canonical behavior: translate.)
     if (val === 'null') {
       fm[key] = null;
+      continue;
+    }
+
+    // H.9.15 VAL-5 (Option A): coerce unquoted numeric scalars to JS number
+    // per YAML 1.2 spec. Quoted scalars (wasQuoted=true) remain strings.
+    // Enables validators to distinguish `version: 1` (number) from
+    // `version: "1"` (string) for type-invariant enforcement.
+    //
+    // EXCLUSION: leading-zero integers (e.g., `adr_id: 0001`) — substrate
+    // convention uses these as string IDs preserving zero-padding for sort
+    // order + ID lookup. Per H.9.15 Component A regression catch: ADR
+    // system (adr.js) depends on string-typed `adr_id` for `===` lookup.
+    // YAML 1.2 spec treats `0001` as integer 1, but substrate semantics
+    // require preservation. Match: only coerce `^-?[1-9]\d*$` (no leading
+    // zero except the value `0` itself).
+    //
+    // Consumer audit (H.9.15 ARCH-HIGH-1): 11 substrate sites verified safe
+    // (kb-resolver + hierarchical-aggregate use parseInt with default-string;
+    // adr.js uses String() coercion; others access string-only fields).
+    if (!wasQuoted && /^-?[1-9]\d*$/.test(val)) {
+      fm[key] = parseInt(val, 10);
+      continue;
+    }
+    if (!wasQuoted && val === '0') {
+      fm[key] = 0;
+      continue;
+    }
+    if (!wasQuoted && /^-?[1-9]\d*\.\d+$/.test(val)) {
+      fm[key] = parseFloat(val);
+      continue;
+    }
+    if (!wasQuoted && /^0\.\d+$/.test(val)) {
+      fm[key] = parseFloat(val);
       continue;
     }
 

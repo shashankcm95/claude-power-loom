@@ -8,6 +8,111 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [unreleased] — 2026-05-12 — H.9.15 Pre-v2.0.0 Chaos Findings Closure (20 findings: 2 CRITICAL + 8 HIGH + 10 MEDIUM; MANDATORY gate; 22 FLAGs absorbed; 1 LIVE BUG caught; manifest 1.15.1 → 1.16.0 minor)
+
+**MANDATORY-gate phase per ADR-0002 substrate-fundament (touches security-critical hook + shared `_lib/frontmatter.js`) + 4/5 HT.1.6 triggers**. Closes ALL 20 findings from pre-v2.0.0 chaos test batch (4-auditor swarm). Sets up H.9.16 (drift-notes 78(a)/79/81 closure) → H.9.17 (v2.0.0 release prep + tag).
+
+### What landed (7 source components + 12 regression tests + manifest)
+
+**Component A — `_lib/frontmatter.js` fixes** (CRITICAL: VAL-1, VAL-2; MEDIUM: VAL-6):
+- VAL-1 CRLF normalization at top of `parseFrontmatter` (JS regex `$` without `m` flag doesn't match before `\r`; CRLF docs silently dropped scalar fields)
+- VAL-6 BOM stripping (validate-yaml-frontmatter.js had H.5.3 BOM-strip; parseFrontmatter was missing)
+- VAL-2 block-scalar warning + null sentinel (regex `/^\|[-+]?$|^>[-+]?$/` covers all YAML 1.2 chomping indicators per CR-HIGH-1 absorption)
+- VAL-5 atomic numeric coercion (Option A per ARCH-HIGH-1 — coerce unquoted integers to JS number; EXCLUSION for leading-zero strings like `adr_id: 0001` per substrate convention; consumer audit of 11 sites confirmed safe)
+
+**Component B — `validate-no-bare-secrets.js` extensions** (HIGH: SEC-1, SEC-2; MEDIUM: SEC-3, SEC-4, SEC-5, SEC-6):
+- SEC-1 NEW patterns: OpenAI sk-/sk-proj- (ordered after Anthropic to avoid shadowing); PEM private key blocks (defense > documentation per ARCH-MED-3); literal-secret-assignment value char class widened to cover special chars in real passwords (@!#$%^&*~)
+- SEC-2 github_pat_ quantifier `{82}` → `{82,}` (semantic-correct)
+- SEC-3/4 placeholder expansion: NEW PLACEHOLDER_VALUES entries (your_api_key_here, your_secret_key_here, etc.); tightened `_here$` heuristic to lowercase-only-words OR length<32 (per ARCH-HIGH-3 to prevent real-key-ending-in-`_HERE` false-negative); `changeme` prefix rule
+- SEC-5/6 documented intentional gaps (base64-encoded secrets; Stripe pk_live_; hex blobs) in validator header
+
+**Component C — `error-critic.js` fixes** (HIGH: CHA-1, CHA-2; MEDIUM: CHA-4):
+- CHA-1 commandKey comment aligned to code (shell case-sensitive on Linux; preserves correct behavior)
+- CHA-2 `writeAtomicString` migration for count + log writes (crash-consistency; lock provides mutex, atomic-write provides crash-consistency — both orthogonal + needed)
+- CHA-4 isFailure heuristic gaps documented (ENOTFOUND/ECONNREFUSED/abort/panic mitigated by is_error signal)
+
+**Component D — `validate-kb-doc.js` fixes** (HIGH: VAL-3, VAL-5; MEDIUM: VAL-7):
+- VAL-3 tilde fence (`~~~`) support in `hasH2Section` + `hasH2SectionPrefix` (CommonMark spec parity)
+- VAL-5 strict `typeof version !== 'number'` check (atomic with Component A numeric coercion — without atomic ship, would HARD-block 100% of kb docs per CR-LIVE-1 gate-caught bug)
+- VAL-7 clearer sources_consulted error messages (distinguish missing/non-array/empty)
+
+**Component E — `validate-yaml-frontmatter.js` documentation** (HIGH: VAL-4):
+- Unicode-key intentional-gap documentation in header (ASCII-only is intentional for HT-state.md scope per H.9.5 baseline)
+
+**Component F — `console-log-check.js` fixes** (HIGH: CLC-1; MEDIUM: CLC-2):
+- CLC-1 layered defense: (1) pure-comment line skip, (2) line-comment suffix strip `//.*$` before regex, (3) negative-lookbehind `(?<![.\w])console\.log\(` (covers `foo.console.log` + word-prefix cases)
+- CLC-2 CRLF git output handling (`.split(/\r?\n/).map(f => f.trim()).filter(Boolean)`)
+
+**Component G — Tests 90-101** (12 new regression tests; smoke 86 → 98):
+- Test 90: parseFrontmatter CRLF normalization (VAL-1)
+- Test 91: parseFrontmatter BOM strip (VAL-6)
+- Test 92: parseFrontmatter block-scalar warning + null sentinel (VAL-2)
+- Test 93: parseFrontmatter numeric coercion w/ leading-zero exclusion (VAL-5)
+- Test 94: validate-kb-doc tilde-fence section detection (VAL-3)
+- Test 95: validate-no-bare-secrets OpenAI sk-/sk-proj- block (SEC-1)
+- Test 96: validate-no-bare-secrets PEM private key block (SEC-1)
+- Test 97: validate-no-bare-secrets _here placeholder approve (SEC-3)
+- Test 98: validate-no-bare-secrets changeme_* prefix approve (SEC-4)
+- Test 99: console-log-check layered defense 6 cases (CLC-1)
+- Test 100: error-critic commandKey contract (CHA-1)
+- Test 101: validate-no-bare-secrets DB-style password special chars (SEC-1)
+
+**Component H — Plugin manifest 1.15.1 → 1.16.0 minor** (observable contract extension per H.9.7 + H.9.11 precedent): NEW secret patterns + tilde fence detection + CRLF/BOM handling = consumer-observable changes.
+
+### Why MANDATORY gate
+
+4 of 5 HT.1.6 triggers fire:
+1. Fresh design surface (CRLF handling, block-scalar handling, security pattern coverage extension)
+2. Option-axis decisions (block-scalar shape, OpenAI pattern ordering, CLC-1 regex strategy)
+3. Institutional discipline encoding (codifying intentional gaps in validator headers)
+4. HIGH-class bug catchable at design (multiple CRITICAL bugs caught by chaos audit + gate caught LIVE BUG)
+
+### Critical catches at gate (22 FLAGs absorbed single-pass; 5 convergent themes)
+
+- **CR-LIVE-1 LIVE BUG**: VAL-5 typeof check without parseFrontmatter Option A numeric coercion would HARD-block 100% of kb/architecture docs (since parseFrontmatter currently returns string `"1"` for `version: 1`). ABSORBED: atomic Component A + D ship.
+- **ARCH-HIGH-1**: parseFrontmatter consumer audit (11 sites) before mutation. ABSORBED: empirical audit confirmed all consumers use defensive patterns (parseInt with default-string, String() coercion, truthiness checks).
+- **CR-HIGH-1**: block-scalar regex missed `|+`/`>+` chomping indicators per YAML 1.2 spec. ABSORBED: regex updated.
+- **ARCH-HIGH-2**: CLC-1 false-positive class incomplete (string literals + inline-comment-after-code). ABSORBED: layered defense (prefix-skip + line-comment strip + negative-lookbehind).
+- **ARCH-HIGH-3**: SEC-3 `_here$` heuristic creates real false-negative class for secrets ending in `_HERE`. ABSORBED: tightened to lowercase-only-words OR length<32.
+- **Implementation regression catch**: numeric coercion of `0001` → `1` broke adr.js zero-padded ID convention. FIXED: regex `^-?[1-9]\d*$` excludes leading-zero integers.
+- **Sub-plan YAML escape**: validator dogfood-fired on sub-plan's own SEC-3 example literal; confirmed validator is active in this session. Meta-finding.
+
+### Verification
+
+- install.sh smoke: 86/86 → **98/98** (+12 tests)
+- _h70-test.js: 67/67 (unchanged)
+- contracts-validate.js: 17 baseline preserved
+- ESLint: 0 errors; 0 `eslint-disable` directives (ADR-0006 invariant 5)
+- markdownlint: 0 errors
+- yaml-lint: PASS on HT-state.md frontmatter
+- Substrate dogfood: validator fired on this CHANGELOG's own _here placeholder example (meta-verification)
+
+### Soak gate impact
+
+H.9.15 SUBSTANTIVE (not hotfix-cohort). Soak counter advances **5/5+ → 6/5+** post-H.9.7 reset; THRESHOLD MET strengthens for v2.0.0 retest eligibility.
+
+### Drift-notes inventory (unchanged from post-H.9.14.1)
+
+- 78(a) + 79 + 81 OPEN (3 active; H.9.16 closure target)
+- 80 + 78(b) + 82 CLOSED
+
+### Pattern observations
+
+1. **Gate-caught LIVE BUG (5th consecutive phase)**: H.9.10 + H.9.11 + H.9.12 + H.9.14 + H.9.15 all caught LIVE BUGs at gate. Validates MANDATORY-gate cost vs ship-bug payoff ratio.
+2. **Atomic-ship pattern**: VAL-5 typeof check + parseFrontmatter Option A coercion MUST ship atomically (CR-LIVE-1 codified). Future "validator strict-type-check + parser coercion" pairs follow this convention.
+3. **Implementation-time regression catch**: even after MANDATORY-gate pre-approval, implementation surfaced ADR system regression (zero-padded `adr_id`). Gate doesn't catch every implementation surprise; smoke regression after each Component A-G catches the rest.
+4. **Validator-dogfood-via-meta-finding**: this phase's sub-plan triggered validate-no-bare-secrets on its own SEC-3 example literal — empirical confirmation that the fix is the right shape (the very pattern under discussion correctly blocked).
+
+### Files modified
+
+7 source files + tests/smoke-ht.sh + .claude-plugin/plugin.json + CHANGELOG + SKILL.md + HT-state.md + new sub-plan at `swarm/thoughts/shared/plans/2026-05-12-H.9.15-chaos-findings-closure.md`.
+
+### Next phase
+
+H.9.16: drift-notes 78(a)/79/81 investigation + closure (or documented-defer with rationale).
+
+---
+
 ## [unreleased] — 2026-05-12 — H.9.14.1 CI hotfix (single-commit `main` per H.9.6.1 precedent; closes Test 89 baseline-portability bug introduced at H.9.14 96eb380)
 
 **Single-commit hotfix on `main`** closing CI failure on H.9.14 (commits 96eb380 + 97a5096; latent for ~30 min). No substrate runtime change; no manifest bump; no per-phase gate (0 of 5 HT.1.6 triggers fire).

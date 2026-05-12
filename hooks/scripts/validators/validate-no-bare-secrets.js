@@ -33,8 +33,27 @@ const { log } = require('../_log.js');
 const logger = log('validate-no-bare-secrets');
 
 // Each pattern: { id, regex, description }. id is what the user sees.
+// H.9.15 SEC-5/SEC-6 documented intentional gaps (audited at chaos test):
+//   - Base64-encoded secrets: same surface as base64-encoded non-secrets
+//     (PNG images, encoded UTF-8). False-positive cost exceeds true-positive
+//     benefit at substrate scope. User-side detection via language-specific
+//     linters (gitleaks, truffleHog) covers this.
+//   - Stripe pk_live_ (publishable keys): NOT secret by Stripe design. Leakage
+//     enables fraud but mitigation is rate-limiting + WAF, not substrate.
+//     The sk_live_ + rk_live_ patterns DO block (those are secret keys).
+//   - Hex blobs (64-char): same surface as SHA-256 commit hashes; pattern
+//     ambiguous; substrate cannot disambiguate. User-side scanning tooling
+//     covers this layer.
+
 const SECRET_PATTERNS = [
   { id: 'anthropic-api-key',  regex: /sk-ant-[A-Za-z0-9_-]{20,}/g,           description: 'Anthropic API key' },
+  // H.9.15 SEC-1: OpenAI sk- and sk-proj- formats. Ordering: must come AFTER
+  // anthropic-api-key per architect ARCH-HIGH-1 review (sk-ant- starts with
+  // sk- so regex precedence matters). Value char class is alphanumeric-only
+  // (NO dash/underscore) — OpenAI keys are A-Za-z0-9 in the body; the
+  // `sk-proj-` prefix is the only dashed segment. This avoids the
+  // sk-ant-foo-bar overlap (anthropic body has dashes/underscores).
+  { id: 'openai-api-key',     regex: /\bsk-(?:proj-)?[A-Za-z0-9]{32,}/g,     description: 'OpenAI API key' },
   { id: 'stripe-live-key',    regex: /sk_live_[A-Za-z0-9]{20,}/g,            description: 'Stripe live secret key' },
   { id: 'stripe-restricted',  regex: /rk_live_[A-Za-z0-9]{20,}/g,            description: 'Stripe restricted key' },
   { id: 'slack-token',        regex: /xox[baprs]-[A-Za-z0-9-]{10,}/g,         description: 'Slack token' },
@@ -42,14 +61,24 @@ const SECRET_PATTERNS = [
   // H.5.2 (CS-3 hacker.kai CRIT-2): GitHub fine-grained PAT — primary modern
   // format since 2022, prefix `github_pat_` followed by 82 chars (verified per
   // GitHub docs). The classic regex above does NOT cover this; it's a separate
-  // pattern.
-  { id: 'github-pat-fine-grained', regex: /github_pat_[A-Za-z0-9_]{82}/g,     description: 'GitHub fine-grained personal access token' },
+  // pattern. H.9.15 SEC-2: changed {82} (exact) → {82,} (at-least). Exact
+  // quantifier was semantically wrong though accidentally worked because
+  // engine finds the 82-char prefix in any longer match.
+  { id: 'github-pat-fine-grained', regex: /github_pat_[A-Za-z0-9_]{82,}/g,    description: 'GitHub fine-grained personal access token' },
   { id: 'aws-access-key-id',  regex: /\bAKIA[0-9A-Z]{16}\b/g,                 description: 'AWS access key ID' },
   { id: 'jwt-token',          regex: /\beyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}/g, description: 'JWT-shape token' },
-  // Generic assignment pattern. Trailing-value group requires ≥16 alphanumeric chars; excludes obvious placeholders.
+  // H.9.15 SEC-1: PEM private key blocks. Catches all PEM private key variants
+  // (RSA, EC, DSA, generic). Fires inside markdown code fences too — per
+  // architect ARCH-MED-3: defense > documentation. Users wanting to document
+  // PEM format should use ASCII art or describe-don't-paste.
+  { id: 'pem-private-key',    regex: /-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----/g, description: 'PEM private key block' },
+  // Generic assignment pattern. H.9.15 SEC-1: widened value char class from
+  // [A-Za-z0-9+/=_-] to [A-Za-z0-9+/=_\-@!#$%^&*~] to cover realistic
+  // password special chars (DB connection strings often have @!#$ etc.).
+  // Trailing-value group requires ≥16 chars; excludes obvious placeholders.
   {
     id: 'literal-secret-assignment',
-    regex: /\b([A-Z][A-Z0-9_]*_(?:SECRET|KEY|TOKEN|PASSWORD|PASSWD))\s*[:=]\s*['"]?([A-Za-z0-9+/=_-]{16,})['"]?/g,
+    regex: /\b([A-Z][A-Z0-9_]*_(?:SECRET|KEY|TOKEN|PASSWORD|PASSWD))\s*[:=]\s*['"]?([A-Za-z0-9+/=_\-@!#$%^&*~]{16,})['"]?/g,
     description: 'literal *_SECRET/*_KEY/*_TOKEN assignment',
     valueGroup: 2,
   },
@@ -58,8 +87,16 @@ const SECRET_PATTERNS = [
 // Strings that look secret-shaped but are clearly placeholders. If the matched
 // value is one of these (case-insensitive), skip — false positives bother the
 // user more than a true positive helps.
+// H.9.15 SEC-3 expansion: added _HERE-suffixed conventions found in .env.example
+// docs (your_api_key_here, your_secret_token_here, etc.).
 const PLACEHOLDER_VALUES = new Set([
-  'your-key-here', 'your_key_here', 'changeme', 'change-me', 'replaceme',
+  'your-key-here', 'your_key_here',
+  // H.9.15 SEC-3 additions:
+  'your_api_key_here', 'your_secret_key_here', 'your_token_here',
+  'your_secret_token_here', 'insert_key_here', 'insert_token_here',
+  'your_api_token_here', 'your_password_here',
+  // pre-existing:
+  'changeme', 'change-me', 'replaceme',
   'replace-me', 'placeholder', 'todo', 'xxx', 'redacted', 'secret', 'password',
   'aaaaaaaaaaaaaaaaaaaa', 'aaaaaaaaaaaaaaaa', '0000000000000000',
   '1234567890abcdef', '1234567890123456',
@@ -96,6 +133,24 @@ function isPlaceholder(value) {
   if (/^\{\{[\s\S]+\}\}$/.test(value)) return true;
   // Sequences of repeated chars (aaaaa, 11111, etc.) under reasonable length
   if (/^(.)\1{15,}$/.test(value)) return true;
+  // H.9.15 SEC-3 (per architect ARCH-HIGH-3 absorption): heuristic for the
+  // `_HERE`-suffix English-placeholder convention common in .env.example
+  // docs. Two-clause defense:
+  //   (a) /^[a-z_]+_here$/i — lowercase-only words + underscores ending in
+  //       `_here` (e.g., `your_api_key_here`); locked to alpha+underscore
+  //       to prevent matching `sk-proj-MY_TOKEN_HERE` (has uppercase + dash)
+  //   (b) length < 32 + `_here$` — short strings ending in `_here` are
+  //       almost always placeholders; real secrets are typically 32+ chars
+  // Combined: real-key-ending-in-HERE is NOT suppressed (length-floor) AND
+  // mixed-case-key-ending-in-HERE is NOT suppressed (alpha-only restriction).
+  if (/^[a-z_]+_here$/i.test(value)) return true;
+  if (value.length < 32 && /_here$/i.test(value)) return true;
+  // H.9.15 SEC-4 (per architect ARCH-LOW-4 absorption): `changeme` prefix
+  // covers `changeme_v2`, `changeme_password`, `changeme_token`, etc.
+  // Real secrets do not start with the literal English placeholder verb
+  // "changeme"; the false-positive cost of blocking real `changeme_*` is
+  // negligible.
+  if (/^changeme/i.test(value)) return true;
   return false;
 }
 

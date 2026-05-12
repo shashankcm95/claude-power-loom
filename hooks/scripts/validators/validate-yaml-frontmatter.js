@@ -16,6 +16,14 @@
 // validate-no-bare-secrets.js) all share this convention; Windows
 // expansion would require single coordinated path-normalization update.
 //
+// H.9.15 VAL-4 documented intentional gaps (audited at chaos test):
+//   - Unicode keys (e.g., `tagsé:`): ASCII-only regex /^[a-zA-Z_]/. HT-state.md
+//     scope uses ASCII identifiers exclusively per H.9.5 yaml-lint baseline +
+//     H.9.11 design. Unicode-key dup detection out of scope for this validator.
+//     Future extension to broader path-scope would require ADR amendment per
+//     H.9.11 architect MEDIUM-1.
+//   - Hyphen-keys + quoted-keys: also out of scope for same path-scope reason.
+//
 // Path-scope governance (architect MEDIUM-1 + LOW-3): adding new entries
 // to REQUIRES_DUP_KEY_CHECK below requires ADR amendment (per ADR-0006
 // invariant-amendment process). Each entry encodes a substrate-wide

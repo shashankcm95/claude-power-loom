@@ -64,6 +64,23 @@ const logger = log('error-critic');
 // typeof guard catches structurally-broken `_lib/lock.js` (e.g., exports
 // `{ withLock }` only without the new pair) before downstream TypeError.
 let acquireLock, releaseLock;
+// H.9.15 CHA-2: writeAtomicString from _lib/atomic-write.js for crash-consistency
+// on count + log writes. Lock provides mutual exclusion (against concurrent
+// fires); atomic-write provides crash-consistency (against mid-write process
+// kill). Both are needed and orthogonal. Per H.9.8 migration pattern (9
+// substrate sites uniformly consume _lib/atomic-write.js).
+let writeAtomicString;
+try {
+  ({ writeAtomicString } = require('../../scripts/agent-team/_lib/atomic-write'));
+  if (typeof writeAtomicString !== 'function') {
+    throw new Error('_lib/atomic-write.js API shape mismatch — missing writeAtomicString export');
+  }
+} catch {
+  // Fallback: degrade to fs.writeFileSync; preserves correctness under lock
+  // protection (which protects against concurrent corruption). Crash-
+  // consistency degraded but ADR-0001 invariant 2 fail-soft satisfied.
+  writeAtomicString = (filePath, str) => fs.writeFileSync(filePath, str);
+}
 try {
   ({ acquireLock, releaseLock } = require('../../scripts/agent-team/_lib/lock'));
   if (typeof acquireLock !== 'function' || typeof releaseLock !== 'function') {
@@ -122,7 +139,12 @@ const MAX_ERROR_BYTES = 800; // truncate long stderr to keep injection compact
  * @returns {string} 12-char hex key suitable for filename use
  */
 function commandKey(command) {
-  // Normalize: trim, collapse whitespace, lowercase the command verb
+  // H.9.15 CHA-1 (per chaos audit): normalize trim + collapse internal
+  // whitespace runs to single space. Preserves case — shell commands are
+  // case-sensitive on most paths (Linux/CI). Prior comment claimed
+  // lowercase the command verb, but code did not apply it; merging `npm
+  // test` and `NPM test` would be semantically wrong since they typically
+  // resolve to different binaries on case-sensitive filesystems.
   const normalized = command.trim().replace(/\s+/g, ' ');
   return crypto.createHash('sha256').update(normalized).digest('hex').slice(0, 12);
 }
@@ -142,6 +164,15 @@ function isFailure(toolResponse) {
   if (toolResponse.stderr && String(toolResponse.stderr).trim().length > 0) {
     // Heuristic: most CLI tools emit warnings to stderr that aren't errors.
     // Look for typical failure markers to reduce noise.
+    //
+    // H.9.15 CHA-4 documented gaps (per chaos audit): the keyword set below
+    // misses ENOTFOUND, ECONNREFUSED, abort, panic — those slip through as
+    // non-failures even when exit code is non-zero. Mitigation: when Claude
+    // Code emits `is_error: true` in tool_response, we trust that signal
+    // regardless of stderr content (above). The heuristic is a fallback for
+    // older runs where is_error is not emitted; widening the keyword set
+    // risks new false-positives. Future widening should be paired with a
+    // false-positive eval corpus.
     const stderr = String(toolResponse.stderr).toLowerCase();
     if (/error|failed|cannot|not found|undefined|exception/.test(stderr)) return true;
   }
@@ -250,7 +281,10 @@ process.stdin.on('end', () => {
         count = 0;
       }
       count += 1;
-      fs.writeFileSync(countFile, String(count));
+      // H.9.15 CHA-2: writeAtomicString for crash-consistency. Lock protects
+      // against concurrent corruption; atomic-write protects against mid-write
+      // process kill. Both needed.
+      writeAtomicString(countFile, String(count));
 
       // Append this failure's error to the rolling log. Trim to last N entries
       // by reading + slicing on each write — simple, sufficient for our scale.
@@ -271,7 +305,9 @@ process.stdin.on('end', () => {
       // drop any leading whitespace/empty fragment.
       const entries = combined.split(/^(?=--- Failure #)/m).filter((s) => s.trim().startsWith('--- Failure #'));
       kept = entries.slice(-LAST_N_ERRORS).join('');
-      fs.writeFileSync(logFile, kept);
+      // H.9.15 CHA-2: writeAtomicString for crash-consistency (same rationale
+      // as countFile above).
+      writeAtomicString(logFile, kept);
     } finally {
       releaseLock(LOCK_PATH);
     }
