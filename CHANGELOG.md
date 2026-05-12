@@ -8,6 +8,47 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [unreleased] — 2026-05-12 — H.9.14.1 CI hotfix (single-commit `main` per H.9.6.1 precedent; closes Test 89 baseline-portability bug introduced at H.9.14 96eb380)
+
+**Single-commit hotfix on `main`** closing CI failure on H.9.14 (commits 96eb380 + 97a5096; latent for ~30 min). No substrate runtime change; no manifest bump; no per-phase gate (0 of 5 HT.1.6 triggers fire).
+
+### What landed
+
+- **Test 89 baseline-portability fix** (`tests/smoke-ht.sh` L873-911; ~+26/-18 LoC): Test 89 originally hardcoded `if (baselineTotal !== 17)` expectation. On local macOS this passes because installed-plugin lag at 1.1.3 yields 17 violations from `contract-plugin-hook-deployment`. On CI Linux there is no `~/.claude/settings.json` (clean checkout); the deployment validator self-skips per its settings.json-absent code path; baseline is `Total=0`. Hardcoded 17 → mismatch → `process.exit(1)` → set -e propagates out of `$(node -e ...)` command substitution → smoke runner aborts mid-Test-89 before echoing the FAIL: prefix → CI grep for `Results: N passed, 0 failed` matches nothing → CI exit 1. **Fix**: capture PRE-fault baseline first via new `runValidator()` helper (returns `{output, exitCode, total, asymCount}`); compare deltas:
+  - `fault.total === preBaseline.total + 1` (one new asymmetric injected)
+  - `postBaseline.total === preBaseline.total` (back to baseline after restore)
+  Portable across local macOS (preBaseline=17 → fault=18 → restore=17) + CI Linux (preBaseline=0 → fault=1 → restore=0) + any future environment with different baseline.
+
+### Why no gate / no manifest bump
+
+- 0 of 5 HT.1.6 triggers fire: no fresh design surface (delta-based comparison is the unique correct fix); no schema change; no option-axis decision; no institutional discipline encoding; no HIGH-class bug catchable at design (surfaced empirically via CI run)
+- Pure test infrastructure fix; substrate runtime code unchanged; no observable contract change
+- Mirrors H.9.12.1 hotfix precedent (single-test fix on smoke harness)
+
+### Verification
+
+- Local macOS smoke: 86/86 passed, 0 failed (unchanged)
+- Local macOS Test 89: OK (preBaseline=17; fault: exit=1 asym=1 total=18; postBaseline=17)
+- CI simulation (settings.json temporarily moved aside): `Total violations: 0` confirms portability assumption
+- CI Linux (commit 05fee44): **success** (48s)
+
+### Pattern observation
+
+**Hardcoded-baseline-in-fault-injection-tests anti-pattern**. Corollary of H.9.12.1 author-platform-only-blind-spot pattern, specifically for tests that depend on environment-sensitive baselines (not just shell-portability). Better: `capture-baseline-then-compare-delta` for any fault-injection test with environment-sensitive counts.
+
+Documented in H.9.12.1 ledger but not proactively applied at H.9.14 Test 89 — the lesson was about `stat` cascade specifically, not generalized to "environment-sensitive baselines". This phase generalizes it.
+
+### Substrate state delta
+
+- install.sh smoke: 86/86 (unchanged)
+- _h70-test.js: 67/67 (unchanged)
+- contracts-validate.js: 17-baseline on local; 0-baseline on CI (validator silent when settings.json absent — pre-existing pattern; H.9.14.1 doesn't change it)
+- Plugin manifest: 1.15.1 (unchanged)
+- Soak gate counter: **5/5+ THRESHOLD MET** (unchanged; hotfixes do NOT reset or advance counter per H.9.6.1 + H.9.12.1 precedent)
+- Drift-notes: 79 + 78(a) + 81 OPEN; 80 + 78(b) + 82 CLOSED (unchanged)
+
+---
+
 ## [unreleased] — 2026-05-12 — H.9.14 Component D flip: `kb-architecture-related-bidirectional` WARN-ONLY → HARD-violation (mechanical-flip; completes warn-only-then-fix-then-flip pattern; manifest patch 1.15.0 → 1.15.1)
 
 **Mechanical flip** of the `kb-architecture-related-bidirectional` validator from WARN-ONLY mode (H.9.12) to HARD-violation mode. Now safe because H.9.13 closed the asymmetric cohort (baseline=0). Flip adds 0 new violations at current state + provides regression protection against re-introduction. Completes step 4 of the warn-only-then-fix-then-flip pattern codified at H.9.13 close.
