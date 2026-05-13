@@ -23,7 +23,7 @@ The auto-loop already captures recurrence counts; your review is the qualitative
 
 ## Pre-Compact Awareness
 
-When context is getting large, proactively save key decisions and patterns to MEMORY.md. If MemPalace MCP is available, store there too. If unavailable, write to `~/.claude/checkpoints/mempalace-fallback.md`.
+When context is getting large, proactively save key decisions and patterns to MEMORY.md. Write a session snapshot to the **library** via `library write toolkit/session-snapshots/<YYYY-MM-DD>-<slug> --form narrative --topic <a,b,c>`. The legacy `~/.claude/checkpoints/mempalace-fallback.md` path remains a symlink to the library volume post-migration (run `node scripts/library-migrate.js migrate` once on first v2.1.0 use). For library concepts + CLI reference see `docs/library.md`.
 
 <important if "task involves Memory→Rule promotion or skill forge">
 

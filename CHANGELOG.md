@@ -8,6 +8,92 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [2.1.0] — 2026-05-13 — H.9.21 in-house library memory organizer (MANDATORY-gate; substrate-fundament)
+
+**First non-patch release since v2.0.0.** Replaces `~/.claude/checkpoints/mempalace-fallback.md` (single growing 19K file; MempPalace MCP never installed) with an in-house Zettelkasten-rooted **Library / Section / Stack / Catalog / Volume** layout under a single catalog API. Dual storage modes (narrative markdown+YAML for prose; schematic JSON for structured aggregates) with `form` discriminator. **Local-files-only** — no MCP, no ChromaDB, no embeddings, no Python dependency.
+
+### MANDATORY-gate review absorbed (HT.1.6 4/5 triggers fired)
+
+Architect + code-reviewer parallel spawn at plan-time (both with H.9.20.0 v2.0.3 KB-consultation-discipline LIVE → cited 4-5 specific kb refs each; this was the LIVE-fire test of the v2.0.3 discipline upgrade):
+
+- **Architect**: cited 4 kb refs; **REJECTED 2 of 7 design choices** (DC3 16-sections-per-persona → 1 `agents/` section with persona-id as field; DC7 `ledger.db` placeholder → name reserved only, no file). Added Components L (observability) + M (per-store schema_version) + N (catalog locking) + O (chaos-test isolation).
+- **Code-reviewer**: cited 5 kb refs; **BLOCK verdict** with 2 CRITICAL gaps + 4 HIGH refinements. CRITICAL #1: migration had no atomic backup-before-first-write → fixed via saga contract + `.migrate-complete` sentinel idempotency key. CRITICAL #2: hook ordering race during migration window → fixed via fail-closed `library.json` guard in `pre-compact-save.js`. HIGH refinements: `_lib/library.js` split into `library-paths.js` + `library-catalog.js` (SRP per kb:architecture/crosscut/single-responsibility); CLI surface trimmed from 12 → 8 verbs (4 deferred to v2.2+); compact-history JSONL append now uses `_lib/lock.js` (HIGH 5).
+
+### Components shipped
+
+| Comp | What | LoC | Risk |
+|---|---|---|---|
+| A | `~/.claude/library/` layout via `library init` (idempotent) | ~80 | LOW |
+| B1 | `scripts/agent-team/_lib/library-paths.js` — path resolution + form discriminator + content hashing + bootstrap blueprints | ~200 | MEDIUM (substrate-fundament) |
+| B2 | `scripts/agent-team/_lib/library-catalog.js` — catalog R/W with `_lib/lock.js` integration | ~200 | MEDIUM (substrate-fundament) |
+| B3 | Volume hashing + form discriminator (pure functions co-located in B1) | (B1) | LOW |
+| C | `scripts/library.js` CLI — 8 verbs: `init / migrate / rollback / read / write / ls / sections / stacks / stats` | ~450 | MEDIUM |
+| D | `scripts/library-migrate.js` — saga contract with backup-before-write + symlink strangler-fig + rollback | ~330 | HIGH (highest-risk component) |
+| F | Catalog builder — topic+entity extraction from frontmatter (narrative) / JSON keys (schematic) | (in C) | MEDIUM |
+| G | `hooks/scripts/pre-compact-save.js` — fail-closed library-init guard (CRITICAL #2) + library-path-aware writes + `_lib/lock.js` for compact-history append (HIGH 5) | ~60 | MEDIUM |
+| I | Rule files (`self-improvement.md`, `prompt-enrichment.md`) + `ATTRIBUTION.md` (MempPalace credit preserved + marked superseded) + README badge + CHANGELOG | ~50 | LOW |
+| J | 6 smoke tests (J1-J6) wired into install.sh: idempotency / partial-failure / symlink-resolution / concurrent-write / schema-mismatch / rollback | ~250 | MEDIUM |
+| K | New docs: `docs/library.md` (concepts + CLI reference); `docs/concepts/library-vs-mempalace.md` (attribution + design-deltas) | ~200 | LOW |
+| L | `library stats` subcommand — observability (volume counts, catalog bytes, last-rebuilt timestamps) per architect addition | (in C) | LOW |
+| M | Per-store `schema_version` field inside each `section.json` (NOT one global) per code-reviewer MEDIUM 9 | ~10 | LOW |
+| N | Catalog write-locking via existing `_lib/lock.js` per architect addition (folded into B2) | (B2) | — |
+| O | `CLAUDE_LIBRARY_ROOT` env override enables chaos-test bulkhead (run against `~/.claude/library-chaos/`) per architect | ~5 | LOW |
+
+**Total: ~1,800 LoC across 14 new/modified files.**
+
+### Verification
+
+- `bash install.sh --hooks --test` → **107/107** (was 101/101; +6 J-tests all real assertions, no stubs)
+- `node scripts/agent-team/_h70-test.js` → 67/67 (unchanged)
+- `node scripts/agent-team/contracts-validate.js` → 17-baseline (unchanged)
+- ESLint → 0 errors; 0 `eslint-disable` directives (ADR-0006 invariant 5 preserved)
+- Shellcheck on new smoke files → 0 errors
+- markdownlint, yaml-lint, jq → all PASS
+- **LIVE-fire verification of CRITICAL #1**: J1 idempotency, J2 partial-failure recovery, J3 symlink resolution, J6 rollback — all pass under real migration
+- **LIVE-fire verification of Component N**: J4 fires 5 parallel writes to same stack; all 5 entries preserved in catalog (lock serialization works)
+- **LIVE-fire verification of Component M**: J5 injects `schema_version: 99`; `library read` exits non-zero with fail-closed message
+
+### CRITICAL safety contract
+
+**Migration saga** (CRITICAL #1):
+
+1. CHECK — if `.migrate-complete` exists with matching run_id → exit 0 (idempotent)
+2. BACKUP — atomically copy all legacy paths to `_backups/<run-id>/` BEFORE first write
+3. PHASE 1 — copy legacy → library volume + verify content-hash matches
+4. PHASE 2 — symlink swap (legacy paths now point to library volumes)
+5. SENTINEL — write `.migrate-complete` with `{run_id, timestamp, file_count}`
+
+**Rollback**: `library rollback --to <run-id>` restores symlinks to `_backups/<run-id>/` content; sentinel removed.
+
+**Hook ordering race fix** (CRITICAL #2): `pre-compact-save.js` now throws if `library.json` exists but `.migrate-complete` is absent (migration mid-flight) — fail-closed observability, no silent loss. Pre-library state (manifest absent) → writes proceed normally; legacy paths get migrated normally on first `library migrate` run.
+
+### Deferred to v2.2+
+
+- **Knowledge graph (Ledger)** — SQLite + entities/triples schema; name reserved in `library.json.planned_components` but no file allocated per architect DC7 (YAGNI)
+- **Per-persona file partition for identities + verdicts** (Component H FULL — code-reviewer HIGH 6) — v2.1.0 ships consolidated.json blobs migrated 1:1 from `agent-identities.json` + `agent-patterns.json`; per-persona writes via Component H scripts is a v2.1.1 substrate-discipline candidate. Symlinks handle read transparency in v2.1.0.
+- **`daybook` / `lookup` / `acquire` / `accession` subcommands** — code-reviewer MEDIUM 7 verb-overlap reduction; CLI shipped 8 verbs (vs 12) for v2.1.0
+- **AAAK compression / ChromaDB / embeddings / MempPalace MCP** — all rejected per scope discipline
+
+### Per-store schema versions (Component M)
+
+Each `section.json` carries `store_schema_versions: {stack_id: version}`. Readers fail-closed when stored version exceeds supported. v2.1.0 baseline:
+
+```json
+{"session-snapshots": 1, "decisions": 1, "prompt-patterns": 1, "self-improve": 1, "compact-history": 1, "identities": 1, "verdicts": 1}
+```
+
+### Upgrade path
+
+Pre-v2.1.0 users: no breaking changes until you run `node scripts/library-migrate.js migrate`. The hook + scripts work against legacy paths if library is uninitialized. Once you run migrate, legacy paths become symlinks → library volumes; subsequent reads/writes transparently route through library.
+
+To roll back: `node scripts/library-migrate.js rollback --to <run-id>` (find run-id in `~/.claude/library/.migrate-complete` or `~/.claude/library/_backups/`).
+
+### Attribution
+
+Conceptual inspiration: **MempPalace** (Jovovich + Sigerson, MIT-licensed, https://github.com/mempalace/mempalace). Index/content separation + Zettelkasten cross-referencing inspired the library structure. Vocabulary, schema, and implementation are independent (library/section/stack/catalog/volume vs their palace/wings/rooms/closets/drawers; local-files vs ChromaDB/embeddings; selective verbatim vs all-verbatim). Full design-deltas in `docs/concepts/library-vs-mempalace.md`. Credit + superseded-integration note preserved in `ATTRIBUTION.md`.
+
+---
+
 ## [2.0.3] — 2026-05-13 — H.9.20.0 KB-consultation-discipline patch (user-flagged gap closed pre-H.9.21 architect spawn; HOTFIX-CLASS no formal gate)
 
 **Hotfix-class substrate-discipline upgrade** closing user-flagged gap that all 5 Claude Code agents (`architect`, `code-reviewer`, `planner`, `optimizer`, `security-auditor`) referenced ONLY `patterns/system-design-principles.md` and NONE of the 37 `kb/<domain>/<doc>.md` docs that were authored specifically to anchor decisions to ground truth. Surfaced just before the H.9.21 MANDATORY-gate architect spawn for the v2.1.0 library/memory-organizer plan review — a queued spawn would have produced design ungrounded in the 37-doc kb tree.

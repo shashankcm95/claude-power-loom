@@ -17,6 +17,36 @@ const logger = log('pre-compact-save');
 // extractor adds Windows + quoted-paths-with-spaces coverage.
 const { extractFilePaths } = require('./_lib/file-path-pattern');
 
+// H.9.21 v2.1.0 Component G — fail-soft require of _lib/lock for compact-history
+// append serialization (code-reviewer HIGH 5 absorbed at MANDATORY-gate). Path
+// resolution falls back to ~/.claude/scripts/ for installed-plugin layout; if
+// the module is missing, stub-out to no-op (ADR-0001 fail-soft contract — hook
+// must not crash on lock availability issues). Same shape as error-critic.js
+// + session-end-nudge.js precedent.
+let acquireLock; let releaseLock;
+try {
+  ({ acquireLock, releaseLock } = require('../../scripts/agent-team/_lib/lock'));
+  if (typeof acquireLock !== 'function' || typeof releaseLock !== 'function') {
+    throw new Error('_lib/lock.js API shape mismatch');
+  }
+} catch {
+  try {
+    ({ acquireLock, releaseLock } = require(path.join(os.homedir(), '.claude', 'scripts', 'agent-team', '_lib', 'lock')));
+    if (typeof acquireLock !== 'function' || typeof releaseLock !== 'function') {
+      throw new Error('_lib/lock.js API shape mismatch');
+    }
+  } catch {
+    acquireLock = () => false;
+    releaseLock = () => {};
+  }
+}
+
+// H.9.21 CRITICAL #2 absorbed: library initialization sentinel paths. Hook
+// fails-closed if library.json exists but .migrate-complete is absent
+// (= migration in progress; writes risk landing in legacy paths being moved).
+const LIBRARY_MANIFEST = path.join(os.homedir(), '.claude', 'library', 'library.json');
+const MIGRATE_SENTINEL = path.join(os.homedir(), '.claude', 'library', '.migrate-complete');
+
 // H.7.7: workflow-state-aware injection. The pre-compact context loss is
 // most painful mid-orchestration (build-team in progress, chaos-test running,
 // architect+builder pair-run between spawns). Detect active orchestration
@@ -134,7 +164,7 @@ function buildSavePrompt(activeRuns) {
 Now do the intelligent part that only you can do:
 
 1. **Update project MEMORY.md** with: current task status, key decisions, discovered patterns, next steps.
-2. **Store in MemPalace** (if MCP available): session learnings, domain conventions, forged agent personality. If MemPalace is unavailable, write to ~/.claude/checkpoints/mempalace-fallback.md instead.
+2. **Update library snapshot** (H.9.21 v2.1.0): write a session snapshot to \`~/.claude/library/sections/toolkit/stacks/session-snapshots/volumes/<YYYY-MM-DD>-<slug>.md\` (or use the legacy \`~/.claude/checkpoints/mempalace-fallback.md\` path which symlinks to the library post-migration). Include: session learnings, domain conventions, decisions worth preserving.
 3. **Self-improvement candidates**: patterns that recurred, gaps detected, rules to codify.`;
 
   if (!activeRuns || activeRuns.length === 0) {
@@ -198,7 +228,18 @@ function extractCheckpoint(inputText) {
  * @returns {void}
  */
 function writeCheckpoint(checkpoint) {
-  // Write to a predictable location that survives compaction
+  // H.9.21 CRITICAL #2 absorbed: library-init-but-migrate-incomplete race.
+  // If library.json exists but sentinel absent → migration is mid-flight;
+  // refuse to write to avoid landing data in legacy paths being moved.
+  // Pre-library state (library.json absent) → writes go through; legacy
+  // paths get migrated normally on first migrate run.
+  if (fs.existsSync(LIBRARY_MANIFEST) && !fs.existsSync(MIGRATE_SENTINEL)) {
+    throw new Error('library_initialized_but_migrate_incomplete');
+  }
+
+  // Write to a predictable location that survives compaction. Post-migration
+  // these paths are symlinks → ~/.claude/library/sections/toolkit/stacks/...
+  // The hook stays path-agnostic (symlinks transparently redirect).
   const checkpointDir = path.join(os.homedir(), '.claude', 'checkpoints');
   try {
     fs.mkdirSync(checkpointDir, { recursive: true });
@@ -207,19 +248,32 @@ function writeCheckpoint(checkpoint) {
   const checkpointFile = path.join(checkpointDir, 'last-compact.json');
   const historyFile = path.join(checkpointDir, 'compact-history.jsonl');
 
-  // Write latest checkpoint (overwrite)
+  // Write latest checkpoint (overwrite — last-writer-wins acceptable for
+  // "latest-only" semantic; no lock needed).
   fs.writeFileSync(checkpointFile, JSON.stringify(checkpoint, null, 2));
 
-  // Append to history (keep last 50 entries)
-  fs.appendFileSync(historyFile, JSON.stringify(checkpoint) + '\n');
-
-  // Trim history if too large (keep last 50 lines)
-  try {
-    const lines = fs.readFileSync(historyFile, 'utf8').trim().split('\n');
-    if (lines.length > 50) {
-      fs.writeFileSync(historyFile, lines.slice(-50).join('\n') + '\n');
+  // H.9.21 Component G + HIGH 5 absorbed: compact-history.jsonl append must
+  // be lock-serialized (concurrent compacts could corrupt JSONL otherwise per
+  // code-reviewer's "non-atomic append produces corrupt JSONL" warning).
+  // _lib/lock fail-soft: on timeout/missing module, skip the append (ADR-0001).
+  const lockPath = historyFile + '.lock';
+  if (acquireLock(lockPath, { maxWaitMs: 3000 })) {
+    try {
+      // Append to history (keep last 50 entries)
+      fs.appendFileSync(historyFile, JSON.stringify(checkpoint) + '\n');
+      // Trim history if too large (keep last 50 lines)
+      try {
+        const lines = fs.readFileSync(historyFile, 'utf8').trim().split('\n');
+        if (lines.length > 50) {
+          fs.writeFileSync(historyFile, lines.slice(-50).join('\n') + '\n');
+        }
+      } catch { /* ignore trim errors */ }
+    } finally {
+      releaseLock(lockPath);
     }
-  } catch { /* ignore trim errors */ }
+  }
+  // else: lock timeout → skip append rather than corrupt JSONL.
+  // Latest checkpoint already written above; history is best-effort.
 }
 
 // H.7.10 C-3 fix: SAVE_PROMPT is now constructed dynamically by
@@ -286,7 +340,17 @@ process.stdin.on('end', () => {
       cwd: checkpoint.cwd,
     });
   } catch (err) {
-    logger('error', { error: err.message });
+    if (err.message === 'library_initialized_but_migrate_incomplete') {
+      // H.9.21 CRITICAL #2 fail-closed observability — race detected; surface
+      // clearly so user can run `node scripts/library-migrate.js migrate`.
+      logger('library_migrate_race_detected', {
+        libraryManifest: LIBRARY_MANIFEST,
+        migrateSentinel: MIGRATE_SENTINEL,
+        message: 'library.json exists but .migrate-complete absent; refusing to write to avoid race',
+      });
+    } else {
+      logger('error', { error: err.message });
+    }
   }
 
   // H.4.1 — best-effort self-improve scan. Failures here never block
@@ -319,6 +383,6 @@ process.stdin.on('end', () => {
   // produced an H2-after-error markdown break (mira finding).
   const suffix = checkpointOk
     ? '\n\n---\n' + buildSavePrompt(activeRuns)
-    : '\n\n---\n[pre-compact-save: checkpoint write failed — MemPalace instruction skipped to avoid hallucinated file references]';
+    : '\n\n---\n[pre-compact-save: checkpoint write failed — library snapshot instruction skipped to avoid hallucinated file references]';
   process.stdout.write(input + suffix);
 });

@@ -22,14 +22,25 @@ how they map to specific components in this toolkit.
   `config-guard.js`, agent YAML structure, rules under `rules/core/`.
 
 ### MemPalace (MIT License)
-- **Author**: MemPalace contributors
+- **Author**: MemPalace contributors (Jovovich + Sigerson)
 - **Repository**: https://github.com/mempalace/mempalace
 - **Influenced**: PreCompact memory save pattern, "hooks over prompts"
-  reliability principle, palace/wing/room/drawer memory hierarchy,
-  MCP-based persistent memory.
-- **Toolkit components based on this**: `pre-compact-save.js`, MemPalace
-  MCP integration, `prompt-patterns` room concept, design philosophy
-  (point #1: hooks over prompts).
+  reliability principle, Zettelkasten-rooted index + content separation,
+  4-layer L0-L3 memory stack philosophy.
+- **Toolkit components based on this**: `pre-compact-save.js` (PreCompact
+  pattern), the in-house **library memory organizer** (H.9.21 v2.1.0:
+  `scripts/library.js` + `_lib/library-paths.js` + `_lib/library-catalog.js`).
+- **What we did and did NOT borrow** (H.9.21 v2.1.0): MempPalace's *concepts*
+  (index/content separation, load-on-demand, selective verbatim) inspired
+  our Library/Section/Stack/Catalog/Volume vocabulary, but the
+  **implementation is original** — local-files-only (no MCP), no ChromaDB
+  or embeddings, vocabulary independent (library/section/stack vs their
+  palace/wings/rooms/closets/drawers — different metaphor to avoid
+  plagiarism/trademark overlap). For design-deltas see `docs/concepts/library-vs-mempalace.md`.
+- **Superseded integration**: prior v2.0.x relied on MempPalace MCP with
+  graceful fallback to `~/.claude/checkpoints/mempalace-fallback.md`. MCP was
+  never installed in any production session; the in-house library replaces
+  this entirely at v2.1.0.
 
 ### MiroFish (License: see repository)
 - **Author**: 666ghj and contributors

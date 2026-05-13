@@ -232,6 +232,13 @@ run_smoke_tests() {
   source "$SCRIPT_DIR/tests/smoke-h7.sh"
   source "$SCRIPT_DIR/tests/smoke-h8.sh"
   source "$SCRIPT_DIR/tests/smoke-ht.sh"
+  # H.9.21 v2.1.0 library-memory-organizer smoke (Component J — 6 named scenarios).
+  # smoke-library-init.sh (T105 J1) + smoke-library-migrate.sh (T106/T107/T110
+  # J2/J3/J6 — stub until Sub-phase 4) + smoke-library-concurrent.sh (T108/T109
+  # J4/J5 — fully implemented).
+  source "$SCRIPT_DIR/tests/smoke-library-init.sh"
+  source "$SCRIPT_DIR/tests/smoke-library-migrate.sh"
+  source "$SCRIPT_DIR/tests/smoke-library-concurrent.sh"
 
 
   echo ""

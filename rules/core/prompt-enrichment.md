@@ -8,7 +8,7 @@ When delegating to sub-agents, always use the enriched prompt — not the raw in
 
 ## When vague (workflow steps)
 
-1. Check MemPalace `prompt-patterns` room (or `~/.claude/prompt-patterns.json` fallback) for recognized patterns
+1. Check the library `prompt-patterns` stack at `~/.claude/library/sections/toolkit/stacks/prompt-patterns/` (legacy `~/.claude/prompt-patterns.json` is a symlink post-migration) for recognized patterns
 2. If pattern found with 5+ approvals: auto-apply, show one-line summary, proceed
 3. If pattern found with fewer approvals: show enriched prompt, ask "Look right?"
 4. If no pattern: activate the prompt-enrichment skill for the full 4-part build
