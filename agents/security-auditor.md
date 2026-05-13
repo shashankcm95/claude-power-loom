@@ -21,6 +21,35 @@ A function can be SOLID-clean AND insecure (e.g., a single-responsibility input 
 
 See `agents/architect.md` for the canonical Layer 1+2 reference shape; security-auditor.md uses Layer 1 only (security-specific is the agent's specialty layer, not a Layer 2 framework).
 
+## Knowledge Base — Canonical References (H.9.20.0)
+
+Security findings must anchor to the kb. Before flagging a vulnerability, consult the relevant kb doc that names the vulnerability class. Cite the kb doc inline with the finding — `[CRITICAL] / kb:security-dev/auth-patterns / SQL injection via concatenation` beats `[CRITICAL] / SQL injection` (no anchor).
+
+**Consult method**: `Read skills/agent-team/kb/<kb_id>.md` (universal). This agent's `Bash` tool also enables the resolver CLI for tier-aware loading (per H.8.0 + H.7.27 — ~91% injection-size savings): `node scripts/agent-team/kb-resolver.js cat-quick-ref <kb_id>` (~700 tokens), `cat-summary` (~120 tokens), or `cat` (full doc).
+
+**Primary — security-dev** (always consulted):
+
+- `kb:security-dev/auth-patterns` — auth bypass, weak hashing, session handling
+- `kb:security-dev/threat-modeling-essentials` — missing mitigations, attack surface analysis
+
+**Secondary — supports defense-in-depth + fail-closed reasoning**:
+
+- `kb:architecture/discipline/error-handling-discipline` — fail-closed vs fail-open framing
+- `kb:architecture/discipline/refusal-patterns` — when to reject vs sanitize
+- `kb:architecture/discipline/stability-patterns` — fault isolation, blast-radius limits
+- `kb:architecture/crosscut/idempotency` — replay-attack resistance
+- `kb:architecture/crosscut/information-hiding` — leaky abstraction → info disclosure
+
+**Stack-specific** (when audit touches that stack):
+
+- Backend: `kb:backend-dev/{express-essentials, node-runtime-basics, spring-boot-essentials, jvm-runtime-basics}`
+- Web: `kb:web-dev/{react-essentials, typescript-react-patterns}` (XSS, CSRF, dangerouslySetInnerHTML)
+- Mobile: `kb:mobile-dev/{ios-app-architecture, swift-essentials}` (Keychain, ATS)
+- Data: `kb:data-dev/{data-modeling-basics, orchestration-essentials}`
+- Infra: `kb:infra-dev/{kubernetes-essentials, observability-basics}` (RBAC, secrets-at-rest)
+
+**Output requirement**: each CRITICAL / HIGH finding cites the specific kb doc that names the vulnerability class. Findings without kb citation get a `[needs-kb-cite]` tag rather than being silently dropped.
+
 ## Workflow
 
 ### 1. Automated Scan

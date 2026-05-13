@@ -1,6 +1,229 @@
 {
   "version": 1,
   "entries": {
+    "architecture/ai-systems/agent-design": {
+      "path": "architecture/ai-systems/agent-design.md",
+      "version": 1,
+      "hash": "828e8167cf13e7f5e5a2991dc40a399cdabd29e46a752d47ca3d314c6b10620b",
+      "shortHash": "828e8167",
+      "tags": [
+        "ai-systems",
+        "agents",
+        "foundational",
+        "architecture",
+        "tool-use",
+        "planning"
+      ],
+      "lastUpdated": "2026-05-13T13:37:26.110Z"
+    },
+    "architecture/ai-systems/evaluation-under-nondeterminism": {
+      "path": "architecture/ai-systems/evaluation-under-nondeterminism.md",
+      "version": 1,
+      "hash": "d3e36fb85007882b771d22f8816fe57709c55795ddfc0e89299fa4c4357f7b90",
+      "shortHash": "d3e36fb8",
+      "tags": [
+        "ai-systems",
+        "evaluation",
+        "foundational",
+        "architecture",
+        "testing",
+        "non-determinism"
+      ],
+      "lastUpdated": "2026-05-13T13:37:26.116Z"
+    },
+    "architecture/ai-systems/inference-cost-management": {
+      "path": "architecture/ai-systems/inference-cost-management.md",
+      "version": 1,
+      "hash": "ea58621914319fc80e772ff35c1378bb00e220b6aa5ca76c1baa39f56bf4108d",
+      "shortHash": "ea586219",
+      "tags": [
+        "ai-systems",
+        "cost-management",
+        "foundational",
+        "architecture",
+        "performance",
+        "economics"
+      ],
+      "lastUpdated": "2026-05-13T13:37:26.116Z"
+    },
+    "architecture/ai-systems/rag-anchoring": {
+      "path": "architecture/ai-systems/rag-anchoring.md",
+      "version": 1,
+      "hash": "febc74c6e6a2ddcb07215d27fa60fdbb7799bdc6ce928f013c69e248762b7112",
+      "shortHash": "febc74c6",
+      "tags": [
+        "ai-systems",
+        "rag",
+        "foundational",
+        "architecture",
+        "retrieval",
+        "llm-applications"
+      ],
+      "lastUpdated": "2026-05-13T13:37:26.116Z"
+    },
+    "architecture/crosscut/acyclic-dependencies": {
+      "path": "architecture/crosscut/acyclic-dependencies.md",
+      "version": 1,
+      "hash": "b4cb95b08c23a41774e9ea03da5a3dd10540afec65610912a0c1c8618e46892c",
+      "shortHash": "b4cb95b0",
+      "tags": [
+        "crosscut",
+        "solid",
+        "design-principle",
+        "foundational",
+        "architecture",
+        "package-design"
+      ],
+      "lastUpdated": "2026-05-13T13:37:26.117Z"
+    },
+    "architecture/crosscut/deep-modules": {
+      "path": "architecture/crosscut/deep-modules.md",
+      "version": 1,
+      "hash": "4e9c25389547edcca6496a8db1fd6841de04fdac3ce0a44509e77b5bc35c85be",
+      "shortHash": "4e9c2538",
+      "tags": [
+        "crosscut",
+        "design-principle",
+        "foundational",
+        "architecture",
+        "complexity-management",
+        "information-hiding"
+      ],
+      "lastUpdated": "2026-05-13T13:37:26.119Z"
+    },
+    "architecture/crosscut/dependency-rule": {
+      "path": "architecture/crosscut/dependency-rule.md",
+      "version": 1,
+      "hash": "ccb3623255aa1d0015321cccbf6c5db0f6f78e37438eb7adb968306f3e7d6129",
+      "shortHash": "ccb36232",
+      "tags": [
+        "crosscut",
+        "solid",
+        "design-principle",
+        "foundational",
+        "architecture",
+        "boundaries"
+      ],
+      "lastUpdated": "2026-05-13T13:37:26.120Z"
+    },
+    "architecture/crosscut/idempotency": {
+      "path": "architecture/crosscut/idempotency.md",
+      "version": 1,
+      "hash": "a6b3ca1fdf8cd6a72fbee142105281ed4e21ddf1adc09d99fa4c3b4b167e5711",
+      "shortHash": "a6b3ca1f",
+      "tags": [
+        "crosscut",
+        "data",
+        "concurrency",
+        "distributed-systems",
+        "foundational",
+        "retry-semantics"
+      ],
+      "lastUpdated": "2026-05-13T13:37:26.120Z"
+    },
+    "architecture/crosscut/information-hiding": {
+      "path": "architecture/crosscut/information-hiding.md",
+      "version": 1,
+      "hash": "fb38922795130f23327996519b9bb8ce344c618935448a4d6ff3f6536bc3c277",
+      "shortHash": "fb389227",
+      "tags": [
+        "crosscut",
+        "design-principle",
+        "foundational",
+        "architecture",
+        "modularity",
+        "encapsulation"
+      ],
+      "lastUpdated": "2026-05-13T13:37:26.120Z"
+    },
+    "architecture/crosscut/single-responsibility": {
+      "path": "architecture/crosscut/single-responsibility.md",
+      "version": 1,
+      "hash": "52bed6cd88c9da307ae663f1dba515019b5383fac085213816ac5d61068dda56",
+      "shortHash": "52bed6cd",
+      "tags": [
+        "crosscut",
+        "solid",
+        "design-principle",
+        "foundational",
+        "architecture"
+      ],
+      "lastUpdated": "2026-05-13T13:37:26.121Z"
+    },
+    "architecture/discipline/error-handling-discipline": {
+      "path": "architecture/discipline/error-handling-discipline.md",
+      "version": 1,
+      "hash": "e41625500269069f27c57b5fb38d3ac50cd2d032a174785ddd43b134a9fc136e",
+      "shortHash": "e4162550",
+      "tags": [
+        "discipline",
+        "error-handling",
+        "foundational",
+        "architecture",
+        "reliability"
+      ],
+      "lastUpdated": "2026-05-13T13:37:26.121Z"
+    },
+    "architecture/discipline/refusal-patterns": {
+      "path": "architecture/discipline/refusal-patterns.md",
+      "version": 1,
+      "hash": "f87f080cad21574453398743687687a13dd17ae5aab1477174636640466d40b8",
+      "shortHash": "f87f080c",
+      "tags": [
+        "discipline",
+        "ai-systems",
+        "safety",
+        "alignment",
+        "foundational",
+        "architecture"
+      ],
+      "lastUpdated": "2026-05-13T13:37:26.121Z"
+    },
+    "architecture/discipline/reliability-scalability-maintainability": {
+      "path": "architecture/discipline/reliability-scalability-maintainability.md",
+      "version": 1,
+      "hash": "bac3afca2c7d330b6772108ea1e4174c8345d9881f9c4d0397f7f31f5ad72c0a",
+      "shortHash": "bac3afca",
+      "tags": [
+        "discipline",
+        "architecture",
+        "foundational",
+        "reliability",
+        "scalability",
+        "maintainability",
+        "quality-attributes"
+      ],
+      "lastUpdated": "2026-05-13T13:37:26.122Z"
+    },
+    "architecture/discipline/stability-patterns": {
+      "path": "architecture/discipline/stability-patterns.md",
+      "version": 1,
+      "hash": "0a0a9a55b6d9856c400cdd59ba0d00bd5f8361a3a8f9bea495566a1c3aba181d",
+      "shortHash": "0a0a9a55",
+      "tags": [
+        "discipline",
+        "architecture",
+        "foundational",
+        "reliability",
+        "stability",
+        "operational"
+      ],
+      "lastUpdated": "2026-05-13T13:37:26.122Z"
+    },
+    "architecture/discipline/trade-off-articulation": {
+      "path": "architecture/discipline/trade-off-articulation.md",
+      "version": 1,
+      "hash": "26f7ccc70453258d9c3a6a1c3eeb8bf3ba4894bc18dcc9de363e67ae12741e41",
+      "shortHash": "26f7ccc7",
+      "tags": [
+        "discipline",
+        "architecture",
+        "foundational",
+        "decision-making",
+        "design-rationale"
+      ],
+      "lastUpdated": "2026-05-13T13:37:26.123Z"
+    },
     "backend-dev/express-essentials": {
       "path": "backend-dev/express-essentials.md",
       "version": 1,
@@ -14,7 +237,7 @@
         "http",
         "rate-limiting"
       ],
-      "lastUpdated": "2026-05-07T12:30:13.871Z"
+      "lastUpdated": "2026-05-13T13:37:26.123Z"
     },
     "backend-dev/jvm-runtime-basics": {
       "path": "backend-dev/jvm-runtime-basics.md",
@@ -29,7 +252,7 @@
         "threading",
         "starter"
       ],
-      "lastUpdated": "2026-05-07T12:30:13.877Z"
+      "lastUpdated": "2026-05-13T13:37:26.123Z"
     },
     "backend-dev/node-runtime-basics": {
       "path": "backend-dev/node-runtime-basics.md",
@@ -44,7 +267,7 @@
         "runtime",
         "async"
       ],
-      "lastUpdated": "2026-05-07T12:30:13.877Z"
+      "lastUpdated": "2026-05-13T13:37:26.123Z"
     },
     "backend-dev/spring-boot-essentials": {
       "path": "backend-dev/spring-boot-essentials.md",
@@ -58,7 +281,7 @@
         "spring-boot",
         "starter"
       ],
-      "lastUpdated": "2026-05-07T12:30:13.877Z"
+      "lastUpdated": "2026-05-13T13:37:26.124Z"
     },
     "data-dev/data-modeling-basics": {
       "path": "data-dev/data-modeling-basics.md",
@@ -72,7 +295,7 @@
         "warehouse",
         "starter"
       ],
-      "lastUpdated": "2026-05-07T12:30:13.877Z"
+      "lastUpdated": "2026-05-13T13:37:26.124Z"
     },
     "data-dev/orchestration-essentials": {
       "path": "data-dev/orchestration-essentials.md",
@@ -87,7 +310,7 @@
         "idempotency",
         "starter"
       ],
-      "lastUpdated": "2026-05-07T12:30:13.878Z"
+      "lastUpdated": "2026-05-13T13:37:26.124Z"
     },
     "hets/canonical-skill-sources": {
       "path": "hets/canonical-skill-sources.md",
@@ -100,7 +323,7 @@
         "canonical-sources",
         "evolution-loop-l2"
       ],
-      "lastUpdated": "2026-05-07T12:30:13.878Z"
+      "lastUpdated": "2026-05-13T13:37:26.124Z"
     },
     "hets/challenger-conventions": {
       "path": "hets/challenger-conventions.md",
@@ -113,7 +336,7 @@
         "asymmetric",
         "conventions"
       ],
-      "lastUpdated": "2026-05-07T12:30:13.878Z"
+      "lastUpdated": "2026-05-13T13:37:26.125Z"
     },
     "hets/identity-roster": {
       "path": "hets/identity-roster.md",
@@ -125,7 +348,7 @@
         "identity",
         "roster"
       ],
-      "lastUpdated": "2026-05-07T12:30:13.879Z"
+      "lastUpdated": "2026-05-13T13:37:26.125Z"
     },
     "hets/spawn-conventions": {
       "path": "hets/spawn-conventions.md",
@@ -137,7 +360,7 @@
         "conventions",
         "spawn"
       ],
-      "lastUpdated": "2026-05-07T12:30:13.879Z"
+      "lastUpdated": "2026-05-13T13:37:26.125Z"
     },
     "hets/stack-skill-map": {
       "path": "hets/stack-skill-map.md",
@@ -151,7 +374,7 @@
         "mapping",
         "analyzer"
       ],
-      "lastUpdated": "2026-05-07T12:30:13.879Z"
+      "lastUpdated": "2026-05-13T13:37:26.125Z"
     },
     "hets/symmetric-pair-conventions": {
       "path": "hets/symmetric-pair-conventions.md",
@@ -164,7 +387,7 @@
         "low-trust",
         "conventions"
       ],
-      "lastUpdated": "2026-05-07T12:30:13.879Z"
+      "lastUpdated": "2026-05-13T13:37:26.125Z"
     },
     "infra-dev/kubernetes-essentials": {
       "path": "infra-dev/kubernetes-essentials.md",
@@ -178,7 +401,7 @@
         "k8s",
         "starter"
       ],
-      "lastUpdated": "2026-05-07T12:30:13.879Z"
+      "lastUpdated": "2026-05-13T13:37:26.126Z"
     },
     "infra-dev/observability-basics": {
       "path": "infra-dev/observability-basics.md",
@@ -193,7 +416,7 @@
         "sre",
         "starter"
       ],
-      "lastUpdated": "2026-05-07T12:30:13.880Z"
+      "lastUpdated": "2026-05-13T13:37:26.126Z"
     },
     "ml-dev/pipeline-essentials": {
       "path": "ml-dev/pipeline-essentials.md",
@@ -207,7 +430,7 @@
         "reproducibility",
         "starter"
       ],
-      "lastUpdated": "2026-05-07T12:30:13.880Z"
+      "lastUpdated": "2026-05-13T13:37:26.126Z"
     },
     "ml-dev/training-vs-inference": {
       "path": "ml-dev/training-vs-inference.md",
@@ -222,7 +445,7 @@
         "drift",
         "starter"
       ],
-      "lastUpdated": "2026-05-07T12:30:13.880Z"
+      "lastUpdated": "2026-05-13T13:37:26.126Z"
     },
     "mobile-dev/ios-app-architecture": {
       "path": "mobile-dev/ios-app-architecture.md",
@@ -236,7 +459,7 @@
         "mvvm",
         "tca"
       ],
-      "lastUpdated": "2026-05-07T12:30:13.881Z"
+      "lastUpdated": "2026-05-13T13:37:26.127Z"
     },
     "mobile-dev/swift-essentials": {
       "path": "mobile-dev/swift-essentials.md",
@@ -249,7 +472,7 @@
         "swift",
         "language"
       ],
-      "lastUpdated": "2026-05-07T12:30:13.881Z"
+      "lastUpdated": "2026-05-13T13:37:26.127Z"
     },
     "security-dev/auth-patterns": {
       "path": "security-dev/auth-patterns.md",
@@ -265,7 +488,7 @@
         "mfa",
         "starter"
       ],
-      "lastUpdated": "2026-05-07T12:30:13.881Z"
+      "lastUpdated": "2026-05-13T13:37:26.127Z"
     },
     "security-dev/threat-modeling-essentials": {
       "path": "security-dev/threat-modeling-essentials.md",
@@ -279,7 +502,7 @@
         "attack-trees",
         "starter"
       ],
-      "lastUpdated": "2026-05-07T12:30:13.882Z"
+      "lastUpdated": "2026-05-13T13:37:26.128Z"
     },
     "web-dev/react-essentials": {
       "path": "web-dev/react-essentials.md",
@@ -292,7 +515,7 @@
         "react",
         "javascript"
       ],
-      "lastUpdated": "2026-05-07T12:30:13.882Z"
+      "lastUpdated": "2026-05-13T13:37:26.128Z"
     },
     "web-dev/typescript-react-patterns": {
       "path": "web-dev/typescript-react-patterns.md",
@@ -306,7 +529,7 @@
         "typescript",
         "starter"
       ],
-      "lastUpdated": "2026-05-07T12:30:13.882Z"
+      "lastUpdated": "2026-05-13T13:37:26.128Z"
     }
   }
 }

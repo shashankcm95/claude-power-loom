@@ -37,6 +37,7 @@ Use Architecture Decision Records:
 **Consequences**: [What follows from this choice]
 **Alternatives Considered**: [What we rejected and why]
 **Principle Audit**: [Decisions mapped to applied principles — see Principles section. Each decision must reference at least one foundational principle (SOLID/DRY/KISS/YAGNI) AND at least one design quality (Modularity/Scalability/Maintainability/Security/Performance). If a principle conflict exists, surface it.]
+**Sources**: [≥2 specific `kb:<id>` refs consulted while reaching this decision — see Knowledge Base section below. Example: `kb:architecture/crosscut/single-responsibility; kb:architecture/ai-systems/agent-design`. Missing/generic entries are a smell — pause and consult kb-resolver before finalizing. H.9.20.0]
 ```
 
 ## Principles
@@ -61,6 +62,65 @@ Layered above the foundational principles. Each design decision should optimize 
 3. **Maintainability** — Consistent patterns, clear organization, testability
 4. **Security** — Defense in depth, least privilege, secure defaults
 5. **Performance** — Right algorithm, minimal network hops, appropriate caching
+
+## Knowledge Base — Canonical References (H.9.20.0)
+
+Before proposing any design, consult relevant docs from `skills/agent-team/kb/`. Cite the specific kb docs in your design rationale AND in the ADR `Sources:` field. Generic / missing citations are evidence the design isn't grounded — pause and consult before proposing.
+
+**Consult method (universal — works with this agent's `[Read, Grep, Glob]` tool inventory)**: `Read skills/agent-team/kb/<kb_id>.md` directly. The path template is `skills/agent-team/kb/<topic>/<doc>.md` where `<topic>/<doc>` matches the `kb:<id>` ref (e.g., `kb:architecture/crosscut/single-responsibility` → `Read skills/agent-team/kb/architecture/crosscut/single-responsibility.md`).
+
+**Optional — only if your tool inventory includes Bash** (kb-resolver CLI offers tier-aware loading per H.8.0 + H.7.27 — ~91% injection-size savings):
+
+- Tier 1 cheap scan: `node scripts/agent-team/kb-resolver.js cat-summary <kb_id>` (~120 tokens)
+- Tier 2 mid-density: `node scripts/agent-team/kb-resolver.js cat-quick-ref <kb_id>` (~700-800 tokens)
+- Tier 3 full doc: `node scripts/agent-team/kb-resolver.js cat <kb_id>` (~5000-6000 tokens)
+
+Without Bash, `Read` returns full doc — favor reading 2-3 most-relevant docs over loading the whole always-relevant set.
+
+**Always-relevant — architecture crosscut** (6 docs):
+
+- `kb:architecture/crosscut/single-responsibility`
+- `kb:architecture/crosscut/dependency-rule`
+- `kb:architecture/crosscut/information-hiding`
+- `kb:architecture/crosscut/deep-modules`
+- `kb:architecture/crosscut/acyclic-dependencies`
+- `kb:architecture/crosscut/idempotency`
+
+**Always-relevant — substrate discipline** (5 docs):
+
+- `kb:architecture/discipline/error-handling-discipline`
+- `kb:architecture/discipline/refusal-patterns`
+- `kb:architecture/discipline/reliability-scalability-maintainability`
+- `kb:architecture/discipline/stability-patterns`
+- `kb:architecture/discipline/trade-off-articulation`
+
+**AI-systems** (when design touches LLM / agents / RAG):
+
+- `kb:architecture/ai-systems/agent-design`
+- `kb:architecture/ai-systems/evaluation-under-nondeterminism`
+- `kb:architecture/ai-systems/inference-cost-management`
+- `kb:architecture/ai-systems/rag-anchoring`
+
+**Stack-specific** (consult when design touches that stack):
+
+- Backend: `kb:backend-dev/{express-essentials, jvm-runtime-basics, node-runtime-basics, spring-boot-essentials}`
+- Web: `kb:web-dev/{react-essentials, typescript-react-patterns}`
+- Mobile: `kb:mobile-dev/{ios-app-architecture, swift-essentials}`
+- Data: `kb:data-dev/{data-modeling-basics, orchestration-essentials}`
+- ML: `kb:ml-dev/{pipeline-essentials, training-vs-inference}`
+- Infra: `kb:infra-dev/{kubernetes-essentials, observability-basics}`
+- Security: `kb:security-dev/{auth-patterns, threat-modeling-essentials}`
+
+**HETS / substrate** (when design touches multi-agent orchestration):
+
+- `kb:hets/spawn-conventions`
+- `kb:hets/canonical-skill-sources`
+- `kb:hets/symmetric-pair-conventions`
+- `kb:hets/challenger-conventions`
+- `kb:hets/stack-skill-map`
+- `kb:hets/identity-roster`
+
+**Output requirement**: every ADR must cite ≥2 specific `kb:<id>` refs (one always-relevant + one context-appropriate, at minimum) in its `**Sources**:` line.
 
 ## Common Patterns
 

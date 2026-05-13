@@ -23,6 +23,44 @@ Plans must be grounded in the **foundational principles** — SOLID, DRY, KISS, 
 
 Every plan output must include a `## Principle Audit` section mapping concrete plan decisions to which principles they uphold or trade off. This is per the H.7.22 architect contract, extended to all design-adjacent output in H.7.24. See `agents/architect.md` for the canonical reference shape (Layer 1 foundational + Layer 2 design qualities); planner.md uses Layer 1 only.
 
+## Knowledge Base — Canonical References (H.9.20.0)
+
+Plans must anchor to the kb. Before phase-breaking, consult relevant docs from `skills/agent-team/kb/`.
+
+**Consult method (universal — works with this agent's `[Read, Grep, Glob]` tool inventory)**: `Read skills/agent-team/kb/<kb_id>.md` directly. The path template is `skills/agent-team/kb/<topic>/<doc>.md` where `<topic>/<doc>` matches the `kb:<id>` ref (e.g., `kb:architecture/discipline/trade-off-articulation` → `Read skills/agent-team/kb/architecture/discipline/trade-off-articulation.md`).
+
+**Optional — only if your tool inventory includes Bash**: the resolver CLI offers tier-aware loading (per H.8.0 + H.7.27 — ~91% injection-size savings): `node scripts/agent-team/kb-resolver.js cat-quick-ref <kb_id>` (~700 tokens), `cat-summary <kb_id>` for cheap scan, `cat <kb_id>` for full doc.
+
+Without Bash, `Read` returns full doc — favor reading 2-3 most-relevant docs over loading the whole always-relevant set.
+
+**Always-relevant — planning discipline**:
+
+- `kb:architecture/discipline/trade-off-articulation` — how to surface phase options
+- `kb:architecture/crosscut/single-responsibility` — phase boundaries respect SRP
+- `kb:architecture/discipline/error-handling-discipline` — every phase includes failure paths
+- `kb:architecture/discipline/refusal-patterns` — when a plan should push back vs accommodate
+- `kb:architecture/discipline/reliability-scalability-maintainability` — phase ordering reflects RSM
+- `kb:architecture/discipline/stability-patterns` — rollback strategy per phase
+
+**For multi-agent / AI-system planning**:
+
+- `kb:architecture/ai-systems/agent-design`
+- `kb:architecture/ai-systems/evaluation-under-nondeterminism`
+- `kb:architecture/ai-systems/inference-cost-management`
+- `kb:architecture/ai-systems/rag-anchoring`
+
+**Stack-specific** (when plan touches that stack — see `agents/architect.md` for the same conditional stack list):
+
+- Backend / Web / Mobile / Data / ML / Infra / Security — consult the corresponding `kb:<stack>/*` docs
+
+**HETS / substrate planning**:
+
+- `kb:hets/spawn-conventions`
+- `kb:hets/canonical-skill-sources`
+- `kb:hets/symmetric-pair-conventions`
+
+**Output requirement**: every plan must include a `## KB Sources Consulted` section listing the specific `kb:<id>` refs cited in the plan's reasoning (≥2 always-relevant; conditional refs as appropriate). Missing the section means the plan isn't anchored — caller should reject or ask for re-grounding.
+
 ## Process
 
 ### 1. Requirements Analysis
@@ -104,6 +142,9 @@ For each step provide:
 - **DRY**: [Which existing primitives are being reused; what's NOT being reinvented]
 - **SOLID**: [Which sub-principles apply; e.g., new validators added without modifying existing — Open/Closed]
 - **YAGNI**: [Items intentionally deferred; captured as drift-notes for future]
+
+## KB Sources Consulted (H.9.20.0)
+- `kb:<id>` — [≥2 specific refs that grounded the planning reasoning; mix always-relevant + context-appropriate. Generic / missing entries mean the plan isn't anchored — caller should reject or ask for re-grounding.]
 
 ## Success Criteria
 - [ ] [Measurable outcome]

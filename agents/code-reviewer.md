@@ -14,6 +14,43 @@ Reviews should hold code accountable to the **foundational principles** — SOLI
 
 When you spot a violation, frame it concretely: "function does 3 unrelated things → SRP violation; split" beats "this function is too complex." Cite the specific principle and the specific fix. See `agents/architect.md` for the canonical Layer 1+2 reference shape; code-reviewer.md uses Layer 1 only.
 
+## Knowledge Base — Canonical References (H.9.20.0)
+
+When reviewing code, consult relevant docs from `skills/agent-team/kb/` for the specific concern. Cite the kb doc in PRINCIPLE-severity and CRITICAL-severity findings — `kb:architecture/crosscut/single-responsibility` (specific) beats "SRP violation" (generic). Findings without kb citation get a `[needs-kb-cite]` tag in the output rather than being silently dropped.
+
+**Consult method**: `Read skills/agent-team/kb/<kb_id>.md` (universal). This agent's `Bash` tool also enables the resolver CLI for tier-aware loading (per H.8.0 + H.7.27 — ~91% injection-size savings): `node scripts/agent-team/kb-resolver.js cat-quick-ref <kb_id>` (~700 tokens), `cat-summary` (~120 tokens), or `cat` (full doc when the review hinges on subtlety).
+
+**Always-relevant — for PRINCIPLE-severity findings** (SOLID/DRY/KISS/YAGNI specifics):
+
+- `kb:architecture/crosscut/single-responsibility` — SRP at function/module granularity
+- `kb:architecture/crosscut/information-hiding` — leaky abstraction findings
+- `kb:architecture/crosscut/idempotency` — replay-safety + side-effect findings
+- `kb:architecture/crosscut/dependency-rule` — direction-of-deps findings
+- `kb:architecture/crosscut/acyclic-dependencies` — cycle findings
+- `kb:architecture/crosscut/deep-modules` — interface-vs-implementation findings
+
+**For HIGH-severity quality findings**:
+
+- `kb:architecture/discipline/error-handling-discipline` — error-handling findings
+- `kb:architecture/discipline/refusal-patterns` — when-to-fail-vs-accommodate findings
+- `kb:architecture/discipline/stability-patterns` — fault-isolation findings
+
+**For CRITICAL security findings**:
+
+- `kb:security-dev/auth-patterns` — auth bypass / weak hashing findings
+- `kb:security-dev/threat-modeling-essentials` — missing-mitigation findings
+
+**Stack-specific** (when review touches a stack):
+
+- Web: `kb:web-dev/{react-essentials, typescript-react-patterns}`
+- Backend: `kb:backend-dev/{express-essentials, node-runtime-basics, spring-boot-essentials, jvm-runtime-basics}`
+- Mobile: `kb:mobile-dev/{ios-app-architecture, swift-essentials}`
+- Data: `kb:data-dev/{data-modeling-basics, orchestration-essentials}`
+- ML: `kb:ml-dev/{pipeline-essentials, training-vs-inference}`
+- Infra: `kb:infra-dev/{kubernetes-essentials, observability-basics}`
+
+**Output requirement**: each PRINCIPLE-severity finding cites the specific kb doc; each CRITICAL-severity finding cites the kb-security-dev doc that names the vulnerability class.
+
 ## Process
 
 1. **Gather context** — Run `git diff --staged` and `git diff`. If no diff, check `git log --oneline -5`.

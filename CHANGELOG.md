@@ -8,6 +8,85 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [2.0.3] — 2026-05-13 — H.9.20.0 KB-consultation-discipline patch (user-flagged gap closed pre-H.9.21 architect spawn; HOTFIX-CLASS no formal gate)
+
+**Hotfix-class substrate-discipline upgrade** closing user-flagged gap that all 5 Claude Code agents (`architect`, `code-reviewer`, `planner`, `optimizer`, `security-auditor`) referenced ONLY `patterns/system-design-principles.md` and NONE of the 37 `kb/<domain>/<doc>.md` docs that were authored specifically to anchor decisions to ground truth. Surfaced just before the H.9.21 MANDATORY-gate architect spawn for the v2.1.0 library/memory-organizer plan review — a queued spawn would have produced design ungrounded in the 37-doc kb tree.
+
+### The asymmetry
+
+Two parallel agent architectures, only one had KB-consumption enforcement:
+
+| Agent layer | Where defined | KB scope | Consumption enforced? |
+|---|---|---|---|
+| HETS personas (16 contracts) | `swarm/personas-contracts/*.contract.json` | `kb_scope: {default: [...]}` per persona | **YES** — `kb_scope_consumed` functional check (H.4.0). Verifier parses transcripts for `kb-resolver cat`, `kb:<id>`, `Read` of `skills/agent-team/kb/`. |
+| Claude Code agents (5 in `agents/*.md`) | `agents/architect.md` etc. | Only `patterns/system-design-principles.md` | **NO** — no scope declaration, no verifier, no instruction to consult kb. |
+
+### What landed
+
+**Components A-E — per-agent KB declaration** (5 agents.md files, ~+201 LoC):
+
+- **A `architect.md`** (+59 LoC): Knowledge Base section after Principles with 37 kb_id refs categorized (always-relevant architecture crosscut 6 + substrate discipline 5 + AI-systems 4 + stack-specific 7 stacks + HETS 6) + ADR template `**Sources**:` field requiring ≥2 specific `kb:<id>` cites
+- **B `code-reviewer.md`** (+36 LoC): KB section + role-specific kb_ids per severity (crosscut for PRINCIPLE; discipline for HIGH; security-dev for CRITICAL; stack-specific conditional) + output requirement (each finding cites kb doc; `[needs-kb-cite]` tag for un-anchored)
+- **C `planner.md`** (+40 LoC): KB section + planning-discipline kb_ids (trade-off-articulation, SRP, error-handling, refusal-patterns, RSM, stability) + AI-system planning kb_ids + Plan Template `## KB Sources Consulted` section
+- **D `optimizer.md`** (+34 LoC): KB section + RSM/measurement kb_ids (RSM as optimization lens, stability, observability-basics, dependency-rule, AI-systems inference-cost) + Optimization Report `KB Sources Consulted` section
+- **E `security-auditor.md`** (+32 LoC): KB section + primary security-dev kb_ids (auth-patterns, threat-modeling) + secondary defense-in-depth kb_ids (error-handling, refusal-patterns, stability, idempotency, information-hiding) + stack-specific conditional
+
+**Tool-inventory mismatch caught + fixed mid-flight**: `architect` + `planner` have `[Read, Grep, Glob]` (no Bash) → initial CLI-only instruction was unworkable. Fixed via universal consult-method: "`Read skills/agent-team/kb/<kb_id>.md` directly; CLI optional when Bash is in tool inventory."
+
+**Verification by real-design-question**: architect spawned on the H.9.19-deferred `_lib/edit-simulator` extract-vs-keep question. Result:
+
+- Cited **4 specific kb refs** in Sources field: `kb:architecture/crosscut/single-responsibility`, `kb:architecture/crosscut/deep-modules`, `kb:architecture/crosscut/information-hiding`, `kb:architecture/discipline/trade-off-articulation`
+- Principle Audit reflected actual kb content (DRY-vs-SRP heuristic per `single-responsibility.md`; "Deep Modules vs DRY" tension per `deep-modules.md`; Parnas's "design decisions likely to change" per `information-hiding.md`; "Pattern 1 What's Sacrificed" per `trade-off-articulation.md`)
+- 20 tool calls used; found drift-note 47 in BACKLOG.md establishing "defer `_lib/` extraction until 7+ callers" substrate convention
+- Decision ("keep duplicated; revisit at 7+ callers OR third correctness bug") aligned with H.9.19 deferral — substrate self-consistency proof
+
+**Manifest 2.0.2 → 2.0.3 patch** per H.9.10 + H.9.14 + H.9.18 + H.9.19 observable-quality-change precedent (agents now visibly cite kb refs + produce Sources/KB-Sources sections — user-visible behavior change).
+
+### Why no formal gate
+
+Per HT.1.6 5-trigger framework:
+
+- T1 (fresh design surface): absent — extending existing KB resolver infrastructure
+- T2 (substrate-fundament `_lib/*` change): absent — pure prompt edits
+- T3 (option-axis): absent — KB ref pattern uses established HETS-side precedent
+- T4 (institutional discipline): mildly applies — encoding "agents must consult kb" — but matches H.9.18 doc-staleness-discipline mild trigger precedent
+- T5 (HIGH-class bug): absent — discipline gap, not runtime bug
+
+0/5 substantive triggers → hotfix-class, plan-mode user approval IS the gate.
+
+### Verification
+
+- 101/101 install.sh smoke unchanged (pure prompt edits; no substrate runtime change)
+- 67/67 `_h70-test.js` unchanged
+- 17-baseline `contracts-validate.js` unchanged
+- 0 ESLint errors; 0 `eslint-disable` directives (ADR-0006 invariant 5 active)
+- 37 kb_ids cross-checked against `kb-resolver list` (0 broken refs across 5 agents)
+- markdownlint, yaml-lint, shellcheck: PASS
+- HT-state.md drift-note 80 dup-key check: 205 unique top-level YAML keys; 0 duplicates
+
+### Soak gate counter UNCHANGED
+
+At **8/5+ STRENGTHENED ×3** (hotfix-class doesn't advance per H.9.13/H.9.14.1/H.9.18/H.9.19 precedent; v2.0.x patch).
+
+### Drift-notes inventory unchanged
+
+0 OPEN; 4 CLOSED cumulative (78(a) + 78(b) + 80 + 82); 2 DEFERRED with codified activation criteria (79 + 81).
+
+### Pattern observations
+
+1. **User-flagged-prerequisite-gap pattern** — gap caught by user reading agent definitions before MANDATORY-gate architect spawn for H.9.21. Reusable lesson: pre-MANDATORY-gate brief audit of agent.md IS load-bearing; codify as pre-spawn checklist item.
+2. **Tool-inventory-mismatch pattern** — initial fix referenced CLI commands that target agents couldn't invoke (architect + planner have no Bash); surfaced via cross-check. Reusable: cross-check target agent's tool inventory before adding tool-referenced instructions.
+3. **Verification-by-real-design-question pattern** — used H.9.19-deferred `_lib/edit-simulator` question rather than synthetic test. Produced useful ADR artifact (substrate-aligned decision) AND validated discipline simultaneously. Reusable: when verifying substrate-discipline upgrade, use real pending decision over synthetic prompt.
+4. **Parallel-asymmetric-architecture pattern** — HETS personas had `kb_scope_consumed` enforcement via H.4.0; Claude Code agents now have discipline-without-enforcement (trust-the-instruction). `_lib/agent-kb-consumed.js` candidate for v2.1+ if discipline drift recurs.
+
+### Files modified
+
+9 (5 agents.md + plugin.json + README.md + HT-state.md + CHANGELOG.md + SKILL.md); ~+250 LoC
+
+**Ninetieth distinct phase shape**: user-flagged-architect-spawn-prerequisite-gap-fix surfaced live just before MANDATORY-gate spawn.
+
+---
+
 ## [2.0.2] — 2026-05-12 — H.9.19 Edit-simulation hotfix (post-v2.0.1 dogfood found 2 validator bugs; HOTFIX-CLASS no formal gate)
 
 **Hotfix-class patch** closing 2 PreToolUse validator bugs in Edit-simulation handling, discovered via post-v2.0.1 dogfood verification in a fresh CC session. Comprehensive audit of 9 hooks complete.
