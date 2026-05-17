@@ -11,7 +11,8 @@
 
 'use strict';
 
-const { withLock, readStore, writeStore, _backfillSchema } = require('./registry');
+const registry = require('./registry');
+const { withLock, readStore, writeStore, _backfillSchema, withPersonaLock, readPersona, writePersona } = registry;
 const { tierOf, QUALITY_FACTORS_HISTORY_CAP } = require('./trust-scoring');
 
 // H.7.0 — verification-depth values for the --verification-depth flag.
@@ -48,12 +49,42 @@ function cmdRecord(args) {
       process.exit(1);
     }
   }
-  withLock(() => {
-    const store = readStore();
-    const data = store.identities[args.identity];
-    if (!data) {
-      console.error(`Unknown identity: ${args.identity}. Run "assign" first.`);
-      process.exit(1);
+  // H.9.21.1 v2.1.1 — per-persona hot-path lock (Component H FULL bulkhead).
+  // args.identity has shape "<persona>.<name>" (e.g. "04-architect.mira").
+  // We extract the persona prefix and hold ONLY that persona's lock so
+  // concurrent records on different personas do not contend on a shared
+  // STORE_PATH lock — but only when bulkhead is active (partition sentinel).
+  // Pre-bulkhead AND legacy modes degrade through readPersona/writePersona
+  // dispatchers in registry.js (which fall through to consolidated.json RMW).
+  const personaForLock = args.identity.split('.')[0];
+  const useBulkhead = registry._isBulkheadActive();
+
+  const runMutation = () => {
+    let data;
+    let persistFn;
+    if (useBulkhead) {
+      // Partitioned mode: read JUST this persona's substance, mutate, write
+      // JUST this persona's file. True bulkhead — disjoint locks per persona.
+      const payload = readPersona(personaForLock);
+      const name = args.identity.split('.').slice(1).join('.');
+      data = payload.identities[name];
+      if (!data) {
+        console.error(`Unknown identity: ${args.identity}. Run "assign" first.`);
+        process.exit(1);
+      }
+      persistFn = () => {
+        payload.identities[name] = data;
+        writePersona(personaForLock, payload);
+      };
+    } else {
+      // Legacy mode: original semantics — read/write full STORE_PATH.
+      const store = readStore();
+      data = store.identities[args.identity];
+      if (!data) {
+        console.error(`Unknown identity: ${args.identity}. Run "assign" first.`);
+        process.exit(1);
+      }
+      persistFn = () => writeStore(store);
     }
     _backfillSchema(data);
     data.verdicts[args.verdict] += 1;
@@ -92,7 +123,7 @@ function cmdRecord(args) {
     if (data.quality_factors_history.length > QUALITY_FACTORS_HISTORY_CAP) {
       data.quality_factors_history = data.quality_factors_history.slice(-QUALITY_FACTORS_HISTORY_CAP);
     }
-    writeStore(store);
+    persistFn();
     console.log(JSON.stringify({
       action: 'record',
       identity: args.identity,
@@ -102,8 +133,15 @@ function cmdRecord(args) {
       qualityFactorsRecorded: qualityFactors !== null,
       verificationDepth,
       spawnsSinceFullVerify: data.spawnsSinceFullVerify,
+      bulkhead: useBulkhead,
     }, null, 2));
-  });
+  };
+
+  if (useBulkhead) {
+    withPersonaLock(personaForLock, runMutation);
+  } else {
+    withLock(runMutation);
+  }
 }
 
 module.exports = {

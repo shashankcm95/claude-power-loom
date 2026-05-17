@@ -8,6 +8,81 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [2.1.1] — 2026-05-17 — H.9.21.1 Component H FULL per-persona bulkhead partition
+
+**Patch release closing MANDATORY-gate HIGH 6 (deferred from v2.1.0).** Splits the consolidated `agent-identities.json` (52K) + `agent-patterns.json` (132K) into **per-persona files** under the library so concurrent HETS writes from different personas no longer contend on a single shared lock. True bulkhead per `kb:architecture/discipline/stability-patterns §Bulkhead` — failure or contention on one persona's file does not affect any other persona.
+
+### Opt-in upgrade path (zero breakage on plain `npm install` / plugin re-pull)
+
+```bash
+# Install v2.1.1 — toolkit continues using v2.1.0 consolidated.json layout
+# (NO disk changes; reads and writes go to library/sections/agents/stacks/{identities,verdicts}/volumes/consolidated.json as before).
+
+# Then opt in to bulkhead at your pace:
+node scripts/library-migrate.js partition-personas --dry-run    # preview
+node scripts/library-migrate.js partition-personas              # commit (idempotent; saga-protected)
+```
+
+After partition, the `.partition-complete` sentinel exists and the toolkit switches to per-persona file IO transparently. Rollback: delete the sentinel + per-persona files; consolidated.json is preserved as the frozen baseline.
+
+### Components
+
+| Comp | What | LoC | Risk |
+|---|---|---|---|
+| H/sub | `scripts/agent-team/_lib/persona-store.js` — substrate primitive: per-persona file IO + per-persona locks + metadata file + stack-wide scan + `isPartitioned()` detection | ~200 | MEDIUM (substrate-fundament) |
+| H/sub | `scripts/agent-team/_lib/library-paths.js` — new path helpers: `personaVolumePath`, `personaLockPath`, `agentsMetadataPath`, `agentsMetadataLockPath`, `partitionSentinelPath` | ~50 | LOW |
+| H/sub | `scripts/agent-team/identity/registry.js` — three-way mode dispatch (legacy/pre-bulkhead/bulkhead); new public primitives `readPersona / writePersona / withPersonaLock`; existing `readStore / writeStore / withLock / cmdInit` preserved with internal dispatch | ~120 | MEDIUM |
+| H/sub | `scripts/agent-team/identity/verdict-recording.js` — `cmdRecord` switched to per-persona hot-path (was global STORE_PATH lock) | ~30 | LOW |
+| H/sub | `scripts/agent-team/pattern-recorder.js` — three-way dispatch; new `_appendPatternPartitioned` per-persona hot path; `saveStore` removed (dead code, ADR-0006) | ~80 | MEDIUM |
+| H/sub | `scripts/library-migrate.js` — new `partition-personas` subcommand with saga discipline (sentinel idempotency + dry-run + force) | ~150 | MEDIUM |
+| H/sub | `tests/smoke-library-bulkhead.sh` — T111 16-way parallel writers (bulkhead proof) + T112 partition round-trip (idempotency + aggregate hash) + T113 pre-bulkhead upgrade compat (no data loss without sentinel) | ~110 | LOW |
+
+**Total ~740 LoC across 9 files.**
+
+### Three-way mode dispatch (the heart of the patch)
+
+Both `registry.js` (identities) and `pattern-recorder.js` (verdicts) dispatch reads + writes through a runtime mode check:
+
+| Mode | Trigger | Storage | Lock |
+|---|---|---|---|
+| **legacy** | `HETS_IDENTITY_STORE` / `HETS_PATTERNS_PATH` env-var set | original single-file STORE_PATH | global `STORE_PATH.lock` |
+| **pre-bulkhead** | env-var unset AND no `.partition-complete` sentinel | library `consolidated.json` (v2.1.0 layout) | `consolidated.json.lock` |
+| **bulkhead** | env-var unset AND sentinel exists | per-persona files `<persona>.json` + `_metadata.json` | per-persona `<persona>.lock` + metadata lock |
+
+Hot path (`cmdRecord`) uses the per-persona lock only in bulkhead mode → true scale-out under HETS parallelism. Pre-bulkhead and legacy modes preserve v2.1.0 / pre-v2.1.0 behavior exactly so test isolation in `_h70-test.js` + the `quality-factors-backfill.js` admin tool keep working unchanged.
+
+### Verification
+
+- **109/109 → 110/110 smoke** (added T111 + T112 + T113; all PASS).
+- **67/67 H.7.0 inline tests** — legacy mode preserved (zero regressions).
+- **ESLint 0 errors / 0 `eslint-disable` directives** — ADR-0006 preserved.
+- **Live dry-run on production library** — 31 identities + 497 patterns correctly partitioned across 13 personas; pre-bulkhead reads return all 31 identities unchanged (no data-loss path on upgrade).
+- **Round-trip verified**: pre-partition aggregate count == post-partition per-persona scan count.
+
+### Principle Audit
+
+- **Bulkhead** (`kb:architecture/discipline/stability-patterns`): disjoint per-persona locks; failure or contention on one persona's file does not affect any other.
+- **Idempotency** (`kb:architecture/crosscut/idempotency`): `.partition-complete` sentinel as run_id key (mirror of v2.1.0 `.migrate-complete`).
+- **SRP** (`kb:architecture/crosscut/single-responsibility`): new `_lib/persona-store.js` owns per-persona IO + locks; `library-paths.js` owns path resolution only.
+- **YAGNI**: `saveStore` (pre-v2.1.1 dead-on-arrival public function) removed rather than preserved "just in case".
+- **Information hiding**: the three-way mode dispatch is internal — public API surface (`readStore`, `writeStore`, `withLock`, `loadStore`, `cmdRecord`) unchanged across all three modes.
+
+### Trade-offs Acknowledged
+
+1. **Per-persona LRU cap is local** (1000 entries per persona) vs former global 1000-across-all cap. Some personas may grow proportionally larger; net storage may rise by a small constant factor. Mitigated by per-persona files staying compact when individual personas don't dominate.
+2. **`consolidated.json` is preserved as frozen baseline post-partition** — ~250K disk cost for rollback safety. v2.2+ may add a `library gc` to garbage-collect it after a soak period.
+3. **Pre-bulkhead mode is necessary for zero-breakage upgrades** — adds dispatch overhead vs always-bulkhead, but the overhead is a single `fs.existsSync(sentinel)` per top-level op (negligible vs the I/O itself).
+
+### Deferred to v2.2+
+
+- `library gc` to remove `consolidated.json` after soak.
+- Knowledge-graph (Ledger) SQLite schema.
+- `daybook` / `lookup` / `acquire` / `accession` CLI subcommands.
+- Per-project section concept.
+- Auxiliary docs sweep — `docs/architecture/substrate-philosophy.md`, `docs/hooks/overview.md`, `swarm/architecture-substrate/auto-loop-infrastructure.md` still reference MempPalace as "fallback".
+
+---
+
 ## [2.1.0] — 2026-05-13 — H.9.21 in-house library memory organizer (MANDATORY-gate; substrate-fundament)
 
 **First non-patch release since v2.0.0.** Replaces `~/.claude/checkpoints/mempalace-fallback.md` (single growing 19K file; MempPalace MCP never installed) with an in-house Zettelkasten-rooted **Library / Section / Stack / Catalog / Volume** layout under a single catalog API. Dual storage modes (narrative markdown+YAML for prose; schematic JSON for structured aggregates) with `form` discriminator. **Local-files-only** — no MCP, no ChromaDB, no embeddings, no Python dependency.

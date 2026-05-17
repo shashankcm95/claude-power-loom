@@ -145,6 +145,58 @@ function catalogLockPath(sectionId, stackId) {
   return path.join(stackPath(sectionId, stackId), '.catalog.lock');
 }
 
+// ---------------------------------------------------------------------------
+// Per-persona partition paths (H.9.21.1 v2.1.1 — Component H FULL bulkhead)
+// ---------------------------------------------------------------------------
+//
+// v2.1.0 migration produced consolidated.json files at agents/{identities,verdicts}/
+// volumes/. v2.1.1 introduces per-persona files SIBLINGS to consolidated.json:
+//   - <persona>.json — single persona's substance (true bulkhead — independent
+//     locks per persona, no shared-file write contention under HETS parallelism)
+//   - _metadata.json — cross-persona substance (rosters, counters) — stays
+//     single-file (infrequent writes; not on hot path)
+//
+// Naming: persona-id includes the leading prefix (e.g., "01-hacker") to keep
+// the catalog sort order matching the persona display order.
+//
+// Backwards-compat: consolidated.json remains at the same path as a
+// frozen-baseline read-only artifact (v2.1.0 → v2.1.1 partition source).
+// v2.2+ may garbage-collect it after a soak period.
+
+/** Per-persona volume file (e.g., agents/identities/volumes/04-architect.json). */
+function personaVolumePath(stackId, persona) {
+  return path.join(volumesDir(AGENTS_SECTION_ID, stackId), `${persona}.json`);
+}
+
+/** Per-persona write-lock file (dot-prefixed; sibling of the persona file). */
+function personaLockPath(stackId, persona) {
+  return path.join(volumesDir(AGENTS_SECTION_ID, stackId), `.${persona}.lock`);
+}
+
+/**
+ * Per-stack agents metadata file path. Holds cross-persona substance
+ * (rosters, nextIndex counters) that don't partition cleanly per-persona.
+ * Lives outside `volumes/` so the persona-file scanner doesn't confuse it
+ * with a persona volume.
+ */
+function agentsMetadataPath(stackId) {
+  return path.join(stackPath(AGENTS_SECTION_ID, stackId), '_metadata.json');
+}
+
+/** Per-stack agents metadata write-lock (sibling of _metadata.json). */
+function agentsMetadataLockPath(stackId) {
+  return path.join(stackPath(AGENTS_SECTION_ID, stackId), '._metadata.lock');
+}
+
+/**
+ * Partition-completion sentinel (H.9.21.1 v2.1.1 idempotency key, analogous to
+ * .migrate-complete from v2.1.0). Records run_id of the consolidated → per-persona
+ * partition so re-runs are idempotent.
+ */
+function partitionSentinelPath() {
+  return path.join(libraryRoot(), '.partition-complete');
+}
+
 /** Backups root path. */
 function backupsRoot() {
   return path.join(libraryRoot(), '_backups');
@@ -298,6 +350,12 @@ module.exports = {
   catalogLockPath,
   backupsRoot,
   backupDir,
+  // H.9.21.1 v2.1.1 — per-persona bulkhead partition (Component H FULL)
+  personaVolumePath,
+  personaLockPath,
+  agentsMetadataPath,
+  agentsMetadataLockPath,
+  partitionSentinelPath,
   // Component B3 pure functions
   volumeFilename,
   inferForm,
