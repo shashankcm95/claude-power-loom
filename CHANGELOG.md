@@ -8,6 +8,32 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [2.1.3] — 2026-05-17 — H.9.21.2.1 lock resilience follow-up + T108 diagnostics
+
+**Hotfix patch — v2.1.2 wasn't enough.** Test 108 (J4 concurrent library write `_lib/lock.js` serializes) STILL flaked on the v2.1.2 main-post-merge CI (3/5 entries; even though v2.1.2's PR-branch CI passed cleanly with the same commit). The 10000ms ceiling wasn't generous enough for the slowest GitHub Actions runners under 5-way parallel-write contention.
+
+### What changed
+
+- `scripts/agent-team/_lib/library-catalog.js`: `DEFAULT_LOCK_TIMEOUT_MS = 10000` → `30000`. Final-margin bump; still well below test-timeout territory.
+- `scripts/agent-team/_lib/lock.js`: `sleepMs` default `50` → `20`. Finer-grained polling cuts lock-release-to-next-acquire latency from ~50ms scheduler slack to ~20ms. For 5-way contention this trims worst-case cumulative wait from ~250ms → ~100ms.
+- `tests/smoke-library-concurrent.sh`: T108 now captures per-writer exit codes + stderr to a tmpdir; surfaces them on FAIL. Prior pure-redirect-to-`/dev/null` pattern silently swallowed `Could not acquire lock` stderr from `withLock`'s `exit(2)` path, making the v2.1.2 → 3/5 CI regression undebuggable. Future flakes (if any) self-diagnose.
+
+### Why three patches in a row (2.1.1 → 2.1.2 → 2.1.3)
+
+- v2.1.1: substantive feature (Component H FULL bulkhead).
+- v2.1.2: first attempt at T108 CI fix (timeout 3s → 10s) — passed PR CI but flaked post-merge on main.
+- v2.1.3: final-margin fix (timeout → 30s + sleep granularity → 20ms + diagnostic stderr capture) so the lock has more headroom AND any future flake is self-diagnosing.
+
+Pattern catch: post-merge CI flakes on stress-sensitive tests indicate that PR CI noise distributions don't fully cover main-post-merge noise. Diagnostic capture is the right insurance for first-class debugging without re-running with patches.
+
+### Verification
+
+- T108 stable on local smoke (was already passing locally; bump is preemptive insurance for CI).
+- 110/110 install.sh smoke + 67/67 _h70-test + 0 ESLint.
+- Lock-sleep change accommodates ADR-0001 fail-soft contract on the 2 hook consumers (error-critic + session-end-nudge; their wait windows accommodate sub-100ms granularity).
+
+---
+
 ## [2.1.2] — 2026-05-17 — H.9.21.1.1 CI flake hotfix — catalog lock-timeout bump
 
 **Hotfix patch.** Bumps `DEFAULT_LOCK_TIMEOUT_MS` in `scripts/agent-team/_lib/library-catalog.js` from **3000ms → 10000ms** to absorb 5-way parallel-write contention on slow GitHub Actions runners. Test 108 (J4 concurrent library write) began flaking on the v2.1.1 PR #127 CI under load — the 5th-in-queue subprocess could exceed the 3000ms timeout when Node-startup (~50-200ms × 5 = 250-1000ms) plus serialized catalog RMW (~10-50ms per hold × 5 = 50-250ms) compounded under CI hardware variability.

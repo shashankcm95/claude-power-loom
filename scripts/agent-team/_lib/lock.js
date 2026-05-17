@@ -96,7 +96,15 @@ function acquireLock(lockPath, opts) {
   // Recursive mode is idempotent fast-path when dir exists (sub-millisecond stat).
   fs.mkdirSync(path.dirname(lockPath), { recursive: true });
   const maxWaitMs = (opts && opts.maxWaitMs) || 3000;
-  const sleepMs = (opts && opts.sleepMs) || 50;
+  // H.9.21.2.1 v2.1.3: sleepMs default reduced 50ms → 20ms after T108 CI flake
+  // post-v2.1.2 merge. Finer-grained polling means the lock-release-to-next-
+  // acquire latency caps at ~20ms vs ~50ms. For 5-way contention this trims
+  // worst-case cumulative wait from ~250ms (5 × 50ms scheduler slack) to
+  // ~100ms. Combined with the library-catalog timeout bump (30000ms) this
+  // gives ample margin on the slowest GitHub Actions runners while preserving
+  // ADR-0001 fail-soft contract on the 2 hook consumers (error-critic +
+  // session-end-nudge: their wait windows accommodate sub-100ms granularity).
+  const sleepMs = (opts && opts.sleepMs) || 20;
   const start = Date.now();
   while (Date.now() - start < maxWaitMs) {
     try {

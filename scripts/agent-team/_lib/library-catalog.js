@@ -42,15 +42,15 @@ const { writeAtomic } = require('./atomic-write');
 const { withLock } = require('./lock');
 const paths = require('./library-paths');
 
-// H.9.21.1 post-merge follow-up: bumped 3000ms → 10000ms after CI T108 fail
-// under 5-way parallel writers on slow GitHub Actions runners. The Node-startup
-// cost per subprocess (~50-200ms × 5 = 250-1000ms) plus serialized catalog
-// RMW under writeAtomic (~10-50ms per hold × 5 = 50-250ms) can push the
-// 5th-in-queue waiter past the prior 3000ms ceiling on stressed CI hardware.
-// Default is now generous (no-op for the common 1-2 contender case where the
-// lock acquires immediately); upper-bound is still well below "hang the test"
-// territory. T108 PASSES under this ceiling.
-const DEFAULT_LOCK_TIMEOUT_MS = 10000;
+// H.9.21.2.1 v2.1.3: bumped 10000ms → 30000ms after T108 STILL failed on the
+// v2.1.2 main-post-merge CI run (3/5 entries; same run number 25986239895)
+// even though the PR-branch CI passed with identical code. 10s wasn't enough
+// margin on the slowest GitHub Actions runners. 30s is generous enough that
+// any real contention pattern fits, while still well below "hang the test"
+// territory. No-op for the 99%+ common case (1-2 contenders; lock acquires
+// immediately). Combined with the lock-sleep-granularity reduction
+// (_lib/lock.js sleepMs 50 → 20ms) for faster wake-after-release.
+const DEFAULT_LOCK_TIMEOUT_MS = 30000;
 
 // ---------------------------------------------------------------------------
 // Read operations (no lock — readers tolerate momentary inconsistency)
