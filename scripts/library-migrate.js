@@ -49,6 +49,7 @@ const path = require('path');
 const os = require('os');
 const paths = require('./agent-team/_lib/library-paths');
 const catalog = require('./agent-team/_lib/library-catalog');
+const personaStore = require('./agent-team/_lib/persona-store');
 const { writeAtomic, writeAtomicString } = require('./agent-team/_lib/atomic-write');
 
 // ===========================================================================
@@ -134,20 +135,24 @@ function main(argv) {
   const rest = args.slice(1);
   if (sub === 'migrate') return cmdMigrate(rest);
   if (sub === 'rollback') return cmdRollback(rest);
+  if (sub === 'partition-personas') return cmdPartitionPersonas(rest);
   process.stderr.write(`library-migrate: unknown subcommand "${sub}"\n`);
   process.exit(2);
 }
 
 function printHelp() {
   process.stdout.write([
-    'library-migrate — H.9.21 v2.1.0 saga-protected migration + rollback',
+    'library-migrate — H.9.21 v2.1.0 + H.9.21.1 v2.1.1 saga-protected migrations',
     '',
     'Usage:',
-    '  library-migrate migrate  [--dry-run] [--run-id <id>]',
-    '  library-migrate rollback --to <run-id>',
+    '  library-migrate migrate            [--dry-run] [--run-id <id>]',
+    '  library-migrate rollback           --to <run-id>',
+    '  library-migrate partition-personas [--dry-run] [--run-id <id>] [--force]',
     '',
-    'Saga: CHECK sentinel → BACKUP atomically → PHASE 1 copy+hash-verify →',
-    '      PHASE 2 symlink-swap → SENTINEL write',
+    'migrate (v2.1.0):       CHECK sentinel → BACKUP atomically → PHASE 1 copy+hash-verify →',
+    '                        PHASE 2 symlink-swap → SENTINEL write',
+    'partition-personas      Split agents/{identities,verdicts}/consolidated.json into',
+    '(H.9.21.1 v2.1.1):      per-persona files for Component H FULL bulkhead. Idempotent.',
     '',
   ].join('\n'));
 }
@@ -347,6 +352,161 @@ function cmdRollback(args) {
 }
 
 // ===========================================================================
+// partition-personas (H.9.21.1 v2.1.1 — Component H FULL bulkhead)
+// ===========================================================================
+//
+// v2.1.0 migration produced consolidated.json files at:
+//   library/sections/agents/stacks/identities/volumes/consolidated.json
+//   library/sections/agents/stacks/verdicts/volumes/consolidated.json
+//
+// v2.1.1 partitions those into per-persona files (one JSON per persona) so
+// concurrent writes from different personas no longer contend on a shared
+// STORE_PATH lock. consolidated.json is preserved as frozen baseline for
+// rollback; per-persona files are the new canonical write target.
+//
+// Idempotency: .partition-complete sentinel records run_id; re-runs with the
+// same run_id exit 0 with no writes. Mirror of v2.1.0's .migrate-complete
+// saga discipline.
+
+function cmdPartitionPersonas(args) {
+  const opts = parseOpts(args);
+  const isDryRun = !!opts['dry-run'];
+  const force = !!opts.force;
+  const runId = opts['run-id'] || generateRunId();
+
+  // Pre-flight: library must be initialized
+  if (!fs.existsSync(paths.libraryManifestPath())) {
+    process.stderr.write(`library-migrate partition-personas: library not initialized at ${paths.libraryRoot()}\n`);
+    process.stderr.write('  → run: node scripts/library.js init\n');
+    process.exit(2);
+  }
+
+  // STEP 1 — CHECK sentinel (idempotency key)
+  const sentinelPath = paths.partitionSentinelPath();
+  if (fs.existsSync(sentinelPath)) {
+    let sentinel;
+    try {
+      sentinel = JSON.parse(fs.readFileSync(sentinelPath, 'utf8'));
+    } catch (err) {
+      process.stderr.write(`library-migrate partition-personas: sentinel corrupt at ${sentinelPath}: ${err.message}\n`);
+      process.exit(2);
+    }
+    if (sentinel.run_id === runId) {
+      process.stdout.write(`library-migrate partition-personas: run_id ${runId} already complete (idempotent skip)\n`);
+      return;
+    }
+    if (!force) {
+      process.stderr.write(`library-migrate partition-personas: sentinel exists with different run_id "${sentinel.run_id}"\n`);
+      process.stderr.write(`  → already partitioned; pass --force to overwrite, or use existing per-persona files\n`);
+      process.exit(2);
+    }
+    process.stdout.write(`library-migrate partition-personas: --force; overwriting prior partition run "${sentinel.run_id}"\n`);
+  }
+
+  process.stdout.write(`library-migrate partition-personas: run_id=${runId}\n`);
+
+  // STEP 2 — Discover + partition
+  const stacks = [
+    { stackId: 'identities', partitioner: _partitionIdentities },
+    { stackId: 'verdicts',   partitioner: _partitionVerdicts   },
+  ];
+  const partitionSummary = [];
+
+  for (const { stackId, partitioner } of stacks) {
+    const consPath = path.join(paths.volumesDir(paths.AGENTS_SECTION_ID, stackId), 'consolidated.json');
+    if (!fs.existsSync(consPath)) {
+      process.stdout.write(`  SKIP  agents/${stackId}: no consolidated.json (nothing to partition)\n`);
+      continue;
+    }
+    let cons;
+    try {
+      cons = JSON.parse(fs.readFileSync(consPath, 'utf8'));
+    } catch (err) {
+      process.stderr.write(`library-migrate partition-personas: corrupt consolidated.json at ${consPath}: ${err.message}\n`);
+      process.exit(2);
+    }
+    const result = partitioner(cons, { stackId, isDryRun });
+    partitionSummary.push({ stackId, personas: result.personas, totalItems: result.totalItems });
+    for (const p of result.lines) process.stdout.write(`  ${p}\n`);
+  }
+
+  if (isDryRun) {
+    process.stdout.write(`\n--dry-run; no writes performed.\n`);
+    process.stdout.write(`  SENTINEL would be written at: ${sentinelPath}\n`);
+    return;
+  }
+
+  // STEP 3 — SENTINEL write (idempotency key)
+  writeAtomic(sentinelPath, {
+    run_id: runId,
+    timestamp: new Date().toISOString(),
+    stacks_partitioned: partitionSummary,
+    schema_version: paths.SUPPORTED_LIBRARY_LAYOUT_VERSION,
+  });
+  process.stdout.write(`library-migrate partition-personas: sentinel written at ${sentinelPath}\n`);
+  process.stdout.write(`library-migrate partition-personas: PARTITION COMPLETE for run ${runId}\n`);
+}
+
+/**
+ * Partition identities consolidated.json by persona-id. Each entry in
+ * `identities` is keyed `persona.name`; payload has `.persona` field. Group
+ * into per-persona volumes; rosters/counters → _metadata.json.
+ */
+function _partitionIdentities(cons, { stackId, isDryRun }) {
+  const byPersona = {};
+  for (const [fullId, data] of Object.entries(cons.identities || {})) {
+    const persona = (data && data.persona) || fullId.split('.')[0];
+    const name = (data && data.name) || fullId.split('.').slice(1).join('.');
+    if (!byPersona[persona]) byPersona[persona] = { identities: {}, version: 1 };
+    byPersona[persona].identities[name] = data;
+  }
+  const lines = [];
+  const totalItems = Object.keys(cons.identities || {}).length;
+  for (const persona of Object.keys(byPersona).sort()) {
+    const count = Object.keys(byPersona[persona].identities).length;
+    lines.push(`WRITE agents/${stackId}/volumes/${persona}.json (${count} identities)`);
+    if (!isDryRun) {
+      personaStore.writePersonaVolume(stackId, persona, byPersona[persona]);
+    }
+  }
+  // Metadata (rosters + counters)
+  if (!isDryRun) {
+    const meta = {
+      version: cons.version || 1,
+      rosters: cons.rosters || {},
+      nextIndex: cons.nextIndex || {},
+    };
+    if (cons.nextChallengerIndex !== undefined) meta.nextChallengerIndex = cons.nextChallengerIndex;
+    personaStore.writeMetadata(stackId, meta);
+  }
+  lines.push(`WRITE agents/${stackId}/_metadata.json (rosters=${Object.keys(cons.rosters || {}).length}, nextIndex keys=${Object.keys(cons.nextIndex || {}).length})`);
+  return { personas: Object.keys(byPersona), totalItems, lines };
+}
+
+/**
+ * Partition verdicts consolidated.json by entry.persona. Each entry in
+ * `patterns` array has `.persona`; group into per-persona volumes.
+ */
+function _partitionVerdicts(cons, { stackId, isDryRun }) {
+  const byPersona = {};
+  for (const p of (cons.patterns || [])) {
+    const persona = p.persona || 'unknown';
+    if (!byPersona[persona]) byPersona[persona] = { patterns: [], version: 1 };
+    byPersona[persona].patterns.push(p);
+  }
+  const lines = [];
+  const totalItems = (cons.patterns || []).length;
+  for (const persona of Object.keys(byPersona).sort()) {
+    const count = byPersona[persona].patterns.length;
+    lines.push(`WRITE agents/${stackId}/volumes/${persona}.json (${count} patterns)`);
+    if (!isDryRun) {
+      personaStore.writePersonaVolume(stackId, persona, byPersona[persona]);
+    }
+  }
+  return { personas: Object.keys(byPersona), totalItems, lines };
+}
+
+// ===========================================================================
 // Helpers
 // ===========================================================================
 
@@ -375,4 +535,12 @@ function generateRunId() {
 
 if (require.main === module) main(process.argv);
 
-module.exports = { main, legacyPathManifest, resolveTargetPath };
+module.exports = {
+  main,
+  legacyPathManifest,
+  resolveTargetPath,
+  // H.9.21.1 v2.1.1 — partition-personas subcommand + internals (test surface)
+  cmdPartitionPersonas,
+  _partitionIdentities,
+  _partitionVerdicts,
+};

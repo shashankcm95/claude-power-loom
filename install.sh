@@ -239,6 +239,9 @@ run_smoke_tests() {
   source "$SCRIPT_DIR/tests/smoke-library-init.sh"
   source "$SCRIPT_DIR/tests/smoke-library-migrate.sh"
   source "$SCRIPT_DIR/tests/smoke-library-concurrent.sh"
+  # H.9.21.1 v2.1.1 Component H FULL bulkhead smoke (T111/T112 — per-persona
+  # 16-way parallel writers + partition-personas round-trip + idempotency).
+  source "$SCRIPT_DIR/tests/smoke-library-bulkhead.sh"
 
 
   echo ""
