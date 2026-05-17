@@ -8,6 +8,31 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [2.1.2] — 2026-05-17 — H.9.21.1.1 CI flake hotfix — catalog lock-timeout bump
+
+**Hotfix patch.** Bumps `DEFAULT_LOCK_TIMEOUT_MS` in `scripts/agent-team/_lib/library-catalog.js` from **3000ms → 10000ms** to absorb 5-way parallel-write contention on slow GitHub Actions runners. Test 108 (J4 concurrent library write) began flaking on the v2.1.1 PR #127 CI under load — the 5th-in-queue subprocess could exceed the 3000ms timeout when Node-startup (~50-200ms × 5 = 250-1000ms) plus serialized catalog RMW (~10-50ms per hold × 5 = 50-250ms) compounded under CI hardware variability.
+
+### What changed
+
+- `scripts/agent-team/_lib/library-catalog.js`: `DEFAULT_LOCK_TIMEOUT_MS = 3000` → `10000`. One-line bump + inline comment documenting the failure mode.
+- No semantic change for the 99%+ common case (1-2 contenders; lock acquires immediately). The ceiling shifts from "tight enough to flake" to "generous enough to absorb CI noise". Still well below "hang the test" territory.
+
+### Why a separate patch (not amended into v2.1.1)
+
+v2.1.1 was already shipped (tag `v2.1.1` at `b695897`). v2.0.x precedent: never amend a public tag — ship a hotfix patch instead.
+
+### Verification
+
+- T108 stable on local smoke (was already passing; bump is preemptive insurance for CI).
+- Combined with v2.1.1 ship-hash chore in single PR (avoids two consecutive direct-pushes to main).
+
+### What this is NOT
+
+- NOT a fix to v2.1.1's bulkhead substrate (`persona-store.js`, registry/recorder 3-way dispatch). Those are independently solid (T111 16-way still passes; never had a timing window issue because per-persona locks are uncontended).
+- NOT a deprecation or roll-back of any v2.1.1 API.
+
+---
+
 ## [2.1.1] — 2026-05-17 — H.9.21.1 Component H FULL per-persona bulkhead partition
 
 **Patch release closing MANDATORY-gate HIGH 6 (deferred from v2.1.0).** Splits the consolidated `agent-identities.json` (52K) + `agent-patterns.json` (132K) into **per-persona files** under the library so concurrent HETS writes from different personas no longer contend on a single shared lock. True bulkhead per `kb:architecture/discipline/stability-patterns §Bulkhead` — failure or contention on one persona's file does not affect any other persona.
