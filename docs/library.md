@@ -76,11 +76,22 @@ The CLI lives at `scripts/library.js`. Invoke via `node scripts/library.js <subc
 | `stacks <section>` | List stacks within a section + volume counts |
 | `stats [--json] [--section X]` | Observability (Component L): volume counts, catalog bytes, last-rebuilt times, schema versions |
 
+### v2.1.1 — Component H FULL bulkhead
+
+`scripts/library-migrate.js` gains a third subcommand:
+
+| Verb | Description |
+|---|---|
+| `partition-personas [--dry-run] [--run-id <id>] [--force]` | Split `agents/{identities,verdicts}/volumes/consolidated.json` into per-persona files. Idempotent via `.partition-complete` sentinel. After partition, the toolkit auto-switches to bulkhead mode (per-persona files + per-persona locks). |
+
+The partition is **opt-in** — installing v2.1.1 alone does NOT trigger it. Run when you're ready for true bulkhead under HETS parallelism. consolidated.json is preserved as frozen baseline for rollback.
+
 ### Deferred to v2.2+
 
 - `daybook` — L0+L1 morning briefing emit
 - `lookup` — catalog search
 - `acquire` / `accession` — verb-overlap reduction in progress
+- `library gc` — garbage-collect consolidated.json after soak period
 
 ## Environment
 
@@ -97,6 +108,20 @@ The CLI lives at `scripts/library.js`. Invoke via `node scripts/library.js <subc
 5. **SENTINEL** — write `.migrate-complete` with `{run_id, timestamp, file_count, schema_version}`
 
 Crash recovery: if interrupted between any two steps, the next `migrate` invocation detects state and resumes safely. Anchored on `kb:architecture/crosscut/idempotency` §Pattern 6 (Saga) + §Filesystem idempotency.
+
+## Bulkhead mode (v2.1.1 — Component H FULL)
+
+`agents/{identities,verdicts}` stacks can run in three modes, dispatched at runtime by the registry/recorder substrate:
+
+| Mode | Triggered by | Storage | Lock |
+|---|---|---|---|
+| **legacy** | `HETS_IDENTITY_STORE` / `HETS_PATTERNS_PATH` env-var set | original single-file STORE_PATH | global STORE_PATH lock |
+| **pre-bulkhead** | env-var unset AND no `.partition-complete` sentinel | library `consolidated.json` (v2.1.0 layout) | `consolidated.json.lock` |
+| **bulkhead** | env-var unset AND sentinel exists | per-persona `<persona>.json` files + `_metadata.json` | per-persona `<persona>.lock` + metadata lock |
+
+The bulkhead mode activates only after `library-migrate partition-personas` writes the sentinel — opt-in. Once active, concurrent HETS writes from different personas hold **disjoint locks** (no contention). Anchored on `kb:architecture/discipline/stability-patterns §Bulkhead`.
+
+Rollback bulkhead: delete the sentinel + per-persona files. `consolidated.json` is preserved as the frozen baseline.
 
 ## Concurrency safety (Component N — architect addition)
 
