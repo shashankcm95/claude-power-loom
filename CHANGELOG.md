@@ -8,6 +8,48 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [2.1.5] — 2026-05-18 — H.9.21.4 MempPalace residual purge (docs sweep)
+
+**Docs + config cleanup patch.** Removes 10 stale MempPalace references that survived the v2.1.0 substrate migration sweep. Pure cleanup — no substrate, code, or test changes.
+
+### Deleted
+
+- `mempalace.yaml` (root) — obsolete MempPalace MCP config file using the old wing/rooms vocabulary. The library substrate has replaced it; the file had no consumer post-v2.1.0.
+
+### Edited (stale references replaced)
+
+| File | Before | After |
+|---|---|---|
+| `README.md` | "Does not enforce MemPalace usage" disclaimer + mempalace-fallback.md path | "Library writes ride on best-effort instruction-following" — points at `docs/library.md` |
+| `docs/architecture/substrate-philosophy.md` | Same MemPalace disclaimer | Updated to library substrate framing |
+| `docs/hooks/overview.md` | `SAVE_PROMPT` description mentioned "store in MemPalace (or fall back to ...)" | Now describes library session-snapshots stack |
+| `swarm/architecture-substrate/auto-loop-infrastructure.md` | "Store in MemPalace MCP (if available); Fallback: write to mempalace-fallback.md" | `library write toolkit/session-snapshots/...` CLI invocation |
+| `skills/prompt-enrichment/SKILL.md` | "Optional: if MemPalace MCP is available, call mcp__mempalace__store_memory" | Local JSON store is canonical (single source of truth) |
+| `docs/README.md` | Link to deleted `reference/mempalace-integration.md` | Link to `docs/library.md` |
+| `docs/reference/README.md` | Same broken link | Updated to library doc |
+| `scripts/claude-toolkit-status.sh` | "MemPalace MCP" section checking `.mcp.json` + `mempalace` binary | "Library memory organizer" section checking `library.json` + migration sentinel + partition sentinel |
+| `docs/install/legacy-installer.md` | `pip3 install mempalace` + `.mcp.json` MempPalace MCP config | `node scripts/library.js init` + `library-migrate.js migrate` + pointer to library doc |
+
+### Kept (intentional credit / historical / migration context)
+
+- `ATTRIBUTION.md`, `docs/development/attribution.md` — credits MempPalace as conceptual inspiration
+- `docs/concepts/library-vs-mempalace.md` — design-delta explainer
+- `CHANGELOG.md` — historical migration record (this entry + prior)
+- `swarm/thoughts/shared/HT-state.md`, historical plans, `CONTRIBUTING.md` ship-table — historical state record
+- `scripts/library-migrate.js`, `scripts/library.js`, `scripts/agent-team/_lib/library-paths.js`, `tests/smoke-library-*.sh`, `hooks/scripts/pre-compact-save.js`, `rules/core/self-improvement.md`, `skills/agent-team/SKILL.md`, `docs/library.md` — reference `mempalace-fallback.md` as the LEGACY PATH that the migration code handles (necessary for the symlink-strangler-fig pattern to work)
+
+### Verification
+
+- 110/110 install.sh smoke + 67/67 _h70-test (no functional change)
+- 0 ESLint errors / 0 eslint-disable (ADR-0006 preserved)
+- 0 broken doc links (deleted-mempalace-integration.md links replaced with valid library.md targets)
+
+### Why this didn't happen in v2.1.0
+
+The MANDATORY-gate plan for v2.1.0 listed Component I (drop MempPalace from rules + docs) but it was scoped narrowly — caught the rule files + 2 main docs but missed `mempalace.yaml` (config), `claude-toolkit-status.sh` (diagnostic), and 6 secondary docs. v2.1.5 closes the gap.
+
+---
+
 ## [2.1.4] — 2026-05-18 — H.9.21.3.1 _lib/lock.js empty-content race fix (the real bug)
 
 **Found the actual lock-correctness bug** that v2.1.2 + v2.1.3 were trying to band-aid with timeouts. v2.1.3's T108 diagnostic capture revealed `exit_codes=0 0 0 0 0` — ALL 5 subprocesses succeeded yet only 3/5 catalog entries persisted. That symptom is impossible under proper mutual exclusion; it means two processes simultaneously held the lock.

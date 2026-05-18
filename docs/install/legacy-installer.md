@@ -36,27 +36,23 @@ If you used `install.sh`, hook scripts copy automatically but the configuration 
 
 **If you used the plugin install path** (`/plugin marketplace add ...`), you can skip this step entirely — `hooks/hooks.json` ships with the plugin and is auto-loaded by Claude Code's plugin loader using `${CLAUDE_PLUGIN_ROOT}` substitution. No manual `settings.json` editing required.
 
-### MemPalace Setup (Optional)
+### Library memory organizer (v2.1.0+)
+
+`pre-compact-save.js` requires the library substrate to be initialized.
+Run once after install:
 
 ```bash
-pip3 install mempalace
-mempalace init --yes
+node ~/Documents/claude-toolkit/scripts/library.js init
+node ~/Documents/claude-toolkit/scripts/library-migrate.js migrate  # symlinks legacy paths
 ```
 
-Add to `~/.claude/.mcp.json`:
-```json
-{
-  "mcpServers": {
-    "mempalace": {
-      "command": "mempalace",
-      "args": ["mcp"],
-      "env": {}
-    }
-  }
-}
-```
+See [docs/library.md](../library.md) for the full Section/Stack/Catalog/Volume
+substrate reference.
 
-Restart Claude Code to connect the MCP server.
+> The pre-v2.1.0 MempPalace MCP integration was removed in v2.1.0; the in-house
+> library substrate is now canonical. See [CHANGELOG.md](../../CHANGELOG.md#210--20260513--h921-in-house-library-memory-organizer-mandatory-gate-substrate-fundament)
+> v2.1.0 entry + [docs/concepts/library-vs-mempalace.md](../concepts/library-vs-mempalace.md)
+> for the design-delta rationale.
 
 ---
 

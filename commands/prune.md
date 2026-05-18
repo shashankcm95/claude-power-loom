@@ -23,11 +23,11 @@ List `~/.claude/agents/` and `~/.claude/skills/` and flag:
 - Agents/skills whose scope overlaps significantly
 - Agents/skills that were forged for one-off tasks
 
-### 4. Check MemPalace
-If available, search MemPalace for:
-- Stored contexts with no recent access
-- Outdated domain knowledge
-- Duplicate or conflicting stored memories
+### 4. Check library volumes
+Search the library at `~/.claude/library/sections/toolkit/stacks/session-snapshots/` and other narrative stacks for:
+- Stored contexts with no recent access (`library stats` shows last-modified)
+- Outdated domain knowledge in older session-snapshot volumes
+- Duplicate or conflicting catalog entries (`library ls toolkit/<stack>`)
 
 ### 5. Present Findings
 Show a categorized list:

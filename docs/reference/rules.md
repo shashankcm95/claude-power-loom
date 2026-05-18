@@ -13,7 +13,7 @@ Rules are markdown files injected into every session's context. They shape Claud
 | `core/workflow.md` | Conventional commits, feature branches, <400-line PRs, 80%+ coverage on critical paths, code review checklist (security → correctness → performance → readability) |
 | `core/research-mode.md` | Epistemic honesty (say "I don't know" if no source), Read files before claiming what's in them, cite every factual claim about external libs/APIs |
 | `core/self-improvement.md` | Gap detection (throttled — observe silently, batch for session-end), pre-compact awareness, pointer to skill-forge for procedure |
-| `core/prompt-enrichment.md` | Vagueness detection criteria, skip patterns, MemPalace fallback path, sub-agent enrichment requirement |
+| `core/prompt-enrichment.md` | Vagueness detection criteria, skip patterns, library prompt-patterns lookup path, sub-agent enrichment requirement |
 | `typescript/style.md` | Type discipline, Zod validation at boundaries, no console.log in production code |
 | `web/react-nextjs.md` | Server/client component boundaries, hooks rules, key prop discipline, Server Action conventions |
 

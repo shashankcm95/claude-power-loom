@@ -3,8 +3,8 @@
 // Prompt pattern storage CLI — used by the prompt-enrichment skill to
 // persist approved enrichment patterns and look them up on future prompts.
 //
-// Storage: ~/.claude/prompt-patterns.json (local fallback when MemPalace
-// MCP isn't available — the canonical location for the toolkit).
+// Storage: ~/.claude/prompt-patterns.json (canonical local JSON store;
+// post-v2.1.0 this is a symlink to the library prompt-patterns stack).
 //
 // Subcommands:
 //   store    — record a new pattern or increment its approval count

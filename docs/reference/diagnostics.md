@@ -12,7 +12,7 @@ bash ~/Documents/claude-toolkit/scripts/claude-toolkit-status.sh
 This shows:
 - Which components are installed and where
 - Which hooks are configured in `settings.json`
-- Whether MemPalace MCP is configured and the CLI is installed
+- Whether the library substrate is initialized (`library.json` present) + migration sentinel + partition sentinel state
 - Recent hook activity from `~/.claude/logs/` (proves hooks fired in real sessions)
 - Whether local fallback files exist (`prompt-patterns.json`, `checkpoints/`)
 - Live smoke checks confirming scripts work standalone

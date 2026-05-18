@@ -1897,7 +1897,7 @@ mira's 5 bug findings + theo's 5 fix designs = 1:1 mapping; all fixes verified. 
 **Why no architect spawn**: route-decide gate said root (score=0.075) — H.4.3 is a small, well-bounded change extending an established pattern (H.7.5's forcing-instruction architecture). The discipline check fired correctly; over-routing on this would have been the BACKLOG-cleanup-class waste H.7.3 was designed to prevent.
 
 **H.4.3 follow-ups (deferred)**:
-- **Pattern store similarity → embedding-based** (Layer B from earlier discussion): replace Jaccard with embedding-cosine when MemPalace MCP is available; fall back to Jaccard otherwise. Addresses the OTHER gap user flagged (paraphrased intents in pattern lookup). Defer until pattern store has enough usage to justify.
+- **Pattern store similarity → embedding-based** (Layer B from earlier discussion): replace Jaccard with embedding-cosine. Original framing referenced "when MemPalace MCP is available" — OBSOLETE since v2.1.0 substrate migration (MempPalace MCP removed). Would now require an explicit embedding-model dependency decision. Addresses the OTHER gap user flagged (paraphrased intents in pattern lookup). Defer until pattern store has enough usage to justify.
 - **Vague-keyword "go to" gap**: `"go to the file at /tmp/x"` is genuinely vague (which action?) but slips through because no `\bgo\s+to\b` pattern in `VAGUE_KEYWORDS`. Add as `\bgo\s+to\b` with no following action verb.
 - **`do X` not in vague-keywords**: `"do the migration on the database"` is vague (which migration? what action?). Extend `VAGUE_KEYWORDS` with `\bdo\s+the\s+\w+\s+(on|with|to)\b` patterns.
 
@@ -2862,13 +2862,9 @@ Target audience: developer who clones the toolkit for a real product project (no
 
 **Estimate**: ~15 min.
 
-### CS-9 — MemPalace integration for HETS state (optional)
+### CS-9 — ~~MemPalace integration for HETS state~~ OBSOLETE (closed by v2.1.0)
 
-**Status**: HETS state lives in local JSON files; MemPalace MCP available but unused for HETS.
-
-**Scope**: Optional adapter layer where `agent-identities.json`, `agent-patterns.json`, and the kb manifest can route through MemPalace (when configured) for cross-session semantic memory + cross-machine sync. Local-file fallback remains the default.
-
-**Estimate**: ~2 hrs (define interface + implement adapters; keep local as fallback per existing toolkit pattern).
+**Status**: CLOSED OBSOLETE — v2.1.0 H.9.21 introduced the in-house library substrate (Section/Stack/Catalog/Volume layout). HETS state (`agent-identities.json`, `agent-patterns.json`) is now migrated into the library at `agents/stacks/{identities,verdicts}/` and continues to live as local JSON. The original "MempPalace MCP for cross-session semantic memory" goal was superseded by the library substrate's local-files-only design. No external MCP/vector-DB dependency required. See CHANGELOG v2.1.0 entry + `docs/library.md`.
 
 ### CS-10 — chaos-test --pattern as actual CLI orchestration
 

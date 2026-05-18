@@ -32,11 +32,16 @@ Based on the description, determine:
 - `~/Documents/claude-toolkit/skills/{name}/SKILL.md`
 - `~/.claude/skills/{name}/SKILL.md`
 
-### 4. Store in MemPalace
-If MemPalace MCP is available, store the agent/skill context:
+### 4. Record provenance in library
+Write a forge-provenance volume to the library so future sessions can reconstruct the why:
 - What task triggered creation
 - Domain conventions discovered
 - Initial design decisions and rationale
+
+```bash
+node ~/Documents/claude-toolkit/scripts/library.js write toolkit/decisions/forge-<name>-<YYYY-MM-DD> \
+  --form narrative --topic forge,<persona-or-skill-name> --entities <related-entities>
+```
 
 ### 5. Confirm
 Report what was created, where it lives, and how to invoke it.

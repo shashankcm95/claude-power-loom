@@ -58,11 +58,11 @@ The user explicitly called out one moment: when they asked a CPU question and Cl
 - Claude going beyond the stated scope
 - Claude inferring intent from ambiguous prompts without checking
 
-### 3. MemPalace instructions ignored
-The pre-compact save prompt and skill-forge skill say to store things in MemPalace. Did Claude ever actually do this? Or just acknowledge the instruction?
+### 3. Library snapshot instructions ignored
+The pre-compact save prompt and skill-forge skill say to write a session snapshot to the library at `~/.claude/library/sections/toolkit/stacks/session-snapshots/`. Did Claude ever actually do this? Or just acknowledge the instruction?
 
 ### 4. Research-mode citation gaps
-Claude made factual claims about Claude Code APIs, MiroFish, MemPalace, hook events, etc. For how many did Claude provide a real citation (file:line, URL)? For how many was it just speculation presented as fact?
+Claude made factual claims about Claude Code APIs, MiroFish, library substrate, hook events, etc. For how many did Claude provide a real citation (file:line, URL)? For how many was it just speculation presented as fact?
 
 ### 5. Self-improvement loop participation
 The self-improvement rule says Claude should observe gap signals silently and surface at session-end. Did session-end reviews ever happen? What patterns went uncaught?
@@ -83,7 +83,7 @@ Save findings to: `~/Documents/claude-toolkit/swarm/run-state/{run-id}/05-honest
 
 ## Methodology
 - Transcript size: N messages, ~M tokens
-- Searched for: prompt-enrichment violations, scope creep, missing citations, MemPalace skips
+- Searched for: prompt-enrichment violations, scope creep, missing citations, library-snapshot skips
 - Approach: {how you sampled the transcript}
 
 ## Findings
@@ -100,8 +100,8 @@ For each instance:
 ### 2. Scope Creep Instances (count: N)
 [Same format]
 
-### 3. MemPalace Skips (count: N)
-[Same format]
+### 3. Library Snapshot Skips (count: N)
+[Same format — count instances where pre-compact SAVE_PROMPT instructed library write but Claude only acknowledged]
 
 ### 4. Citation Gaps (count: N)
 Sample of factual claims made without sources.
@@ -132,7 +132,7 @@ What was the single biggest moment in this transcript where rule-skipping caused
 - Times Claude followed prompt enrichment correctly: X
 - Times Claude skipped prompt enrichment: Y
 - Compliance rate: X / (X+Y)
-- Same for: research mode, self-improvement, MemPalace, citations
+- Same for: research mode, self-improvement, library-snapshot writes, citations
 ```
 
 ## Constraints

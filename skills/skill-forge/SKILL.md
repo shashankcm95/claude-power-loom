@@ -91,7 +91,7 @@ After creating the agent/skill, append a brief comment block to the agent file d
 - Date and project
 - Initial design decisions
 
-This stays in the file — Claude reads it on every invocation. If MemPalace MCP is available, you may also `store_memory` with the agent name as the room for cross-session searchability, but the agent file itself is the source of truth.
+This stays in the file — Claude reads it on every invocation. Optionally write a forge-provenance volume to `~/.claude/library/sections/toolkit/stacks/decisions/` for cross-session searchability via the library catalog, but the agent file itself is the source of truth.
 
 **What this is NOT**: agents do NOT accumulate personality or learn across invocations. Each `Agent` tool call spawns a fresh subagent with the system prompt as written in its `.md` file. To "evolve" an agent, you must explicitly edit the `.md` file (use `/evolve {name}` for the workflow).
 

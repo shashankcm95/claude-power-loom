@@ -40,7 +40,7 @@ The workflow layer (17 skills covering domain workflows).
 - [Commands reference](reference/commands.md) — Slash commands shipped with the plugin
 - [Rules reference](reference/rules.md) — Always-on guidance rules
 - [Diagnostics](reference/diagnostics.md) — Verifying install health, debugging hooks, checking trust state
-- [MemPalace integration](reference/mempalace-integration.md) — Optional cross-session semantic search
+- [Library memory organizer](library.md) — Section/Stack/Catalog/Volume substrate (v2.1.0+)
 
 ## Development
 

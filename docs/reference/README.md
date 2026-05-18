@@ -5,6 +5,6 @@
 - [Commands](commands.md) — Slash commands shipped with the plugin
 - [Rules](rules.md) — Always-on guidance rules
 - [Diagnostics](diagnostics.md) — Verifying install health, debugging hooks, checking trust state
-- [MemPalace integration](mempalace-integration.md) — Optional cross-session semantic search
+- [Library memory organizer](../library.md) — Section/Stack/Catalog/Volume substrate (v2.1.0+)
 
 > Up: [docs/](..)

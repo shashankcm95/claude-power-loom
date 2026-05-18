@@ -60,7 +60,7 @@ Read all rules and skills. Find any cases where:
 ### 3. Missing Components
 What feature is described as "should happen" in a rule or skill but has no actual implementation?
 Examples to check:
-- Does any code path actually call MemPalace MCP tools?
+- Does any code path actually invoke `library write` or `library-migrate` for the documented substrate flows?
 - Does any script actually promote patterns from memory to rules?
 - Does any agent actually evolve over time?
 - Does the self-improvement loop ever close?
