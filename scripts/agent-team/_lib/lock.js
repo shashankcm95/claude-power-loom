@@ -109,7 +109,27 @@ function acquireLock(lockPath, opts) {
   while (Date.now() - start < maxWaitMs) {
     try {
       fs.writeFileSync(lockPath, String(process.pid), { flag: 'wx' });
-      return true;
+      // H.9.21.3.1 v2.1.4 — VERIFY-AFTER-WRITE. The wx flag claims the file
+      // atomically, but the race window between create() and write(pid) is
+      // microseconds during which the file exists but is EMPTY. A concurrent
+      // process reading the lockfile at that moment would have seen empty
+      // content; in prior versions, the empty-content path triggered an unlink
+      // ("garbage in lock file → assume corrupt"), letting that other process
+      // STEAL our lock without our awareness. Symptom: T108 reports
+      // `exit_codes=0 0 0 0 0` (all subprocesses succeed) but catalog has 3/5
+      // entries (2 RMWs collided under simultaneous "ownership"). Fix: read
+      // back lockfile content; if it doesn't contain our PID, we were stolen.
+      // Treat as failed acquisition; sleep + retry.
+      try {
+        const verify = fs.readFileSync(lockPath, 'utf8').trim();
+        if (parseInt(verify, 10) === process.pid) {
+          return true;  // Confirmed ownership
+        }
+        // Someone unlinked + re-acquired during our race window. Sleep + retry.
+      } catch {
+        // Lockfile vanished between our write and our verify (someone unlinked it).
+        // Sleep + retry; eventually we'll wx-create it again or find it stable.
+      }
     } catch {
       // Stale lock recovery: if the locking pid is gone, take it over.
       // H.3.6 (CS-2 code-reviewer.jade C-1): the prior version only checked
@@ -119,20 +139,32 @@ function acquireLock(lockPath, opts) {
       // deadlocks against itself until timeout. Now: if pid === process.pid,
       // treat as stale (we'd never legitimately hold our own lock through
       // a fresh withLock() call) and reclaim.
+      //
+      // H.9.21.3.1 v2.1.4 CRITICAL FIX: the prior version unlinked on EMPTY
+      // content ("garbage in lock file"). That broke under contention because
+      // writeFileSync wx has a microsecond window where the file exists but
+      // is empty (between open() and the write()). A concurrent process
+      // reading at that moment would unlink the legitimate lock-holder's
+      // file, then both processes would "succeed" → simultaneous ownership →
+      // lost RMW writes (T108 `exit_codes=0 0 0 0 0` with 3/5 catalog entries).
+      // Fix: empty content is now treated as a TRANSIENT race window (the
+      // writer is mid-write); sleep + retry without unlinking. True corruption
+      // (process crashed mid-write leaving empty file) requires manual removal;
+      // we trade auto-recovery-from-rare-crash for correctness-under-contention.
       try {
         const pid = parseInt(fs.readFileSync(lockPath, 'utf8'), 10);
         if (Number.isNaN(pid) || !pid) {
-          // Garbage in lock file → assume corrupt + reclaim
-          try { fs.unlinkSync(lockPath); } catch { /* race: another process won the reclaim */ }
-          continue;
-        }
-        if (pid === process.pid) {
+          // Empty/garbage content — transient race window OR stuck lockfile.
+          // DON'T unlink (would steal a live owner's lock). Sleep + retry.
+          // If truly corrupt, manual `rm <lockfile>` is the recovery path.
+        } else if (pid === process.pid) {
           // Self-PID orphan from a prior incarnation — reclaim
           try { fs.unlinkSync(lockPath); } catch { /* race: another reclaim won */ }
           continue;
+        } else {
+          try { process.kill(pid, 0); } // throws if pid is gone
+          catch { try { fs.unlinkSync(lockPath); } catch { /* race: lock already reclaimed */ } continue; }
         }
-        try { process.kill(pid, 0); } // throws if pid is gone
-        catch { try { fs.unlinkSync(lockPath); } catch { /* race: lock already reclaimed */ } continue; }
       } catch { /* lock disappeared between check and read */ }
       // H.9.10: Atomics.wait true-sleep replaces H.9.7 busy-wait spin loop.
       // _waitSleep encapsulates NaN-guard (code-reviewer HIGH-CR1) + happy
