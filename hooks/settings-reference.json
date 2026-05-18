@@ -125,7 +125,7 @@
             "timeout": 10
           }
         ],
-        "description": "Checkpoint context to file + instruct MemPalace save before compression",
+        "description": "Checkpoint context to file + instruct library session-snapshot save before compression",
         "id": "pre:compact-save"
       }
     ],

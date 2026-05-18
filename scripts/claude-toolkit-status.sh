@@ -1,6 +1,6 @@
 #!/bin/bash
 # claude-toolkit-status — diagnose what's actually working
-# Run this anytime to see ground truth on hooks, MemPalace, and recent activity.
+# Run this anytime to see ground truth on hooks, library substrate, and recent activity.
 
 set -uo pipefail
 
@@ -59,27 +59,26 @@ else
   fail "settings.json missing"
 fi
 
-# === MemPalace MCP ===
-section "MemPalace MCP"
-if [ -f "$CLAUDE_DIR/.mcp.json" ]; then
-  has_mp=$(node -e "
-    try {
-      const s = require('$CLAUDE_DIR/.mcp.json');
-      console.log(s.mcpServers && s.mcpServers.mempalace ? 'configured' : 'missing');
-    } catch { console.log('error'); }
-  " 2>/dev/null)
-  if [ "$has_mp" = "configured" ]; then
-    ok ".mcp.json has mempalace entry"
-    if command -v mempalace &>/dev/null; then
-      ok "mempalace CLI installed: $(mempalace --version 2>&1 | head -1)"
-    else
-      fail "mempalace CLI not found on PATH (pip install mempalace)"
-    fi
+# === Library memory organizer (v2.1.0+) ===
+section "Library memory organizer"
+LIBRARY_ROOT="$CLAUDE_DIR/library"
+LIBRARY_MANIFEST="$LIBRARY_ROOT/library.json"
+MIGRATE_SENTINEL="$LIBRARY_ROOT/.migrate-complete"
+if [ -f "$LIBRARY_MANIFEST" ]; then
+  ok "library initialized at $LIBRARY_ROOT"
+  if [ -f "$MIGRATE_SENTINEL" ]; then
+    ok "migration sentinel present (.migrate-complete) — legacy paths symlinked to library volumes"
   else
-    fail ".mcp.json missing mempalace entry"
+    warn "no .migrate-complete sentinel — run 'node scripts/library-migrate.js migrate' to symlink legacy paths"
+  fi
+  PARTITION_SENTINEL="$LIBRARY_ROOT/.partition-complete"
+  if [ -f "$PARTITION_SENTINEL" ]; then
+    ok "bulkhead mode active (.partition-complete) — per-persona file partition enabled"
+  else
+    warn "pre-bulkhead mode — agents stack uses v2.1.0 consolidated.json; optional: 'node scripts/library-migrate.js partition-personas'"
   fi
 else
-  warn ".mcp.json not found (MemPalace not configured — toolkit uses local fallbacks)"
+  fail "library not initialized — run 'node scripts/library.js init' (required by pre-compact-save.js v2.1.0+)"
 fi
 
 # === Hook activity logs ===

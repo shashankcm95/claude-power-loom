@@ -6,7 +6,7 @@
 >
 > **Hooks before, persistence around, verification after** — compensates for LLM non-determinism at the seams without trying to replace the LLM.
 
-[![CI](https://github.com/shashankcm95/claude-power-loom/actions/workflows/ci.yml/badge.svg)](https://github.com/shashankcm95/claude-power-loom/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-2.1.4-green.svg)](CHANGELOG.md) [![Plugin](https://img.shields.io/badge/Claude_Code-plugin-orange.svg)](.claude-plugin/plugin.json)
+[![CI](https://github.com/shashankcm95/claude-power-loom/actions/workflows/ci.yml/badge.svg)](https://github.com/shashankcm95/claude-power-loom/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-2.1.5-green.svg)](CHANGELOG.md) [![Plugin](https://img.shields.io/badge/Claude_Code-plugin-orange.svg)](.claude-plugin/plugin.json)
 
 ## Install
 
@@ -143,7 +143,7 @@ Deep-dive documentation is organized in **[docs/](docs/)**:
 - **[Agents](docs/agents/)** — specialist persona overview
 - **[Skills](docs/skills/)** — workflow layer overview
 - **[Install](docs/install/)** — legacy installer reference + troubleshooting
-- **[Reference](docs/reference/)** — project structure, diagnostics, commands, stability commitment, MemPalace integration
+- **[Reference](docs/reference/)** — project structure, diagnostics, commands, stability commitment, library memory organizer
 - **[Development](docs/development/)** — extending power-loom, attribution
 
 Or jump to: **[docs/README.md](docs/README.md)** for the full index.
@@ -158,7 +158,7 @@ What this plugin does NOT do:
 
 - ⚠️ **Auto-promotion is partial — load-bearing promotions still need explicit `/self-improve`.** As of H.4.1, the self-improve loop runs automatically: low-risk graduations (observation-log, memory-consolidation) auto-execute at the 10+-occurrence threshold; medium/high-risk promotions (skill-candidate, rule-candidate, agent-evolution) **always queue for approval**. Memory→Rule writes are load-bearing and require explicit `/self-improve` invocation.
 
-- ❌ **Does not enforce MemPalace usage.** When MemPalace is configured, the toolkit suggests storing things there; whether Claude does is up to Claude. The `pre-compact-save.js` hook deterministically writes the fallback file at `~/.claude/checkpoints/mempalace-fallback.md`, but MemPalace itself stays suggested-not-enforced.
+- ⚠️ **Library writes ride on best-effort instruction-following.** As of v2.1.0, `pre-compact-save.js` injects a `SAVE_PROMPT` telling Claude to write a session snapshot to `~/.claude/library/sections/toolkit/stacks/session-snapshots/`. Whether Claude does it well is best-effort — the deterministic guarantee is just the prompt being injected (and the substrate being initialized; the hook fails-closed if `library.json` is missing). See [docs/library.md](docs/library.md).
 
 These limitations are intentional architecture decisions, not gaps to fix.
 

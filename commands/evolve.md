@@ -15,7 +15,7 @@ Read the current agent/skill file:
 
 ### 2. Gather Learnings
 Collect what's changed since last update:
-- Check MemPalace for stored session outcomes involving this agent/skill
+- Check library volumes for stored session outcomes involving this agent/skill (`library ls toolkit/session-snapshots` + grep relevant entries)
 - Check MEMORY.md for relevant pattern entries
 - Ask user for specific feedback or improvements
 
@@ -33,9 +33,14 @@ Update both locations:
 - `~/.claude/` (active installation)
 
 ### 5. Record Evolution
-Store the update in MemPalace:
+Write an evolution-record volume to the library:
 - What changed and why
 - Timestamp of evolution
 - Link to triggering session/task
+
+```bash
+node ~/Documents/claude-toolkit/scripts/library.js write toolkit/decisions/evolve-<name>-<YYYY-MM-DD> \
+  --form narrative --topic evolve,<agent-or-skill-name> --entities <related-entities>
+```
 
 Report the diff of changes made.

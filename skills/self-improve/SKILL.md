@@ -18,7 +18,7 @@ Work → Capture (auto, multi-trigger) → Consolidate (auto, threshold-based) �
 ### 1. Capture (Automatic, multi-trigger)
 - **Stop hook** (every assistant turn): `auto-store-enrichment.js` bumps per-signal counters in `~/.claude/self-improve-counters.json` (file paths, slash commands, skill invocations). Cheap, deterministic, no LLM.
 - **Auto-memory** records patterns in `MEMORY.md` during sessions (existing).
-- **MemPalace** stores verbatim session content via pre-compact hooks (existing).
+- **Library session-snapshots** capture verbatim session content via pre-compact hooks (v2.1.0+; see `docs/library.md`).
 - **Forged agents/skills** accumulate personality over time (existing).
 
 ### 2. Consolidate (Automatic, threshold-based)
@@ -51,11 +51,11 @@ Identify patterns that appear 2+ times
 Flag stale entries that no longer apply
 ```
 
-**Check MemPalace (if MCP available):**
+**Check library session-snapshots + decisions:**
 ```
-Search for recurring patterns across sessions
-Find forged agents/skills that succeeded or failed
-Identify conventions that emerged organically
+library ls toolkit/session-snapshots  # recurring patterns across sessions
+library ls toolkit/decisions          # forged agents/skills successes/failures
+grep across narrative volumes for conventions that emerged organically
 ```
 
 **Check existing rules:**
@@ -74,11 +74,11 @@ When a pattern is proven (recurring, successful, stable):
 
 **Pattern → Skill**: Convert a recurring multi-step workflow into a skill
 - Write to `~/.claude/skills/{name}/SKILL.md`
-- Store context in MemPalace for semantic recall
+- Optionally write a forge-provenance volume to `toolkit/decisions/` in the library for cross-session searchability
 
 **Pattern → Agent**: When a domain needs persistent expertise
 - Use the Skill Forge to create a specialized agent
-- Give it accumulated personality from MemPalace
+- Embed accumulated personality directly in the agent's `.md` file (the agent file is the source of truth; library volumes provide cross-session context)
 
 ### 4. Prune
 Remove what's no longer useful:
@@ -115,10 +115,13 @@ Before promoting anything:
 - Is it general enough to apply beyond one specific project?
 - Does it conflict with existing rules?
 
-## Integration with MemPalace
+## Integration with library substrate (v2.1.0+)
 
-MemPalace is the backbone:
-- **Store**: Session learnings, agent personalities, task outcomes
-- **Search**: "What did we learn about auth flows?" → semantic recall
-- **Scope**: Project-specific vs global patterns (separate wings)
-- **Timeline**: When was this pattern last relevant?
+The library at `~/.claude/library/` is the cross-session memory backbone:
+
+- **Session snapshots** (`sections/toolkit/stacks/session-snapshots/`): verbatim session content captured by `pre-compact-save.js` SAVE_PROMPT
+- **Decisions** (`sections/toolkit/stacks/decisions/`): forge/evolve provenance + ADR-style records
+- **Catalog** (`_catalog.json` per stack): topic + entities + last-modified + content_hash for searchable index
+- **CLI**: `node ~/Documents/claude-toolkit/scripts/library.js ls toolkit/<stack>` + `library read <vol>` + `library stats`
+
+See `docs/library.md` for the full Section/Stack/Catalog/Volume reference.

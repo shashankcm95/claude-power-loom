@@ -45,8 +45,8 @@ The PreCompact hook also triggers a self-improve consolidation scan deterministi
 
 When context is approaching limit:
 - Save key decisions and patterns to MEMORY.md
-- Store in MemPalace MCP (if available)
-- Fallback: write to `~/.claude/checkpoints/mempalace-fallback.md`
+- Write a session snapshot to the library: `node scripts/library.js write toolkit/session-snapshots/<YYYY-MM-DD>-<slug> --form narrative --topic <a,b,c>`
+- The pre-compact-save.js hook fires this automatically via the SAVE_PROMPT (see `docs/library.md`)
 
 ## Forging procedure substrate
 

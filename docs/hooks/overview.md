@@ -44,7 +44,7 @@ Uses `git rev-parse --show-toplevel` to resolve absolute paths — works correct
 
 Two-phase save before context compression:
 - **Deterministic phase**: Extracts file paths from the conversation (regex-based, deduplicated, capped at 20), writes a JSON checkpoint to `~/.claude/checkpoints/last-compact.json` and appends to `compact-history.jsonl` (rolling 50 entries).
-- **LLM phase**: Appends a `SAVE_PROMPT` instruction telling Claude to update project `MEMORY.md`, store learnings in MemPalace (or fall back to `~/.claude/checkpoints/mempalace-fallback.md`), and capture self-improvement candidates.
+- **LLM phase**: Appends a `SAVE_PROMPT` instruction telling Claude to update project `MEMORY.md`, write a session snapshot to the library at `~/.claude/library/sections/toolkit/stacks/session-snapshots/volumes/<YYYY-MM-DD>-<slug>.md`, and capture self-improvement candidates. See `docs/library.md`.
 
 The deterministic phase always succeeds, even if the LLM ignores the prompt. Instructions go *after* the input to avoid polluting the compacted summary.
 
@@ -70,7 +70,7 @@ Heuristic vagueness detection runs on every user prompt before Claude processes 
 - `make it better/faster/cleaner` patterns
 - `do something/the thing/stuff` patterns
 
-When vague, injects `[PROMPT-ENRICHMENT-GATE]` text that forces Claude to: check MemPalace for similar past prompts, build the 4-part enriched prompt (Instructions / Context / Input Data / Output Indicator), show it to the user for approval, store the pattern on approval.
+When vague, injects `[PROMPT-ENRICHMENT-GATE]` text that forces Claude to: look up similar past prompts via `~/.claude/scripts/prompt-pattern-store.js lookup`, build the 4-part enriched prompt (Instructions / Context / Input Data / Output Indicator), show it to the user for approval, store the pattern on approval.
 
 **Detection accuracy**: 24/24 on test corpus.
 

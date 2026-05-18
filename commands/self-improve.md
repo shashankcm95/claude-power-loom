@@ -16,11 +16,11 @@ Read all files in `~/.claude/rules/toolkit/` and check:
 - Are there gaps — patterns we consistently follow but haven't codified?
 - Do any rules duplicate each other?
 
-### 3. Scan MemPalace
-If MemPalace MCP is available, search for:
-- Recurring patterns across stored sessions
-- Forged agents/skills and their success/failure records
-- Conventions that emerged organically
+### 3. Scan library session-snapshots + decisions
+Search the library for cross-session patterns:
+- `library ls toolkit/session-snapshots` — recurring patterns across stored sessions
+- `library ls toolkit/decisions` — forged agents/skills and their success/failure records
+- Conventions that emerged organically across multiple narrative volumes
 
 ### 4. Recommend Promotions
 For each proven pattern, recommend one of:

@@ -37,7 +37,7 @@ If the hook injects a forcing instruction for a non-skipped vague prompt, Claude
 
 ## Pattern-store auto-apply substrate
 
-When vague prompts ARE detected, Claude's enrichment workflow consults the `prompt-patterns` MemPalace room (or `~/.claude/prompt-patterns.json` fallback) for recognized patterns:
+When vague prompts ARE detected, Claude's enrichment workflow consults `~/.claude/prompt-patterns.json` (a symlink to the library `prompt-patterns` stack post-v2.1.0 migration) for recognized patterns:
 
 1. Pattern found with **5+ approvals**: auto-apply, show one-line summary, proceed
 2. Pattern found with **fewer approvals**: show enriched prompt, ask "Look right?"

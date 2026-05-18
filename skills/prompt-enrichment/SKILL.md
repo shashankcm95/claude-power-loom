@@ -56,7 +56,7 @@ Analyze the raw prompt and select the appropriate prompting techniques:
 | Reasoning-heavy task (debug, architect, optimize) | **Chain of Thought** | Forces step-by-step reasoning, reduces errors |
 | Format-sensitive output (API design, schema, config) | **Few-Shot** | Examples anchor the expected shape |
 | Task with known failure modes | **Negative Prompting** | "Do NOT do X" prevents repeat mistakes |
-| Task needing project context | **RAG** | Pull from MemPalace, MEMORY.md, or local files |
+| Task needing project context | **RAG** | Pull from library volumes, MEMORY.md, or local files |
 | Simple unfamiliar task | **Zero-Shot** | Clear instructions suffice without examples |
 
 Multiple techniques can combine. Chain-of-thought + negative prompting is common for debugging.
@@ -72,7 +72,7 @@ Structure the enriched prompt with these sections:
 - What NOT to do (negative prompting, drawn from past corrections if available)
 
 ### Context
-- Relevant project background (from MEMORY.md, MemPalace, or conversation)
+- Relevant project background (from MEMORY.md, library volumes, or conversation)
 - Related files and their purposes (quick Glob/Grep to identify)
 - Architectural patterns in use
 - Previous decisions that affect this task
@@ -136,7 +136,7 @@ This means: **showing the enriched prompt with proper markup IS the storage trig
 
 The CLI handles approval-count incrementing: similar prompts (≥0.6 Jaccard similarity) merge into one entry; the count bumps automatically across sessions.
 
-**Optional**: if MemPalace MCP is available, you can also call `mcp__mempalace__store_memory` for cross-machine semantic search — but the local JSON is the source of truth.
+The local JSON store is the source of truth. Patterns persist across sessions and merge by Jaccard similarity ≥0.6. No external dependency required.
 
 ## Step 6: Execute
 
