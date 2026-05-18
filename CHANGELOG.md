@@ -8,6 +8,76 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [2.1.4] — 2026-05-18 — H.9.21.3.1 _lib/lock.js empty-content race fix (the real bug)
+
+**Found the actual lock-correctness bug** that v2.1.2 + v2.1.3 were trying to band-aid with timeouts. v2.1.3's T108 diagnostic capture revealed `exit_codes=0 0 0 0 0` — ALL 5 subprocesses succeeded yet only 3/5 catalog entries persisted. That symptom is impossible under proper mutual exclusion; it means two processes simultaneously held the lock.
+
+### The race (microseconds-wide; load-amplified on CI)
+
+`fs.writeFileSync(lockPath, pid, {flag: 'wx'})` does:
+
+1. `open(path, O_CREAT|O_EXCL|O_WRONLY)` — atomic; one writer wins
+2. `write(fd, pidString)` — fills content
+3. `close(fd)`
+
+Between (1) and (2), the lockfile **exists but is empty** for microseconds. The prior stale-lock-recovery branch had this path:
+
+```javascript
+if (Number.isNaN(pid) || !pid) {
+  // Garbage in lock file → assume corrupt + reclaim
+  try { fs.unlinkSync(lockPath); } catch { }
+  continue;
+}
+```
+
+A concurrent process reading the lockfile mid-write would see empty content, `parseInt('')` → NaN, and **unlink the legitimate lock-holder's file**. Both processes would then proceed believing they held the lock. Concurrent RMW → catalog entries overwritten.
+
+### Two-part fix in `_lib/lock.js`
+
+1. **Stop unlinking on empty content** — treat as transient writer-mid-write. The race window closes; concurrent contention serializes correctly. Trade-off: a process truly crashed mid-write leaves a stuck empty lockfile requiring manual `rm` (rare; acceptable).
+2. **Verify-after-write** — after our `writeFileSync wx` succeeds, immediately read back the lockfile and confirm it contains our PID. If another process raced through the prior bug and stole our lock, the content won't match; we treat as failed acquisition and retry. Defense-in-depth even if (1) hadn't fully closed the window.
+
+### Why v2.1.2 + v2.1.3 didn't fix it
+
+v2.1.2 (timeout 3s → 10s) and v2.1.3 (timeout 10s → 30s + sleep 50ms → 20ms) were chasing a TIMEOUT theory. The actual bug had nothing to do with timeout — locks were timing out cleanly with `exit(2)`, but the additional bug was that locks were SUCCEEDING for multiple processes. Time-margin band-aids reduced flake probability (fewer slow lock-holders = smaller race window) but didn't close the underlying race. v2.1.3's diagnostic capture is what made this debuggable in one shot.
+
+### Verification
+
+- **Local stress: 20/20 runs of T108 5-way contention all PASS** (previously flaked ~30-50% on stressed CI; couldn't repro locally because race window is microseconds wide and macOS APFS is fast)
+- 110/110 install.sh smoke + 67/67 _h70-test (lock-fail-soft contracts T78/T79/T85 preserved within wall-clock windows)
+- 0 ESLint errors / 0 eslint-disable directives (ADR-0006 preserved)
+
+### Pattern catch
+
+**"Tests passing on PR CI is necessary but not sufficient."** Stress-sensitive correctness bugs need diagnostic capture *first*, then iteration converges in one shot rather than chasing the wrong theory across three patches.
+
+The T108 stderr capture added in v2.1.3 was the critical insurance — the `exit_codes=0 0 0 0 0` datum invalidated the timeout theory and pointed straight at the simultaneous-ownership bug.
+
+### Lock primitive consumers
+
+`_lib/lock.js` is consumed by 15+ scripts (agent-identity, pattern-recorder, library-catalog, error-critic, session-end-nudge, kb-resolver, budget-tracker, tree-tracker, etc). All inherit the fix transparently. The change is API-compatible.
+
+### Wrong-theory scaffolding REVERTED
+
+v2.1.2 + v2.1.3 made two changes predicated on a wrong "lock-times-out-on-slow-CI" theory. Now that the actual race is fixed, both are reverted to their original values to eliminate the scaffolding:
+
+| Setting | Pre-v2.1.2 | v2.1.2 | v2.1.3 | v2.1.4 (reverted) |
+|---|---|---|---|---|
+| `library-catalog DEFAULT_LOCK_TIMEOUT_MS` | 3000ms | 10000ms | 30000ms | **3000ms** |
+| `_lib/lock.js sleepMs` default | 50ms | 50ms | 20ms | **50ms** |
+
+Stress-tested: **30/30 local T108 runs PASS** at original 3000ms + 50ms with only the race fix in place. The original tunings were already correct; they reliably passed T108 for the entire v2.1.0 release before the race got triggered by CI load variance.
+
+**What's kept** (because it has standalone value, not wrong-theory):
+- T108 stderr capture (v2.1.3) — the diagnostic insurance that made this debuggable in one shot.
+- The lock-race fix itself (v2.1.4) — actual bug closure.
+
+### Net v2.1.4 diff vs pre-v2.1.0 lock.js
+
+The fix is ~25 lines (verify-after-write + comment + remove-the-bad-unlink-on-empty branch + comment). Everything else is unchanged.
+
+---
+
 ## [2.1.3] — 2026-05-17 — H.9.21.2.1 lock resilience follow-up + T108 diagnostics
 
 **Hotfix patch — v2.1.2 wasn't enough.** Test 108 (J4 concurrent library write `_lib/lock.js` serializes) STILL flaked on the v2.1.2 main-post-merge CI (3/5 entries; even though v2.1.2's PR-branch CI passed cleanly with the same commit). The 10000ms ceiling wasn't generous enough for the slowest GitHub Actions runners under 5-way parallel-write contention.
