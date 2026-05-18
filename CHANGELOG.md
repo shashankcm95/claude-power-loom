@@ -57,6 +57,25 @@ The T108 stderr capture added in v2.1.3 was the critical insurance — the `exit
 
 `_lib/lock.js` is consumed by 15+ scripts (agent-identity, pattern-recorder, library-catalog, error-critic, session-end-nudge, kb-resolver, budget-tracker, tree-tracker, etc). All inherit the fix transparently. The change is API-compatible.
 
+### Wrong-theory scaffolding REVERTED
+
+v2.1.2 + v2.1.3 made two changes predicated on a wrong "lock-times-out-on-slow-CI" theory. Now that the actual race is fixed, both are reverted to their original values to eliminate the scaffolding:
+
+| Setting | Pre-v2.1.2 | v2.1.2 | v2.1.3 | v2.1.4 (reverted) |
+|---|---|---|---|---|
+| `library-catalog DEFAULT_LOCK_TIMEOUT_MS` | 3000ms | 10000ms | 30000ms | **3000ms** |
+| `_lib/lock.js sleepMs` default | 50ms | 50ms | 20ms | **50ms** |
+
+Stress-tested: **30/30 local T108 runs PASS** at original 3000ms + 50ms with only the race fix in place. The original tunings were already correct; they reliably passed T108 for the entire v2.1.0 release before the race got triggered by CI load variance.
+
+**What's kept** (because it has standalone value, not wrong-theory):
+- T108 stderr capture (v2.1.3) — the diagnostic insurance that made this debuggable in one shot.
+- The lock-race fix itself (v2.1.4) — actual bug closure.
+
+### Net v2.1.4 diff vs pre-v2.1.0 lock.js
+
+The fix is ~25 lines (verify-after-write + comment + remove-the-bad-unlink-on-empty branch + comment). Everything else is unchanged.
+
 ---
 
 ## [2.1.3] — 2026-05-17 — H.9.21.2.1 lock resilience follow-up + T108 diagnostics

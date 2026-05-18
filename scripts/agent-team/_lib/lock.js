@@ -96,15 +96,16 @@ function acquireLock(lockPath, opts) {
   // Recursive mode is idempotent fast-path when dir exists (sub-millisecond stat).
   fs.mkdirSync(path.dirname(lockPath), { recursive: true });
   const maxWaitMs = (opts && opts.maxWaitMs) || 3000;
-  // H.9.21.2.1 v2.1.3: sleepMs default reduced 50ms → 20ms after T108 CI flake
-  // post-v2.1.2 merge. Finer-grained polling means the lock-release-to-next-
-  // acquire latency caps at ~20ms vs ~50ms. For 5-way contention this trims
-  // worst-case cumulative wait from ~250ms (5 × 50ms scheduler slack) to
-  // ~100ms. Combined with the library-catalog timeout bump (30000ms) this
-  // gives ample margin on the slowest GitHub Actions runners while preserving
-  // ADR-0001 fail-soft contract on the 2 hook consumers (error-critic +
-  // session-end-nudge: their wait windows accommodate sub-100ms granularity).
-  const sleepMs = (opts && opts.sleepMs) || 20;
+  // H.9.21.3.1 v2.1.4: REVERTED to original 50ms. The v2.1.3 reduction to 20ms
+  // was deployed under a wrong "lock-release-to-acquire latency causes T108
+  // flake" theory. The actual T108 bug was the empty-content race (see
+  // verify-after-write + no-unlink-on-empty fix below). With that race fixed,
+  // the original 50ms granularity is correct — preserves ADR-0001 fail-soft
+  // contract for hook consumers (T78/T79/T85) with their tested wall-clock
+  // windows. Reverting eliminates wrong-theory scaffolding. If a future
+  // workload genuinely benefits from finer polling, it can be reduced
+  // deliberately with its own justification.
+  const sleepMs = (opts && opts.sleepMs) || 50;
   const start = Date.now();
   while (Date.now() - start < maxWaitMs) {
     try {
