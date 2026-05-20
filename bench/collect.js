@@ -347,7 +347,7 @@ function evaluateSoftSignals(workdir, streamMetrics, transcriptPath) {
   const combinedCorpus = transcriptContent + '\n' + subagentResults;
 
   // 1. KB consultation — search parent + sub-agent results for kb:architecture refs.
-  const kbRefs = combinedCorpus.match(/kb:[a-z][a-z0-9\-\/]+/gi) || [];
+  const kbRefs = combinedCorpus.match(/kb:[a-z][a-z0-9\-/]+/gi) || [];
   signals.kb_consultation = {
     observed: kbRefs.length > 0,
     detail: kbRefs.length > 0
@@ -436,7 +436,7 @@ function evaluateSoftSignals(workdir, streamMetrics, transcriptPath) {
   //    citation patterns in the combined corpus.
   const citationPatterns = [
     /https?:\/\/[a-z0-9.-]+/i,
-    /[a-z][a-z0-9_\-]+\.[a-z]+:\d+/i,         // file.ext:line
+    /[a-z][a-z0-9_-]+\.[a-z]+:\d+/i,          // file.ext:line
     /per\s+(the\s+)?docs/i,
     /per\s+RFC\s+\d+/i,
     /MDN/,

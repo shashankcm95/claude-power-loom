@@ -23,7 +23,6 @@
 const {
   assert,
   assertMatch,
-  assertContains,
   readAgentDefinition,
   describe,
   describeBehavioral,
