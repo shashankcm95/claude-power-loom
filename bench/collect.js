@@ -68,6 +68,7 @@ function parseStream(streamPath) {
     subagent_result_texts: [],   // sub-agent reply text (for KB-ref scanning)
     skill_invocations: [],       // skill names from Skill tool calls
     bash_commands: [],           // Bash command strings (for route-decide detection)
+    todo_write_max_items: 0,     // max items in any TodoWrite invocation (plan-mode signal)
     ask_user_question_errors: 0, // count of AskUserQuestion calls that errored back
     text_messages: 0,
     askq_tool_use_ids: new Set(),
@@ -109,6 +110,10 @@ function parseStream(streamPath) {
           if (name === 'Bash') {
             const cmd = (block.input && block.input.command) || '';
             out.bash_commands.push(cmd);
+          }
+          if (name === 'TodoWrite') {
+            const todos = (block.input && Array.isArray(block.input.todos)) ? block.input.todos.length : 0;
+            if (todos > out.todo_write_max_items) out.todo_write_max_items = todos;
           }
         }
       }
@@ -360,16 +365,38 @@ function evaluateSoftSignals(workdir, streamMetrics, transcriptPath) {
     detail: `subagent_types=[${subagentTypes.join(', ')}]; architect=${hasArchitect ? 'yes' : 'no'} code-reviewer=${hasCodeReviewer ? 'yes' : 'no'} security=${hasSecurityAuditor ? 'yes' : 'no'}`,
   };
 
-  // 3. Plan-mode evidence — Claude Code 2.x emits EnterPlanMode/ExitPlanMode
-  //    tool calls when plan-mode fires. Earlier versions used the Skill tool
-  //    for the plan skill. Check both.
+  // 3. Plan-before-edit discipline evidence (post-GAP-B rewrite of workflow.md).
+  //    The rule decouples intent (plan before editing) from mechanism (specific tool).
+  //    Accept any of:
+  //      (a) EnterPlanMode/ExitPlanMode tool calls (interactive-style mechanism)
+  //      (b) Skill("plan") invocation (Claude Code 1.x path)
+  //      (c) TodoWrite with ≥2 items (the headless-mode artifact convention)
+  //      (d) A plan-file at .claude/plans/*.md in the workdir
   const toolUses = (streamMetrics && streamMetrics.tool_uses) || {};
   const skillCalls = (streamMetrics && streamMetrics.skill_invocations) || [];
   const planModeTools = (toolUses.EnterPlanMode || 0) + (toolUses.ExitPlanMode || 0);
   const hasPlanSkill = skillCalls.some(s => /plan/i.test(s));
+  const todoWriteCalls = toolUses.TodoWrite || 0;
+  const todoWriteMaxItems = (streamMetrics && streamMetrics.todo_write_max_items) || 0;
+  const hasTodoWritePlanning = todoWriteCalls > 0 && todoWriteMaxItems >= 2;
+
+  let planFileExists = false;
+  let planFilePath = null;
+  try {
+    const plansDir = path.join(workdir, '.claude/plans');
+    if (fs.existsSync(plansDir)) {
+      const entries = fs.readdirSync(plansDir).filter(f => f.endsWith('.md'));
+      if (entries.length > 0) {
+        planFileExists = true;
+        planFilePath = path.join(plansDir, entries[0]);
+      }
+    }
+  } catch { /* skip */ }
+
+  const observed = planModeTools > 0 || hasPlanSkill || hasTodoWritePlanning || planFileExists;
   signals.plan_mode_evidence = {
-    observed: planModeTools > 0 || hasPlanSkill,
-    detail: `EnterPlanMode/ExitPlanMode calls=${planModeTools}; plan-skill=${hasPlanSkill ? 'yes' : 'no'}`,
+    observed,
+    detail: `EnterPlanMode/ExitPlanMode=${planModeTools}; plan-skill=${hasPlanSkill ? 'yes' : 'no'}; TodoWrite ${todoWriteCalls} call(s) max ${todoWriteMaxItems} items; plan-file=${planFilePath || 'none'}`,
   };
 
   // 4. Route-decide gate consulted — two detection paths:
