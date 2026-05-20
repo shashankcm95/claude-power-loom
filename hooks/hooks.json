@@ -140,6 +140,16 @@
         ]
       },
       {
+        "matcher": "Agent|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/kb-citation-gate.js",
+            "timeout": 5
+          }
+        ]
+      },
+      {
         "matcher": "Edit|Write",
         "hooks": [
           {

@@ -116,6 +116,27 @@ Three bench runs post-fix produced different kb_consultation results:
 
 Editing `~/Documents/claude-toolkit/` doesn't propagate to live plugin behavior. The actual install path is `~/.claude/plugins/cache/power-loom-marketplace/power-loom/<version>/`. During iteration, manual sync was required. End-users would run `/plugin update` to pick up new ships. This is worth a ship-notes mention in v2.3.0.
 
+### GAP-D — deterministic KB-citation enforcement via PostToolUse hook (added post-GAP-A variance discovery)
+
+After GAP-A's variance was documented, added a PostToolUse:Agent|Task hook that fixes the probabilistic-instruction-following gap deterministically.
+
+**Implementation**: `hooks/scripts/kb-citation-gate.js`. After each sub-agent spawn for a KB-required agent (currently just `architect`; extensible), inspects the tool_response for `## KB Sources Consulted` section AND ≥1 `kb:` ref. If non-compliant, emits `decision: block` with a `[KB-CITATION-MISSING]` forcing instruction. Parent Claude sees the reason, re-spawns the agent with explicit KB reminder.
+
+**End-to-end verification** (bench run 2026-05-20T23:15):
+```
+kb-citation-log for this session:
+  call 1: type=architect  section=False refs=0  compliant=False  ← BLOCKED
+  call 2: type=architect  section=True  refs=4  compliant=True   ← re-spawn succeeded
+```
+
+Bench result: **kb_consultation YES with 32 kb refs** (vs prior 0 or 9). The variance is gone — first attempt skip → block → re-spawn → compliance.
+
+**Cost**: 1 extra architect spawn per session where the model skips KB on first try (~half of runs based on prior variance). Acceptable.
+
+**Side effect observed**: this run did NOT have TodoWrite calls (plan_mode_evidence: no). Possibly because the re-spawn workflow ate the "natural" TodoWrite that would have otherwise fired. Variance — worth more runs to characterize.
+
+**Hook bug caught during testing**: `logger.warn(...)` does NOT exist — `_log.js` returns a callable, called as `logger('event-name', { detail })`. Both `kb-citation-gate.js` and the prior `route-decide-on-agent-spawn.js` had this bug (in catch paths, so silent in normal flow). Both fixed.
+
 ### Agent name prefixing affects routing
 
 Plugin-prefixed `power-loom:architect` and unprefixed `architect` both resolve to the same definition file (verified: only one architect.md exists in the plugin's agents/ dir + the install path). But the subagent_type captured in the stream differs across runs. May affect plugin-version dispatch in edge cases. Worth investigating if more variance shows up.

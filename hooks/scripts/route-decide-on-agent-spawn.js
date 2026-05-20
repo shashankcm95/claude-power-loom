@@ -45,13 +45,13 @@ function readStdin() {
   try {
     raw = fs.readFileSync(0, 'utf8');
   } catch (err) {
-    logger.warn(`stdin read failed: ${err.message}`);
+    logger('stdin-read-failed', { error: err.message });
     return null;
   }
   if (!raw) return null;
   try { return JSON.parse(raw); }
   catch (err) {
-    logger.warn(`stdin JSON parse failed: ${err.message}`);
+    logger('stdin-parse-failed', { error: err.message });
     return null;
   }
 }
@@ -66,7 +66,7 @@ function appendLog(entry) {
     fs.mkdirSync(path.dirname(LOG_FILE), { recursive: true });
     fs.appendFileSync(LOG_FILE, JSON.stringify(entry) + '\n');
   } catch (err) {
-    logger.warn(`log append failed: ${err.message}`);
+    logger('log-append-failed', { error: err.message });
   }
 }
 
@@ -137,10 +137,10 @@ function main() {
         score_total: parsed.score_total,
       };
     } catch (err) {
-      logger.warn(`route-decide JSON parse failed: ${err.message}`);
+      logger('route-decide-parse-failed', { error: err.message });
     }
   } else {
-    logger.warn(`route-decide exited ${result.status}: ${(result.stderr || '').slice(0, 200)}`);
+    logger('route-decide-failed', { status: result.status, stderr: (result.stderr || '').slice(0, 200) });
   }
 
   appendLog({
