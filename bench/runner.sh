@@ -44,11 +44,17 @@ command -v node   >/dev/null 2>&1 || { echo "ERROR: node not on PATH"   >&2; exi
 [ -d "$FIXTURE_DIR" ] || { echo "ERROR: fixture not found: $FIXTURE_DIR" >&2; exit 3; }
 
 # Extract the task prompt from the markdown task spec.
-# Convention: the task is the first blockquote (> ...) under "## The task" heading.
+# Convention: the task is the blockquote (> ...) under "## The task" heading,
+# terminating at the next "## " heading.
+#
+# NB: avoid `sub(/^> /, "")` BEFORE the in-section check — it mutates $0 and
+# the subsequent !/^>/ rule fires a false reset. Use awk's substr() instead
+# and check section termination FIRST.
 TASK_PROMPT="$(awk '
-  /^## The task/ { in_section=1; next }
-  in_section && /^> / { sub(/^> /,""); print }
-  in_section && !/^>/ && /^[^[:space:]]/ { in_section=0 }
+  /^## The task/                  { in_section=1; next }
+  /^## / && in_section            { in_section=0; next }
+  in_section && /^>$/             { print ""; next }
+  in_section && /^> /             { print substr($0, 3); next }
 ' "$TASK_FILE")"
 
 if [ -z "$TASK_PROMPT" ]; then
@@ -85,7 +91,8 @@ echo "  $PROMPT_RESOLVED" | head -3 >&2
 CLAUDE_FLAGS=(
   -p "$PROMPT_RESOLVED"
   --output-format stream-json
-  --verbose                            # required for stream-json
+  --verbose                                # required for stream-json
+  --permission-mode bypassPermissions      # boot test runs unattended; no user to answer AskUserQuestion
 )
 if [ "$MODE" = "plugin-off-bare" ]; then
   CLAUDE_FLAGS+=( --bare )
@@ -159,6 +166,11 @@ for (const [k, v] of Object.entries(m.deterministic_pass)) {
   console.log('  ' + (v.pass ? 'PASS' : 'FAIL') + '  ' + k + (v.detail ? '  (' + v.detail + ')' : ''));
 }
 const allPass = Object.values(m.deterministic_pass).every(v => v.pass);
+console.log('');
+console.log('=== Soft signals (informational; not gating) ===');
+for (const [k, v] of Object.entries(m.soft_signals || {})) {
+  console.log('  ' + (v.observed ? 'YES ' : 'no  ') + k + (v.detail ? '  (' + v.detail + ')' : ''));
+}
 console.log('');
 console.log('OVERALL: ' + (allPass ? 'PASS' : 'FAIL'));
 "

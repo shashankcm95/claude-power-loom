@@ -64,7 +64,11 @@ function parseStream(streamPath) {
     result_event: null,
     tool_uses: {},
     subagent_spawns: 0,
+    subagent_types: [],          // values from Task tool input's subagent_type field
+    skill_invocations: [],       // skill names from Skill tool calls
+    ask_user_question_errors: 0, // count of AskUserQuestion calls that errored back
     text_messages: 0,
+    askq_tool_use_ids: new Set(), // internal: map tool_use_id → was-it-AskUserQuestion
   };
 
   for (const line of lines) {
@@ -72,7 +76,6 @@ function parseStream(streamPath) {
     try { ev = JSON.parse(line); } catch { continue; }
     if (ev.type === 'system' && ev.subtype === 'init') {
       out.session_id = ev.session_id || (ev.data && ev.data.session_id) || null;
-      // Some versions include cwd/project info that helps locate transcript.
     }
     if (ev.type === 'result') {
       out.result_event = ev;
@@ -83,12 +86,39 @@ function parseStream(streamPath) {
         if (block.type === 'tool_use') {
           const name = block.name || 'unknown';
           out.tool_uses[name] = (out.tool_uses[name] || 0) + 1;
-          if (name === 'Task') out.subagent_spawns++;
+          // Sub-agent spawn tool — name changed across Claude Code versions:
+          //   Claude Code 1.x: "Task"
+          //   Claude Code 2.x: "Agent"
+          // Support both for forward/backward compat.
+          if (name === 'Agent' || name === 'Task') {
+            out.subagent_spawns++;
+            const subType = (block.input && (block.input.subagent_type || block.input.subagent || block.input.type)) || 'unspecified';
+            out.subagent_types.push(subType);
+          }
+          if (name === 'Skill') {
+            const skillName = (block.input && (block.input.skill || block.input.name)) || 'unspecified';
+            out.skill_invocations.push(skillName);
+          }
+          if (name === 'AskUserQuestion') {
+            out.askq_tool_use_ids.add(block.id);
+          }
+        }
+      }
+    }
+    // User messages can carry tool_result blocks (echoed by the runtime).
+    if (ev.type === 'user' && ev.message && Array.isArray(ev.message.content)) {
+      for (const block of ev.message.content) {
+        if (block.type === 'tool_result' && block.is_error) {
+          if (out.askq_tool_use_ids.has(block.tool_use_id)) {
+            out.ask_user_question_errors++;
+          }
         }
       }
     }
   }
 
+  // Don't serialize the Set; replace with deduped array if anyone wants it.
+  delete out.askq_tool_use_ids;
   return out;
 }
 
@@ -159,8 +189,10 @@ function diffFixture(workdir, fixture) {
 }
 
 // --- deterministic PASS criteria --------------------------------------------
-function evaluatePassCriteria(workdir, claudeExit) {
+function evaluatePassCriteria(workdir, claudeExit, streamMetrics, hookBumps) {
   const checks = {};
+
+  // === Output correctness — the work itself ===
 
   // 1. claude exited 0
   checks.claude_exit_zero = {
@@ -177,7 +209,15 @@ function evaluatePassCriteria(workdir, claudeExit) {
     detail: hasExportHandler ? 'export reference found' : 'no export handler',
   };
 
-  // 3. cli.test.js has at least 1 new test
+  // 3. cli.js handles both JSON and CSV formats (v0.2 task expansion)
+  const hasJsonHandling = /\.json|JSON\.stringify|application\/json/i.test(cliContent);
+  const hasCsvHandling = /\.csv|csv/i.test(cliContent);
+  checks.cli_has_both_formats = {
+    pass: hasJsonHandling && hasCsvHandling,
+    detail: `json=${hasJsonHandling ? 'yes' : 'no'} csv=${hasCsvHandling ? 'yes' : 'no'}`,
+  };
+
+  // 4. cli.test.js has at least 1 new test
   const testPath = path.join(workdir, 'cli.test.js');
   const testContent = fs.existsSync(testPath) ? fs.readFileSync(testPath, 'utf8') : '';
   const testCount = (testContent.match(/^\s*test\s*\(/gm) || []).length;
@@ -186,7 +226,7 @@ function evaluatePassCriteria(workdir, claudeExit) {
     detail: `${testCount} test(s); fixture started with 3`,
   };
 
-  // 4. smoke tests still pass
+  // 5. smoke tests still pass
   let testExit = -1;
   let testOutput = '';
   try {
@@ -201,17 +241,19 @@ function evaluatePassCriteria(workdir, claudeExit) {
     detail: `exit=${testExit}; ${(testOutput.match(/(\d+) passed/) || ['?'])[0]}`,
   };
 
-  // 5. README mentions 'export'
+  // 6. README mentions the new feature AND at least one format
   const readmePath = path.join(workdir, 'README.md');
   const readmeContent = fs.existsSync(readmePath) ? fs.readFileSync(readmePath, 'utf8') : '';
+  const readmeHasExport = /\bexport\b/i.test(readmeContent);
+  const readmeHasFormat = /\b(csv|json)\b/i.test(readmeContent);
   checks.readme_mentions_export = {
-    pass: /\bexport\b/i.test(readmeContent),
-    detail: /\bexport\b/i.test(readmeContent) ? 'export mentioned' : 'not mentioned',
+    pass: readmeHasExport && readmeHasFormat,
+    detail: `export=${readmeHasExport ? 'yes' : 'no'} format-named=${readmeHasFormat ? 'yes' : 'no'}`,
   };
 
-  // 6. Some form of path validation in cli.js export handler
-  // Heuristic: look for any of: path.isAbsolute, path.normalize, /\.\./ check,
-  // path.resolve usage, or an explicit throw on bad input near 'export'.
+  // 7. Some form of path validation in cli.js
+  // Heuristic: look for any of: path.isAbsolute, path.normalize, traversal check,
+  // path.resolve usage, or an explicit throw on bad input.
   const validationPatterns = [
     /path\.isAbsolute/,
     /path\.normalize/,
@@ -220,6 +262,7 @@ function evaluatePassCriteria(workdir, claudeExit) {
     /['"]\.\.['"]/,
     /throw new Error.*path/i,
     /invalid path/i,
+    /traversal/i,
   ];
   const hasValidation = validationPatterns.some(re => re.test(cliContent));
   checks.cli_has_path_validation = {
@@ -227,7 +270,67 @@ function evaluatePassCriteria(workdir, claudeExit) {
     detail: hasValidation ? 'validation pattern present' : 'no obvious path-validation pattern',
   };
 
+  // === Plugin behavioral evidence — the orchestration happened ===
+
+  // 8. At least 1 sub-agent spawn (Task tool invoked)
+  const spawnCount = (streamMetrics && streamMetrics.subagent_spawns) || 0;
+  checks.subagent_spawned = {
+    pass: spawnCount >= 1,
+    detail: `${spawnCount} sub-agent spawn(s) via Agent tool`,
+  };
+
+  // 9. AskUserQuestion did NOT trigger errors (proves permission-mode worked)
+  // Look in the stream for AskUserQuestion tool calls that resulted in error tool_results.
+  const aukCount = (streamMetrics && streamMetrics.tool_uses && streamMetrics.tool_uses.AskUserQuestion) || 0;
+  const aukErrors = (streamMetrics && streamMetrics.ask_user_question_errors) || 0;
+  checks.no_ask_user_question_errors = {
+    pass: aukErrors === 0,
+    detail: `${aukCount} AskUserQuestion call(s); ${aukErrors} errored — should be 0`,
+  };
+
+  // 10. Stop hook fired (turnCounter delta >= 1)
+  const turnDelta = (hookBumps && hookBumps.turn_counter_delta) || 0;
+  checks.stop_hook_fired = {
+    pass: turnDelta >= 1,
+    detail: `turnCounter delta=${turnDelta} (Stop hook bumps once per turn)`,
+  };
+
   return checks;
+}
+
+// --- soft signals (reported but don't fail the boot test) -------------------
+function evaluateSoftSignals(workdir, streamMetrics, transcriptPath) {
+  const signals = {};
+
+  // KB consultation: transcript contains `kb:architecture/` references
+  let transcriptContent = '';
+  if (transcriptPath && fs.existsSync(transcriptPath)) {
+    try { transcriptContent = fs.readFileSync(transcriptPath, 'utf8'); } catch { /* skip */ }
+  }
+  const kbRefs = (transcriptContent.match(/kb:architecture\/[a-z\-/]+/g) || []);
+  signals.kb_consultation = {
+    observed: kbRefs.length > 0,
+    detail: kbRefs.length > 0 ? `${kbRefs.length} kb refs: ${[...new Set(kbRefs)].slice(0, 5).join(', ')}` : 'no kb: references in transcript',
+  };
+
+  // Architect or code-reviewer spawn (Task input includes specific subagent_type)
+  const subagentTypes = (streamMetrics && streamMetrics.subagent_types) || [];
+  const hasArchitect = subagentTypes.some(t => /architect/i.test(t));
+  const hasCodeReviewer = subagentTypes.some(t => /code.?review|reviewer/i.test(t));
+  signals.specialist_agents_spawned = {
+    observed: hasArchitect || hasCodeReviewer,
+    detail: `subagent_types=[${subagentTypes.join(', ')}]; architect=${hasArchitect ? 'yes' : 'no'} code-reviewer=${hasCodeReviewer ? 'yes' : 'no'}`,
+  };
+
+  // Plan-mode evidence: Skill tool invoked with plan-related skill, OR a plan file written
+  const skillCalls = (streamMetrics && streamMetrics.skill_invocations) || [];
+  const hasPlanSkill = skillCalls.some(s => /plan/i.test(s));
+  signals.plan_mode_evidence = {
+    observed: hasPlanSkill,
+    detail: `skill_invocations=[${skillCalls.join(', ')}]; plan-skill=${hasPlanSkill ? 'yes' : 'no'}`,
+  };
+
+  return signals;
 }
 
 // --- main --------------------------------------------------------------------
@@ -265,6 +368,7 @@ function main(argv) {
     }
   }
 
+  const hookBumps = diffCounters(pre, post);
   const metrics = {
     mode: opts.mode,
     timestamp: new Date().toISOString(),
@@ -286,10 +390,14 @@ function main(argv) {
     },
     tool_uses: stream.tool_uses,
     subagent_spawns: stream.subagent_spawns,
-    hook_bumps: diffCounters(pre, post),
+    subagent_types: stream.subagent_types,
+    skill_invocations: stream.skill_invocations,
+    ask_user_question_errors: stream.ask_user_question_errors,
+    hook_bumps: hookBumps,
     library_diff: diffLibrary(pre, post),
     fixture_diff: diffFixture(opts.workdir, opts.fixture),
-    deterministic_pass: evaluatePassCriteria(opts.workdir, claudeExit),
+    deterministic_pass: evaluatePassCriteria(opts.workdir, claudeExit, stream, hookBumps),
+    soft_signals: evaluateSoftSignals(opts.workdir, stream, transcriptPath),
   };
 
   fs.writeFileSync(opts.out, JSON.stringify(metrics, null, 2));
