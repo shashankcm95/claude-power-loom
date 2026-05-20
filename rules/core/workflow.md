@@ -45,11 +45,21 @@ Before deploying, follow the deploy-checklist skill for the full pre-deployment 
 
 <important if "task involves multi-file changes (≥2 distinct files)">
 
-## Plan Mode for Multi-File Changes (H.7.9 — HETS-aware)
+## Plan-Before-Edit Discipline (H.7.9 + GAP-B 2026-05-20 — mechanism-flexible)
 
-- Any task touching ≥2 distinct files → enter plan mode first
-- Single-file changes, doc-only edits, trivial fixes → skip plan mode
-- When in doubt: enter plan mode (cheap insurance, expensive to skip)
+Multi-file work must produce a **plan artifact** BEFORE the first Edit/Write/MultiEdit call. The mechanism is mode-dependent — the discipline is "plan before editing", not "use a specific tool":
+
+- **Interactive sessions**: prefer the `EnterPlanMode` tool. It triggers the user-approval dialog and is the canonical signal.
+- **Headless `claude -p` sessions**: the `EnterPlanMode` tool IS available (verified via bench stream-json tool registry 2026-05-20), but its approval dialog is non-functional under `-p`. In headless mode, the planning artifact is either:
+  - A plan-file at `.claude/plans/<slug>.md` matching `swarm/plan-template.md` schema, OR
+  - A `TodoWrite` invocation with ≥2 todos covering the phases of the planned work
+
+**Rules of thumb**:
+- Any task touching ≥2 distinct files → produce a plan artifact first (interactive: tool call; headless: file or TodoWrite)
+- Single-file changes, doc-only edits, trivial fixes → skip plan artifact
+- When in doubt: produce the artifact (cheap insurance, expensive to skip)
+
+**Why the rule decouples intent from mechanism**: the prior rule said "enter plan mode" (a specific tool call). Bench audit 2026-05-20 surfaced that in headless mode Claude consistently satisfied the INTENT (spawned architect+code-reviewer; used TodoWrite for phase tracking) but skipped the literal `EnterPlanMode` tool because its approval dialog has no use under `-p`. The new rule honors the discipline while acknowledging the platform reality.
 
 ### `/plan` vs `/build-plan` decision tree (H.7.9)
 

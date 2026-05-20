@@ -55,6 +55,18 @@
         "id": "exit-plan:verify-gate"
       },
       {
+        "matcher": "Agent|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node HOME_DIR/.claude/hooks/scripts/route-decide-on-agent-spawn.js",
+            "timeout": 6
+          }
+        ],
+        "description": "GAP-C fix (bench harness 2026-05-20): deterministically invokes route-decide.js before every sub-agent spawn, logs the verdict to ~/.claude/checkpoints/route-decide-log.jsonl. Closes the workflow.md route-decide rule's instruction-following gap (text rule was consistently bypassed in headless). Always approves; visibility is the goal, not blocking.",
+        "id": "agent-spawn:route-decide-gate"
+      },
+      {
         "matcher": "Read|Edit|Write",
         "hooks": [
           {
