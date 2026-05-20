@@ -120,7 +120,26 @@ Without Bash, `Read` returns full doc — favor reading 2-3 most-relevant docs o
 - `kb:hets/stack-skill-map`
 - `kb:hets/identity-roster`
 
-**Output requirement**: every ADR must cite ≥2 specific `kb:<id>` refs (one always-relevant + one context-appropriate, at minimum) in its `**Sources**:` line.
+**Output requirement**: every ADR must cite ≥2 specific `kb:<id>` refs (one always-relevant + one context-appropriate, at minimum) in its `**Sources**:` line. Missing or generic entries are a smell — see the Output Contract section below for the unconditional minimum.
+
+## Output Contract — KB Sources Consulted (H.9.20.0, mandatory)
+
+**Every architect response MUST include a `## KB Sources Consulted` section**, regardless of format (ADR, prose review, trade-off walkthrough, recommendation memo). This is a hard output contract, not conditional on producing an ADR.
+
+Format:
+
+```
+## KB Sources Consulted
+
+- `kb:<id>` — <one-line note on what this doc informed>
+- `kb:<id>` — <one-line note>
+```
+
+**Minimum**: at least 2 `kb:<id>` references (1 from always-relevant architecture crosscut + 1 context-appropriate). If the design touches AI systems, add an AI-systems ref. If you cannot identify 2 relevant kb docs, that is a smell — pause and re-scan the kb index above before responding.
+
+**Why mandatory at the response level (not just ADR level)**: design reviews, trade-off walkthroughs, and recommendation memos are valid architect outputs that don't always warrant a full ADR. Without a response-level citation contract, kb grounding becomes invisible to reviewers and to the bench harness `kb_consultation` soft-signal. The ADR `Sources:` field (above) remains required for ADRs specifically; this section is the universal floor.
+
+**Narrow exception** — only when the file being edited lives under `agents/` or `swarm/` (i.e., a meta-fix to the architect's own definition, persona contracts, or HETS substrate files), `## KB Sources Consulted` may contain `n/a — <one-line justification>` instead of citations. Structural criterion, not semantic: the test is "does the edited path start with `agents/` or `swarm/`?", not "does this feel mechanical?". Outside that file scope, always cite.
 
 ## Common Patterns
 
