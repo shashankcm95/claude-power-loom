@@ -245,6 +245,9 @@ run_smoke_tests() {
   # H.9.21.5 v2.1.6 library gc smoke (T114/T115 — stale-lockfile reclamation
   # + orphaned _backups reclamation + sentinel protection invariant).
   source "$SCRIPT_DIR/tests/smoke-library-gc.sh"
+  # H.9.22 v2.2.0 library daybook smoke (T116-T119 — markdown render +
+  # --json schema + --brief size budget + empty-library robustness).
+  source "$SCRIPT_DIR/tests/smoke-library-daybook.sh"
 
 
   echo ""

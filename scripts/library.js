@@ -33,6 +33,7 @@
 'use strict';
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const paths = require('./agent-team/_lib/library-paths');
@@ -52,6 +53,7 @@ const SUBCOMMANDS = {
   write: cmdWrite,
   stats: cmdStats,
   gc: cmdGc,
+  daybook: cmdDaybook,
   migrate: cmdMigrateDelegate,
   rollback: cmdRollbackDelegate,
 };
@@ -98,11 +100,14 @@ function printHelp() {
     '  gc [--apply]                        Reclaim stale lockfiles + orphaned _backups',
     '     [--max-age-hours N]                (default 1h for locks; 7d for backups)',
     '     [--soak-days N]                    Default: dry-run; --apply required to delete',
+    '  daybook [--json] [--brief]          L0+L1 morning briefing emit (read-only)',
+    '          [--max-snapshots N]           (default 3 recent snapshots)',
+    '          [--no-git]                    Skip git working-tree summary',
     '',
     'Environment:',
     '  CLAUDE_LIBRARY_ROOT                 Override library root',
     '',
-    'Deferred to v2.2+: daybook, lookup, acquire, accession',
+    'Deferred to v2.3+: lookup, acquire, accession',
     '',
   ].join('\n'));
 }
@@ -569,6 +574,334 @@ function findOrphanedBackups(now, soakMs) {
     });
   }
   return orphans;
+}
+
+// ===========================================================================
+// daybook — H.9.22 v2.2.0 L0+L1 morning briefing emit (read-only)
+// ===========================================================================
+//
+// daybook synthesizes the library's identity layer (L0 — user-authored
+// reader-profile.md) and recent state layer (L1 — latest snapshots, pending
+// self-improve candidates, project MEMORY.md, git working tree) into a single
+// briefing intended for session-start rehydration. Read-only — no writes.
+//
+// Output modes:
+//   markdown (default)  Full briefing with 5 sections (L0 + 4×L1)
+//   --json              Machine-readable; same content under typed keys
+//   --brief             Condensed one-screen view (~1.5KB cap)
+//
+// Sources (each is fail-soft — missing source emits "—" placeholder):
+//   L0     reader-profile.md (user identity layer)
+//   L1.1   recent N session-snapshots from toolkit/session-snapshots/ (N=3 default)
+//   L1.2   pending self-improve candidates (delegates to self-improve-store)
+//   L1.3   project MEMORY.md from cwd's .claude/projects/<slug>/memory/
+//   L1.4   git working-tree summary (branch + dirty + 5 most-recent commits)
+//
+// Design choice: single-file (no _lib/daybook-builder.js). YAGNI — daybook is
+// a read-only synthesizer; if v2.3 adds more sophisticated builders, split then.
+
+function cmdDaybook(args) {
+  const opts = parseOpts(args);
+  const asJson = !!opts.json;
+  const brief = !!opts.brief;
+  const noGit = !!opts['no-git'];
+  const maxSnapshots = parseInt(opts['max-snapshots'] || '3', 10);
+
+  if (!Number.isFinite(maxSnapshots) || maxSnapshots < 0) {
+    throw new Error(`--max-snapshots must be a non-negative integer (got ${opts['max-snapshots']})`);
+  }
+  if (asJson && brief) {
+    throw new Error('--json and --brief are mutually exclusive');
+  }
+
+  if (!fs.existsSync(paths.libraryManifestPath())) {
+    process.stderr.write('library daybook: not initialized (run: library init)\n');
+    process.exit(2);
+  }
+
+  const data = {
+    timestamp: new Date().toISOString(),
+    library_root: paths.libraryRoot(),
+    reader_profile: readReaderProfile(),
+    snapshots: readRecentSnapshots(maxSnapshots),
+    pending_candidates: readPendingCandidates(),
+    memory_md: readProjectMemory(),
+    git: noGit ? { skipped: true } : readGitSummary(),
+  };
+
+  if (asJson) {
+    process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+    return;
+  }
+
+  if (brief) {
+    process.stdout.write(renderDaybookBrief(data));
+  } else {
+    process.stdout.write(renderDaybookMarkdown(data));
+  }
+}
+
+function readReaderProfile() {
+  const p = paths.readerProfilePath();
+  if (!fs.existsSync(p)) return { exists: false, content: null };
+  try {
+    const content = fs.readFileSync(p, 'utf8');
+    return { exists: true, content };
+  } catch (err) {
+    return { exists: false, content: null, error: err.message };
+  }
+}
+
+function readRecentSnapshots(maxN) {
+  if (maxN === 0) return [];
+  const sectionId = 'toolkit';
+  const stackId = 'session-snapshots';
+  const catPath = paths.catalogPath(sectionId, stackId);
+  if (!fs.existsSync(catPath)) return [];
+  let cat;
+  try { cat = JSON.parse(fs.readFileSync(catPath, 'utf8')); }
+  catch { return []; }
+  const entries = Array.isArray(cat.entries) ? cat.entries : [];
+  // Sort by last_modified descending (recent first)
+  const sorted = entries.slice().sort((a, b) => {
+    const aT = a.last_modified || '';
+    const bT = b.last_modified || '';
+    return bT.localeCompare(aT);
+  });
+  return sorted.slice(0, maxN).map((entry) => {
+    const filename = entry.filename || `${entry.volume_id}.md`;
+    const volPath = path.join(paths.volumesDir(sectionId, stackId), filename);
+    let firstLine = null;
+    let bytes = 0;
+    try {
+      const stat = fs.statSync(volPath);
+      bytes = stat.size;
+      // Read up to 4KB; extract first non-frontmatter, non-blank line
+      const raw = fs.readFileSync(volPath, 'utf8').slice(0, 4096);
+      firstLine = extractFirstContentLine(raw);
+    } catch { /* missing volume; surface entry without preview */ }
+    return {
+      volume_id: entry.volume_id,
+      topic: Array.isArray(entry.topic) ? entry.topic.slice(0, 5) : [],
+      entities: Array.isArray(entry.entities) ? entry.entities.slice(0, 5) : [],
+      form: entry.form,
+      last_modified: entry.last_modified,
+      bytes,
+      first_line: firstLine,
+    };
+  });
+}
+
+/**
+ * Extract the first meaningful content line from a volume body. Skips YAML
+ * frontmatter (--- delimited) and blank lines. Returns at most 160 chars.
+ */
+function extractFirstContentLine(raw) {
+  const lines = raw.split('\n');
+  let inFrontmatter = false;
+  let frontmatterClosed = false;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (i === 0 && line.trim() === '---') {
+      inFrontmatter = true;
+      continue;
+    }
+    if (inFrontmatter) {
+      if (line.trim() === '---') {
+        inFrontmatter = false;
+        frontmatterClosed = true;
+      }
+      continue;
+    }
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    // Skip markdown heading marker, return the heading text or content
+    return trimmed.length > 160 ? trimmed.slice(0, 157) + '...' : trimmed;
+  }
+  // frontmatterClosed will be true if we hit the end of a single-frontmatter file
+  return frontmatterClosed ? null : null;
+}
+
+function readPendingCandidates() {
+  // Delegate to self-improve-store pending --json. Bound the script lookup
+  // to the conventional location; fail-soft if unavailable.
+  const scriptPath = path.join(os.homedir(), '.claude/scripts/self-improve-store.js');
+  if (!fs.existsSync(scriptPath)) return { count: 0, top: [], reason: 'self-improve-store unavailable' };
+  const result = spawnSync('node', [scriptPath, 'pending', '--json'], {
+    encoding: 'utf8',
+    timeout: 5000,
+  });
+  if (result.status !== 0 || !result.stdout) {
+    return { count: 0, top: [], reason: `self-improve-store exit=${result.status}` };
+  }
+  let parsed;
+  try { parsed = JSON.parse(result.stdout); }
+  catch { return { count: 0, top: [], reason: 'self-improve-store JSON parse error' }; }
+  const count = parsed.count || (parsed.candidates ? parsed.candidates.length : 0);
+  const top = (parsed.candidates || []).slice(0, 5).map((c) => ({
+    id: c.id,
+    signal: c.signal || c.kind || null,
+    count: c.count || c.observed || null,
+    risk: c.risk || null,
+  }));
+  return { count, top };
+}
+
+function readProjectMemory() {
+  // Convention: ~/.claude/projects/<cwd-slug>/memory/MEMORY.md
+  const cwd = process.cwd();
+  const slug = cwd.replace(/\//g, '-').replace(/^-/, '');
+  const memPath = path.join(os.homedir(), '.claude/projects', `-${slug}`, 'memory', 'MEMORY.md');
+  if (!fs.existsSync(memPath)) return { exists: false, path: memPath };
+  try {
+    const content = fs.readFileSync(memPath, 'utf8');
+    const lines = content.split('\n').slice(0, 30);
+    return { exists: true, path: memPath, first_30_lines: lines.join('\n'), bytes: Buffer.byteLength(content, 'utf8') };
+  } catch (err) {
+    return { exists: false, path: memPath, error: err.message };
+  }
+}
+
+function readGitSummary() {
+  const cwd = process.cwd();
+  // Check we're in a git repo
+  const inRepo = spawnSync('git', ['rev-parse', '--git-dir'], { cwd, encoding: 'utf8', timeout: 3000 });
+  if (inRepo.status !== 0) return { in_repo: false };
+
+  const branchRes = spawnSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd, encoding: 'utf8', timeout: 3000 });
+  const branch = branchRes.status === 0 ? branchRes.stdout.trim() : null;
+
+  const statusRes = spawnSync('git', ['status', '--porcelain'], { cwd, encoding: 'utf8', timeout: 3000 });
+  const dirty = statusRes.status === 0 && statusRes.stdout.trim().length > 0;
+  const dirtyLines = statusRes.status === 0 ? statusRes.stdout.trim().split('\n').filter(Boolean) : [];
+  const dirtyCount = dirty ? dirtyLines.length : 0;
+
+  const logRes = spawnSync('git', [
+    'log', '-5',
+    '--format=%h\t%cs\t%s',
+  ], { cwd, encoding: 'utf8', timeout: 3000 });
+  const recentCommits = logRes.status === 0 ? logRes.stdout.trim().split('\n').filter(Boolean).map((line) => {
+    const [sha, date, ...subjParts] = line.split('\t');
+    return { sha: sha || '', date: date || '', subject: subjParts.join('\t') };
+  }) : [];
+
+  return {
+    in_repo: true,
+    cwd,
+    branch,
+    dirty,
+    dirty_count: dirtyCount,
+    recent_commits: recentCommits,
+  };
+}
+
+function renderDaybookMarkdown(data) {
+  const lines = [];
+  lines.push(`# Daybook — ${data.timestamp}`);
+  lines.push('');
+  lines.push(`Library root: \`${data.library_root}\``);
+  lines.push('');
+
+  // L0
+  lines.push('## L0 — Reader Profile');
+  lines.push('');
+  if (data.reader_profile.exists) {
+    lines.push(data.reader_profile.content.trimEnd());
+  } else {
+    lines.push('_No reader-profile.md authored. Edit `library/reader-profile.md` to define identity layer._');
+  }
+  lines.push('');
+
+  // L1.1
+  lines.push('## L1.1 — Recent Session Snapshots');
+  lines.push('');
+  if (data.snapshots.length === 0) {
+    lines.push('_No session snapshots in toolkit/session-snapshots/._');
+  } else {
+    for (const snap of data.snapshots) {
+      const topic = snap.topic.length ? ` [${snap.topic.join(', ')}]` : '';
+      lines.push(`- **${snap.volume_id}**${topic} — ${snap.bytes}B`);
+      if (snap.first_line) lines.push(`  > ${snap.first_line}`);
+    }
+  }
+  lines.push('');
+
+  // L1.2
+  lines.push('## L1.2 — Pending Self-Improve Candidates');
+  lines.push('');
+  if (data.pending_candidates.count === 0) {
+    const reason = data.pending_candidates.reason ? ` (${data.pending_candidates.reason})` : '';
+    lines.push(`_Queue empty._${reason}`);
+  } else {
+    lines.push(`${data.pending_candidates.count} candidate(s) pending. Top:`);
+    for (const c of data.pending_candidates.top) {
+      lines.push(`- \`${c.id}\` — signal=${c.signal || '?'} count=${c.count || '?'} risk=${c.risk || '?'}`);
+    }
+  }
+  lines.push('');
+
+  // L1.3
+  lines.push('## L1.3 — Project Memory (MEMORY.md)');
+  lines.push('');
+  if (data.memory_md.exists) {
+    lines.push('```markdown');
+    lines.push(data.memory_md.first_30_lines.trimEnd());
+    lines.push('```');
+  } else {
+    lines.push(`_No MEMORY.md at \`${data.memory_md.path}\`._`);
+  }
+  lines.push('');
+
+  // L1.4
+  lines.push('## L1.4 — Git Working Tree');
+  lines.push('');
+  if (data.git.skipped) {
+    lines.push('_Skipped (--no-git)._');
+  } else if (!data.git.in_repo) {
+    lines.push('_Not inside a git repository._');
+  } else {
+    const dirtyDesc = data.git.dirty ? `${data.git.dirty_count} change(s)` : 'clean';
+    lines.push(`Branch: \`${data.git.branch}\` — ${dirtyDesc}`);
+    lines.push('');
+    if (data.git.recent_commits.length) {
+      lines.push('Recent commits:');
+      for (const c of data.git.recent_commits) {
+        lines.push(`- \`${c.sha}\` ${c.date} — ${c.subject}`);
+      }
+    }
+  }
+  lines.push('');
+  return lines.join('\n');
+}
+
+function renderDaybookBrief(data) {
+  const lines = [];
+  lines.push(`# Daybook — ${data.timestamp.slice(0, 10)}`);
+  // Profile: 2-line excerpt
+  if (data.reader_profile.exists) {
+    const profileLines = data.reader_profile.content.split('\n').filter(l => l.trim() && !l.startsWith('#')).slice(0, 2);
+    lines.push(`Profile: ${profileLines.join(' ').slice(0, 120)}`);
+  } else {
+    lines.push('Profile: —');
+  }
+  // Latest snapshot
+  if (data.snapshots.length) {
+    const s = data.snapshots[0];
+    const topic = s.topic.length ? ` [${s.topic.slice(0, 2).join(', ')}]` : '';
+    lines.push(`Latest snapshot: ${s.volume_id}${topic}`);
+  } else {
+    lines.push('Latest snapshot: —');
+  }
+  // Pending
+  lines.push(`Pending: ${data.pending_candidates.count} candidate(s)`);
+  // Git
+  if (!data.git.skipped && data.git.in_repo) {
+    const dirtyDesc = data.git.dirty ? `${data.git.dirty_count} changes` : 'clean';
+    lines.push(`Branch: ${data.git.branch} (${dirtyDesc})`);
+  } else if (!data.git.skipped) {
+    lines.push('Branch: (not a git repo)');
+  }
+  return lines.join('\n') + '\n';
 }
 
 // ===========================================================================
