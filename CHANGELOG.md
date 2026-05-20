@@ -8,6 +8,57 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [2.1.6] — 2026-05-20 — H.9.21.5 `library gc` reclamation (closes v2.1.1 soak deferral)
+
+**Reclamation patch.** Adds `library gc` subcommand to reclaim stale lockfiles and orphaned `_backups/` snapshots that survived the soak window. Closes the deferral noted in v2.1.1 BACKLOG: gc was scoped out of the v2.1.0/v2.1.1 ships because no backup had aged past the 7-day soak yet.
+
+### Added
+
+- **`library gc`** subcommand — two reclaimers in one pass:
+  - **Stale lockfiles** (`*.lock`): walks the library tree; surfaces lockfiles where (a) PID is dead OR (b) PID is unreadable AND file is older than `--max-age-hours` (default 1h). Live lock owners are NEVER touched, even if old. `EPERM` from `process.kill(pid, 0)` is treated as alive (conservative).
+  - **Orphaned `_backups/`**: walks `library/_backups/`; reclaims `<run-id>/` snapshots older than `--soak-days` (default 7d). The snapshot matching the current `.migrate-complete` sentinel is NEVER touched (it's the live rollback path — same saga safety invariant as CRITICAL #1 of v2.1.0).
+- **Default mode: dry-run.** `--apply` flag required for actual deletion. Prints `WOULD-DELETE` per item in dry-run, `DELETE` in apply mode.
+- **`--verbose`** flag — also prints KEEP lines for non-stale lockfiles (debugging).
+- **2 new smoke tests** (T114/T115):
+  - T114 — stale-lockfile reclamation: dead PID + backdated mtime → dry-run lists/keeps → apply removes → re-run shows 0 (idempotent).
+  - T115 — orphaned `_backups` reclamation + sentinel protection: two backups in `_backups/`, only one matching `.migrate-complete.run_id`; gc with `--soak-days=0.0001` → live-sentinel backup kept, orphan reclaimed. Tests the rollback-path safety invariant.
+
+### Changed
+
+- `install.sh` smoke-test list: 110 → 112 tests (+T114, +T115).
+- `scripts/library.js`: 528 → ~700 LoC (+~170 LoC for `cmdGc` + `findStaleLocks` + `inspectLock` + `findOrphanedBackups`).
+- `library.js --help` lists the new subcommand.
+
+### Safety invariants
+
+- **Default is dry-run.** A user running `library gc` blind sees what *would* happen without anything being deleted. `--apply` is the explicit acknowledgment.
+- **Live PIDs are sacred.** A long-running migration (PID alive, age old) is kept. Only dead PIDs trigger reclaim.
+- **Live rollback paths are sacred.** Whatever `.migrate-complete.run_id` points at stays, regardless of age. If you rerun `library migrate`, the prior backup becomes orphan-eligible once a new sentinel is written.
+- **Soak window default 7 days.** Matches the v2.1.1 deferral note: "after N successful resumes" — conservative.
+
+### Verification
+
+- 110 → 112 smoke tests passing (gc dry-run on live library = 0 deletions; expected since current backup matches sentinel and no stale locks exist).
+- 0 ESLint errors / 0 `eslint-disable` (ADR-0006 preserved).
+
+### Operator usage
+
+```bash
+# Inspect what would be reclaimed
+library gc
+
+# Reclaim now
+library gc --apply
+
+# Tune thresholds (1h locks, 7d backups defaults)
+library gc --apply --max-age-hours 2 --soak-days 14
+
+# Aggressive cleanup (for test environments only)
+library gc --apply --max-age-hours 0.0001 --soak-days 0.0001
+```
+
+---
+
 ## [2.1.5] — 2026-05-18 — H.9.21.4 MempPalace residual purge (docs sweep)
 
 **Docs + config cleanup patch.** Removes 10 stale MempPalace references that survived the v2.1.0 substrate migration sweep. Pure cleanup — no substrate, code, or test changes.
