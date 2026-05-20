@@ -1,0 +1,7 @@
+# Per-run artifacts (transcripts, snapshots, metrics). Never commit these —
+# they contain machine-specific paths + may be large. Users running the boot
+# test send the metrics.json contents back manually.
+runs/
+
+# Fixture todos.json gets mutated by `node cli.js add` during local dev/testing.
+fixture/todos.json
