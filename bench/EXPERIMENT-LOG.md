@@ -89,8 +89,16 @@ Otherwise, document as "use TDD when convergence_value > X" (advisory, not alway
 
 | Metric | Value |
 |---|---|
-| Implementation approach | PreToolUse hook on `Agent` tool |
-| Outcome | TBD |
+| Implementation approach | PreToolUse hook on `Agent\|Task` tools → auto-invokes `route-decide.js`, logs verdict to `~/.claude/checkpoints/route-decide-log.jsonl` |
+| Files added | `hooks/scripts/route-decide-on-agent-spawn.js` (~165 LoC), entries in `hooks/hooks.json` + `hooks/settings-reference.json` |
+| Bench detection update | `bench/collect.js` reads route-decide-log; filters by session_id |
+| Bench signal final state | YES (3 hook hits + 1 Bash hit for the verification session) |
+| Outcome | FIX — deterministic enforcement via PreToolUse hook |
+
+**Side findings while shipping**:
+- Plugin install isolation surfaced: editing `~/Documents/claude-toolkit/hooks/hooks.json` doesn't propagate to live plugin behavior; the actual install path is `~/.claude/plugins/cache/power-loom-marketplace/power-loom/<version>/`. Required syncing the hook files to that path. Users would update via `/plugin update` in normal flow.
+- Even before the hook landed, the latest bench run showed Claude DID consult route-decide via Bash (1 Bash hit). The hook adds 3 more deterministic hits, but instruction-following was working too in this run — variance worth noting (the prior run had 0 Bash hits).
+- Sub-agent type names now appear as `power-loom:architect` etc. (plugin-prefixed) after the install sync — confirms plugin reload picked up correctly.
 
 ---
 
