@@ -76,13 +76,43 @@ Files created:  0
 OVERALL: PASS
 ```
 
-## Empirical findings from v0.1
+## Empirical findings (iterated)
 
-- **Headless mode fires the Stop hook** (turnCounter +1; library transcript created). The GitHub #59105 parity concern doesn't seem to affect at least the Stop event.
-- **Small tasks may not trigger sub-agent spawns.** This 71s task with ~120 LoC of fixture didn't spawn architect or code-reviewer — Claude handled it directly via Edit + Bash. To exercise sub-agents reliably, the boot task may need to grow OR we accept this is task-size-dependent behavior.
-- **Cache-read dominates token cost.** 412k cache-read vs 17 input + 4549 output — the always-on rules + skills context loads predictably. Plugin-on vs plugin-off comparison will show this cache-read delta as a primary "cost of plugin context".
-- **AskUserQuestion was invoked once** under headless — worth investigating what happens to interactive tool calls in `-p` mode (probably falls through without blocking).
-- **Wallclock 71s** is fast enough to run as a true boot test. v0.2 adds another ~30-60s for the `--bare` baseline run.
+### What works
+
+- **Headless mode fires the Stop hook** (turnCounter +1; library transcript created). The GitHub #59105 parity concern doesn't affect at least the Stop event.
+- **Sub-agent spawn works in headless** — both `architect` and `code-reviewer` spawned when the boot task is large enough + explicitly authorizes orchestration ("you have permission to spawn the agents you need"). Their reviews were substantive (path.resolve sandbox analysis, CSV RFC 4180 deviation flagged).
+- **`--permission-mode bypassPermissions` suppresses AskUserQuestion errors.** Without it, Claude politely asks before Bash invocations and the headless answer errors back, wasting turns.
+- **Cache-read dominates token cost** (828k vs 13k output). The always-on rules + skills + KB context loads predictably. Plugin-on vs `--bare` comparison (v0.2) will show this as the primary "cost of plugin context."
+
+### What the bench has surfaced as plugin compliance gaps in headless mode
+
+These are **real findings** worth investigating before plugin submission:
+
+| Soft signal | Status | Interpretation |
+|---|---|---|
+| `kb_consultation` | ❌ NOT firing | Architect + code-reviewer wrote substantive reviews but cited NO `kb:` references, even though kb-consultation-discipline (H.9.20.0 v2.0.3) says HETS personas should cite. Either: (a) the discipline isn't enforced for Agent-tool spawns, (b) is enforced via a hook that doesn't fire in headless, or (c) sub-agent KB refs don't surface in the parent's view of the Agent tool result. |
+| `plan_mode_evidence` | ❌ NOT firing | No `EnterPlanMode`/`ExitPlanMode` tool calls despite the workflow rule requiring plan-mode for ≥2-file changes. Likely cause: plan-mode requires an interactive Approve-plan dialog unavailable in `-p` mode. |
+| `route_decide_consulted` | ❌ NOT firing | `route-decide.js` was never invoked before sub-agent spawn, despite the workflow rule. Claude jumped straight to `Agent` tool. Real instruction-following gap. |
+
+These are not boot-test failures — they're **observability signals** for the plugin maintainer to act on. The whole point of the boot test was to expose this kind of thing.
+
+### Latest live numbers (expanded JSON+CSV task, 2026-05-20)
+
+```
+Wallclock:        250s        (≈3× longer than v0.1.5 baseline; substantive work)
+Turns:            19
+Tokens (input):   29
+Tokens (output):  13,271
+Cache reads:      828,384     ← cost of plugin context loaded into headless session
+Cache creation:   36,449
+Tool uses:        Bash(4) + Read(7) + Agent(2) + Write(2) + Edit(7)
+Sub-agent spawns: 2           (architect + code-reviewer; both produced substantive reviews)
+Hook bumps:       Stop fired once (turnCounter +1)
+Deterministic:    10/10 PASS
+Soft signals:     specialist_agents_spawned=YES, research_mode_citations=YES
+                  kb_consultation=no, plan_mode_evidence=no, route_decide_consulted=no
+```
 
 ## Architecture decisions
 

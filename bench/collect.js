@@ -64,11 +64,14 @@ function parseStream(streamPath) {
     result_event: null,
     tool_uses: {},
     subagent_spawns: 0,
-    subagent_types: [],          // values from Task tool input's subagent_type field
+    subagent_types: [],          // values from Agent tool input's subagent_type field
+    subagent_result_texts: [],   // sub-agent reply text (for KB-ref scanning)
     skill_invocations: [],       // skill names from Skill tool calls
+    bash_commands: [],           // Bash command strings (for route-decide detection)
     ask_user_question_errors: 0, // count of AskUserQuestion calls that errored back
     text_messages: 0,
-    askq_tool_use_ids: new Set(), // internal: map tool_use_id → was-it-AskUserQuestion
+    askq_tool_use_ids: new Set(),
+    agent_tool_use_ids: new Set(), // map Agent tool_use_ids → their results
   };
 
   for (const line of lines) {
@@ -94,6 +97,7 @@ function parseStream(streamPath) {
             out.subagent_spawns++;
             const subType = (block.input && (block.input.subagent_type || block.input.subagent || block.input.type)) || 'unspecified';
             out.subagent_types.push(subType);
+            out.agent_tool_use_ids.add(block.id);
           }
           if (name === 'Skill') {
             const skillName = (block.input && (block.input.skill || block.input.name)) || 'unspecified';
@@ -102,23 +106,38 @@ function parseStream(streamPath) {
           if (name === 'AskUserQuestion') {
             out.askq_tool_use_ids.add(block.id);
           }
+          if (name === 'Bash') {
+            const cmd = (block.input && block.input.command) || '';
+            out.bash_commands.push(cmd);
+          }
         }
       }
     }
     // User messages can carry tool_result blocks (echoed by the runtime).
     if (ev.type === 'user' && ev.message && Array.isArray(ev.message.content)) {
       for (const block of ev.message.content) {
-        if (block.type === 'tool_result' && block.is_error) {
-          if (out.askq_tool_use_ids.has(block.tool_use_id)) {
+        if (block.type === 'tool_result') {
+          if (block.is_error && out.askq_tool_use_ids.has(block.tool_use_id)) {
             out.ask_user_question_errors++;
+          }
+          // Capture sub-agent reply text for downstream KB-ref scanning.
+          if (out.agent_tool_use_ids.has(block.tool_use_id)) {
+            const content = block.content;
+            let text = '';
+            if (typeof content === 'string') text = content;
+            else if (Array.isArray(content)) {
+              text = content.map(c => (c && typeof c === 'object' ? (c.text || '') : String(c))).join('\n');
+            }
+            if (text) out.subagent_result_texts.push(text);
           }
         }
       }
     }
   }
 
-  // Don't serialize the Set; replace with deduped array if anyone wants it.
+  // Don't serialize the Sets; downstream consumers only need the captured data.
   delete out.askq_tool_use_ids;
+  delete out.agent_tool_use_ids;
   return out;
 }
 
@@ -299,35 +318,89 @@ function evaluatePassCriteria(workdir, claudeExit, streamMetrics, hookBumps) {
 }
 
 // --- soft signals (reported but don't fail the boot test) -------------------
+//
+// These detect plugin discipline compliance. They are observational — a `no`
+// here is NOT a boot-test failure, but IS a meaningful signal that the
+// plugin's auto-trigger behaviors may not be firing under headless mode OR
+// may not be enforced for the path the user's task exercised.
+//
+// Distinguish strict-mode (parent transcript only) from inclusive-mode
+// (parent + sub-agent reply texts). Sub-agent KB consultation surfaces in
+// agent_result_texts, not the parent's own transcript — so inclusive-mode
+// catches it.
+
 function evaluateSoftSignals(workdir, streamMetrics, transcriptPath) {
   const signals = {};
 
-  // KB consultation: transcript contains `kb:architecture/` references
+  // Build a combined search corpus: parent transcript JSONL + all sub-agent
+  // reply texts captured from Agent tool_results.
   let transcriptContent = '';
   if (transcriptPath && fs.existsSync(transcriptPath)) {
     try { transcriptContent = fs.readFileSync(transcriptPath, 'utf8'); } catch { /* skip */ }
   }
-  const kbRefs = (transcriptContent.match(/kb:architecture\/[a-z\-/]+/g) || []);
+  const subagentResults = ((streamMetrics && streamMetrics.subagent_result_texts) || []).join('\n');
+  const combinedCorpus = transcriptContent + '\n' + subagentResults;
+
+  // 1. KB consultation — search parent + sub-agent results for kb:architecture refs.
+  const kbRefs = combinedCorpus.match(/kb:[a-z][a-z0-9\-\/]+/gi) || [];
   signals.kb_consultation = {
     observed: kbRefs.length > 0,
-    detail: kbRefs.length > 0 ? `${kbRefs.length} kb refs: ${[...new Set(kbRefs)].slice(0, 5).join(', ')}` : 'no kb: references in transcript',
+    detail: kbRefs.length > 0
+      ? `${kbRefs.length} kb refs: ${[...new Set(kbRefs)].slice(0, 5).join(', ')}`
+      : 'no kb: references in parent transcript OR sub-agent results',
   };
 
-  // Architect or code-reviewer spawn (Task input includes specific subagent_type)
+  // 2. Specialist agent spawns — architect / code-reviewer / security-auditor
   const subagentTypes = (streamMetrics && streamMetrics.subagent_types) || [];
   const hasArchitect = subagentTypes.some(t => /architect/i.test(t));
   const hasCodeReviewer = subagentTypes.some(t => /code.?review|reviewer/i.test(t));
+  const hasSecurityAuditor = subagentTypes.some(t => /security/i.test(t));
   signals.specialist_agents_spawned = {
-    observed: hasArchitect || hasCodeReviewer,
-    detail: `subagent_types=[${subagentTypes.join(', ')}]; architect=${hasArchitect ? 'yes' : 'no'} code-reviewer=${hasCodeReviewer ? 'yes' : 'no'}`,
+    observed: hasArchitect || hasCodeReviewer || hasSecurityAuditor,
+    detail: `subagent_types=[${subagentTypes.join(', ')}]; architect=${hasArchitect ? 'yes' : 'no'} code-reviewer=${hasCodeReviewer ? 'yes' : 'no'} security=${hasSecurityAuditor ? 'yes' : 'no'}`,
   };
 
-  // Plan-mode evidence: Skill tool invoked with plan-related skill, OR a plan file written
+  // 3. Plan-mode evidence — Claude Code 2.x emits EnterPlanMode/ExitPlanMode
+  //    tool calls when plan-mode fires. Earlier versions used the Skill tool
+  //    for the plan skill. Check both.
+  const toolUses = (streamMetrics && streamMetrics.tool_uses) || {};
   const skillCalls = (streamMetrics && streamMetrics.skill_invocations) || [];
+  const planModeTools = (toolUses.EnterPlanMode || 0) + (toolUses.ExitPlanMode || 0);
   const hasPlanSkill = skillCalls.some(s => /plan/i.test(s));
   signals.plan_mode_evidence = {
-    observed: hasPlanSkill,
-    detail: `skill_invocations=[${skillCalls.join(', ')}]; plan-skill=${hasPlanSkill ? 'yes' : 'no'}`,
+    observed: planModeTools > 0 || hasPlanSkill,
+    detail: `EnterPlanMode/ExitPlanMode calls=${planModeTools}; plan-skill=${hasPlanSkill ? 'yes' : 'no'}`,
+  };
+
+  // 4. Route-decide gate consulted — workflow rule says to run route-decide.js
+  //    before spawning sub-agents. Search Bash commands.
+  const bashCmds = (streamMetrics && streamMetrics.bash_commands) || [];
+  const routeDecideHit = bashCmds.some(cmd => /route-decide(\.js)?/.test(cmd));
+  signals.route_decide_consulted = {
+    observed: routeDecideHit,
+    detail: routeDecideHit
+      ? 'route-decide.js invoked via Bash'
+      : `route-decide.js NOT invoked across ${bashCmds.length} Bash call(s) — workflow rule may not be firing in headless`,
+  };
+
+  // 5. Research-mode citations — factual claims about APIs/libraries should
+  //    cite a source (URL, file:line, docs link). Heuristic: look for
+  //    citation patterns in the combined corpus.
+  const citationPatterns = [
+    /https?:\/\/[a-z0-9.-]+/i,
+    /[a-z][a-z0-9_\-]+\.[a-z]+:\d+/i,         // file.ext:line
+    /per\s+(the\s+)?docs/i,
+    /per\s+RFC\s+\d+/i,
+    /MDN/,
+  ];
+  const citationCount = citationPatterns.reduce(
+    (acc, re) => acc + (combinedCorpus.match(new RegExp(re.source, 'gi')) || []).length, 0
+  );
+  signals.research_mode_citations = {
+    observed: citationCount > 0,
+    detail: citationCount > 0
+      ? `${citationCount} citation-like pattern(s) found`
+      : 'no citations (URLs, file:line, "per docs", RFC refs)',
   };
 
   return signals;
