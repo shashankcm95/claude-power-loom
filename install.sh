@@ -242,6 +242,9 @@ run_smoke_tests() {
   # H.9.21.1 v2.1.1 Component H FULL bulkhead smoke (T111/T112 — per-persona
   # 16-way parallel writers + partition-personas round-trip + idempotency).
   source "$SCRIPT_DIR/tests/smoke-library-bulkhead.sh"
+  # H.9.21.5 v2.1.6 library gc smoke (T114/T115 — stale-lockfile reclamation
+  # + orphaned _backups reclamation + sentinel protection invariant).
+  source "$SCRIPT_DIR/tests/smoke-library-gc.sh"
 
 
   echo ""
