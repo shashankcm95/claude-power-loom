@@ -86,12 +86,32 @@ The CLI lives at `scripts/library.js`. Invoke via `node scripts/library.js <subc
 
 The partition is **opt-in** — installing v2.1.1 alone does NOT trigger it. Run when you're ready for true bulkhead under HETS parallelism. consolidated.json is preserved as frozen baseline for rollback.
 
-### Deferred to v2.2+
+### v2.1.6 — `library gc` reclamation
 
-- `daybook` — L0+L1 morning briefing emit
+`library.js` gains a reclamation subcommand:
+
+| Verb | Description |
+|---|---|
+| `gc [--apply] [--max-age-hours N] [--soak-days N]` | Reclaim stale lockfiles (PID-dead OR unreadable+aged) and orphaned `_backups/<run-id>/` snapshots whose run_id does NOT match the current `.migrate-complete` sentinel. Default mode is dry-run; `--apply` required for deletion. Live lock owners and the live rollback path are sacred. |
+
+### v2.2.0 — `library daybook` L0+L1 morning briefing
+
+`library.js` gains a read-only briefing subcommand that synthesizes L0 + L1.1-L1.4:
+
+| Verb | Description |
+|---|---|
+| `daybook [--json] [--brief] [--max-snapshots N] [--no-git]` | Emit a session-start briefing. L0 = `reader-profile.md` (user identity layer); L1.1 = recent N session-snapshots; L1.2 = pending self-improve candidates; L1.3 = project MEMORY.md; L1.4 = git working tree. Fail-soft per source. |
+
+Output modes (mutually exclusive):
+
+- **markdown** (default) — 6 section headers (root + L0 + 4×L1); full content
+- **`--json`** — 7 top-level keys; for machine consumption (`jq` pipelines, status bars)
+- **`--brief`** — condensed one-screen (< 1500B budget); for fast session-start glance
+
+### Deferred to v2.3+
+
 - `lookup` — catalog search
 - `acquire` / `accession` — verb-overlap reduction in progress
-- `library gc` — garbage-collect consolidated.json after soak period
 
 ## Environment
 

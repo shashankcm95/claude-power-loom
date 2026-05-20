@@ -8,6 +8,72 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [2.2.0] — 2026-05-20 — H.9.22 `library daybook` L0+L1 morning briefing (substantive feature)
+
+**Minor release.** Adds `library daybook` subcommand — a read-only synthesizer that emits a session-start briefing combining the user-authored identity layer (L0) with four recent-state sources (L1.1-L1.4). First substantive new feature post-v2.1.0 substrate ship; first non-patch release since v2.0.0.
+
+### Added
+
+- **`library daybook`** subcommand — read-only briefing emit. Five sources, each fail-soft:
+  - **L0** — `library/reader-profile.md` (user identity layer; if missing, placeholder rendered)
+  - **L1.1** — N most-recent volumes from `toolkit/session-snapshots/` (N=3 default; sorted by `last_modified`)
+  - **L1.2** — pending self-improve candidates (delegates to `self-improve-store pending --json`; surfaces top 5)
+  - **L1.3** — project MEMORY.md from `~/.claude/projects/<cwd-slug>/memory/` (first 30 lines)
+  - **L1.4** — git working tree summary (branch + dirty count + 5 most-recent commits)
+- **Output modes** (mutually exclusive):
+  - Default: full markdown with 6 section headers (1 root + 5 sources)
+  - `--json`: machine-readable; 7 top-level keys (`timestamp`, `library_root`, `reader_profile`, `snapshots`, `pending_candidates`, `memory_md`, `git`)
+  - `--brief`: condensed one-screen view (< 1500B budget — enforced by smoke test)
+- **Flags**: `--max-snapshots N` (default 3), `--no-git` (skip L1.4 — useful for non-repo cwd)
+- **4 new smoke tests** (T116-T119):
+  - T116 — markdown render: all 6 expected section headers present + seeded snapshot rendered
+  - T117 — `--json` schema: parseable JSON with exactly 7 top-level keys
+  - T118 — `--brief` size budget: output < 1500B even with wide topic lists
+  - T119 — empty-library robustness: fresh library (no profile, no snapshots) → exit 0 + placeholders rendered
+
+### Changed
+
+- `library --help` now lists `daybook` and removes it from "Deferred to v2.2+" line (now: `lookup, acquire, accession` only).
+- `install.sh` smoke-test list: 112 → 116 tests.
+- `scripts/library.js`: 700 → ~975 LoC (+~275 LoC for `cmdDaybook` + 6 helper functions).
+- `docs/library.md`: updated CLI table; removed daybook from "Deferred" section; added "Daybook" subsection.
+
+### Design choices
+
+- **Single-file implementation** (no `_lib/daybook-builder.js`) — daybook is a read-only synthesizer; YAGNI to split. If v2.3 adds more sophisticated builders or shared logic with `lookup`, refactor then.
+- **Fail-soft per source** — each L0/L1.x source independently surfaces placeholders if missing. No source can block another. A library with only L0 still emits a useful daybook.
+- **Self-improve delegation** — daybook does NOT re-implement `pending` listing; it shells to `self-improve-store pending --json` (canonical source of truth). If the script is missing, daybook surfaces `reason: 'self-improve-store unavailable'` without crashing.
+- **Project MEMORY.md cwd-slug convention** — matches the existing `.claude/projects/<-Users-foo-bar>/memory/MEMORY.md` layout; daybook discovers via cwd at invocation time. Cross-project drift surfaces naturally.
+
+### Trigger analysis (HT.1.6)
+
+3/5 triggers fire (T1+T3+T4); MANDATORY-gate threshold is 4/5. Direct implementation justified:
+- T2 (substrate-fundament `_lib/*`): NO — kept single-file in `scripts/library.js`
+- T5 (HIGH-class bug): N/A — new feature
+
+Read-only feature with no irreversibility — same risk profile as `library stats` (Component L from v2.1.0 architect addition; root-direct).
+
+### Operator usage
+
+```bash
+# Default markdown briefing
+library daybook
+
+# Machine-readable for tooling integration
+library daybook --json | jq .
+
+# Condensed session-start view
+library daybook --brief
+
+# Tune snapshot history depth
+library daybook --max-snapshots 5
+
+# Skip git probe (faster; useful in non-repo cwd)
+library daybook --no-git
+```
+
+---
+
 ## [2.1.6] — 2026-05-20 — H.9.21.5 `library gc` reclamation (closes v2.1.1 soak deferral)
 
 **Reclamation patch.** Adds `library gc` subcommand to reclaim stale lockfiles and orphaned `_backups/` snapshots that survived the soak window. Closes the deferral noted in v2.1.1 BACKLOG: gc was scoped out of the v2.1.0/v2.1.1 ships because no backup had aged past the 7-day soak yet.
