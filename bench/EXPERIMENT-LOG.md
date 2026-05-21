@@ -180,3 +180,67 @@ These become the **comparison baseline** for a future TDD-treatment experiment.
 When run, follow the SAME 3-gap structure (or pick 3 new gaps of comparable complexity) with the SAME validation mechanism (unit tests + bench). The only variable changed: agents are explicitly instructed to "write the failing unit test first; then fix until it passes."
 
 If TDD treatment beats baseline by the decision criteria above, codify the rule.
+
+---
+
+## Variance characterization — scenario 01, 3-run sample (v2.4.0 follow-up D)
+
+Captured 2026-05-21 to bound the soft-signal variance observed in v2.3.0+v2.4.0.
+
+| Run | Wallclock | Turns | Out tokens | Cache read | Spawns | Tests added | kb_consultation | 10/10 PASS? |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 424s | 25 | 17,963 | 1.07M | 2 | 20 | no | YES |
+| 2 | 357s | 27 | 18,528 | 1.37M | 2 | 27 | no | YES |
+| 3 | 411s | 36 | 19,145 | 1.74M | 2 | 16 | no | YES |
+| **mean** | **397s (~6.6 min)** | **29.3** | **18,545** | **1.39M** | **2.0** | **21.0** | **0/3 YES** | **3/3** |
+| **range** | 67s | 11 | 1,182 | 671K | 0 | 11 | — | — |
+
+### Observations
+
+**Stable across runs**:
+- **Sub-agent spawn count is rock-solid at 2** (architect + code-reviewer). Both auto-trigger reliably for this task shape.
+- **Output tokens are very consistent (~18.5K ± 0.5K)** — variance ~3% — meaning the architect + code-reviewer + final implementation produce similar-sized work each time.
+- **All 10 deterministic checks PASS every run**. The fix (cli.js + test + README) lands every time.
+
+**Variant across runs**:
+- **Wallclock varies ~15-20%** (357-424s, range 67s). Likely Anthropic API latency variance, not task variance.
+- **Turn count varies more (25-36, range 11)**. Suggests Claude takes different paths through the task — sometimes more iterative file edits, sometimes more upfront planning.
+- **Test count varies 16-27** — Claude elaborates the test suite differently each time.
+- **Cache read grows across consecutive runs** (1.07M → 1.37M → 1.74M) — looks like Anthropic's API cache warming up across the sequence.
+
+### MAJOR FINDING — GAP-D's PostToolUse block enforcement is broken
+
+**All 3 runs**: `kb_consultation: no` (0 kb refs); but `kb-citation-log.jsonl` shows the hook DID fire and recorded all 3 architect spawns as `compliant=False`.
+
+If the block-and-retry mechanism worked:
+- Hook would emit `{decision: block, reason: "[KB-CITATION-MISSING] ..."}`
+- Parent Claude would see the reason and re-spawn the architect
+- Total architect spawns per run would be 2-3 (initial + retry)
+
+But what we observe:
+- Hook fires once per architect spawn → records non-compliance
+- Total spawns = 2 (architect + code-reviewer), exactly the expected baseline
+- Architect tool_result has `is_error: false` → block didn't convert it to error
+- Stream contains 0 occurrences of `KB-CITATION-MISSING` → forcing instruction never reached parent
+- Architect response doesn't include `## KB Sources Consulted` or `## Requirements Checklist` either (both contracts ignored in these 3 runs)
+
+**Hypothesis**: `PostToolUse` hook `decision: block` semantics differ from `PreToolUse` block. PreToolUse blocks the tool from running and injects the reason. PostToolUse… apparently doesn't inject the reason in a Claude-visible way under v2.1.140. Needs research with `claude-code-guide` before fixing.
+
+**Implication**: The "deterministic" enforcement we celebrated for GAP-D is actually probabilistic instruction-following PLUS a hook that logs but doesn't enforce. The earlier success cases (kb_consultation: YES with 9-32 refs) were the model coincidentally following the architect.md instruction, NOT the hook forcing re-spawn.
+
+### Interpretation
+
+The bench harness's PRIMARY value is observability — it correctly surfaced this enforcement gap. Before D, we believed GAP-D worked deterministically; the 3-run sample proves otherwise.
+
+**This is itself a finding worth flagging as GAP-E**:
+- Title: PostToolUse:Agent decision:block forcing instruction doesn't propagate to parent in headless `-p` mode
+- Fix candidates:
+  - (a) Switch to PreToolUse on `Agent`'s NEXT tool call by detecting non-compliance state — but PreToolUse doesn't have access to the previous result, complicated
+  - (b) Use `stopReason` field in PostToolUse output to halt the session — research needed
+  - (c) Accept that PostToolUse:Agent can only OBSERVE, not ENFORCE — and rely on instruction-following with multi-attempt strategies (e.g., add the contract instruction to the SUBAGENT'S prompt at spawn time)
+- v2.4.0 ships with this documented; v2.4.1 or v2.5 addresses it
+
+The honest bench report:
+- `kb_consultation` IS probabilistic (0/3 in this sample; was 1/3 or 2/3 in earlier samples)
+- The PostToolUse hook FIRES reliably but its enforcement decision is ignored by Claude Code
+- Plugin behavior is well-characterized; enforcement-gap is documented; fix is a separate scope

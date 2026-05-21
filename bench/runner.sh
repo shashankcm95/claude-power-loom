@@ -187,9 +187,11 @@ console.log('Files created:  ' + m.fixture_diff.created_files.length);
 console.log('');
 console.log('=== Deterministic PASS criteria ===');
 for (const [k, v] of Object.entries(m.deterministic_pass)) {
-  console.log('  ' + (v.pass ? 'PASS' : 'FAIL') + '  ' + k + (v.detail ? '  (' + v.detail + ')' : ''));
+  const label = v.skipped ? 'SKIP' : (v.pass ? 'PASS' : 'FAIL');
+  console.log('  ' + label + '  ' + k + (v.detail ? '  (' + v.detail + ')' : ''));
 }
-const allPass = Object.values(m.deterministic_pass).every(v => v.pass);
+// All-pass = every non-skipped check passes
+const allPass = Object.values(m.deterministic_pass).every(v => v.skipped || v.pass);
 console.log('');
 console.log('=== Soft signals (informational; not gating) ===');
 for (const [k, v] of Object.entries(m.soft_signals || {})) {

@@ -226,30 +226,63 @@ function diffFixture(workdir, fixture) {
 function evaluatePassCriteria(workdir, claudeExit, streamMetrics, hookBumps, scenarioDir) {
   const checks = {};
 
-  // === Universal checks ===
-  checks.claude_exit_zero = {
+  // Load scenario expected.json for opt-out support. Universal checks are
+  // ALWAYS run by default, but a scenario can opt out via
+  //   "disabled_universal_checks": ["subagent_spawned", ...]
+  // in its expected.json (e.g., CLI-driven scenarios that don't spawn agents).
+  // Opted-out checks are marked `skipped: true` instead of pass/fail so the
+  // run-all aggregator can count them as N/A.
+  let disabledUniversal = new Set();
+  if (scenarioDir) {
+    const expectedPath = path.join(scenarioDir, 'expected.json');
+    if (fs.existsSync(expectedPath)) {
+      try {
+        const exp = JSON.parse(fs.readFileSync(expectedPath, 'utf8'));
+        if (Array.isArray(exp.disabled_universal_checks)) {
+          disabledUniversal = new Set(exp.disabled_universal_checks);
+        }
+      } catch { /* ignore */ }
+    }
+  }
+
+  function universal(key, evaluator) {
+    if (disabledUniversal.has(key)) {
+      checks[key] = { pass: true, skipped: true, detail: 'scenario opted out of this universal check' };
+      return;
+    }
+    checks[key] = evaluator();
+  }
+
+  // === Universal checks (4 by default; scenarios may opt out) ===
+  universal('claude_exit_zero', () => ({
     pass: claudeExit === 0,
     detail: `exit=${claudeExit}`,
-  };
+  }));
 
-  const spawnCount = (streamMetrics && streamMetrics.subagent_spawns) || 0;
-  checks.subagent_spawned = {
-    pass: spawnCount >= 1,
-    detail: `${spawnCount} sub-agent spawn(s) via Agent tool`,
-  };
+  universal('subagent_spawned', () => {
+    const spawnCount = (streamMetrics && streamMetrics.subagent_spawns) || 0;
+    return {
+      pass: spawnCount >= 1,
+      detail: `${spawnCount} sub-agent spawn(s) via Agent tool`,
+    };
+  });
 
-  const aukCount = (streamMetrics && streamMetrics.tool_uses && streamMetrics.tool_uses.AskUserQuestion) || 0;
-  const aukErrors = (streamMetrics && streamMetrics.ask_user_question_errors) || 0;
-  checks.no_ask_user_question_errors = {
-    pass: aukErrors === 0,
-    detail: `${aukCount} AskUserQuestion call(s); ${aukErrors} errored — should be 0`,
-  };
+  universal('no_ask_user_question_errors', () => {
+    const aukCount = (streamMetrics && streamMetrics.tool_uses && streamMetrics.tool_uses.AskUserQuestion) || 0;
+    const aukErrors = (streamMetrics && streamMetrics.ask_user_question_errors) || 0;
+    return {
+      pass: aukErrors === 0,
+      detail: `${aukCount} AskUserQuestion call(s); ${aukErrors} errored — should be 0`,
+    };
+  });
 
-  const turnDelta = (hookBumps && hookBumps.turn_counter_delta) || 0;
-  checks.stop_hook_fired = {
-    pass: turnDelta >= 1,
-    detail: `turnCounter delta=${turnDelta} (Stop hook bumps once per turn)`,
-  };
+  universal('stop_hook_fired', () => {
+    const turnDelta = (hookBumps && hookBumps.turn_counter_delta) || 0;
+    return {
+      pass: turnDelta >= 1,
+      detail: `turnCounter delta=${turnDelta} (Stop hook bumps once per turn)`,
+    };
+  });
 
   // === Scenario-specific checks via validate.js ===
   if (scenarioDir) {

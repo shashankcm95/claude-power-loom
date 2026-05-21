@@ -75,6 +75,28 @@ run(() => {
     assertMatch(architectMd, /architect|design|review/i, 'role mentions architecture / design / review');
   });
 
+  describe('architect.md — Requirements Checklist output contract (added 2026-05-21)', () => {
+    // Added in response to bench-harness findings: scenarios 02 + 04 showed
+    // even with HETS spawn, specific stated requirements (constant-time
+    // comparison, true LRU tracking) could slip through unchecked. The
+    // checklist forces a one-line acknowledgment per requirement so silent
+    // omissions surface.
+    const hasChecklistSection = /## Requirements Checklist/i.test(architectMd);
+    assert(hasChecklistSection,
+      'definition specifies a "## Requirements Checklist" output contract');
+
+    const hasDispositionVocab =
+      /ADDRESSED/i.test(architectMd) &&
+      /DEFERRED/i.test(architectMd) &&
+      /REJECTED/i.test(architectMd);
+    assert(hasDispositionVocab,
+      'definition enumerates the 3 disposition values (ADDRESSED / DEFERRED / REJECTED)');
+
+    const hasTriggerCondition = /≥\s*2|two or more|multi[- ]?requirement|enumerates/i.test(architectMd);
+    assert(hasTriggerCondition,
+      'definition specifies when the checklist applies (multi-requirement task trigger)');
+  });
+
   // ============================================================
   // BEHAVIORAL TESTS — spawn the agent and assert on output
   // ============================================================
