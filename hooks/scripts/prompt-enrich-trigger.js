@@ -84,8 +84,15 @@ const SKIP_PATTERNS = [
   /^\s*\?+\s*$/,
   // Slash commands
   /^\s*\//,
-  // Confirmation responses (Phase-C: extended with combinations and common phrases)
-  /^\s*(yes|yep|yeah|y|sure|ok|okay|approve|approved|confirm|confirmed|go|go ahead|proceed|continue|do it|please)\s*[.!?]?\s*$/i,
+  // Confirmation responses (Phase-C: extended with combinations and common phrases).
+  // v2.8.2 — added ship/PR confirmation words after empirical over-fire on the
+  // user's typed "merged" (which slipped through both this strict regex AND
+  // SOFT_CONFIRMATION_SIGNALS at line ~298 because "merged" wasn't enumerated).
+  // Source: Fix-2 investigation, telemetry: 1005 vague classifications →
+  // 2 stored marker blocks = 0.2% conversion; the trigger is over-firing
+  // on ship-confirmation responses that should hard-skip. Ship-verb additions:
+  // merged · shipped · landed · pushed · deployed · done.
+  /^\s*(yes|yep|yeah|y|sure|ok|okay|approve|approved|confirm|confirmed|go|go ahead|proceed|continue|do it|please|merged|shipped|landed|pushed|deployed|done)\s*[.!?]?\s*$/i,
   /^\s*(please\s+)?(proceed|continue|go ahead|do it|carry on|carry on then)\s*[.!?]?\s*$/i,
   /^\s*(sounds?\s+good|looks?\s+good|lgtm|nice|perfect|great|thanks|thank\s+you|ty)\s*[.!?]?\s*$/i,
   /^\s*(no|nope|n|cancel|stop|skip|pass|nvm|never\s*mind)\s*[.!?]?\s*$/i,

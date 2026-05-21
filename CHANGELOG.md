@@ -8,6 +8,52 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [2.8.2] — 2026-05-21 — patch bundle: prompt-enrich over-fire fix · non-tautological observations · bumpBatch lock-collapse
+
+**Patch release.** Three carryover items from the v2.8.0 / v2.7.0 backlogs absorbed in a single ship after a Fix-2 investigation found the prompt-pattern store has 0.2% conversion (1005 forcing-instruction injections / 2 stored marker blocks over ~16 days). Plus a real-time over-fire on the user's typed `"merged"` reproducer.
+
+### Fix-2(a) — prompt-enrich-trigger over-fire (ship/PR confirmations)
+
+`hooks/scripts/prompt-enrich-trigger.js` SKIP_PATTERNS confirmation regex extended with `merged|shipped|landed|pushed|deployed|done`. These were slipping through both the strict regex AND the soft-confirmation tier (`SOFT_CONFIRMATION_SIGNALS` at line ~298) because none of the ship-verb forms were enumerated. The user's `"merged"` confirmation responses after PR landings were unnecessarily injecting the full PROMPT-ENRICHMENT-GATE forcing instruction.
+
+The new pattern stays anchored (`\s*[.!?]?\s*$`) — only matches when the WHOLE prompt is the bare confirmation word; `"the merged branch is broken"` still enriches as expected.
+
+### Fix-2(b) — empirical conversion-rate finding documented
+
+`swarm/architecture-substrate/prompt-enrichment-architecture.md` annotates the 5+-approval auto-apply substrate with the telemetry reality: deterministic trigger layer works as designed (1005/3102 = 32% flagged), but Claude's marker-block follow-through is 0.2%. The 5+-threshold auto-apply path has never fired in practice. Decision: kept the substrate (low cost; data accumulates); rejected branches (b) repoint-the-signal and (c) retire-the-claim as premature. Re-evaluate at 6+ months if 0/0/0 conversion persists.
+
+### Fix-3 — non-tautological observations.log on auto-graduate
+
+`scripts/self-improve-store.js signalToProposedAction` differentiated for `kind === 'observation-log'`:
+
+| Signal prefix | Pre-Fix-3 | Post-Fix-3 |
+|---|---|---|
+| `filePath:` | "Log to ~/.claude/checkpoints/observations.log (auto on graduate)" | "Recurring workspace file — consider adding to project MEMORY.md or workspace allowlist" |
+| `skill:` | same tautological text | "Frequent skill invocation — surface for prompt-pattern enrichment or skill-forge review" |
+| generic | same | "Surface as next-session reminder via session-self-improve-prompt hook" |
+
+`executeGraduation` log line format also enriched with `action=<proposedAction>` field so readers of `~/.claude/checkpoints/observations.log` see the LEARNING outcome, not just the destination. The proposedAction field is the load-bearing learning text — previously it echoed where the line was being written, which was already implicit.
+
+### bumpBatch lock-collapse (v2.7.0 reviewer HIGH #1)
+
+`scripts/self-improve-store.js bumpBatch` collapsed from a release-then-reacquire pattern into a single outer COUNTERS lock spanning bump+scan. Pre-collapse: acquire→bump→release→[race window]→reacquire→scan. Post-collapse: acquire→bump→(if shouldScan: nested PENDING lock→scan→release PENDING)→write counters atomically→release. The race window under the no-op lock fallback (when withLock can't acquire a real OS lock) is eliminated; two concurrent bumpBatch calls can no longer both observe `shouldScan: true` and double-fire graduations / double-append to observations.log.
+
+Lock-acquisition-order invariant preserved (COUNTERS outer → PENDING nested, matching cmdScan).
+
+### Tests
+
+- **`tests/unit/hooks/prompt-enrich-trigger.test.js`** — NEW. 17 tests: 10 new ship-confirmation skips · 3 regression on existing skips · 3 anti-regression (multi-word/empty/embedded) · 1 interplay with soft-confirm tier.
+- **`tests/unit/scripts/self-improve-store.test.js`** — +5 tests (T11-T15): differentiated proposedAction per signal type · negative tautology assertion · enriched observations.log line format · single-lock-span bumpBatch.
+
+Suite at: self-improve-store 16/16 · prompt-enrich-trigger 17/17 · _h70-test 73/73 · synthid 32/32 · install.sh smoke 116/116. **All green.**
+
+### What's NOT in this ship
+
+- **Shape D — lineage encoding** (still gated on ≥5 hash-mismatch drift events; the v2.8.1 suffix-validation provides the source signal)
+- **Pattern-store starvation root cause** (deliberately deferred — see Fix-2(b) note in architecture doc; re-evaluate at 6+ months)
+
+---
+
 ## [2.8.1] — 2026-05-21 — HETS-SynthId v2.8.0.x wiring + Phase 4 pair-run
 
 **Patch release.** Closes the v2.8.0 loop: the SynthId substrate computed in `cmdAssign` is now *consumed* by 4 downstream surfaces, and the deferred Phase 4 code-reviewer pair-run runs to verdict APPROVE-WITH-NITS (all 3 nits absorbed inline).

@@ -450,6 +450,122 @@ test('T10: scan_concurrent_bump_and_scan_does_not_double_graduate', () => {
   } finally { h.cleanup(); }
 });
 
+// ============================================================================
+// T11-T14: v2.8.2 Fix-3 — non-tautological observations.log on auto-graduate
+// ============================================================================
+
+const store = require('../../../scripts/self-improve-store');
+
+test('T11: signalToProposedAction differentiates filePath: signal from generic observation-log', () => {
+  const action = store.signalToProposedAction('filePath:/some/path.js', 'observation-log');
+  if (!/MEMORY\.md|allowlist/i.test(action)) {
+    throw new Error(`expected MEMORY.md/allowlist suggestion for filePath signal, got: ${action}`);
+  }
+  // Negative: must NOT echo the destination
+  if (/Log to.*observations\.log/.test(action)) {
+    throw new Error(`filePath signal's proposedAction is tautological (echoes log destination): ${action}`);
+  }
+});
+
+test('T12: signalToProposedAction differentiates skill: signal from generic observation-log', () => {
+  const action = store.signalToProposedAction('skill:agent-team', 'observation-log');
+  if (!/skill|forge|prompt-pattern/i.test(action)) {
+    throw new Error(`expected skill/forge suggestion for skill signal, got: ${action}`);
+  }
+  if (/Log to.*observations\.log/.test(action)) {
+    throw new Error(`skill signal's proposedAction is tautological: ${action}`);
+  }
+});
+
+test('T13: signalToProposedAction generic observation-log fallback is non-tautological', () => {
+  // Generic kind='observation-log' but unmatched prefix.
+  const action = store.signalToProposedAction('unknown:foo', 'observation-log');
+  if (/Log to.*observations\.log/.test(action)) {
+    throw new Error(`generic observation-log proposedAction still tautological: ${action}`);
+  }
+  // Should mention reminder/surface/learning
+  if (!/(reminder|surface|session)/i.test(action)) {
+    throw new Error(`generic observation-log lacks learning-oriented text: ${action}`);
+  }
+});
+
+test('T14: executeGraduation log line includes action= field (proposedAction in line)', () => {
+  const h = mkHome();
+  try {
+    // Seed: count >= 10 + signal that infers kind='observation-log' (low risk)
+    seedCounters(h.countersPath, [{ signal: 'filePath:/x.js', count: 10 }]);
+    runCmd(h.home, 'scan');
+
+    const obs = readObservations(h.observationsPath);
+    if (obs.length !== 1) throw new Error(`expected 1 observations.log line, got ${obs.length}`);
+    const line = obs[0];
+    if (!line.includes('action=')) {
+      throw new Error(`v2.8.2 Fix-3 missing 'action=' field in log line: ${line}`);
+    }
+    // The action field should mention MEMORY.md or allowlist (per Fix-3 differentiation).
+    if (!/action=.*?(MEMORY\.md|allowlist)/i.test(line)) {
+      throw new Error(`v2.8.2 Fix-3 filePath signal didn't emit MEMORY.md/allowlist action: ${line}`);
+    }
+  } finally { h.cleanup(); }
+});
+
+// ============================================================================
+// T15: v2.8.2 bumpBatch lock-collapse — single-lock-span bump+scan
+// ============================================================================
+test('T15: bumpBatch single lock span: bump+scan execute under one outer lock acquisition', () => {
+  const h = mkHome();
+  try {
+    // Seed turnCounter so the very next bumpBatch shouldScan-triggers.
+    // SCAN_TURN_INTERVAL is the gap; setting lastScanTurn to (turnCounter - INTERVAL)
+    // ensures the bump puts us right at the boundary.
+    const fs = require('fs');
+    const initialCounters = {
+      version: 1,
+      createdAt: new Date().toISOString(),
+      turnCounter: 29,       // bumpBatch will inc to 30
+      lastScanTurn: 0,        // gap = 30 >= 30 → shouldScan true
+      lastScanAt: null,
+      signals: {
+        'filePath:/single-lock.js': {
+          count: 10,           // at threshold → auto-graduate eligible
+          firstSeen: new Date().toISOString(),
+          lastSeen: new Date().toISOString(),
+        },
+      },
+    };
+    fs.writeFileSync(h.countersPath, JSON.stringify(initialCounters, null, 2));
+
+    // Run bumpBatch in-process (the in-process callsite is the load-bearing
+    // path — auto-store-enrichment.js uses it via require, not subprocess).
+    process.env.HOME = h.home;
+    const subStore = require('../../../scripts/self-improve-store');
+    // require.cache may be holding the prior copy; bust it so the new HOME
+    // takes effect for COUNTERS_PATH/PENDING_PATH resolution.
+    delete require.cache[require.resolve('../../../scripts/self-improve-store')];
+    const fresh = require('../../../scripts/self-improve-store');
+    void subStore;  // appease lint
+    const result = fresh.bumpBatch(['filePath:/single-lock.js']);
+
+    if (!result.shouldScan) {
+      throw new Error(`bumpBatch should have triggered scan (turnCounter=30, lastScanTurn=0); got shouldScan=${result.shouldScan}`);
+    }
+    if (!result.scanResult || result.scanResult.autoGraduated !== 1) {
+      throw new Error(`expected exactly 1 auto-graduation in scanResult, got: ${JSON.stringify(result.scanResult)}`);
+    }
+    // Verify the counters file was updated atomically (lastScanTurn now matches turnCounter)
+    const finalCounters = JSON.parse(fs.readFileSync(h.countersPath, 'utf8'));
+    if (finalCounters.lastScanTurn !== finalCounters.turnCounter) {
+      throw new Error(`lastScanTurn (${finalCounters.lastScanTurn}) should equal turnCounter (${finalCounters.turnCounter}) after collapsed write`);
+    }
+    // Verify observations.log has the v2.8.2 Fix-3 action= field too
+    const obs = readObservations(h.observationsPath);
+    if (obs.length !== 1) throw new Error(`expected 1 observations.log line, got ${obs.length}`);
+    if (!obs[0].includes('action=')) {
+      throw new Error(`bumpBatch path didn't emit Fix-3 action= field`);
+    }
+  } finally { h.cleanup(); }
+});
+
 process.stdout.write(`\n=== Summary ===\n`);
 process.stdout.write(`  Passed: ${passed}\n`);
 process.stdout.write(`  Failed: ${failed}\n`);

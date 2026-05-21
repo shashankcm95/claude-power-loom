@@ -175,7 +175,22 @@ function signalToSummary(signal, entry) {
 }
 
 function signalToProposedAction(signal, kind) {
-  if (kind === 'observation-log') return 'Log to ~/.claude/checkpoints/observations.log (auto on graduate)';
+  // v2.8.2 Fix-3 — differentiate observation-log actions by signal source.
+  // The pre-Fix-3 text was tautological ("Log to observations.log") — it
+  // described the destination (which is the side-effect anyway) instead of
+  // the LEARNING outcome the graduation represents. The new texts surface
+  // what the observer should DO with the recurring signal — making the
+  // SessionStart reminder + cmdPending readout actionable rather than
+  // self-describing.
+  if (kind === 'observation-log') {
+    if (signal.startsWith('filePath:')) {
+      return 'Recurring workspace file — consider adding to project MEMORY.md or workspace allowlist';
+    }
+    if (signal.startsWith('skill:')) {
+      return 'Frequent skill invocation — surface for prompt-pattern enrichment or skill-forge review';
+    }
+    return 'Surface as next-session reminder via session-self-improve-prompt hook';
+  }
   if (kind === 'memory-consolidation') return 'Append to project MEMORY.md as recurring pattern';
   if (kind === 'skill-candidate') return 'Consider forging a skill via skill-forge';
   if (kind === 'rule-candidate') return 'Promote to ~/.claude/rules/toolkit/ via /self-improve';
@@ -373,7 +388,25 @@ function bumpBatch(signals) {
   let turnCounter = 0;
   const sigs = Array.isArray(signals) ? signals.slice(0, 20) : [];
 
-  // Bump turn counter + each signal in a single lock acquisition.
+  // v2.8.2 — lock-collapse refactor (v2.7.0 code-reviewer HIGH #1).
+  // PRE-COLLAPSE shape: acquire COUNTERS lock → bump+write+release →
+  //                    [race window] →
+  //                    re-acquire COUNTERS+PENDING locks → scan+write+release.
+  // The release-then-reacquire created a window where, under the no-op lock
+  // fallback (rare: when withLock falls back to fn() without a real lock),
+  // two concurrent bumpBatch calls could both observe shouldScan=true and
+  // both enter the scan branch, double-firing graduations + double-appending
+  // to observations.log.
+  //
+  // POST-COLLAPSE: single outer COUNTERS lock spans the whole operation
+  // (bump + write + optionally nested PENDING lock for scan). No release-then-
+  // reacquire; no race window. The nested PENDING lock preserves the same
+  // acquisition order as cmdScan (COUNTERS first, PENDING nested) so deadlock
+  // risk is unchanged.
+  //
+  // Lock-acquisition-order invariant (also enforced in cmdScan at line ~334):
+  //   COUNTERS_PATH.lock (outer) → PENDING_PATH.lock (inner)
+  // Reversing this order would deadlock under real (non-fallback) locking.
   withLock(COUNTERS_PATH + '.lock', () => {
     const counters = loadCounters();
     const now = new Date().toISOString();
@@ -392,38 +425,29 @@ function bumpBatch(signals) {
       signalsBumped++;
     }
 
-    writeAtomic(COUNTERS_PATH, counters);
-  });
-
-  // Conditional scan — separate lock acquisition matches cmdScan's nested
-  // withLock pattern. Scan body duplicated from cmdScan with the
-  // console.log(...) emission removed (in-process callers want the result
-  // object, not stdout). Extraction of shared internal helper deferred to
-  // GAP-H (v2.7.0): replaced inline scan duplicate with _runScan helper call.
-  // Prior shape duplicated the cmdScan body verbatim including the broken
-  // `knownSignatures = new Set(...)` predicate (drift risk; HT.1.14 noted as
-  // deferred-HT.2 cleanup). Single source of truth now lives in _runScan.
-  if (shouldScan) {
-    let result;
-    withLock(COUNTERS_PATH + '.lock', () => {
+    if (shouldScan) {
+      // Nested PENDING lock acquisition. The COUNTERS object in scope above
+      // is the SAME instance the scan mutates — no re-load needed. The
+      // pending object is loaded fresh inside the nested lock.
       withLock(PENDING_PATH + '.lock', () => {
-        const counters = loadCounters();
         const pending = loadPending();
         const scanCounts = _runScan(counters, pending);
         counters.lastScanAt = new Date().toISOString();
         counters.lastScanTurn = counters.turnCounter;
-        writeAtomic(COUNTERS_PATH, counters);
         writeAtomic(PENDING_PATH, pending);
-        result = {
+        scanResult = {
           newCandidates: scanCounts.newCandidates,
           autoGraduated: scanCounts.autoGraduated,
           promotedFromPending: scanCounts.promotedFromPending,
           totalPending: pending.candidates.filter((c) => c.status === 'pending').length,
         };
       });
-    });
-    scanResult = result;
-  }
+    }
+
+    // Single write of counters at the end — captures both the bump and
+    // (if shouldScan) the lastScanAt/lastScanTurn updates atomically.
+    writeAtomic(COUNTERS_PATH, counters);
+  });
 
   return { shouldScan, signalsBumped, scanResult, turnCounter };
 }
@@ -437,7 +461,13 @@ function bumpBatch(signals) {
 // the OBSERVATIONS_LOG itself + `.lock` suffix; same pattern as elsewhere.
 const OBSERVATION_LINE_MAX = 256; // safely under Darwin's PIPE_BUF (512)
 function executeGraduation(candidate) {
-  let line = `[${candidate.createdAt}] ${candidate.kind} | ${candidate.summary} | id=${candidate.id}\n`;
+  // v2.8.2 Fix-3 — log line now includes proposedAction so readers see WHAT
+  // the recurring signal suggests doing, not just THAT it recurred. Pre-Fix-3
+  // the line had `kind | summary | id` which echoed the destination implicitly
+  // (a candidate logged to observations.log with kind='observation-log' said
+  // nothing new). The proposedAction field is the load-bearing learning text.
+  const safeAction = candidate.proposedAction ? candidate.proposedAction.replace(/\n/g, ' ') : '(no action)';
+  let line = `[${candidate.createdAt}] ${candidate.kind} | ${candidate.summary} | action=${safeAction} | id=${candidate.id}\n`;
   if (line.length > OBSERVATION_LINE_MAX) {
     line = line.slice(0, OBSERVATION_LINE_MAX - 16) + '...[truncated]\n';
   }
@@ -565,6 +595,12 @@ module.exports = {
   cmdPromote,
   cmdReset,
   cmdStats,
+  // v2.8.2 Fix-3 — exposed for testability of differentiated action text
+  // and the enriched observations.log line format.
+  signalToProposedAction,
+  signalToSummary,
+  inferKindFromSignal,
+  executeGraduation,
 };
 
 if (require.main === module) {
