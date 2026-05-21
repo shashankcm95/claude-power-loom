@@ -396,6 +396,39 @@ test('T9: scan_updates_occurrences_and_lastSeen_on_pending_candidates', () => {
 });
 
 // ============================================================================
+// T11 (code-reviewer MEDIUM #2): legacy candidate with `risk: undefined`
+// but `kind: 'observation-log'` resolves to risk='low' via the fallback
+// chain and graduates. Verifies the fallback `existing.risk || KIND_RISK
+// [existing.kind] || 'medium'` doesn't accidentally graduate the wrong kind.
+// ============================================================================
+test('T11: scan_resolves_risk_from_kind_when_risk_field_missing', () => {
+  const h = mkHome();
+  try {
+    seedCounters(h.countersPath, [{ signal: 'filePath:/a.js', count: 10 }]);
+    seedPending(h.pendingPath, [{
+      id: 'cand-legacy-002',
+      kind: 'observation-log', // intentionally low-risk kind
+      signal: 'filePath:/a.js',
+      occurrences: 5,
+      firstSeen: '2026-05-01T00:00:00.000Z',
+      lastSeen: '2026-05-01T00:00:00.000Z',
+      // NOTE: NO risk field — simulates a legacy/malformed candidate
+      summary: 'legacy',
+      proposedAction: 'legacy',
+      status: 'pending',
+      createdAt: '2026-05-01T00:00:00.000Z',
+    }]);
+    runCmd(h.home, 'scan');
+    const pending = readPending(h.pendingPath);
+    const c = pending.candidates[0];
+    // observation-log kind → risk='low' per KIND_RISK lookup → eligible to graduate
+    if (c.status !== 'auto-graduated') {
+      throw new Error(`legacy candidate with kind='observation-log' (low-risk) should graduate, got '${c.status}'`);
+    }
+  } finally { h.cleanup(); }
+});
+
+// ============================================================================
 // T10: Sequential scans that both could cross threshold don't double-graduate
 // ============================================================================
 test('T10: scan_concurrent_bump_and_scan_does_not_double_graduate', () => {
