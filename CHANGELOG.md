@@ -8,6 +8,81 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [2.6.0] — 2026-05-21 — GAP-F signal redesign: transcript usage tokens (TDD-treatment data point)
+
+**Minor release.** Replaces the v2.5.0 GAP-F signal (`fs.statSync(transcript_path).size`) with a token-counted signal parsed from the last assistant `message.usage` block in the transcript JSONL. Live verification on a real 387MB transcript: v2.5.0 reported `bytes=396806KB` (meaningless noise — file is monotonic session-history including pre-compact turns); v2.6.0 reports `tokens=330194` (the actual context-window size sent to the model).
+
+This is also the **first explicit TDD-treatment data point** in the experiment that had been deferred for ~10 days. Full Phase 1–5 metrics captured in `bench/EXPERIMENT-LOG.md`.
+
+### Changed (substantive)
+
+- **`hooks/scripts/context-size-warn-stop.js`** — signal source rewritten:
+  - **NEW** `parseLastUsageBlock(transcriptPath)` — 64KB tail-read, walks JSONL right-to-left, finds the most recent `assistant.message.usage`, sums `input_tokens + cache_read_input_tokens + cache_creation_input_tokens` (the actual context-window size sent to the model).
+  - **NEW** `pickSignal(transcriptPath, turnCount)` — 3-tier fallback: tokens → bytes → turns.
+  - **NEW** thresholds `CLAUDE_CONTEXT_WARN_TOKENS=100000` / `URGENT_TOKENS=160000` (50% / 80% of standard 200K Claude window).
+  - **PRESERVED** `CLAUDE_CONTEXT_WARN_BYTES` / `URGENT_BYTES` env vars — now fallback-only (when assistant `usage` block missing). Defaults unchanged from v2.5.0 (400000 / 640000) since they only fire on degraded path.
+  - **PRESERVED** `CLAUDE_CONTEXT_WARN_TURNS` / `URGENT_TURNS` — final fallback when transcript_path missing entirely.
+  - **NEW** state field `last_band_source: 'tokens' | 'bytes' | 'turns' | null` (additive; v2.5.0 state files load cleanly).
+  - **UPDATED** forcing-instruction template: token-mode shows `tokens=N (threshold: M)`; bytes-mode shows `bytes=NKB (fallback signal — assistant.usage block absent)`; turns-mode shows `turns=N (threshold: M)`.
+
+### Changed (tests)
+
+- **`tests/unit/hooks/context-size-warn-stop.test.js`** — rewritten test-first (TDD Phase 1, committed at `53806d0` BEFORE any impl change):
+  - 20 test cases organized into T1 (token primary), T2 (fallback chain), T3 (robustness), T4 (preserved idempotency), T5 (env overrides), T6 (observability), T7 (preserved fail-safe + family attribution)
+  - Initial run against v2.5.1 impl: **7 PASS + 13 FAIL** (the 13 are the v2.6.0 behavioral spec)
+  - After v2.6.0 impl: **20/20 PASS** on first build iteration
+
+### Code-reviewer pair-run findings (Phase 4)
+
+Verdict: APPROVE-WITH-NITS (3 fixes applied):
+
+- **CRITICAL #1 (fixed)** — fd leak when `readSync` throws post-`openSync`: replaced manual catch+close with `finally` block (`hooks/scripts/context-size-warn-stop.js:138-145`)
+- **MEDIUM #2 (fixed)** — closing-tag string manipulation fragility: simplified `tag.replace('[', '[/').replace(']', '') + ']'` to `tag.replace('[', '[/')` which already produces correct output
+- **HIGH #3 (documented)** — downgrade scenario URGENT → WARN within session: added comment to band-upgrade check explaining the idempotency rationale + a future PreCompact-reset hook as the proper "context cleared" signal
+
+Non-fixed findings (informational): test-isolation risk on shared observability log (T6.1/T6.2 read by byte-offset; passes in isolation, theoretical risk under concurrent test execution); 1M-context-mode defaults note (current thresholds anchored to 200K window — env-overridable).
+
+### Experiment outcome
+
+The 20-test suite caught all the BEHAVIORAL bugs; the code-reviewer caught 5 IMPLEMENTATION edge-cases the tests didn't cover (fd leak, TAIL boundary, closing-tag, downgrade, test isolation). TDD's load-bearing benefit was **spec clarity** (failing tests = exact behavioral contract upfront) rather than rework-loop reduction. Codification proposal in `bench/EXPERIMENT-LOG.md` recommends an *advisory* TDD-treatment rule for substantive substrate rewrites with existing tests, NOT an always-on TDD rule.
+
+### Phase metrics (TDD-treatment data point)
+
+| Metric | Value |
+|---|---|
+| Tests written before any impl change | 20 |
+| Tests initially failing | 13 |
+| Architect spawns | 2 (design + heading-format rework) |
+| Architect total tokens / wallclock | 56,547 / 62.8s |
+| Builder iterations to all-green | 1 |
+| Code-reviewer spawns | 1 (APPROVE-WITH-NITS in 1 pass) |
+| Code-reviewer tokens / wallclock | 36,236 / 138.5s |
+| Total HETS tokens / wallclock | 92,783 / 201.3s |
+| Rework loops | 1 (Phase 2 heading format only) |
+| Test-suite coverage of reviewer findings | 0/5 |
+
+### GAP lineage at v2.6.0
+
+| GAP | Version | Mechanism |
+|---|---|---|
+| A | v2.3.0 → v2.4.2 | text → PreToolUse contract reminder |
+| B | v2.3.0 | text rule |
+| C | v2.3.0 | route-decide PreToolUse hook |
+| D | v2.3.0 | kb-citation PostToolUse (obs-only in headless; surfaces as system-reminder interactively) |
+| E | v2.4.2 | PreToolUse input mutation |
+| F | v2.5.0 → **v2.6.0 (this)** | context-size Stop hook (signal redesigned: bytes → tokens) |
+| G | v2.5.1 | PreToolUse:EnterPlanMode headless redirect |
+
+### Verification
+
+- 20/20 new unit tests PASS (post-CR fixes)
+- 13/13 contract-reminder + 10/10 redirect-plan-mode tests still PASS (unchanged)
+- 114/116 install.sh smoke (T80 + T84 pre-existing failures on main; out of scope)
+- ESLint clean on modified files
+- Live test on this session's 387MB transcript: correctly reports `tokens=330194 (URGENT)` — the empirical confirmation we couldn't get from v2.5.0
+
+---
+
 ## [2.5.1] — 2026-05-21 — GAP-G: headless EnterPlanMode redirect to TodoWrite
 
 **Patch release.** Closes GAP-G — discovered during v2.5.0 bench verification (scenario 04, HETS-routed substantive refactor): Claude correctly entered plan mode, spawned architect, wrote plan file, then called ExitPlanMode → approval dialog hung with no interactive user → session terminated with `stop_reason=end_turn` before any Edits executed. The target file (`cache.js`) stayed in its naïve form despite 11 turns of planning work.
