@@ -235,6 +235,106 @@ TDD codified in `rules/core/workflow.md` IFF either:
 
 Otherwise: advisory rule ("use TDD when convergence_value > X") in workflow.md.
 
+### Phase results (2026-05-21 v2.6.0 ship)
+
+**Phase 1 — failing tests first**:
+- Tests written before any impl change: **20**
+- Tests initially PASS against v2.5.1 (preserved behaviors): **7**
+- Tests initially FAIL (new v2.6.0 behaviors needed): **13**
+- Failure categories: T1 (token-primary signal × 4) + T3 (robustness × 3) + T4 (band upgrade × 1) + T5 (env overrides × 3) + T6 (observability × 1) + T7 (attribution × 1)
+- Phase 1 checkpoint: commit `53806d0`
+
+**Phase 2 — architect pair-run (tests as spec)**:
+- Architect spawn 1 (`a5afbfb77db80ad5d`): full design, **44,836 tokens / 55.9s**, 5 kb refs cited, KB-citation-gate fired on heading format (`### 7. KB Sources Consulted` instead of canonical `## KB Sources Consulted` h2)
+- Architect spawn 2 — rework (`ab3d3a18c3d0b90b7`): heading-format fix only, **11,711 tokens / 6.9s**, 5 kb refs in canonical heading (architect noted "from memory; may not be canonical anchors")
+- **Rework loops in Phase 2: 1** (heading format only — design content was fully approved on first pass)
+
+**Phase 3 — implementation (minimum-to-green)**:
+- Single impl rewrite via Write tool
+- **Builder iterations to all-green: 1** (20/20 PASS on first run)
+- No "test doesn't cover X" moments during impl — architect's design was tight enough
+- Live verification: actual 387MB transcript correctly reports `tokens=330194 (threshold: 160000)` → URGENT band fires (vs v2.5.0 would have reported `bytes=396806KB` — meaningless noise)
+
+**Phase 4 — code-reviewer pair-run**:
+- Code-reviewer spawn 1 (`a5191aea0b51fd797`): **36,236 tokens / 138.5s**
+- Verdict: APPROVE-WITH-NITS
+- Findings breakdown: 1 CRITICAL (fd leak — mitigated by process exit; fixed) + 3 HIGH (TAIL boundary unexercised, JSON.parse size — not a real risk, downgrade-no-re-emit undocumented) + 2 MEDIUM (test isolation, closing-tag fragility — fixed) + 2 LOW (test comment clarity, 1M-window defaults note)
+
+**Phase 4 — "bugs not caught by the 20-test suite" (load-bearing TDD comparison metric)**:
+
+| # | Class | Test suite coverage |
+|---|-------|---------------------|
+| 1 | fd-leak edge case | NO (would need `readSync` mock that throws post-`openSync`) |
+| 2 | Exact TAIL_WINDOW boundary (size == 65536) | NO (latent brittleness) |
+| 3 | Closing-tag string fragility | NO (T7.2 doesn't assert closing tag format) |
+| 4 | Downgrade scenario URGENT → WARN within session | NO (idempotency by design; not documented or tested) |
+| 5 | Test isolation (T6.1/T6.2 shared log file TOCTOU) | NO (passes in isolation; fails under concurrent test execution) |
+
+### Aggregate metrics
+
+| Metric | Value |
+|---|---|
+| Total HETS tokens (architect ×2 + reviewer ×1) | **92,783** |
+| Total HETS wallclock | **201.3s (~3.4 min)** |
+| Architect spawn count | 2 (1 design + 1 rework) |
+| Code-reviewer spawn count | 1 (APPROVE-WITH-NITS in 1 pass) |
+| Builder iterations | 1 (single Write to all-green) |
+| Rework loops total | 1 (heading format, Phase 2) |
+| Test-suite coverage of reviewer findings | 0/5 bugs caught by tests alone |
+
+### Comparison to v2.5.0 baseline (non-TDD GAP-F initial)
+
+v2.5.0 baseline did **NOT** have a formal code-reviewer pair-run for the GAP-F impl. Only architect at design time + solo implementation by me + user catching the threshold mis-calibration during live verification (post-ship).
+
+- v2.5.0 architect pair: 1 spawn at design time (similar scale to v2.6.0 spawn 1; exact metrics not captured)
+- v2.5.0 code-reviewer: NONE (zero spawns)
+- v2.5.0 post-ship bugs caught by USER: 1 major (defaults off by ~500×; surfaced via "the context is way over extended" feedback)
+- v2.5.1 (GAP-G) shipped in same baseline shape; bench-verified end-to-end before merge
+
+### Decision criteria verdict
+
+| Criterion | Baseline (v2.5.0) | TDD-treatment (v2.6.0) | Result |
+|---|---|---|---|
+| Rework loops to ship | 0 documented (but missed threshold bug post-ship) | 1 (architect heading format) | Inconclusive — different failure types |
+| Class of bug caught uniquely | (n/a — only one baseline ship for GAP-F) | reviewer's 5 implementation edges | TDD slightly higher rigor surface |
+| Spec clarity | "rewrite hook with token signal" handwave | 20 tests = exact behavioral contract | **TDD wins clearly** |
+
+**Verdict: TDD does NOT obviously beat baseline on rework-loop count (decision criterion #1).** It also does NOT clearly catch a class of bug baseline missed entirely (criterion #2) — the threshold mis-calibration in v2.5.0 wasn't a test-suite catchable issue either (tests measure mechanism, not parameter sanity).
+
+**HOWEVER, TDD's load-bearing benefit is SPEC CLARITY.** The 20 failing tests written upfront forced explicit specification of every behavioral edge before any line of impl. Both architect and code-reviewer agents had a single source of truth to anchor their work against. That's the qualitative win that doesn't show up in the rework-loop number.
+
+### Codification proposal (advisory, not always-on)
+
+Add to `rules/core/workflow.md`:
+
+```
+<important if "task involves substantive rewrite of substrate code (≥80 LoC) AND existing tests describe behavior that will change">
+
+## TDD-Treatment Discipline (v2.6.0 codification — advisory)
+
+For substantive substrate rewrites where existing tests describe behavior
+that will be invalidated, apply test-first discipline:
+
+1. Rewrite the test file describing the NEW desired behavior
+2. Run tests against current impl — expect failures (this is the spec)
+3. Architect pair-run with the failing-test set as the design contract
+4. Impl minimum code to make all tests pass
+5. Code-reviewer pair-run for resource/edge-case coverage
+
+The spec-clarity win is the load-bearing benefit (v2.6.0 EXPERIMENT-LOG
+data shows TDD doesn't reduce rework loops vs baseline, but it does force
+upfront behavioral specification that both reviewers can anchor to).
+
+Skip this discipline for:
+- Mechanical changes (rename, refactor) with no behavior change
+- Exploratory work where the right behavior is itself unclear
+- Single-file utility scripts with no existing test contract
+
+</important>
+```
+
+Whether to ship this codification in v2.6.0 or as a follow-up is a user call.
+
 ---
 
 ## Variance characterization — scenario 01, 3-run sample (v2.4.0 follow-up D)
