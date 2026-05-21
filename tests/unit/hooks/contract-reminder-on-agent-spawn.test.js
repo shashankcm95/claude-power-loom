@@ -75,20 +75,28 @@ test('reminder includes concrete valid kb_id example', () => {
 });
 
 test('reminder warns against invalid kb-as-file-path format', () => {
+  // The reminder must steer the model away from kb_id formats that aren't in
+  // the canonical index. v2.4.3 reworded the warning to avoid using a
+  // kb:-formatted "do not cite" example (the model literally cited that
+  // example in scenario 02 verification — security-auditor produced
+  // `kb:my-rules/foo` because the reminder included it as a counterexample).
   const out = invokeHook({
     tool_name: 'Agent',
     tool_input: { subagent_type: 'architect', prompt: 'x' },
   });
   const p = out.hookSpecificOutput.updatedInput.prompt;
-  if (!p.includes('INVALID') || !p.includes('file path')) {
-    throw new Error('reminder should warn against kb:<file-path> format');
-  }
+  if (!p.includes('NOT a filesystem path')) throw new Error('reminder should warn against filesystem-path kb_ids');
+  if (!p.includes('do NOT invent kb_ids')) throw new Error('reminder should forbid inventing kb_ids');
 });
 
-test('code-reviewer spawn (not in CONTRACT_REMINDERS) → passes through', () => {
+test('unknown subagent_type (general-purpose) → passes through', () => {
+  // Pre-v2.4.3 this test used code-reviewer as the non-contracted example;
+  // v2.4.3 added code-reviewer + security-auditor + planner + optimizer as
+  // contracted types. Use general-purpose (Claude Code built-in, no plugin
+  // contract) as the new control for the passthrough path.
   const out = invokeHook({
     tool_name: 'Agent',
-    tool_input: { subagent_type: 'code-reviewer', prompt: 'review' },
+    tool_input: { subagent_type: 'general-purpose', prompt: 'do something' },
   });
   if (Object.keys(out).length !== 0) {
     throw new Error(`expected empty output for non-contracted subagent_type, got: ${JSON.stringify(out)}`);
@@ -111,6 +119,73 @@ test('Task tool name (Claude Code 1.x compat) → also injects', () => {
     tool_input: { subagent_type: 'architect', prompt: 'x' },
   });
   if (!out.hookSpecificOutput) throw new Error('Task tool name should also trigger injection');
+});
+
+// --- Extended coverage (v2.4.3): contract-reminders for 4 additional agents ---
+
+test('code-reviewer → injects per-finding inline citation contract', () => {
+  const out = invokeHook({
+    tool_name: 'Agent',
+    tool_input: { subagent_type: 'code-reviewer', prompt: 'review my diff' },
+  });
+  const p = out.hookSpecificOutput && out.hookSpecificOutput.updatedInput.prompt;
+  if (!p) throw new Error('reminder not injected for code-reviewer');
+  if (!p.includes('PRINCIPLE-severity finding MUST cite')) throw new Error('per-finding inline-cite contract missing');
+  if (!p.includes('[needs-kb-cite]')) throw new Error('needs-kb-cite tag mechanism not mentioned');
+  if (!p.includes('APPROVE | APPROVE-WITH-NITS | REQUEST-CHANGES | BLOCK')) throw new Error('verdict line missing');
+  if (!p.includes('kb:security-dev/auth-patterns')) throw new Error('CRITICAL kb_id example missing');
+});
+
+test('security-auditor → injects severity + kb:security-dev contract', () => {
+  const out = invokeHook({
+    tool_name: 'Agent',
+    tool_input: { subagent_type: 'security-auditor', prompt: 'audit my code' },
+  });
+  const p = out.hookSpecificOutput && out.hookSpecificOutput.updatedInput.prompt;
+  if (!p) throw new Error('reminder not injected for security-auditor');
+  if (!p.includes('CRITICAL / HIGH finding MUST cite')) throw new Error('CRITICAL/HIGH cite contract missing');
+  if (!p.includes('kb:security-dev/auth-patterns')) throw new Error('auth-patterns kb_id example missing');
+  if (!p.includes('CRITICAL / HIGH / MEDIUM / LOW')) throw new Error('severity scale missing');
+});
+
+test('planner → injects Principle Audit + kb-anchored phase rationale contract', () => {
+  const out = invokeHook({
+    tool_name: 'Agent',
+    tool_input: { subagent_type: 'planner', prompt: 'plan this feature' },
+  });
+  const p = out.hookSpecificOutput && out.hookSpecificOutput.updatedInput.prompt;
+  if (!p) throw new Error('reminder not injected for planner');
+  if (!p.includes('## Principle Audit')) throw new Error('Principle Audit section name missing');
+  if (!p.includes('SOLID, DRY, KISS, YAGNI')) throw new Error('foundational principles list missing');
+  if (!p.includes('## HETS Spawn Plan')) throw new Error('HETS-routed plan section reference missing');
+});
+
+test('optimizer → injects KB Sources Consulted section contract', () => {
+  const out = invokeHook({
+    tool_name: 'Agent',
+    tool_input: { subagent_type: 'optimizer', prompt: 'optimize my code' },
+  });
+  const p = out.hookSpecificOutput && out.hookSpecificOutput.updatedInput.prompt;
+  if (!p) throw new Error('reminder not injected for optimizer');
+  if (!p.includes('## KB Sources Consulted')) throw new Error('KB Sources Consulted section name missing');
+  if (!p.includes('kb:infra-dev/observability-basics')) throw new Error('observability kb_id example missing');
+  if (!p.includes('kb:architecture/discipline/reliability-scalability-maintainability')) throw new Error('RSM kb_id example missing');
+});
+
+test('plugin-prefixed power-loom:code-reviewer → also injects (normalization)', () => {
+  const out = invokeHook({
+    tool_name: 'Agent',
+    tool_input: { subagent_type: 'power-loom:code-reviewer', prompt: 'x' },
+  });
+  if (!out.hookSpecificOutput) throw new Error('plugin-prefixed code-reviewer should inject');
+});
+
+test('plugin-prefixed power-loom:security-auditor → also injects (normalization)', () => {
+  const out = invokeHook({
+    tool_name: 'Agent',
+    tool_input: { subagent_type: 'power-loom:security-auditor', prompt: 'x' },
+  });
+  if (!out.hookSpecificOutput) throw new Error('plugin-prefixed security-auditor should inject');
 });
 
 process.stdout.write(`\n=== Summary ===\n`);
