@@ -126,7 +126,14 @@ function main() {
   }
 
   const resultText = extractResultText(toolResponse);
-  const hasKbSection = /##\s*KB Sources Consulted/i.test(resultText);
+  // v2.7.1 regex update: accept an optional numbered structural prefix
+  // (`## 7. KB Sources Consulted`) — observed three times in 2026-05-21
+  // architect dispatches (v2.6.0 ship + GAP-H + SynthId design) where
+  // canonical kb refs WERE produced but the heading carried a numbered
+  // prefix. Also tightens the line anchor: `^##\s+` rejects `### KB Sources
+  // Consulted` (h3) which the prior unanchored pattern accidentally matched
+  // via substring (pre-existing bug surfaced by T4).
+  const hasKbSection = /^##\s+(?:\d+\.\s*)?KB Sources Consulted/im.test(resultText);
   const kbRefs = resultText.match(/kb:[a-z][a-z0-9\-/]+/gi) || [];
   const compliant = hasKbSection && kbRefs.length >= 1;
 

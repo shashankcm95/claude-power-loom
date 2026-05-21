@@ -8,6 +8,69 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [2.7.1] — 2026-05-21 — kb-citation-gate: accept numbered-prefix headings + tighten line anchor
+
+**Patch release.** Closes a regex over-fire pattern that surfaced THREE times during architect dispatches on 2026-05-21 (v2.6.0 ship, GAP-H fix, SynthId design). Each time the architect produced canonical `kb:<topic>/<doc>` refs but used a numbered structural heading (`## 7. KB Sources Consulted`); the prior regex required exact literal `## KB Sources Consulted` and blocked the response. The regex was the bug, not the architect's compliance.
+
+### Changed
+
+**`hooks/scripts/kb-citation-gate.js`** — single-line regex update:
+
+| Before (v2.4.2 – v2.7.0) | After (v2.7.1) |
+|---|---|
+| `/##\s*KB Sources Consulted/i` | `/^##\s+(?:\d+\.\s*)?KB Sources Consulted/im` |
+
+Two changes:
+1. **Optional numbered prefix** `(?:\d+\.\s*)?` — accepts `## 7. KB Sources Consulted` AND `## 12. KB Sources Consulted` AND `##  7.  KB Sources Consulted` (spaced variants).
+2. **Line anchor + required space** `^##\s+` — surfaced a **pre-existing bug** during TDD red phase (T4): the prior unanchored pattern accidentally matched `### KB Sources Consulted` via substring (h3 was being treated as h2-compliant). New regex correctly rejects h3, h1, and missing-heading cases.
+
+### Added
+
+**`tests/unit/hooks/kb-citation-gate.test.js`** (NEW; 11 tests; this hook had zero coverage prior):
+
+- T1: canonical `## KB Sources Consulted` + valid ref → approve
+- **T2 (load-bearing)**: numbered prefix `## 7. KB Sources Consulted` → approve
+- T3: multi-digit `## 12. KB Sources Consulted` → approve
+- **T4 (surfaced pre-existing bug)**: `### KB Sources Consulted` → reject
+- T5: `# KB Sources Consulted` → reject
+- T6: no section → reject
+- T7: heading present but zero `kb:` refs → reject
+- T8: non-Agent tool → pass-through approve
+- T9: non-KB-contracted subagent → pass-through approve
+- T10: numbered prefix with extra spaces → approve
+- T11: plugin-prefixed `power-loom:architect` normalizes + checks contract
+
+### TDD discipline applied (small-TDD)
+
+Per v2.6.1 advisory rule — this is <80 LoC but touches load-bearing enforcement code with **zero existing test coverage**. Test-first applied even at the small-patch carve-out:
+
+| Phase | Result |
+|---|---|
+| 1 — tests first | 11 tests; vs v2.7.0: **7 PASS / 4 FAIL** (T2, T3, T4, T10 — the bug surface) |
+| 3 — impl | 1 builder iteration → 11/11 PASS first run |
+
+Small-TDD application (not full architect+reviewer pair-run) since the change is genuinely small + the test set is comprehensive.
+
+### Recursive observation
+
+Same class as GAP-A..H: a text rule (the `## KB Sources Consulted` contract in `agents/architect.md`) where the *enforcement mechanism* (the regex) had a load-bearing gating predicate that gave inconsistent results. Per the discipline internalized at v2.6.1 ("not my problem"), this needed fixing rather than working around — now closed.
+
+### Verification
+
+- 11/11 new unit tests PASS
+- 116/116 install.sh smoke (no regressions from v2.7.0)
+- 24/24 + 13/13 + 10/10 + 11/11 other hook tests unchanged
+- ESLint clean on modified files
+
+### Companion v2.7.x queue still deferred
+
+- Fix-2 (prompt-pattern store starvation)
+- Fix-3 (tautological observations.log entries)
+- HIGH #1 (`bumpBatch` lock-collapse refactor)
+- D (SynthId lineage encoding; v2.8.1 after content-hash A ships in v2.8.0)
+
+---
+
 ## [2.7.0] — 2026-05-21 — GAP-H: self-improve auto-graduation logic fix (TDD-treatment data point #2)
 
 **Minor release.** Closes GAP-H — the **8th gap** in the GAP-A..G lineage. User flagged: "look into the history of learning from errors and diagnose the self-improvement loop so we can pin down what claims are actually being reflected in the plugin regarding the evolutionary cycle."
