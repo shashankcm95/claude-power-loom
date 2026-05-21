@@ -77,8 +77,18 @@ const LOCK_TIMEOUT_MS = 2000;
 const LOG_FILE = path.join(os.homedir(), '.claude/checkpoints/context-warn-log.jsonl');
 
 // Primary thresholds — TOKENS (v2.6.0 ground-truth signal).
-const WARN_TOKENS = Math.max(1, parseInt(process.env.CLAUDE_CONTEXT_WARN_TOKENS || '100000', 10));
-const URGENT_TOKENS = Math.max(WARN_TOKENS + 1, parseInt(process.env.CLAUDE_CONTEXT_URGENT_TOKENS || '160000', 10));
+//
+// v2.6.1 — window-size auto-scaler. The default thresholds are derived from
+// CLAUDE_CONTEXT_WINDOW_SIZE (default 200000 — the standard Claude window).
+// Operators running 1M-context mode set CLAUDE_CONTEXT_WINDOW_SIZE=1000000
+// to scale WARN/URGENT to 500K/800K automatically. Explicit
+// CLAUDE_CONTEXT_WARN_TOKENS / URGENT_TOKENS env vars still override
+// absolutely (back-compat preserved per T5.6 + T5.7).
+const WINDOW_SIZE = Math.max(1, parseInt(process.env.CLAUDE_CONTEXT_WINDOW_SIZE || '200000', 10));
+const DERIVED_WARN_TOKENS = Math.floor(WINDOW_SIZE * 0.50);
+const DERIVED_URGENT_TOKENS = Math.floor(WINDOW_SIZE * 0.80);
+const WARN_TOKENS = Math.max(1, parseInt(process.env.CLAUDE_CONTEXT_WARN_TOKENS || String(DERIVED_WARN_TOKENS), 10));
+const URGENT_TOKENS = Math.max(WARN_TOKENS + 1, parseInt(process.env.CLAUDE_CONTEXT_URGENT_TOKENS || String(DERIVED_URGENT_TOKENS), 10));
 
 // Fallback thresholds — BYTES (when usage block missing).
 const WARN_BYTES = Math.max(0, parseInt(process.env.CLAUDE_CONTEXT_WARN_BYTES || '400000', 10));

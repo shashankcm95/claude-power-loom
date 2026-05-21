@@ -76,6 +76,30 @@ Multi-file work must produce a **plan artifact** BEFORE the first Edit/Write/Mul
 
 </important>
 
+<important if "task involves substantive rewrite of substrate code (≥80 LoC) AND existing tests describe behavior that will change">
+
+## TDD-Treatment Discipline (v2.6.1 codification — ADVISORY, not always-on)
+
+For substantive substrate rewrites where existing tests describe behavior that will be invalidated by the rewrite, apply test-first discipline:
+
+1. **Rewrite the test file first** describing the NEW desired behavior. Do not touch impl yet.
+2. **Run tests against current impl** — expect failures. The failing-test set IS your behavioral spec.
+3. **Architect pair-run** with the failing-test set as the design contract.
+4. **Impl minimum code** to make all tests pass. No scope creep beyond the test set.
+5. **Code-reviewer pair-run** for resource/edge-case coverage (the bugs tests typically miss: fd leaks, edge boundaries, concurrency, fragility).
+
+**Load-bearing benefit** (per v2.6.0 EXPERIMENT-LOG.md verdict): **spec clarity** — failing tests = exact behavioral contract upfront, anchoring both architect and reviewer to a single source of truth. NOT rework-loop reduction (data: TDD-treatment and baseline both hit 1 rework loop on the same gap class; both depended on code-reviewer pair-run for non-functional bug catches).
+
+**Skip this discipline when**:
+- Pure mechanical changes (rename, refactor) with no behavior change
+- Exploratory work where the right behavior is itself unclear (TDD requires a known-good spec)
+- Single-file utility scripts with no existing test contract
+- Hotfix or trivial patch (<80 LoC, single edge case)
+
+**Origin**: v2.6.0 GAP-F signal redesign was the first explicit TDD-treatment data point in a discipline experiment deferred ~10 days. Full Phase 1-5 metrics in `bench/EXPERIMENT-LOG.md`. Decision-criteria verdict was inconclusive on rework reduction but clear on spec-clarity benefit — hence advisory not always-on.
+
+</important>
+
 <important if "task involves substrate-meta work (routing scorer, hook authoring, validator authoring, dictionary expansion, forcing-instruction class taxonomy)">
 
 ## Hook layer placement (H.7.19)
