@@ -45,14 +45,15 @@ Before deploying, follow the deploy-checklist skill for the full pre-deployment 
 
 <important if "task involves multi-file changes (≥2 distinct files)">
 
-## Plan-Before-Edit Discipline (H.7.9 + GAP-B 2026-05-20 — mechanism-flexible)
+## Plan-Before-Edit Discipline (H.7.9 + GAP-B 2026-05-20 + GAP-G 2026-05-21 — mechanism-flexible + hook-enforced in headless)
 
 Multi-file work must produce a **plan artifact** BEFORE the first Edit/Write/MultiEdit call. The mechanism is mode-dependent — the discipline is "plan before editing", not "use a specific tool":
 
 - **Interactive sessions**: prefer the `EnterPlanMode` tool. It triggers the user-approval dialog and is the canonical signal.
-- **Headless `claude -p` sessions**: the `EnterPlanMode` tool IS available (verified via bench stream-json tool registry 2026-05-20), but its approval dialog is non-functional under `-p`. In headless mode, the planning artifact is either:
+- **Headless `claude -p` sessions**: the `EnterPlanMode` tool is **deterministically denied** by the v2.5.1 `redirect-plan-mode-in-headless.js` hook (PreToolUse:EnterPlanMode). The approval dialog after ExitPlanMode hangs in headless mode (no user to approve), causing the session to terminate with `stop_reason=end_turn` before any Edits execute — discovered as GAP-G in the v2.5.0 bench scenario 04 (11 turns + architect spawn + plan-file written but target file unchanged). The hook redirects to:
+  - A `TodoWrite` invocation with ≥2 todos covering the phases of the planned work, OR
   - A plan-file at `.claude/plans/<slug>.md` matching `swarm/plan-template.md` schema, OR
-  - A `TodoWrite` invocation with ≥2 todos covering the phases of the planned work
+  - Direct execution (for single-file or trivial tasks where the route-decide gate returns `root`)
 
 **Rules of thumb**:
 - Any task touching ≥2 distinct files → produce a plan artifact first (interactive: tool call; headless: file or TodoWrite)

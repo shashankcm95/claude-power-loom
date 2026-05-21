@@ -37,6 +37,17 @@
     ],
     "PreToolUse": [
       {
+        "_comment": "GAP-G (v2.5.1): headless EnterPlanMode redirect. Detects `claude -p`/`--print` via parent-process command-line + permission_mode envelope field; denies EnterPlanMode in headless mode with forcing instruction redirecting to TodoWrite. Closes scenario-04 silent-failure where ExitPlanMode hung on the approval dialog and terminated the session before edits executed.",
+        "matcher": "EnterPlanMode",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/redirect-plan-mode-in-headless.js",
+            "timeout": 3
+          }
+        ]
+      },
+      {
         "matcher": "ExitPlanMode",
         "hooks": [
           {
