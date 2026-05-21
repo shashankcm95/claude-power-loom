@@ -1,0 +1,31 @@
+{
+  "id": "03-library-substrate",
+  "description": "Library CLI exercise — stats/daybook/sections/write/read/gc round-trip. Verifies library substrate end-to-end + Bash-hook interaction (route-decide hook does NOT fire here since no Agent spawns).",
+  "fixture": "fixture",
+  "deterministic_pass": [
+    "claude_exit_zero",
+    "stop_hook_fired",
+    "library_stats_invoked",
+    "library_daybook_invoked",
+    "library_write_invoked",
+    "library_read_invoked",
+    "library_gc_invoked",
+    "library_volume_persisted",
+    "library_catalog_entry_present"
+  ],
+  "expected_soft_signals": {
+    "kb_consultation": "no expected (no architect spawn)",
+    "specialist_agents_spawned": "no expected (CLI-only task)",
+    "route_decide_consulted": "no expected (no Agent spawn)",
+    "plan_mode_evidence": "TodoWrite likely (multi-step task)"
+  },
+  "expected_hook_firings": [
+    "session-reset (SessionStart)",
+    "fact-force-gate (PreToolUse:Bash on library invocations)",
+    "error-critic (PostToolUse:Bash on each library invocation; should NOT escalate)",
+    "auto-store-enrichment (Stop)"
+  ],
+  "expected_agents_spawned": [],
+  "wallclock_budget_seconds": 300,
+  "notes": "This scenario is CLI-driven not agent-driven. subagent_spawned is NOT expected to PASS; library_* checks substitute for orchestration checks."
+}

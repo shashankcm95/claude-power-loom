@@ -1,0 +1,34 @@
+{
+  "id": "02-security-audit",
+  "description": "Security-heavy task with explicit security-audit request + secret material in fixture. Targets security-auditor agent, validate-no-bare-secrets hook, and security KB docs.",
+  "fixture": "fixture",
+  "deterministic_pass": [
+    "claude_exit_zero",
+    "auth_has_rotate_token",
+    "auth_uses_constant_time_compare",
+    "auth_validates_token_format",
+    "test_added",
+    "smoke_tests_pass",
+    "subagent_spawned",
+    "security_signal_evidence",
+    "no_secret_block_false_positive",
+    "stop_hook_fired"
+  ],
+  "expected_soft_signals": {
+    "kb_consultation": "YES (security KB refs expected)",
+    "specialist_agents_spawned": "YES (security-auditor expected; architect + code-reviewer likely)",
+    "route_decide_consulted": "YES (per GAP-C)",
+    "research_mode_citations": "YES"
+  },
+  "expected_hook_firings": [
+    "route-decide-on-agent-spawn (per Agent spawn)",
+    "kb-citation-gate (per architect spawn)",
+    "fact-force-gate (per file op)",
+    "validate-no-bare-secrets (per Edit on auth.js; should APPROVE control placeholder)",
+    "auto-store-enrichment (Stop)"
+  ],
+  "expected_agents_spawned": ["security-auditor"],
+  "agents_possible": ["architect", "code-reviewer", "security-auditor"],
+  "wallclock_budget_seconds": 600,
+  "notes": "API_KEY_FALLBACK in fixture is a deliberate validate-no-bare-secrets control (SEC-3 placeholder carve-out — should APPROVE not BLOCK)."
+}

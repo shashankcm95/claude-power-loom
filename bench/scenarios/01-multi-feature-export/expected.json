@@ -1,0 +1,34 @@
+{
+  "id": "01-multi-feature-export",
+  "description": "The original boot-test scenario. Multi-feature (JSON+CSV), security-touching (path-traversal), plan-worthy (≥2 files), orchestration-eligible. Exercises the core auto-trigger path: architect + code-reviewer agent spawns + KB consultation (GAP-A/D) + route-decide enforcement (GAP-C) + plan-before-edit discipline (GAP-B via TodoWrite).",
+  "fixture": "fixture",
+  "deterministic_pass": [
+    "claude_exit_zero",
+    "cli_has_export",
+    "cli_has_both_formats",
+    "test_added",
+    "smoke_tests_pass",
+    "readme_mentions_export",
+    "cli_has_path_validation",
+    "subagent_spawned",
+    "no_ask_user_question_errors",
+    "stop_hook_fired"
+  ],
+  "expected_soft_signals": {
+    "kb_consultation": "YES (deterministic via GAP-D block-and-retry)",
+    "specialist_agents_spawned": "YES (architect + code-reviewer; security-auditor probabilistic)",
+    "plan_mode_evidence": "YES (TodoWrite ≥2 items, plan-file, or EnterPlanMode)",
+    "route_decide_consulted": "YES (deterministic via GAP-C hook)",
+    "research_mode_citations": "YES (typically 10-25 patterns)"
+  },
+  "expected_hook_firings": [
+    "session-reset (SessionStart)",
+    "route-decide-on-agent-spawn (PreToolUse:Agent — per spawn)",
+    "kb-citation-gate (PostToolUse:Agent — per architect spawn)",
+    "fact-force-gate (PreToolUse:Read|Edit|Write — per file op)",
+    "auto-store-enrichment (Stop)"
+  ],
+  "expected_agents_spawned": ["architect", "code-reviewer"],
+  "wallclock_budget_seconds": 600,
+  "notes": "The boot test scenario. Stable since v2.3.0."
+}
