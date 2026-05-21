@@ -5,5 +5,11 @@ node_modules/
 # Swarm run state (per-run findings, not for version control)
 swarm/run-state/
 
+# Bench run artifacts (Claude's outputs during scenario runs — cli.js,
+# cli.test.js, snapshots, stream.jsonl, metrics.json). Useful locally for
+# debugging but never for version control. Excluded from T80 markdownlint
+# and T84 ESLint via --ignore-pattern at invocation (v2.6.1).
+bench/runs/
+
 # Note: mempalace.yaml and entities.json ARE tracked — they ship as default
 # rooms/people for the toolkit. Per-project users can override locally.

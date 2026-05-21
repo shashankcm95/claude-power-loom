@@ -8,6 +8,57 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [2.6.1] — 2026-05-21 — Window-size auto-scaler + TDD-treatment advisory rule codification
+
+**Patch release.** Two small additive items from the v2.6.0 follow-up queue:
+
+### 1. `CLAUDE_CONTEXT_WINDOW_SIZE` auto-scaler
+
+v2.6.0's `WARN_TOKENS=100000` / `URGENT_TOKENS=160000` defaults were anchored to the standard 200K Claude window. Operators running 1M-context mode would hit false-positive urgency on every turn (warn at 10% of capacity, urgent at 16%). This release adds an env-var-driven auto-scaler:
+
+- **`CLAUDE_CONTEXT_WINDOW_SIZE`** (default `200000`) — declares the operating window size
+- **Default WARN/URGENT** derive as 50% / 80% of the window size when no explicit `_TOKENS` env vars set
+- **Explicit `CLAUDE_CONTEXT_WARN_TOKENS` / `URGENT_TOKENS` still override absolutely** (back-compat preserved)
+
+| Mode | `WINDOW_SIZE` | Derived `WARN` | Derived `URGENT` |
+|---|---|---|---|
+| Default (200K window) | `200000` (default) | `100000` | `160000` |
+| 1M-context mode | `1000000` | `500000` | `800000` |
+| Future 2M (hypothetical) | `2000000` | `1000000` | `1600000` |
+
+### 2. Advisory TDD-treatment rule in `rules/core/workflow.md`
+
+Codifies the verdict from v2.6.0's EXPERIMENT-LOG.md TDD-treatment data point. Rule fires only on substantive substrate rewrites (≥80 LoC) where existing tests describe behavior that will change. NOT always-on — the experiment verdict was clear that TDD's load-bearing benefit is **spec clarity**, not rework-loop reduction.
+
+**Skip the rule** for: mechanical changes, exploratory work, single-file utilities, hotfixes <80 LoC.
+
+### TDD discipline applied to this release
+
+Window-size auto-scaler followed the same TDD pattern:
+1. 4 new tests (T5.4–T5.7) added to existing suite
+2. Run against v2.6.0 → 1 test FAILS (T5.4 — discriminating test for window-derived defaults; T5.5–T5.7 pass for back-compat reasons)
+3. ~10-LoC impl change: derive defaults from `WINDOW_SIZE` constant
+4. Re-run → 24/24 PASS
+
+This was a SMALL TDD application (not the full Phase 1-5 architect+reviewer pair-run from v2.6.0) since the change was within the "skip when hotfix-class" carve-out of the new rule. The rule self-applies correctly.
+
+### Files changed
+
+- `hooks/scripts/context-size-warn-stop.js` — 5-line addition (`WINDOW_SIZE` constant + derived defaults)
+- `tests/unit/hooks/context-size-warn-stop.test.js` — +4 tests (T5.4–T5.7), 1 line in `runHook` opts for `windowSize`
+- `rules/core/workflow.md` — new `<important if>` section codifying TDD-treatment advisory
+- `.claude-plugin/plugin.json` — 2.6.0 → 2.6.1
+- `CHANGELOG.md` — this entry
+
+### Verification
+
+- 24/24 unit tests PASS (was 20; +4 for window-size)
+- 13/13 contract-reminder + 10/10 redirect-plan-mode tests unchanged
+- 114/116 install.sh smoke (T80 + T84 pre-existing failures on `main`; out of scope)
+- ESLint clean on modified files
+
+---
+
 ## [2.6.0] — 2026-05-21 — GAP-F signal redesign: transcript usage tokens (TDD-treatment data point)
 
 **Minor release.** Replaces the v2.5.0 GAP-F signal (`fs.statSync(transcript_path).size`) with a token-counted signal parsed from the last assistant `message.usage` block in the transcript JSONL. Live verification on a real 387MB transcript: v2.5.0 reported `bytes=396806KB` (meaningless noise — file is monotonic session-history including pre-compact turns); v2.6.0 reports `tokens=330194` (the actual context-window size sent to the model).

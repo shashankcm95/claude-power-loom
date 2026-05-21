@@ -74,7 +74,24 @@ Multi-file work must produce a **plan artifact** BEFORE the first Edit/Write/Mul
 - Drift notes feed the auto-loop's session-end review (`rules/core/self-improvement.md`).
 - Per the H.7.9 meta-discipline directive: conversations and tasks are the primary plugin testing framework; pattern-emergence observations promote to substrate refinement.
 
+### TDD-Treatment Discipline (v2.6.1 codification — ADVISORY sub-rule)
+
+When the multi-file change is ALSO a **substantive substrate rewrite (≥80 LoC) where existing tests describe behavior that will change**, apply test-first discipline in addition to the plan artifact:
+
+1. **Rewrite the test file first** describing the NEW desired behavior. Do not touch impl yet.
+2. **Run tests against current impl** — expect failures. The failing-test set IS your behavioral spec.
+3. **Architect pair-run** with the failing-test set as the design contract.
+4. **Impl minimum code** to make all tests pass. No scope creep beyond the test set.
+5. **Code-reviewer pair-run** for resource/edge-case coverage (fd leaks, edge boundaries, concurrency, fragility — the bugs tests typically miss).
+
+**Load-bearing benefit** (per v2.6.0 EXPERIMENT-LOG.md verdict): **spec clarity** — failing tests = exact behavioral contract upfront, anchoring both architect and reviewer to a single source of truth. NOT rework-loop reduction (data: TDD-treatment and baseline both hit 1 rework loop on the same gap class; both depended on code-reviewer pair-run for non-functional bug catches).
+
+**Skip TDD-treatment** even when in plan-mode if: pure mechanical changes (rename, refactor) with no behavior change; exploratory work where the right behavior is itself unclear; single-file utility scripts with no existing test contract; hotfixes <80 LoC.
+
+**Origin**: v2.6.0 GAP-F signal redesign was the first explicit TDD-treatment data point in a discipline experiment deferred ~10 days. Full Phase 1-5 metrics in `bench/EXPERIMENT-LOG.md`. Bundled into Plan-Before-Edit (vs a parallel predicate block) per T76 anti-over-conditionalization ceiling — TDD-treatment is a SUB-rule of Plan-Before-Edit, not a parallel discipline.
+
 </important>
+
 
 <important if "task involves substrate-meta work (routing scorer, hook authoring, validator authoring, dictionary expansion, forcing-instruction class taxonomy)">
 

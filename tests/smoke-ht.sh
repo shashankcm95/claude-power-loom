@@ -356,7 +356,10 @@ EOF
   # (caught by CI when H.9.6 introduced duplicate `last_session_phase_priors:`
   # key in HT-state.md frontmatter — Test 83 failed silently locally; CI surfaced).
   T80_EXIT=0
-  T80_OUT=$(cd "$SCRIPT_DIR" && npx --yes markdownlint-cli2 "**/*.md" "swarm/kb-architecture-planning/**/*.md" "#node_modules" "#swarm" 2>&1) || T80_EXIT=$?
+  # v2.6.1: exclude bench/runs/** — these are generated artifacts (Claude's
+  # outputs during bench scenarios); not substrate markdown. Closes the
+  # silent-failure "out of scope" treatment of this test across v2.4.x-v2.6.0.
+  T80_OUT=$(cd "$SCRIPT_DIR" && npx --yes markdownlint-cli2 "**/*.md" "swarm/kb-architecture-planning/**/*.md" "#node_modules" "#swarm" "#bench/runs" 2>&1) || T80_EXIT=$?
   if [ $T80_EXIT -eq 0 ]; then
     echo "OK (substrate markdown lint clean; 0 errors)"
     passed=$((passed + 1))
@@ -506,7 +509,13 @@ EOF
   # H.9.6.2 safe-pattern: T84_EXIT=0; T84_OUT=$(...) || T84_EXIT=$?
   echo -n "  Test 84 (H.9.7 ESLint v9 + eslint:recommended on substrate .js): "
   T84_EXIT=0
-  T84_OUT=$(cd "$SCRIPT_DIR" && npx --yes eslint@9 . 2>&1) || T84_EXIT=$?
+  # v2.6.1: --ignore-pattern bench/runs/** excludes generated bench artifacts
+  # (cli.js/cli.test.js created by Claude during scenario runs); not substrate
+  # code. Closes the silent-failure "out of scope" treatment of this test
+  # across v2.4.x-v2.6.0. Done at invocation level (not in eslint.config.js)
+  # because config-guard correctly protects eslint.config.js from arbitrary
+  # edits — the substrate convention is "fix the harness, not the config."
+  T84_OUT=$(cd "$SCRIPT_DIR" && npx --yes eslint@9 . --ignore-pattern "bench/runs/**" 2>&1) || T84_EXIT=$?
   if [ $T84_EXIT -eq 0 ]; then
     echo "OK (substrate JavaScript ESLint clean at error severity; 0 errors)"
     passed=$((passed + 1))

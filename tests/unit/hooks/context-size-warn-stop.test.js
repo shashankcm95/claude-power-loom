@@ -69,6 +69,7 @@ function runHook(envelope, opts = {}) {
   if (opts.urgentBytes !== undefined) env.CLAUDE_CONTEXT_URGENT_BYTES = String(opts.urgentBytes);
   if (opts.warnTurns !== undefined) env.CLAUDE_CONTEXT_WARN_TURNS = String(opts.warnTurns);
   if (opts.urgentTurns !== undefined) env.CLAUDE_CONTEXT_URGENT_TURNS = String(opts.urgentTurns);
+  if (opts.windowSize !== undefined) env.CLAUDE_CONTEXT_WINDOW_SIZE = String(opts.windowSize);
 
   const r = spawnSync('node', [HOOK], {
     input: JSON.stringify(envelope),
@@ -394,6 +395,58 @@ test('T5.3: bytes env vars only affect the fallback path', () => {
     throw new Error(`bytes thresholds leaked into token-mode signal: ${stdout.slice(-300)}`);
   }
   cleanup(transcript);
+});
+
+// v2.6.1 — window-size auto-scaler tests (T5.4–T5.7)
+
+test('T5.4: CLAUDE_CONTEXT_WINDOW_SIZE=1000000 derives WARN at 500K (50% of window)', () => {
+  // 1M-context mode; 600K tokens should hit WARN (> 50% threshold = 500K) but
+  // NOT URGENT (URGENT = 80% = 800K). Default 200K-window behavior would
+  // have URGENT'd at 160K — auto-scaler should suppress that.
+  const transcript = makeUsageTranscript({ cacheRead: 600000 });
+  const { stdout } = runHook(
+    { transcript_path: transcript },
+    { windowSize: 1000000 }
+  );
+  if (!stdout.includes('[CONTEXT-SIZE-WARN]')) {
+    throw new Error(`expected WARN at 600K tokens in 1M window, got: ${stdout.slice(-300)}`);
+  }
+  if (stdout.includes('[CONTEXT-SIZE-URGENT]')) {
+    throw new Error(`should not URGENT at 600K in 1M window (URGENT band starts at 800K)`);
+  }
+});
+
+test('T5.5: CLAUDE_CONTEXT_WINDOW_SIZE=1000000 derives URGENT at 800K (80%)', () => {
+  const transcript = makeUsageTranscript({ cacheRead: 900000 });
+  const { stdout } = runHook(
+    { transcript_path: transcript },
+    { windowSize: 1000000 }
+  );
+  if (!stdout.includes('[CONTEXT-SIZE-URGENT]')) {
+    throw new Error(`expected URGENT at 900K tokens in 1M window, got: ${stdout.slice(-300)}`);
+  }
+});
+
+test('T5.6: explicit CLAUDE_CONTEXT_WARN_TOKENS overrides window-derived default', () => {
+  // Window = 1M (would derive WARN=500K), but explicit WARN_TOKENS=50000 wins.
+  // Transcript at 60K tokens should fire WARN.
+  const transcript = makeUsageTranscript({ cacheRead: 60000 });
+  const { stdout } = runHook(
+    { transcript_path: transcript },
+    { windowSize: 1000000, warnTokens: 50000, urgentTokens: 80000 }
+  );
+  if (!stdout.includes('[CONTEXT-SIZE-WARN]')) {
+    throw new Error(`expected explicit WARN_TOKENS=50K override to fire at 60K, got: ${stdout.slice(-300)}`);
+  }
+});
+
+test('T5.7: WINDOW_SIZE unset → back-compat default 200K-window behavior unchanged', () => {
+  // No windowSize, no explicit tokens. 110K tokens should fire WARN (default 100K).
+  const transcript = makeUsageTranscript({ cacheRead: 110000 });
+  const { stdout } = runHook({ transcript_path: transcript });
+  if (!stdout.includes('[CONTEXT-SIZE-WARN]')) {
+    throw new Error(`back-compat: 110K in default 200K window should WARN, got: ${stdout.slice(-300)}`);
+  }
 });
 
 // =============================================================
