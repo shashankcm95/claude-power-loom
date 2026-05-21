@@ -8,6 +8,69 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [2.5.1] — 2026-05-21 — GAP-G: headless EnterPlanMode redirect to TodoWrite
+
+**Patch release.** Closes GAP-G — discovered during v2.5.0 bench verification (scenario 04, HETS-routed substantive refactor): Claude correctly entered plan mode, spawned architect, wrote plan file, then called ExitPlanMode → approval dialog hung with no interactive user → session terminated with `stop_reason=end_turn` before any Edits executed. The target file (`cache.js`) stayed in its naïve form despite 11 turns of planning work.
+
+### Added
+
+- **`hooks/scripts/redirect-plan-mode-in-headless.js`** (NEW; PreToolUse:EnterPlanMode, matcher `EnterPlanMode`) — denies `EnterPlanMode` with `permissionDecision: 'deny'` + forcing instruction (Class 4: denial + redirect) when headless mode is detected. Redirects the model to `TodoWrite` for planning discipline that works without an approval dialog.
+  - **Detection signals** (OR-combined; either positive → headless):
+    1. **Primary**: parent process command-line via `ps -p $PPID -o command=` — matches `claude -p` or `claude --print` (portable across macOS BSD ps + GNU ps per H.9.12.1 lesson)
+    2. **Secondary**: hook envelope `permission_mode` field ≠ `auto`/`default` (catches `--permission-mode bypassPermissions` style invocations)
+  - **Test override**: `CLAUDE_HEADLESS={1,0}` env var bypasses detection (used by unit tests + as a manual override).
+  - **Fail-safe**: if neither signal fires, ALLOW the tool call. Better to permit interactive-misclassified sessions than to incorrectly block legitimate interactive use.
+  - **Observability log**: `~/.claude/checkpoints/headless-plan-redirect-log.jsonl` — one record per denial with `{ts, session_id, tool, signals, action}`.
+- **`tests/unit/hooks/redirect-plan-mode-in-headless.test.js`** (NEW) — 10 unit tests covering: env-var deny + allow, non-EnterPlanMode pass-through, permission_mode signal detection, malformed-JSON fail-safe, empty-stdin fail-safe, observability log persistence, forcing-instruction shape (GAP-G context + class + family-position + TodoWrite usage hint).
+
+### Changed
+
+- `hooks/hooks.json`: registers `redirect-plan-mode-in-headless.js` as the new PreToolUse:EnterPlanMode hook (inserted before the existing `verify-plan-gate.js` on PreToolUse:ExitPlanMode).
+- `plugin.json`: 2.5.0 → 2.5.1.
+
+### Bench evidence (scenario 04 stream)
+
+```
+event 19  TEXT          "Route-decide returned `root`..."
+event 20  Agent (architect spawn — KB reminder injected via v2.4.2 GAP-E fix)
+event 21  EnterPlanMode                  ← FAILURE MODE STARTS HERE
+event 27  Read cache.js
+event 33  TOOL_RESULT (architect returns)
+event 36  Write — plan-file
+event 39  ExitPlanMode                   ← approval dialog opens
+event 40  TOOL_RESULT "Exit plan mode?"  ← NO USER TO APPROVE
+event 41  TEXT (final message)
+event 43  RESULT stop_reason=end_turn    ← session ends; cache.js unchanged
+```
+
+Plus metrics: `fixture_diff.modified_files: []` — no Edits despite 11 turns + architect spawn + plan-file creation.
+
+### GAP lineage at v2.5.1
+
+| GAP | Version | Mechanism |
+|---|---|---|
+| A | v2.3.0 → v2.4.2 | text rule → PreToolUse contract reminder |
+| B | v2.3.0 | Plan-Before-Edit workflow (text) |
+| C | v2.3.0 | route-decide PreToolUse hook |
+| D | v2.3.0 | kb-citation PostToolUse (broken in headless; obs-only) |
+| E | v2.4.2 | PreToolUse input mutation (replaced D) |
+| F | v2.5.0 | context-size Stop hook (architecture ✓; thresholds need v2.6.0 redesign) |
+| **G** | **v2.5.1 (THIS)** | **PreToolUse:EnterPlanMode redirect (TTY + ps + permission_mode detection)** |
+
+### Open gaps after v2.5.1
+
+- **GAP-F threshold redesign** → v2.6.0. The architect's "800KB ≈ 200K-token window" estimate was off by ~500×. Real transcripts are 100KB–400MB. The transcript JSONL contains the truthful signal: `usage.input_tokens + cache_read_input_tokens + cache_creation_input_tokens` from the last assistant message = current context-window-size in tokens. v2.6.0 will parse this from the last ~50KB of the transcript file instead of measuring file bytes.
+
+### Verification
+
+- 10/10 new unit tests PASS
+- 11/11 context-size-warn-stop tests still PASS (unchanged)
+- 13/13 contract-reminder tests still PASS (unchanged)
+- ESLint clean on new + modified files
+- HT-state.md: 244 top-level keys, 0 duplicates (validate-yaml-frontmatter contract preserved)
+
+---
+
 ## [2.5.0] — 2026-05-21 — GAP-F: deterministic context-size warning Stop hook (substrate-fundament)
 
 **Minor release.** Closes GAP-F — the last text-only rule in the GAP-A..F lineage that lacked hook enforcement. `rules/core/self-improvement.md` says "When context is getting large, proactively save... consider compaction" — that was instruction-following only. This release converts it to a deterministic Stop hook that uses `transcript_path` bytes as the ground-truth signal.
