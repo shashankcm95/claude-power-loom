@@ -222,44 +222,120 @@ function cmdBumpTurn() {
   console.log(JSON.stringify({ action: 'bump-turn', turnCounter, shouldScan }));
 }
 
+/**
+ * Core scan logic — extracted helper used by both cmdScan and bumpBatch's
+ * inline scan path. Operates on already-loaded counters + pending; mutates
+ * `pending.candidates` in place; returns { newCandidates, autoGraduated,
+ * promotedFromPending } counts.
+ *
+ * GAP-H FIX (v2.7.0): replaces the pre-fix `knownSignatures = new Set(...)`
+ * predicate that treated first-candidate-creation as terminal (a signal
+ * could ride from count=5 → count=∞ but never trigger the count≥10 + low-risk
+ * auto-graduation path). The new logic is STATUS-AWARE:
+ *
+ *   - Terminal states (dismissed / promoted / auto-graduated) → skip entirely
+ *     (preserved invariant; user choice is sticky per KB
+ *     architecture/discipline/stability-patterns Steady-State).
+ *   - Pending candidates → eligible for transition. If count crosses the
+ *     auto-grad threshold + risk='low', flip status in place (do NOT
+ *     create a duplicate candidate). Also refresh occurrences + lastSeen
+ *     for observability (per T9).
+ *   - Unknown signal at count≥candidate → new candidate (preserved logic).
+ *
+ * This eliminates the duplicate inline-scan body at the prior line 332 in
+ * bumpBatch's shouldScan branch — single source of truth (KB single-
+ * responsibility / DRY).
+ *
+ * RESIDUAL RISK (v2.7.0 code-reviewer HIGH #2; documented not blocked):
+ * Under the no-op lock fallback path (when `agent-team/_lib/lock.js` is
+ * absent — emits stderr warning at module load), a concurrent scan could
+ * read pending.json BEFORE this scan's writeAtomic completes, see the
+ * pending candidate as still status='pending', and call executeGraduation
+ * a second time → duplicate line in observations.log. NOT a regression
+ * vs v2.6.1 (the same race existed in the old inline-scan code). Real
+ * fix path: hard-require the lock primitive at module load + fail loud
+ * if missing. Follow-up ticket; out of scope for GAP-H.
+ *
+ * @param {object} counters - loaded counters state
+ * @param {object} pending  - loaded pending state (mutated in place)
+ * @returns {{newCandidates: number, autoGraduated: number, promotedFromPending: number}}
+ */
+function _runScan(counters, pending) {
+  const knownBySignal = new Map(pending.candidates.map((c) => [c.signal, c]));
+  let newCount = 0;
+  let autoGradCount = 0;
+  let promotedFromPendingCount = 0;
+  const now = new Date().toISOString();
+
+  for (const [signal, entry] of Object.entries(counters.signals)) {
+    if (entry.count < THRESHOLDS.candidate) continue;
+
+    const existing = knownBySignal.get(signal);
+
+    if (existing) {
+      // Terminal states — never revisit. Sticky-dismiss / sticky-promote /
+      // sticky-auto-graduated all converge on this guard (T5, T6, T4).
+      if (existing.status === 'dismissed' ||
+          existing.status === 'promoted' ||
+          existing.status === 'auto-graduated') {
+        continue;
+      }
+
+      // Non-terminal: 'pending'. Refresh observability fields (T9) and check
+      // if it's eligible to transition to auto-graduated (T3, T4, T8).
+      existing.occurrences = entry.count;
+      existing.lastSeen = entry.lastSeen;
+      const risk = existing.risk || KIND_RISK[existing.kind] || 'medium';
+      if (risk === 'low' && entry.count >= THRESHOLDS.autoGraduate) {
+        existing.status = 'auto-graduated';
+        existing.autoGraduatedAt = now;
+        executeGraduation(existing);
+        promotedFromPendingCount++;
+      }
+      continue;
+    }
+
+    // Unknown signal at >= candidate threshold — new candidate.
+    const kind = inferKindFromSignal(signal);
+    const risk = KIND_RISK[kind] || 'medium';
+    const candidate = {
+      id: newCandidateId(),
+      kind,
+      signal,
+      occurrences: entry.count,
+      firstSeen: entry.firstSeen,
+      lastSeen: entry.lastSeen,
+      risk,
+      summary: signalToSummary(signal, entry),
+      proposedAction: signalToProposedAction(signal, kind),
+      status: 'pending',
+      createdAt: now,
+    };
+    if (risk === 'low' && entry.count >= THRESHOLDS.autoGraduate) {
+      candidate.status = 'auto-graduated';
+      candidate.autoGraduatedAt = now;
+      executeGraduation(candidate);
+      autoGradCount++;
+    } else {
+      newCount++;
+    }
+    pending.candidates.push(candidate);
+  }
+
+  return {
+    newCandidates: newCount,
+    autoGraduated: autoGradCount,
+    promotedFromPending: promotedFromPendingCount,
+  };
+}
+
 function cmdScan() {
   let result;
   withLock(COUNTERS_PATH + '.lock', () => {
     withLock(PENDING_PATH + '.lock', () => {
       const counters = loadCounters();
       const pending = loadPending();
-      const knownSignatures = new Set(pending.candidates.map((c) => c.signal));
-      const newCandidates = [];
-      const autoGraduated = [];
-
-      for (const [signal, entry] of Object.entries(counters.signals)) {
-        if (knownSignatures.has(signal)) continue;
-        if (entry.count < THRESHOLDS.candidate) continue;
-        const kind = inferKindFromSignal(signal);
-        const risk = KIND_RISK[kind] || 'medium';
-        const candidate = {
-          id: newCandidateId(),
-          kind,
-          signal,
-          occurrences: entry.count,
-          firstSeen: entry.firstSeen,
-          lastSeen: entry.lastSeen,
-          risk,
-          summary: signalToSummary(signal, entry),
-          proposedAction: signalToProposedAction(signal, kind),
-          status: 'pending',
-          createdAt: new Date().toISOString(),
-        };
-        if (risk === 'low' && entry.count >= THRESHOLDS.autoGraduate) {
-          candidate.status = 'auto-graduated';
-          executeGraduation(candidate);
-          autoGraduated.push(candidate);
-        } else {
-          newCandidates.push(candidate);
-        }
-      }
-
-      pending.candidates.push(...newCandidates, ...autoGraduated);
+      const scanCounts = _runScan(counters, pending);
       counters.lastScanAt = new Date().toISOString();
       counters.lastScanTurn = counters.turnCounter;
       writeAtomic(COUNTERS_PATH, counters);
@@ -267,8 +343,9 @@ function cmdScan() {
 
       result = {
         action: 'scan',
-        newCandidates: newCandidates.length,
-        autoGraduated: autoGraduated.length,
+        newCandidates: scanCounts.newCandidates,
+        autoGraduated: scanCounts.autoGraduated,
+        promotedFromPending: scanCounts.promotedFromPending,
         totalPending: pending.candidates.filter((c) => c.status === 'pending').length,
       };
     });
@@ -322,50 +399,25 @@ function bumpBatch(signals) {
   // withLock pattern. Scan body duplicated from cmdScan with the
   // console.log(...) emission removed (in-process callers want the result
   // object, not stdout). Extraction of shared internal helper deferred to
-  // HT.2 sweep candidate to keep HT.1.14 scope mechanical.
+  // GAP-H (v2.7.0): replaced inline scan duplicate with _runScan helper call.
+  // Prior shape duplicated the cmdScan body verbatim including the broken
+  // `knownSignatures = new Set(...)` predicate (drift risk; HT.1.14 noted as
+  // deferred-HT.2 cleanup). Single source of truth now lives in _runScan.
   if (shouldScan) {
     let result;
     withLock(COUNTERS_PATH + '.lock', () => {
       withLock(PENDING_PATH + '.lock', () => {
         const counters = loadCounters();
         const pending = loadPending();
-        const knownSignatures = new Set(pending.candidates.map((c) => c.signal));
-        const newCandidates = [];
-        const autoGraduated = [];
-        for (const [signal, entry] of Object.entries(counters.signals)) {
-          if (knownSignatures.has(signal)) continue;
-          if (entry.count < THRESHOLDS.candidate) continue;
-          const kind = inferKindFromSignal(signal);
-          const risk = KIND_RISK[kind] || 'medium';
-          const candidate = {
-            id: newCandidateId(),
-            kind,
-            signal,
-            occurrences: entry.count,
-            firstSeen: entry.firstSeen,
-            lastSeen: entry.lastSeen,
-            risk,
-            summary: signalToSummary(signal, entry),
-            proposedAction: signalToProposedAction(signal, kind),
-            status: 'pending',
-            createdAt: new Date().toISOString(),
-          };
-          if (risk === 'low' && entry.count >= THRESHOLDS.autoGraduate) {
-            candidate.status = 'auto-graduated';
-            executeGraduation(candidate);
-            autoGraduated.push(candidate);
-          } else {
-            newCandidates.push(candidate);
-          }
-        }
-        pending.candidates.push(...newCandidates, ...autoGraduated);
+        const scanCounts = _runScan(counters, pending);
         counters.lastScanAt = new Date().toISOString();
         counters.lastScanTurn = counters.turnCounter;
         writeAtomic(COUNTERS_PATH, counters);
         writeAtomic(PENDING_PATH, pending);
         result = {
-          newCandidates: newCandidates.length,
-          autoGraduated: autoGraduated.length,
+          newCandidates: scanCounts.newCandidates,
+          autoGraduated: scanCounts.autoGraduated,
+          promotedFromPending: scanCounts.promotedFromPending,
           totalPending: pending.candidates.filter((c) => c.status === 'pending').length,
         };
       });

@@ -8,6 +8,87 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [2.7.0] — 2026-05-21 — GAP-H: self-improve auto-graduation logic fix (TDD-treatment data point #2)
+
+**Minor release.** Closes GAP-H — the **8th gap** in the GAP-A..G lineage. User flagged: "look into the history of learning from errors and diagnose the self-improvement loop so we can pin down what claims are actually being reflected in the plugin regarding the evolutionary cycle."
+
+A read-only audit dispatched at the user's request found a **smoking-gun logic bug** in `scripts/self-improve-store.js`: the auto-graduation transition path (signals ≥10 + risk=low → `observations.log`) had fired **ZERO times in 16 days** despite 7 currently-qualifying signals on the live system. Root cause:
+
+```js
+// Line 231 (cmdScan) + line 332 (bumpBatch inline):
+const knownSignatures = new Set(pending.candidates.map((c) => c.signal));
+```
+
+Once a signal hit the 5-threshold and joined `pending.candidates`, it entered `knownSignatures`. Every subsequent scan skipped it — meaning a signal could ride count=5 → count=∞ but **could never trigger the count≥10 + low-risk auto-graduation path**. The check existed in the code but was unreachable in steady state.
+
+**Recursive observation**: same class of bug as GAP-A..G — a text rule (`rules/core/self-improvement.md` claiming auto-graduation) where the mechanism's gating predicate guarantees the documented behavior never executes. The toolkit's own evolutionary cycle had been silently non-functional for the lifetime of the v2.x line.
+
+### Changed
+
+- **`scripts/self-improve-store.js`** — extracted scan logic into `_runScan(counters, pending)` helper. Replaces:
+  - `knownSignatures = new Set(...)` flat-set guard
+  - With status-aware `knownBySignal = new Map(...)` — terminal states (dismissed/promoted/auto-graduated) skip; pending candidates can transition to auto-graduated when eligible, IN PLACE (no duplicate candidate)
+  - Refreshes `occurrences` + `lastSeen` on pending candidates each scan (was previously stale forever)
+  - New optional field `autoGraduatedAt` (additive schema; no migration needed)
+  - Eliminates the **duplicate inline-scan body** that lived in both `cmdScan` AND `bumpBatch` (drift risk previously flagged as deferred-HT.2 cleanup)
+- **`tests/unit/scripts/self-improve-store.test.js`** (NEW; 11 tests):
+  - T1, T2: existing-behavior preservation (creation + first-pass auto-grad)
+  - **T3** (load-bearing): `scan_promotes_existing_pending_to_auto_graduated_when_count_reaches_10` — the test that catches the smoking-gun bug
+  - T4, T5, T6: idempotency, sticky-dismiss, sticky-promote (terminal-state invariants)
+  - T7: risk-typing (medium-risk doesn't auto-grad)
+  - T8: legacy candidate transition (migration safety)
+  - T9: `occurrences` + `lastSeen` refresh on each scan
+  - T10: sequential-scan idempotency
+  - T11: kind-based risk fallback for legacy candidates without explicit `risk` field
+
+### TDD-treatment metrics (data point #2)
+
+Per the v2.6.1 advisory rule, applied strict TDD for this substantive substrate fix (≥80 LoC + existing tests describe behavior):
+
+| Phase | Result |
+|---|---|
+| **0** — Read-only audit (general-purpose) | Surfaced smoking-gun + 3 adjacent findings (Fix-2 prompt-pattern starvation, Fix-3 tautological observations.log entries, Finding 4 legacy-zombie file) |
+| **1** — Tests-first (10 tests, then +1 from CR) | Initial: 6 PASS / 4 FAIL against v2.6.1 = the spec |
+| **2** — Architect pair-run | Designed status-aware `_runScan` helper + scope rec (option b: Fix-1 + Finding 4) |
+| **3** — Impl to all-green | **1 builder iteration**: 10/10 PASS on first run; +T11 added per CR |
+| **4** — Code-reviewer pair-run | APPROVE-WITH-NITS; 2 HIGH (conditional on no-op lock fallback; documented as residual risk; not regressions vs v2.6.1) + 1 MEDIUM (added T11) + 1 LOW (cosmetic timestamp skew) |
+
+### Scope decisions
+
+| Item | Decision | Rationale |
+|---|---|---|
+| Fix-1 (cmdScan logic) | **SHIP** | Smoking gun; load-bearing correctness |
+| Fix-2 (prompt-pattern store starvation) | Defer to v2.7.x | Marker-contract issue; needs separate investigation |
+| Fix-3 (tautological observations.log entries) | Defer to v2.7.x | Touches same code path as Fix-1; keep diff focused |
+| Finding 4 (60-line legacy installed file) | Document, don't touch | After deeper investigation: source repo (38L) ≡ plugin cache (38L) are AUTHORITATIVE; the 60-line `~/.claude/rules/toolkit/core/self-improvement.md` is dead legacy state from a pre-plugin-mode install.sh path. Audit had conflated paths. Not user state I should modify. |
+| HIGH #1 (lock-collapse refactor in `bumpBatch`) | Follow-up ticket | Pre-existing structural issue; not a regression from this change |
+
+### Known issues (documented for users)
+
+If you see stale self-improvement rule text claiming H.4.1 auto-loop infrastructure (a 60-line version mentioning `~/.claude/checkpoints/mempalace-fallback.md`), you have legacy install.sh state at `~/.claude/rules/toolkit/core/self-improvement.md`. The plugin loads the 38-line v2.7.0 version from the cache; the legacy file is dead text. Cleanup: `rm -rf ~/.claude/rules/toolkit/` (the cached plugin loads its own copy from `~/.claude/plugins/cache/.../rules/`).
+
+### Residual risk (documented inline in `_runScan` comment)
+
+Under the no-op lock fallback path (when `agent-team/_lib/lock.js` is absent — emits stderr warning at module load), a concurrent scan could read pending.json before this scan's writeAtomic completes → duplicate observations.log line. NOT a regression vs v2.6.1 (same race existed in the old inline-scan code). Real fix path: hard-require the lock primitive at module load. Out of scope for GAP-H; follow-up ticket.
+
+### Verification
+
+- 11/11 new unit tests PASS
+- 116/116 install.sh smoke (was 116/116 in v2.6.1 — no regressions)
+- 24/24 context-size-warn-stop + 13/13 contract-reminder + 10/10 redirect-plan-mode unchanged
+- ESLint clean on modified files
+
+### GAP lineage at v2.7.0
+
+| GAP | Version | Mechanism |
+|---|---|---|
+| A–E | v2.3.0..v2.4.2 | (unchanged) |
+| F | v2.5.0 → v2.6.0 | context-size Stop hook (signal: bytes → tokens) |
+| G | v2.5.1 | PreToolUse:EnterPlanMode headless redirect |
+| **H** | **v2.7.0 (this)** | **self-improve auto-graduation status-aware logic fix** |
+
+---
+
 ## [2.6.1] — 2026-05-21 — Window-size auto-scaler + TDD-treatment advisory rule codification
 
 **Patch release.** Two small additive items from the v2.6.0 follow-up queue:
