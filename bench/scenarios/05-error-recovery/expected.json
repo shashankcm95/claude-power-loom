@@ -1,0 +1,25 @@
+{
+  "id": "05-error-recovery",
+  "description": "Triggers error-critic.js by giving Claude a failing Bash script. Verifies diagnose-then-fix workflow + loop-detection forcing instruction NOT firing (proxy for Claude behaving well after the first failure).",
+  "fixture": "fixture",
+  "deterministic_pass": [
+    "claude_exit_zero",
+    "stop_hook_fired",
+    "broken_build_initial_failure",
+    "broken_build_eventually_succeeds",
+    "no_repeat_failure_forcing_instruction"
+  ],
+  "expected_soft_signals": {
+    "kb_consultation": "no expected (debug task; not KB-heavy)",
+    "specialist_agents_spawned": "no expected (small task; root may handle)",
+    "route_decide_consulted": "fires only if agent spawn (unlikely for this task size)"
+  },
+  "expected_hook_firings": [
+    "fact-force-gate (PreToolUse:Edit on broken-build.sh)",
+    "error-critic (PostToolUse:Bash on failing script invocation)",
+    "auto-store-enrichment (Stop)"
+  ],
+  "expected_agents_spawned": [],
+  "wallclock_budget_seconds": 240,
+  "notes": "Small task. If Claude retries the failing command 3+ times without diagnosing, error-critic emits a forcing instruction → no_repeat_failure_forcing_instruction FAILS."
+}

@@ -1,132 +1,123 @@
-# power-loom Boot-Test Harness (v0.1)
+# power-loom Plugin Verification Harness (v2.4.0)
 
-A one-shot **boot test for the plugin** — runs a small but representative task headlessly and captures token + latency + behavioral telemetry. The "metaphorical OS boot upon restart" for new users to verify the plugin works end-to-end and to give us live metrics for plugin submission review.
+**Scenario-aware boot test for comprehensive plugin verification.** Originally a single-shot harness in v2.3.0 (one task verifying the auto-trigger path); v2.4.0 expands to 5 scenarios + lifecycle test + interactive checklist for full coverage.
 
-## v0.1 — what's shipped
-
-- `runner.sh` — orchestrates a single `claude -p` invocation against the fixture; captures stream-json, pre/post snapshots, fixture diff.
-- `collect.js` — parses stream-json + diffs counters → structured `metrics.json` + deterministic PASS/FAIL.
-- `_snapshot.js` — captures `~/.claude/` state (counters, library catalogs, prompt-patterns, transcript count) for pre/post diff.
-- `boot-task.md` — the One Big Task specification + acceptance criteria.
-- `fixture/` — minimal Node.js todo CLI (3 files; ~120 LoC); the working substrate the boot task operates on.
-
-## What's not yet shipped
-
-- **v0.2**: `--bare` baseline mode + plugin-on-vs-plugin-off diff report.
-- **v0.3**: blinded moderator pass (separate Claude judges both transcripts).
-- **v0.4**: cross-user metric aggregation format.
-
-## How to run
+## Quick start
 
 ```bash
 cd <toolkit-repo>
-bash bench/runner.sh
+
+# Single scenario (~1-5 min)
+bash bench/runner.sh                              # default: scenario 01
+bash bench/runner.sh --scenario 02-security-audit
+bash bench/runner.sh --list                       # see all scenarios
+
+# Lifecycle test (~30s; static + dynamic hook coverage)
+bash bench/lifecycle-test.sh
+
+# Comprehensive run (~10-25 min; ALL scenarios + lifecycle + aggregate report)
+bash bench/run-all.sh
 ```
 
-Output lands in `bench/runs/<timestamp>-plugin-on/`:
+## Architecture (v2.4.0)
 
 ```
-runs/<ts>-plugin-on/
-├── pre-snapshot.json    # ~/.claude/ state before the run
-├── post-snapshot.json   # ~/.claude/ state after
-├── stream.jsonl         # full claude -p stream-json output
-├── stderr.log           # claude -p stderr
-├── work/                # working copy of fixture (mutated by claude)
-└── metrics.json         # structured boot-test result
+bench/
+├── README.md                     this file
+├── COVERAGE-MAP.md               full feature-coverage matrix
+├── EXPERIMENT-LOG.md             baseline-vs-TDD experiment data
+├── interactive-checklist.md      manual verification for 13 slash commands
+├── runner.sh                     scenario-aware runner (--scenario, --list, --bare)
+├── lifecycle-test.sh             session-end + PreCompact hook coverage
+├── run-all.sh                    aggregate runner — all scenarios + lifecycle + report
+├── collect.js                    metrics extractor + universal checks + dispatch to validate.js
+├── _snapshot.js                  ~/.claude/ state capture for pre/post diff
+└── scenarios/
+    ├── 01-multi-feature-export/
+    │   ├── task.md               passed verbatim to claude -p
+    │   ├── fixture/              working files
+    │   ├── expected.json         declared PASS criteria + expected signals
+    │   └── validate.js           scenario-specific check functions
+    ├── 02-security-audit/        (same shape)
+    ├── 03-library-substrate/
+    ├── 04-hets-routed-plan/
+    └── 05-error-recovery/
 ```
 
-## What "PASS" means (deterministic)
+## Scenarios
 
-The 6 criteria evaluated by `collect.js`:
+| # | Name | Targets | Wallclock | Avg tokens out |
+|---|---|---|---|---|
+| **01** | multi-feature-export | architect + code-reviewer + KB + route-decide + plan discipline (the core auto-trigger path) | ~3-7 min | ~10-20K |
+| **02** | security-audit | security-auditor agent + validate-no-bare-secrets + security KB refs | ~2-4 min | ~3-8K |
+| **03** | library-substrate | library CLI verbs (stats / daybook / write / read / gc) + catalog R/W | ~1-3 min | ~2-5K |
+| **04** | hets-routed-plan | plan-mode tools + validate-plan-schema + verify-plan-gate + deep KB consultation | ~5-10 min | ~15-30K |
+| **05** | error-recovery | error-critic.js (PostToolUse:Bash) + diagnose-then-fix workflow | ~1-3 min | ~2-5K |
 
-1. `claude_exit_zero` — claude -p exited 0
-2. `cli_has_export` — generated cli.js has an export handler (regex check)
-3. `test_added` — cli.test.js now has > 3 tests (fixture started with 3)
-4. `smoke_tests_pass` — `node cli.test.js` exits 0 in the work dir
-5. `readme_mentions_export` — README references the new feature
-6. `cli_has_path_validation` — some form of path validation present in cli.js
+**Total run-all.sh cost estimate**: 10-25 min wallclock, ~50K-150K output tokens.
 
-If all 6 pass, the boot test is GREEN. If any fail, the report explains which and why.
+## Two layers of PASS criteria
 
-## Sample output (real run, 2026-05-20)
+### Universal checks (every scenario)
+- `claude_exit_zero` — claude -p completes
+- `subagent_spawned` — at least 1 Agent tool call
+- `no_ask_user_question_errors` — `--permission-mode bypassPermissions` working
+- `stop_hook_fired` — `auto-store-enrichment.js` bumped turnCounter
 
-```
-Mode:           plugin-on
-Wallclock:      71s
-API duration:   67.7s
-Turns:          12
-Tokens (in):    17
-Tokens (out):   4549
-Cache reads:    412907
-Cache creation: 41226
-Tool uses:      {"Bash":3,"Read":3,"Edit":4,"AskUserQuestion":1}
-Sub-agent spawns: 0
-Hook bumps:     {"turn_counter_delta":1,"signal_count_delta":0,"last_scan_changed":false,"transcripts_added":1}
-Files modified: 3
-Files created:  0
+### Scenario-specific checks (per `scenarios/<id>/validate.js`)
+Each scenario owns its check function exporting `validate(workdir, streamMetrics, hookBumps)` and returning a `{check: {pass, detail}}` object. Examples:
+- Scenario 01: cli_has_export, cli_has_both_formats, cli_has_path_validation, ...
+- Scenario 02: auth_has_rotate_token, auth_uses_constant_time_compare, no_secret_block_false_positive, ...
+- Scenario 03: library_stats_invoked, library_volume_persisted, library_catalog_entry_present, ...
+- Scenario 04: cache_has_ttl, cache_has_lru, cache_has_stats, plan_artifact_present, ...
+- Scenario 05: broken_build_initial_failure, broken_build_eventually_succeeds, no_repeat_failure_forcing_instruction
 
-=== Deterministic PASS criteria ===
-  PASS  claude_exit_zero  (exit=0)
-  PASS  cli_has_export  (export reference found)
-  PASS  test_added  (7 test(s); fixture started with 3)
-  PASS  smoke_tests_pass  (exit=0; 7 passed)
-  PASS  readme_mentions_export  (export mentioned)
-  PASS  cli_has_path_validation  (validation pattern present)
+## Soft signals (informational; not gating)
 
-OVERALL: PASS
-```
+5 cross-cutting plugin-behavior observations, captured by `collect.js`:
+- `kb_consultation` — kb: refs in transcript or sub-agent results
+- `specialist_agents_spawned` — architect / code-reviewer / security-auditor
+- `plan_mode_evidence` — EnterPlanMode tool OR TodoWrite ≥2 items OR .claude/plans/*.md
+- `route_decide_consulted` — PreToolUse hook fired OR Bash invocation
+- `research_mode_citations` — URL / file:line / "per RFC N" patterns
 
-## Empirical findings (iterated)
+## Coverage summary (per `COVERAGE-MAP.md`)
 
-### What works
-
-- **Headless mode fires the Stop hook** (turnCounter +1; library transcript created). The GitHub #59105 parity concern doesn't affect at least the Stop event.
-- **Sub-agent spawn works in headless** — both `architect` and `code-reviewer` spawned when the boot task is large enough + explicitly authorizes orchestration ("you have permission to spawn the agents you need"). Their reviews were substantive (path.resolve sandbox analysis, CSV RFC 4180 deviation flagged).
-- **`--permission-mode bypassPermissions` suppresses AskUserQuestion errors.** Without it, Claude politely asks before Bash invocations and the headless answer errors back, wasting turns.
-- **Cache-read dominates token cost** (828k vs 13k output). The always-on rules + skills + KB context loads predictably. Plugin-on vs `--bare` comparison (v0.2) will show this as the primary "cost of plugin context."
-
-### What the bench has surfaced as plugin compliance gaps in headless mode
-
-These are **real findings** worth investigating before plugin submission:
-
-| Soft signal | Status | Interpretation |
+| Status | % | Approach |
 |---|---|---|
-| `kb_consultation` | ❌ NOT firing | Architect + code-reviewer wrote substantive reviews but cited NO `kb:` references, even though kb-consultation-discipline (H.9.20.0 v2.0.3) says HETS personas should cite. Either: (a) the discipline isn't enforced for Agent-tool spawns, (b) is enforced via a hook that doesn't fire in headless, or (c) sub-agent KB refs don't surface in the parent's view of the Agent tool result. |
-| `plan_mode_evidence` | ❌ NOT firing | No `EnterPlanMode`/`ExitPlanMode` tool calls despite the workflow rule requiring plan-mode for ≥2-file changes. Likely cause: plan-mode requires an interactive Approve-plan dialog unavailable in `-p` mode. |
-| `route_decide_consulted` | ❌ NOT firing | `route-decide.js` was never invoked before sub-agent spawn, despite the workflow rule. Claude jumped straight to `Agent` tool. Real instruction-following gap. |
+| ✅ Auto-verified | ~70% | Scenarios 01-05 |
+| 🟡 Probabilistic | ~15% | Variance documented; some skills/agents are task-dependent |
+| 🔧 Lifecycle-only | ~5% | `lifecycle-test.sh` (8/8 PASS) |
+| ❌ Headless-impossible | ~10% | `interactive-checklist.md` (13 slash commands) |
 
-These are not boot-test failures — they're **observability signals** for the plugin maintainer to act on. The whole point of the boot test was to expose this kind of thing.
+**100% coverage is genuinely impossible** because Claude Code's slash commands are interactive-only by design. The interactive checklist closes the residual gap manually.
 
-### Latest live numbers (expanded JSON+CSV task, 2026-05-20)
+## What changed from v2.3.0
 
-```
-Wallclock:        250s        (≈3× longer than v0.1.5 baseline; substantive work)
-Turns:            19
-Tokens (input):   29
-Tokens (output):  13,271
-Cache reads:      828,384     ← cost of plugin context loaded into headless session
-Cache creation:   36,449
-Tool uses:        Bash(4) + Read(7) + Agent(2) + Write(2) + Edit(7)
-Sub-agent spawns: 2           (architect + code-reviewer; both produced substantive reviews)
-Hook bumps:       Stop fired once (turnCounter +1)
-Deterministic:    10/10 PASS
-Soft signals:     specialist_agents_spawned=YES, research_mode_citations=YES
-                  kb_consultation=no, plan_mode_evidence=no, route_decide_consulted=no
-```
+| v2.3.0 | v2.4.0 |
+|---|---|
+| 1 boot task | 5 scenarios |
+| Hardcoded PASS criteria in collect.js | Per-scenario `validate.js` files |
+| No lifecycle coverage | `lifecycle-test.sh` (8 checks) |
+| No interactive coverage | `interactive-checklist.md` (15 items) |
+| No aggregator | `run-all.sh` + auto-generated `report.md` |
+| ~25% feature coverage | ~85% feature coverage (modulo headless-impossible) |
 
-## Architecture decisions
+## Plugin observations the bench surfaced
 
-- **CLI `claude -p`, not Agent SDK.** Probe confirmed hooks fire; CLI is simpler for end-users to run as a boot test (`bash runner.sh`) than installing a Python/TS SDK.
-- **stream-json + post-run JSONL.** Real-time tool events come from stream-json; the full transcript is read post-run from the session JSONL file.
-- **`--bare` mode for baseline (v0.2).** Built-in CLI flag bypasses all hooks/skills/plugins — cleaner than symlink-swapping `~/.claude/`.
-- **Synthetic fixture, not dogfood.** The boot test must run on any machine without requiring the user to clone the toolkit repo. The fixture is shipped with the plugin.
-- **Metrics in tokens + latency, not dollars.** Tokens are the durable unit; pricing changes.
+Across the v2.3.0 + v2.4.0 development:
+1. **GAP-A** — architect.md missing response-level KB output contract → fixed in v2.3.0
+2. **GAP-B** — workflow.md plan rule conflated intent with mechanism → fixed in v2.3.0
+3. **GAP-C** — route-decide rule unenforceable as text → PreToolUse hook in v2.3.0
+4. **GAP-D** — GAP-A's fix was probabilistic → PostToolUse hook with block-and-retry in v2.3.0
 
-## Roadmap
+The bench's primary value: it caught these compliance gaps that would have shipped to users otherwise.
 
-| Ship | Scope | Status |
-|---|---|---|
-| **v0.1** | plugin-on side only; deterministic PASS gate | ✅ shipped |
-| **v0.2** | `--bare` baseline + diff report (plugin-on vs plugin-off) | next |
-| **v0.3** | Blinded moderator pass for qualitative dimensions | after v0.2 stable |
-| **v0.4** | Cross-user metric aggregation format (`metrics.json` schema-stable; submission format documented) | after v0.3 stable |
+## Reporting back
+
+For the dogfooding phase (2-3 other Claude developers), share:
+- Output of `bash bench/run-all.sh`
+- The aggregate `bench/runs/<ts>-aggregate/report.md`
+- Any unexpected behavior
+
+Send to: plugin maintainer or open an issue at https://github.com/shashankcm95/claude-power-loom/issues

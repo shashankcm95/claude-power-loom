@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
-# bench/runner.sh — power-loom plugin boot-test runner (v0.1).
+# bench/runner.sh — power-loom plugin verification runner (v2.4.0).
 #
-# v0.1 scope: plugin-ON side only. Runs the boot task headlessly, captures
-# stream-json + counter diffs + filesystem deltas, hands off to collect.js for
-# metrics extraction. v0.2 will add --bare baseline + diff report.
+# Scenario-aware harness. Each scenario lives in bench/scenarios/<id>/ with:
+#   task.md         — the task spec (extracted prompt)
+#   fixture/        — working files claude operates on
+#   expected.json   — deterministic_pass criteria + expected soft signals
 #
 # Usage:
-#   bench/runner.sh                 # plugin-ON run; writes bench/runs/<ts>/
-#   bench/runner.sh --bare          # plugin-OFF run (v0.2 — not wired yet)
-#   bench/runner.sh --task <path>   # override boot task path (default: bench/boot-task.md)
+#   bench/runner.sh                              # default: scenario 01-multi-feature-export
+#   bench/runner.sh --scenario 02-security-audit # specific scenario
+#   bench/runner.sh --bare                       # plugin-OFF run (v0.2+ — not wired yet)
+#   bench/runner.sh --task <path>                # advanced: override task file path
+#   bench/runner.sh --list                       # list available scenarios
 #
 # Requirements:
 #   - `claude` CLI 2.1.140+ available on PATH
@@ -19,23 +22,40 @@ set -euo pipefail
 
 BENCH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TOOLKIT_DIR="$(cd "$BENCH_DIR/.." && pwd)"
-FIXTURE_DIR="$BENCH_DIR/fixture"
-TASK_FILE="$BENCH_DIR/boot-task.md"
+SCENARIO_ID="01-multi-feature-export"   # default scenario
 MODE="plugin-on"
-TIMEOUT_SECS=900   # 15-min wall budget; boot task should be well under this
+TIMEOUT_SECS=900   # 15-min wall budget per scenario
 
 # --- arg parsing -------------------------------------------------------------
 while [ $# -gt 0 ]; do
   case "$1" in
+    --scenario) SCENARIO_ID="$2"; shift 2 ;;
     --bare) MODE="plugin-off-bare"; shift ;;
-    --task) TASK_FILE="$2"; shift 2 ;;
+    --task) TASK_FILE_OVERRIDE="$2"; shift 2 ;;
     --timeout) TIMEOUT_SECS="$2"; shift 2 ;;
+    --list)
+      echo "Available scenarios:"
+      for d in "$BENCH_DIR"/scenarios/*/; do
+        [ -d "$d" ] || continue
+        name=$(basename "$d")
+        desc=$(python3 -c "import json; print(json.load(open('$d/expected.json')).get('description','?')[:100])" 2>/dev/null || echo "(no expected.json)")
+        printf "  %-30s %s\n" "$name" "$desc"
+      done
+      exit 0 ;;
     --help|-h)
       sed -n '4,18p' "${BASH_SOURCE[0]}"
       exit 0 ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
 done
+
+# --- resolve scenario paths --------------------------------------------------
+SCENARIO_DIR="$BENCH_DIR/scenarios/$SCENARIO_ID"
+[ -d "$SCENARIO_DIR" ] || { echo "ERROR: scenario not found: $SCENARIO_DIR" >&2; echo "Use: bench/runner.sh --list" >&2; exit 3; }
+
+TASK_FILE="${TASK_FILE_OVERRIDE:-$SCENARIO_DIR/task.md}"
+FIXTURE_DIR="$SCENARIO_DIR/fixture"
+EXPECTED_FILE="$SCENARIO_DIR/expected.json"
 
 # --- preflight ---------------------------------------------------------------
 command -v claude >/dev/null 2>&1 || { echo "ERROR: claude CLI not on PATH" >&2; exit 3; }
@@ -64,10 +84,11 @@ fi
 
 # --- run directory + fixture snapshot ----------------------------------------
 RUN_TS="$(date -u +%Y-%m-%dT%H-%M-%SZ)"
-RUN_DIR="$BENCH_DIR/runs/$RUN_TS-$MODE"
+RUN_DIR="$BENCH_DIR/runs/$RUN_TS-$SCENARIO_ID-$MODE"
 mkdir -p "$RUN_DIR"
-echo "Boot test run: $RUN_DIR" >&2
-echo "Mode: $MODE" >&2
+echo "Scenario: $SCENARIO_ID" >&2
+echo "Run dir:  $RUN_DIR" >&2
+echo "Mode:     $MODE" >&2
 
 # Copy fixture to a working dir so claude operates on a clean copy without
 # corrupting the canonical fixture. Each run gets fresh source.
@@ -81,9 +102,10 @@ node "$BENCH_DIR/_snapshot.js" --out "$PRE_SNAPSHOT" || {
 }
 
 # --- compose the claude -p invocation ----------------------------------------
-# Boot task references "bench/fixture/" but we redirect Claude to the WORK_DIR
-# instead by changing the prompt's path reference.
-PROMPT_RESOLVED="$(echo "$TASK_PROMPT" | sed "s|bench/fixture|$WORK_DIR|g")"
+# Task text references "fixture/" or "bench/scenarios/<id>/fixture/" — we
+# rewrite both forms to point at the per-run WORK_DIR. This lets task.md
+# stay readable while ensuring each run operates on a clean copy.
+PROMPT_RESOLVED="$(echo "$TASK_PROMPT" | sed -e "s|bench/scenarios/$SCENARIO_ID/fixture|$WORK_DIR|g" -e "s|bench/fixture|$WORK_DIR|g")"
 
 echo "Task prompt:" >&2
 echo "  $PROMPT_RESOLVED" | head -3 >&2
@@ -129,15 +151,17 @@ node "$BENCH_DIR/_snapshot.js" --out "$POST_SNAPSHOT" || {
 # --- collect metrics ---------------------------------------------------------
 METRICS_FILE="$RUN_DIR/metrics.json"
 node "$BENCH_DIR/collect.js" \
-  --stream  "$STREAM_FILE" \
-  --pre     "$PRE_SNAPSHOT" \
-  --post    "$POST_SNAPSHOT" \
-  --workdir "$WORK_DIR" \
-  --fixture "$FIXTURE_DIR" \
+  --stream      "$STREAM_FILE" \
+  --pre         "$PRE_SNAPSHOT" \
+  --post        "$POST_SNAPSHOT" \
+  --workdir     "$WORK_DIR" \
+  --fixture     "$FIXTURE_DIR" \
   --wallclock-seconds "$WALL_SECS" \
   --claude-exit "$CLAUDE_EXIT" \
-  --mode    "$MODE" \
-  --out     "$METRICS_FILE" || {
+  --mode        "$MODE" \
+  --scenario    "$SCENARIO_ID" \
+  --expected    "$EXPECTED_FILE" \
+  --out         "$METRICS_FILE" || {
   echo "ERROR: collect.js failed; partial outputs in $RUN_DIR" >&2
   exit 4
 }

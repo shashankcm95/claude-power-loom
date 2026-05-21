@@ -1,0 +1,1 @@
+Empty fixture — scenario 03 uses the live library substrate at ~/.claude/library/ via the `library` CLI; no working files needed. This .keep placeholder lets `cp -r` work in runner.sh without errors.

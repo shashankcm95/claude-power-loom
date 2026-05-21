@@ -24,7 +24,8 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+// Note: execSync was removed when scenario-01 checks moved to validate.js;
+// per-scenario validate.js files import execSync themselves where needed.
 
 // --- arg parsing -------------------------------------------------------------
 function parseArgs(argv) {
@@ -213,98 +214,30 @@ function diffFixture(workdir, fixture) {
 }
 
 // --- deterministic PASS criteria --------------------------------------------
-function evaluatePassCriteria(workdir, claudeExit, streamMetrics, hookBumps) {
+//
+// Two-layer evaluation:
+//   1. UNIVERSAL checks (every scenario): claude_exit_zero, subagent_spawned,
+//      no_ask_user_question_errors, stop_hook_fired. Built-in to collect.js.
+//   2. SCENARIO-SPECIFIC checks: loaded from `scenarios/<id>/validate.js` if
+//      present. Each scenario owns its own validator.
+//
+// Backward compat: if scenarioDir is null or no validate.js exists, fall back
+// to the original scenario-01 hardcoded checks.
+function evaluatePassCriteria(workdir, claudeExit, streamMetrics, hookBumps, scenarioDir) {
   const checks = {};
 
-  // === Output correctness — the work itself ===
-
-  // 1. claude exited 0
+  // === Universal checks ===
   checks.claude_exit_zero = {
     pass: claudeExit === 0,
     detail: `exit=${claudeExit}`,
   };
 
-  // 2. cli.js contains 'export' subcommand handler
-  const cliPath = path.join(workdir, 'cli.js');
-  const cliContent = fs.existsSync(cliPath) ? fs.readFileSync(cliPath, 'utf8') : '';
-  const hasExportHandler = /['"]export['"]|cmdExport|function\s+\w*[Ee]xport|export.*=>/.test(cliContent);
-  checks.cli_has_export = {
-    pass: hasExportHandler,
-    detail: hasExportHandler ? 'export reference found' : 'no export handler',
-  };
-
-  // 3. cli.js handles both JSON and CSV formats (v0.2 task expansion)
-  const hasJsonHandling = /\.json|JSON\.stringify|application\/json/i.test(cliContent);
-  const hasCsvHandling = /\.csv|csv/i.test(cliContent);
-  checks.cli_has_both_formats = {
-    pass: hasJsonHandling && hasCsvHandling,
-    detail: `json=${hasJsonHandling ? 'yes' : 'no'} csv=${hasCsvHandling ? 'yes' : 'no'}`,
-  };
-
-  // 4. cli.test.js has at least 1 new test
-  const testPath = path.join(workdir, 'cli.test.js');
-  const testContent = fs.existsSync(testPath) ? fs.readFileSync(testPath, 'utf8') : '';
-  const testCount = (testContent.match(/^\s*test\s*\(/gm) || []).length;
-  checks.test_added = {
-    pass: testCount > 3,  // fixture starts with 3 tests
-    detail: `${testCount} test(s); fixture started with 3`,
-  };
-
-  // 5. smoke tests still pass
-  let testExit = -1;
-  let testOutput = '';
-  try {
-    testOutput = execSync(`node "${testPath}"`, { encoding: 'utf8', cwd: workdir, timeout: 30000 });
-    testExit = 0;
-  } catch (err) {
-    testExit = err.status || 1;
-    testOutput = (err.stdout || '') + (err.stderr || '');
-  }
-  checks.smoke_tests_pass = {
-    pass: testExit === 0,
-    detail: `exit=${testExit}; ${(testOutput.match(/(\d+) passed/) || ['?'])[0]}`,
-  };
-
-  // 6. README mentions the new feature AND at least one format
-  const readmePath = path.join(workdir, 'README.md');
-  const readmeContent = fs.existsSync(readmePath) ? fs.readFileSync(readmePath, 'utf8') : '';
-  const readmeHasExport = /\bexport\b/i.test(readmeContent);
-  const readmeHasFormat = /\b(csv|json)\b/i.test(readmeContent);
-  checks.readme_mentions_export = {
-    pass: readmeHasExport && readmeHasFormat,
-    detail: `export=${readmeHasExport ? 'yes' : 'no'} format-named=${readmeHasFormat ? 'yes' : 'no'}`,
-  };
-
-  // 7. Some form of path validation in cli.js
-  // Heuristic: look for any of: path.isAbsolute, path.normalize, traversal check,
-  // path.resolve usage, or an explicit throw on bad input.
-  const validationPatterns = [
-    /path\.isAbsolute/,
-    /path\.normalize/,
-    /path\.resolve/,
-    /\.\.\//,                          // checks for traversal pattern
-    /['"]\.\.['"]/,
-    /throw new Error.*path/i,
-    /invalid path/i,
-    /traversal/i,
-  ];
-  const hasValidation = validationPatterns.some(re => re.test(cliContent));
-  checks.cli_has_path_validation = {
-    pass: hasValidation,
-    detail: hasValidation ? 'validation pattern present' : 'no obvious path-validation pattern',
-  };
-
-  // === Plugin behavioral evidence — the orchestration happened ===
-
-  // 8. At least 1 sub-agent spawn (Task tool invoked)
   const spawnCount = (streamMetrics && streamMetrics.subagent_spawns) || 0;
   checks.subagent_spawned = {
     pass: spawnCount >= 1,
     detail: `${spawnCount} sub-agent spawn(s) via Agent tool`,
   };
 
-  // 9. AskUserQuestion did NOT trigger errors (proves permission-mode worked)
-  // Look in the stream for AskUserQuestion tool calls that resulted in error tool_results.
   const aukCount = (streamMetrics && streamMetrics.tool_uses && streamMetrics.tool_uses.AskUserQuestion) || 0;
   const aukErrors = (streamMetrics && streamMetrics.ask_user_question_errors) || 0;
   checks.no_ask_user_question_errors = {
@@ -312,12 +245,33 @@ function evaluatePassCriteria(workdir, claudeExit, streamMetrics, hookBumps) {
     detail: `${aukCount} AskUserQuestion call(s); ${aukErrors} errored — should be 0`,
   };
 
-  // 10. Stop hook fired (turnCounter delta >= 1)
   const turnDelta = (hookBumps && hookBumps.turn_counter_delta) || 0;
   checks.stop_hook_fired = {
     pass: turnDelta >= 1,
     detail: `turnCounter delta=${turnDelta} (Stop hook bumps once per turn)`,
   };
+
+  // === Scenario-specific checks via validate.js ===
+  if (scenarioDir) {
+    const validatePath = path.join(scenarioDir, 'validate.js');
+    if (fs.existsSync(validatePath)) {
+      try {
+        // Clear require cache so re-derives pick up edits to validate.js
+        delete require.cache[require.resolve(validatePath)];
+        const mod = require(validatePath);
+        if (typeof mod.validate !== 'function') {
+          checks.scenario_validate_load_failed = { pass: false, detail: 'validate.js missing validate() export' };
+        } else {
+          const scenarioChecks = mod.validate(workdir, streamMetrics, hookBumps);
+          Object.assign(checks, scenarioChecks);
+        }
+      } catch (err) {
+        checks.scenario_validate_load_failed = { pass: false, detail: `validate.js threw: ${err.message}` };
+      }
+    } else {
+      checks.scenario_validate_missing = { pass: false, detail: `no validate.js at ${validatePath}` };
+    }
+  }
 
   return checks;
 }
@@ -457,6 +411,7 @@ function evaluateSoftSignals(workdir, streamMetrics, transcriptPath) {
 // --- main --------------------------------------------------------------------
 function main(argv) {
   const opts = parseArgs(argv);
+  // scenario + expected are optional for back-compat with single-shot runs
   const required = ['stream', 'pre', 'post', 'workdir', 'fixture', 'wallclock-seconds', 'claude-exit', 'mode', 'out'];
   for (const r of required) {
     if (opts[r] === undefined) {
@@ -489,8 +444,17 @@ function main(argv) {
     }
   }
 
+  // Load scenario expected.json if provided (for cross-reference + reporting)
+  let scenarioExpected = null;
+  if (opts.expected && fs.existsSync(opts.expected)) {
+    try { scenarioExpected = JSON.parse(fs.readFileSync(opts.expected, 'utf8')); }
+    catch (_err) { /* ignore parse errors; scenarioExpected stays null */ }
+  }
+
   const hookBumps = diffCounters(pre, post);
   const metrics = {
+    scenario_id: opts.scenario || null,
+    scenario_description: scenarioExpected ? scenarioExpected.description : null,
     mode: opts.mode,
     timestamp: new Date().toISOString(),
     claude_exit: claudeExit,
@@ -517,7 +481,7 @@ function main(argv) {
     hook_bumps: hookBumps,
     library_diff: diffLibrary(pre, post),
     fixture_diff: diffFixture(opts.workdir, opts.fixture),
-    deterministic_pass: evaluatePassCriteria(opts.workdir, claudeExit, stream, hookBumps),
+    deterministic_pass: evaluatePassCriteria(opts.workdir, claudeExit, stream, hookBumps, opts.expected ? path.dirname(opts.expected) : null),
     soft_signals: evaluateSoftSignals(opts.workdir, stream, transcriptPath),
   };
 

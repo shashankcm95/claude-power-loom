@@ -1,0 +1,34 @@
+{
+  "id": "04-hets-routed-plan",
+  "description": "HETS-routed substantive refactor — adds TTL + LRU + stats to fixture cache. Targets plan-mode discipline, validate-plan-schema, verify-plan-gate, architect + code-reviewer pair, deep KB consultation.",
+  "fixture": "fixture",
+  "deterministic_pass": [
+    "claude_exit_zero",
+    "stop_hook_fired",
+    "subagent_spawned",
+    "no_ask_user_question_errors",
+    "cache_has_ttl",
+    "cache_has_lru",
+    "cache_has_stats",
+    "test_added",
+    "smoke_tests_pass",
+    "plan_artifact_present"
+  ],
+  "expected_soft_signals": {
+    "kb_consultation": "YES (deep KB consultation expected per task nudge)",
+    "specialist_agents_spawned": "YES (architect + code-reviewer; planner possible)",
+    "plan_mode_evidence": "YES (TodoWrite ≥3 items OR EnterPlanMode call OR plan file)",
+    "route_decide_consulted": "YES (per GAP-C)",
+    "research_mode_citations": "YES"
+  },
+  "expected_hook_firings": [
+    "route-decide-on-agent-spawn (per Agent)",
+    "kb-citation-gate (per architect)",
+    "validate-plan-schema (if plan file written)",
+    "verify-plan-gate (if EnterPlanMode fires)",
+    "auto-store-enrichment (Stop)"
+  ],
+  "expected_agents_spawned": ["architect", "code-reviewer"],
+  "wallclock_budget_seconds": 600,
+  "notes": "Heaviest scenario by design. Triggers the full HETS workflow."
+}
