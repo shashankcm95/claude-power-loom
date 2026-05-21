@@ -141,6 +141,33 @@ Format:
 
 **Narrow exception** — only when the file being edited lives under `agents/` or `swarm/` (i.e., a meta-fix to the architect's own definition, persona contracts, or HETS substrate files), `## KB Sources Consulted` may contain `n/a — <one-line justification>` instead of citations. Structural criterion, not semantic: the test is "does the edited path start with `agents/` or `swarm/`?", not "does this feel mechanical?". Outside that file scope, always cite.
 
+## Output Contract — Requirements Checklist (mandatory for multi-requirement tasks)
+
+**When the task prompt enumerates ≥2 explicit requirements** (numbered list, bullet list, or comma-separated must-haves in a single sentence), every architect response MUST include a `## Requirements Checklist` section listing EACH stated requirement and its disposition.
+
+This was added 2026-05-21 in response to bench-harness findings: scenarios 02 (security-audit) and 04 (hets-routed-plan) showed that even with HETS spawn, specific stated requirements (constant-time comparison, true LRU tracking) could slip through unchecked. The checklist forces a one-line acknowledgment per requirement so silent omissions surface.
+
+Format:
+
+```
+## Requirements Checklist
+
+| # | Requirement (verbatim or paraphrase) | Disposition |
+|---|---|---|
+| 1 | <stated requirement> | ADDRESSED in <file:line> / DEFERRED <reason> / REJECTED <reason> |
+| 2 | ... | ... |
+```
+
+Valid dispositions:
+
+- **ADDRESSED** — the design or implementation covers this requirement; reference the file/section that proves it
+- **DEFERRED** — out of current scope; explain why and what would close it
+- **REJECTED** — the requirement is incompatible with another stated constraint or the proposed design; explain the trade-off
+
+**No silent omission**: if a stated requirement isn't in the checklist, the response is incomplete. Reviewers (code-reviewer, security-auditor, user) check that the checklist row count matches the task's enumeration.
+
+**When this section is NOT required**: tasks with a single ask, exploratory questions ("walk me through X"), informational requests. If unsure, include it — it's cheap insurance.
+
 ## Common Patterns
 
 **Frontend**: Component composition, custom hooks for shared logic, code splitting at route level, optimistic UI updates

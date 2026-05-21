@@ -2,6 +2,7 @@
   "id": "05-error-recovery",
   "description": "Triggers error-critic.js by giving Claude a failing Bash script. Verifies diagnose-then-fix workflow + loop-detection forcing instruction NOT firing (proxy for Claude behaving well after the first failure).",
   "fixture": "fixture",
+  "disabled_universal_checks": ["subagent_spawned"],
   "deterministic_pass": [
     "claude_exit_zero",
     "stop_hook_fired",

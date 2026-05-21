@@ -2,6 +2,7 @@
   "id": "03-library-substrate",
   "description": "Library CLI exercise — stats/daybook/sections/write/read/gc round-trip. Verifies library substrate end-to-end + Bash-hook interaction (route-decide hook does NOT fire here since no Agent spawns).",
   "fixture": "fixture",
+  "disabled_universal_checks": ["subagent_spawned"],
   "deterministic_pass": [
     "claude_exit_zero",
     "stop_hook_fired",
