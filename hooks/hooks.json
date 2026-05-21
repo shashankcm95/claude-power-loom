@@ -212,6 +212,17 @@
             "timeout": 3
           }
         ]
+      },
+      {
+        "_comment": "GAP-F (v2.5.0): deterministic context-size warning. Inserted LAST in Stop chain so its forcing instruction is the final concatenation when multiple Stop hooks emit. Uses transcript_path bytes as the primary signal (ground-truth); falls back to turn counter if transcript_path missing.",
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/context-size-warn-stop.js",
+            "timeout": 5
+          }
+        ]
       }
     ]
   }

@@ -8,6 +8,96 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [2.5.0] — 2026-05-21 — GAP-F: deterministic context-size warning Stop hook (substrate-fundament)
+
+**Minor release.** Closes GAP-F — the last text-only rule in the GAP-A..F lineage that lacked hook enforcement. `rules/core/self-improvement.md` says "When context is getting large, proactively save... consider compaction" — that was instruction-following only. This release converts it to a deterministic Stop hook that uses `transcript_path` bytes as the ground-truth signal.
+
+### Added
+
+- **`hooks/scripts/context-size-warn-stop.js`** (NEW; Stop hook, matcher `*`) — emits `[CONTEXT-SIZE-WARN]` / `[CONTEXT-SIZE-URGENT]` forcing instruction (Class 1 advisory) when transcript byte-count crosses configurable thresholds. Registered LAST in the Stop chain so the warning is the final concatenation visible to the model.
+  - **Primary signal**: `fs.statSync(transcript_path).size` from the Stop hook envelope. Architect review found PostToolUse envelopes don't expose token counts (zero hits across 20+ existing hooks for `usage` / `output_tokens` / `input_tokens`) — transcript bytes are the ground-truth monotonic signal that beats both a turn counter and a per-tool token accumulator.
+  - **Fallback**: if `transcript_path` is missing from the envelope, falls back to a self-incremented turn counter (degraded but still useful).
+  - **Defaults**: `WARN=400KB` (~50% of typical 800KB transcript ≈ 200K-token Claude window), `URGENT=640KB` (~80%); `WARN_TURNS=50` / `URGENT_TURNS=100` for the fallback path. All env-overridable via `CLAUDE_CONTEXT_WARN_BYTES`, `CLAUDE_CONTEXT_URGENT_BYTES`, `CLAUDE_CONTEXT_WARN_TURNS`, `CLAUDE_CONTEXT_URGENT_TURNS`.
+  - **Idempotency**: `last_band_crossed: 'none' | 'warn' | 'urgent'` state field; emits only on band UPGRADE. Once URGENT is reached, never re-emit; once WARN, only re-emit on upgrade to URGENT.
+  - **State file**: `~/.claude/sessions/context-${SESSION_ID}.json` — per-session bulkhead, no shared-file lock contention. Matches `nudge-${SESSION_ID}.json` precedent from `session-end-nudge.js`. Lock + atomic-write via `_lib/lock.js` + `_lib/atomic-write.js` (same primitives + same Phase-G5 fix as the nudge hook).
+  - **Observability log**: `~/.claude/checkpoints/context-warn-log.jsonl` — one JSONL record per band upgrade with `{ts, session_id, band, measurement, turn_count}`.
+- **`tests/unit/hooks/context-size-warn-stop.test.js`** (NEW) — 11 unit tests covering: pass-through below threshold, WARN emit, URGENT emit, idempotency (no re-emit at same band), WARN→URGENT upgrade emit, transcript-missing fallback (above + below thresholds), env-var override, family attribution, non-JSON stdin pass-through, observability log persistence.
+- **GC sweep** extended in `hooks/scripts/session-reset.js` — sweeps stale `~/.claude/sessions/context-*.json` files >1 day old on SessionStart. Matches the existing `claude-read-tracker-*` and `.claude-toolkit-failures/` sweep patterns.
+
+### Changed
+
+- `hooks/hooks.json`: registers `context-size-warn-stop.js` as the LAST Stop hook (after `session-end-nudge.js`); 4 Stop hooks total.
+- `plugin.json`: 2.2.0 → 2.5.0 (skips un-bumped v2.3.0/v2.4.x; backfilled below).
+
+### Design choices
+
+- **Single hook, not the hybrid I sketched at planning time** — pre-implementation architect + code-reviewer pair-run determined PostToolUse envelopes lack token-count fields. Architect found `transcript_path` in the Stop envelope is a ground-truth signal that beats both halves of the proposed hybrid. Collapsed Component A (Stop turn counter) + Component B (PostToolUse token accumulator) into ONE Stop hook using transcript bytes. Simpler + more truthful + no shadow counter to drift.
+- **Forcing-instruction class 1 (advisory)** — never blocks, never exits non-zero. User may intentionally want long sessions; the warning surfaces signal but lets the conversation continue. 11th forcing instruction in the family (lineage from `[BASH-COMMAND-FAILING-REPEATEDLY]` through `[MARKETPLACE-STALE]` through `[CONTRACT-REMINDER]`).
+- **Band-crossing idempotency** instead of every-turn emission — once warned, stay warned; re-emit only on upgrade to a more-urgent band. Avoids notification fatigue.
+
+### Pattern observation (GAP-A..F lineage now complete)
+
+The recursive observation that closed this loop: this very session ran far past sensible context limits with no proactive warning because the rule was text-only. The bench harness built earlier in the session (v2.4.0) was *designed* to catch this class of bug in plugin behaviors; it then caught one in the plugin's own meta-discipline. The GAP-A..F arc spans 6 hook conversions of text-only rules:
+
+- GAP-A (v2.3.0) — architect KB-Sources contract → text rule
+- GAP-B (v2.3.0) — Plan-Before-Edit discipline → text rule
+- GAP-C (v2.3.0) — route-decide consultation → text rule
+- GAP-D (v2.3.0) — PostToolUse:Agent KB-citation gate (discovered broken in headless `-p` mode — `decision: block` `reason` does NOT propagate)
+- GAP-E (v2.4.2) — PreToolUse `hookSpecificOutput.updatedInput` replaces broken D
+- GAP-F (v2.5.0, THIS) — Stop-hook context-size warning
+
+### Trigger analysis (HT.1.6)
+
+3/5 triggers fire (T1+T2+T3); below MANDATORY-gate threshold (4/5) but high enough to warrant architect + code-reviewer pair-run, which was executed pre-implementation. Both agents cited 4 kb refs each anchoring real reasoning. Findings absorbed before any code was written.
+
+### Verification
+
+- 11/11 new unit tests PASS (context-size-warn-stop.test.js)
+- 13/13 contract-reminder hook tests PASS (unchanged)
+- 114/116 install.sh smoke (T80 markdownlint + T84 ESLint pre-existing failures on `main`; out of scope)
+- ESLint clean on new + modified files
+- Existing 67/67 `_h70-test.js` + 17-baseline contracts-validate (unchanged)
+
+---
+
+## [2.4.3] — 2026-05-21 — Contract-reminder extension to 4 more agents + defensive fix
+
+Extended the v2.4.2 PreToolUse spawn-time contract-reminder pattern from `architect` only to all 5 agents with output contracts: `architect`, `code-reviewer`, `security-auditor`, `planner`, `optimizer`. Per-agent contract shapes:
+
+- `architect` / `planner` / `optimizer` — trailing `## KB Sources Consulted` section
+- `code-reviewer` — inline `kb:` cite per PRINCIPLE-severity finding
+- `security-auditor` — every CRITICAL/HIGH finding must cite `kb:security-dev/*`
+
+Defensive fix: the v2.4.2 reminder used `kb:`-formatted strings in "do not cite" counterexamples; verification run had a `security-auditor` literally cite `kb:my-rules/foo` because that string appeared in the reminder. Replaced kb:-formatted counterexamples with parenthetical descriptions. 13/13 unit tests PASS covering all 5 contracted agents + plugin-prefix normalization + non-contracted passthrough. **Merge**: PR #139 (c6e0e26).
+
+## [2.4.2] — 2026-05-21 — GAP-E close: deterministic kb-citation via PreToolUse input mutation
+
+The v2.4.1 3-run characterization proved GAP-D's PostToolUse `decision: block` does NOT propagate `reason` to the parent in headless `claude -p` mode. Research via claude-code-guide confirmed PreToolUse hooks CAN mutate `tool_input` via `hookSpecificOutput.updatedInput`. New hook `contract-reminder-on-agent-spawn.js` (PreToolUse:Agent|Task) prepends a `[CONTRACT-REMINDER]` block to the Agent's `prompt` field — sub-agent literally sees the reminder. Deterministic; replaces the broken PostToolUse path. **Merge**: PR #138 (9839e99).
+
+## [2.4.1] — 2026-05-21 — Bench harness A-D follow-ups on v2.4.0 first-run findings
+
+- A: `run-all.sh` terminal-progress + lifecycle-counter rendering bugs fixed (tee for live progress; grep + tr counter pattern)
+- B: `disabled_universal_checks` array in `expected.json` + `collect.js` supports per-scenario opt-out
+- C: `architect.md` gains explicit `## Output Contract — Requirements Checklist` section (10/10 unit tests verify)
+- D: 3-run variance characterization (scenario 01) — found GAP-D `decision: block` propagation broken in headless; documented in `bench/EXPERIMENT-LOG.md`
+
+**Merge**: PR #137 (2fb0b4b).
+
+## [2.4.0] — 2026-05-21 — Bench harness: complete plugin verification (5 scenarios + lifecycle + interactive checklist)
+
+Extended single-scenario v2.3.0 bench to comprehensive coverage. 5 scenarios (multi-feature-export / sec-audit / arch-review / refactor / error-recovery) + lifecycle test (8/8 dynamic checks) + interactive checklist (13 manual-only slash commands) + COVERAGE-MAP.md (feature × validation matrix; ~70% auto / ~15% probabilistic / ~5% lifecycle / ~10% headless-impossible). Per-scenario `validate.js` architecture. **Merge**: PR #136 (31d9b06).
+
+## [2.3.0] — 2026-05-20 — Bench harness v0.1 + 4 headless-compliance fixes
+
+Foundational bench harness for the toolkit. Added 4 hooks closing GAP-A..D (text rules → hook enforcement):
+
+- GAP-A: architect KB-Sources contract added to `agents/architect.md`
+- GAP-B: Plan-Before-Edit rewrite in `rules/core/workflow.md` (decoupled intent from mechanism)
+- GAP-C: `hooks/scripts/route-decide-on-agent-spawn.js` (PreToolUse:Agent|Task)
+- GAP-D: `hooks/scripts/kb-citation-gate.js` (PostToolUse:Agent|Task — later proved broken in headless; retained as observability-only)
+
+**Merge**: PR #135 (74ebe7f).
+
 ## [2.2.0] — 2026-05-20 — H.9.22 `library daybook` L0+L1 morning briefing (substantive feature)
 
 **Minor release.** Adds `library daybook` subcommand — a read-only synthesizer that emits a session-start briefing combining the user-authored identity layer (L0) with four recent-state sources (L1.1-L1.4). First substantive new feature post-v2.1.0 substrate ship; first non-patch release since v2.0.0.
