@@ -456,6 +456,120 @@ function runRecVerif(args, identities) {
   );
 }
 
+// v2.8.0.x — synthid-drift trigger tests (priority 2.5, between recalibration_due and task-novelty)
+
+// Test 6.3: synthid-drift fires when pendingSynthIdDrift is true
+{
+  const ts = new Date().toISOString();
+  const ids = {
+    '13-node-backend.kira': {
+      persona: '13-node-backend', name: 'kira', createdAt: ts, lastSpawnedAt: ts,
+      totalSpawns: 8, verdicts: { pass: 7, partial: 0, fail: 1 },
+      specializations: [], skillInvocations: {},
+      retired: false, retiredAt: null, retiredReason: null,
+      parent: null, generation: 0,
+      traits: { skillFocus: null, kbFocus: [], taskDomain: null },
+      quality_factors_history: [],
+      spawnsSinceFullVerify: 3, lastFullVerifyAt: ts,
+      synthid_history: [
+        { hash: 'aaaa1111', observedAt: ts, note: 'first-observed' },
+        { hash: 'bbbb2222', observedAt: ts, note: 'persona-contract-drift' },
+      ],
+      pendingSynthIdDrift: true,
+    },
+  };
+  const r = runRecVerif(['--identity', '13-node-backend.kira'], ids);
+  assert(
+    r.parsed && r.parsed.recalibration_reason === 'synthid-drift',
+    `cmdRecommendVerification: synthid-drift trigger fires when pendingSynthIdDrift=true (got reason ${r.parsed && r.parsed.recalibration_reason})`
+  );
+  assert(
+    r.parsed && r.parsed.verification === 'symmetric-pair',
+    `cmdRecommendVerification: synthid-drift uses full-verify policy (got verification=${r.parsed && r.parsed.verification})`
+  );
+  assert(
+    r.parsed && Array.isArray(r.parsed.synthid_history_tail) && r.parsed.synthid_history_tail.length === 2,
+    `cmdRecommendVerification: synthid-drift emits synthid_history_tail of last 2 entries (got ${r.parsed && JSON.stringify(r.parsed.synthid_history_tail)})`
+  );
+}
+
+// Test 6.4: synthid-drift does NOT fire when pendingSynthIdDrift is false
+{
+  const ts = new Date().toISOString();
+  const ids = {
+    '13-node-backend.kira': {
+      persona: '13-node-backend', name: 'kira', createdAt: ts, lastSpawnedAt: ts,
+      totalSpawns: 3, verdicts: { pass: 2, partial: 0, fail: 0 },
+      specializations: [], skillInvocations: {},
+      retired: false, retiredAt: null, retiredReason: null,
+      parent: null, generation: 0,
+      traits: { skillFocus: null, kbFocus: [], taskDomain: null },
+      quality_factors_history: [],
+      spawnsSinceFullVerify: 2, lastFullVerifyAt: ts,
+      synthid_history: [{ hash: 'aaaa1111', observedAt: ts, note: 'first-observed' }],
+      pendingSynthIdDrift: false,
+    },
+  };
+  const r = runRecVerif(['--identity', '13-node-backend.kira'], ids);
+  assert(
+    !(r.parsed && r.parsed.recalibration_reason === 'synthid-drift'),
+    `cmdRecommendVerification: synthid-drift does NOT fire when pendingSynthIdDrift=false (got reason ${r.parsed && r.parsed.recalibration_reason})`
+  );
+}
+
+// Test 6.5: synthid-drift takes precedence over task-novelty (priority 2.5 < 3)
+{
+  const ts = new Date().toISOString();
+  const ids = {
+    '13-node-backend.kira': {
+      persona: '13-node-backend', name: 'kira', createdAt: ts, lastSpawnedAt: ts,
+      totalSpawns: 8, verdicts: { pass: 8, partial: 0, fail: 0 },  // 100% — high-trust
+      specializations: ['unrelated-task'], skillInvocations: {},
+      retired: false, retiredAt: null, retiredReason: null,
+      parent: null, generation: 0,
+      traits: { skillFocus: null, kbFocus: [], taskDomain: null },
+      quality_factors_history: [],
+      spawnsSinceFullVerify: 3, lastFullVerifyAt: ts,
+      synthid_history: [
+        { hash: 'aaaa1111', observedAt: ts, note: 'first-observed' },
+        { hash: 'bbbb2222', observedAt: ts, note: 'persona-contract-drift' },
+      ],
+      pendingSynthIdDrift: true,
+    },
+  };
+  const r = runRecVerif(['--identity', '13-node-backend.kira', '--task', 'fresh-novel-task'], ids);
+  assert(
+    r.parsed && r.parsed.recalibration_reason === 'synthid-drift',
+    `cmdRecommendVerification: synthid-drift beats task-novelty (got reason ${r.parsed && r.parsed.recalibration_reason})`
+  );
+}
+
+// Test 6.6: recalibration_due (priority 2) STILL precedes synthid-drift (priority 2.5)
+{
+  const ts = new Date().toISOString();
+  const ids = {
+    '13-node-backend.kira': {
+      persona: '13-node-backend', name: 'kira', createdAt: ts, lastSpawnedAt: ts,
+      totalSpawns: 15, verdicts: { pass: 12, partial: 0, fail: 0 },
+      specializations: [], skillInvocations: {},
+      retired: false, retiredAt: null, retiredReason: null,
+      parent: null, generation: 0,
+      traits: { skillFocus: null, kbFocus: [], taskDomain: null },
+      quality_factors_history: [],
+      spawnsSinceFullVerify: 11, lastFullVerifyAt: ts,
+      synthid_history: [
+        { hash: 'aaaa1111', observedAt: ts, note: 'persona-contract-drift' },
+      ],
+      pendingSynthIdDrift: true,
+    },
+  };
+  const r = runRecVerif(['--identity', '13-node-backend.kira'], ids);
+  assert(
+    r.parsed && r.parsed.recalibration_reason === 'spawn-counter',
+    `cmdRecommendVerification: spawn-counter (priority 2) beats synthid-drift (priority 2.5) when both fire (got reason ${r.parsed && r.parsed.recalibration_reason})`
+  );
+}
+
 cleanupTmpStore();
 
 // ===== Section 7: byte-for-byte tierOf invariance test =====

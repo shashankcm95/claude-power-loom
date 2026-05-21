@@ -381,6 +381,83 @@ test('INV3: parseSynthId is idempotent on already-bare input', () => {
   if (reformatted !== id) throw new Error(`idempotency failed: '${id}' → '${reformatted}'`);
 });
 
+// ============================================================================
+// Group 5: validateSuffix (v2.8.0.x — contract-verifier integration)
+// Pure function: parses identity, computes expected hash, returns status.
+// Observability-only contract — caller decides what to do with mismatches.
+// ============================================================================
+
+test('VS1: match → status=match when suffix equals computed hash', () => {
+  const { computeContentHash, formatSynthId, validateSuffix } = loadSynthid();
+  const contract = makeContract();
+  const pluginVersion = '2.8.0';
+  const hash = computeContentHash({ persona: '04-architect', contract, pluginVersion });
+  const identity = formatSynthId({ persona: '04-architect', name: 'mira', contentHash: hash });
+  const r = validateSuffix({ identity, contract, pluginVersion });
+  if (r.status !== 'match') throw new Error(`expected status=match, got ${r.status}`);
+  if (r.suffix !== hash) throw new Error(`expected suffix=${hash}, got ${r.suffix}`);
+  if (r.expectedHash !== hash) throw new Error(`expected expectedHash=${hash}, got ${r.expectedHash}`);
+  if (r.warning) throw new Error(`match should NOT emit warning, got ${r.warning}`);
+});
+
+test('VS2: mismatch → status=mismatch + warning when suffix differs', () => {
+  const { validateSuffix } = loadSynthid();
+  const contract = makeContract();
+  const identity = '04-architect.mira~deadbeef';
+  const r = validateSuffix({ identity, contract, pluginVersion: '2.8.0' });
+  if (r.status !== 'mismatch') throw new Error(`expected status=mismatch, got ${r.status}`);
+  if (r.suffix !== 'deadbeef') throw new Error(`expected suffix=deadbeef, got ${r.suffix}`);
+  if (typeof r.expectedHash !== 'string' || r.expectedHash.length !== 8) {
+    throw new Error(`expected expectedHash to be 8-hex string, got ${r.expectedHash}`);
+  }
+  if (typeof r.warning !== 'string' || !r.warning.includes('deadbeef')) {
+    throw new Error(`expected warning string mentioning deadbeef, got ${r.warning}`);
+  }
+});
+
+test('VS3: bare label (no suffix) → status=no-suffix (no warning)', () => {
+  const { validateSuffix } = loadSynthid();
+  const contract = makeContract();
+  const r = validateSuffix({ identity: '04-architect.mira', contract, pluginVersion: '2.8.0' });
+  if (r.status !== 'no-suffix') throw new Error(`expected status=no-suffix, got ${r.status}`);
+  if (r.warning) throw new Error(`bare label should NOT emit warning, got ${r.warning}`);
+});
+
+test('VS4: null/empty identity → status=no-identity', () => {
+  const { validateSuffix } = loadSynthid();
+  const contract = makeContract();
+  const r1 = validateSuffix({ identity: null, contract, pluginVersion: '2.8.0' });
+  if (r1.status !== 'no-identity') throw new Error(`null: expected no-identity, got ${r1.status}`);
+  const r2 = validateSuffix({ identity: '', contract, pluginVersion: '2.8.0' });
+  if (r2.status !== 'no-identity') throw new Error(`empty: expected no-identity, got ${r2.status}`);
+});
+
+test('VS5: unparseable identity → status=parse-error', () => {
+  const { validateSuffix } = loadSynthid();
+  const contract = makeContract();
+  const r = validateSuffix({ identity: 'malformed/garbage///', contract, pluginVersion: '2.8.0' });
+  if (r.status !== 'parse-error') throw new Error(`expected status=parse-error, got ${r.status}`);
+});
+
+test('VS6: suffix present but no contract → status=no-contract (preserves suffix)', () => {
+  const { validateSuffix } = loadSynthid();
+  const r = validateSuffix({ identity: '04-architect.mira~aaaa1111', contract: null, pluginVersion: '2.8.0' });
+  if (r.status !== 'no-contract') throw new Error(`expected status=no-contract, got ${r.status}`);
+  if (r.suffix !== 'aaaa1111') throw new Error(`expected suffix preserved, got ${r.suffix}`);
+});
+
+test('VS7: compute-error is caught and surfaces gracefully', () => {
+  const { validateSuffix } = loadSynthid();
+  // Missing pluginVersion → computeContentHash throws ("requires persona + contract + pluginVersion")
+  const r = validateSuffix({
+    identity: '04-architect.mira~aaaa1111',
+    contract: makeContract(),
+    pluginVersion: null,
+  });
+  if (r.status !== 'compute-error') throw new Error(`expected status=compute-error, got ${r.status}`);
+  if (!r.error) throw new Error(`expected error message, got ${r.error}`);
+});
+
 process.stdout.write(`\n=== Summary ===\n`);
 process.stdout.write(`  Passed: ${passed}\n`);
 process.stdout.write(`  Failed: ${failed}\n`);

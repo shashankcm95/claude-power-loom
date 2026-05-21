@@ -222,10 +222,81 @@ function parseSynthId(synthId) {
   };
 }
 
+/**
+ * Validate a SynthId's content-hash suffix against the CURRENT persona
+ * contract. Pure function — observability-only contract: callers decide
+ * what to do with mismatches (warning record, log, prompt, etc.).
+ *
+ * v2.8.0.x — wired into contract-verifier.js so per-verdict records
+ * surface persona-contract drift since the agent was spawned.
+ *
+ * Status values:
+ *   - 'match'         — suffix === computed hash from current contract
+ *   - 'mismatch'      — suffix !== computed hash; .warning string populated
+ *   - 'no-suffix'     — bare-label identity (no `~hash` portion); pre-v2.8.0
+ *                       record or current-session emitter that didn't add one
+ *   - 'no-identity'   — identity arg was null/empty
+ *   - 'parse-error'   — identity string failed parseSynthId
+ *   - 'no-contract'   — suffix present but contract arg missing (callsite
+ *                       didn't supply one — observability-only fallback)
+ *   - 'compute-error' — computeContentHash threw (e.g., missing
+ *                       pluginVersion); .error string populated
+ *
+ * @param {object} args
+ * @param {string|null} args.identity - SynthId string (bare or suffixed)
+ * @param {object|null} args.contract - parsed persona contract JSON
+ * @param {string|null} args.pluginVersion - semver string
+ * @param {string} [args.agentMd] - content of agents/<persona>.md (optional)
+ * @returns {{ status: string, identity?: string, suffix?: string,
+ *             expectedHash?: string, warning?: string, error?: string }}
+ */
+function validateSuffix({ identity, contract, pluginVersion, agentMd } = {}) {
+  if (!identity || typeof identity !== 'string' || identity.length === 0) {
+    return { status: 'no-identity' };
+  }
+  const parsed = parseSynthId(identity);
+  if (!parsed) {
+    return { status: 'parse-error', identity };
+  }
+  if (!parsed.contentHash) {
+    return { status: 'no-suffix', identity };
+  }
+  if (!contract) {
+    return { status: 'no-contract', identity, suffix: parsed.contentHash };
+  }
+  let expectedHash;
+  try {
+    expectedHash = computeContentHash({
+      persona: parsed.persona,
+      contract,
+      agentMd,
+      pluginVersion,
+    });
+  } catch (err) {
+    return {
+      status: 'compute-error',
+      identity,
+      suffix: parsed.contentHash,
+      error: err && err.message ? err.message : String(err),
+    };
+  }
+  if (expectedHash === parsed.contentHash) {
+    return { status: 'match', identity, suffix: parsed.contentHash, expectedHash };
+  }
+  return {
+    status: 'mismatch',
+    identity,
+    suffix: parsed.contentHash,
+    expectedHash,
+    warning: `SynthId suffix ${parsed.contentHash} does not match current contract hash ${expectedHash} — persona-contract has drifted since the identity was last spawned`,
+  };
+}
+
 module.exports = {
   computeContentHash,
   formatSynthId,
   parseSynthId,
+  validateSuffix,
   // Exported for internal/test reuse only; not part of the stable API.
   _canonicalJson,
   _stripSkillStatus,

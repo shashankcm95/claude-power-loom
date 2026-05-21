@@ -139,6 +139,35 @@ function cmdRecommendVerification(args) {
     return;
   }
 
+  // (2.5) synthid-drift: persona contract drift detected on prior assign.
+  //       Mirrors the recalibration_due trigger — fires BEFORE tier-based
+  //       triggers (3)+(4) and the fall-through policy table (5).
+  //       Flag is set in lifecycle-spawn.js cmdAssign when hash mismatches
+  //       prior synthid_history head; cleared in verdict-recording.js on
+  //       FULL_EQUIVALENT_DEPTHS verdicts.
+  //       INTENTIONALLY STICKY (post-pair-run LOW-1): if an identity only
+  //       accumulates `spot` / `asymmetric` verdicts after a drift, this
+  //       trigger keeps firing and forcing FULL_VERIFY_POLICY until at
+  //       least one full-verify completes. By design — drift is a strong
+  //       signal that warrants re-calibration; ignore-tolerance would
+  //       defeat the purpose. A non-sticky variant would need a separate
+  //       expiry counter, which v2.8.0.x deliberately defers.
+  //       Out-of-scope (deferred to v2.8.1+): combining drift signal with
+  //       quality-trend or task-novelty into a single "compound recalibration".
+  if (data.pendingSynthIdDrift) {
+    const tail = Array.isArray(data.synthid_history)
+      ? data.synthid_history.slice(-2)
+      : [];
+    console.log(JSON.stringify({
+      identity: args.identity,
+      tier,
+      ...FULL_VERIFY_POLICY,
+      recalibration_reason: 'synthid-drift',
+      synthid_history_tail: tail,
+    }, null, 2));
+    return;
+  }
+
   // (3) high-trust + task-novelty (no specialization overlap)
   if (tier === 'high-trust' && typeof args.task === 'string' && args.task.length > 0) {
     const specs = Array.isArray(data.specializations) ? data.specializations : [];

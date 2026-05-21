@@ -8,6 +8,57 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [2.8.1] — 2026-05-21 — HETS-SynthId v2.8.0.x wiring + Phase 4 pair-run
+
+**Patch release.** Closes the v2.8.0 loop: the SynthId substrate computed in `cmdAssign` is now *consumed* by 4 downstream surfaces, and the deferred Phase 4 code-reviewer pair-run runs to verdict APPROVE-WITH-NITS (all 3 nits absorbed inline).
+
+### Wiring (5 sub-tasks)
+
+1. **`verification-policy.js` — priority-2.5 `synthid-drift` trigger.** Inserted between `recalibration_due` (priority 2) and `task-novelty` (priority 3) in `cmdRecommendVerification`. Reads `data.pendingSynthIdDrift`; if true → emits `FULL_VERIFY_POLICY` + `recalibration_reason: 'synthid-drift'` + `synthid_history_tail` (last 2 entries for forensic context). Mirrors the `recalibration_due` shape exactly.
+2. **`pendingSynthIdDrift` flag plumbing.** Set in `lifecycle-spawn.js cmdAssign` when hash mismatches prior `synthid_history` head. Cleared in `verdict-recording.js` on `FULL_EQUIVALENT_DEPTHS` verdicts (same site as `spawnsSinceFullVerify = 0` reset). Backfilled by `registry._backfillSchema` for pre-v2.8.0.x records. INTENTIONALLY STICKY (post-pair-run LOW-1): persists until full-verify completes — drift warrants re-calibration, not tolerance.
+3. **`contract-verifier.js` — `validateSuffix` integration.** New `result.synthIdValidation` field in verdict JSON: `{status: match|mismatch|no-suffix|no-identity|parse-error|no-contract|compute-error, suffix?, expectedHash?, warning?}`. Observability-ONLY — never alters `verdict` or `result.summary.*Failures`. The verifier's recorder spawn now splits a suffixed identity into `--identity <bare-form>` (store-key) + `--synthid <full-form>` (forensic record).
+4. **`pattern-recorder.js` — `--synthid` arg pass-through.** New `synthid: args.synthid || null` field in each verdict entry alongside `identity`. Bare `identity` remains the store-key for lookups (backwards-compat); `synthid` is the forensic record — drift-detection consumers join verdict entries against `synthid_history` by hash.
+5. **`library-migrate add-synthid` — one-shot backfill subcommand.** Iterates the identity store under `registry.withLock()`; computes the current hash per identity (against `swarm/personas-contracts/<persona>.contract.json` + `swarm/personas/<persona>.md` + plugin MAJOR.MINOR); pushes a new `synthid_history` entry with `note: 'backfill'` when stale or missing. Idempotent: skips identities at current hash. `--dry-run` reports the plan without writes.
+
+### New pure function
+
+- **`_lib/synthid.js validateSuffix({identity, contract, pluginVersion, agentMd?})`** — observability-only contract. Returns 7 distinct status values for verdict-time drift surfacing without ever failing a verdict.
+
+### Code-reviewer pair-run (Phase 4 — deferred from v2.8.0)
+
+`03-code-reviewer.blair~e00b7020` reviewed the full surface (~125 LoC across 8 files + 14 new tests). Verdict **APPROVE-WITH-NITS**:
+
+- **Hash-determinism (CH12 defense): ✓** — `_stripSkillStatus` defense intact; no v2.8.0.x edit re-introduced sort-order sensitivity.
+- **Parser tolerance (lineage forward-compat): ✓** — `parseSynthId` regex unchanged; v2.8.2+ lineage suffixes still parseable.
+- **Concurrency (3-surface `withLock` composition): ✓** — cmdAssign, verdict-recording, library-migrate all serialize against the same lock; no nested-lock re-entry path.
+- **Fail-soft drift signaling: ✓** — observability contract preserved end-to-end; no path mutates verdicts on drift.
+
+### Nits absorbed inline (3 of 3)
+
+- **[MEDIUM-1]** `agentMd` was silently `undefined` at all 3 emitter call-sites — persona `.md` changes weren't participating in drift detection. **Fix:** new `_readPersonaMd(persona)` helper in `lifecycle-spawn.js` reads `swarm/personas/<persona>.md`; wired into `cmdAssign` + `contract-verifier.js` synthIdValidation + `library-migrate add-synthid`. One-time hash shift expected — every existing identity will appear stale on next assign, prompting a fresh `synthid_history` entry.
+- **[MEDIUM-2]** `registry.withLock` non-reentrant by construction; comment now documents the latent trap at `cmdAddSynthid`'s lock-acquisition site so future maintainers don't deadlock by calling lock-using primitives from inside the callback.
+- **[LOW-1]** `pendingSynthIdDrift` sticky-until-full-verify behavior is now documented as intentional at the priority-2.5 site — a non-sticky variant would need a separate expiry counter, deliberately deferred.
+
+### Tests
+
+- **`_h70-test.js`:** +4 tests (6.3–6.6) for priority-2.5 trigger — fires when flag true; doesn't fire when false; beats task-novelty (3); recalibration_due/spawn-counter at priority 2 still preempts. **73/73 green.**
+- **`tests/unit/agent-team/synthid.test.js`:** +7 tests (VS1–VS7) for `validateSuffix` covering all 7 status branches. **32/32 green.**
+
+### Operator notes
+
+- **First post-upgrade assign will mark drift for every persona** due to the agentMd integration. This is the intended one-time absorption of `.md` content into the hash universe. `pendingSynthIdDrift` will fire for everyone once; full-verify on any verdict clears it.
+- **Run `node scripts/library-migrate.js add-synthid --dry-run`** after upgrade to preview the backfill plan; run without `--dry-run` to apply. Idempotent.
+- **`synthid` field will be `null`** on verdict entries written by callers that haven't been updated to pass `--synthid`. Backwards-compat — joins on bare `identity` continue to work.
+
+### What's NOT in this ship (still deferred)
+
+- **Shape D — lineage encoding** (still gated on ≥5 hash-mismatch drift events accumulating empirically; the v2.8.0.x suffix-validation will now provide the source signal)
+- **Fix-2** (prompt-pattern store starvation investigation)
+- **Fix-3** (tautological observations.log entries on auto-graduate)
+- **bumpBatch lock-collapse** (pre-existing structural; v2.7.0 reviewer HIGH #1)
+
+---
+
 ## [2.8.0] — 2026-05-21 — HETS-SynthId Shape A: content-addressed agent identifier (TDD-treatment data point #3)
 
 **Minor release.** Introduces **HETS-SynthId** — a richer agent identifier than the previous `<persona>.<name>` plain-text label. User-flagged at session start: *"some form of unique identifier that go beyond just simple names."*

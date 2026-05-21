@@ -165,7 +165,7 @@ function _appendPatternPartitioned(entry) {
 
 function cmdRecord(args) {
   if (!args['task-signature'] || !args.verdict || !args.persona) {
-    console.error('Usage: record --task-signature X --persona Y --verdict pass|partial|fail [--agent-role R] [--findings-count N] [--identity persona.name] [--skills s1,s2]');
+    console.error('Usage: record --task-signature X --persona Y --verdict pass|partial|fail [--agent-role R] [--findings-count N] [--identity persona.name] [--synthid persona.name~hash] [--skills s1,s2]');
     console.error('  H.7.0-prep optional quality factors:');
     console.error('    [--tokens N] [--file-citations N] [--cap-requests-acted N] [--cap-requests-total N] [--kb-provenance-verified true|false]');
     console.error('  H.7.0 optional verification + complexity:');
@@ -234,6 +234,12 @@ function cmdRecord(args) {
     agent_role: args['agent-role'] || 'actor',
     persona: args.persona,
     identity: args.identity || null,
+    // v2.8.0.x — full SynthId (persona.name~hash[/lineage]) when caller
+    // supplied --synthid; null on pre-v2.8.0 callers. The bare `identity`
+    // field remains the store-key for lookups (backwards-compat); `synthid`
+    // is the forensic record — drift-detection consumers join verdict
+    // entries against synthid_history by hash.
+    synthid: args.synthid || null,
     verdict: args.verdict,
     findings_count: findingsCount,
     ran_at: new Date().toISOString(),

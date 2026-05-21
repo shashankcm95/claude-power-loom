@@ -136,23 +136,28 @@ function main(argv) {
   if (sub === 'migrate') return cmdMigrate(rest);
   if (sub === 'rollback') return cmdRollback(rest);
   if (sub === 'partition-personas') return cmdPartitionPersonas(rest);
+  if (sub === 'add-synthid') return cmdAddSynthid(rest);
   process.stderr.write(`library-migrate: unknown subcommand "${sub}"\n`);
   process.exit(2);
 }
 
 function printHelp() {
   process.stdout.write([
-    'library-migrate — H.9.21 v2.1.0 + H.9.21.1 v2.1.1 saga-protected migrations',
+    'library-migrate — H.9.21 v2.1.0 + H.9.21.1 v2.1.1 + v2.8.0.x saga-protected migrations',
     '',
     'Usage:',
     '  library-migrate migrate            [--dry-run] [--run-id <id>]',
     '  library-migrate rollback           --to <run-id>',
     '  library-migrate partition-personas [--dry-run] [--run-id <id>] [--force]',
+    '  library-migrate add-synthid        [--dry-run]',
     '',
     'migrate (v2.1.0):       CHECK sentinel → BACKUP atomically → PHASE 1 copy+hash-verify →',
     '                        PHASE 2 symlink-swap → SENTINEL write',
     'partition-personas      Split agents/{identities,verdicts}/consolidated.json into',
     '(H.9.21.1 v2.1.1):      per-persona files for Component H FULL bulkhead. Idempotent.',
+    'add-synthid             One-shot backfill of synthid_history for all existing identities.',
+    '(v2.8.0.x):             Computes hash against CURRENT persona contract + plugin MAJOR.MINOR.',
+    '                        Idempotent: skips identities whose synthid_history.last.hash matches.',
     '',
   ].join('\n'));
 }
@@ -507,6 +512,130 @@ function _partitionVerdicts(cons, { stackId, isDryRun }) {
 }
 
 // ===========================================================================
+// add-synthid (v2.8.0.x — one-shot SynthId backfill)
+// ===========================================================================
+
+/**
+ * Backfill synthid_history for every identity in the store. Computes the
+ * content hash against the CURRENT persona contract (per-persona) + plugin
+ * MAJOR.MINOR version (per the SynthId design). Idempotent: an identity
+ * whose synthid_history head already matches the current hash is skipped.
+ *
+ * Output is line-oriented per-identity + a summary tally. --dry-run prints
+ * the plan without mutating the store.
+ *
+ * Failure modes (counted, NOT fatal):
+ *   - persona has no contract file → tally as `errors`; skip identity
+ *   - hash computation throws        → tally as `errors`; skip identity
+ *
+ * Operates under registry.withLock() so concurrent assigns don't race with
+ * the backfill. The whole scan + mutate + writeStore happens inside one
+ * lock acquisition.
+ */
+function cmdAddSynthid(args) {
+  const opts = parseOpts(args);
+  const isDryRun = !!opts['dry-run'];
+
+  // Lazy requires — these modules pull in the live identity store + persona
+  // contract scanner; isolate them inside the subcommand so other subcommands
+  // (migrate / rollback / partition-personas) don't pay the import cost.
+  const registry = require('./agent-team/identity/registry');
+  const lifecycleSpawn = require('./agent-team/identity/lifecycle-spawn');
+  const { computeContentHash } = require('./agent-team/_lib/synthid');
+
+  // Plugin version mirrors lifecycle-spawn.js / contract-verifier.js. The
+  // SynthId hash uses MAJOR.MINOR only — patch versions don't churn hashes.
+  let pluginVersion = '0.0.0';
+  try {
+    const { findToolkitRoot } = require('./agent-team/_lib/toolkit-root');
+    const fp = path.join(findToolkitRoot(), '.claude-plugin', 'plugin.json');
+    pluginVersion = JSON.parse(fs.readFileSync(fp, 'utf8')).version || '0.0.0';
+  } catch { /* keep fallback */ }
+
+  process.stdout.write(`library-migrate add-synthid: plugin v${pluginVersion}${isDryRun ? ' (--dry-run)' : ''}\n`);
+
+  const summary = { total: 0, backfilled: 0, alreadyCurrent: 0, errors: 0 };
+  const lines = [];
+
+  // NOTE (post-pair-run MEDIUM-2): registry.withLock is non-reentrant by
+  // construction (file-lock; same PID treated as stale → timeout +
+  // exit(2)). The callback below MUST NOT invoke any other registry
+  // helper that itself wraps withLock (e.g., cmdAssign, cmdRecord). All
+  // mutations stay raw on the `store` object; only readStore + writeStore
+  // are used. If you add new logic here that calls into the registry's
+  // public API, verify it doesn't re-enter withLock or you'll deadlock.
+  registry.withLock(() => {
+    const store = registry.readStore();
+    const observedAt = new Date().toISOString();
+
+    for (const fullId of Object.keys(store.identities || {}).sort()) {
+      summary.total++;
+      const data = store.identities[fullId];
+      registry._backfillSchema(data);
+
+      const contract = lifecycleSpawn._readPersonaContract(data.persona);
+      if (!contract) {
+        summary.errors++;
+        lines.push(`SKIP    ${fullId}: no contract for persona "${data.persona}"`);
+        continue;
+      }
+      // v2.8.0.x — agentMd wired (post-pair-run MEDIUM-1). Persona .md
+      // file (if present) participates in the hash; absent files fall
+      // back to null without invalidating other personas' hashes.
+      const agentMd = lifecycleSpawn._readPersonaMd(data.persona);
+
+      let hash;
+      try {
+        hash = computeContentHash({
+          persona: data.persona,
+          contract,
+          agentMd,
+          pluginVersion,
+        });
+      } catch (err) {
+        summary.errors++;
+        lines.push(`SKIP    ${fullId}: hash failed: ${err.message}`);
+        continue;
+      }
+
+      const last = data.synthid_history.length > 0
+        ? data.synthid_history[data.synthid_history.length - 1]
+        : null;
+
+      if (last && last.hash === hash) {
+        summary.alreadyCurrent++;
+        lines.push(`SKIP    ${fullId}: already at hash ${hash}`);
+        continue;
+      }
+
+      summary.backfilled++;
+      const transition = last ? `${last.hash} → ${hash}` : `(empty) → ${hash}`;
+      lines.push(`BACKFILL ${fullId}: ${transition}`);
+      if (!isDryRun) {
+        data.synthid_history.push({
+          hash,
+          observedAt,
+          note: 'backfill',
+        });
+      }
+    }
+
+    if (!isDryRun && summary.backfilled > 0) {
+      registry.writeStore(store);
+    }
+  });
+
+  for (const line of lines) process.stdout.write(`  ${line}\n`);
+  process.stdout.write(
+    `\nSummary: ${summary.total} scanned · ${summary.backfilled} backfilled · ` +
+    `${summary.alreadyCurrent} already-current · ${summary.errors} errors\n`
+  );
+  if (isDryRun && summary.backfilled > 0) {
+    process.stdout.write('(--dry-run; no writes performed. Re-run without --dry-run to apply.)\n');
+  }
+}
+
+// ===========================================================================
 // Helpers
 // ===========================================================================
 
@@ -542,5 +671,7 @@ module.exports = {
   // H.9.21.1 v2.1.1 — partition-personas subcommand + internals (test surface)
   cmdPartitionPersonas,
   _partitionIdentities,
+  // v2.8.0.x — add-synthid backfill subcommand (test surface)
+  cmdAddSynthid,
   _partitionVerdicts,
 };

@@ -102,6 +102,10 @@ function cmdRecord(args) {
     if (FULL_EQUIVALENT_DEPTHS.includes(verificationDepth)) {
       data.spawnsSinceFullVerify = 0;
       data.lastFullVerifyAt = ts;
+      // v2.8.0.x — full-verify clears the pending-drift flag (the drift
+      // has been actively re-verified; subsequent spawns return to tier
+      // policy unless a new hash mismatch is observed).
+      data.pendingSynthIdDrift = false;
     } else {
       data.spawnsSinceFullVerify = (data.spawnsSinceFullVerify || 0) + 1;
     }
