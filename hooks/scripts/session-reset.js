@@ -176,6 +176,30 @@ try {
 
   if (cleaned > 0) logger('cleanup', { staleFilesRemoved: cleaned });
 
+  // GAP-F (v2.5.0): sweep stale per-session context-warn state files in
+  // ~/.claude/sessions/context-*.json. Same 1-day TTL as the other sweeps;
+  // matches the nudge-*.json convention (session-end-nudge.js) by living
+  // in the same directory under the same lifecycle.
+  try {
+    const sessionsDir = path.join(os.homedir(), '.claude', 'sessions');
+    if (fs.existsSync(sessionsDir)) {
+      const sessionFiles = fs.readdirSync(sessionsDir);
+      let staleContextFiles = 0;
+      for (const file of sessionFiles) {
+        if (!/^context-.*\.json(\.lock)?$/.test(file)) continue;
+        const filePath = path.join(sessionsDir, file);
+        try {
+          const stat = fs.statSync(filePath);
+          if (now - stat.mtimeMs > ONE_DAY) {
+            fs.unlinkSync(filePath);
+            staleContextFiles++;
+          }
+        } catch { /* per-file errors are non-fatal */ }
+      }
+      if (staleContextFiles > 0) logger('context_state_cleanup', { staleFilesRemoved: staleContextFiles });
+    }
+  } catch { /* fail-open: never block SessionStart on cleanup errors */ }
+
   // H.7.10 — defense-in-depth for mira C-1 (TMPDIR session leak in
   // error-critic.js). error-critic.js is now session-scoped at filename
   // level; this cleanup also removes stale session subdirs > 1 day old
