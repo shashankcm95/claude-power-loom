@@ -183,6 +183,60 @@ If TDD treatment beats baseline by the decision criteria above, codify the rule.
 
 ---
 
+## TDD-treatment data point — v2.6.0 GAP-F signal redesign (2026-05-21)
+
+**Why this one is the treatment data point**: substantive redesign of a substrate hook's core signal (from `fs.statSync(transcript_path).size` to `parseLastUsageBlock(transcript_path)` returning summed `input_tokens + cache_read_input_tokens + cache_creation_input_tokens`). Existing v2.5.0 tests describe the OLD bytes-based behavior; the redesign will invalidate some of them. Perfect setup for strict TDD: write failing tests for new behavior FIRST, then implement to green.
+
+**User callout** (this turn): "where are we with our TDD experiment. I don't see it applies since a long time" — honest accounting: baseline captured v2.3.0; v2.4.x/v2.5.x all shipped tests-alongside (not tests-first); treatment side of experiment had been collecting dust for ~10 days. v2.6.0 is the first explicit TDD-treatment ship.
+
+### Setup
+
+- **Branch**: `feat/gap-f-redesign-token-signal` (off main at ed713c7 / v2.5.1)
+- **Date started**: 2026-05-21
+- **Plugin version at start**: v2.5.1
+- **Baseline comparison points**: v2.5.0 (GAP-F initial, non-TDD) + v2.5.1 (GAP-G, non-TDD)
+- **TDD discipline contract**: tests MUST fail before any impl change; impl writes the MINIMUM needed to make tests pass; no tests added in the impl phase
+
+### What we're replacing
+
+**Signal source** — `fs.statSync(transcript_path).size`:
+- Architect's "800KB ≈ 200K-token window" estimate was off by ~500×
+- Real transcripts: 100KB (short bench task) → 387MB (this long session)
+- File grows monotonically across `/compact` (append-only history); not a context-window proxy
+
+**Replacement** — `parseLastUsageBlock(transcript_path)`:
+- Read last ~50KB of file; walk backwards through JSONL
+- Find most recent assistant message with `message.usage`
+- Sum `input_tokens + cache_read_input_tokens + cache_creation_input_tokens`
+- Empirically verified on this session: `200725 + 863 + 1 = 201589` tokens (right at the 200K window cap)
+- Thresholds: WARN=100K (50%), URGENT=160K (80%)
+
+### Metrics to capture during the experiment
+
+| Metric | Definition |
+|---|---|
+| Tests written before impl (T1) | Count of test cases in the new test file BEFORE any production code change |
+| Tests that initially fail | Subset of T1 that fails against current v2.5.1 impl |
+| Architect spawn count | Wall-clock + tokens per architect call |
+| Builder iterations to all-green | Number of edits to the impl file before all T1 tests pass |
+| Code-reviewer catches | Distinct issues raised by code-reviewer in pair-review |
+| Code-reviewer iterations | Reviewer spawn count before APPROVE |
+| Tests added during impl phase | If > 0, TDD discipline violation — captured for honesty |
+| Final test count | All tests in file at PR-ready state |
+| Final unit test outcome | PASS / FAIL |
+| Final bench outcome | scenario 04 still passes; new bench detection if any |
+| Rework loops | Total round-trips between builder and reviewer (≥1 catch round-trip) |
+
+### Decision criteria (from above; restated)
+
+TDD codified in `rules/core/workflow.md` IFF either:
+- Baseline group needed ≥2× the rework loops the TDD group needed, OR
+- TDD group caught a class of bug the baseline group missed entirely
+
+Otherwise: advisory rule ("use TDD when convergence_value > X") in workflow.md.
+
+---
+
 ## Variance characterization — scenario 01, 3-run sample (v2.4.0 follow-up D)
 
 Captured 2026-05-21 to bound the soft-signal variance observed in v2.3.0+v2.4.0.
