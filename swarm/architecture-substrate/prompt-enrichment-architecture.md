@@ -28,6 +28,7 @@ The hook handles these skip patterns deterministically — no enrichment fires:
 
 - Slash commands (`/review`, `/plan`, etc.)
 - Confirmation responses ("yes", "approve", "go ahead", "no", "cancel")
+- **Ship/PR confirmations** (v2.8.2 Fix-2a): "merged", "shipped", "landed", "pushed", "deployed", "done" — added after empirical over-fire on user's "merged" mid-session
 - Direct commands with clear scope ("run the tests", "commit this", "git push")
 - Informational questions ("what does X do?", "where is Y defined?", "how does Z work?")
 - Show/explain requests ("show me X", "explain Y")
@@ -44,6 +45,24 @@ When vague prompts ARE detected, Claude's enrichment workflow consults `~/.claud
 3. **No pattern**: activate the prompt-enrichment skill for the full 4-part build
 
 The 5+-approval auto-apply mirrors the auto-loop's `≥5 → queued candidate` threshold (per `swarm/architecture-substrate/auto-loop-infrastructure.md`).
+
+### Empirical conversion rate (v2.8.2 Fix-2 finding)
+
+Telemetry from `~/.claude/logs/` over ~16 days:
+
+| Funnel stage | Count | Rate |
+|--------------|-------|------|
+| Hook invoked on user prompts | 3102 | — |
+| Hook classified as vague | 1005 | 32% of invocations |
+| Forcing instruction injected | 1005 | 100% of vague |
+| Stop hook detected `[ENRICHED-PROMPT-START]` markers | 2 | **0.2% of injections** |
+| Auto-applied via 5+-approval threshold | 0 | — (threshold never reached) |
+
+**Interpretation**: the deterministic trigger layer works as designed (32% of prompts flagged; injection rate 100%). The lossy step is **Claude's follow-through** on the forcing instruction — only 0.2% of injections result in actual marker emission. This is best-effort instruction-following per the toolkit's README §"What this toolkit is NOT" — the strict marker contract is rare enough in practice that the auto-apply branch is effectively dead.
+
+**Posture**: the 5+-threshold rule stays in place (low cost; data accumulates; future Claude versions may emit markers more reliably). The auto-store hook continues running. Operators should NOT expect auto-apply to fire in practice today — treat the workflow as "if you remember to emit markers, the store will remember." The over-fire on ship-confirmations was the more pressing fix (Fix-2a above).
+
+**Branch decision**: kept the substrate; rejected (b) repoint-the-signal and (c) retire-the-claim as premature — neither would be cheaper than the existing fail-soft path. Re-evaluate if 0/0/0 conversion persists across 6+ months.
 
 ## Hook architecture wiring
 
