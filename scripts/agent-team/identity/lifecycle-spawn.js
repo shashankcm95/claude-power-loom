@@ -65,6 +65,22 @@ function _readPersonaContract(persona) {
   try { return JSON.parse(fs.readFileSync(fp, 'utf8')); } catch { return null; }
 }
 
+// v2.8.0.x — persona .md reader (post-pair-run MEDIUM-1 fix). The
+// SynthId design (per synthid.js header) includes `agent_md_hash` in
+// the content-hash input. Previously every callsite passed
+// `agentMd: undefined`, leaving the .md hash branch dead. This helper
+// loads `swarm/personas/<persona>.md` so persona behavior changes
+// trigger drift detection. Returns null gracefully if file absent
+// (the hash falls back to `agent_md_hash: null`, preserving existing
+// SynthId values for personas without a .md file).
+function _readPersonaMd(persona) {
+  const { findToolkitRoot } = require('../_lib/toolkit-root');
+  const personasBase = process.env.HETS_PERSONAS_DIR ||
+    path.join(findToolkitRoot(), 'swarm', 'personas');
+  const fp = path.join(personasBase, `${persona}.md`);
+  try { return fs.readFileSync(fp, 'utf8'); } catch { return null; }
+}
+
 function _scanSkillGaps(contract) {
   if (!contract || !contract.skills) return { required: [], recommended: [] };
   const status = contract.skills.skill_status || {};
@@ -156,9 +172,14 @@ function cmdAssign(args) {
     let synthDrift = false;
     if (contract) {
       try {
+        // v2.8.0.x — agentMd now wired through (post-pair-run MEDIUM-1).
+        // Persona .md changes now trigger drift detection alongside
+        // contract changes.
+        const agentMd = _readPersonaMd(args.persona);
         const hash = computeContentHash({
           persona: args.persona,
           contract,
+          agentMd,
           pluginVersion: _PLUGIN_VERSION,
         });
         synthIdSuffix = hash;
@@ -172,6 +193,12 @@ function cmdAssign(args) {
             note: last ? 'persona-contract-drift' : 'first-observed',
           });
           synthDrift = !!last; // first-observed is NOT a drift
+          // v2.8.0.x — set pending-drift flag so the next
+          // recommend-verification call forces full-verify (priority 2.5).
+          // Cleared by verdict-recording.js on FULL_EQUIVALENT_DEPTHS.
+          if (synthDrift) {
+            identity.pendingSynthIdDrift = true;
+          }
         }
       } catch (err) {
         // Hash computation failures are non-fatal — identity assignment
@@ -533,6 +560,7 @@ function cmdBreed(args) {
 module.exports = {
   // Helpers
   _readPersonaContract,
+  _readPersonaMd,
   _scanSkillGaps,
   // Subcommand handlers
   cmdAssign,

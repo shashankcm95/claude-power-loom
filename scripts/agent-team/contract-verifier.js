@@ -20,6 +20,28 @@ const path = require('path');
 // the canonical shape; semantically identical for documentary outputs.
 // HT.0.9-verify code-reviewer enumerated the 4 sites.
 const { parseFrontmatter } = require('./_lib/frontmatter');
+// v2.8.0.x — SynthId suffix validation. Observability-only: the verifier
+// emits `synthIdValidation` in its JSON output so per-verdict records
+// surface persona-contract drift since the agent was spawned. NEVER fails
+// the verdict — drift is a signal, not a verification failure.
+// parseSynthId also imported so the recorder forward block can split a
+// suffixed identity into bare-form (--identity, store-key) + full-form
+// (--synthid, forensic record).
+const { validateSuffix, parseSynthId } = require('./_lib/synthid');
+
+// v2.8.0.x — plugin version reader, mirrors lifecycle-spawn.js. Falls
+// back to '0.0.0' if plugin.json is unreadable (dev-without-install).
+function _readPluginVersion() {
+  try {
+    const { findToolkitRoot } = require('./_lib/toolkit-root');
+    const fp = path.join(findToolkitRoot(), '.claude-plugin', 'plugin.json');
+    const pkg = JSON.parse(fs.readFileSync(fp, 'utf8'));
+    return pkg.version || '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
+const _PLUGIN_VERSION = _readPluginVersion();
 
 function parseArgs(argv) {
   const args = {};
@@ -631,6 +653,33 @@ result.recommendation = verdict === 'pass' ? 'accept'
   : verdict === 'partial' ? 'accept-with-warning'
   : 'retry-with-tighter-prompt';
 
+// v2.8.0.x — identity hoisted to module scope so the synthid validation
+// (below) AND the recorder block (further down) both reference the same
+// resolved value. Frontmatter takes precedence over CLI flag — frontmatter
+// is set at spawn-time per chaos-test flow; CLI flag is an override.
+const _resolvedIdentity = frontmatter.identity || args.identity || null;
+
+// v2.8.0.x — SynthId suffix validation. Computes the expected hash from
+// the current contract and compares to the suffix embedded in the
+// identity. Observability ONLY: status === 'mismatch' emits a warning
+// string in the result JSON but does NOT alter `verdict` or
+// `result.summary.*Failures` — drift is a signal for callers
+// (verification-policy.js's priority-2.5 trigger consumes it).
+// agentMd wired through post-pair-run MEDIUM-1: persona .md changes now
+// participate in drift detection. Best-effort read — falls back to null.
+const _agentMd = (() => {
+  try {
+    const { _readPersonaMd } = require('./identity/lifecycle-spawn');
+    return _readPersonaMd(contract.persona);
+  } catch { return null; }
+})();
+result.synthIdValidation = validateSuffix({
+  identity: _resolvedIdentity,
+  contract,
+  agentMd: _agentMd,
+  pluginVersion: _PLUGIN_VERSION,
+});
+
 console.log(JSON.stringify(result, null, 2));
 
 // Self-learning hook
@@ -638,9 +687,9 @@ if (!args['no-record']) {
   try {
     const recorderPath = path.join(__dirname, 'pattern-recorder.js');
     if (fs.existsSync(recorderPath)) {
-      // Identity may come from frontmatter (preferred — set at spawn time) or from a
-      // CLI flag (verifier wrapper / orchestrator override).
-      const identity = frontmatter.identity || args.identity || null;
+      // v2.8.0.x — identity now hoisted to module scope above; reuse it
+      // here instead of re-resolving (was: `frontmatter.identity || args.identity || null`).
+      const identity = _resolvedIdentity;
       // Skills actually invoked. v1: not derived from transcript yet — caller
       // can pass --skills s1,s2 if known; future H.2 work pulls from JSONL.
       const skills = args.skills || null;
@@ -652,7 +701,22 @@ if (!args['no-record']) {
         '--verdict', verdict,
         '--findings-count', String(result.summary.findingsCount),
       ];
-      if (identity) recorderArgs.push('--identity', identity);
+      if (identity) {
+        // v2.8.0.x — split suffixed identity into bare + full forms.
+        // Bare form (persona.name) becomes the --identity arg so the
+        // recorder + downstream agent-identity.js forwarder use the
+        // existing store-key shape. Full form (persona.name~hash) is
+        // passed separately via --synthid for forensic record.
+        // Bare identities (no suffix) pass through unchanged with no
+        // --synthid arg (null in the recorded entry).
+        const parsedIdentity = parseSynthId(identity);
+        if (parsedIdentity && parsedIdentity.contentHash) {
+          recorderArgs.push('--identity', `${parsedIdentity.persona}.${parsedIdentity.name}`);
+          recorderArgs.push('--synthid', identity);
+        } else {
+          recorderArgs.push('--identity', identity);
+        }
+      }
       if (skills) recorderArgs.push('--skills', skills);
       // Use spawn (not spawnSync) so the recorder's lock-acquisition wait does NOT
       // block the verifier's exit — recorder is best-effort by design (see comment

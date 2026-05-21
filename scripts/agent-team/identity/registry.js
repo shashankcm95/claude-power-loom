@@ -389,6 +389,12 @@ function _backfillSchema(identity) {
   //   { hash: <8 hex>, observedAt: <ISO>, note?: <string> }
   // Empty array on pre-v2.8.0 records; first post-upgrade assign backfills.
   if (!Array.isArray(identity.synthid_history)) identity.synthid_history = [];
+  // v2.8.0.x — pending-drift flag. Set by cmdAssign when persona-contract
+  // drift is detected (hash mismatch vs prior head); consumed by
+  // cmdRecommendVerification priority-2.5 trigger; cleared by
+  // verdict-recording.js on FULL_EQUIVALENT_DEPTHS verdicts (mirrors the
+  // spawnsSinceFullVerify reset).
+  if (identity.pendingSynthIdDrift === undefined) identity.pendingSynthIdDrift = false;
   return identity;
 }
 
