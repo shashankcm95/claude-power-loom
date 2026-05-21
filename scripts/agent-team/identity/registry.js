@@ -385,6 +385,10 @@ function _backfillSchema(identity) {
   }
   if (identity.spawnsSinceFullVerify === undefined) identity.spawnsSinceFullVerify = 0;
   if (identity.lastFullVerifyAt === undefined) identity.lastFullVerifyAt = null;
+  // v2.8.0 — HETS-SynthId content-hash history. Each entry:
+  //   { hash: <8 hex>, observedAt: <ISO>, note?: <string> }
+  // Empty array on pre-v2.8.0 records; first post-upgrade assign backfills.
+  if (!Array.isArray(identity.synthid_history)) identity.synthid_history = [];
   return identity;
 }
 

@@ -34,6 +34,25 @@ const {
   aggregateQualityFactors,
   computeWeightedTrustScore,
 } = require('./trust-scoring');
+// v2.8.0 — HETS-SynthId content-hash. computed at assign time + persisted
+// to identity.synthid_history for drift detection across sessions.
+const { computeContentHash, formatSynthId } = require('../_lib/synthid');
+
+// v2.8.0 — read plugin version once at module load. Falls back to '0.0.0'
+// if plugin.json is unreadable (e.g., dev-without-install); the SynthId
+// system still works, just the version-component of the hash becomes
+// stable-zero (which is acceptable for in-repo work).
+function _readPluginVersion() {
+  try {
+    const { findToolkitRoot } = require('../_lib/toolkit-root');
+    const fp = path.join(findToolkitRoot(), '.claude-plugin', 'plugin.json');
+    const pkg = JSON.parse(fs.readFileSync(fp, 'utf8'));
+    return pkg.version || '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
+const _PLUGIN_VERSION = _readPluginVersion();
 
 // H.6.3 — scan persona contract at assign-time; surface not-yet-authored
 // skills as forgeNeeded on the assign output.
@@ -121,8 +140,6 @@ function cmdAssign(args) {
     identity.lastSpawnedAt = new Date().toISOString();
     identity.totalSpawns += 1;
 
-    writeStore(store);
-
     // H.6.3 — scan contract for skill gaps.
     const contract = _readPersonaContract(args.persona);
     const skillGaps = _scanSkillGaps(contract);
@@ -132,12 +149,50 @@ function cmdAssign(args) {
     };
     const blocking = forgeNeeded.required.length > 0;
 
+    // v2.8.0 — compute content-hash SynthId. Drift detection: if the new
+    // hash differs from the head of synthid_history, append a new entry.
+    // First-spawn-post-upgrade backfills the history naturally.
+    let synthIdSuffix = null;
+    let synthDrift = false;
+    if (contract) {
+      try {
+        const hash = computeContentHash({
+          persona: args.persona,
+          contract,
+          pluginVersion: _PLUGIN_VERSION,
+        });
+        synthIdSuffix = hash;
+        const last = identity.synthid_history && identity.synthid_history.length > 0
+          ? identity.synthid_history[identity.synthid_history.length - 1]
+          : null;
+        if (!last || last.hash !== hash) {
+          identity.synthid_history.push({
+            hash,
+            observedAt: identity.lastSpawnedAt,
+            note: last ? 'persona-contract-drift' : 'first-observed',
+          });
+          synthDrift = !!last; // first-observed is NOT a drift
+        }
+      } catch (err) {
+        // Hash computation failures are non-fatal — identity assignment
+        // proceeds without SynthId suffix. Logged for observability.
+        process.stderr.write(`[lifecycle-spawn] synthid skipped: ${err.message}\n`);
+      }
+    }
+
+    writeStore(store);
+
     const fullId = `${args.persona}.${name}`;
+    const synthId = synthIdSuffix
+      ? formatSynthId({ persona: args.persona, name, contentHash: synthIdSuffix })
+      : fullId;
     output = {
       action: 'assign',
       persona: args.persona,
       name,
       identity: fullId,
+      synthid: synthId,
+      synthid_drift: synthDrift,
       tier: tierOf(identity),
       totalSpawns: identity.totalSpawns,
       task: args.task || null,

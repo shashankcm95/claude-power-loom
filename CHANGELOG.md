@@ -8,6 +8,114 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [2.8.0] — 2026-05-21 — HETS-SynthId Shape A: content-addressed agent identifier (TDD-treatment data point #3)
+
+**Minor release.** Introduces **HETS-SynthId** — a richer agent identifier than the previous `<persona>.<name>` plain-text label. User-flagged at session start: *"some form of unique identifier that go beyond just simple names."*
+
+The architect-designed Shape A (content-hash) ships now; Shape D (lineage encoding) deferred to v2.8.1 per architect's incremental-scope recommendation (lineage already lives in `tree.json` — single source of truth; ship D once ≥5 hash-mismatch drift events accumulate empirically).
+
+### What's a SynthId?
+
+```
+04-architect.mira              ← bare label (still works; backwards-compat invariant)
+04-architect.mira~c1faafda     ← v2.8.0 SynthId with content hash
+04-architect.mira~c1faafda/r:01H8X9KQ:d1:p=nova#9d7e   ← v2.8.1 full form (parser already accepts)
+```
+
+The 8-hex `contentHash` is `sha256(canonical_json(...))` truncated to first 4 bytes. Same persona + same contract + same skills + same KB scope + same plugin MAJOR.MINOR → same hash. The hash CHANGES when:
+- Persona contract content changes (role / functional / antiPattern / budget / kb_scope / fallbackAcceptable)
+- Skills required or recommended change
+- KB scope default changes
+- Plugin MAJOR or MINOR version bumps
+- Agent `.md` definition changes (when present)
+
+The hash does NOT change when:
+- `skill_status` field churns during bootstrap
+- Plugin PATCH version bumps (cosmetic)
+- Per-spawn flags or task tags change
+- Identity verdict history grows (would create circular dependency)
+
+### Drift detection — the load-bearing semantic
+
+Identity records now carry a `synthid_history: [{ hash, observedAt, note }]` array. Each assign:
+1. Computes current content hash
+2. Compares to `synthid_history[-1].hash`
+3. If different → append new entry (with `note: "persona-contract-drift"`) + `synthid_drift: true` in output
+4. If same → idempotent no-op
+
+A future `recommend-verification` priority-2.5 trigger (deferred to v2.8.0.x) will force full-verify on the next spawn when drift is detected — same shape as the H.7.0 `recalibration_due` trigger.
+
+### Added
+
+- **`scripts/agent-team/_lib/synthid.js`** (NEW; ~200 LoC) — three pure functions:
+  - `computeContentHash({persona, contract, agentMd?, pluginVersion})` → 8 hex chars
+  - `formatSynthId({persona, name, contentHash?, lineage?})` → string
+  - `parseSynthId(synthIdString)` → `{persona, name, contentHash, lineage} | null`
+  - Mirrors `_lib/atomic-write.js` + `_lib/lock.js` shape (per `kb:architecture/crosscut/single-responsibility`)
+- **`tests/unit/agent-team/synthid.test.js`** (NEW; 25 tests):
+  - **CH1-CH12**: content-hash determinism, sort-order invariance, skill_status exclusion, plugin-version MAJOR/MINOR-only, agentMd handling
+  - **FS1-FS4**: format composition (bare + hash + lineage)
+  - **PS1-PS6**: parse all variants + garbage-input → null + round-trip
+  - **INV1-INV3**: backwards-compat (bare name still resolves), hyphenated personas, idempotency
+
+### Changed
+
+- **`scripts/agent-team/identity/registry.js _backfillSchema`**: defaults `synthid_history: []` for older records. Additive; v2.7.x state files load cleanly.
+- **`scripts/agent-team/identity/lifecycle-spawn.js cmdAssign`**: computes content hash after backfill; appends to `synthid_history` on drift; emits `synthid` + `synthid_drift` fields in output JSON. Hash-computation failures are non-fatal (logged to stderr; assign proceeds without SynthId suffix).
+- **Plugin version**: 2.7.1 → 2.8.0.
+
+### Live empirical verification
+
+```
+$ HOME=$TMPDIR node scripts/agent-team/agent-identity.js assign --persona 04-architect
+{
+  "action": "assign",
+  "persona": "04-architect",
+  "name": "mira",
+  "identity": "04-architect.mira",
+  "synthid": "04-architect.mira~c1faafda",     ← NEW
+  "synthid_drift": false,                       ← NEW (first observation)
+  "tier": "unproven",
+  ...
+}
+```
+
+### TDD-treatment data point #3 (per v2.6.1 advisory rule)
+
+This is the third explicit TDD-treatment ship (after v2.6.0 GAP-F redesign + v2.7.0 GAP-H cmdScan):
+
+| Phase | Result |
+|---|---|
+| 0 — architect design | 7-section design doc with KB anchors + scope-decision rationale (incremental A first; D deferred) |
+| 1 — tests-first | 25 tests written; vs no-module: 25/25 FAIL (perfect red phase) |
+| 3 — impl, helper | 2 builder iterations: first 24/25 (CH12 sort-order failure surfaced redundant skills embedding); fix strip both skill_status + duplicate arrays from persona_contract → 25/25 PASS |
+| 3 — impl, integration | minimal-viable: registry default + lifecycle-spawn compute + drift detection; live empirical verifies architect.mira~c1faafda |
+| 4 — code-reviewer pair-run | DEFERRED — session-length discipline; staged with next ship |
+
+Architect's scope recommendation (Shape A only; defer D) honored.
+
+### Deferred to v2.8.0.x / v2.8.1
+
+- `recommend-verification` priority-2.5 `synthid-drift` trigger (drift signal → force full-verify)
+- `contract-verifier.js` suffix-validation on record-verdict (observability-only; warn not fail)
+- `pattern-recorder.js --synthid` arg pass-through
+- One-shot `library-migrate add-synthid` subcommand for backfilling 31 existing identities (current path: lazy backfill on first post-upgrade assign per identity)
+- **Shape D — lineage encoding** (v2.8.1): activate after ≥5 hash-mismatch drift events accumulate. Parser already accepts the lineage suffix; only the emitter side needs wiring.
+
+### Recursive observation
+
+The "beyond simple names" direction surfaced a foundational HETS gap: identity reputation tracking was provably correct as long as personas didn't drift, but had no mechanism to *notice* drift. v2.8.0 closes that gap — same shape as the GAP-A..H lineage (text rule → mechanism enforcement), applied to a different load-bearing claim.
+
+### Verification
+
+- 25/25 new unit tests PASS (synthid.test.js)
+- 116/116 install.sh smoke (no regressions from v2.7.1)
+- 24/24 + 13/13 + 10/10 + 11/11 + 11/11 other unit tests unchanged
+- ESLint clean on all modified files
+- Live empirical verified end-to-end (architect.mira~c1faafda)
+
+---
+
 ## [2.7.1] — 2026-05-21 — kb-citation-gate: accept numbered-prefix headings + tighten line anchor
 
 **Patch release.** Closes a regex over-fire pattern that surfaced THREE times during architect dispatches on 2026-05-21 (v2.6.0 ship, GAP-H fix, SynthId design). Each time the architect produced canonical `kb:<topic>/<doc>` refs but used a numbered structural heading (`## 7. KB Sources Consulted`); the prior regex required exact literal `## KB Sources Consulted` and blocked the response. The regex was the bug, not the architect's compliance.
