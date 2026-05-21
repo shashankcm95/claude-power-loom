@@ -77,11 +77,11 @@ All rules load into context as part of the plugin manifest. Their presence is ve
 
 ## Agents (5 in `agents/*.md`)
 
-| Agent | Coverage | Where |
-|---|---|---|
+| Agent | Coverage |
+|---|---|
 | `architect` | ✅ via Scenario 01 (substantive multi-feature task) |
 | `code-reviewer` | ✅ via Scenario 01 (post-write review) |
-| `security-auditor` | ⬜ Needs Scenario 02 (security-heavy task with explicit nudge) |
+| `security-auditor` | ✅ via Scenario 02 (security-heavy task with explicit nudge) |
 | `planner` | 🟡 Probabilistic via Scenario 04 (HETS-routed task may trigger) |
 | `optimizer` | 🟡 Probabilistic — no scenario reliably triggers; document as advisory-only |
 
