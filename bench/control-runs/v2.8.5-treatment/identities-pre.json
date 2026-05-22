@@ -1,0 +1,2665 @@
+{
+  "version": 1,
+  "rosters": {
+    "01-hacker": [
+      "zoe",
+      "ren",
+      "kai"
+    ],
+    "02-confused-user": [
+      "sam",
+      "alex",
+      "rafael"
+    ],
+    "03-code-reviewer": [
+      "nova",
+      "jade",
+      "blair"
+    ],
+    "04-architect": [
+      "mira",
+      "theo",
+      "ari"
+    ],
+    "05-honesty-auditor": [
+      "quinn",
+      "lior",
+      "aki"
+    ],
+    "06-ios-developer": [
+      "riley",
+      "morgan",
+      "taylor"
+    ],
+    "07-java-backend": [
+      "sasha",
+      "cam",
+      "pat"
+    ],
+    "08-ml-engineer": [
+      "chen",
+      "priya",
+      "omar"
+    ],
+    "09-react-frontend": [
+      "dev",
+      "jamie",
+      "casey"
+    ],
+    "10-devops-sre": [
+      "iris",
+      "hugo",
+      "jules"
+    ],
+    "11-data-engineer": [
+      "fin",
+      "niko",
+      "rae"
+    ],
+    "12-security-engineer": [
+      "vlad",
+      "mio",
+      "eli"
+    ],
+    "13-node-backend": [
+      "noor",
+      "evan",
+      "kira"
+    ]
+  },
+  "nextIndex": {
+    "01-hacker": 0,
+    "02-confused-user": 0,
+    "03-code-reviewer": 2,
+    "04-architect": 0,
+    "05-honesty-auditor": 2,
+    "06-ios-developer": 1,
+    "07-java-backend": 1,
+    "08-ml-engineer": 1,
+    "09-react-frontend": 0,
+    "10-devops-sre": 2,
+    "11-data-engineer": 2,
+    "12-security-engineer": 1,
+    "13-node-backend": 2
+  },
+  "identities": {
+    "01-hacker.zoe": {
+      "persona": "01-hacker",
+      "name": "zoe",
+      "createdAt": "2026-05-02T16:00:35.031Z",
+      "lastSpawnedAt": "2026-05-22T11:59:04.245Z",
+      "totalSpawns": 5,
+      "verdicts": {
+        "pass": 0,
+        "partial": 0,
+        "fail": 3
+      },
+      "specializations": [
+        "01-hacker:actor-hacker"
+      ],
+      "skillInvocations": {},
+      "quality_factors_history": [
+        {
+          "ts": "2026-05-09T00:32:51.143Z",
+          "verdict": "fail",
+          "task_signature": "01-hacker:actor-hacker",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        },
+        {
+          "ts": "2026-05-09T00:33:11.122Z",
+          "verdict": "fail",
+          "task_signature": "01-hacker:actor-hacker",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        },
+        {
+          "ts": "2026-05-09T00:33:16.833Z",
+          "verdict": "fail",
+          "task_signature": "01-hacker:actor-hacker",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        }
+      ],
+      "retired": false,
+      "retiredAt": null,
+      "retiredReason": null,
+      "parent": null,
+      "generation": 0,
+      "traits": {
+        "skillFocus": null,
+        "kbFocus": [],
+        "taskDomain": null
+      },
+      "spawnsSinceFullVerify": 0,
+      "lastFullVerifyAt": "2026-05-09T00:33:16.833Z",
+      "synthid_history": [
+        {
+          "hash": "2850cd6e",
+          "observedAt": "2026-05-22T11:55:52.279Z",
+          "note": "backfill"
+        }
+      ],
+      "pendingSynthIdDrift": false
+    },
+    "01-hacker.ren": {
+      "persona": "01-hacker",
+      "name": "ren",
+      "createdAt": "2026-05-03T20:43:28.465Z",
+      "lastSpawnedAt": "2026-05-20T12:41:46.743Z",
+      "totalSpawns": 3,
+      "verdicts": {
+        "pass": 0,
+        "partial": 0,
+        "fail": 0
+      },
+      "specializations": [],
+      "skillInvocations": {},
+      "quality_factors_history": [],
+      "retired": false,
+      "retiredAt": null,
+      "retiredReason": null,
+      "parent": null,
+      "generation": 0,
+      "traits": {
+        "skillFocus": null,
+        "kbFocus": [],
+        "taskDomain": null
+      },
+      "spawnsSinceFullVerify": 0,
+      "lastFullVerifyAt": null,
+      "synthid_history": [
+        {
+          "hash": "2850cd6e",
+          "observedAt": "2026-05-22T11:55:52.279Z",
+          "note": "backfill"
+        }
+      ],
+      "pendingSynthIdDrift": false
+    },
+    "01-hacker.kai": {
+      "persona": "01-hacker",
+      "name": "kai",
+      "createdAt": "2026-05-05T14:56:22.489Z",
+      "lastSpawnedAt": "2026-05-22T11:59:04.246Z",
+      "totalSpawns": 3,
+      "verdicts": {
+        "pass": 1,
+        "partial": 0,
+        "fail": 0
+      },
+      "specializations": [
+        "01-hacker:actor-01-hacker"
+      ],
+      "skillInvocations": {},
+      "quality_factors_history": [
+        {
+          "ts": "2026-05-22T00:02:23.956Z",
+          "verdict": "pass",
+          "task_signature": "01-hacker:actor-01-hacker",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        }
+      ],
+      "retired": false,
+      "retiredAt": null,
+      "retiredReason": null,
+      "parent": null,
+      "generation": 0,
+      "traits": {
+        "skillFocus": null,
+        "kbFocus": [],
+        "taskDomain": null
+      },
+      "spawnsSinceFullVerify": 0,
+      "lastFullVerifyAt": "2026-05-22T00:02:23.956Z",
+      "synthid_history": [
+        {
+          "hash": "2850cd6e",
+          "observedAt": "2026-05-21T23:54:06.667Z",
+          "note": "first-observed"
+        }
+      ],
+      "pendingSynthIdDrift": false
+    },
+    "02-confused-user.sam": {
+      "persona": "02-confused-user",
+      "name": "sam",
+      "createdAt": "2026-05-02T16:56:28.836Z",
+      "lastSpawnedAt": "2026-05-06T19:40:31.278Z",
+      "totalSpawns": 3,
+      "verdicts": {
+        "pass": 0,
+        "partial": 0,
+        "fail": 0
+      },
+      "specializations": [],
+      "skillInvocations": {},
+      "quality_factors_history": [],
+      "retired": false,
+      "retiredAt": null,
+      "retiredReason": null,
+      "parent": null,
+      "generation": 0,
+      "traits": {
+        "skillFocus": null,
+        "kbFocus": [],
+        "taskDomain": null
+      },
+      "spawnsSinceFullVerify": 0,
+      "lastFullVerifyAt": null,
+      "synthid_history": [
+        {
+          "hash": "0c1bb2d8",
+          "observedAt": "2026-05-22T11:55:52.279Z",
+          "note": "backfill"
+        }
+      ],
+      "pendingSynthIdDrift": false
+    },
+    "02-confused-user.alex": {
+      "persona": "02-confused-user",
+      "name": "alex",
+      "createdAt": "2026-05-03T20:43:28.598Z",
+      "lastSpawnedAt": "2026-05-03T20:43:28.599Z",
+      "totalSpawns": 1,
+      "verdicts": {
+        "pass": 0,
+        "partial": 0,
+        "fail": 0
+      },
+      "specializations": [],
+      "skillInvocations": {},
+      "quality_factors_history": [],
+      "retired": false,
+      "retiredAt": null,
+      "retiredReason": null,
+      "parent": null,
+      "generation": 0,
+      "traits": {
+        "skillFocus": null,
+        "kbFocus": [],
+        "taskDomain": null
+      },
+      "spawnsSinceFullVerify": 0,
+      "lastFullVerifyAt": null,
+      "synthid_history": [
+        {
+          "hash": "0c1bb2d8",
+          "observedAt": "2026-05-22T11:55:52.279Z",
+          "note": "backfill"
+        }
+      ],
+      "pendingSynthIdDrift": false
+    },
+    "02-confused-user.rafael": {
+      "persona": "02-confused-user",
+      "name": "rafael",
+      "createdAt": "2026-05-05T14:56:22.523Z",
+      "lastSpawnedAt": "2026-05-06T22:29:15.584Z",
+      "totalSpawns": 3,
+      "verdicts": {
+        "pass": 2,
+        "partial": 0,
+        "fail": 0
+      },
+      "specializations": [
+        "<set-at-spawn>:actor-challenger",
+        "134026660f54"
+      ],
+      "skillInvocations": {},
+      "quality_factors_history": [
+        {
+          "ts": "2026-05-06T22:33:32.204Z",
+          "verdict": "pass",
+          "task_signature": "<set-at-spawn>:actor-challenger",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null
+        },
+        {
+          "ts": "2026-05-06T22:34:44.748Z",
+          "verdict": "pass",
+          "task_signature": "134026660f54",
+          "findings_per_10k": 0.5716000514440047,
+          "file_citations_per_finding": 1.5,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": false,
+          "tokens": 69979,
+          "paired_with": "04-architect.ari",
+          "convergence": "agree"
+        }
+      ],
+      "retired": false,
+      "retiredAt": null,
+      "retiredReason": null,
+      "parent": null,
+      "generation": 0,
+      "traits": {
+        "skillFocus": null,
+        "kbFocus": [],
+        "taskDomain": null
+      },
+      "spawnsSinceFullVerify": 0,
+      "lastFullVerifyAt": null,
+      "synthid_history": [
+        {
+          "hash": "0c1bb2d8",
+          "observedAt": "2026-05-22T11:55:52.279Z",
+          "note": "backfill"
+        }
+      ],
+      "pendingSynthIdDrift": false
+    },
+    "03-code-reviewer.nova": {
+      "persona": "03-code-reviewer",
+      "name": "nova",
+      "createdAt": "2026-05-02T16:56:28.940Z",
+      "lastSpawnedAt": "2026-05-21T23:56:33.822Z",
+      "totalSpawns": 7,
+      "verdicts": {
+        "pass": 6,
+        "partial": 0,
+        "fail": 2
+      },
+      "specializations": [
+        "<set-at-spawn>:actor-engineering-task",
+        "f482ac9952e6",
+        "<set-at-spawn>:actor-challenger",
+        "4565c5bb7bb2",
+        "03-code-reviewer:actor-03-code-reviewer"
+      ],
+      "skillInvocations": {},
+      "quality_factors_history": [
+        {
+          "ts": "2026-05-06T20:31:41.591Z",
+          "verdict": "fail",
+          "task_signature": "03-code-reviewer:actor-code-reviewer",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null
+        },
+        {
+          "ts": "2026-05-06T20:32:26.191Z",
+          "verdict": "fail",
+          "task_signature": "ed1515bd80c4",
+          "findings_per_10k": 0.25614754098360654,
+          "file_citations_per_finding": 1,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": false,
+          "tokens": 78080,
+          "paired_with": null,
+          "convergence": null
+        },
+        {
+          "ts": "2026-05-06T20:50:37.491Z",
+          "verdict": "pass",
+          "task_signature": "<set-at-spawn>:actor-engineering-task",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null
+        },
+        {
+          "ts": "2026-05-06T20:53:44.679Z",
+          "verdict": "pass",
+          "task_signature": "<set-at-spawn>:actor-engineering-task",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null
+        },
+        {
+          "ts": "2026-05-06T20:54:08.429Z",
+          "verdict": "pass",
+          "task_signature": "f482ac9952e6",
+          "findings_per_10k": 0.25614754098360654,
+          "file_citations_per_finding": 1,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": false,
+          "tokens": 78080,
+          "paired_with": null,
+          "convergence": null
+        },
+        {
+          "ts": "2026-05-07T11:34:20.871Z",
+          "verdict": "pass",
+          "task_signature": "<set-at-spawn>:actor-challenger",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null
+        },
+        {
+          "ts": "2026-05-07T11:34:20.980Z",
+          "verdict": "pass",
+          "task_signature": "4565c5bb7bb2",
+          "findings_per_10k": 1.3601124359613728,
+          "file_citations_per_finding": 1,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": false,
+          "tokens": 44114,
+          "paired_with": "04-architect.mira",
+          "convergence": "disagree"
+        },
+        {
+          "ts": "2026-05-21T23:21:29.702Z",
+          "verdict": "pass",
+          "task_signature": "03-code-reviewer:actor-03-code-reviewer",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        }
+      ],
+      "retired": false,
+      "retiredAt": null,
+      "retiredReason": null,
+      "parent": null,
+      "generation": 0,
+      "traits": {
+        "skillFocus": null,
+        "kbFocus": [],
+        "taskDomain": null
+      },
+      "spawnsSinceFullVerify": 0,
+      "lastFullVerifyAt": "2026-05-21T23:21:29.702Z",
+      "synthid_history": [
+        {
+          "hash": "5deb125b",
+          "observedAt": "2026-05-21T23:00:08.859Z",
+          "note": "first-observed"
+        }
+      ],
+      "pendingSynthIdDrift": false
+    },
+    "03-code-reviewer.jade": {
+      "persona": "03-code-reviewer",
+      "name": "jade",
+      "createdAt": "2026-05-03T20:43:28.715Z",
+      "lastSpawnedAt": "2026-05-22T11:59:04.177Z",
+      "totalSpawns": 7,
+      "verdicts": {
+        "pass": 3,
+        "partial": 0,
+        "fail": 5
+      },
+      "specializations": [
+        "03-code-reviewer:actor-code-reviewer",
+        "03-code-reviewer:actor-03-code-reviewer"
+      ],
+      "skillInvocations": {},
+      "quality_factors_history": [
+        {
+          "ts": "2026-05-09T00:32:51.194Z",
+          "verdict": "fail",
+          "task_signature": "03-code-reviewer:actor-code-reviewer",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        },
+        {
+          "ts": "2026-05-21T23:21:30.008Z",
+          "verdict": "pass",
+          "task_signature": "03-code-reviewer:actor-03-code-reviewer",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        },
+        {
+          "ts": "2026-05-22T11:51:52.689Z",
+          "verdict": "fail",
+          "task_signature": "03-code-reviewer:actor-code-reviewer",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        },
+        {
+          "ts": "2026-05-22T11:52:05.347Z",
+          "verdict": "fail",
+          "task_signature": "03-code-reviewer:actor-code-reviewer",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        },
+        {
+          "ts": "2026-05-22T11:53:59.580Z",
+          "verdict": "pass",
+          "task_signature": "03-code-reviewer:actor-code-reviewer",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        },
+        {
+          "ts": "2026-05-22T12:14:35.459Z",
+          "verdict": "fail",
+          "task_signature": "03-code-reviewer:actor-code-reviewer",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        },
+        {
+          "ts": "2026-05-22T12:15:28.748Z",
+          "verdict": "fail",
+          "task_signature": "03-code-reviewer:actor-code-reviewer",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        },
+        {
+          "ts": "2026-05-22T12:16:14.650Z",
+          "verdict": "pass",
+          "task_signature": "03-code-reviewer:actor-code-reviewer",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        }
+      ],
+      "retired": false,
+      "retiredAt": null,
+      "retiredReason": null,
+      "parent": null,
+      "generation": 0,
+      "traits": {
+        "skillFocus": null,
+        "kbFocus": [],
+        "taskDomain": null
+      },
+      "spawnsSinceFullVerify": 0,
+      "lastFullVerifyAt": "2026-05-22T12:16:14.650Z",
+      "synthid_history": [
+        {
+          "hash": "5deb125b",
+          "observedAt": "2026-05-21T23:15:07.282Z",
+          "note": "first-observed"
+        }
+      ],
+      "pendingSynthIdDrift": false
+    },
+    "03-code-reviewer.blair": {
+      "persona": "03-code-reviewer",
+      "name": "blair",
+      "createdAt": "2026-05-05T14:56:22.551Z",
+      "lastSpawnedAt": "2026-05-21T23:54:06.746Z",
+      "totalSpawns": 5,
+      "verdicts": {
+        "pass": 1,
+        "partial": 0,
+        "fail": 0
+      },
+      "specializations": [
+        "03-code-reviewer:actor-03-code-reviewer"
+      ],
+      "skillInvocations": {},
+      "quality_factors_history": [
+        {
+          "ts": "2026-05-22T00:02:24.036Z",
+          "verdict": "pass",
+          "task_signature": "03-code-reviewer:actor-03-code-reviewer",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        }
+      ],
+      "retired": false,
+      "retiredAt": null,
+      "retiredReason": null,
+      "parent": null,
+      "generation": 0,
+      "traits": {
+        "skillFocus": null,
+        "kbFocus": [],
+        "taskDomain": null
+      },
+      "spawnsSinceFullVerify": 0,
+      "lastFullVerifyAt": "2026-05-22T00:02:24.036Z",
+      "synthid_history": [
+        {
+          "hash": "e00b7020",
+          "observedAt": "2026-05-21T17:01:50.829Z",
+          "note": "first-observed"
+        },
+        {
+          "hash": "5deb125b",
+          "observedAt": "2026-05-21T23:54:06.746Z",
+          "note": "persona-contract-drift"
+        }
+      ],
+      "pendingSynthIdDrift": false
+    },
+    "04-architect.mira": {
+      "persona": "04-architect",
+      "name": "mira",
+      "createdAt": "2026-05-02T11:50:06.256Z",
+      "lastSpawnedAt": "2026-05-21T23:06:55.310Z",
+      "totalSpawns": 7,
+      "verdicts": {
+        "pass": 13,
+        "partial": 5,
+        "fail": 4
+      },
+      "specializations": [
+        "04-architect:retrospective-h7-78",
+        "h7.16-substrate-meta-detection",
+        "ht-audit-test",
+        "test:task",
+        "04-architect:actor-04-architect"
+      ],
+      "skillInvocations": {
+        "plan": 1,
+        "agent-team": 1,
+        "review": 1
+      },
+      "quality_factors_history": [
+        {
+          "ts": "2026-05-06T20:03:07.520Z",
+          "verdict": "pass",
+          "task_signature": "04-architect:actor-architect",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null
+        },
+        {
+          "ts": "2026-05-06T20:03:20.237Z",
+          "verdict": "pass",
+          "task_signature": "ba63957665a3",
+          "findings_per_10k": 1.1116772430404374,
+          "file_citations_per_finding": 3.5833333333333335,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": false,
+          "tokens": 107945,
+          "paired_with": null,
+          "convergence": null
+        },
+        {
+          "ts": "2026-05-06T20:12:27.457Z",
+          "verdict": "pass",
+          "task_signature": "ba63957665a3",
+          "findings_per_10k": 1.1116772430404374,
+          "file_citations_per_finding": 3.5833333333333335,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": false,
+          "tokens": 107945,
+          "paired_with": "13-node-backend.evan",
+          "convergence": "agree"
+        },
+        {
+          "ts": "2026-05-07T11:31:02.730Z",
+          "verdict": "fail",
+          "task_signature": "<set-at-spawn>:actor-engineering-task",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null
+        },
+        {
+          "ts": "2026-05-07T11:31:14.017Z",
+          "verdict": "fail",
+          "task_signature": "<set-at-spawn>:actor-engineering-task",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null
+        },
+        {
+          "ts": "2026-05-07T11:34:20.910Z",
+          "verdict": "fail",
+          "task_signature": "8d1c52010397",
+          "findings_per_10k": 1.43477904402722,
+          "file_citations_per_finding": 0.14285714285714285,
+          "cap_request_actionability": 0,
+          "kb_provenance_verified": false,
+          "tokens": 48788,
+          "paired_with": "03-code-reviewer.nova",
+          "convergence": "disagree"
+        },
+        {
+          "ts": "2026-05-07T13:26:02.331Z",
+          "verdict": "pass",
+          "task_signature": "04-architect:actor-architect",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null
+        },
+        {
+          "ts": "2026-05-07T13:26:02.414Z",
+          "verdict": "pass",
+          "task_signature": "7c5ffb354696",
+          "findings_per_10k": 1.3004887670282748,
+          "file_citations_per_finding": 1.25,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": false,
+          "tokens": 92273,
+          "paired_with": null,
+          "convergence": null
+        },
+        {
+          "ts": "2026-05-07T13:47:28.444Z",
+          "verdict": "pass",
+          "task_signature": "04-architect:actor-architect",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null
+        },
+        {
+          "ts": "2026-05-07T13:48:59.586Z",
+          "verdict": "pass",
+          "task_signature": "04-architect:actor-engineering-task",
+          "findings_per_10k": 1.7142857142857142,
+          "file_citations_per_finding": 3.9166666666666665,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": 70000,
+          "paired_with": null,
+          "convergence": null
+        },
+        {
+          "ts": "2026-05-07T15:43:21.863Z",
+          "verdict": "partial",
+          "task_signature": "04-architect:actor-architect",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        },
+        {
+          "ts": "2026-05-07T15:43:48.445Z",
+          "verdict": "partial",
+          "task_signature": "04-architect:actor-architect",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        },
+        {
+          "ts": "2026-05-07T15:45:03.789Z",
+          "verdict": "partial",
+          "task_signature": "04-architect:actor-architect",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        },
+        {
+          "ts": "2026-05-07T15:45:42.281Z",
+          "verdict": "partial",
+          "task_signature": "04-architect:actor-architect",
+          "findings_per_10k": 0.9489051094890512,
+          "file_citations_per_finding": 4.384615384615385,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": 137000,
+          "paired_with": "13-node-backend.kira",
+          "convergence": "agree",
+          "task_complexity_override": null
+        },
+        {
+          "ts": "2026-05-07T18:51:37.047Z",
+          "verdict": "pass",
+          "task_signature": "04-architect:retrospective-h7-78",
+          "findings_per_10k": 1.3953488372093024,
+          "file_citations_per_finding": 3.3333333333333335,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": 86000,
+          "paired_with": "root",
+          "convergence": "disagree",
+          "task_complexity_override": null
+        },
+        {
+          "ts": "2026-05-07T18:51:37.097Z",
+          "verdict": "pass",
+          "task_signature": "04-architect:actor-architect",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        },
+        {
+          "ts": "2026-05-07T22:46:14.931Z",
+          "verdict": "pass",
+          "task_signature": "h7.16-substrate-meta-detection",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": true,
+          "tokens": 70000,
+          "paired_with": "04-architect.theo",
+          "convergence": "agree",
+          "task_complexity_override": null
+        },
+        {
+          "ts": "2026-05-10T22:07:35.715Z",
+          "verdict": "pass",
+          "task_signature": "ht-audit-test",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        },
+        {
+          "ts": "2026-05-21T16:57:52.312Z",
+          "verdict": "pass",
+          "task_signature": "test:task",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        },
+        {
+          "ts": "2026-05-21T16:58:07.267Z",
+          "verdict": "fail",
+          "task_signature": "04-architect:actor-architect",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        },
+        {
+          "ts": "2026-05-21T23:10:45.959Z",
+          "verdict": "partial",
+          "task_signature": "04-architect:actor-04-architect",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        }
+      ],
+      "retired": false,
+      "retiredAt": null,
+      "retiredReason": null,
+      "parent": null,
+      "generation": 0,
+      "traits": {
+        "skillFocus": null,
+        "kbFocus": [],
+        "taskDomain": null
+      },
+      "spawnsSinceFullVerify": 0,
+      "lastFullVerifyAt": "2026-05-21T23:10:45.959Z",
+      "synthid_history": [
+        {
+          "hash": "e11da1f3",
+          "observedAt": "2026-05-21T23:06:55.310Z",
+          "note": "first-observed"
+        }
+      ],
+      "pendingSynthIdDrift": false
+    },
+    "04-architect.theo": {
+      "persona": "04-architect",
+      "name": "theo",
+      "createdAt": "2026-05-02T16:56:29.045Z",
+      "lastSpawnedAt": "2026-05-21T23:54:06.802Z",
+      "totalSpawns": 7,
+      "verdicts": {
+        "pass": 9,
+        "partial": 0,
+        "fail": 0
+      },
+      "specializations": [
+        "04-architect:actor-architect",
+        "ae3f6885a5bf",
+        "5789a1161975",
+        "h7.10-mira-retrospective-fixes",
+        "04-architect:actor-04-architect"
+      ],
+      "skillInvocations": {},
+      "quality_factors_history": [
+        {
+          "ts": "2026-05-06T20:43:15.664Z",
+          "verdict": "pass",
+          "task_signature": "04-architect:actor-architect",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null
+        },
+        {
+          "ts": "2026-05-06T20:43:31.575Z",
+          "verdict": "pass",
+          "task_signature": "ae3f6885a5bf",
+          "findings_per_10k": 2.1690209581650084,
+          "file_citations_per_finding": 4.1875,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": false,
+          "tokens": 73766,
+          "paired_with": null,
+          "convergence": null
+        },
+        {
+          "ts": "2026-05-06T20:54:08.353Z",
+          "verdict": "pass",
+          "task_signature": "ae3f6885a5bf",
+          "findings_per_10k": 2.1690209581650084,
+          "file_citations_per_finding": 4.1875,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": false,
+          "tokens": 73766,
+          "paired_with": "13-node-backend.kira",
+          "convergence": "agree"
+        },
+        {
+          "ts": "2026-05-07T12:11:06.248Z",
+          "verdict": "pass",
+          "task_signature": "04-architect:actor-architect",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null
+        },
+        {
+          "ts": "2026-05-07T12:11:06.329Z",
+          "verdict": "pass",
+          "task_signature": "5789a1161975",
+          "findings_per_10k": 0.9948179031047363,
+          "file_citations_per_finding": 2.727272727272727,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": false,
+          "tokens": 110573,
+          "paired_with": null,
+          "convergence": null
+        },
+        {
+          "ts": "2026-05-07T12:31:41.000Z",
+          "verdict": "pass",
+          "task_signature": "5789a1161975",
+          "findings_per_10k": 1.085255894296076,
+          "file_citations_per_finding": 7.083333333333333,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": false,
+          "tokens": 110573,
+          "paired_with": "13-node-backend.noor",
+          "convergence": "agree"
+        },
+        {
+          "ts": "2026-05-07T20:25:22.394Z",
+          "verdict": "pass",
+          "task_signature": "h7.10-mira-retrospective-fixes",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": true,
+          "tokens": 150000,
+          "paired_with": "04-architect.mira",
+          "convergence": "agree",
+          "task_complexity_override": null
+        },
+        {
+          "ts": "2026-05-09T00:32:51.257Z",
+          "verdict": "pass",
+          "task_signature": "04-architect:actor-architect",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        },
+        {
+          "ts": "2026-05-22T00:02:24.107Z",
+          "verdict": "pass",
+          "task_signature": "04-architect:actor-04-architect",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        }
+      ],
+      "retired": false,
+      "retiredAt": null,
+      "retiredReason": null,
+      "parent": null,
+      "generation": 0,
+      "traits": {
+        "skillFocus": null,
+        "kbFocus": [],
+        "taskDomain": null
+      },
+      "spawnsSinceFullVerify": 0,
+      "lastFullVerifyAt": "2026-05-22T00:02:24.107Z",
+      "synthid_history": [
+        {
+          "hash": "e11da1f3",
+          "observedAt": "2026-05-21T23:54:06.802Z",
+          "note": "first-observed"
+        }
+      ],
+      "pendingSynthIdDrift": false
+    },
+    "04-architect.ari": {
+      "persona": "04-architect",
+      "name": "ari",
+      "createdAt": "2026-05-02T23:43:46.622Z",
+      "lastSpawnedAt": "2026-05-22T11:58:14.644Z",
+      "totalSpawns": 7,
+      "verdicts": {
+        "pass": 10,
+        "partial": 0,
+        "fail": 0
+      },
+      "specializations": [
+        "<set-at-spawn>:actor-engineering-task",
+        "ee116effb26b",
+        "e8b257cca6f9",
+        "h7.11-route-decide-dict-expansion",
+        "04-architect:actor-architect"
+      ],
+      "skillInvocations": {},
+      "quality_factors_history": [
+        {
+          "ts": "2026-05-06T19:29:58.322Z",
+          "verdict": "pass",
+          "task_signature": "04-architect:actor-architect",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null
+        },
+        {
+          "ts": "2026-05-06T19:30:13.690Z",
+          "verdict": "pass",
+          "task_signature": "35b51e588c5d",
+          "findings_per_10k": 1.0653753026634383,
+          "file_citations_per_finding": 5.2727272727272725,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": false,
+          "tokens": 103250
+        },
+        {
+          "ts": "2026-05-06T19:40:58.864Z",
+          "verdict": "pass",
+          "task_signature": "35b51e588c5d",
+          "findings_per_10k": 1.0653753026634383,
+          "file_citations_per_finding": 5.2727272727272725,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": false,
+          "tokens": 103250,
+          "paired_with": "13-node-backend.noor",
+          "convergence": "agree"
+        },
+        {
+          "ts": "2026-05-06T22:28:58.845Z",
+          "verdict": "pass",
+          "task_signature": "<set-at-spawn>:actor-engineering-task",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null
+        },
+        {
+          "ts": "2026-05-06T22:34:44.668Z",
+          "verdict": "pass",
+          "task_signature": "ee116effb26b",
+          "findings_per_10k": 0.4234238048863107,
+          "file_citations_per_finding": 6,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": false,
+          "tokens": 70851,
+          "paired_with": "02-confused-user.rafael",
+          "convergence": "agree"
+        },
+        {
+          "ts": "2026-05-07T12:49:17.497Z",
+          "verdict": "pass",
+          "task_signature": "04-architect:actor-architect",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null
+        },
+        {
+          "ts": "2026-05-07T12:49:17.599Z",
+          "verdict": "pass",
+          "task_signature": "e8b257cca6f9",
+          "findings_per_10k": 0.8475474096832292,
+          "file_citations_per_finding": 0.75,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": false,
+          "tokens": 94390,
+          "paired_with": null,
+          "convergence": null
+        },
+        {
+          "ts": "2026-05-07T12:56:28.562Z",
+          "verdict": "pass",
+          "task_signature": "e8b257cca6f9",
+          "findings_per_10k": 1.0594342621040365,
+          "file_citations_per_finding": 3.2,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": false,
+          "tokens": 94390,
+          "paired_with": "13-node-backend.evan",
+          "convergence": "agree"
+        },
+        {
+          "ts": "2026-05-07T21:21:43.934Z",
+          "verdict": "pass",
+          "task_signature": "h7.11-route-decide-dict-expansion",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": true,
+          "tokens": 60000,
+          "paired_with": "04-architect.theo",
+          "convergence": "agree",
+          "task_complexity_override": null
+        },
+        {
+          "ts": "2026-05-22T12:05:40.051Z",
+          "verdict": "pass",
+          "task_signature": "04-architect:actor-architect",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        }
+      ],
+      "retired": false,
+      "retiredAt": null,
+      "retiredReason": null,
+      "parent": null,
+      "generation": 0,
+      "traits": {
+        "skillFocus": null,
+        "kbFocus": [],
+        "taskDomain": null
+      },
+      "spawnsSinceFullVerify": 0,
+      "lastFullVerifyAt": "2026-05-22T12:05:40.051Z",
+      "synthid_history": [
+        {
+          "hash": "e11da1f3",
+          "observedAt": "2026-05-22T11:55:52.279Z",
+          "note": "backfill"
+        }
+      ],
+      "pendingSynthIdDrift": false
+    },
+    "05-honesty-auditor.quinn": {
+      "persona": "05-honesty-auditor",
+      "name": "quinn",
+      "createdAt": "2026-05-02T16:56:29.147Z",
+      "lastSpawnedAt": "2026-05-22T11:59:04.183Z",
+      "totalSpawns": 3,
+      "verdicts": {
+        "pass": 1,
+        "partial": 0,
+        "fail": 0
+      },
+      "specializations": [
+        "05-honesty-auditor:actor-honesty-auditor"
+      ],
+      "skillInvocations": {},
+      "quality_factors_history": [
+        {
+          "ts": "2026-05-09T00:32:51.301Z",
+          "verdict": "pass",
+          "task_signature": "05-honesty-auditor:actor-honesty-auditor",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        }
+      ],
+      "retired": false,
+      "retiredAt": null,
+      "retiredReason": null,
+      "parent": null,
+      "generation": 0,
+      "traits": {
+        "skillFocus": null,
+        "kbFocus": [],
+        "taskDomain": null
+      },
+      "spawnsSinceFullVerify": 0,
+      "lastFullVerifyAt": "2026-05-09T00:32:51.301Z",
+      "synthid_history": [
+        {
+          "hash": "7a8c5fdc",
+          "observedAt": "2026-05-22T11:55:52.279Z",
+          "note": "backfill"
+        }
+      ],
+      "pendingSynthIdDrift": false
+    },
+    "05-honesty-auditor.lior": {
+      "persona": "05-honesty-auditor",
+      "name": "lior",
+      "createdAt": "2026-05-03T20:43:28.963Z",
+      "lastSpawnedAt": "2026-05-21T23:54:06.844Z",
+      "totalSpawns": 2,
+      "verdicts": {
+        "pass": 1,
+        "partial": 0,
+        "fail": 0
+      },
+      "specializations": [
+        "05-honesty-auditor:actor-05-honesty-auditor"
+      ],
+      "skillInvocations": {},
+      "quality_factors_history": [
+        {
+          "ts": "2026-05-22T00:02:24.185Z",
+          "verdict": "pass",
+          "task_signature": "05-honesty-auditor:actor-05-honesty-auditor",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        }
+      ],
+      "retired": false,
+      "retiredAt": null,
+      "retiredReason": null,
+      "parent": null,
+      "generation": 0,
+      "traits": {
+        "skillFocus": null,
+        "kbFocus": [],
+        "taskDomain": null
+      },
+      "spawnsSinceFullVerify": 0,
+      "lastFullVerifyAt": "2026-05-22T00:02:24.185Z",
+      "synthid_history": [
+        {
+          "hash": "7a8c5fdc",
+          "observedAt": "2026-05-21T23:54:06.844Z",
+          "note": "first-observed"
+        }
+      ],
+      "pendingSynthIdDrift": false
+    },
+    "05-honesty-auditor.aki": {
+      "persona": "05-honesty-auditor",
+      "name": "aki",
+      "createdAt": "2026-05-05T14:56:22.610Z",
+      "lastSpawnedAt": "2026-05-05T14:56:22.610Z",
+      "totalSpawns": 1,
+      "verdicts": {
+        "pass": 0,
+        "partial": 0,
+        "fail": 0
+      },
+      "specializations": [],
+      "skillInvocations": {},
+      "quality_factors_history": [],
+      "retired": false,
+      "retiredAt": null,
+      "retiredReason": null,
+      "parent": null,
+      "generation": 0,
+      "traits": {
+        "skillFocus": null,
+        "kbFocus": [],
+        "taskDomain": null
+      },
+      "spawnsSinceFullVerify": 0,
+      "lastFullVerifyAt": null,
+      "synthid_history": [
+        {
+          "hash": "7a8c5fdc",
+          "observedAt": "2026-05-22T11:55:52.279Z",
+          "note": "backfill"
+        }
+      ],
+      "pendingSynthIdDrift": false
+    },
+    "06-ios-developer.riley": {
+      "persona": "06-ios-developer",
+      "name": "riley",
+      "createdAt": "2026-05-02T12:35:02.905Z",
+      "lastSpawnedAt": "2026-05-02T12:35:02.910Z",
+      "totalSpawns": 1,
+      "verdicts": {
+        "pass": 1,
+        "partial": 0,
+        "fail": 1
+      },
+      "specializations": [
+        "06-ios-developer:actor-ios-developer"
+      ],
+      "skillInvocations": {
+        "swift-development": 2,
+        "review": 2
+      },
+      "quality_factors_history": [],
+      "retired": false,
+      "retiredAt": null,
+      "retiredReason": null,
+      "parent": null,
+      "generation": 0,
+      "traits": {
+        "skillFocus": null,
+        "kbFocus": [],
+        "taskDomain": null
+      },
+      "spawnsSinceFullVerify": 0,
+      "lastFullVerifyAt": null,
+      "synthid_history": [
+        {
+          "hash": "9d06dd0b",
+          "observedAt": "2026-05-22T11:55:52.279Z",
+          "note": "backfill"
+        }
+      ],
+      "pendingSynthIdDrift": false
+    },
+    "07-java-backend.sasha": {
+      "persona": "07-java-backend",
+      "name": "sasha",
+      "createdAt": "2026-05-02T15:52:01.258Z",
+      "lastSpawnedAt": "2026-05-02T15:52:01.263Z",
+      "totalSpawns": 1,
+      "verdicts": {
+        "pass": 0,
+        "partial": 0,
+        "fail": 0
+      },
+      "specializations": [],
+      "skillInvocations": {},
+      "quality_factors_history": [],
+      "retired": false,
+      "retiredAt": null,
+      "retiredReason": null,
+      "parent": null,
+      "generation": 0,
+      "traits": {
+        "skillFocus": null,
+        "kbFocus": [],
+        "taskDomain": null
+      },
+      "spawnsSinceFullVerify": 0,
+      "lastFullVerifyAt": null,
+      "synthid_history": [
+        {
+          "hash": "d5f51e5b",
+          "observedAt": "2026-05-22T11:55:52.279Z",
+          "note": "backfill"
+        }
+      ],
+      "pendingSynthIdDrift": false
+    },
+    "08-ml-engineer.chen": {
+      "persona": "08-ml-engineer",
+      "name": "chen",
+      "createdAt": "2026-05-02T15:52:01.387Z",
+      "lastSpawnedAt": "2026-05-22T12:20:32.401Z",
+      "totalSpawns": 2,
+      "verdicts": {
+        "pass": 1,
+        "partial": 0,
+        "fail": 0
+      },
+      "specializations": [
+        "<set-at-spawn>:actor-engineering-task"
+      ],
+      "skillInvocations": {},
+      "quality_factors_history": [
+        {
+          "ts": "2026-05-22T12:32:43.060Z",
+          "verdict": "pass",
+          "task_signature": "<set-at-spawn>:actor-engineering-task",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        }
+      ],
+      "retired": false,
+      "retiredAt": null,
+      "retiredReason": null,
+      "parent": null,
+      "generation": 0,
+      "traits": {
+        "skillFocus": null,
+        "kbFocus": [],
+        "taskDomain": null
+      },
+      "spawnsSinceFullVerify": 0,
+      "lastFullVerifyAt": "2026-05-22T12:32:43.060Z",
+      "synthid_history": [
+        {
+          "hash": "917b0b18",
+          "observedAt": "2026-05-22T11:55:52.279Z",
+          "note": "backfill"
+        }
+      ],
+      "pendingSynthIdDrift": false
+    },
+    "08-ml-engineer.priya": {
+      "persona": "08-ml-engineer",
+      "name": "priya",
+      "createdAt": "2026-05-21T21:38:16.521Z",
+      "lastSpawnedAt": "2026-05-21T21:38:16.521Z",
+      "totalSpawns": 1,
+      "verdicts": {
+        "pass": 1,
+        "partial": 0,
+        "fail": 0
+      },
+      "specializations": [
+        "08-ml-engineer:actor-08-ml-engineer"
+      ],
+      "skillInvocations": {},
+      "retired": false,
+      "retiredAt": null,
+      "retiredReason": null,
+      "parent": null,
+      "generation": 0,
+      "traits": {
+        "skillFocus": null,
+        "kbFocus": [],
+        "taskDomain": null
+      },
+      "quality_factors_history": [
+        {
+          "ts": "2026-05-21T21:49:53.315Z",
+          "verdict": "pass",
+          "task_signature": "08-ml-engineer:actor-08-ml-engineer",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        }
+      ],
+      "spawnsSinceFullVerify": 0,
+      "lastFullVerifyAt": "2026-05-21T21:49:53.315Z",
+      "synthid_history": [
+        {
+          "hash": "917b0b18",
+          "observedAt": "2026-05-21T21:38:16.521Z",
+          "note": "first-observed"
+        }
+      ],
+      "pendingSynthIdDrift": false
+    },
+    "08-ml-engineer.omar": {
+      "persona": "08-ml-engineer",
+      "name": "omar",
+      "createdAt": "2026-05-21T23:00:08.967Z",
+      "lastSpawnedAt": "2026-05-21T23:00:08.968Z",
+      "totalSpawns": 1,
+      "verdicts": {
+        "pass": 1,
+        "partial": 0,
+        "fail": 0
+      },
+      "specializations": [
+        "08-ml-engineer:actor-08-ml-engineer"
+      ],
+      "skillInvocations": {},
+      "retired": false,
+      "retiredAt": null,
+      "retiredReason": null,
+      "parent": null,
+      "generation": 0,
+      "traits": {
+        "skillFocus": null,
+        "kbFocus": [],
+        "taskDomain": null
+      },
+      "quality_factors_history": [
+        {
+          "ts": "2026-05-21T23:21:29.856Z",
+          "verdict": "pass",
+          "task_signature": "08-ml-engineer:actor-08-ml-engineer",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        }
+      ],
+      "spawnsSinceFullVerify": 0,
+      "lastFullVerifyAt": "2026-05-21T23:21:29.856Z",
+      "synthid_history": [
+        {
+          "hash": "917b0b18",
+          "observedAt": "2026-05-21T23:00:08.968Z",
+          "note": "first-observed"
+        }
+      ],
+      "pendingSynthIdDrift": false
+    },
+    "09-react-frontend.dev": {
+      "persona": "09-react-frontend",
+      "name": "dev",
+      "createdAt": "2026-05-02T15:52:01.678Z",
+      "lastSpawnedAt": "2026-05-21T21:38:16.429Z",
+      "totalSpawns": 2,
+      "verdicts": {
+        "pass": 1,
+        "partial": 0,
+        "fail": 0
+      },
+      "specializations": [
+        "09-react-frontend:actor-09-react-frontend"
+      ],
+      "skillInvocations": {},
+      "quality_factors_history": [
+        {
+          "ts": "2026-05-21T21:49:53.177Z",
+          "verdict": "pass",
+          "task_signature": "09-react-frontend:actor-09-react-frontend",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        }
+      ],
+      "retired": false,
+      "retiredAt": null,
+      "retiredReason": null,
+      "parent": null,
+      "generation": 0,
+      "traits": {
+        "skillFocus": null,
+        "kbFocus": [],
+        "taskDomain": null
+      },
+      "spawnsSinceFullVerify": 0,
+      "lastFullVerifyAt": "2026-05-21T21:49:53.177Z",
+      "synthid_history": [
+        {
+          "hash": "316787f0",
+          "observedAt": "2026-05-21T21:38:16.429Z",
+          "note": "first-observed"
+        }
+      ],
+      "pendingSynthIdDrift": false
+    },
+    "09-react-frontend.jamie": {
+      "persona": "09-react-frontend",
+      "name": "jamie",
+      "createdAt": "2026-05-06T17:52:48.176Z",
+      "lastSpawnedAt": "2026-05-21T23:38:40.114Z",
+      "totalSpawns": 2,
+      "verdicts": {
+        "pass": 1,
+        "partial": 0,
+        "fail": 0
+      },
+      "specializations": [
+        "09-react-frontend:actor-09-react-frontend"
+      ],
+      "skillInvocations": {},
+      "retired": false,
+      "retiredAt": null,
+      "retiredReason": null,
+      "parent": null,
+      "generation": 0,
+      "traits": {
+        "skillFocus": null,
+        "kbFocus": [],
+        "taskDomain": null
+      },
+      "quality_factors_history": [
+        {
+          "ts": "2026-05-21T23:46:31.643Z",
+          "verdict": "pass",
+          "task_signature": "09-react-frontend:actor-09-react-frontend",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        }
+      ],
+      "spawnsSinceFullVerify": 0,
+      "lastFullVerifyAt": "2026-05-21T23:46:31.643Z",
+      "synthid_history": [
+        {
+          "hash": "316787f0",
+          "observedAt": "2026-05-21T23:38:40.114Z",
+          "note": "first-observed"
+        }
+      ],
+      "pendingSynthIdDrift": false
+    },
+    "09-react-frontend.casey": {
+      "persona": "09-react-frontend",
+      "name": "casey",
+      "createdAt": "2026-05-06T17:54:03.099Z",
+      "lastSpawnedAt": "2026-05-22T12:34:15.474Z",
+      "totalSpawns": 2,
+      "verdicts": {
+        "pass": 4,
+        "partial": 0,
+        "fail": 0
+      },
+      "specializations": [
+        "09-react-frontend:actor-react-frontend",
+        "fb3c7c4f2607",
+        "<set-at-spawn>:actor-engineering-task"
+      ],
+      "skillInvocations": {
+        "react": 1
+      },
+      "retired": false,
+      "retiredAt": null,
+      "retiredReason": null,
+      "parent": null,
+      "generation": 0,
+      "traits": {
+        "skillFocus": null,
+        "kbFocus": [],
+        "taskDomain": null
+      },
+      "quality_factors_history": [
+        {
+          "ts": "2026-05-06T18:00:09.974Z",
+          "verdict": "pass",
+          "task_signature": "Build search-results-with-pagination React component (COMPLETED — verdict pass)",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null
+        },
+        {
+          "ts": "2026-05-22T12:49:11.476Z",
+          "verdict": "pass",
+          "task_signature": "<set-at-spawn>:actor-engineering-task",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        }
+      ],
+      "spawnsSinceFullVerify": 0,
+      "lastFullVerifyAt": "2026-05-22T12:49:11.476Z",
+      "synthid_history": [
+        {
+          "hash": "316787f0",
+          "observedAt": "2026-05-22T11:55:52.279Z",
+          "note": "backfill"
+        }
+      ],
+      "pendingSynthIdDrift": false
+    },
+    "10-devops-sre.iris": {
+      "persona": "10-devops-sre",
+      "name": "iris",
+      "createdAt": "2026-05-02T15:52:01.755Z",
+      "lastSpawnedAt": "2026-05-02T15:52:01.755Z",
+      "totalSpawns": 1,
+      "verdicts": {
+        "pass": 1,
+        "partial": 0,
+        "fail": 0
+      },
+      "specializations": [
+        "10-devops-sre:actor-devops-sre"
+      ],
+      "skillInvocations": {
+        "kubernetes": 1,
+        "engineering:incident-response": 1,
+        "engineering:deploy-checklist": 1
+      },
+      "quality_factors_history": [],
+      "retired": false,
+      "retiredAt": null,
+      "retiredReason": null,
+      "parent": null,
+      "generation": 0,
+      "traits": {
+        "skillFocus": null,
+        "kbFocus": [],
+        "taskDomain": null
+      },
+      "spawnsSinceFullVerify": 0,
+      "lastFullVerifyAt": null,
+      "synthid_history": [
+        {
+          "hash": "bf028b57",
+          "observedAt": "2026-05-22T11:55:52.279Z",
+          "note": "backfill"
+        }
+      ],
+      "pendingSynthIdDrift": false
+    },
+    "10-devops-sre.hugo": {
+      "persona": "10-devops-sre",
+      "name": "hugo",
+      "createdAt": "2026-05-06T18:00:36.879Z",
+      "lastSpawnedAt": "2026-05-06T18:00:36.885Z",
+      "totalSpawns": 1,
+      "verdicts": {
+        "pass": 3,
+        "partial": 0,
+        "fail": 0
+      },
+      "specializations": [
+        "10-devops-sre:actor-devops-sre",
+        "529d7b58b2ce"
+      ],
+      "skillInvocations": {
+        "kubernetes": 1
+      },
+      "retired": false,
+      "retiredAt": null,
+      "retiredReason": null,
+      "parent": null,
+      "generation": 0,
+      "traits": {
+        "skillFocus": null,
+        "kbFocus": [],
+        "taskDomain": null
+      },
+      "quality_factors_history": [
+        {
+          "ts": "2026-05-06T18:09:11.066Z",
+          "verdict": "pass",
+          "task_signature": "Author k8s Deployment + Service manifest (COMPLETED — verdict pass)",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null
+        }
+      ],
+      "spawnsSinceFullVerify": 0,
+      "lastFullVerifyAt": null,
+      "synthid_history": [
+        {
+          "hash": "bf028b57",
+          "observedAt": "2026-05-22T11:55:52.279Z",
+          "note": "backfill"
+        }
+      ],
+      "pendingSynthIdDrift": false
+    },
+    "11-data-engineer.fin": {
+      "persona": "11-data-engineer",
+      "name": "fin",
+      "createdAt": "2026-05-02T15:52:01.814Z",
+      "lastSpawnedAt": "2026-05-02T15:52:01.814Z",
+      "totalSpawns": 1,
+      "verdicts": {
+        "pass": 0,
+        "partial": 0,
+        "fail": 0
+      },
+      "specializations": [],
+      "skillInvocations": {},
+      "quality_factors_history": [],
+      "retired": false,
+      "retiredAt": null,
+      "retiredReason": null,
+      "parent": null,
+      "generation": 0,
+      "traits": {
+        "skillFocus": null,
+        "kbFocus": [],
+        "taskDomain": null
+      },
+      "spawnsSinceFullVerify": 0,
+      "lastFullVerifyAt": null,
+      "synthid_history": [
+        {
+          "hash": "1678abfe",
+          "observedAt": "2026-05-22T11:55:52.279Z",
+          "note": "backfill"
+        }
+      ],
+      "pendingSynthIdDrift": false
+    },
+    "11-data-engineer.niko": {
+      "persona": "11-data-engineer",
+      "name": "niko",
+      "createdAt": "2026-05-06T18:17:26.900Z",
+      "lastSpawnedAt": "2026-05-06T18:17:26.911Z",
+      "totalSpawns": 1,
+      "verdicts": {
+        "pass": 2,
+        "partial": 0,
+        "fail": 0
+      },
+      "specializations": [
+        "11-data-engineer:actor-data-engineer",
+        "5483bab9e3bc"
+      ],
+      "skillInvocations": {
+        "airflow": 1
+      },
+      "retired": false,
+      "retiredAt": null,
+      "retiredReason": null,
+      "parent": null,
+      "generation": 0,
+      "traits": {
+        "skillFocus": null,
+        "kbFocus": [],
+        "taskDomain": null
+      },
+      "quality_factors_history": [
+        {
+          "ts": "2026-05-06T18:25:46.198Z",
+          "verdict": "pass",
+          "task_signature": "ETL pipeline CSV to Postgres with dedup (COMPLETED — verdict pass)",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null
+        }
+      ],
+      "spawnsSinceFullVerify": 0,
+      "lastFullVerifyAt": null,
+      "synthid_history": [
+        {
+          "hash": "1678abfe",
+          "observedAt": "2026-05-22T11:55:52.279Z",
+          "note": "backfill"
+        }
+      ],
+      "pendingSynthIdDrift": false
+    },
+    "12-security-engineer.vlad": {
+      "persona": "12-security-engineer",
+      "name": "vlad",
+      "createdAt": "2026-05-02T15:52:01.873Z",
+      "lastSpawnedAt": "2026-05-22T12:50:40.049Z",
+      "totalSpawns": 4,
+      "verdicts": {
+        "pass": 4,
+        "partial": 0,
+        "fail": 0
+      },
+      "specializations": [
+        "12-security-engineer:actor-security-engineer",
+        "fc2a997c09ff"
+      ],
+      "skillInvocations": {
+        "penetration-testing": 1
+      },
+      "retired": false,
+      "retiredAt": null,
+      "retiredReason": null,
+      "parent": null,
+      "generation": 0,
+      "traits": {
+        "skillFocus": null,
+        "kbFocus": [],
+        "taskDomain": null
+      },
+      "quality_factors_history": [
+        {
+          "ts": "2026-05-06T18:17:15.055Z",
+          "verdict": "pass",
+          "task_signature": "Audit OAuth2 token-handling vulnerabilities (COMPLETED — verdict pass)",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null
+        },
+        {
+          "ts": "2026-05-06T20:53:44.628Z",
+          "verdict": "pass",
+          "task_signature": "12-security-engineer:actor-security-engineer",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null
+        },
+        {
+          "ts": "2026-05-22T12:57:40.945Z",
+          "verdict": "pass",
+          "task_signature": "12-security-engineer:actor-security-engineer",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        }
+      ],
+      "spawnsSinceFullVerify": 0,
+      "lastFullVerifyAt": "2026-05-22T12:57:40.945Z",
+      "synthid_history": [
+        {
+          "hash": "151dbc2c",
+          "observedAt": "2026-05-22T11:55:52.279Z",
+          "note": "backfill"
+        }
+      ],
+      "pendingSynthIdDrift": false
+    },
+    "12-security-engineer.mio": {
+      "persona": "12-security-engineer",
+      "name": "mio",
+      "createdAt": "2026-05-06T01:14:36.376Z",
+      "lastSpawnedAt": "2026-05-09T00:46:39.335Z",
+      "totalSpawns": 3,
+      "verdicts": {
+        "pass": 3,
+        "partial": 0,
+        "fail": 1
+      },
+      "specializations": [
+        "12-security-engineer:actor-security-engineer",
+        "8c558a199fbc"
+      ],
+      "skillInvocations": {
+        "security-audit": 1,
+        "penetration-testing": 1
+      },
+      "quality_factors_history": [
+        {
+          "ts": "2026-05-06T19:03:57.079Z",
+          "verdict": "pass",
+          "task_signature": "12-security-engineer:actor-security-engineer",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null
+        },
+        {
+          "ts": "2026-05-06T19:04:15.813Z",
+          "verdict": "pass",
+          "task_signature": "8c558a199fbc",
+          "findings_per_10k": 0.8756567425569177,
+          "file_citations_per_finding": 3,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": false,
+          "tokens": 57100
+        },
+        {
+          "ts": "2026-05-09T01:03:23.848Z",
+          "verdict": "fail",
+          "task_signature": "12-security-engineer:actor-security-engineer",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        }
+      ],
+      "retired": false,
+      "retiredAt": null,
+      "retiredReason": null,
+      "parent": null,
+      "generation": 0,
+      "traits": {
+        "skillFocus": null,
+        "kbFocus": [],
+        "taskDomain": null
+      },
+      "spawnsSinceFullVerify": 0,
+      "lastFullVerifyAt": "2026-05-09T01:03:23.848Z",
+      "synthid_history": [
+        {
+          "hash": "151dbc2c",
+          "observedAt": "2026-05-22T11:55:52.279Z",
+          "note": "backfill"
+        }
+      ],
+      "pendingSynthIdDrift": false
+    },
+    "12-security-engineer.eli": {
+      "persona": "12-security-engineer",
+      "name": "eli",
+      "createdAt": "2026-05-06T12:39:19.490Z",
+      "lastSpawnedAt": "2026-05-21T21:38:16.476Z",
+      "totalSpawns": 3,
+      "verdicts": {
+        "pass": 1,
+        "partial": 0,
+        "fail": 1
+      },
+      "specializations": [
+        "12-security-engineer:actor-security-engineer",
+        "12-security-engineer:actor-12-security-engineer"
+      ],
+      "skillInvocations": {},
+      "quality_factors_history": [
+        {
+          "ts": "2026-05-09T00:32:51.350Z",
+          "verdict": "fail",
+          "task_signature": "12-security-engineer:actor-security-engineer",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        },
+        {
+          "ts": "2026-05-21T21:49:53.247Z",
+          "verdict": "pass",
+          "task_signature": "12-security-engineer:actor-12-security-engineer",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        }
+      ],
+      "retired": false,
+      "retiredAt": null,
+      "retiredReason": null,
+      "parent": null,
+      "generation": 0,
+      "traits": {
+        "skillFocus": null,
+        "kbFocus": [],
+        "taskDomain": null
+      },
+      "spawnsSinceFullVerify": 0,
+      "lastFullVerifyAt": "2026-05-21T21:49:53.247Z",
+      "synthid_history": [
+        {
+          "hash": "151dbc2c",
+          "observedAt": "2026-05-21T21:38:16.476Z",
+          "note": "first-observed"
+        }
+      ],
+      "pendingSynthIdDrift": false
+    },
+    "13-node-backend.noor": {
+      "persona": "13-node-backend",
+      "name": "noor",
+      "createdAt": "2026-05-06T12:35:34.580Z",
+      "lastSpawnedAt": "2026-05-22T11:58:14.705Z",
+      "totalSpawns": 7,
+      "verdicts": {
+        "pass": 6,
+        "partial": 1,
+        "fail": 0
+      },
+      "specializations": [
+        "13-node-backend:actor-node-backend",
+        "054cc1b61f67",
+        "bed4c14ff408",
+        "13-node-backend:actor-13-node-backend",
+        "<set-at-spawn>:actor-engineering-task"
+      ],
+      "skillInvocations": {
+        "node-backend-development": 2
+      },
+      "quality_factors_history": [
+        {
+          "ts": "2026-05-06T19:40:31.304Z",
+          "verdict": "pass",
+          "task_signature": "13-node-backend:actor-node-backend",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null
+        },
+        {
+          "ts": "2026-05-06T19:40:58.787Z",
+          "verdict": "pass",
+          "task_signature": "054cc1b61f67",
+          "findings_per_10k": 0.5964985534910078,
+          "file_citations_per_finding": 5.75,
+          "cap_request_actionability": 1,
+          "kb_provenance_verified": false,
+          "tokens": 134116,
+          "paired_with": "04-architect.ari",
+          "convergence": "agree"
+        },
+        {
+          "ts": "2026-05-07T12:31:21.968Z",
+          "verdict": "pass",
+          "task_signature": "13-node-backend:actor-node-backend",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null
+        },
+        {
+          "ts": "2026-05-07T12:31:41.120Z",
+          "verdict": "pass",
+          "task_signature": "bed4c14ff408",
+          "findings_per_10k": 0.5238405662134475,
+          "file_citations_per_finding": 5.444444444444445,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": false,
+          "tokens": 171808,
+          "paired_with": "04-architect.theo",
+          "convergence": "agree"
+        },
+        {
+          "ts": "2026-05-21T21:49:53.101Z",
+          "verdict": "partial",
+          "task_signature": "13-node-backend:actor-13-node-backend",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        },
+        {
+          "ts": "2026-05-21T23:21:29.930Z",
+          "verdict": "pass",
+          "task_signature": "13-node-backend:actor-13-node-backend",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        },
+        {
+          "ts": "2026-05-22T12:14:35.422Z",
+          "verdict": "pass",
+          "task_signature": "<set-at-spawn>:actor-engineering-task",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        }
+      ],
+      "retired": false,
+      "retiredAt": null,
+      "retiredReason": null,
+      "parent": null,
+      "generation": 0,
+      "traits": {
+        "skillFocus": null,
+        "kbFocus": [],
+        "taskDomain": null
+      },
+      "spawnsSinceFullVerify": 0,
+      "lastFullVerifyAt": "2026-05-22T12:14:35.422Z",
+      "synthid_history": [
+        {
+          "hash": "7dff1e61",
+          "observedAt": "2026-05-21T21:38:16.370Z",
+          "note": "first-observed"
+        }
+      ],
+      "pendingSynthIdDrift": false
+    },
+    "13-node-backend.evan": {
+      "persona": "13-node-backend",
+      "name": "evan",
+      "createdAt": "2026-05-06T12:39:19.442Z",
+      "lastSpawnedAt": "2026-05-22T12:20:32.454Z",
+      "totalSpawns": 7,
+      "verdicts": {
+        "pass": 6,
+        "partial": 0,
+        "fail": 0
+      },
+      "specializations": [
+        "13-node-backend:actor-node-backend",
+        "65cd12c38f05",
+        "0f89a49b6f95",
+        "13-node-backend:actor-13-node-backend",
+        "<set-at-spawn>:actor-engineering-task"
+      ],
+      "skillInvocations": {
+        "node-backend-development": 2
+      },
+      "retired": false,
+      "retiredAt": null,
+      "retiredReason": null,
+      "parent": null,
+      "generation": 0,
+      "traits": {
+        "skillFocus": null,
+        "kbFocus": [],
+        "taskDomain": null
+      },
+      "quality_factors_history": [
+        {
+          "ts": "2026-05-06T20:12:04.567Z",
+          "verdict": "pass",
+          "task_signature": "13-node-backend:actor-node-backend",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null
+        },
+        {
+          "ts": "2026-05-06T20:12:27.378Z",
+          "verdict": "pass",
+          "task_signature": "65cd12c38f05",
+          "findings_per_10k": 1.212721447989409,
+          "file_citations_per_finding": 2.9166666666666665,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": false,
+          "tokens": 98951,
+          "paired_with": "04-architect.mira",
+          "convergence": "agree"
+        },
+        {
+          "ts": "2026-05-07T12:56:05.252Z",
+          "verdict": "pass",
+          "task_signature": "13-node-backend:actor-node-backend",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null
+        },
+        {
+          "ts": "2026-05-07T12:56:28.626Z",
+          "verdict": "pass",
+          "task_signature": "0f89a49b6f95",
+          "findings_per_10k": 0.8175182481751825,
+          "file_citations_per_finding": 2.2857142857142856,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": false,
+          "tokens": 85625,
+          "paired_with": "04-architect.ari",
+          "convergence": "agree"
+        },
+        {
+          "ts": "2026-05-21T23:46:31.721Z",
+          "verdict": "pass",
+          "task_signature": "13-node-backend:actor-13-node-backend",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        },
+        {
+          "ts": "2026-05-22T12:32:43.096Z",
+          "verdict": "pass",
+          "task_signature": "<set-at-spawn>:actor-engineering-task",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        }
+      ],
+      "spawnsSinceFullVerify": 0,
+      "lastFullVerifyAt": "2026-05-22T12:32:43.096Z",
+      "synthid_history": [
+        {
+          "hash": "7dff1e61",
+          "observedAt": "2026-05-21T21:38:28.005Z",
+          "note": "first-observed"
+        }
+      ],
+      "pendingSynthIdDrift": false
+    },
+    "13-node-backend.kira": {
+      "persona": "13-node-backend",
+      "name": "kira",
+      "createdAt": "2026-05-06T12:39:19.537Z",
+      "lastSpawnedAt": "2026-05-21T23:56:30.611Z",
+      "totalSpawns": 6,
+      "verdicts": {
+        "pass": 10,
+        "partial": 0,
+        "fail": 3
+      },
+      "specializations": [
+        "41cbeae8a41c",
+        "0695bbbe3f08",
+        "<set-at-spawn>:actor-engineering-task",
+        "13-node-backend:actor-engineering-task",
+        "13-node-backend:actor-13-node-backend"
+      ],
+      "skillInvocations": {
+        "node-backend-development": 2
+      },
+      "retired": false,
+      "retiredAt": null,
+      "retiredReason": null,
+      "parent": null,
+      "generation": 0,
+      "traits": {
+        "skillFocus": null,
+        "kbFocus": [],
+        "taskDomain": null
+      },
+      "quality_factors_history": [
+        {
+          "ts": "2026-05-06T17:47:24.586Z",
+          "verdict": "pass",
+          "task_signature": "Add rate limiting to Express API endpoints (COMPLETED — verdict pass)",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null
+        },
+        {
+          "ts": "2026-05-06T20:53:05.836Z",
+          "verdict": "pass",
+          "task_signature": "13-node-backend:actor-node-backend",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null
+        },
+        {
+          "ts": "2026-05-06T20:53:44.546Z",
+          "verdict": "pass",
+          "task_signature": "13-node-backend:actor-node-backend",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null
+        },
+        {
+          "ts": "2026-05-06T20:54:08.276Z",
+          "verdict": "pass",
+          "task_signature": "0695bbbe3f08",
+          "findings_per_10k": 0.26874496103198064,
+          "file_citations_per_finding": 11.5,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": false,
+          "tokens": 148840,
+          "paired_with": "04-architect.theo",
+          "convergence": "agree"
+        },
+        {
+          "ts": "2026-05-07T15:43:21.944Z",
+          "verdict": "fail",
+          "task_signature": "<set-at-spawn>:actor-engineering-task",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        },
+        {
+          "ts": "2026-05-07T15:45:03.868Z",
+          "verdict": "pass",
+          "task_signature": "<set-at-spawn>:actor-engineering-task",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        },
+        {
+          "ts": "2026-05-07T15:45:42.352Z",
+          "verdict": "pass",
+          "task_signature": "13-node-backend:actor-engineering-task",
+          "findings_per_10k": 0.2912621359223301,
+          "file_citations_per_finding": 5,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": 206000,
+          "paired_with": "04-architect.mira",
+          "convergence": "agree",
+          "task_complexity_override": null
+        },
+        {
+          "ts": "2026-05-21T23:21:29.779Z",
+          "verdict": "pass",
+          "task_signature": "13-node-backend:actor-13-node-backend",
+          "findings_per_10k": null,
+          "file_citations_per_finding": null,
+          "cap_request_actionability": null,
+          "kb_provenance_verified": null,
+          "tokens": null,
+          "paired_with": null,
+          "convergence": null,
+          "task_complexity_override": null
+        }
+      ],
+      "spawnsSinceFullVerify": 0,
+      "lastFullVerifyAt": "2026-05-21T23:21:29.779Z",
+      "synthid_history": [
+        {
+          "hash": "7dff1e61",
+          "observedAt": "2026-05-21T23:00:08.921Z",
+          "note": "first-observed"
+        }
+      ],
+      "pendingSynthIdDrift": false
+    }
+  },
+  "nextChallengerIndex": {
+    "07-java-backend": 1,
+    "04-architect": 9,
+    "13-node-backend": 2
+  }
+}

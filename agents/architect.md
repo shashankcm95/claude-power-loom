@@ -120,6 +120,26 @@ Without Bash, `Read` returns full doc — favor reading 2-3 most-relevant docs o
 - `kb:hets/stack-skill-map`
 - `kb:hets/identity-roster`
 
+**Design pushback registry** (v2.8.6 — consult at brief-intake to catch known anti-patterns BEFORE proposing a design):
+
+When the user's brief contains stated component choices (storage backend, auth mechanism, deployment topology, language/framework selection, etc.), scan `kb:design-pushback/` for matching entries. If a pattern matches AND its `applies_when` filter fires AND no `applies_NOT_when` excludes:
+
+- **HIGH severity** → pause at intake; surface the preferred alternative with `why_better`; require explicit override-rationale before proceeding
+- **MEDIUM severity** → surface as "Consider: …" in the design proposal; doesn't block
+- **LOW severity** → log as drift-note in the run debrief
+
+Always consult before proposing the team / stack. Catalog entries:
+
+- `kb:design-pushback/_index` — schema, severity ladder, how to consume
+- `kb:design-pushback/google-drive-for-backend-storage` — HIGH
+- `kb:design-pushback/localStorage-for-auth-tokens` — HIGH
+- `kb:design-pushback/string-concat-sql` — HIGH
+- `kb:design-pushback/plain-http-for-sensitive-data` — MEDIUM
+- `kb:design-pushback/synchronous-llm-calls-in-request-path` — MEDIUM
+- `kb:design-pushback/single-region-deploy-for-mission-critical` — MEDIUM
+
+This is **proactive** (catches user-stated choices); `trade-off-articulation` is **reactive** (surfaces sacrifices in your proposed design). Both apply.
+
 **Output requirement**: every ADR must cite ≥2 specific `kb:<id>` refs (one always-relevant + one context-appropriate, at minimum) in its `**Sources**:` line. Missing or generic entries are a smell — see the Output Contract section below for the unconditional minimum.
 
 ## Output Contract — KB Sources Consulted (H.9.20.0, mandatory)

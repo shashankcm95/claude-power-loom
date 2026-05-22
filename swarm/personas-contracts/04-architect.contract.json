@@ -14,7 +14,8 @@
   },
   "kb_scope": {
     "default": [
-      "kb:hets/spawn-conventions"
+      "kb:hets/spawn-conventions",
+      "kb:design-pushback/_index"
     ]
   },
   "budget": {

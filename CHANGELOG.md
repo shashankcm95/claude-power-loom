@@ -8,6 +8,77 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [2.8.6] — 2026-05-22 — Design-pushback KB anchor (Path A; proactive anti-pattern catalog)
+
+**Patch release.** Closes the "imbue critical pushback into the system" design question that came up post-v2.8.5. Adds a new KB section `skills/agent-team/kb/design-pushback/` with a schema doc + 5 anchor anti-pattern entries. Architect + planner personas now consult this catalog at brief-intake to surface known suboptimal user choices BEFORE proposing a design.
+
+**Why this matters**: the toolkit already has `trade-off-articulation` (reactive — architect surfaces sacrifices in their proposed design) and `refusal-patterns` (about what to refuse). The gap was **proactive pushback** — catching obviously-wrong user-stated choices (e.g., "use Google Drive for backend storage") at intake before the team builds the wrong thing.
+
+This ship is **KB-only — no analyzer code**. Path A from the proposal: the conceptual work (schema + calibration + 10-entry catalog target) is the harder part. Analyzer code is mechanical once the schema is right. v2.9.0+ may add a deterministic matcher.
+
+### What ships
+
+**Schema doc**: `skills/agent-team/kb/design-pushback/_index.md`
+- Severity ladder (HIGH = pause-for-ack; MEDIUM = inline note; LOW = drift-note)
+- Entry frontmatter schema (kb_id, pattern, severity, applies_when, applies_NOT_when, preferred_alternative, why_better, override_requires, empirical_origin)
+- Consumption protocol (how architect/planner consult the catalog)
+- Add-entry workflow (empirical-origin gate; specificity check; sane override path)
+- Calibration warnings (over-aggressive registry kills trust; cultural framing matters)
+
+**5 anchor anti-pattern entries**:
+1. `google-drive-for-backend-storage` (HIGH) — the canonical example; user-stated S3-vs-Drive prompted this whole feature
+2. `localStorage-for-auth-tokens` (HIGH) — XSS-blast-radius argument vs HttpOnly cookies
+3. `string-concat-sql` (HIGH) — SQL injection class; references v2.8.2-run1 + v2.8.3-run1 drizzle CVE finding
+4. `plain-http-for-sensitive-data` (MEDIUM) — TLS-required-by-default in 2024+; zero-trust networking critique of "internal" arguments
+5. `synchronous-llm-calls-in-request-path` (MEDIUM) — streaming/async-queue patterns; latency + concurrency + cost-observability arguments
+6. `single-region-deploy-for-mission-critical` (MEDIUM) — multi-region rationale; calibrated for early-stage cost concerns
+
+(Yes that's 6 — promoted from 5 because the surface was richer than expected.)
+
+**Agent wiring**:
+- `agents/architect.md` — added "Design pushback registry" section directing the architect to consult `kb:design-pushback/` at brief-intake before proposing the design
+- `agents/planner.md` — same hookup at requirements-analysis stage
+- `swarm/personas-contracts/04-architect.contract.json` — added `kb:design-pushback/_index` to `kb_scope.default` (always-loaded for architect spawns)
+
+**Schema smoke test**: `tests/unit/kb/design-pushback-schema.test.js` — 143 assertions covering all entries' frontmatter conformance, kb_id-matches-filename, severity in {HIGH,MEDIUM,LOW}, related-refs-resolve, body-has-required-headings. Idempotent + drift-checkable.
+
+### How agents consume this (manual now, deterministic later)
+
+At brief-intake (architect.md / planner.md / tech-stack-analyzer flow):
+
+1. Parse user brief → extract stated component choices
+2. List entries in `skills/agent-team/kb/design-pushback/` (or use `kb-resolver list` once v2.9.0 ships the deterministic matcher)
+3. For each entry, evaluate `applies_when` filter against the brief; exclude on `applies_NOT_when` match
+4. Surface matched entries per severity:
+   - HIGH → pause-for-acknowledgment block with `preferred_alternative` + `why_better`
+   - MEDIUM → "Consider: …" inline note in plan
+   - LOW → drift-note in run debrief
+5. If user overrides HIGH, log to `library/.../design-pushback-overrides/` for institutional learning
+
+### Out of scope (deferred to v2.9.0+)
+
+- Deterministic `design-pushback-analyzer.js` script that matches briefs mechanically
+- `kb-resolver list-design-pushback` subcommand
+- Override-rationale logger (`library/.../design-pushback-overrides/`)
+- Trust-tiered behavior (high-trust operators get softer FYI; unproven get pause)
+- Integration with `tech-stack-analyzer` skill flow
+
+### Why ship Path A first
+
+The user's `S3 vs Drive` example demonstrated the BEHAVIOR. Codifying the behavior into a registry forces the calibration question: how aggressively do we push back? What counts as HIGH vs MEDIUM? What's the override path? Better to answer these in markdown (cheap iteration) before in code (expensive iteration).
+
+Plus: the catalog is consumable RIGHT NOW by architect/planner agents reading the kb files. The analyzer code is convenience + observability; the wisdom IS the catalog.
+
+### Test results
+
+- `_h70-test.js`: 73/73 pass
+- `install.sh --hooks --test`: 116/116 pass
+- `tests/unit/kb/design-pushback-schema.test.js` (new): 143/143 pass
+- ESLint: 0 errors
+- Plugin version: 2.8.5 → 2.8.6
+
+---
+
 ## [2.8.5] — 2026-05-22 — Leftover-coverage bundle (Path B; closes the rest before test2)
 
 **Patch release.** Closes the 5 items v2.8.4 missed (P0-1, P0-2, NEW-DRIFT-A, NEW-DRIFT-B, P2-5) plus root-causes the broader symlink-preservation bug class in `writeAtomic`. Test2 now starts from genuinely clean substrate.

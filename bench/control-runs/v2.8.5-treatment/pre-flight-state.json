@@ -1,0 +1,51 @@
+{
+  "run_tag": "v2.8.5-treatment",
+  "started_at": "2026-05-22",
+  "plugin_version_verified": "2.8.5",
+  "plugin_manifest_mtime": "May 22 09:06:04 2026",
+  "temporal_filter_for_log_analysis": "2026-05-22T09:06:04",
+  "library_migrate": {
+    "fix_symlinks": {
+      "fixed": 1,
+      "already_ok": 5,
+      "missing": 0,
+      "bulkhead_excluded": 2,
+      "restored": [
+        "~/.claude/self-improve-counters.json"
+      ]
+    },
+    "sync_legacy": {
+      "identities_total": 33,
+      "personas_total": 13,
+      "wrote": "~/.claude/agent-identities.json"
+    },
+    "cleanup_bogus_volumes": {
+      "removed": 0,
+      "valid_preserved": 27
+    }
+  },
+  "hook_probes": {
+    "probe_1_vague": {
+      "input": "fix the thing",
+      "expected": "vague:true",
+      "observed": "PROMPT-ENRICHMENT-GATE emitted",
+      "result": "PASS"
+    },
+    "probe_2_ship_skip": {
+      "input": "merged",
+      "expected": "silent / vague:false",
+      "observed": "no output",
+      "result": "PASS (v2.8.2 Fix-2(a) holds)"
+    },
+    "probe_3_kb_gate": {
+      "input": "PostToolUse: Agent subagent_type=architect, response without ## KB Sources Consulted",
+      "expected": "decision: block",
+      "observed": "decision:block with [KB-CITATION-MISSING] reason",
+      "result": "PASS"
+    }
+  },
+  "project_paths": {
+    "project_dir": "~/projects/textbook-tutorial-v2.8.5-treatment",
+    "bench_output": "~/Documents/claude-toolkit/bench/control-runs/v2.8.5-treatment"
+  }
+}
