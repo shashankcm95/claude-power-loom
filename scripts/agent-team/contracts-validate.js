@@ -54,6 +54,11 @@ const KB_ARCHITECTURE_BASE = path.join(TOOLKIT, 'skills', 'agent-team', 'kb', 'a
 const KB_ARCHITECTURE_CAP_WARN = 45;
 const KB_ARCHITECTURE_CAP_ERROR = 51;
 const SKILLS_BASE = path.join(TOOLKIT, 'skills');
+// v2.8.4 FIX-C support: contracts may reference slash-command skills
+// (plan, review, prune, security-audit, etc.) which live in commands/<name>.md
+// — not skills/<name>/SKILL.md. Both paths count as "available" for contract
+// purposes (the persona can invoke them via the Skill tool either way).
+const COMMANDS_BASE = path.join(TOOLKIT, 'commands');
 const MARKETPLACE_BASE = path.join(process.env.HOME, '.claude', 'plugins', 'marketplaces');
 const HOOKS_JSON = path.join(TOOLKIT, 'hooks', 'hooks.json');
 // HT.2.4 (drift-note 68): removed dead SETTINGS_READER constant that anticipated
@@ -405,13 +410,18 @@ validators['contract-skill-status-values'] = function () {
             });
             continue;
           }
+          // v2.8.4 FIX-C: "available" matches either skills/<name>/SKILL.md
+          // OR commands/<name>.md (slash-command skills like plan, review,
+          // prune, security-audit are valid "available" referents).
           const skillPath = path.join(SKILLS_BASE, skill, 'SKILL.md');
-          if (!fs.existsSync(skillPath)) {
+          const commandPath = path.join(COMMANDS_BASE, skill + '.md');
+          if (!fs.existsSync(skillPath) && !fs.existsSync(commandPath)) {
             violations.push({
               kind: 'available-but-missing',
               contract: name,
               skill,
               expectedPath: skillPath,
+              alsoChecked: commandPath,
             });
           }
         }
