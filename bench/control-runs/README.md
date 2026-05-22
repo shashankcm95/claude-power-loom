@@ -43,10 +43,11 @@ See `metrics-schema.json` for the canonical extraction commands.
 | `verdict_loop_closure` | ↑ better | (verdicts recorded via pattern-recorder) / (actors spawned) |
 | `tier_transition_count` | ↑ better | Identities crossing unproven→low→med→high |
 | `contract_verifier_exercise_rate` | ↑ better | (HETS spawns with verifier run) / (total HETS spawns) |
-| `hook_runtime_gaps` | ↓ better | Cases where source says X, runtime does Y. v2.8.2 baseline = 1 (prompt-enrich Fix-2(a)). |
+| `hook_runtime_gaps` | ↓ better | Cases where source says X, runtime does Y. v2.8.2 baseline corrected to 0 post-investigation (the original 1 was a CHAOS-SUB-1 false positive — see v2.8.2-run1/notes.md). |
 | `forge_cite_rate` | ↑ better | Forged skills referenced by ≥1 downstream actor |
 | `tokens_per_finding` | ↓ better | Total tokens / total drift count. Cost efficiency. |
 | `spawn_ceremony_deviation_rate` | ↓ better | % of spawns that skipped formal HETS flow |
+| `ceremony_completion_rate_overall` | ↑ better | (sum verdicts / sum spawns) across all personas. v2.8.3 — observability-only precursor to v2.9.0 enforcement. Surfaces ceremony bypass at-a-glance via `agent-identity.js stats`. |
 | `cache_reuse_pct` | ↑ better | Token cache_read / (input + cache_read + cache_create) |
 
 #### Tier 2 — project-outcome (downstream noise; use with caution)
@@ -101,6 +102,7 @@ For each new run:
 
 2. **Recursive measurement bias** — the toolkit is auditing itself. Findings density can be gamed (intentionally or not).
    - *Mitigation*: external validation sample every 5 runs. Human re-rates 10% of findings; OR forward to a different model family.
+   - *Plus (v2.8.3)*: convergence between two actors is NOT a strong validation signal if both actors share methodological blindspots (see `kb:agent-team/patterns/asymmetric-challenger` §Failure Modes #4). Prefer *diverse-method* convergence (one actor reads logs, another spawns a live probe) over same-method (both actors read the same log).
 
 3. **Library/runtime drift** — pdf-parse, Next.js, Node, npm all evolve. A "regression" might be an upstream change, not toolkit.
    - *Mitigation*: pin everything in `deps-lock.md`; use Volta or asdf. Document any deviation in the run's notes.
@@ -110,6 +112,12 @@ For each new run:
 
 5. **n=1 deltas are noise, not signal** — most readers will treat single-run results as truth.
    - *Mitigation*: `aggregate.py` outputs variance bands. Any claim labeled "Δ" must also report whether it exceeds the n=3 variance band for the baseline.
+
+6. **Stale-legacy file under bulkhead mode (v2.8.2-run1 CHAOS-SUB-2)** — after `library-migrate partition-personas` runs, all identity writes go to per-persona files. The legacy `~/.claude/agent-identities.json` is NEVER written to again — it fossilizes at pre-partition state. The bench harness was capturing the stale file as the identity-store baseline.
+   - *Mitigation (v2.8.3)*: `bench/capture.sh` now runs `library-migrate sync-legacy` as its first step (rebuilds the legacy file from the bulkhead store). Snapshots taken via the v2.8.3+ harness are clean. Pre-v2.8.3 snapshots may have subtly-wrong tier-transition computations — flag as a deviation when comparing v2.8.2-run1 against later runs.
+
+7. **Shared-method convergence false-positive (v2.8.2-run1 CHAOS-SUB-1, post-hoc)** — when two actors arrive at the same conclusion via the same methodology (e.g., both read the same log without timestamp filtering), their convergence only validates that the input was processed twice. The v2.8.2-run1 chaos test produced a CRITICAL finding ("prompt-enrich Fix-2(a) broken in runtime") via this error — both `blair` and `lior` read PRE-/plugin-update log entries and concluded the fix was broken. Post-update entries showed it working correctly.
+   - *Mitigation (v2.8.3)*: `commands/chaos-test.md` documents the temporal-filtering discipline for hook-log analysis. Actor prompt templates should require explicit filter-timestamp statements in findings.
 
 ## Acceptance thresholds (effect-size guidance)
 

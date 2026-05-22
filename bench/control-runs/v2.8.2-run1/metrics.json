@@ -9,18 +9,26 @@
   "extractor_notes": "First baseline; framework didn't exist yet. Numbers cross-checked against the test log + FINAL-DEBRIEF narrative the user shared. Future runs use extract-run.sh.",
 
   "tier_1_substrate": {
-    "findings_density_critical_high": 5,
+    "findings_density_critical_high": 4,
     "findings_density_total": 44,
     "convergence_rate": 0.045,
     "verdict_loop_closure": 0.875,
     "tier_transition_count": 2,
     "contract_verifier_exercise_rate": 0.0,
-    "hook_runtime_gaps": 1,
+    "hook_runtime_gaps": 0,
     "forge_cite_rate": 1.0,
     "tokens_per_finding": 2204545,
     "spawn_ceremony_deviation_rate": 0.83,
     "cache_reuse_pct": 0.98,
     "synthid_drift_events": 0
+  },
+
+  "_original_baseline_uncorrected": {
+    "_note": "Pre-correction values, preserved for audit transparency. See notes.md 'Post-hoc correction (2026-05-22 v2.8.3 investigation)' for the reasoning.",
+    "tier_1_substrate.findings_density_critical_high": 5,
+    "tier_1_substrate.hook_runtime_gaps": 1,
+    "findings_breakdown_by_severity.critical": 1,
+    "scorecard_7_feature.prompt_enrich_fix_2a": "BROKEN-IN-RUNTIME"
   },
 
   "tier_2_project": {
@@ -68,14 +76,20 @@
       "category": "methodology",
       "description": "Spawn ceremony was bypassed for 83% of actor spawns (Agent tool used directly instead of formal HETS flow). Cascaded into 0% contract-verifier exercise rate.",
       "affects_metrics": ["contract_verifier_exercise_rate", "verdict_loop_closure", "convergence_rate"]
+    },
+    {
+      "category": "methodology",
+      "description": "Chaos-actor temporal-blindness false positive: both blair + lior read prompt-enrich-trigger.log entries from PRE-/plugin-update and concluded 'prompt-enrich Fix-2(a) broken in runtime'. Post-update entries (May 21 21:24 onwards) actually show vague:false correctly. Source/cache binary diff is empty. Corrected post-hoc 2026-05-22; see notes.md for full investigation. Implication: convergence between two actors with shared methodological blindspot is NOT a strong validation signal.",
+      "affects_metrics": ["findings_density_critical_high", "hook_runtime_gaps", "findings_breakdown_by_severity.critical", "scorecard_7_feature.prompt_enrich_fix_2a"]
     }
   ],
 
   "findings_breakdown_by_severity": {
-    "critical": 1,
+    "critical": 0,
     "high": 4,
     "medium": 14,
-    "low": 25
+    "low": 25,
+    "_note": "Corrected post-hoc 2026-05-22: original critical=1 was the prompt-enrich runtime-gap finding (CHAOS-SUB-1), disproved by temporal-filtered log analysis. See notes.md 'Post-hoc correction' section."
   },
 
   "tier_transitions_detail": [
@@ -128,16 +142,19 @@
     "tier_transitions": "PARTIALLY-EXERCISED",
     "contract_verifier": "NOT-EXERCISED",
     "route_decide": "NOMINAL",
-    "prompt_enrich_fix_2a": "BROKEN-IN-RUNTIME",
-    "auto_store_self_improve": "NOT-EXERCISED"
+    "prompt_enrich_fix_2a": "EXERCISED",
+    "auto_store_self_improve": "NOT-EXERCISED",
+    "_note": "prompt_enrich_fix_2a corrected post-hoc 2026-05-22: original BROKEN-IN-RUNTIME was a false-positive convergence error (see notes.md)."
   },
 
   "ship_recommendations_for_next_version": {
     "v2.8.3_urgent": [
-      "Diagnose prompt-enrich-trigger runtime gap (source vs cache binary diff)",
-      "Fix agent-identities.json stale-vs-stats divergence",
-      "Make HETS contract-verifier non-optional in /build-team flow",
-      "Fix SSRF in /api/ingest (product code; surfaced via chaos-test)"
+      "CLOSED-AS-FALSE-POSITIVE: prompt-enrich-trigger runtime gap (was the original #1; see deviations[] and notes.md)",
+      "Investigate agent-identities.json stale-vs-stats divergence (CHAOS-SUB-2)",
+      "Make HETS contract-verifier non-optional in /build-team flow (cascaded from spawn-ceremony bypass)",
+      "NEW: chaos-actor prompt template needs temporal-filtering discipline (log entries must filter to >= most-recent /plugin update timestamp for 'current behavior' claims)",
+      "NEW: convergence-validation pattern refinement (diverse-method convergence is the strong signal; same-method is just input-processed-twice)",
+      "PRODUCT-LEVEL (not toolkit): fix SSRF in /api/ingest of the Textbook→Tutorial project (kai's finding; ships in the project repo, not the toolkit)"
     ],
     "v2_9_0_substantive": [
       "Forge actor-integration-architect persona",

@@ -73,6 +73,7 @@ TIER_1_KEYS = [
     "forge_cite_rate",
     "tokens_per_finding",
     "spawn_ceremony_deviation_rate",
+    "ceremony_completion_rate_overall",  # v2.8.3 — observability via agent-identity.js stats
     "cache_reuse_pct",
     "synthid_drift_events",
 ]
@@ -89,6 +90,7 @@ DIRECTION = {
     "forge_cite_rate": True,
     "tokens_per_finding": False,
     "spawn_ceremony_deviation_rate": False,
+    "ceremony_completion_rate_overall": True,  # v2.8.3
     "cache_reuse_pct": True,
     "synthid_drift_events": None,
 }

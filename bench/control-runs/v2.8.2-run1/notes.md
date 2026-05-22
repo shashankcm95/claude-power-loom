@@ -21,11 +21,55 @@ This is the **first complete shakedown** of the toolkit using the locked brief m
 
 1. **Identity store snapshot is missing.** Did not capture `~/.claude/agent-identities.json` before the run started; the tier transition count (2) is real but the starting state of all identities isn't documented. Future runs MUST snapshot pre-run.
 
-2. **Forged skills are uncommitted.** `~/Documents/claude-toolkit/skills/postgres-engineering/` and `~/Documents/claude-toolkit/skills/next-js/` are sitting in the working tree of the toolkit repo. Plus `skills/agent-team/kb/manifest.json` is modified. The user said "deferred to a separate cycle." These need their own harvest PR.
+2. **Forged skills are uncommitted.** RESOLVED — harvested via PR #150 (merged 2026-05-22 at f7b725e). `skills/postgres-engineering/SKILL.md` + `skills/next-js/SKILL.md` now in main. Manifest timestamp-noise deliberately excluded.
 
 3. **eslint_errors not measured.** Phase 3 verified `next build EXIT=0` but didn't run eslint separately. Retroactive extraction is possible from the project repo; default to null until measured.
 
 4. **External validation sample not done.** All ratings are internal-to-toolkit. Should sample 4-5 findings for human re-rating to validate severity assignments.
+
+5. **CHAOS-SUB-1 (prompt-enrich runtime gap) was a FALSE POSITIVE.** RESOLVED — see post-hoc correction below.
+
+## Post-hoc correction (2026-05-22 v2.8.3 investigation)
+
+The single CRITICAL finding from Phase 4 chaos test — **"prompt-enrich Fix-2(a) is in source but NOT operative in runtime"** — was a false positive caused by temporal-blindness in the chaos actors. Investigation summary:
+
+### Evidence that disproved the finding
+
+The actual prompt-enrich-trigger.log shows "merged" classifications evolved cleanly across the /plugin update at May 21 17:53:
+
+```
+May 21 14:45  vague:true   ← pre-fix
+May 21 17:28  vague:true   ← pre-fix
+May 21 17:51  vague:true   ← pre-fix (mid-session sighting)
+┄┄ /plugin update at 17:53 ┄┄
+May 21 21:24  vague:FALSE  ← post-fix ✓
+May 22 00:41  vague:FALSE  ← post-fix ✓
+May 22 00:49  vague:FALSE  ← post-fix ✓ (and later)
+```
+
+All 4 candidate hook copies on disk (`~/.claude/hooks/scripts/`, `~/.claude/plugins/cache/.../2.8.2/`, `~/.claude/plugins/marketplaces/...`, `~/Documents/claude-toolkit/hooks/scripts/`) are byte-identical and contain the new skip pattern at line 95. Source/cache binary diff is empty.
+
+### Root cause of the false positive
+
+Both `blair` (03-code-reviewer) and `lior` (05-honesty-auditor) inspected the prompt-enrich-trigger.log and saw `vague:true` entries for "merged". They concluded "the fix is broken in runtime." But neither filtered by timestamp — both were looking at PRE-/plugin-update entries and treating them as current behavior.
+
+### The deeper finding this generated
+
+**Convergence between two actors is NOT a strong-enough validation signal when both actors share the same blindspot.** The H.2 trust-tiered verification design assumed independent perspectives → reliable convergence. But "independent actors" with shared methodological blindspots produce coordinated false positives that look like high-confidence findings.
+
+This is itself a load-bearing finding for v2.8.3+:
+
+- **Chaos-actor prompt template needs temporal-filtering discipline**: when reading hook logs for "current behavior" claims, MUST filter to entries newer than the most-recent /plugin update timestamp.
+- **Convergence-validation pattern needs refinement**: the strong signal is "diverse-method convergence" (e.g., one actor reads logs, another spawns a probe). Same-method convergence (both actors read same logs) only validates that the input was processed twice — not that the conclusion is correct.
+
+### Impact on this run's metrics
+
+- `tier_1_substrate.hook_runtime_gaps`: corrected from `1` → `0`
+- `findings_breakdown_by_severity.critical`: corrected from `1` → `0` (the CRITICAL was this false positive; SSRF in /api/ingest is HIGH product-code, separate)
+- `scorecard_7_feature.prompt_enrich_fix_2a`: corrected from `BROKEN-IN-RUNTIME` → `EXERCISED`
+- `findings_density_critical_high`: corrected from `5` → `4`
+
+The original numbers are preserved in `metrics.json._original_baseline_uncorrected` for audit transparency.
 
 ## What I'd do differently for v2.8.2-run2 (the next baseline replicate)
 

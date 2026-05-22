@@ -8,6 +8,82 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [2.8.3] — 2026-05-22 — v2.8.2-run1 baseline corrections + bench-harness fixes (carries control-runs framework #149 + skill harvest #150)
+
+**Patch release.** Closes the v2.8.2 PDF→Tutorial shakedown's findings: one CRITICAL chaos finding was disproved as a false positive; one was real and gets a substrate fix; new methodology learnings get documented. Also rolls up two infrastructure PRs that landed untagged (#149 control-runs framework, #150 forged-skill harvest from v2.8.2-run1).
+
+### CHAOS-SUB-1 closed as FALSE POSITIVE (no fix needed)
+
+The chaos test's single CRITICAL finding — "prompt-enrich Fix-2(a) is in source but NOT operative in runtime" — was disproved by post-hoc temporal-filtered log analysis. Two independent chaos actors (`blair` code-reviewer + `lior` honesty-auditor) both inspected `prompt-enrich-trigger.log` and concluded the fix was broken; neither filtered by timestamp; both were looking at PRE-/plugin-update entries. Post-update entries (May 21 21:24 onwards) show `vague:false` correctly on `"merged"`. All hook copies on disk are byte-identical.
+
+**Two new findings emerged from this false positive:**
+
+1. **Shared-method convergence is NOT a strong validation signal** when both actors share methodological blindspots (added as Failure Mode #4 in `kb:agent-team/patterns/asymmetric-challenger`). Diverse-method convergence (one reads logs, another spawns a live probe) is qualitatively stronger.
+2. **Chaos-actor hook-log analysis must filter by timestamp** (added to `commands/chaos-test.md`). When making "current behavior" claims, MUST filter to entries newer than the most-recent `/plugin update` timestamp.
+
+### CHAOS-SUB-2 substrate fix: `library-migrate sync-legacy`
+
+Real finding from the shakedown: after `library-migrate partition-personas` (H.9.21.1 v2.1.1), all identity writes go to per-persona files via `_writeStorePartitioned()` in `registry.js`. The legacy `~/.claude/agent-identities.json` is NEVER written to again — it fossilizes at pre-partition state. The bench harness was capturing the stale legacy file as the identity-store baseline.
+
+Specifically: v2.8.2-run1's bulkhead store had 33 identities; legacy file had 31. The 2 missing (`08-ml-engineer.omar`, `.priya`) were both created during the shakedown's Phase 2.
+
+**Fix**: new `scripts/library-migrate.js sync-legacy` subcommand. Reads the live bulkhead store via `registry.readStore()` (auto-dispatched), writes the projected full-store view to `STORE_PATH` via `writeAtomic`. Idempotent. `--dry-run` reports the projected count without writing. No-op (with explanatory message) when bulkhead is not active.
+
+Smoke-verified live: before sync = 31 identities in legacy; after sync = 33; matches `agent-identity.js stats` count.
+
+### Ceremony-completion-rate metric (v2.8.3 #41 option β)
+
+The v2.8.2-run1 had 0% `contract_verifier_exercise_rate` because the formal HETS spawn ceremony was easy to bypass via the Agent tool. Rather than ship a forcing hook in v2.8.3 (deferred to v2.9.0 per the v2.8.0 SynthId Shape A → Shape D observability-then-enforcement precedent), this ship adds **observability** so the bypass is visible at-a-glance.
+
+`scripts/agent-team/identity/registry.js cmdStats` now emits:
+- `ceremony_completion_rate_overall` (top-level): `sum(verdicts) / sum(totalSpawns)` across all personas, clamped to [0, 1.0]
+- `byPersona.<persona>.ceremony_completion_rate`: per-persona rate
+
+Surfaces real ceremony bypass at the current live store: `01-hacker` at 44% (4/9), `02-confused-user` at 29% (2/7), `04-architect` at 100% (clamped from 40/20 — multiple verdicts per spawn). Low rates indicate ceremony bypass; high rates indicate paired-run verdicts.
+
+**Future v2.9.0**: a forcing PostToolUse:Agent hook will enforce ceremony at spawn time. This metric is the precursor — observe the baseline before enforcing.
+
+### Bench harness fixes (bench/control-runs/)
+
+- **`bench/control-runs/brief.md`** — `capture.sh` template updated:
+  - Calls `library-migrate sync-legacy` as its FIRST step (so subsequent `cp ~/.claude/agent-identities.json` snapshots the live state, not stale)
+  - Now snapshots `~/.claude/library/sections/agents/stacks/identities/` (bulkhead per-persona dir) alongside the legacy file
+  - Captures `agent-identity.js stats > stats.json` so `ceremony_completion_rate_overall` lands in snapshots
+- **`bench/control-runs/README.md`** — documents both v2.8.2-run1 corrections (CHAOS-SUB-1 false positive + CHAOS-SUB-2 stale-legacy gotcha) as Risks #6 and #7; updates Tier-1 metric table with `ceremony_completion_rate_overall`
+- **`bench/control-runs/metrics-schema.json`** — adds `ceremony_completion_rate_overall` Tier-1 metric definition
+- **`bench/control-runs/aggregate.py`** — tracks the new metric in `TIER_1_KEYS` + `DIRECTION` map
+
+### v2.8.2-run1 baseline corrections (mid-investigation; landed in this ship)
+
+`bench/control-runs/v2.8.2-run1/metrics.json` corrected:
+- `tier_1_substrate.findings_density_critical_high`: 5 → **4** (CRITICAL was the false positive)
+- `tier_1_substrate.hook_runtime_gaps`: 1 → **0**
+- `findings_breakdown_by_severity.critical`: 1 → **0**
+- `scorecard_7_feature.prompt_enrich_fix_2a`: BROKEN-IN-RUNTIME → **EXERCISED**
+
+Original values preserved under `_original_baseline_uncorrected` for audit transparency. `bench/control-runs/v2.8.2-run1/notes.md` has the full investigation write-up.
+
+### v2.8.3 deferred to v2.9.0
+
+- **Contract-verifier non-optional FORCING** (full PostToolUse:Agent hook + tests) — deferred per option (α/β/γ design pattern, this ship picked (β) observability-only
+- **Forge `actor-integration-architect` persona** — from chaos-test capability request
+- **kb-citation-gate UX update** — surface kb: format requirement in error message
+- **Bundle `/evolve` for node-backend-development** — worker-transfer wisdom from v2.8.2-run1 Phase 2
+
+### Smoke verification
+
+- `node scripts/library-migrate.js sync-legacy --dry-run` → 33 identities · 13 personas (matches stats)
+- `node scripts/library-migrate.js sync-legacy` (apply) → legacy file count 31 → 33 ✓
+- `node scripts/agent-team/agent-identity.js stats` → `ceremony_completion_rate_overall: 1` (clamped from 107/99); per-persona rates surface real bypass for 01-hacker / 02-confused-user
+- `python3 bench/control-runs/aggregate.py --all` → tracks new metric; still reports `n=1 (no variance band)` for v2.8.2-run1
+
+### Operator notes
+
+- After upgrading to v2.8.3, run `node scripts/library-migrate.js sync-legacy` once to refresh `~/.claude/agent-identities.json` if you have any tools/scripts that read it directly. The bench harness now does this automatically per-snapshot.
+- `ceremony_completion_rate_overall` is observability-only in v2.8.3; v2.9.0 will add enforcement via PostToolUse:Agent hook.
+
+---
+
 ## [2.8.2] — 2026-05-21 — patch bundle: prompt-enrich over-fire fix · non-tautological observations · bumpBatch lock-collapse
 
 **Patch release.** Three carryover items from the v2.8.0 / v2.7.0 backlogs absorbed in a single ship after a Fix-2 investigation found the prompt-pattern store has 0.2% conversion (1005 forcing-instruction injections / 2 stored marker blocks over ~16 days). Plus a real-time over-fire on the user's typed `"merged"` reproducer.

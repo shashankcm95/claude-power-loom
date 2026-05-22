@@ -87,6 +87,15 @@
       "note": "v2.8.2-run1: 12 of ~16 actors spawned via Agent tool bypassing formal ceremony (Drift 1 + carryover)"
     },
 
+    "ceremony_completion_rate_overall": {
+      "type": "float",
+      "unit": "fraction in [0, 1]",
+      "direction": "↑ better",
+      "extractor": "Read from agent-identity.js stats output JSON: top-level `ceremony_completion_rate_overall` field. Computed as sum(verdicts) / sum(totalSpawns) across all personas. Captured in snapshots as bench/snapshots/<phase>-end-*/stats.json.",
+      "baseline_v2_8_2_run1": null,
+      "note": "v2.8.3 introduced this metric (observability-only precursor to v2.9.0 enforcement). Not captured in v2.8.2-run1 — baseline begins with v2.8.2-run2/v2.8.3-run1. Inverse of spawn_ceremony_deviation_rate but measured at substrate level (not bench level) so cross-version comparable without bench-harness assumptions."
+    },
+
     "cache_reuse_pct": {
       "type": "float",
       "unit": "fraction in [0, 1]",

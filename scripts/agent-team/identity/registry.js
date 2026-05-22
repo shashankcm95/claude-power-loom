@@ -530,7 +530,53 @@ function cmdStats(args) {
     byPersona[data.persona].verdicts.partial += data.verdicts.partial;
     byPersona[data.persona].verdicts.fail += data.verdicts.fail;
   }
-  console.log(JSON.stringify({ totalIdentities: Object.keys(store.identities).length, byPersona }, null, 2));
+
+  // v2.8.3 — ceremony-completion-rate metric (option β from v2.8.3 design).
+  // Observability-only; no enforcement. The metric captures: of all the
+  // spawns recorded per persona, what fraction had a verdict recorded?
+  // A low rate indicates spawn-ceremony bypass (Agent tool used directly
+  // instead of the formal HETS flow). v2.8.2-run1 baseline measured ~17%
+  // ceremony completion (83% deviation) — this metric makes that visible
+  // without requiring a separate bench harness pass.
+  //
+  // Definition:
+  //   ceremony_completion_rate = sum(verdicts) / sum(totalSpawns)
+  //   where verdicts = pass + partial + fail
+  //
+  // Edge cases:
+  //   totalSpawns === 0 → null (no signal; persona never spawned)
+  //   verdicts > totalSpawns can happen (multiple verdicts per spawn, or
+  //     legacy data drift). Clamped to 1.0 in the output for display sanity;
+  //     raw values still computed.
+  //
+  // FUTURE (v2.9.0): a forcing PostToolUse:Agent hook would enforce the
+  //   ceremony at spawn time. This metric is the precursor — observe
+  //   the baseline before enforcing, per the v2.8.0 SynthId
+  //   (Shape A observability → Shape D enforcement) precedent.
+  let totalSpawnsAll = 0;
+  let totalVerdictsAll = 0;
+  for (const persona of Object.keys(byPersona)) {
+    const p = byPersona[persona];
+    const verdictsTotal = p.verdicts.pass + p.verdicts.partial + p.verdicts.fail;
+    p.ceremony_completion_rate = p.totalSpawns > 0
+      ? Math.min(1.0, Math.round((verdictsTotal / p.totalSpawns) * 1000) / 1000)
+      : null;
+    totalSpawnsAll += p.totalSpawns;
+    totalVerdictsAll += verdictsTotal;
+  }
+  const ceremonyCompletionRateOverall = totalSpawnsAll > 0
+    ? Math.min(1.0, Math.round((totalVerdictsAll / totalSpawnsAll) * 1000) / 1000)
+    : null;
+
+  console.log(JSON.stringify({
+    totalIdentities: Object.keys(store.identities).length,
+    // v2.8.3 — aggregate ceremony-completion-rate across all personas. Tracked
+    // as a Tier-1 substrate metric in bench/control-runs/metrics-schema.json.
+    ceremony_completion_rate_overall: ceremonyCompletionRateOverall,
+    totalSpawns: totalSpawnsAll,
+    totalVerdicts: totalVerdictsAll,
+    byPersona,
+  }, null, 2));
 }
 
 function cmdPrune(args) {
