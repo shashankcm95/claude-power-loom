@@ -40,15 +40,31 @@ HERE = Path(__file__).resolve().parent
 
 
 def load_run(run_dir: Path):
-    """Load metrics.json from a run directory."""
+    """Load metrics.json from a run directory.
+
+    v2.9.0 FIX-I5 (lior HIGH-4 absorbed): refuse runs with _unfilled_fields
+    by inspection rather than coincidental null-skip. If a run has unfilled
+    fields, print loudly and skip aggregation. Operator MUST run
+    `extract-run.sh --strict` OR manually backfill before retrying.
+    """
     metrics_path = run_dir / "metrics.json"
     if not metrics_path.exists():
         return None
     try:
-        return json.loads(metrics_path.read_text())
+        metrics = json.loads(metrics_path.read_text())
     except json.JSONDecodeError as e:
-        print(f"⚠️  Skipping {run_dir.name}: invalid JSON ({e})", file=sys.stderr)
+        print(f"WARN: Skipping {run_dir.name}: invalid JSON ({e})", file=sys.stderr)
         return None
+    unfilled = metrics.get("_unfilled_fields") or []
+    if unfilled:
+        print(
+            f"WARN: Skipping {run_dir.name}: {len(unfilled)} unfilled field(s) "
+            f"({', '.join(unfilled[:3])}{'...' if len(unfilled) > 3 else ''}). "
+            f"Run `extract-run.sh --strict` to validate OR manually backfill metrics.json.",
+            file=sys.stderr,
+        )
+        return None
+    return metrics
 
 
 def group_by_version(run_dirs):
