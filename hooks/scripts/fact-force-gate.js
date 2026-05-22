@@ -101,19 +101,52 @@ process.stdin.on('end', () => {
     if (toolName === 'Edit' || toolName === 'Write') {
       const wasRead = tracker.files[filePath];
 
-      if (toolName === 'Write' && !fs.existsSync(filePath)) {
-        if (wasRead) {
+      // v2.8.5 FIX-H5 (P2-5) — Write satisfies fact-knowledge.
+      //
+      // Pre-v2.8.5 the gate approved Write but did NOT mark the file as read.
+      // Consequence: Write→Edit on the same file blocked because the tracker
+      // had no entry. The fix: record Write the same way Read does — the
+      // author of a Write KNOWS the resulting contents (they just wrote them),
+      // so the "must Read before Edit" requirement is already satisfied.
+      //
+      // Two cases:
+      //   (a) Write to NEW file (does not exist): always approve; record in
+      //       tracker so subsequent Edit to same path passes.
+      //   (b) Write to EXISTING file: approve + record. (Pre-v2.8.5 this case
+      //       went through the wasRead check below, blocking when no prior
+      //       Read occurred. But Write IS the most authoritative form of
+      //       file-knowledge — strict than Read.)
+      //
+      // v2.8.2-run1 P2-5 + v2.8.4 self-witnessed (I hit this 3× authoring
+      // the v2.8.4 bundle). Common pattern: Write file -> realize a small
+      // edit needed -> Edit blocked because no Read happened.
+      //
+      // Safety analysis: a Write that succeeds is necessarily a fact-grounded
+      // operation (the writer chose the content). The gate's purpose is to
+      // prevent edits-from-memory; Write doesn't have that pathology.
+      if (toolName === 'Write') {
+        if (!fs.existsSync(filePath) && wasRead) {
+          // Edge case retained from pre-v2.8.5: file was Read then deleted
+          // before Write. Worth logging — possible rm-then-Write bypass.
           logger('write_to_deleted_file', {
             filePath,
             readAt: wasRead,
             note: 'File was previously Read but no longer exists. Possible rm-then-Write bypass.',
           });
         }
-        logger('approve', { toolName, filePath, reason: 'new_file' });
+        // Record the Write so subsequent Edit to this path passes.
+        tracker.files[filePath] = Date.now();
+        saveTracker(tracker);
+        logger('approve', {
+          toolName,
+          filePath,
+          reason: fs.existsSync(filePath) ? 'write_existing_recorded' : 'write_new_recorded',
+        });
         process.stdout.write(JSON.stringify({ decision: 'approve' }));
         return;
       }
 
+      // Edit case (toolName === 'Edit')
       if (!wasRead) {
         logger('block', { toolName, filePath, reason: 'not_read' });
         process.stdout.write(JSON.stringify({

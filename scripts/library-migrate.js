@@ -138,6 +138,8 @@ function main(argv) {
   if (sub === 'partition-personas') return cmdPartitionPersonas(rest);
   if (sub === 'add-synthid') return cmdAddSynthid(rest);
   if (sub === 'sync-legacy') return cmdSyncLegacy(rest);
+  if (sub === 'fix-symlinks') return cmdFixSymlinks(rest);
+  if (sub === 'cleanup-bogus-volumes') return cmdCleanupBogusVolumes(rest);
   process.stderr.write(`library-migrate: unknown subcommand "${sub}"\n`);
   process.exit(2);
 }
@@ -164,6 +166,18 @@ function printHelp() {
     '(v2.8.3):               persona store (the live source-of-truth post-partition). The legacy',
     '                        file fossilized at pre-partition state; this resyncs it for tools',
     '                        + benchmarks that still read it directly. Idempotent.',
+    'fix-symlinks            Detects + restores broken symlinks (legacy paths that should',
+    '(v2.8.5):               point into the library but became regular files). Root cause:',
+    '                        writeAtomic pre-v2.8.5 replaced symlinks via renameSync. v2.8.5',
+    '                        fixes the primitive AND this command restores existing breakage.',
+    '                        Idempotent + drift-checkable (--dry-run).',
+    'cleanup-bogus-volumes   Removes per-persona bulkhead volumes whose filename does not',
+    '(v2.8.5):               match the valid persona-id pattern (e.g., `<set-at-spawn>.json`',
+    '                        from sentinel-substitution misses; `test-documentary.json` from',
+    '                        test fixtures that leaked). Preserves `consolidated.json`.',
+    '                        Idempotent + drift-checkable (--dry-run). v2.8.5 also adds',
+    '                        upstream validation in persona-store so new bogus volumes',
+    '                        can no longer be written.',
     '',
   ].join('\n'));
 }
@@ -723,6 +737,192 @@ function cmdSyncLegacy(args) {
 }
 
 // ===========================================================================
+// fix-symlinks (v2.8.5 FIX-H3)
+// ===========================================================================
+
+/**
+ * Detect + restore broken symlinks (legacy paths that should point into the
+ * library but became regular files due to the pre-v2.8.5 writeAtomic bug).
+ *
+ * For each legacy path in the manifest:
+ *   1. Check if it's currently a symlink → OK, skip
+ *   2. Check if it's a regular file → BROKEN: copy content to library target,
+ *      then replace with symlink → library target
+ *   3. Doesn't exist → skip (nothing to fix)
+ *
+ * Idempotent: re-running on an already-fixed state is a no-op.
+ *
+ * Drift class: same root cause as NEW-DRIFT-A (self-improve-counters.json
+ * legacy-vs-library divergence). Single command closes all instances.
+ */
+function cmdFixSymlinks(args) {
+  const opts = parseOpts(args);
+  const isDryRun = !!opts['dry-run'];
+
+  // Under bulkhead mode (post v2.1.1 partition-personas), per-persona files
+  // are the source-of-truth for agent-identities + agent-patterns. The
+  // legacy consolidated.json files MUST NOT be symlinked back — that would
+  // route writes to consolidated.json, bypassing the per-persona partition.
+  // Use sync-legacy instead for those two.
+  const registry = require('./agent-team/identity/registry');
+  const bulkheadActive = registry._isBulkheadActive && registry._isBulkheadActive();
+  const BULKHEAD_EXCLUDE = bulkheadActive
+    ? new Set([
+        path.join(os.homedir(), '.claude', 'agent-identities.json'),
+        path.join(os.homedir(), '.claude', 'agent-patterns.json'),
+      ])
+    : new Set();
+
+  const manifest = legacyPathManifest(os.homedir());
+  const fixed = [];
+  const alreadyOk = [];
+  const missing = [];
+  const skippedBulkhead = [];
+
+  for (const entry of manifest) {
+    const legacyPath = entry.legacy;
+    const targetPath = resolveTargetPath(entry);
+
+    if (BULKHEAD_EXCLUDE.has(legacyPath)) {
+      skippedBulkhead.push({ legacy: legacyPath, target: targetPath });
+      continue;
+    }
+
+    let lstat;
+    try {
+      lstat = fs.lstatSync(legacyPath);
+    } catch {
+      missing.push({ legacy: legacyPath, target: targetPath });
+      continue;
+    }
+
+    if (lstat.isSymbolicLink()) {
+      alreadyOk.push({ legacy: legacyPath, target: targetPath });
+      continue;
+    }
+
+    // It's a regular file at the legacy path — this is the broken state.
+    // Plan:
+    //   (a) Read legacy file content (the LIVE source-of-truth)
+    //   (b) Compare sizes with library target — if legacy is newer/larger,
+    //       overwrite library; if library is newer (unlikely), warn + keep both
+    //   (c) Atomically replace legacy with symlink → library target
+    fixed.push({ legacy: legacyPath, target: targetPath });
+    if (isDryRun) continue;
+
+    // (a) Read legacy content
+    const legacyContent = fs.readFileSync(legacyPath);
+
+    // (b) Ensure library volume dir + write legacy content to library target.
+    //     This overwrites whatever stale state was at the library target.
+    fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+    fs.writeFileSync(targetPath, legacyContent);
+
+    // (c) Replace legacy file with symlink → library target.
+    //     Use a tmp + rename pattern to keep the swap atomic on the legacy
+    //     side: if anything fails, the legacy file is still intact.
+    const tmpLink = legacyPath + `.symlink-tmp.${process.pid}`;
+    fs.symlinkSync(targetPath, tmpLink);
+    fs.renameSync(tmpLink, legacyPath); // atomic replace on POSIX
+  }
+
+  process.stdout.write(
+    `library-migrate fix-symlinks: ${isDryRun ? 'WOULD FIX' : 'FIXED'} ${fixed.length}, ` +
+    `already-ok ${alreadyOk.length}, missing ${missing.length}, ` +
+    `bulkhead-excluded ${skippedBulkhead.length}\n`
+  );
+  if (fixed.length > 0) {
+    process.stdout.write('\nBroken symlinks ' + (isDryRun ? 'detected' : 'restored') + ':\n');
+    for (const f of fixed) {
+      process.stdout.write(`  • ${f.legacy}\n`);
+      process.stdout.write(`    → ${f.target}\n`);
+    }
+  }
+  if (skippedBulkhead.length > 0) {
+    process.stdout.write('\nBulkhead-excluded (use `sync-legacy` for these):\n');
+    for (const f of skippedBulkhead) {
+      process.stdout.write(`  • ${f.legacy}\n`);
+    }
+  }
+  if (alreadyOk.length > 0 && process.env.VERBOSE) {
+    process.stdout.write('\nAlready-OK symlinks:\n');
+    for (const f of alreadyOk) {
+      process.stdout.write(`  • ${f.legacy}\n`);
+    }
+  }
+  if (isDryRun && fixed.length > 0) {
+    process.stdout.write(`\n--dry-run; nothing written. Re-run without --dry-run to apply.\n`);
+    process.exit(1); // non-zero exit signals drift detected
+  }
+}
+
+// ===========================================================================
+// cleanup-bogus-volumes (v2.8.5 FIX-H4)
+// ===========================================================================
+
+/**
+ * Scan agents/{identities,verdicts}/volumes/ for files whose name (sans `.json`)
+ * does not match the valid persona id pattern. These are residue from broken
+ * write paths (e.g., `<set-at-spawn>.json` from a code path that missed
+ * sentinel substitution; `test-documentary.json` from test fixtures that
+ * escaped into the production bulkhead).
+ *
+ * Safe-list (always kept): `consolidated.json` (v2.1.0 frozen baseline).
+ *
+ * Idempotent: re-running on a clean state is a no-op. v2.8.5 FIX-H4 also
+ * adds upstream validation in `_lib/persona-store.js` so new bogus volumes
+ * can no longer be written.
+ */
+function cmdCleanupBogusVolumes(args) {
+  const opts = parseOpts(args);
+  const isDryRun = !!opts['dry-run'];
+
+  const { VALID_PERSONA_RE } = require('./agent-team/_lib/persona-store');
+  const SAFE_LIST = new Set(['consolidated.json']);
+  const STACKS = ['identities', 'verdicts'];
+
+  const bogus = [];
+  const valid = [];
+
+  for (const stackId of STACKS) {
+    const volumesDir = paths.volumesDir('agents', stackId);
+    if (!fs.existsSync(volumesDir)) continue;
+    for (const name of fs.readdirSync(volumesDir)) {
+      if (!name.endsWith('.json')) continue;
+      if (SAFE_LIST.has(name)) {
+        valid.push({ stackId, name });
+        continue;
+      }
+      const personaCandidate = name.replace(/\.json$/, '');
+      if (VALID_PERSONA_RE.test(personaCandidate)) {
+        valid.push({ stackId, name });
+        continue;
+      }
+      // Bogus
+      bogus.push({ stackId, name, fullPath: path.join(volumesDir, name) });
+      if (!isDryRun) {
+        fs.unlinkSync(path.join(volumesDir, name));
+      }
+    }
+  }
+
+  process.stdout.write(
+    `library-migrate cleanup-bogus-volumes: ${isDryRun ? 'WOULD REMOVE' : 'REMOVED'} ${bogus.length}, ` +
+    `valid+preserved ${valid.length}\n`
+  );
+  if (bogus.length > 0) {
+    process.stdout.write('\nBogus volumes ' + (isDryRun ? 'detected' : 'removed') + ':\n');
+    for (const b of bogus) {
+      process.stdout.write(`  • agents/stacks/${b.stackId}/volumes/${b.name}\n`);
+    }
+  }
+  if (isDryRun && bogus.length > 0) {
+    process.stdout.write('\n--dry-run; nothing removed. Re-run without --dry-run to apply.\n');
+    process.exit(1);
+  }
+}
+
+// ===========================================================================
 // Helpers
 // ===========================================================================
 
@@ -763,4 +963,8 @@ module.exports = {
   _partitionVerdicts,
   // v2.8.3 — sync-legacy subcommand (test surface)
   cmdSyncLegacy,
+  // v2.8.5 FIX-H3 — fix-symlinks subcommand (test surface)
+  cmdFixSymlinks,
+  // v2.8.5 FIX-H4 — cleanup-bogus-volumes subcommand (test surface)
+  cmdCleanupBogusVolumes,
 };

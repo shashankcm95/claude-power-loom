@@ -8,6 +8,77 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [2.8.5] — 2026-05-22 — Leftover-coverage bundle (Path B; closes the rest before test2)
+
+**Patch release.** Closes the 5 items v2.8.4 missed (P0-1, P0-2, NEW-DRIFT-A, NEW-DRIFT-B, P2-5) plus root-causes the broader symlink-preservation bug class in `writeAtomic`. Test2 now starts from genuinely clean substrate.
+
+### FIX-H1: LLM-integrated web app stack entry (P0-1)
+
+Both test0 + test1 hand-composed from SSR + Node + ML entries because `kb:hets/stack-skill-map` had no LLM/AI-feature stack entry. Added a new entry "LLM-integrated web app (Claude/OpenAI inference + SSR UI)" pairing 09-react-frontend + 13-node-backend + 08-ml-engineer with `claude-api` and SSR essentials. Rationale documents that LLM-as-feature stacks are NOT training-pipeline shaped — they're inference-API consumption + UI orchestration.
+
+### FIX-H2: 08-ml-engineer contract — inference vs training (P0-2)
+
+Both runs surfaced the same gap: contract `required: ['ml-pipelines']` assumes training scope; LLM-as-feature tasks need `claude-api`. Added `claude-api` to recommended with marketplace status; added `_scope_note` documenting the dichotomy. Future v2.9.0 may split into 08a-trainer + 08b-inference; for now one persona covers both.
+
+### FIX-H3: writeAtomic symlink preservation (NEW-DRIFT-A — root cause)
+
+**Found a class of bugs**, not just one drift. `writeAtomic` used `renameSync(tmp, filePath)` which REPLACES symlinks with regular files. The v2.1.0 library migration created symlinks at legacy paths -> library volumes; each subsequent `writeAtomic` to those paths broke the symlink and fossilized the library copy.
+
+`self-improve-counters.json` was the visible symptom (69K live legacy vs 44K stale library, May 22 vs May 13). The bug affected all 6 v2.1.0 symlinks — only this one + `agent-identities.json` got hit because the others write rarely or via `appendFileSync` (which follows symlinks).
+
+**Fix**:
+- `_resolveForAtomicWrite(filePath)` walks the symlink chain (10-hop bound) via `readlinkSync`, returning the resolved real path. Tmp file lands next to the real file; rename replaces the real file; symlink at legacy path stays intact.
+- Applied to both `writeAtomic` + `writeAtomicString`.
+- New `library-migrate fix-symlinks` subcommand detects + restores broken symlinks; idempotent + drift-checkable. Bulkhead-aware (skips `agent-identities.json` + `agent-patterns.json` — those use `sync-legacy` instead).
+
+**Live correction**: applied fix-symlinks; self-improve-counters.json now resolves correctly through the symlink chain. legacy (70861 bytes) == library volume (70861 bytes).
+
+New test suite `tests/unit/scripts/atomic-write-symlink.test.js`: 14/14 pass (symlink preserved on plain + relative-target + chained variants; non-symlink + new-file behavior unchanged).
+
+### FIX-H4: persona-id validation + bogus volume cleanup (NEW-DRIFT-B)
+
+The v2.8.3-run1 audit found 2 bogus volumes in `agents/stacks/verdicts/volumes/`:
+- `<set-at-spawn>.json` — literal sentinel placeholder that escaped a code path missing substitution
+- `test-documentary.json` — test fixture from May 10 that leaked into the production bulkhead
+
+Both wrote successfully because `writePersonaVolume(stackId, persona, data)` took any string for `persona`.
+
+**Defensive fix**:
+- `_lib/persona-store.js`: new `_assertValidPersona(persona)` guard (regex `/^\d{2}-[a-z][a-z0-9-]*$/`) applied to `readPersonaVolume`, `writePersonaVolume`, `withPersonaLock`. Rejects sentinels, test fixtures, malformed names, path-injection attempts.
+- New `library-migrate cleanup-bogus-volumes` subcommand removes existing bogus volumes (preserves `consolidated.json` safe-list). Idempotent.
+- Applied: 2 bogus volumes removed; valid+preserved 27.
+
+New test suite `tests/unit/scripts/persona-store-validation.test.js`: 36/36 pass (16 valid personas + 12 invalid shapes + 5 type-error cases + 3 regex export checks).
+
+### FIX-H5: fact-force-gate — Write satisfies fact-knowledge (P2-5)
+
+Pre-v2.8.5 `fact-force-gate.js`: Write to a new file was approved BUT the file was NOT recorded in the tracker. Subsequent Edit to the same path blocked because `wasRead` was undefined. Same pathology for Write-to-existing-file → Edit. I hit this 3× authoring v2.8.4.
+
+**Fix**: when Write is approved (new file OR existing file), record it in the tracker same as Read does. Rationale: a Write that succeeds is necessarily a fact-grounded operation (the author chose the content); the gate's purpose is to prevent edits-from-memory which Write doesn't have.
+
+Edge case retained: Write to a previously-Read-then-deleted file still logs `write_to_deleted_file` (possible rm-then-Write bypass detection).
+
+New test suite `tests/unit/hooks/fact-force-gate.test.js`: 11/11 pass (Write-then-Edit approves; Edit-without-prior still blocks; Read-then-Edit regression preserved; multi-Write sequence).
+
+### Test results
+
+- `_h70-test.js`: 73/73 pass
+- `install.sh --hooks --test`: 116/116 pass
+- `tests/unit/hooks/validate-no-bare-secrets.test.js`: 11/11 pass (regression)
+- `tests/unit/scripts/atomic-write-symlink.test.js` (new): 14/14 pass
+- `tests/unit/scripts/persona-store-validation.test.js` (new): 36/36 pass
+- `tests/unit/hooks/fact-force-gate.test.js` (new): 11/11 pass
+- ESLint: 0 errors
+- Plugin version: 2.8.4 → 2.8.5
+
+### Live audit corrections (one-time substrate cleanup)
+
+- `~/.claude/self-improve-counters.json` re-symlinked → library volume (fix-symlinks)
+- `~/.claude/library/.../verdicts/volumes/<set-at-spawn>.json` removed
+- `~/.claude/library/.../verdicts/volumes/test-documentary.json` removed
+
+---
+
 ## [2.8.4] — 2026-05-22 — Cross-run fix bundle (test0 + test1 recurring drifts; pre-test2 cleanup)
 
 **Patch release.** Absorbs the 7 highest-leverage drifts that recurred across v2.8.2-run1 (test0) AND v2.8.3-run1 (test1) baseline runs. Goal: clean substrate before test2 so test3 produces the first scientifically-defensible cross-version metrics.
