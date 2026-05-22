@@ -9,7 +9,9 @@
     "skill_status": {}
   },
   "kb_scope": {
-    "default": ["kb:hets/spawn-conventions"],
+    "default": [
+      "kb:hets/spawn-conventions"
+    ],
     "_doc": "kb_scope is not load-bearing for engineering work; spawn-conventions covers report shape. Persona-specific kb_scope can be added at spawn time via --kb-scope flag if relevant."
   },
   "budget": {
@@ -19,22 +21,90 @@
     "extensionAmount": 15000
   },
   "functional": [
-    { "id": "F1", "check": "outputContainsFrontmatter", "required": true },
-    { "id": "F2", "check": "frontmatterHasFields", "args": { "fields": ["id", "role", "depth", "parent", "persona", "identity"] }, "required": true },
-    { "id": "F3", "check": "minFindings", "args": { "min": 1 }, "required": true, "_doc": "Engineering tasks: >=1 finding sufficient (vs audit's 2-3). A simple cleanup may have 1 LOW finding; padding to 3 produces noise. Findings are H3 sub-sections under severity blocks (e.g., '### LOW-1: ...'), not free-form Summary text. Reports with only a '## Summary' and no '### LOW-N:' heading will fail F3." },
-    { "id": "F4", "check": "hasFileCitations", "args": { "min": 1 }, "required": true, "_doc": "Engineering tasks: >=1 file citation (file you modified, created, or read). Audit's 4-6 threshold doesn't fit small-scope work." },
-    { "id": "F5", "check": "noUnrolledLoops", "args": { "maxRepetitions": 5 }, "required": true },
-    { "id": "F6", "check": "noExcessiveNesting", "args": { "maxDepth": 4 }, "required": true },
-    { "id": "F7", "check": "kb_scope_consumed", "required": true }
+    {
+      "id": "F1",
+      "check": "outputContainsFrontmatter",
+      "required": true
+    },
+    {
+      "id": "F2",
+      "check": "frontmatterHasFields",
+      "args": {
+        "fields": [
+          "id",
+          "role",
+          "depth",
+          "parent",
+          "persona",
+          "identity"
+        ]
+      },
+      "required": true
+    },
+    {
+      "id": "F3",
+      "check": "minFindings",
+      "args": {
+        "min": 1
+      },
+      "required": true,
+      "_doc": "Engineering tasks: >=1 finding sufficient (vs audit's 2-3). A simple cleanup may have 1 LOW finding; padding to 3 produces noise. CANONICAL FORMAT: see swarm/personas-contracts/_format-spec.md §Findings format. The H3 finding line (### LOW-1: title) MUST sit beneath an H2 severity bucket line (## LOW). Orphan H3s do NOT count. On F3 fail, the verifier emits a `hint` field pointing back to this spec (v2.9.0 FIX-I1)."
+    },
+    {
+      "id": "F4",
+      "check": "hasFileCitations",
+      "args": {
+        "min": 1
+      },
+      "required": true,
+      "_doc": "Engineering tasks: >=1 file citation (file you modified, created, or read). Audit's 4-6 threshold doesn't fit small-scope work."
+    },
+    {
+      "id": "F5",
+      "check": "noUnrolledLoops",
+      "args": {
+        "maxRepetitions": 5
+      },
+      "required": true
+    },
+    {
+      "id": "F6",
+      "check": "noExcessiveNesting",
+      "args": {
+        "maxDepth": 4
+      },
+      "required": true
+    },
+    {
+      "id": "F7",
+      "check": "kb_scope_consumed",
+      "required": true
+    }
   ],
   "antiPattern": [
-    { "id": "A1", "check": "claimsHaveEvidence", "severity": "fail" },
-    { "id": "A2", "check": "noTextSimilarityToPriorRun", "args": { "threshold": 0.6 }, "severity": "warn" },
-    { "id": "A3", "check": "noPaddingPhrases", "severity": "fail" }
+    {
+      "id": "A1",
+      "check": "claimsHaveEvidence",
+      "severity": "fail"
+    },
+    {
+      "id": "A2",
+      "check": "noTextSimilarityToPriorRun",
+      "args": {
+        "threshold": 0.6
+      },
+      "severity": "warn"
+    },
+    {
+      "id": "A3",
+      "check": "noPaddingPhrases",
+      "severity": "fail"
+    }
   ],
   "fallbackAcceptable": [
     "Task scope was small (e.g., <50 LoC delta or <10-line doc edit) — 1 finding + 1 citation is genuine signal, not padding",
     "Single-file doc surgery, config tweak, or trivial fix — no severity sections needed",
     "Persona-specific KB doc not load-bearing for the engineering task — proceed with kb:hets/spawn-conventions only"
-  ]
+  ],
+  "_format": "Findings format + frontmatter contract: see swarm/personas-contracts/_format-spec.md (v2.9.0 Phase B.1)"
 }

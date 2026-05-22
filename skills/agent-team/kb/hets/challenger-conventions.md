@@ -49,8 +49,8 @@ role: challenger
 depth: <implementer.depth + 1>
 parent: <implementer-identity>
 persona: <challenger-persona>
-identity: <challenger-identity>
-challenges_implementer: <implementer-identity>
+identity: "<challenger-identity>"   # YAML-quoted: SynthId suffix contains `~` (FIX-I2)
+challenges_implementer: "<implementer-identity>"
 task: <task summary>
 ---
 

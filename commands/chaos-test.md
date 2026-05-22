@@ -56,7 +56,7 @@ For each actor:
    → returns `{persona}.{name}` (e.g. `04-architect.mira`). Use this as the identity for all downstream steps. See [agent-identity-reputation pattern](../skills/agent-team/patterns/agent-identity-reputation.md).
 2. `node ~/Documents/claude-toolkit/scripts/agent-team/tree-tracker.js spawn --run-id $RUN_ID --parent super-root --child actor-{name}-{identity-name} --task "..." --role actor`
 3. Spawn the Agent with persona + contract + skills block. Skills block lists `skills.required` and `skills.recommended` from the contract by **name only** — actor invokes `Skill` tool to load on demand. See [persona-skills-mapping](../skills/agent-team/patterns/persona-skills-mapping.md) + [prompt-distillation](../skills/agent-team/patterns/prompt-distillation.md).
-4. Include in actor's frontmatter: `identity: {full-identity-string}` so the verifier auto-records per-identity.
+4. Include in actor's frontmatter: `identity: "{full-identity-string}"` (YAML-quoted; SynthId suffixes contain `~` which YAML 1.2 treats as null marker — FIX-I2) so the verifier auto-records per-identity.
 5. Tell the actor to write to `node-actor-{name}-{identity-name}.md` with proper frontmatter
 
 **b. After all actors complete, verify contracts:**

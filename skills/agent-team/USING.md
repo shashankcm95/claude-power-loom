@@ -155,7 +155,7 @@ role: actor
 depth: 2
 parent: super-root
 persona: 13-node-backend
-identity: 13-node-backend.kira
+identity: "13-node-backend.kira"   # YAML-quoted (FIX-I2; v2.9.0)
 run_id: orch-test-rate-limiting-resume-20260506-123901
 ---
 
