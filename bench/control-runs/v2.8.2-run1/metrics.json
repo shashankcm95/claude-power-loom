@@ -1,0 +1,151 @@
+{
+  "schema_version": 1,
+  "run_id": "v2.8.2-run1",
+  "toolkit_version": "2.8.2",
+  "run_date": "2026-05-21",
+  "brief_version": "v1",
+  "extracted_at": "2026-05-21",
+  "extraction_method": "manual-from-test-log",
+  "extractor_notes": "First baseline; framework didn't exist yet. Numbers cross-checked against the test log + FINAL-DEBRIEF narrative the user shared. Future runs use extract-run.sh.",
+
+  "tier_1_substrate": {
+    "findings_density_critical_high": 5,
+    "findings_density_total": 44,
+    "convergence_rate": 0.045,
+    "verdict_loop_closure": 0.875,
+    "tier_transition_count": 2,
+    "contract_verifier_exercise_rate": 0.0,
+    "hook_runtime_gaps": 1,
+    "forge_cite_rate": 1.0,
+    "tokens_per_finding": 2204545,
+    "spawn_ceremony_deviation_rate": 0.83,
+    "cache_reuse_pct": 0.98,
+    "synthid_drift_events": 0
+  },
+
+  "tier_2_project": {
+    "tests_passing": 16,
+    "build_success": true,
+    "eslint_errors": null,
+    "typescript_errors": 0,
+    "wall_clock_hours_total": 4.0
+  },
+
+  "qualitative_flags": {
+    "tier_transition_observed": true,
+    "convergence_observed": true,
+    "kb_citation_gate_fired": true,
+    "secrets_gate_fired": true,
+    "fact_force_gate_fired": true,
+    "evolve_cycle_closed": true,
+    "skill_forged_mid_run": true,
+    "auto_graduate_fired": false,
+    "self_improve_promotion_fired": false
+  },
+
+  "deviations": [
+    {
+      "category": "environment",
+      "description": "Docker absent on host machine; pivoted to local Postgres via homebrew (PG 17.9 + pgvector 0.8.2)",
+      "affects_metrics": ["tier_2_project.wall_clock_hours_total"]
+    },
+    {
+      "category": "brief-spec",
+      "description": "LLM provider pivoted Anthropic→OpenAI mid-run per user direction; @anthropic-ai/sdk never installed; openai@6.39.0 used instead",
+      "affects_metrics": []
+    },
+    {
+      "category": "tooling-failure",
+      "description": "pdf-parse/pdfjs-dist incompatible with Next.js webpack-RSC AND tsx; only plain Node ESM works (root cause: Promise.all([getText, getInfo]) breaks pdfjs worker-transfer; sequential works)",
+      "affects_metrics": ["findings_density_critical_high", "findings_density_total", "tokens_per_finding"]
+    },
+    {
+      "category": "methodology",
+      "description": "No pre-run snapshot of agent-identities.json taken; baseline reputation state was whatever was live at run-start. Some identities had prior tier states from earlier session work.",
+      "affects_metrics": ["tier_transition_count"]
+    },
+    {
+      "category": "methodology",
+      "description": "Spawn ceremony was bypassed for 83% of actor spawns (Agent tool used directly instead of formal HETS flow). Cascaded into 0% contract-verifier exercise rate.",
+      "affects_metrics": ["contract_verifier_exercise_rate", "verdict_loop_closure", "convergence_rate"]
+    }
+  ],
+
+  "findings_breakdown_by_severity": {
+    "critical": 1,
+    "high": 4,
+    "medium": 14,
+    "low": 25
+  },
+
+  "tier_transitions_detail": [
+    {
+      "identity": "13-node-backend.noor",
+      "from": "unproven",
+      "to": "high-trust",
+      "verdicts_recorded": 4,
+      "notes": "Crossed all 3 thresholds (unproven→low→med→high) by end of Phase 2"
+    },
+    {
+      "identity": "13-node-backend.evan",
+      "from": "unproven",
+      "to": "high-trust",
+      "verdicts_recorded": 4,
+      "notes": "Crossed all 3 thresholds by end of Phase 3"
+    }
+  ],
+
+  "skills_forged_this_run": [
+    {
+      "skill": "postgres-engineering",
+      "phase_forged": 0,
+      "lines": 140,
+      "cited_in_phases": [2],
+      "cite_count_min": 1
+    },
+    {
+      "skill": "next-js",
+      "phase_forged": 0,
+      "phase_evolved": 4,
+      "lines_initial": 175,
+      "lines_after_evolve": 258,
+      "evolve_added_pct": 47,
+      "cited_in_phases": [1, 2, 3],
+      "cite_count_min": 3
+    }
+  ],
+
+  "actors_spawned_total": 16,
+  "verdicts_recorded": {
+    "pass": 14,
+    "partial": 2,
+    "fail": 0
+  },
+
+  "scorecard_7_feature": {
+    "hets_orchestration": "PARTIALLY-EXERCISED",
+    "synthid_drift_detection": "NOMINAL",
+    "tier_transitions": "PARTIALLY-EXERCISED",
+    "contract_verifier": "NOT-EXERCISED",
+    "route_decide": "NOMINAL",
+    "prompt_enrich_fix_2a": "BROKEN-IN-RUNTIME",
+    "auto_store_self_improve": "NOT-EXERCISED"
+  },
+
+  "ship_recommendations_for_next_version": {
+    "v2.8.3_urgent": [
+      "Diagnose prompt-enrich-trigger runtime gap (source vs cache binary diff)",
+      "Fix agent-identities.json stale-vs-stats divergence",
+      "Make HETS contract-verifier non-optional in /build-team flow",
+      "Fix SSRF in /api/ingest (product code; surfaced via chaos-test)"
+    ],
+    "v2_9_0_substantive": [
+      "Forge actor-integration-architect persona",
+      "Update kb-citation-gate error message to surface kb: format requirement",
+      "Bundle /evolve for node-backend-development (worker-transfer wisdom)",
+      "Document pattern-recorder --synthid requirement",
+      "Bench harness improvements (verdict-visibility, hook-log measurement)",
+      "Update architect persona contract to grant Write capability"
+    ]
+  }
+}

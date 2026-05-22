@@ -1,0 +1,173 @@
+{
+  "schema_version": 1,
+  "description": "Canonical metric definitions for cross-version toolkit benchmarking. Every <version>-run<N>/metrics.json conforms to this schema.",
+
+  "tier_1_substrate": {
+    "description": "Load-bearing toolkit-substrate metrics. These are what we actually want to improve across ships.",
+
+    "findings_density_critical_high": {
+      "type": "integer",
+      "direction": "↑ better up to saturation, then ↓",
+      "extractor": "Count CRITICAL + HIGH severity findings across all phase debriefs + FINAL-DEBRIEF",
+      "note": "Saturation = ~15-20 per run on this brief; beyond that suggests false-positive inflation"
+    },
+
+    "findings_density_total": {
+      "type": "integer",
+      "direction": "↑ better up to saturation",
+      "extractor": "Count all findings (CRIT + HIGH + MEDIUM + LOW) across all debriefs"
+    },
+
+    "convergence_rate": {
+      "type": "float",
+      "unit": "fraction in [0, 1]",
+      "direction": "↑ better",
+      "extractor": "(findings caught by ≥2 independent actors) / (total findings). Catch-record is in FINAL-DEBRIEF 'convergence' section if present, or computed from per-phase debrief overlap.",
+      "baseline_v2_8_2_run1": 0.05,
+      "note": "v2.8.2-run1 only documented 1 convergence (blair + lior on prompt-enrich Fix-2(a) runtime gap) out of ~22 chaos findings = 1/22 ≈ 5%. Most builds didn't run convergence analysis."
+    },
+
+    "verdict_loop_closure": {
+      "type": "float",
+      "unit": "fraction in [0, 1]",
+      "direction": "↑ better",
+      "extractor": "(verdicts recorded via pattern-recorder) / (total actors spawned across all phases)",
+      "baseline_v2_8_2_run1": 0.875,
+      "note": "v2.8.2-run1: 14/16 = 87.5% (the 2 partials from mira's gate format + noor's next.config.ts bug)"
+    },
+
+    "tier_transition_count": {
+      "type": "integer",
+      "direction": "↑ better",
+      "extractor": "Count identities that crossed unproven→low / low→med / med→high during the run",
+      "baseline_v2_8_2_run1": 2,
+      "note": "noor + evan both reached high-trust"
+    },
+
+    "contract_verifier_exercise_rate": {
+      "type": "float",
+      "unit": "fraction in [0, 1]",
+      "direction": "↑ better",
+      "extractor": "(HETS spawns with contract-verifier run on output) / (total HETS actor spawns)",
+      "baseline_v2_8_2_run1": 0.0,
+      "note": "v2.8.2-run1 bypassed verifier throughout (Drift 1 cascaded). This is the BIGGEST substrate gap."
+    },
+
+    "hook_runtime_gaps": {
+      "type": "integer",
+      "direction": "↓ better",
+      "extractor": "Count cases where source code says X, runtime behavior is Y. Each documented case in debrief = 1.",
+      "baseline_v2_8_2_run1": 1,
+      "note": "v2.8.2-run1 caught 1: prompt-enrich Fix-2(a) is in source but not operative in runtime hook"
+    },
+
+    "forge_cite_rate": {
+      "type": "float",
+      "unit": "fraction in [0, 1]",
+      "direction": "↑ better",
+      "extractor": "(forged-skills cited by ≥1 downstream actor) / (total skills forged this run)",
+      "baseline_v2_8_2_run1": 1.0,
+      "note": "v2.8.2-run1: 2 forged (postgres-engineering + next-js), both cited in Phase 2+3 outputs = 100%"
+    },
+
+    "tokens_per_finding": {
+      "type": "integer",
+      "direction": "↓ better",
+      "extractor": "total_tokens / total_findings",
+      "baseline_v2_8_2_run1": 2204545,
+      "note": "v2.8.2-run1: ~97M tokens / 44 findings ≈ 2.2M tokens per finding"
+    },
+
+    "spawn_ceremony_deviation_rate": {
+      "type": "float",
+      "unit": "fraction in [0, 1]",
+      "direction": "↓ better",
+      "extractor": "(actor spawns that skipped formal HETS flow: identity-assign → frontmatter identity → verifier → pattern-recorder) / (total actor spawns)",
+      "baseline_v2_8_2_run1": 0.83,
+      "note": "v2.8.2-run1: 12 of ~16 actors spawned via Agent tool bypassing formal ceremony (Drift 1 + carryover)"
+    },
+
+    "cache_reuse_pct": {
+      "type": "float",
+      "unit": "fraction in [0, 1]",
+      "direction": "↑ better",
+      "extractor": "cache_read_tokens / (input_tokens + cache_read_tokens + cache_creation_tokens) — across all phases",
+      "baseline_v2_8_2_run1": 0.98,
+      "note": "v2.8.2-run1: monotonic improvement 93% → 97% → 98.8% across phases; final ~98%"
+    },
+
+    "synthid_drift_events": {
+      "type": "integer",
+      "direction": "context-dependent",
+      "extractor": "Count cmdAssign outputs where synthid_drift: true",
+      "baseline_v2_8_2_run1": 0,
+      "note": "v2.8.2-run1: 0 — no contract changes during run; mechanism documented but not stressed"
+    }
+  },
+
+  "tier_2_project": {
+    "description": "Downstream project-outcome metrics. Influenced by LLM rolls + library quirks. Use with caution; aggregate only with n≥5 confidence bands.",
+
+    "tests_passing": {
+      "type": "integer",
+      "direction": "↑ better",
+      "extractor": "Total test suite count at end of Phase 4",
+      "baseline_v2_8_2_run1": 16,
+      "note": "v2.8.2-run1: chapter-parser 16/16"
+    },
+
+    "build_success": {
+      "type": "boolean",
+      "extractor": "next build EXIT=0 at end of Phase 3",
+      "baseline_v2_8_2_run1": true
+    },
+
+    "eslint_errors": {
+      "type": "integer",
+      "direction": "↓ better",
+      "extractor": "npx eslint . count at end of Phase 4",
+      "baseline_v2_8_2_run1": null,
+      "note": "v2.8.2-run1: not captured — extract retroactively if needed"
+    },
+
+    "typescript_errors": {
+      "type": "integer",
+      "direction": "↓ better",
+      "extractor": "npx tsc --noEmit count at end of Phase 4",
+      "baseline_v2_8_2_run1": 0
+    },
+
+    "wall_clock_hours_total": {
+      "type": "float",
+      "unit": "hours",
+      "direction": "context-dependent",
+      "extractor": "Sum of phase wall-clock times across Phases 0-4",
+      "baseline_v2_8_2_run1": 4.0,
+      "note": "v2.8.2-run1: estimated 4h based on the test log; not precisely measured"
+    }
+  },
+
+  "qualitative_flags": {
+    "description": "Boolean flags for categorical observations. Useful for tracking specific behaviors across versions.",
+
+    "tier_transition_observed": { "type": "boolean", "baseline_v2_8_2_run1": true },
+    "convergence_observed": { "type": "boolean", "baseline_v2_8_2_run1": true },
+    "kb_citation_gate_fired": { "type": "boolean", "baseline_v2_8_2_run1": true },
+    "secrets_gate_fired": { "type": "boolean", "baseline_v2_8_2_run1": true },
+    "fact_force_gate_fired": { "type": "boolean", "baseline_v2_8_2_run1": true },
+    "evolve_cycle_closed": { "type": "boolean", "baseline_v2_8_2_run1": true },
+    "skill_forged_mid_run": { "type": "boolean", "baseline_v2_8_2_run1": true },
+    "auto_graduate_fired": { "type": "boolean", "baseline_v2_8_2_run1": false },
+    "self_improve_promotion_fired": { "type": "boolean", "baseline_v2_8_2_run1": false }
+  },
+
+  "deviations": {
+    "description": "Documented departures from the locked brief. Used by aggregate.py to exclude metrics that aren't directly comparable.",
+    "type": "array",
+    "item_schema": {
+      "category": "string (e.g., 'environment', 'brief-spec', 'tooling-failure')",
+      "description": "string",
+      "affects_metrics": "array of metric keys"
+    }
+  }
+}
