@@ -147,6 +147,17 @@
             "timeout": 5
           }
         ]
+      },
+      {
+        "_comment": "v2.9.0 FIX-I9: PreToolUse:Bash observability gate. Detects Bash redirects (>, >>, tee) targeting config-guard-protected files. WARN-not-BLOCK by default (architect.theo HIGH-5: avoid false-positive cliff). STRICT_CONFIG_GUARD=1 env var escalates to block. See kb:design-pushback/syntactic-gate-extension-for-tool-bypass for the design rationale.",
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/validate-config-redirect.js",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "PostToolUse": [

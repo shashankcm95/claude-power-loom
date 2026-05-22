@@ -18,19 +18,80 @@
     "extensionAmount": 10000
   },
   "functional": [
-    { "id": "F1", "check": "outputContainsFrontmatter", "required": true },
-    { "id": "F2", "check": "frontmatterHasFields", "args": { "fields": ["id", "role", "depth", "parent", "persona"] }, "required": true },
-    { "id": "F3", "check": "minFindings", "args": { "min": 4 }, "required": true },
-    { "id": "F4", "check": "containsKeywords", "args": { "keywords": ["accuracy", "false"] }, "required": true },
-    { "id": "F5", "check": "outputLengthMin", "args": { "min": 1500 }, "required": true },
-    { "id": "F6", "check": "kb_scope_consumed", "required": true }
+    {
+      "id": "F1",
+      "check": "outputContainsFrontmatter",
+      "required": true
+    },
+    {
+      "id": "F2",
+      "check": "frontmatterHasFields",
+      "args": {
+        "fields": [
+          "id",
+          "role",
+          "depth",
+          "parent",
+          "persona"
+        ]
+      },
+      "required": true
+    },
+    {
+      "id": "F3",
+      "check": "minFindings",
+      "args": {
+        "min": 4
+      },
+      "required": true
+    },
+    {
+      "id": "F4",
+      "check": "containsKeywords",
+      "args": {
+        "keywords": [
+          "accuracy",
+          "false"
+        ]
+      },
+      "required": true
+    },
+    {
+      "id": "F5",
+      "check": "outputLengthMin",
+      "args": {
+        "min": 1500
+      },
+      "required": true
+    },
+    {
+      "id": "F6",
+      "check": "kb_scope_consumed",
+      "required": true
+    }
   ],
   "antiPattern": [
-    { "id": "A1", "check": "noTextSimilarityToPriorRun", "args": { "threshold": 0.6 }, "severity": "warn" },
-    { "id": "A2", "check": "noPaddingPhrases", "severity": "fail" },
-    { "id": "A3", "check": "acknowledgesFallback", "severity": "warn" }
+    {
+      "id": "A1",
+      "check": "noTextSimilarityToPriorRun",
+      "args": {
+        "threshold": 0.6
+      },
+      "severity": "warn"
+    },
+    {
+      "id": "A2",
+      "check": "noPaddingPhrases",
+      "severity": "fail"
+    },
+    {
+      "id": "A3",
+      "check": "acknowledgesFallback",
+      "severity": "warn"
+    }
   ],
   "fallbackAcceptable": [
     "Cannot run hook live → manual regex tracing of prompt-enrich-trigger.js is acceptable IF traced with file:line"
-  ]
+  ],
+  "_format": "Findings format + frontmatter contract: see swarm/personas-contracts/_format-spec.md (v2.9.0 Phase B.1)"
 }

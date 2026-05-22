@@ -66,6 +66,10 @@ function cmdTier(args) {
     console.error(`Unknown identity: ${args.identity}`);
     process.exit(1);
   }
+  // v2.9.0 FIX-I3 (Phase A.2; lior MEDIUM-1 callsite audit) — backfill before
+  // reading verdicts. Pre-v2.9.0 cmdTier skipped the backfill and read stale
+  // aggregate counts. Now consistent with cmdRecommendVerification + cmdStats.
+  _backfillSchema(data);
   const total = data.verdicts.pass + data.verdicts.partial + data.verdicts.fail;
   const passRate = total === 0 ? 0 : data.verdicts.pass / total;
   console.log(JSON.stringify({
@@ -163,8 +167,16 @@ function cmdRecommendVerification(args) {
       : [];
     // v2.8.4 FIX-D (DRIFT-012): surface trigger-specific rationale + the
     // would-be tier policy so operators understand the override.
+    //
+    // v2.9.0 FIX-I10 (Phase A.3): field name is `hash`, NOT `synthIdHash`.
+    // Pre-v2.9.0 this interpolation was `? → ?` because the field-name
+    // mismatch silently fell through to the `'?'` default. See
+    // registry.js:392-393 for the canonical synthid_history entry shape:
+    // `{hash, observedAt, note?}`. Dogfood-caught during architect.theo's
+    // v2.9.0 design review (recommend-verification called with drift
+    // active showed `? → ?` in rationale).
     const hashChange = tail.length >= 2
-      ? `${(tail[0].synthIdHash || '?').slice(0, 8)} → ${(tail[1].synthIdHash || '?').slice(0, 8)}`
+      ? `${(tail[0].hash || '?').slice(0, 8)} → ${(tail[1].hash || '?').slice(0, 8)}`
       : '(insufficient history)';
     console.log(JSON.stringify({
       identity: args.identity,

@@ -223,4 +223,39 @@ function parseFrontmatter(text) {
   return { frontmatter: fm, body: text.slice(end + 4).trim() };
 }
 
-module.exports = { parseFrontmatter, _stripInlineComment };
+/**
+ * v2.9.0 Phase B.2 (FIX-I2) — null-safe identity recovery.
+ *
+ * Architect.theo HIGH-2 diagnosis: an unquoted YAML scalar containing `~`
+ * (the YAML 1.2 null literal marker) can be silently parsed as `null` by a
+ * spec-compliant parser. Our home-grown parser doesn't currently translate
+ * `~` to null, but defense-in-depth requires a fallback path: when downstream
+ * code observes `frontmatter.identity === null` or a missing identity, it
+ * can call this helper to extract the literal `identity:` scalar from the
+ * raw frontmatter text (bypassing YAML semantics).
+ *
+ * Also useful for legacy actor reports written before the quoting convention
+ * was documented (skills/agent-team/kb/hets/spawn-conventions.md §"YAML
+ * quoting requirement"). The verifier can call this helper as a last-resort
+ * recovery when synthid validation would otherwise fail with `no-suffix`.
+ *
+ * @param {string} rawFrontmatterText - Raw text between `---` fences (or the
+ *   full document; we anchor on `^identity:` regardless).
+ * @returns {string|null} Recovered identity string, or null if not found / truly empty.
+ */
+function _extractIdentityFromRaw(rawFrontmatterText) {
+  if (typeof rawFrontmatterText !== 'string') return null;
+  // Important: use `[ \t]*` not `\s*` so the value capture stops at the
+  // line boundary (\s consumes \n which crosses lines and bleeds into the
+  // next key — caught by yaml-identity-quoting.test.js T2c).
+  const m = rawFrontmatterText.match(/^identity:[ \t]*(.*)$/m);
+  if (!m) return null;
+  let val = m[1].trim();
+  // Strip surrounding quotes — defensive (mirrors parseFrontmatter behavior).
+  val = val.replace(/^["']|["']$/g, '');
+  // Truly empty OR canonical YAML null forms → null.
+  if (val === '' || val === 'null' || val === '~') return null;
+  return val;
+}
+
+module.exports = { parseFrontmatter, _stripInlineComment, _extractIdentityFromRaw };

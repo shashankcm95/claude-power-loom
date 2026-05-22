@@ -77,6 +77,8 @@ const { frontmatter, body } = parseFrontmatter(output);
 function countFindings(text) {
   const sections = text.match(/^##\s+(?:🔴|🟠|🟡|🔵)?\s*(CRITICAL|HIGH|MEDIUM|LOW)\b/gim) || [];
   let total = 0;
+  // Capture each H3-under-H2 we COUNT so we can compute orphans below
+  // (orphan = severity-shaped H3 that lives outside any H2 severity bucket).
   for (const sec of sections) {
     const after = text.slice(text.indexOf(sec) + sec.length);
     const next = after.search(/\n##\s+/);
@@ -85,6 +87,47 @@ function countFindings(text) {
     total += items;
   }
   return total;
+}
+
+// v2.9.0 Phase B.1 (FIX-I1) — orphan severity-shaped H3 detector.
+// Empirical bench-run failure mode: actors wrote "### LOW-1: foo" WITHOUT
+// the parent "## LOW" H2 bucket. countFindings walks only H2 buckets, so
+// the orphan H3s counted as zero. F3 then failed silently with no signal
+// about WHY. This detector identifies those orphans so the F3 check can
+// emit a structured hint pointing at swarm/personas-contracts/_format-spec.md.
+//
+// "Orphan" means: a line matching `^### (CRITICAL|HIGH|MEDIUM|LOW)-\d+:`
+// that does NOT sit beneath a matching `^## ... (CRITICAL|HIGH|MEDIUM|LOW)`
+// H2 bucket in the document order. We compute per-severity: any H3 whose
+// severity-word has zero same-severity H2 ancestors counts as orphan.
+function detectOrphanSeverityH3s(text) {
+  // Build a list of (offset, kind, sev) markers, then scan in order.
+  const markers = [];
+  const reH2 = /^##\s+(?:🔴|🟠|🟡|🔵)?\s*(CRITICAL|HIGH|MEDIUM|LOW)\b/gim;
+  const reH3 = /^###\s+(CRITICAL|HIGH|MEDIUM|LOW)-\d+\b/gim;
+  let m;
+  while ((m = reH2.exec(text)) !== null) {
+    markers.push({ offset: m.index, kind: 'h2', sev: m[1].toUpperCase() });
+  }
+  while ((m = reH3.exec(text)) !== null) {
+    markers.push({ offset: m.index, kind: 'h3', sev: m[1].toUpperCase() });
+  }
+  markers.sort((a, b) => a.offset - b.offset);
+  // Track which severities have an open H2 bucket as we walk. An H2 of any
+  // severity closes prior open buckets (since H2s aren't nested in markdown).
+  let openSev = null;
+  const orphans = []; // { offset, sev }
+  for (const mk of markers) {
+    if (mk.kind === 'h2') {
+      openSev = mk.sev;
+    } else {
+      // h3
+      if (openSev === null || openSev !== mk.sev) {
+        orphans.push({ offset: mk.offset, sev: mk.sev });
+      }
+    }
+  }
+  return orphans;
 }
 
 function countFileCitations(text) {
@@ -245,7 +288,24 @@ const functionalChecks = Object.assign(Object.create(null), {
     if (Object.keys(frontmatter).length === 0) return false;
     return cArgs.fields.every((f) => frontmatter[f] !== undefined);
   },
-  minFindings: (cArgs) => countFindings(body) >= cArgs.min,
+  // v2.9.0 Phase B.1 (FIX-I1) — when F3 fails AND orphan severity-shaped H3s
+  // are detected, emit a structured hint pointing at _format-spec.md so the
+  // actor understands the failure mode without re-reading the spec wholesale.
+  // Back-compat: pass case returns plain `true` (bool path; existing wiring).
+  minFindings: (cArgs) => {
+    const count = countFindings(body);
+    if (count >= cArgs.min) return true;
+    const orphans = detectOrphanSeverityH3s(body);
+    if (orphans.length > 0) {
+      const sevList = Array.from(new Set(orphans.map((o) => o.sev))).join(', ');
+      const hint = `${orphans.length} H3 finding(s) found WITHOUT a parent "## <SEVERITY>" H2 bucket ` +
+        `(orphan severities: ${sevList}). ` +
+        'See `swarm/personas-contracts/_format-spec.md` §"Findings format". ' +
+        'Add a `## ' + (orphans[0].sev) + '` line above each `### ' + (orphans[0].sev) + '-N:` group.';
+      return { pass: false, hint, findingsCount: count, orphanH3s: orphans.length };
+    }
+    return { pass: false, findingsCount: count };
+  },
   hasFileCitations: (cArgs) => countFileCitations(body) >= cArgs.min,
   // H-1 fix: .every — a contract listing all four severities must require all four,
   // not any one. Spec lives in contract-format.md.
@@ -262,11 +322,19 @@ const functionalChecks = Object.assign(Object.create(null), {
   noUnrolledLoops: (cArgs) => {
     const codeBlocks = body.match(/```[\s\S]*?```/g) || [];
     const threshold = (cArgs && cArgs.maxRepetitions) || 5;
+    // v2.9.0 Phase B.3 (FIX-I6) — min-line-length bumped from 3 to 20.
+    // Empirical bug surface: bench/control-runs across v2.8.3 + v2.8.5
+    // showed false-positives on:
+    //   (a) 6+ stacked `});` closers in nested-handler code (H.2.7 caught
+    //       a 6-closer case at threshold 3; widening the gap defends in depth)
+    //   (b) ORM schema files with many short-line columns (Drizzle / Prisma)
+    //   (c) TypeScript import manifests with identical-shape lines
+    // Bump to 20 chars keeps the 1000-zeros / fizzbuzz family (where actual
+    // pathological lines easily clear 20 chars) while removing the false
+    // positive surface from short syntactic lines.
+    const MIN_LINE_LENGTH = 20;
     for (const block of codeBlocks) {
-      // Filter: length >= 3 strips syntactic boilerplate like `}`, `};`,
-      // `})`, `]` — false-positive caught by H.2.7 own-validation probe 2
-      // where 6 closing braces in nested code tripped the check spuriously.
-      const lines = block.split('\n').slice(1, -1).map((l) => l.trim()).filter((l) => l.length >= 3);
+      const lines = block.split('\n').slice(1, -1).map((l) => l.trim()).filter((l) => l.length >= MIN_LINE_LENGTH);
       if (lines.length < threshold) continue;
       const counts = Object.create(null);
       for (const line of lines) {
@@ -657,7 +725,33 @@ result.recommendation = verdict === 'pass' ? 'accept'
 // (below) AND the recorder block (further down) both reference the same
 // resolved value. Frontmatter takes precedence over CLI flag — frontmatter
 // is set at spawn-time per chaos-test flow; CLI flag is an override.
-const _resolvedIdentity = frontmatter.identity || args.identity || null;
+//
+// v2.9.0 Phase B.2 (FIX-I2) — precedence + recovery:
+//   (1) frontmatter.identity wins when present (set by actor per
+//       skills/agent-team/kb/hets/spawn-conventions.md §"YAML quoting
+//       requirement"). CLI args.identity is an override path for ad-hoc
+//       verifier calls (manual debugging; non-spawn flow).
+//   (2) Null-fallback: when frontmatter.identity decodes to null AND the
+//       raw frontmatter text DOES have an `identity:` line, fall back to
+//       `_extractIdentityFromRaw` (bypasses YAML semantics — catches the
+//       unquoted-`~` case from spec-compliant parsers).
+//   (3) Drift-note: when frontmatter.identity AND args.identity are BOTH
+//       set AND they DIFFER, log a drift-note to stderr (observability;
+//       does NOT alter the verdict — caller wins per (1)).
+let _resolvedIdentity = frontmatter.identity || args.identity || null;
+if (_resolvedIdentity === null && typeof output === 'string') {
+  try {
+    const { _extractIdentityFromRaw } = require('./_lib/frontmatter');
+    const recovered = _extractIdentityFromRaw(output);
+    if (recovered) {
+      _resolvedIdentity = recovered;
+      process.stderr.write(`[contract-verifier] drift-note: identity recovered via raw-fallback (FIX-I2) — frontmatter parsed as null; raw extraction yielded "${recovered}"\n`);
+    }
+  } catch { /* fallback is best-effort */ }
+}
+if (frontmatter.identity && args.identity && frontmatter.identity !== args.identity) {
+  process.stderr.write(`[contract-verifier] drift-note: identity-mismatch — frontmatter="${frontmatter.identity}" vs CLI --identity="${args.identity}" (frontmatter wins; FIX-I2 precedence)\n`);
+}
 
 // v2.8.0.x — SynthId suffix validation. Computes the expected hash from
 // the current contract and compares to the suffix embedded in the

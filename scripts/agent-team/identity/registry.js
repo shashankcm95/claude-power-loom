@@ -387,9 +387,23 @@ function _backfillSchema(identity) {
   }
   if (identity.spawnsSinceFullVerify === undefined) identity.spawnsSinceFullVerify = 0;
   if (identity.lastFullVerifyAt === undefined) identity.lastFullVerifyAt = null;
-  // v2.8.0 — HETS-SynthId content-hash history. Each entry:
-  //   { hash: <8 hex>, observedAt: <ISO>, note?: <string> }
-  // Empty array on pre-v2.8.0 records; first post-upgrade assign backfills.
+  // v2.8.0 — HETS-SynthId content-hash history.
+  //
+  // v2.9.0 FIX-I10 (Phase A.3) — CANONICAL ENTRY SHAPE documented here so
+  // future code paths that consume synthid_history won't repeat the
+  // `synthIdHash` field-name regression (FIX-I10 was caught when
+  // verification-policy.js:171 interpolated the wrong field name and the
+  // rationale silently showed `? → ?`).
+  //
+  // Canonical entry shape (DO NOT rename without updating ALL readers):
+  //   {
+  //     hash:       <8-hex content-hash string from _lib/synthid.js>,
+  //     observedAt: <ISO 8601 timestamp string>,
+  //     note?:      <one of 'first-observed' | 'persona-contract-drift' | string>
+  //   }
+  //
+  // Empty array on pre-v2.8.0 records; first post-upgrade assign backfills
+  // via lifecycle-spawn.js cmdAssign.
   if (!Array.isArray(identity.synthid_history)) identity.synthid_history = [];
   // v2.8.0.x — pending-drift flag. Set by cmdAssign when persona-contract
   // drift is detected (hash mismatch vs prior head); consumed by
@@ -416,7 +430,71 @@ function _backfillSchema(identity) {
       ? identity.totalSpawns
       : 0;
   }
+  // v2.9.0 FIX-I3 (Phase A.2) — counter/history invariant.
+  //
+  // Invariant: sum(verdicts) == history.length + dropped_to_cap_count
+  //   - Each cmdRecord: +1 to verdicts AND +1 to history (=> invariant preserved)
+  //   - Cap-trim at QUALITY_FACTORS_HISTORY_CAP: -1 from history AND +1 to dropped_to_cap_count (=> invariant preserved)
+  //   - Legacy identities pre-H.7.0-prep: history=[] but verdicts already accumulated
+  //
+  // Auto-reconcile: if invariant violated on read, reset
+  //   dropped_to_cap_count = max(0, sum(verdicts) - history.length)
+  // and emit drift_detected warning to stderr.
+  //
+  // Motivation: v2.8.5-treatment surfaced mio (5 verdicts, 4 history) — DRIFT-014.
+  // Theme 2 (per architect.theo's design review): "two records of the same truth"
+  // is a recurring anti-pattern; this fix is the mid-step toward v3.x event-sourcing
+  // (kb:architecture/crosscut/idempotency Pattern 4) without breaking backwards-compat.
+  if (identity.dropped_to_cap_count === undefined) {
+    identity.dropped_to_cap_count = 0;
+  }
+  const verdictsSum = (identity.verdicts.pass || 0)
+    + (identity.verdicts.partial || 0)
+    + (identity.verdicts.fail || 0);
+  const historyLen = (identity.quality_factors_history || []).length;
+  const expectedSum = historyLen + identity.dropped_to_cap_count;
+  if (verdictsSum !== expectedSum) {
+    // Invariant violated — reconcile by adjusting dropped_to_cap_count.
+    // Two sub-cases:
+    //   (a) verdictsSum > expectedSum: legacy-backfill OR external cap-trim
+    //       without dropped_to_cap_count increment. Adjust upward.
+    //   (b) verdictsSum < expectedSum: history grew beyond verdicts. Shouldn't
+    //       happen under v2.9.0 semantics but defend: clamp dropped_to_cap_count
+    //       to satisfy invariant (history.length + dropped = verdictsSum).
+    const newDropped = Math.max(0, verdictsSum - historyLen);
+    if (process.env.HETS_SILENCE_DRIFT !== '1') {
+      process.stderr.write(
+        `WARN: drift_detected on identity ${identity.persona}.${identity.name}: ` +
+        `sum(verdicts)=${verdictsSum} != history.length=${historyLen} + ` +
+        `dropped_to_cap_count=${identity.dropped_to_cap_count}. ` +
+        `Auto-reconciling dropped_to_cap_count -> ${newDropped}. ` +
+        '(See kb:architecture/crosscut/idempotency Pattern 6 saga compensation.)\n'
+      );
+    }
+    identity.dropped_to_cap_count = newDropped;
+  }
   return identity;
+}
+
+/**
+ * v2.9.0 FIX-I3 (Phase A.2) — reconciled verdicts total helper.
+ *
+ * Returns the canonical "how many verdicts has this identity received" number.
+ * Equivalent to `sum(verdicts.{pass,partial,fail})` after _backfillSchema has
+ * been called (which is the contract: callers must backfill before reading).
+ *
+ * Use this in any code path that needs the verdict total — instead of inlining
+ * `verdicts.pass + verdicts.partial + verdicts.fail` — so future event-sourcing
+ * migration (Theme 2) only needs to update one site.
+ *
+ * @param {object} identity - backfilled identity record
+ * @returns {number} reconciled verdict total
+ */
+function reconciledVerdictsTotal(identity) {
+  if (!identity || !identity.verdicts) return 0;
+  return (identity.verdicts.pass || 0)
+    + (identity.verdicts.partial || 0)
+    + (identity.verdicts.fail || 0);
 }
 
 // _computeRecommendation — used by cmdPrune. Identifies retire + tag-specialist
@@ -737,6 +815,8 @@ module.exports = {
   ensureIdentity,
   _backfillSchema,
   _computeRecommendation,
+  // v2.9.0 FIX-I3 — reconciled verdicts total (Phase A.2)
+  reconciledVerdictsTotal,
   // Subcommand handlers
   cmdInit,
   cmdList,

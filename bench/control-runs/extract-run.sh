@@ -21,11 +21,14 @@ set -e
 
 PROJECT=""
 TARGET=""
+STRICT=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --project) PROJECT="$2"; shift 2 ;;
     --target)  TARGET="$2"; shift 2 ;;
+    --strict)  STRICT="1"; shift ;;
+    --tag)     TARGET="bench/control-runs/$2"; shift 2 ;;   # convenience
     *) echo "unknown arg: $1"; exit 1 ;;
   esac
 done
@@ -67,6 +70,7 @@ PHASE3_DEBRIEF="$PROJECT/bench/phase-3-debrief.md"
 # MANIFEST.md / notes.md content.
 EXTRACT_TARGET="$TARGET" \
 EXTRACT_PROJECT="$PROJECT" \
+EXTRACT_STRICT="$STRICT" \
 EXTRACT_FINAL_DEBRIEF="$FINAL_DEBRIEF" \
 EXTRACT_PHASE1_DEBRIEF="$PHASE1_DEBRIEF" \
 EXTRACT_PHASE2_DEBRIEF="$PHASE2_DEBRIEF" \
@@ -177,10 +181,28 @@ for p in phase4_patterns.get("patterns", [])[len(baseline_patterns.get("patterns
     elif v == "fail": v_fail += 1
 
 # ---- Spawn ceremony deviation rate ----
-# Heuristic: actors spawned outside the pattern-recorder loop didn't generate entries.
-# If actors_spawned (from FINAL-DEBRIEF "Total spawns" line) > verdicts_recorded, the excess deviated.
-actors_match = re.search(r"Total spawns\s*[\|:]\s*(\d+)", all_text)
-actors_spawned = int(actors_match.group(1)) if actors_match else verdicts_added
+# v2.9.0 FIX-I5 (Phase A.1): regex matches BOTH "Total spawns: N" (legacy
+# v2.8.2/v2.8.3 format) AND "Sub-agent spawns total | N" (v2.8.5+ format).
+# Per lior CRITICAL-1: this measurement instrumentation MUST ship before
+# CRITICAL-1 counter-integrity warns (Phase A.2) so the noise floor is
+# empirically verifiable.
+#
+# Per lior HIGH-3b: when regex misses, the prior code silently fell back to
+# verdicts_added — anti-silencing principle violated. Now: fallback fires
+# WARN to stderr + marks the field as _unfilled.
+actors_match = re.search(r"(?:Sub-agent spawns total|Total spawns)\s*[\|:]\s*(\d+)", all_text)
+actors_spawned_fallback_used = False
+if actors_match:
+    actors_spawned = int(actors_match.group(1))
+else:
+    actors_spawned = verdicts_added
+    actors_spawned_fallback_used = True
+    sys.stderr.write(
+        "WARN: extract-run.sh actors_spawned regex did not match either "
+        "'Sub-agent spawns total' or 'Total spawns' in FINAL-DEBRIEF. "
+        f"Falling back to verdicts_added={verdicts_added}. "
+        "Re-check FINAL-DEBRIEF format. Field marked as _unfilled in metrics.json.\n"
+    )
 spawn_ceremony_deviation = round(1.0 - (verdicts_added / actors_spawned), 3) if actors_spawned > 0 else 0.0
 verdict_loop_closure = round(verdicts_added / actors_spawned, 3) if actors_spawned > 0 else 0.0
 
@@ -237,7 +259,7 @@ metrics = {
         "Auto-extracted via extract-run.sh. Manually review/fill the None fields:",
         "  - contract_verifier_exercise_rate (count from spawn debrief)",
         "  - hook_runtime_gaps (count documented in FINAL-DEBRIEF 'gap' or 'runtime' findings)",
-        "  - forge_cite_rate (forged skills cited by ≥1 downstream actor)",
+        "  - forge_cite_rate (forged skills cited by >=1 downstream actor)",
         "  - synthid_drift_events (grep ~/.claude/logs/ for synthid_drift:true)",
         "  - tier_2_project metrics (run eslint/tsc/test commands against the project)",
         "  - qualitative_flags (read FINAL-DEBRIEF for evidence)",
@@ -245,9 +267,44 @@ metrics = {
     ],
 }
 
+# v2.9.0 FIX-I5 (Phase A.1) — track _unfilled fields explicitly so aggregate.py
+# can refuse them by inspection rather than coincidental skip (lior HIGH-4
+# absorbed). Also note actors_spawned_total when the regex-fallback fired
+# (lior HIGH-3b — fail-loud on silent fallback).
+unfilled_fields = []
+if metrics["tier_1_substrate"]["contract_verifier_exercise_rate"] is None:
+    unfilled_fields.append("contract_verifier_exercise_rate")
+if metrics["tier_1_substrate"]["hook_runtime_gaps"] is None:
+    unfilled_fields.append("hook_runtime_gaps")
+if metrics["tier_1_substrate"]["forge_cite_rate"] is None:
+    unfilled_fields.append("forge_cite_rate")
+if metrics["tier_1_substrate"]["synthid_drift_events"] is None:
+    unfilled_fields.append("synthid_drift_events")
+for k in ("tests_passing", "build_success", "eslint_errors", "typescript_errors", "wall_clock_hours_total"):
+    if metrics["tier_2_project"][k] is None:
+        unfilled_fields.append(f"tier_2_project.{k}")
+if actors_spawned_fallback_used:
+    unfilled_fields.append("actors_spawned_total")  # regex-fallback was used; value is suspect
+metrics["_unfilled_fields"] = unfilled_fields
+
 # Write metrics.json
 target.mkdir(parents=True, exist_ok=True)
 (target / "metrics.json").write_text(json.dumps(metrics, indent=2) + "\n")
+
+# v2.9.0 FIX-I5 (Phase A.1) — --strict flag: exit 2 if any null field remains
+# unfilled. Operator MUST backfill before aggregate.py will consume the file.
+# Per lior HIGH-3b absorption: silencing is the worst pattern; this makes the
+# omission loud rather than coincidentally-skipped downstream.
+if os.environ.get("EXTRACT_STRICT") and unfilled_fields:
+    sys.stderr.write(
+        f"\nWARN: --strict mode + {len(unfilled_fields)} unfilled field(s) "
+        f"remain in metrics.json: {', '.join(unfilled_fields)}\n"
+        "These fields require manual backfill before aggregate.py can use this "
+        "run. See _extraction_notes in metrics.json. Exiting 2.\n"
+    )
+    # Still write the MANIFEST/notes stubs below before exiting? No — strict
+    # exit signals "this run is not ready for aggregation". Stop now.
+    sys.exit(2)
 
 # Stub MANIFEST.md and notes.md if absent
 if not (target / "MANIFEST.md").exists():

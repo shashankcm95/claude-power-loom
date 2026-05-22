@@ -60,10 +60,20 @@ role: actor
 depth: 1
 parent: super-root
 persona: {NN-name}
-identity: {persona}.{name}
+identity: "{persona}.{name}~{contentHash}"
 task: ...
 ---
 ```
+
+**YAML quoting requirement (v2.9.0 FIX-I2)**: the `identity` scalar MUST be
+double-quoted. SynthId suffixes contain `~` (e.g. `04-architect.theo~f8bf4854`),
+which is the YAML 1.2 null literal marker — an unquoted scalar with a leading
+`~` is parsed as null by spec-compliant parsers. Always quote.
+
+If a legacy report has unquoted `identity:` and the suffix appears to have
+been dropped, `contract-verifier.js` falls back to `_extractIdentityFromRaw`
+(see `_lib/frontmatter.js`) which extracts the raw scalar bypassing YAML
+semantics. The drift-note logs to stderr but does NOT fail the verdict.
 
 #### 5. Verify and record
 

@@ -125,7 +125,14 @@ function cmdRecord(args) {
     };
     data.quality_factors_history.push(entry);
     if (data.quality_factors_history.length > QUALITY_FACTORS_HISTORY_CAP) {
+      const dropCount = data.quality_factors_history.length - QUALITY_FACTORS_HISTORY_CAP;
       data.quality_factors_history = data.quality_factors_history.slice(-QUALITY_FACTORS_HISTORY_CAP);
+      // v2.9.0 FIX-I3 (Phase A.2) — track cap-trim drops so invariant
+      // sum(verdicts) == history.length + dropped_to_cap_count holds across
+      // the cap-trim event. _backfillSchema (in registry.js) reconciles on
+      // read; this is the WRITE-side accounting that keeps the invariant
+      // tight without needing reconcile-on-read for normal cap-trim flow.
+      data.dropped_to_cap_count = (data.dropped_to_cap_count || 0) + dropCount;
     }
     persistFn();
     console.log(JSON.stringify({

@@ -8,6 +8,83 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [2.9.0] — 2026-05-22 — Substrate bundle: measurement + discoverability + doctor + observability gate
+
+**Minor release.** Closes 10 fixes (I1–I10) surfaced by deep audit across 4 bench runs (v2.8.2-run1, v2.8.3-run1, v2.8.5-treatment, v2.8.5-control). Per ADR-0007, this ships under MINOR (not PATCH) because four new substrate entrypoints are introduced: `_format-spec.md` canonical doc, `scripts/agent-team/doctor.js` CLI + probes, `_lib/env-placeholder.js` helper, and `hooks/scripts/validate-config-redirect.js` PreToolUse:Bash hook.
+
+**Cadence**: Phases A → B → C → D → E executed sequentially with TDD-treatment + formal HETS ceremony (architect.theo design review absorbed; lior + riley challenger spawns recorded). Each phase sub-tagged for forensic granularity:
+- `v2.9.0-phase-A-measurement-and-integrity`
+- `v2.9.0-phase-B-discoverability`
+- `v2.9.0-phase-C-doctor-probes`
+- `v2.9.0-phase-D-observability-gate`
+- `v2.9.0-phase-E-adrs-and-policy`
+
+### Phase A — measurement-first counter integrity
+
+Per lior CRITICAL-1 (phase-ordering pushback): measurement instrumentation MUST ship BEFORE counter-integrity warns so the noise floor is empirically verifiable.
+
+- **FIX-I5** (`bench/control-runs/extract-run.sh`) — regex matches both `Sub-agent spawns total: N` (v2.8.5+) AND `Total spawns: N` (legacy); new `--strict` flag exits 2 on null fields; line 183 silent fallback now fires WARN to stderr; `_unfilled_fields[]` array tracks unfilled metrics; `aggregate.py` refuses `_unfilled` metrics with clear error (no more silent skip). Anchor: `kb:architecture/discipline/error-handling-discipline`
+- **FIX-I3** (`scripts/agent-team/identity/registry.js` + `verdict-recording.js` + `verification-policy.js`) — new `dropped_to_cap_count` field, backfilled to `max(0, sum(verdicts) - history.length)` for legacy identities; invariant: `sum(verdicts) == history.length + dropped_to_cap_count`; auto-reconcile on violation with `drift_detected` stderr warn (silenceable via `HETS_SILENCE_DRIFT=1`); cap-trim event increments the counter; `cmdTier` now calls `_backfillSchema` before reading verdicts (lior MEDIUM-1 real-bug catch). New `reconciledVerdictsTotal()` helper exported for future event-sourcing migration
+- **FIX-I10** (`identity/verification-policy.js` + `identity/registry.js`) — `synthIdHash` → `hash` field-name regression fixed in rationale interpolation (line 167: `tail[0].hash` not `tail[0].synthIdHash`); CANONICAL ENTRY SHAPE JSDoc block in registry.js documents `synthid_history` entry schema `{hash, observedAt, note?}`. Dogfood-caught during theo's design review when `recommend-verification --identity 04-architect.theo` showed `? → ?` rationale
+
+### Phase B — discoverability + format-spec hardening
+
+Per architect.theo HIGH-1 + HIGH-2 framing: the load-bearing failures across 4 bench runs were "format constraints actors silently misread" + "YAML special char silently dropping identity suffix." Fix shape: centralize spec, surface structured hints, defense-in-depth quoting.
+
+- **FIX-I1** — new `swarm/personas-contracts/_format-spec.md` canonical doc; all 18 contracts now carry `_format` pointer field; `contract-verifier.js` `minFindings` returns rich `{pass: false, hint, orphanH3s, findingsCount}` when F3 fails AND orphan severity-shaped H3s detected (e.g. `### LOW-1:` without parent `## LOW`). Hint points back to `_format-spec.md` so failure is self-explaining. Architect.theo HIGH-1: *"the fix isn't 'update the _doc'; it's 'make the format constraint impossible to misread + add a structured hint at the failure boundary.'"*
+- **FIX-I2** — 4 doc sites updated to show YAML-quoted `identity: "{persona}.{name}~{contentHash}"` (spawn-conventions, chaos-test, USING, challenger-conventions); new `_extractIdentityFromRaw()` helper in `_lib/frontmatter.js` recovers literal `identity:` scalar bypassing YAML semantics (defense against spec-compliant `~`-as-null parsers); identity-disagreement drift-note in verifier (when frontmatter.identity AND CLI --identity both set AND differ). Architect.theo HIGH-2: *"YAML parses `~` as null."*
+- **FIX-I6** — `noUnrolledLoops` min-line-length filter bumped from 3 to 20 (`MIN_LINE_LENGTH = 20` named constant). Empirical false-positive surfaces enumerated: stacked `});` closers in nested-handler code, ORM schema files with short-line columns (Drizzle / Prisma), TypeScript import manifests with identical-shape lines. 1000-zeros / fizzbuzz family (the actual target) easily clears 20 chars
+
+### Phase C — doctor umbrella + env-placeholder + ml-engineer scope
+
+Per architect.theo HIGH-3 (rejected `library-migrate doctor` subverb; proposed new umbrella) + bench v2.8.5-control silent-stub diagnosis + FIX-H2 follow-up.
+
+- **FIX-I4** — new `scripts/agent-team/doctor.js` dispatcher with `--probe NAME / --strict / --json` flags; 4 initial probes under `doctor/probes/`: `env-inheritance` (Bash sub-shell guard against `[ -n $X ]` truthy + ${#X}=0 leak), `partition-sentinel` (agent-patterns per-persona partition state), `lock-staleness` (stale .lock files), `hook-installation` (settings.json hook wiring validation). New 4-value status enum: `pass | warn | fail | not-implemented` (the 4th surfaces probes registered/requested but not yet built — explicit-unknown vs silent-skip). `--strict` escalates ONLY `fail` to exit 1; warn + not-implemented are NEVER fatal (observability vs gate)
+- **FIX-I7** — new `scripts/agent-team/_lib/env-placeholder.js` canonical helper; `isPlaceholderEnvValue()` recognizes 8 placeholder shapes (empty / `<angle-bracketed>` / `XXX+` / `TODO|FIXME|CHANGEME` / `YOUR_*_HERE` / `${VAR}` / literal `...` / `placeholder`). Refactored `env-inheritance` probe to use the shared helper (DRY per `kb:architecture/crosscut/single-responsibility`)
+- **FIX-I8** — `swarm/personas/08-ml-engineer.md` persona brief now covers BOTH training-pipeline AND inference-API-consumption paths explicitly. FIX-H2 had patched the contract `_scope_note` + `agents/ml-engineer.md` but the persona brief still led with training-only framing. New fixture test `tests/unit/scripts/ml-engineer-scope-coherence.test.js` asserts scope coherence across all 3 surfaces (re-usable pattern for any future persona-scope clarification)
+
+### Phase D — observability gate for config-bypass via Bash
+
+Per architect.theo HIGH-5 (the design-pushback's load-bearing role): config-guard.js (PreToolUse:Write) blocks edits to protected configs. Bash heredocs / redirects bypass it. Naive fix ("extend config-guard to parse Bash") is itself an anti-pattern worth cataloging.
+
+- **FIX-I9** — new `hooks/scripts/validate-config-redirect.js` (PreToolUse:Bash); detects `>`, `>>`, `tee` targeting `config-guard-patterns.json`-protected files; default behavior `decision: 'approve'` + stderr WARN (observability without false-positive cliff); `STRICT_CONFIG_GUARD=1` env var escalates to `decision: 'block'` (reserved for CI / audit). Wired into `hooks/hooks.json` under PreToolUse:Bash matcher. New `kb:design-pushback/syntactic-gate-extension-for-tool-bypass` catalog entry documents the underlying anti-pattern with empirical-origin trail; cross-refs `kb:architecture/discipline/refusal-patterns` (substrate-scope-refusal parent category) — architect.theo HIGH-5: *"acting on it via 'more gates' might cost more in false-positives + operator-trust than the original bypass cost"*
+
+### Phase E — ADR + policy decisions
+
+- **ADR-0007** — Bump v2.9.0 as MINOR (not PATCH) — substrate-fundament additions. Governance-tier ADR documenting the semver rule: 0 new entrypoints = PATCH (anchor v2.8.2 bench-fix bundle); ≥1 new substrate entrypoint = MINOR (anchors v2.1.0 library / v2.2.0 daybook / v2.9.0)
+- **DEVIATION-003/006/007 policy** — HETS implementer-challenger mandate decision (`swarm/thoughts/shared/policy-deviation-003-006-007-hets-challenger-required.md`). 4 options considered; **Option D selected**: defer to v3.x with explicit measurement plan. Rationale anchors on Phase A's measure-before-mandate discipline; the v2.9.0 substrate (agent-team doctor + format-spec hint + env-placeholder) is the infrastructure future enforcement will use; the mandate ride-along comes after test3 + test4 challenger-rate measurement
+
+### Tests + verification
+
+- `install.sh --hooks --test`: **116/116 passing**
+- Unit suite: **108/108 passing** across 10 test files
+  - Phase A (18): `extract-run` (6) + `counter-history-invariant` (8) + `verification-policy-rationale` (4)
+  - Phase B (23): `format-spec-hint` (10) + `yaml-identity-quoting` (8) + `no-unrolled-loops-threshold` (5)
+  - Phase C (52): `agent-team-doctor` (14) + `env-placeholder` (31) + `ml-engineer-scope-coherence` (7)
+  - Phase D (15): `validate-config-redirect` (15)
+- ESLint: 0 errors
+- ADR-0006 invariant 1 preserved: 0 `eslint-disable` directives in modified surface
+
+### Empirical bug surfaces addressed
+
+- `bench/control-runs/v2.8.5-control` Phase 3-4 silent-stub degradation (env-inheritance + env-placeholder)
+- `bench/control-runs/v2.8.5-treatment` ml-engineer scope drift (fixture test)
+- `bench/control-runs/v2.8.5-control` Phase 1 config-bypass demo (validate-config-redirect)
+- 4 bench runs counter-history invariant violations (FIX-I3 backfill + auto-reconcile)
+- v2.8.5-treatment regex miss on "Sub-agent spawns total: N" (FIX-I5)
+- Dogfood-catch during design review: synthIdHash → hash regression (FIX-I10)
+
+### Architect dogfood ceremony
+
+The v2.9.0 design review itself exercised the HETS ceremony:
+- architect.theo (high-trust, synthid_drift_active) — 13 findings, 26 citations, PASS
+- challenger lior (honesty-auditor) — 9 findings, 31 citations, convergence: disagree
+- challenger riley (ios-developer) — 4 findings, 26 citations, convergence: disagree
+
+All 3 ceremonies recorded via `pattern-recorder`; verdict + verification-policy run live. lior's CRITICAL-1 phase-ordering pushback materially restructured the plan; riley's HIGH-1 iOS exec-graph + MEDIUM-1 persona-split argument provided cross-domain disconfirmation. The substrate verified itself.
+
+---
+
 ## [2.8.6] — 2026-05-22 — Design-pushback KB anchor (Path A; proactive anti-pattern catalog)
 
 **Patch release.** Closes the "imbue critical pushback into the system" design question that came up post-v2.8.5. Adds a new KB section `skills/agent-team/kb/design-pushback/` with a schema doc + 5 anchor anti-pattern entries. Architect + planner personas now consult this catalog at brief-intake to surface known suboptimal user choices BEFORE proposing a design.

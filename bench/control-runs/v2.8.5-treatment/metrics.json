@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "run_id": "v2.8.5-treatment",
+  "extracted_at_utc": "2026-05-22T17:11:55.384188Z",
+  "extraction_method": "extract-run.sh",
+  "source_project": "/Users/shashankchandrashekarmurigappa/projects/textbook-tutorial-v2.8.5-treatment",
+  "tier_1_substrate": {
+    "findings_density_critical_high": 14,
+    "findings_density_total": 38,
+    "convergence_rate": 0.0,
+    "verdict_loop_closure": 0.0,
+    "tier_transition_count": 0,
+    "contract_verifier_exercise_rate": null,
+    "hook_runtime_gaps": null,
+    "forge_cite_rate": null,
+    "tokens_per_finding": 0,
+    "spawn_ceremony_deviation_rate": 0.0,
+    "cache_reuse_pct": null,
+    "synthid_drift_events": null
+  },
+  "tier_2_project": {
+    "tests_passing": null,
+    "build_success": null,
+    "eslint_errors": null,
+    "typescript_errors": null,
+    "wall_clock_hours_total": null
+  },
+  "qualitative_flags": {},
+  "deviations": [],
+  "findings_breakdown_by_severity": {
+    "critical": 1,
+    "high": 13,
+    "medium": 8,
+    "low": 16
+  },
+  "tier_transitions_detail": [],
+  "actors_spawned_total": 0,
+  "verdicts_recorded": {
+    "pass": 0,
+    "partial": 0,
+    "fail": 0
+  },
+  "tokens": {},
+  "_extraction_notes": [
+    "Auto-extracted via extract-run.sh. Manually review/fill the None fields:",
+    "  - contract_verifier_exercise_rate (count from spawn debrief)",
+    "  - hook_runtime_gaps (count documented in FINAL-DEBRIEF 'gap' or 'runtime' findings)",
+    "  - forge_cite_rate (forged skills cited by \u22651 downstream actor)",
+    "  - synthid_drift_events (grep ~/.claude/logs/ for synthid_drift:true)",
+    "  - tier_2_project metrics (run eslint/tsc/test commands against the project)",
+    "  - qualitative_flags (read FINAL-DEBRIEF for evidence)",
+    "  - deviations (capture environment/brief-spec/tooling-failure departures)"
+  ]
+}
