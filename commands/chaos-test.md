@@ -89,6 +89,28 @@ After super agent completes, display:
 
 **Do not start fixing anything** — the chaos test is the audit. A separate `/forge` or manual approval kicks off the fix phase.
 
+## Hook-log analysis discipline (v2.8.3 — added after CHAOS-SUB-1 false-positive)
+
+When actors inspect `~/.claude/logs/*.log` to make claims about CURRENT toolkit behavior, they MUST filter log entries by timestamp. Specifically:
+
+1. **Identify the most-recent `/plugin update` timestamp**. Two cheap signals:
+   - `stat -f '%Sm' ~/.claude/plugins/cache/power-loom-marketplace/power-loom/<X.Y.Z>/.claude-plugin/plugin.json` (file mtime — when the cache dir was last refreshed)
+   - The `[*]` annotation in any plugin-update reply in the user's conversation history
+2. **Filter all log analysis to entries newer than that timestamp.** Older entries reflect PRE-update behavior of older hook code; they are NOT evidence about the current substrate.
+3. **State the filter explicitly** in the finding write-up: "I filtered log entries to `>= YYYY-MM-DDTHH:MM:SSZ` (last plugin update); N entries matched."
+
+### Why this matters (the empirical motivation)
+
+The v2.8.2-run1 PDF→Tutorial shakedown's chaos audit produced one CRITICAL finding — "prompt-enrich Fix-2(a) broken in runtime" — caught independently by two actors (`blair` + `lior`). Investigation post-shakedown disproved the finding:
+
+- All hook copies on disk were byte-identical and contained the fix
+- Post-/plugin-update log entries showed the fix operative correctly
+- The "broken behavior" entries both actors cited were PRE-/plugin-update
+
+The convergence between two actors looked like strong validation but was actually two actors making the same temporal-blindness error. **Convergence between actors with shared methodological blindspots is NOT a reliable signal.** See `kb:agent-team/patterns/asymmetric-challenger` §Failure Modes #4 (shared-method-convergence false-positive) for the deeper pattern note.
+
+When in doubt: also spawn a live PROBE (not just a log read). A diverse-method convergence (one actor reads logs, another spawns a fresh test prompt and inspects the response) is qualitatively stronger than two actors both reading the same log.
+
 ## Why a hierarchical chaos test?
 
 Flat swarms (5 actors → 1 aggregator) miss cross-cutting patterns. The hierarchy lets:

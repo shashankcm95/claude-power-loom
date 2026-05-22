@@ -137,6 +137,7 @@ function main(argv) {
   if (sub === 'rollback') return cmdRollback(rest);
   if (sub === 'partition-personas') return cmdPartitionPersonas(rest);
   if (sub === 'add-synthid') return cmdAddSynthid(rest);
+  if (sub === 'sync-legacy') return cmdSyncLegacy(rest);
   process.stderr.write(`library-migrate: unknown subcommand "${sub}"\n`);
   process.exit(2);
 }
@@ -150,6 +151,7 @@ function printHelp() {
     '  library-migrate rollback           --to <run-id>',
     '  library-migrate partition-personas [--dry-run] [--run-id <id>] [--force]',
     '  library-migrate add-synthid        [--dry-run]',
+    '  library-migrate sync-legacy        [--dry-run]',
     '',
     'migrate (v2.1.0):       CHECK sentinel → BACKUP atomically → PHASE 1 copy+hash-verify →',
     '                        PHASE 2 symlink-swap → SENTINEL write',
@@ -158,6 +160,10 @@ function printHelp() {
     'add-synthid             One-shot backfill of synthid_history for all existing identities.',
     '(v2.8.0.x):             Computes hash against CURRENT persona contract + plugin MAJOR.MINOR.',
     '                        Idempotent: skips identities whose synthid_history.last.hash matches.',
+    'sync-legacy             Rebuilds ~/.claude/agent-identities.json from the bulkhead per-',
+    '(v2.8.3):               persona store (the live source-of-truth post-partition). The legacy',
+    '                        file fossilized at pre-partition state; this resyncs it for tools',
+    '                        + benchmarks that still read it directly. Idempotent.',
     '',
   ].join('\n'));
 }
@@ -636,6 +642,87 @@ function cmdAddSynthid(args) {
 }
 
 // ===========================================================================
+// sync-legacy (v2.8.3 — rebuild agent-identities.json from bulkhead store)
+// ===========================================================================
+
+/**
+ * Rebuild ~/.claude/agent-identities.json from the live bulkhead per-persona
+ * store. After `library-migrate partition-personas` runs (H.9.21.1 v2.1.1),
+ * all identity writes go to per-persona files via `_writeStorePartitioned()`
+ * in registry.js. The legacy `agent-identities.json` file is never written
+ * to again — it fossilizes at its pre-partition state.
+ *
+ * This was caught by the v2.8.2-run1 PDF→Tutorial shakedown (CHAOS-SUB-2):
+ * the bench harness was capturing the stale legacy file as the identity-
+ * store baseline, producing subtle bugs in tier-transition computations
+ * (new bulkhead-only identities looked "new" rather than "transitioned").
+ *
+ * This subcommand fixes the staleness on-demand by:
+ *   1. Calling registry.readStore() which auto-dispatches to the live store
+ *      (bulkhead per-persona files when sentinel exists)
+ *   2. Writing the projected full-store view to STORE_PATH via writeAtomic
+ *
+ * Idempotent: re-running just overwrites with the same content. No state
+ * accumulates. If bulkhead is NOT active (pre-partition install), this is
+ * a no-op with an explanatory message.
+ *
+ * --dry-run reports the projected identity count + per-persona breakdown
+ * without writing.
+ */
+function cmdSyncLegacy(args) {
+  const opts = parseOpts(args);
+  const isDryRun = !!opts['dry-run'];
+
+  // Lazy require — these modules pull in the live identity store +
+  // bulkhead detection; isolate them inside the subcommand.
+  const registry = require('./agent-team/identity/registry');
+
+  // Bulkhead must be active for sync-legacy to do anything meaningful.
+  // Pre-partition, the legacy file IS the source-of-truth (no divergence
+  // to sync).
+  if (!registry._isBulkheadActive()) {
+    process.stdout.write('library-migrate sync-legacy: bulkhead not active (no partition sentinel).\n');
+    process.stdout.write('  → legacy file IS already the source of truth in this mode; sync is a no-op.\n');
+    process.stdout.write('  → run `library-migrate partition-personas` first if you want bulkhead mode.\n');
+    return;
+  }
+
+  // readStore() auto-dispatches to _readStorePartitioned() under bulkhead.
+  // No lock needed for a read-only projection.
+  const store = registry.readStore();
+  const identityCount = Object.keys(store.identities || {}).length;
+
+  // Per-persona breakdown for human inspection
+  const byPersona = {};
+  for (const [, data] of Object.entries(store.identities)) {
+    if (!byPersona[data.persona]) byPersona[data.persona] = 0;
+    byPersona[data.persona] += 1;
+  }
+
+  process.stdout.write(
+    `library-migrate sync-legacy: bulkhead store has ${identityCount} identities ` +
+    `across ${Object.keys(byPersona).length} personas${isDryRun ? ' (--dry-run)' : ''}\n`
+  );
+  for (const p of Object.keys(byPersona).sort()) {
+    process.stdout.write(`  ${p}: ${byPersona[p]} identities\n`);
+  }
+
+  if (isDryRun) {
+    process.stdout.write(`\n--dry-run; legacy ${registry.STORE_PATH} NOT updated.\n`);
+    process.stdout.write(`Re-run without --dry-run to write.\n`);
+    return;
+  }
+
+  // Write via writeAtomic directly to STORE_PATH. We can't call
+  // registry.writeStore() — that would dispatch back to bulkhead under
+  // current mode. The point of sync-legacy is to write the legacy shape
+  // SPECIFICALLY to the legacy path regardless of dispatch mode.
+  writeAtomic(registry.STORE_PATH, store);
+  process.stdout.write(`\nlibrary-migrate sync-legacy: WROTE ${registry.STORE_PATH}\n`);
+  process.stdout.write(`  ${identityCount} identities · ${Object.keys(byPersona).length} personas\n`);
+}
+
+// ===========================================================================
 // Helpers
 // ===========================================================================
 
@@ -674,4 +761,6 @@ module.exports = {
   // v2.8.0.x — add-synthid backfill subcommand (test surface)
   cmdAddSynthid,
   _partitionVerdicts,
+  // v2.8.3 — sync-legacy subcommand (test surface)
+  cmdSyncLegacy,
 };

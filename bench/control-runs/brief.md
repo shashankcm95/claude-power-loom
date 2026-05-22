@@ -111,11 +111,22 @@ TS=$(date +%Y%m%d-%H%M%S)
 OUT="bench/snapshots/${PHASE}-${TS}"
 mkdir -p "$OUT"
 
+# v2.8.3 — sync legacy agent-identities.json from bulkhead per-persona store
+# BEFORE snapshotting. Without this, the legacy file is fossilized at its
+# pre-partition state and the snapshot captures stale data (CHAOS-SUB-2
+# finding from v2.8.2-run1). The sync is a no-op when bulkhead is inactive.
+node ~/Documents/claude-toolkit/scripts/library-migrate.js sync-legacy >/dev/null 2>&1 || true
+
 cp ~/.claude/agent-identities.json "$OUT/agent-identities.json" 2>/dev/null
 cp ~/.claude/agent-patterns.json "$OUT/agent-patterns.json" 2>/dev/null
+cp -r ~/.claude/library/sections/agents/stacks/identities/ "$OUT/identities-library/" 2>/dev/null
 cp -r ~/.claude/library/sections/agents/stacks/verdicts/ "$OUT/verdicts-library/" 2>/dev/null
 cp ~/.claude/self-improve-counters.json "$OUT/self-improve-counters.json" 2>/dev/null
 cp ~/.claude/checkpoints/self-improve-pending.json "$OUT/self-improve-pending.json" 2>/dev/null
+
+# v2.8.3 — capture ceremony_completion_rate via agent-identity stats output
+# (Tier-1 substrate metric, observability-only; precursor to v2.9.0 enforcement)
+node ~/Documents/claude-toolkit/scripts/agent-team/agent-identity.js stats > "$OUT/stats.json" 2>/dev/null
 
 for log in ~/.claude/logs/*.log; do
   tail -500 "$log" > "$OUT/$(basename "$log")"
