@@ -60,21 +60,40 @@ PHASE1_DEBRIEF="$PROJECT/bench/phase-1-debrief.md"
 PHASE2_DEBRIEF="$PROJECT/bench/phase-2-debrief.md"
 PHASE3_DEBRIEF="$PROJECT/bench/phase-3-debrief.md"
 
-# Run the Python extractor
-python3 - <<PYEOF
+# Run the Python extractor. Heredoc is QUOTED ('PYEOF') so shell doesn't try
+# to expand braces / $-variables inside the Python script — values are passed
+# via the environment instead. This avoids shellcheck SC1054/SC1056/SC1072/
+# SC1073 false-positives on the `{placeholder}` braces in the auto-generated
+# MANIFEST.md / notes.md content.
+EXTRACT_TARGET="$TARGET" \
+EXTRACT_PROJECT="$PROJECT" \
+EXTRACT_FINAL_DEBRIEF="$FINAL_DEBRIEF" \
+EXTRACT_PHASE1_DEBRIEF="$PHASE1_DEBRIEF" \
+EXTRACT_PHASE2_DEBRIEF="$PHASE2_DEBRIEF" \
+EXTRACT_PHASE3_DEBRIEF="$PHASE3_DEBRIEF" \
+EXTRACT_BASELINE_SNAP="$BASELINE_SNAP" \
+EXTRACT_PHASE1_SNAP="$PHASE1_SNAP" \
+EXTRACT_PHASE2_SNAP="$PHASE2_SNAP" \
+EXTRACT_PHASE3_SNAP="$PHASE3_SNAP" \
+EXTRACT_PHASE4_SNAP="$PHASE4_SNAP" \
+python3 - <<'PYEOF'
 import json, os, re, sys
 from pathlib import Path
 
-target = Path("$TARGET")
-project = Path("$PROJECT")
-final_debrief = "$FINAL_DEBRIEF"
-phase_debriefs = ["$PHASE1_DEBRIEF", "$PHASE2_DEBRIEF", "$PHASE3_DEBRIEF"]
+target = Path(os.environ["EXTRACT_TARGET"])
+project = Path(os.environ["EXTRACT_PROJECT"])
+final_debrief = os.environ["EXTRACT_FINAL_DEBRIEF"]
+phase_debriefs = [
+    os.environ["EXTRACT_PHASE1_DEBRIEF"],
+    os.environ["EXTRACT_PHASE2_DEBRIEF"],
+    os.environ["EXTRACT_PHASE3_DEBRIEF"],
+]
 snaps = {
-    "baseline": "$BASELINE_SNAP",
-    "phase1":   "$PHASE1_SNAP",
-    "phase2":   "$PHASE2_SNAP",
-    "phase3":   "$PHASE3_SNAP",
-    "phase4":   "$PHASE4_SNAP",
+    "baseline": os.environ.get("EXTRACT_BASELINE_SNAP", ""),
+    "phase1":   os.environ.get("EXTRACT_PHASE1_SNAP", ""),
+    "phase2":   os.environ.get("EXTRACT_PHASE2_SNAP", ""),
+    "phase3":   os.environ.get("EXTRACT_PHASE3_SNAP", ""),
+    "phase4":   os.environ.get("EXTRACT_PHASE4_SNAP", ""),
 }
 
 def read_or_empty(path):
