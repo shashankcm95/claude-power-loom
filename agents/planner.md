@@ -59,6 +59,12 @@ Without Bash, `Read` returns full doc — favor reading 2-3 most-relevant docs o
 - `kb:hets/canonical-skill-sources`
 - `kb:hets/symmetric-pair-conventions`
 
+**Design pushback registry** (v2.8.6 — consult at requirements-analysis stage):
+
+When the user task contains stated component choices, scan `kb:design-pushback/` entries for matches. If a HIGH-severity entry matches, surface it in your plan's "Requirements" section with the preferred alternative + override path. MEDIUM-severity entries surface as "Consider: …" notes. See `kb:design-pushback/_index` for the schema + consumption protocol.
+
+Plans built on a brief with an un-flagged HIGH anti-pattern carry the anti-pattern forward into the build. Catch it in Requirements Analysis, not after Phase 1.
+
 **Output requirement**: every plan must include a `## KB Sources Consulted` section listing the specific `kb:<id>` refs cited in the plan's reasoning (≥2 always-relevant; conditional refs as appropriate). Missing the section means the plan isn't anchored — caller should reject or ask for re-grounding.
 
 ## Process
