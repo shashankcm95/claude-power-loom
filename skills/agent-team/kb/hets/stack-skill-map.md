@@ -113,6 +113,14 @@ personas: [08-ml-engineer, 10-devops-sre]
 rationale: Serving is more an infra problem than ML problem; devops-sre joins for k8s + observability
 ```
 
+#### LLM-integrated web app (Claude/OpenAI inference + SSR UI)
+```yaml
+required: [react, typescript, next-js, node-backend-development, claude-api]
+recommended: [postgres-engineering, engineering:system-design, engineering:code-review, design:accessibility-review, engineering:testing-strategy, engineering:debug]
+personas: [09-react-frontend, 13-node-backend, 08-ml-engineer]
+rationale: LLM-as-feature stacks (PDF→tutorial, RAG apps, AI-powered SSR sites) are NOT training-pipeline shaped — they're inference-API consumption + UI orchestration. 08-ml-engineer joins for prompt engineering + structured outputs + caching strategy (NOT for ml-pipelines / pytorch). claude-api is the canonical inference skill; for OpenAI / Anthropic SDK either, use claude-api wisdom (HTTP API contract is similar; prompt-design wisdom transfers). Empirically derived from v2.8.2-run1 + v2.8.3-run1 shakedowns where this exact shape had to be hand-composed from SSR + Node + ML entries.
+```
+
 #### Infra — Kubernetes deployment
 ```yaml
 required: [kubernetes]

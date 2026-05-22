@@ -44,6 +44,41 @@ const { withLock: sharedWithLock } = require('./lock');
 const { writeAtomic } = require('./atomic-write');
 
 // ---------------------------------------------------------------------------
+// Persona-id validation (v2.8.5 FIX-H4)
+// ---------------------------------------------------------------------------
+
+// Valid persona ids are `NN-name` (NN = 2 digits; name = lowercase + dashes).
+// Examples: '04-architect', '13-node-backend', '16-codebase-pattern-finder'.
+// This excludes placeholder strings ('<set-at-spawn>'), test fixtures
+// ('test-documentary'), null/undefined, empty string, and any malformed value.
+//
+// Motivation (v2.8.3-run1 audit NEW-DRIFT-B): the bulkhead verdicts dir
+// accumulated `<set-at-spawn>.json` (literal sentinel from a code path that
+// missed substitution) and `test-documentary.json` (test scaffolding leaked
+// into production). Both wrote successfully because writePersonaVolume took
+// any string. Defensive guard: reject invalid persona ids at write time so
+// the bulkhead can't accumulate noise volumes.
+const VALID_PERSONA_RE = /^\d{2}-[a-z][a-z0-9-]*$/;
+
+/**
+ * v2.8.5 FIX-H4: validate persona id before any persona-store operation.
+ * Throws TypeError on invalid input — caller decides whether to fail-closed
+ * (test contexts) or skip-with-warning (production hot paths).
+ */
+function _assertValidPersona(persona) {
+  if (typeof persona !== 'string' || persona.length === 0) {
+    throw new TypeError(`persona-store: persona must be non-empty string (got ${typeof persona})`);
+  }
+  if (!VALID_PERSONA_RE.test(persona)) {
+    throw new TypeError(
+      `persona-store: invalid persona id "${persona}" — must match /^\\d{2}-[a-z][a-z0-9-]*$/. ` +
+      `Common causes: unresolved <set-at-spawn> placeholder, test fixture leak, ` +
+      `legacy persona-id without leading NN-. See v2.8.3-run1 NEW-DRIFT-B.`
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Per-persona file IO
 // ---------------------------------------------------------------------------
 
@@ -58,6 +93,7 @@ const { writeAtomic } = require('./atomic-write');
  * @returns {object|null}
  */
 function readPersonaVolume(stackId, persona) {
+  _assertValidPersona(persona); // v2.8.5 FIX-H4
   const p = paths.personaVolumePath(stackId, persona);
   if (!fs.existsSync(p)) return null;
   return JSON.parse(fs.readFileSync(p, 'utf8'));
@@ -72,6 +108,7 @@ function readPersonaVolume(stackId, persona) {
  * @param {object} data
  */
 function writePersonaVolume(stackId, persona, data) {
+  _assertValidPersona(persona); // v2.8.5 FIX-H4 — rejects '<set-at-spawn>', 'test-documentary', etc.
   const p = paths.personaVolumePath(stackId, persona);
   fs.mkdirSync(path.dirname(p), { recursive: true });
   writeAtomic(p, data);
@@ -90,6 +127,7 @@ function writePersonaVolume(stackId, persona, data) {
  * @returns {*} fn's return value
  */
 function withPersonaLock(stackId, persona, fn, opts = {}) {
+  _assertValidPersona(persona); // v2.8.5 FIX-H4
   const lockPath = paths.personaLockPath(stackId, persona);
   // Ensure dir exists so the lock file can be created
   fs.mkdirSync(path.dirname(lockPath), { recursive: true });
@@ -224,4 +262,7 @@ module.exports = {
   withMetadataLock,
   // Detection
   isPartitioned,
+  // v2.8.5 FIX-H4 — exposed for test surface + caller pre-validation
+  VALID_PERSONA_RE,
+  _assertValidPersona,
 };

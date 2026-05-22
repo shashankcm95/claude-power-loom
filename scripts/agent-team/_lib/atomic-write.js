@@ -53,6 +53,51 @@ function _tmpSuffix() {
 }
 
 /**
+ * v2.8.5 FIX-H3 — resolve symlinks before atomic write.
+ *
+ * Bug class: prior to v2.8.5, `writeAtomic` did `renameSync(tmp, filePath)`
+ * which REPLACES symlinks with regular files. The H.9.21 v2.1.0 library
+ * migration created symlinks at legacy paths pointing into the library
+ * (e.g., `~/.claude/self-improve-counters.json` -> library volume). Each
+ * subsequent `writeAtomic(legacyPath, ...)` call broke the symlink and
+ * fossilized the library copy.
+ *
+ * Fix: if filePath is a symlink, resolve it via realpathSync and write to
+ * the resolved target. Tmp file lands next to the real file; rename replaces
+ * the real file; symlink at the legacy path stays intact.
+ *
+ * v2.8.3-run1 audit surfaced this as NEW-DRIFT-A (self-improve-counters.json
+ * 69K live vs library volume 44K stale May 13). Same class as CHAOS-SUB-2
+ * (agent-identities.json stale-vs-stats) but root-caused differently.
+ *
+ * Edge cases:
+ *   - filePath does not exist: behave as before (no resolution; write creates it)
+ *   - filePath is a symlink to non-existent target: resolve target and create it
+ *   - filePath is a normal file: identical to pre-v2.8.5 behavior
+ *   - filePath's symlink target is itself a symlink: realpathSync follows the chain
+ *
+ * @param {string} filePath - target path (may be a symlink)
+ * @returns {string} the path where the rename should land
+ */
+function _resolveForAtomicWrite(filePath) {
+  // Walk the symlink chain manually so partially-broken chains (target
+  // doesn't exist yet) still resolve. fs.realpathSync requires the full
+  // chain to be resolvable; readlinkSync only reads one hop. A 10-hop
+  // bound prevents pathological loops.
+  let current = filePath;
+  for (let i = 0; i < 10; i++) {
+    let stat;
+    try { stat = fs.lstatSync(current); } catch { return current; }
+    if (!stat.isSymbolicLink()) return current;
+    const target = fs.readlinkSync(current);
+    current = path.isAbsolute(target)
+      ? target
+      : path.resolve(path.dirname(current), target);
+  }
+  return current; // hit the loop bound; write to last-resolved path
+}
+
+/**
  * Atomically write JSON data to filePath. Creates parent dir if absent.
  *
  * H.9.8 cleanup-on-error post-condition: if writeFileSync OR renameSync fails,
@@ -63,11 +108,14 @@ function _tmpSuffix() {
  * @returns {void}
  */
 function writeAtomic(filePath, data) {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  const tmp = filePath + _tmpSuffix();
+  // v2.8.5 FIX-H3 — preserve symlinks at filePath by writing to the resolved
+  // real target. Pre-v2.8.5 behavior replaced symlinks with regular files.
+  const target = _resolveForAtomicWrite(filePath);
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  const tmp = target + _tmpSuffix();
   try {
     fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
-    fs.renameSync(tmp, filePath);
+    fs.renameSync(tmp, target);
   } catch (err) {
     try { fs.unlinkSync(tmp); } catch { /* ignore — cleanup is best-effort */ }
     throw err;
@@ -85,11 +133,13 @@ function writeAtomic(filePath, data) {
  * @returns {void}
  */
 function writeAtomicString(filePath, str) {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  const tmp = filePath + _tmpSuffix();
+  // v2.8.5 FIX-H3 — symlink preservation (see writeAtomic for rationale).
+  const target = _resolveForAtomicWrite(filePath);
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  const tmp = target + _tmpSuffix();
   try {
     fs.writeFileSync(tmp, str);
-    fs.renameSync(tmp, filePath);
+    fs.renameSync(tmp, target);
   } catch (err) {
     try { fs.unlinkSync(tmp); } catch { /* ignore — cleanup is best-effort */ }
     throw err;
