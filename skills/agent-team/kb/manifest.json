@@ -14,7 +14,7 @@
         "tool-use",
         "planning"
       ],
-      "lastUpdated": "2026-05-22T14:24:17.464Z"
+      "lastUpdated": "2026-05-22T16:06:25.988Z"
     },
     "architecture/ai-systems/evaluation-under-nondeterminism": {
       "path": "architecture/ai-systems/evaluation-under-nondeterminism.md",
@@ -29,7 +29,7 @@
         "testing",
         "non-determinism"
       ],
-      "lastUpdated": "2026-05-22T14:24:17.465Z"
+      "lastUpdated": "2026-05-22T16:06:25.989Z"
     },
     "architecture/ai-systems/inference-cost-management": {
       "path": "architecture/ai-systems/inference-cost-management.md",
@@ -44,7 +44,7 @@
         "performance",
         "economics"
       ],
-      "lastUpdated": "2026-05-22T14:24:17.465Z"
+      "lastUpdated": "2026-05-22T16:06:25.989Z"
     },
     "architecture/ai-systems/rag-anchoring": {
       "path": "architecture/ai-systems/rag-anchoring.md",
@@ -59,7 +59,7 @@
         "retrieval",
         "llm-applications"
       ],
-      "lastUpdated": "2026-05-22T14:24:17.465Z"
+      "lastUpdated": "2026-05-22T16:06:25.989Z"
     },
     "architecture/crosscut/acyclic-dependencies": {
       "path": "architecture/crosscut/acyclic-dependencies.md",
@@ -74,7 +74,7 @@
         "architecture",
         "package-design"
       ],
-      "lastUpdated": "2026-05-22T14:24:17.466Z"
+      "lastUpdated": "2026-05-22T16:06:25.990Z"
     },
     "architecture/crosscut/deep-modules": {
       "path": "architecture/crosscut/deep-modules.md",
@@ -89,7 +89,7 @@
         "complexity-management",
         "information-hiding"
       ],
-      "lastUpdated": "2026-05-22T14:24:17.469Z"
+      "lastUpdated": "2026-05-22T16:06:25.991Z"
     },
     "architecture/crosscut/dependency-rule": {
       "path": "architecture/crosscut/dependency-rule.md",
@@ -104,7 +104,7 @@
         "architecture",
         "boundaries"
       ],
-      "lastUpdated": "2026-05-22T14:24:17.469Z"
+      "lastUpdated": "2026-05-22T16:06:25.992Z"
     },
     "architecture/crosscut/idempotency": {
       "path": "architecture/crosscut/idempotency.md",
@@ -119,7 +119,7 @@
         "foundational",
         "retry-semantics"
       ],
-      "lastUpdated": "2026-05-22T14:24:17.470Z"
+      "lastUpdated": "2026-05-22T16:06:25.993Z"
     },
     "architecture/crosscut/information-hiding": {
       "path": "architecture/crosscut/information-hiding.md",
@@ -134,7 +134,7 @@
         "modularity",
         "encapsulation"
       ],
-      "lastUpdated": "2026-05-22T14:24:17.470Z"
+      "lastUpdated": "2026-05-22T16:06:25.993Z"
     },
     "architecture/crosscut/single-responsibility": {
       "path": "architecture/crosscut/single-responsibility.md",
@@ -148,7 +148,7 @@
         "foundational",
         "architecture"
       ],
-      "lastUpdated": "2026-05-22T14:24:17.471Z"
+      "lastUpdated": "2026-05-22T16:06:25.993Z"
     },
     "architecture/discipline/error-handling-discipline": {
       "path": "architecture/discipline/error-handling-discipline.md",
@@ -162,7 +162,7 @@
         "architecture",
         "reliability"
       ],
-      "lastUpdated": "2026-05-22T14:24:17.472Z"
+      "lastUpdated": "2026-05-22T16:06:25.994Z"
     },
     "architecture/discipline/refusal-patterns": {
       "path": "architecture/discipline/refusal-patterns.md",
@@ -177,7 +177,7 @@
         "foundational",
         "architecture"
       ],
-      "lastUpdated": "2026-05-22T14:24:17.472Z"
+      "lastUpdated": "2026-05-22T16:06:25.994Z"
     },
     "architecture/discipline/reliability-scalability-maintainability": {
       "path": "architecture/discipline/reliability-scalability-maintainability.md",
@@ -193,7 +193,7 @@
         "maintainability",
         "quality-attributes"
       ],
-      "lastUpdated": "2026-05-22T14:24:17.473Z"
+      "lastUpdated": "2026-05-22T16:06:25.995Z"
     },
     "architecture/discipline/stability-patterns": {
       "path": "architecture/discipline/stability-patterns.md",
@@ -208,7 +208,7 @@
         "stability",
         "operational"
       ],
-      "lastUpdated": "2026-05-22T14:24:17.473Z"
+      "lastUpdated": "2026-05-22T16:06:25.995Z"
     },
     "architecture/discipline/trade-off-articulation": {
       "path": "architecture/discipline/trade-off-articulation.md",
@@ -222,7 +222,7 @@
         "decision-making",
         "design-rationale"
       ],
-      "lastUpdated": "2026-05-22T14:24:17.474Z"
+      "lastUpdated": "2026-05-22T16:06:25.995Z"
     },
     "backend-dev/express-essentials": {
       "path": "backend-dev/express-essentials.md",
@@ -237,7 +237,7 @@
         "http",
         "rate-limiting"
       ],
-      "lastUpdated": "2026-05-22T14:24:17.474Z"
+      "lastUpdated": "2026-05-22T16:06:25.996Z"
     },
     "backend-dev/jvm-runtime-basics": {
       "path": "backend-dev/jvm-runtime-basics.md",
@@ -252,7 +252,7 @@
         "threading",
         "starter"
       ],
-      "lastUpdated": "2026-05-22T14:24:17.474Z"
+      "lastUpdated": "2026-05-22T16:06:25.996Z"
     },
     "backend-dev/node-runtime-basics": {
       "path": "backend-dev/node-runtime-basics.md",
@@ -267,7 +267,7 @@
         "runtime",
         "async"
       ],
-      "lastUpdated": "2026-05-22T14:24:17.474Z"
+      "lastUpdated": "2026-05-22T16:06:25.996Z"
     },
     "backend-dev/spring-boot-essentials": {
       "path": "backend-dev/spring-boot-essentials.md",
@@ -281,7 +281,7 @@
         "spring-boot",
         "starter"
       ],
-      "lastUpdated": "2026-05-22T14:24:17.475Z"
+      "lastUpdated": "2026-05-22T16:06:25.996Z"
     },
     "data-dev/data-modeling-basics": {
       "path": "data-dev/data-modeling-basics.md",
@@ -295,7 +295,7 @@
         "warehouse",
         "starter"
       ],
-      "lastUpdated": "2026-05-22T14:24:17.475Z"
+      "lastUpdated": "2026-05-22T16:06:25.997Z"
     },
     "data-dev/orchestration-essentials": {
       "path": "data-dev/orchestration-essentials.md",
@@ -310,7 +310,106 @@
         "idempotency",
         "starter"
       ],
-      "lastUpdated": "2026-05-22T14:24:17.475Z"
+      "lastUpdated": "2026-05-22T16:06:25.997Z"
+    },
+    "design-pushback/_index": {
+      "path": "design-pushback/_index.md",
+      "version": 1,
+      "hash": "9904af8e2d4f3c09e9a7727d22c05534e376c410762dbcedf96ac0f352e2c23f",
+      "shortHash": "9904af8e",
+      "tags": [
+        "design-pushback",
+        "anti-patterns",
+        "design-discipline",
+        "proactive-critique",
+        "foundational"
+      ],
+      "lastUpdated": "2026-05-22T16:06:25.997Z"
+    },
+    "design-pushback/google-drive-for-backend-storage": {
+      "path": "design-pushback/google-drive-for-backend-storage.md",
+      "version": 1,
+      "hash": "e3b2f286c72af66a228844b239b3b242b7c14dc67df11a5645da328da9719dba",
+      "shortHash": "e3b2f286",
+      "tags": [
+        "design-pushback",
+        "storage",
+        "web",
+        "backend",
+        "high-severity"
+      ],
+      "lastUpdated": "2026-05-22T16:06:25.999Z"
+    },
+    "design-pushback/localStorage-for-auth-tokens": {
+      "path": "design-pushback/localStorage-for-auth-tokens.md",
+      "version": 1,
+      "hash": "bd338a1a5809a6cd98c1b0d7fd21f9908d9647eb1277f1abb45248fbfd72184b",
+      "shortHash": "bd338a1a",
+      "tags": [
+        "design-pushback",
+        "security",
+        "web",
+        "auth",
+        "high-severity"
+      ],
+      "lastUpdated": "2026-05-22T16:06:25.999Z"
+    },
+    "design-pushback/plain-http-for-sensitive-data": {
+      "path": "design-pushback/plain-http-for-sensitive-data.md",
+      "version": 1,
+      "hash": "f8a36ee71499182fae1452f1dbd083dfb08adedd1e26199d2a5a4c595030e0cb",
+      "shortHash": "f8a36ee7",
+      "tags": [
+        "design-pushback",
+        "security",
+        "web",
+        "backend",
+        "network",
+        "medium-severity"
+      ],
+      "lastUpdated": "2026-05-22T16:06:26.000Z"
+    },
+    "design-pushback/single-region-deploy-for-mission-critical": {
+      "path": "design-pushback/single-region-deploy-for-mission-critical.md",
+      "version": 1,
+      "hash": "1db8f0a90662ebd01c2a39c32e04316dcc2dfc6e7dc073843ed8f0ade3c440dd",
+      "shortHash": "1db8f0a9",
+      "tags": [
+        "design-pushback",
+        "infra",
+        "reliability",
+        "medium-severity"
+      ],
+      "lastUpdated": "2026-05-22T16:06:26.000Z"
+    },
+    "design-pushback/string-concat-sql": {
+      "path": "design-pushback/string-concat-sql.md",
+      "version": 1,
+      "hash": "61fa83cc8e83ca636985e7f21eba028cb14705d51ce41e2a6c2fa65d09bd28d0",
+      "shortHash": "61fa83cc",
+      "tags": [
+        "design-pushback",
+        "security",
+        "backend",
+        "data",
+        "high-severity"
+      ],
+      "lastUpdated": "2026-05-22T16:06:26.000Z"
+    },
+    "design-pushback/synchronous-llm-calls-in-request-path": {
+      "path": "design-pushback/synchronous-llm-calls-in-request-path.md",
+      "version": 1,
+      "hash": "ff4c7c2bf4861730567720e485d68a2bf2570663e6b95efd56aa185b419a681e",
+      "shortHash": "ff4c7c2b",
+      "tags": [
+        "design-pushback",
+        "ml",
+        "web",
+        "backend",
+        "latency",
+        "medium-severity"
+      ],
+      "lastUpdated": "2026-05-22T16:06:26.000Z"
     },
     "hets/canonical-skill-sources": {
       "path": "hets/canonical-skill-sources.md",
@@ -323,7 +422,7 @@
         "canonical-sources",
         "evolution-loop-l2"
       ],
-      "lastUpdated": "2026-05-22T14:24:17.475Z"
+      "lastUpdated": "2026-05-22T16:06:26.001Z"
     },
     "hets/challenger-conventions": {
       "path": "hets/challenger-conventions.md",
@@ -336,7 +435,7 @@
         "asymmetric",
         "conventions"
       ],
-      "lastUpdated": "2026-05-22T14:24:17.476Z"
+      "lastUpdated": "2026-05-22T16:06:26.001Z"
     },
     "hets/identity-roster": {
       "path": "hets/identity-roster.md",
@@ -348,7 +447,7 @@
         "identity",
         "roster"
       ],
-      "lastUpdated": "2026-05-22T14:24:17.476Z"
+      "lastUpdated": "2026-05-22T16:06:26.001Z"
     },
     "hets/spawn-conventions": {
       "path": "hets/spawn-conventions.md",
@@ -360,7 +459,7 @@
         "conventions",
         "spawn"
       ],
-      "lastUpdated": "2026-05-22T14:24:17.476Z"
+      "lastUpdated": "2026-05-22T16:06:26.002Z"
     },
     "hets/stack-skill-map": {
       "path": "hets/stack-skill-map.md",
@@ -374,7 +473,7 @@
         "mapping",
         "analyzer"
       ],
-      "lastUpdated": "2026-05-22T14:24:17.476Z"
+      "lastUpdated": "2026-05-22T16:06:26.002Z"
     },
     "hets/symmetric-pair-conventions": {
       "path": "hets/symmetric-pair-conventions.md",
@@ -387,7 +486,7 @@
         "low-trust",
         "conventions"
       ],
-      "lastUpdated": "2026-05-22T14:24:17.476Z"
+      "lastUpdated": "2026-05-22T16:06:26.002Z"
     },
     "infra-dev/kubernetes-essentials": {
       "path": "infra-dev/kubernetes-essentials.md",
@@ -401,7 +500,7 @@
         "k8s",
         "starter"
       ],
-      "lastUpdated": "2026-05-22T14:24:17.476Z"
+      "lastUpdated": "2026-05-22T16:06:26.002Z"
     },
     "infra-dev/observability-basics": {
       "path": "infra-dev/observability-basics.md",
@@ -416,7 +515,7 @@
         "sre",
         "starter"
       ],
-      "lastUpdated": "2026-05-22T14:24:17.477Z"
+      "lastUpdated": "2026-05-22T16:06:26.002Z"
     },
     "ml-dev/pipeline-essentials": {
       "path": "ml-dev/pipeline-essentials.md",
@@ -430,7 +529,7 @@
         "reproducibility",
         "starter"
       ],
-      "lastUpdated": "2026-05-22T14:24:17.477Z"
+      "lastUpdated": "2026-05-22T16:06:26.002Z"
     },
     "ml-dev/training-vs-inference": {
       "path": "ml-dev/training-vs-inference.md",
@@ -445,7 +544,7 @@
         "drift",
         "starter"
       ],
-      "lastUpdated": "2026-05-22T14:24:17.477Z"
+      "lastUpdated": "2026-05-22T16:06:26.003Z"
     },
     "mobile-dev/ios-app-architecture": {
       "path": "mobile-dev/ios-app-architecture.md",
@@ -459,7 +558,7 @@
         "mvvm",
         "tca"
       ],
-      "lastUpdated": "2026-05-22T14:24:17.478Z"
+      "lastUpdated": "2026-05-22T16:06:26.004Z"
     },
     "mobile-dev/swift-essentials": {
       "path": "mobile-dev/swift-essentials.md",
@@ -472,7 +571,7 @@
         "swift",
         "language"
       ],
-      "lastUpdated": "2026-05-22T14:24:17.478Z"
+      "lastUpdated": "2026-05-22T16:06:26.004Z"
     },
     "security-dev/auth-patterns": {
       "path": "security-dev/auth-patterns.md",
@@ -488,7 +587,7 @@
         "mfa",
         "starter"
       ],
-      "lastUpdated": "2026-05-22T14:24:17.478Z"
+      "lastUpdated": "2026-05-22T16:06:26.004Z"
     },
     "security-dev/threat-modeling-essentials": {
       "path": "security-dev/threat-modeling-essentials.md",
@@ -502,7 +601,7 @@
         "attack-trees",
         "starter"
       ],
-      "lastUpdated": "2026-05-22T14:24:17.479Z"
+      "lastUpdated": "2026-05-22T16:06:26.004Z"
     },
     "web-dev/react-essentials": {
       "path": "web-dev/react-essentials.md",
@@ -515,7 +614,7 @@
         "react",
         "javascript"
       ],
-      "lastUpdated": "2026-05-22T14:24:17.479Z"
+      "lastUpdated": "2026-05-22T16:06:26.005Z"
     },
     "web-dev/typescript-react-patterns": {
       "path": "web-dev/typescript-react-patterns.md",
@@ -529,7 +628,7 @@
         "typescript",
         "starter"
       ],
-      "lastUpdated": "2026-05-22T14:24:17.479Z"
+      "lastUpdated": "2026-05-22T16:06:26.005Z"
     }
   }
 }
