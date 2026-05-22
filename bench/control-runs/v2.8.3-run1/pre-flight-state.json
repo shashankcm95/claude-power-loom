@@ -1,0 +1,12 @@
+{
+  "version": "2.8.3",
+  "plugin_cache_path": "/Users/shashankchandrashekarmurigappa/.claude/plugins/cache/power-loom-marketplace/power-loom/2.8.3",
+  "plugin_cache_mtime": "2026-05-22 06:37:27",
+  "filter_point_epoch_iso": "2026-05-22T06:37:27",
+  "repo_head": "ab023b29590ebab2cad67c64fbb09d1d972b5152",
+  "repo_tag": "v2.8.3",
+  "sync_legacy_persona_count": 13,
+  "sync_legacy_identity_count": 33,
+  "session_id": "52392fa7-2f8d-4f57-907f-b5fbaa1b47d9",
+  "preflight_completed_at": "2026-05-22T11:38:20Z"
+}

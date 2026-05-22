@@ -7,7 +7,7 @@
     "recommended": ["prune", "agent-team"],
     "skill_status": {
       "self-improve": "available",
-      "prune": "not-yet-authored",
+      "prune": "available",
       "agent-team": "available"
     }
   },

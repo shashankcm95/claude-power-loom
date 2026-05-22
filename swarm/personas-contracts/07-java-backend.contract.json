@@ -15,7 +15,7 @@
       "jpa-orm": "not-yet-authored",
       "jvm-tuning": "not-yet-authored",
       "kafka": "not-yet-authored",
-      "postgres-engineering": "not-yet-authored"
+      "postgres-engineering": "available"
     }
   },
   "kb_scope": {

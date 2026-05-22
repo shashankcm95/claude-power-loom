@@ -155,6 +155,7 @@ function cmdAssign(args) {
     const identity = _backfillSchema(ensureIdentity(store, args.persona, name));
     identity.lastSpawnedAt = new Date().toISOString();
     identity.totalSpawns += 1;
+    identity.assignedCount += 1; // v2.8.4 FIX-B — split counter
 
     // H.6.3 — scan contract for skill gaps.
     const contract = _readPersonaContract(args.persona);
@@ -276,9 +277,10 @@ function cmdAssignChallenger(args) {
     const pick = pool[idx % pool.length];
     store.nextChallengerIndex[key] = (idx + 1) % pool.length;
 
-    const identity = ensureIdentity(store, pick.persona, pick.name);
+    const identity = _backfillSchema(ensureIdentity(store, pick.persona, pick.name));
     identity.lastSpawnedAt = new Date().toISOString();
     identity.totalSpawns += 1;
+    identity.assignedCount += 1; // v2.8.4 FIX-B — split counter
 
     writeStore(store);
 
@@ -352,9 +354,10 @@ function cmdAssignPair(args) {
       const pick = pool[idx % pool.length];
       store.nextChallengerIndex[key] = (idx + 1) % pool.length;
 
-      const identity = ensureIdentity(store, pick.persona, pick.name);
+      const identity = _backfillSchema(ensureIdentity(store, pick.persona, pick.name));
       identity.lastSpawnedAt = new Date().toISOString();
       identity.totalSpawns += 1;
+      identity.assignedCount += 1; // v2.8.4 FIX-B — split counter
 
       pair.push(pick.id);
       exclusions.push(pick.id);

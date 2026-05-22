@@ -137,6 +137,22 @@ Format:
 
 **Minimum**: at least 2 `kb:<id>` references (1 from always-relevant architecture crosscut + 1 context-appropriate). If the design touches AI systems, add an AI-systems ref. If you cannot identify 2 relevant kb docs, that is a smell — pause and re-scan the kb index above before responding.
 
+**Citation format is strict** — the `kb-citation-gate` PostToolUse hook requires the `kb:<id>` prefix on each ref. Anything else fails the gate, even if the heading is present (v2.8.2-run1 shakedown P2-3: an architect wrote a populated section with file-path + skill-name "citations" → gate fired SECONDARY-enforcement on missing `kb:` prefix).
+
+**Correct examples** (these pass the gate):
+- ✓ `` `kb:architecture/crosscut/single-responsibility` — informed module boundary split ``
+- ✓ `` `kb:hets/spawn-conventions` — informed challenger pairing decision ``
+- ✓ `` `kb:architecture/ai-systems/agent-design` — informed actor responsibility scoping ``
+
+**Incorrect — DO NOT use** (these fail the gate):
+- ✗ `` `Read: skills/agent-team/SKILL.md` `` — file path, not kb id
+- ✗ `` `Skill: tech-stack-analyzer` `` — skill name, not kb id
+- ✗ `` `architect.md` `` — bare filename
+- ✗ Free-form prose like "consulted the HETS docs" — no `kb:` prefix
+- ✗ `` `kb:` `` alone (no body) — empty ref
+
+Map your reasoning sources to specific `kb:<id>` refs from the catalog above. If the reasoning came from a file outside `skills/agent-team/kb/`, that's evidence you skipped the catalog — pause and find the right `kb:` ref before responding.
+
 **Why mandatory at the response level (not just ADR level)**: design reviews, trade-off walkthroughs, and recommendation memos are valid architect outputs that don't always warrant a full ADR. Without a response-level citation contract, kb grounding becomes invisible to reviewers and to the bench harness `kb_consultation` soft-signal. The ADR `Sources:` field (above) remains required for ADRs specifically; this section is the universal floor.
 
 **Narrow exception** — only when the file being edited lives under `agents/` or `swarm/` (i.e., a meta-fix to the architect's own definition, persona contracts, or HETS substrate files), `## KB Sources Consulted` may contain `n/a — <one-line justification>` instead of citations. Structural criterion, not semantic: the test is "does the edited path start with `agents/` or `swarm/`?", not "does this feel mechanical?". Outside that file scope, always cite.
