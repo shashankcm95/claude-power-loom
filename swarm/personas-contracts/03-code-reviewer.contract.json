@@ -6,9 +6,9 @@
     "required": ["review"],
     "recommended": ["simplify", "security-audit", "research-mode"],
     "skill_status": {
-      "review": "not-yet-authored",
+      "review": "available",
       "simplify": "not-yet-authored",
-      "security-audit": "not-yet-authored",
+      "security-audit": "available",
       "research-mode": "available"
     }
   },

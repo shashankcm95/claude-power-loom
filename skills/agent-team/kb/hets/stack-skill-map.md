@@ -43,10 +43,10 @@ rationale: SPA + WebSockets/SSE for realtime; data-engineer if ingest pipelines 
 
 #### Web — Server-Side Rendered app (Next.js / Remix)
 ```yaml
-required: [react, typescript, next-js]
-recommended: [engineering:system-design, engineering:code-review, design:accessibility-review, engineering:testing-strategy]
-personas: [09-react-frontend, 07-java-backend]
-rationale: SSR for SEO + perf; backend persona joins if API surface is non-trivial
+required: [react, typescript, next-js, node-backend-development]
+recommended: [postgres-engineering, engineering:system-design, engineering:code-review, design:accessibility-review, engineering:testing-strategy]
+personas: [09-react-frontend, 13-node-backend]
+rationale: SSR for SEO + perf; Node-runtime backend persona pairs naturally with Next.js (API routes / Server Actions run in the same Node process). Empirically corrected after v2.8.3-run1 shakedown DRIFT-002 (prior 07-java-backend pairing was a runtime mismatch).
 ```
 
 #### Mobile — iOS native

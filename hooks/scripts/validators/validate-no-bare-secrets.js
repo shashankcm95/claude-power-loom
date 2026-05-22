@@ -117,6 +117,9 @@ const SKIP_PATH_PATTERNS = [
   /(?:^|\/)__tests__\/.*\.(test|spec|fixture)\./i,
   /(?:^|\/)hooks\/scripts\/validators\/.*\.(test|spec|fixture)\./i, // narrowed
   /(?:^|\/)hooks\/scripts\/validators\/fixtures\//i, // narrowed
+  // v2.8.4 FIX-E support — validator tests inherently contain pattern fixtures.
+  // Narrow to the specific test file name to keep the skip surface tight.
+  /(?:^|\/)tests\/unit\/hooks\/validate-no-bare-secrets\.test\.js$/i,
 ];
 
 function shouldSkipPath(filePath) {
@@ -154,15 +157,86 @@ function isPlaceholder(value) {
   return false;
 }
 
-function scanContent(content) {
+// v2.8.4 FIX-E (DRIFT-016 + P1-4) — documentation-context detection.
+//
+// Build a sorted array of [start, end] ranges for content inside fenced
+// markdown code blocks (triple-backtick or triple-tilde). Only used when
+// the target file is markdown AND the matched pattern is the heuristic
+// literal-assignment shape (the only pattern that surfaced as a false
+// positive in audit-text contexts during test0 P1-4 + test1 DRIFT-016).
+//
+// Real-key patterns continue to fire inside fenced blocks — those are
+// actual secrets if pasted, regardless of markdown context. Only the
+// heuristic `[A-Z_]+_(KEY|SECRET|TOKEN|PASSWORD)=<value>` pattern gets
+// the carve-out, because that pattern trivially matches audit prose
+// describing a finding (e.g., describing a default-dev password
+// embedded in a docker-compose file).
+//
+// Defense rationale: false-negative cost is one heuristic pattern in
+// markdown fenced blocks only. JWT, Anthropic, GitHub, Stripe, AKIA,
+// PEM, etc. all continue to scan everywhere. False-positive cost was
+// real (test0 P1-4, test1 DRIFT-016 — operators worked around by
+// rewriting documentation, eroding gate trust).
+function _findFencedBlocks(content) {
+  const ranges = [];
+  const fenceRe = /(^|\n)([ \t]*)(```+|~~~+)([^\n]*)/g;
+  let m;
+  let openStart = null;
+  let openFence = null;
+  while ((m = fenceRe.exec(content)) !== null) {
+    const fence = m[3];
+    const offset = m.index + m[1].length;
+    if (openStart === null) {
+      openStart = offset + m[0].length - m[1].length;
+      openFence = fence[0]; // backtick or tilde
+    } else if (fence[0] === openFence && fence.length >= openFence.length) {
+      // Matching close fence
+      ranges.push([openStart, offset]);
+      openStart = null;
+      openFence = null;
+    }
+  }
+  // Unclosed fence at EOF: treat to end-of-content as inside.
+  if (openStart !== null) {
+    ranges.push([openStart, content.length]);
+  }
+  return ranges;
+}
+
+function _isOffsetInRanges(offset, ranges) {
+  for (const [start, end] of ranges) {
+    if (offset >= start && offset <= end) return true;
+  }
+  return false;
+}
+
+function _isMarkdownPath(filePath) {
+  return typeof filePath === 'string' && /\.(md|mdx|markdown)$/i.test(filePath);
+}
+
+// v2.8.4 FIX-E — patterns eligible for fenced-block suppression in markdown.
+// Conservative: only the heuristic literal-assignment pattern. Hard-key
+// patterns are NEVER suppressed (defense > documentation, per ARCH-MED-3).
+const DOC_CONTEXT_SUPPRESSIBLE = new Set(['literal-secret-assignment']);
+
+function scanContent(content, filePath) {
   if (!content || typeof content !== 'string') return [];
   const findings = [];
+  const isMarkdown = _isMarkdownPath(filePath);
+  const fencedRanges = isMarkdown ? _findFencedBlocks(content) : [];
   for (const pat of SECRET_PATTERNS) {
     let m;
     pat.regex.lastIndex = 0;
     while ((m = pat.regex.exec(content)) !== null) {
       const value = pat.valueGroup ? m[pat.valueGroup] : m[0];
       if (isPlaceholder(value)) continue;
+      // v2.8.4 FIX-E: in markdown, suppress only the literal-assignment pattern
+      // when the match is inside a fenced code block.
+      if (isMarkdown
+          && DOC_CONTEXT_SUPPRESSIBLE.has(pat.id)
+          && _isOffsetInRanges(m.index, fencedRanges)) {
+        continue;
+      }
       findings.push({
         id: pat.id,
         description: pat.description,
@@ -261,7 +335,7 @@ process.stdin.on('end', () => {
       return;
     }
 
-    const findings = scanContent(scanText);
+    const findings = scanContent(scanText, filePath);
     if (findings.length === 0) {
       logger('approve', { toolName, filePath, contentLen: scanText.length });
       process.stdout.write(JSON.stringify({ decision: 'approve' }));

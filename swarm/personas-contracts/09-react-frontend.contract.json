@@ -12,8 +12,8 @@
       "engineering:code-review": "marketplace:knowledge-work-plugins/engineering",
       "engineering:debug": "marketplace:knowledge-work-plugins/engineering",
       "engineering:testing-strategy": "marketplace:knowledge-work-plugins/engineering",
-      "typescript": "not-yet-authored",
-      "next-js": "not-yet-authored",
+      "typescript": "available",
+      "next-js": "available",
       "tailwind": "not-yet-authored"
     }
   },

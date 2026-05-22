@@ -132,9 +132,12 @@ function cmdRecommendVerification(args) {
       identity: args.identity,
       tier,
       ...FULL_VERIFY_POLICY,
+      rationale: `${data.spawnsSinceFullVerify} spawns since last full-verify (threshold: ${RECALIBRATION_SPAWN_THRESHOLD}); periodic recalibration triggered.`,
       recalibration_reason: 'spawn-counter',
       spawnsSinceFullVerify: data.spawnsSinceFullVerify,
       threshold: RECALIBRATION_SPAWN_THRESHOLD,
+      tier_policy_would_be: VERIFICATION_POLICY[tier],
+      drift_clear_condition: 'completes automatically on next full-verify verdict (spawnsSinceFullVerify resets to 0).',
     }, null, 2));
     return;
   }
@@ -158,12 +161,20 @@ function cmdRecommendVerification(args) {
     const tail = Array.isArray(data.synthid_history)
       ? data.synthid_history.slice(-2)
       : [];
+    // v2.8.4 FIX-D (DRIFT-012): surface trigger-specific rationale + the
+    // would-be tier policy so operators understand the override.
+    const hashChange = tail.length >= 2
+      ? `${(tail[0].synthIdHash || '?').slice(0, 8)} → ${(tail[1].synthIdHash || '?').slice(0, 8)}`
+      : '(insufficient history)';
     console.log(JSON.stringify({
       identity: args.identity,
       tier,
       ...FULL_VERIFY_POLICY,
+      rationale: `SynthId content-hash drift detected on prior assign (${hashChange}); persona contract or persona.md changed since this identity last verified. Recalibrating with full verification.`,
       recalibration_reason: 'synthid-drift',
       synthid_history_tail: tail,
+      tier_policy_would_be: VERIFICATION_POLICY[tier],
+      drift_clear_condition: 'completes automatically on next FULL_EQUIVALENT_DEPTHS verdict (pendingSynthIdDrift cleared by verdict-recording.js).',
     }, null, 2));
     return;
   }
@@ -180,9 +191,12 @@ function cmdRecommendVerification(args) {
         identity: args.identity,
         tier,
         ...ASYMMETRIC_CHALLENGER_POLICY,
+        rationale: `Task "${args.task}" is outside this identity's specializations [${specs.join(', ')}]; spawning 1 challenger for novelty coverage.`,
         recalibration_reason: 'task-novelty',
         task: args.task,
         specializations: specs,
+        tier_policy_would_be: VERIFICATION_POLICY[tier],
+        drift_clear_condition: 'completes automatically once this task signature appears in specializations[] (after ≥1 verdict on this task category).',
       }, null, 2));
       return;
     }
@@ -195,12 +209,18 @@ function cmdRecommendVerification(args) {
       const findingsDown = qt.findings_per_10k && qt.findings_per_10k.slope_sign === 'down';
       const citationsDown = qt.file_citations_per_finding && qt.file_citations_per_finding.slope_sign === 'down';
       if (findingsDown || citationsDown) {
+        const downDims = [];
+        if (findingsDown) downDims.push('findings_per_10k');
+        if (citationsDown) downDims.push('file_citations_per_finding');
         console.log(JSON.stringify({
           identity: args.identity,
           tier,
           ...FULL_VERIFY_POLICY,
+          rationale: `Quality trend declining on ${downDims.join(' + ')}; recalibrating with full verification.`,
           recalibration_reason: 'quality-trend-down',
           qualityTrend: qt,
+          tier_policy_would_be: VERIFICATION_POLICY[tier],
+          drift_clear_condition: 'completes automatically when next full-verify verdict shows improved or stable trend across the affected dimensions.',
         }, null, 2));
         return;
       }

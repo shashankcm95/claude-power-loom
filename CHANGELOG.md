@@ -8,6 +8,92 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [2.8.4] — 2026-05-22 — Cross-run fix bundle (test0 + test1 recurring drifts; pre-test2 cleanup)
+
+**Patch release.** Absorbs the 7 highest-leverage drifts that recurred across v2.8.2-run1 (test0) AND v2.8.3-run1 (test1) baseline runs. Goal: clean substrate before test2 so test3 produces the first scientifically-defensible cross-version metrics.
+
+The two prior baseline runs surfaced 39+44 = 83 findings combined. Recurring deterministic invariants are addressed here; new+unique drifts are deferred to v2.9.0 per the v2.8.3 ship discipline.
+
+### FIX-A: 13 missing agent definitions authored (DRIFT-008 + P2-4)
+
+Both test0 (P2-4 vaguely: "Architect persona tools != design-doc expectation") and test1 (DRIFT-008 sharpened: "Only 5 agent definitions exist; personas 06-16 lack agent.md") surfaced the same root cause. HETS ceremony presumed `agents/<persona>.md` files that didn't exist; operators worked around by spawning via general-purpose+embedding (`spawn_ceremony_deviation_rate=0.43` in test1).
+
+**Generated 13 minimal-viable agent definitions** via `scripts/generate-persona-agents.js`: `hacker`, `confused-user`, `honesty-auditor`, `ios-developer`, `java-backend`, `ml-engineer`, `react-frontend`, `devops-sre`, `data-engineer`, `node-backend`, `codebase-locator`, `codebase-analyzer`, `codebase-pattern-finder`. Each is a thin delegation layer pointing at the authoritative `swarm/personas/<NN-name>.md` brief + `swarm/personas-contracts/<NN-name>.contract.json` contract. Existing 5 bespoke files (architect, code-reviewer, planner, optimizer, security-auditor) NOT overwritten.
+
+Generator is idempotent + drift-checkable (`--check` flag).
+
+### FIX-B: Counter-semantics split — `assignedCount` vs `totalSpawns` (DRIFT-011 + P1-6)
+
+test0 (P1-6 LOW) and test1 (DRIFT-011 MEDIUM) both observed the same conflation: `assign-pair` incremented `totalSpawns` even when the actual challenger spawn was scoped down (3 of 7 effective spawn-clusters in test1 = ghost spawns).
+
+**Schema-additive fix**:
+- New `assignedCount` field on identity. Increments on every `assign` / `assign-pair` / `assign-challenger` (3 sites in `lifecycle-spawn.js`).
+- `_backfillSchema` seeds `assignedCount = totalSpawns` for pre-v2.8.4 identities (metric continuity).
+- `totalSpawns` kept as legacy alias for backward compat.
+- `cmdStats` adds top-level `totalAssigned`, `totalGhostSpawns`, per-persona `ghost_spawn_count` = `max(0, assignedCount - sum(verdicts))`.
+- `ceremony_completion_rate` denominator switches from `totalSpawns` -> `assignedCount`.
+
+### FIX-C: Persona-contract `skill_status` refresh (DRIFT-003)
+
+test1's analyzer returned `forgeNeeded:true` for `review` despite the skill being available — stale map across 8 contracts.
+
+**Fix**: new `scripts/refresh-skill-status.js`. Reads on-disk skill inventory (`skills/<name>/SKILL.md` + `commands/<name>.md`), flips `not-yet-authored` -> `available` for matching contract entries. Applied 13 flips across 8 contracts. Idempotent + drift-checkable.
+
+Also harvested `typescript` skill from test1's forge into the toolkit (`skills/typescript/SKILL.md`, 285 lines) — parallel to PR #150's postgres-engineering + next-js harvest.
+
+### FIX-D: `recommend-verification` trigger-specific rationales (DRIFT-012)
+
+test1 operator confused by high-trust identities forced to symmetric-pair without WHY surfaced — the generic FULL_VERIFY_POLICY rationale text was opaque.
+
+**Fix**: every trigger branch in `cmdRecommendVerification` (spawn-counter / synthid-drift / task-novelty / quality-trend-down) now emits:
+- Trigger-specific `rationale` with evidence
+- `tier_policy_would_be`: what the tier-based policy WOULD return without the override
+- `drift_clear_condition`: how the override clears
+
+H70 test suite verified (73/73 pass).
+
+### FIX-E: secrets-gate documentation-context carve-out (DRIFT-016 + P1-4)
+
+Both runs surfaced heuristic literal-assignment pattern firing on legitimate audit prose.
+
+**Fix**: in `hooks/scripts/validators/validate-no-bare-secrets.js`, when target is `.md`/`.mdx`/`.markdown`, the heuristic `literal-secret-assignment` pattern is suppressed when match offset falls inside a fenced code block. **Hard-key patterns (sk-ant-, AKIA, PEM, JWT, GitHub PAT, OpenAI sk-, Stripe, Slack) are NEVER suppressed** — defense > documentation per ARCH-MED-3.
+
+New `tests/unit/hooks/validate-no-bare-secrets.test.js`: 11 cases covering carve-out positive, non-markdown denied, hard-key still blocked, tilde fence variant, Edit-tool variant, .mdx/.markdown extensions, inline backtick still blocks.
+
+### FIX-F: `agents/architect.md` kb: format examples (P2-3)
+
+test0 P2-3: an architect produced a populated `## KB Sources Consulted` section using file paths + skill names instead of `kb:<id>` refs -> kb-citation-gate fired SECONDARY enforcement.
+
+**Fix**: added explicit "Correct examples" vs "Incorrect — DO NOT use" lists immediately after the Format block. Surfaces the gate's regex requirement for `kb:<id>` prefix with concrete pass/fail examples.
+
+### FIX-G: `kb:hets/stack-skill-map` Web SSR persona pairing (DRIFT-002)
+
+test1 DRIFT-002 (INFO): "Web — SSR (Next.js / Remix)" entry paired `09-react-frontend` with `07-java-backend`. Wrong runtime — Next.js API routes / Server Actions run in Node.
+
+**Fix**: updated entry to pair with `13-node-backend` (added to personas); added `node-backend-development` to required skills + `postgres-engineering` to recommended.
+
+### Out of scope (deferred to v2.9.0)
+
+- **DRIFT-001** (LOW): skill loader path non-uniform after /reload-plugins — observation only, no behavior delta
+- **DRIFT-006** (LOW): `synthIdValidation.status: "no-suffix"` on suffixed input — v2.8.1 edge case
+- **DRIFT-010** (LOW): verifier records format-only fails against reputation — needs design think
+- **CHAOS-CAP-1**: forge `actor-integration-architect` persona — substantive scope
+- **PostToolUse:Agent forcing hook** (contract-verifier enforcement) — v2.9.0 per Shape D precedent
+- **`node-backend-development` /evolve** for worker-transfer wisdom
+
+### Test results
+
+- `_h70-test.js`: 73/73 pass
+- `install.sh --hooks --test`: 116/116 pass
+- `tests/unit/hooks/validate-no-bare-secrets.test.js` (new): 11/11 pass
+- `refresh-skill-status.js --check`: clean (no drift; 30 skills)
+- `generate-persona-agents.js --check`: clean (all 13 persona agents present)
+- `contracts-validate.js`: 30 baseline (unchanged — pre-existing hook-not-deployed warnings)
+- ESLint: 0 errors
+- Plugin version: 2.8.3 -> 2.8.4
+
+---
+
 ## [2.8.3] — 2026-05-22 — v2.8.2-run1 baseline corrections + bench-harness fixes (carries control-runs framework #149 + skill harvest #150)
 
 **Patch release.** Closes the v2.8.2 PDF→Tutorial shakedown's findings: one CRITICAL chaos finding was disproved as a false positive; one was real and gets a substrate fix; new methodology learnings get documented. Also rolls up two infrastructure PRs that landed untagged (#149 control-runs framework, #150 forged-skill harvest from v2.8.2-run1).

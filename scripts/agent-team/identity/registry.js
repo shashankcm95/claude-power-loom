@@ -343,6 +343,8 @@ function ensureIdentity(store, persona, name) {
       createdAt: new Date().toISOString(),
       lastSpawnedAt: null,
       totalSpawns: 0,
+      // v2.8.4 FIX-B — explicit assigned counter (DRIFT-011)
+      assignedCount: 0,
       verdicts: { pass: 0, partial: 0, fail: 0 },
       specializations: [],
       skillInvocations: {},
@@ -395,6 +397,25 @@ function _backfillSchema(identity) {
   // verdict-recording.js on FULL_EQUIVALENT_DEPTHS verdicts (mirrors the
   // spawnsSinceFullVerify reset).
   if (identity.pendingSynthIdDrift === undefined) identity.pendingSynthIdDrift = false;
+  // v2.8.4 FIX-B (DRIFT-011 + P1-6) — split counter semantics.
+  //   assignedCount: incremented on each `assign` call. Was conflated with
+  //     totalSpawns pre-v2.8.4. Backfilled to totalSpawns value on first
+  //     read of a pre-v2.8.4 identity (best available signal).
+  //   totalSpawns: KEPT for backward compat; new code should read
+  //     assignedCount. Semantic narrows to "assignment attempts" (which is
+  //     what it always counted; the field name was just misleading).
+  //   ghost_spawn_count: derived in cmdStats as
+  //     max(0, assignedCount - sum(verdicts)). Indicates assigns that never
+  //     produced a verdict (operator scoped down, spawn failed, etc.).
+  //
+  // Motivation: v2.8.3-run1 surfaced ghost-spawn inflation — assign-pair
+  // increments totalSpawns even when challenger spawns are scoped down
+  // (DRIFT-011 quantified: 3 of 7 effective spawn-clusters had this).
+  if (identity.assignedCount === undefined) {
+    identity.assignedCount = typeof identity.totalSpawns === 'number'
+      ? identity.totalSpawns
+      : 0;
+  }
   return identity;
 }
 
@@ -523,9 +544,18 @@ function cmdStats(args) {
   // Aggregate by persona
   const byPersona = {};
   for (const [, data] of Object.entries(store.identities)) {
-    if (!byPersona[data.persona]) byPersona[data.persona] = { identities: 0, totalSpawns: 0, verdicts: { pass: 0, partial: 0, fail: 0 } };
+    _backfillSchema(data); // v2.8.4 FIX-B — ensure assignedCount populated on read
+    if (!byPersona[data.persona]) {
+      byPersona[data.persona] = {
+        identities: 0,
+        totalSpawns: 0,
+        assignedCount: 0, // v2.8.4 FIX-B — explicit assignment counter
+        verdicts: { pass: 0, partial: 0, fail: 0 },
+      };
+    }
     byPersona[data.persona].identities += 1;
     byPersona[data.persona].totalSpawns += data.totalSpawns;
+    byPersona[data.persona].assignedCount += data.assignedCount;
     byPersona[data.persona].verdicts.pass += data.verdicts.pass;
     byPersona[data.persona].verdicts.partial += data.verdicts.partial;
     byPersona[data.persona].verdicts.fail += data.verdicts.fail;
@@ -554,27 +584,40 @@ function cmdStats(args) {
   //   the baseline before enforcing, per the v2.8.0 SynthId
   //   (Shape A observability → Shape D enforcement) precedent.
   let totalSpawnsAll = 0;
+  let totalAssignedAll = 0;
   let totalVerdictsAll = 0;
+  let totalGhostAll = 0;
   for (const persona of Object.keys(byPersona)) {
     const p = byPersona[persona];
     const verdictsTotal = p.verdicts.pass + p.verdicts.partial + p.verdicts.fail;
-    p.ceremony_completion_rate = p.totalSpawns > 0
-      ? Math.min(1.0, Math.round((verdictsTotal / p.totalSpawns) * 1000) / 1000)
+    // v2.8.4 FIX-B — ceremony rate now keyed off assignedCount (the source-of-
+    // truth for "ceremony invocations") instead of totalSpawns (legacy alias).
+    // For pre-v2.8.4 data with no assignedCount, _backfillSchema seeded it from
+    // totalSpawns so the values match — no metric discontinuity.
+    p.ceremony_completion_rate = p.assignedCount > 0
+      ? Math.min(1.0, Math.round((verdictsTotal / p.assignedCount) * 1000) / 1000)
       : null;
+    // v2.8.4 FIX-B — ghost-spawn count: assigns that produced no verdict.
+    p.ghost_spawn_count = Math.max(0, p.assignedCount - verdictsTotal);
     totalSpawnsAll += p.totalSpawns;
+    totalAssignedAll += p.assignedCount;
     totalVerdictsAll += verdictsTotal;
+    totalGhostAll += p.ghost_spawn_count;
   }
-  const ceremonyCompletionRateOverall = totalSpawnsAll > 0
-    ? Math.min(1.0, Math.round((totalVerdictsAll / totalSpawnsAll) * 1000) / 1000)
+  const ceremonyCompletionRateOverall = totalAssignedAll > 0
+    ? Math.min(1.0, Math.round((totalVerdictsAll / totalAssignedAll) * 1000) / 1000)
     : null;
 
   console.log(JSON.stringify({
     totalIdentities: Object.keys(store.identities).length,
     // v2.8.3 — aggregate ceremony-completion-rate across all personas. Tracked
     // as a Tier-1 substrate metric in bench/control-runs/metrics-schema.json.
+    // v2.8.4 FIX-B: denominator switched from totalSpawns to assignedCount.
     ceremony_completion_rate_overall: ceremonyCompletionRateOverall,
-    totalSpawns: totalSpawnsAll,
+    totalSpawns: totalSpawnsAll,       // legacy alias — kept for backward compat
+    totalAssigned: totalAssignedAll,   // v2.8.4 FIX-B — source-of-truth counter
     totalVerdicts: totalVerdictsAll,
+    totalGhostSpawns: totalGhostAll,   // v2.8.4 FIX-B — assigns without verdicts
     byPersona,
   }, null, 2));
 }

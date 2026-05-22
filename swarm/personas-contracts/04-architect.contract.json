@@ -6,9 +6,9 @@
     "required": ["plan"],
     "recommended": ["agent-team", "review", "research-mode"],
     "skill_status": {
-      "plan": "not-yet-authored",
+      "plan": "available",
       "agent-team": "available",
-      "review": "not-yet-authored",
+      "review": "available",
       "research-mode": "available"
     }
   },

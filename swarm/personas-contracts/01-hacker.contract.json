@@ -6,8 +6,8 @@
     "required": ["security-audit"],
     "recommended": ["review", "research-mode"],
     "skill_status": {
-      "security-audit": "not-yet-authored",
-      "review": "not-yet-authored",
+      "security-audit": "available",
+      "review": "available",
       "research-mode": "available"
     }
   },

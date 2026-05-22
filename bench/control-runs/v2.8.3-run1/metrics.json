@@ -1,0 +1,126 @@
+{
+  "schema_version": 1,
+  "run_id": "v2.8.3-run1",
+  "extracted_at_utc": "2026-05-22T12:59:43.103313Z",
+  "extraction_method": "extract-run.sh + manual fill",
+  "source_project": "/Users/shashankchandrashekarmurigappa/projects/textbook-tutorial-v2.8.3-run1",
+  "tier_1_substrate": {
+    "findings_density_critical_high": 17,
+    "findings_density_total": 39,
+    "convergence_rate": 0.026,
+    "verdict_loop_closure": 1.0,
+    "tier_transition_count": 1,
+    "contract_verifier_exercise_rate": 1.0,
+    "hook_runtime_gaps": 7,
+    "forge_cite_rate": 1.0,
+    "tokens_per_finding": 1038924,
+    "spawn_ceremony_deviation_rate": 0.43,
+    "cache_reuse_pct": 0.951,
+    "synthid_drift_events": 0
+  },
+  "tier_2_project": {
+    "tests_passing": null,
+    "build_success": null,
+    "eslint_errors": null,
+    "typescript_errors": 0,
+    "wall_clock_hours_total": null,
+    "_tier_2_note": "tests/build/eslint NOT RUN per spawn instructions (no `npm install` in env). typescript_errors=0 reflects evan + casey's `tsc --noEmit` runs which were clean (only pre-existing vitest type carry-over errors)."
+  },
+  "qualitative_flags": {
+    "tdd_treatment_data_point": "YES — Phase 2 chapter parser test-fail → impl → mental-trace-green. 11 tests authored, 6 describe() blocks. Two non-obvious design decisions emerged from tests (monotonic ordinals, all-or-nothing chunk discard). Limitation: tests offline-traced only; not runtime-verified.",
+    "chaos_test_invoked": "NO — DRIFT-015 deliberate scoping. Substituted single 12-security-engineer.vlad spawn. Substantive adversarial review (CRIT-1 SSRF + CRIT-2 drizzle CVE) but missing the 4-actor cross-check the brief specifies.",
+    "build_team_invoked": "YES — Phase 1 via /build-team skill (Step 0 route-decide returned route@1.0). Steps 1-2 (pre-flight + analyzer) were inherited from Phase 0. Steps 7+ executed manually.",
+    "synthid_observable": "YES — `assign` returned `synthid` field in every call (7 spawns + 3 ghost assigns). synthid_drift: false on all 10. Backfill --dry-run state: 33/33 already-current at run end (cleaned from 15/33 at run start).",
+    "tier_transition_observed_live": "YES — jade unproven→low-trust at bootstrap (crossed 5-verdict threshold during forge-bootstrap; predates Phase 1 baseline so extractor delta didn't catch it — manual count is 1).",
+    "secrets_gate_fired_at_runtime": "YES — caught literal-secret-shaped pattern (1) in noor's docker-compose.yml Write (Phase 1) — noor adapted with env substitution; (2) in vlad's audit doc text (Phase 4) — false-positive on documentation about secret-shaped patterns (DRIFT-016).",
+    "fact_force_gate_fired_at_runtime": "YES — blocked Edit-before-Read on jade's output file (Phase 1).",
+    "config_guard_fired_at_runtime": "YES — blocked 3 vitest config writes + 1 vite.config.ts (Phase 2 evan).",
+    "kb_citation_gate_operative": "YES — Phase 0 direct-probe verified 4 regex cases (compliant/non-compliant × h2/numbered-prefix). Live log entries from probes preserved in ~/.claude/checkpoints/kb-citation-log.jsonl. Persona scope correct (architect-only).",
+    "prompt_enrich_overfires_observed": "0 — vague 'fix the thing' fires gate (Phase 0 probe); ship-confirmation 'merged'/'shipped' silent (Fix-2(a) operative).",
+    "drift_trigger_preempted_tier_policy": "YES — Phase 1 ari + noor both high-trust but recommend-verification returned symmetric-pair with rationale 'Full-verify forced by drift trigger; tier policy preempted'. Trigger root cause not visible from spawn prompt or recommend-verification output (DRIFT-012)."
+  },
+  "deviations": [
+    {
+      "id": "DRIFT-004",
+      "kind": "deliberate-scoping",
+      "phase": "bootstrap",
+      "description": "Symmetric-pair (2 challengers) scoped to actor-only for forge-bootstrap typescript skill review. Rationale: forge-bootstrap is one-file admission gate, not build-team work."
+    },
+    {
+      "id": "DRIFT-009",
+      "kind": "deliberate-scoping",
+      "phase": "phase-1",
+      "description": "Symmetric-pair (2 challengers each for ari + noor) scoped to 1 challenger total (jade reviewing ari only). Phase 1 spawns: 2 actors + 1 challenger = 3 spawns (vs policy 6)."
+    },
+    {
+      "id": "DRIFT-015",
+      "kind": "deliberate-scoping",
+      "phase": "phase-4",
+      "description": "/chaos-test NOT invoked; substituted single 12-security-engineer.vlad spawn. Audit was substantively adversarial but missing the brief's 4-actor minimum (hacker / code-reviewer / architect / honesty-auditor)."
+    },
+    {
+      "id": "DRIFT-008",
+      "kind": "substrate-gap-workaround",
+      "phase": "phases-1-2-3",
+      "description": "Most contract personas (06–16, 01, 02, 05) lack Agent definition files. Spawned via `general-purpose` + persona embedded in prompt instead of via dedicated agent type. Affects: noor, evan, chen, casey."
+    },
+    {
+      "id": "tdd-runtime-verification",
+      "kind": "environment-constraint",
+      "phase": "phase-2",
+      "description": "evan's TDD test suite (11 tests) was authored tests-first and traced-green offline, but `npm install` + `npm test` were blocked by env constraints. Phase 4 chaos audit ran via `npm audit` on installed node_modules (which was somehow populated — DRIFT-014)."
+    }
+  ],
+  "findings_breakdown_by_severity": {
+    "critical": 2,
+    "high": 15,
+    "medium": 11,
+    "low": 11
+  },
+  "tier_transitions_detail": [
+    {
+      "identity": "03-code-reviewer.jade",
+      "from": "unproven",
+      "to": "low-trust",
+      "phase": "bootstrap",
+      "triggered_by_verdict_count": 5,
+      "verdicts_at_transition": {"pass": 2, "partial": 0, "fail": 3}
+    }
+  ],
+  "actors_spawned_total": 7,
+  "actors_spawned_detail": {
+    "actually_executed": ["03-code-reviewer.jade x2 (bootstrap + Phase 1 challenger)", "04-architect.ari (Phase 1)", "13-node-backend.noor (Phase 1)", "08-ml-engineer.chen (Phase 2)", "13-node-backend.evan (Phase 2)", "09-react-frontend.casey (Phase 3)", "12-security-engineer.vlad (Phase 4)"],
+    "assigned_but_not_executed_ghosts": ["01-hacker.kai", "01-hacker.zoe", "05-honesty-auditor.quinn"],
+    "ghost_count_drift_011": 3
+  },
+  "verdicts_recorded": {
+    "pass": 8,
+    "partial": 0,
+    "fail": 2,
+    "_note": "fail=2 includes format-only re-runs on jade (DRIFT-010). Substantive verdicts: 8 pass / 0 partial / 0 fail."
+  },
+  "tokens": {
+    "input": 19891,
+    "output": 556939,
+    "cache_read": 38014337,
+    "cache_create": 1926904,
+    "total": 40518071
+  },
+  "carry_forward_validation": {
+    "architect_high_ssrf": "CONVERGE — vlad CRIT-1 confirmed unmitigated; UPGRADED to CRITICAL via redirect-chain exploit",
+    "evan_medium_dns_rebind": "DIVERGE — vlad upgraded to CRITICAL because redirect-chain is simpler+more reliable than DNS-rebind",
+    "casey_high_demo_user_bypass": "CONVERGE — vlad HIGH-1",
+    "casey_high_ingest_userid_in_body": "CONVERGE — vlad confirms distinct exploit path from demo-user bypass",
+    "new_critical_not_in_any_carry_forward": "vlad CRIT-2: drizzle-orm@0.33.0 SQL-injection CVE (GHSA-gpj5-g38j-94v9) — found via npm audit, not in any prior phase debrief"
+  },
+  "_extraction_notes": [
+    "Auto-extracted via extract-run.sh, then manually filled by orchestrator.",
+    "tier_1_substrate.tier_transition_count corrected from 0→1 (extractor missed bootstrap-phase transition).",
+    "verdict_loop_closure set to 1.0 (all 7 spawns ran through contract-verifier).",
+    "contract_verifier_exercise_rate=1.0 (every spawn verified).",
+    "hook_runtime_gaps=7 (DRIFT-001/006/008/010/011/012/016).",
+    "forge_cite_rate=1.0 (typescript skill forged → cited by 4 downstream actors: ari, noor, evan, casey).",
+    "spawn_ceremony_deviation_rate=0.43 (3 of 7 effective spawn-clusters deviated: DRIFT-004, DRIFT-009, DRIFT-015).",
+    "synthid_drift_events=0 (all 10 assigns returned synthid_drift: false)."
+  ]
+}
