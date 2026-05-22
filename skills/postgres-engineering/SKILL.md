@@ -3,7 +3,7 @@ skill: postgres-engineering
 status: active
 domain: backend-dev
 canonical_source: https://www.postgresql.org/docs/current/
-forged_via: Phase-0-pdf-tutorial-shakedown-2026-05-21 (closes kb:hets/stack-skill-map gap — postgres-engineering referenced as recommended across SSR/Node/JVM/Data stacks but absent from kb-resolver list --tag postgres)
+forged_via: 'Phase-0-pdf-tutorial-shakedown-2026-05-21 (closes kb:hets/stack-skill-map gap — postgres-engineering referenced as recommended across SSR/Node/JVM/Data stacks but absent from kb-resolver list --tag postgres)'
 related_kb: [backend-dev/node-runtime-basics, backend-dev/express-essentials]
 tags: [postgres, database, indexing, pooling, pgvector, migrations, observability]
 ---
@@ -68,7 +68,7 @@ Default to **HNSW** for prototypes (better recall, no re-training). Switch to **
 
 - **`SET hnsw.ef_search = 100`** (default 40) at session start to trade latency for recall.
 - **Dimensionality**: pgvector supports up to 16,000 dims (HNSW: 2,000); match your embedding model exactly — mismatched dims throw at insert.
-- **Hybrid search**: combine `<=> ` (cosine distance) with B-tree predicates via `WHERE category = 'x' AND embedding <=> $1 < 0.3` — the planner uses both indexes if both selective.
+- **Hybrid search**: combine `<=>` (cosine distance) with B-tree predicates via `WHERE category = 'x' AND embedding <=> $1 < 0.3` — the planner uses both indexes if both selective.
 
 ### Migrations — zero-downtime patterns
 

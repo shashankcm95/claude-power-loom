@@ -3,8 +3,8 @@ skill: next-js
 status: active
 domain: web-dev
 canonical_source: https://nextjs.org/docs
-forged_via: Phase-0-pdf-tutorial-shakedown-2026-05-21 (closes kb:hets/stack-skill-map gap — next-js referenced as required across SSR stack entries but not authored as a standalone skill; react-essentials covers React but not App Router specifics)
-evolved: 2026-05-21 (post-Phase-3 bundled cycle; 4 closures from PDF→Tutorial shakedown: next.config.ts version gating, serverComponentsExternalPackages for native-node libs, cookies() sync-vs-async by version, async params required-vs-forward-compatible)
+forged_via: 'Phase-0-pdf-tutorial-shakedown-2026-05-21 (closes kb:hets/stack-skill-map gap — next-js referenced as required across SSR stack entries but not authored as a standalone skill; react-essentials covers React but not App Router specifics)'
+evolved: '2026-05-21 (post-Phase-3 bundled cycle; 4 closures from PDF→Tutorial shakedown: next.config.ts version gating, serverComponentsExternalPackages for native-node libs, cookies() sync-vs-async by version, async params required-vs-forward-compatible)'
 related_kb: [web-dev/react-essentials, web-dev/typescript-react-patterns, backend-dev/node-runtime-basics]
 tags: [nextjs, app-router, server-components, server-actions, caching, ssr, react, version-pinning, native-modules]
 ---
