@@ -38,7 +38,7 @@ These were surfaced during Phase 2 Wave 2 of the original test3 build (per memor
 | DRIFT-test3-005 | LOW | FIX-I1 hint blind spot — engineering-task persona ignores model-tier hint when ≥3 hints stack | OPEN |
 | DRIFT-test3-006 | MEDIUM | _(carried, full text in 2026-05-22 snapshot)_ | OPEN |
 | DRIFT-test3-007 | HIGH | _(carried)_ | OPEN |
-| DRIFT-test3-008 | MEDIUM | _(carried — potential 8+)_ | OPEN |
+| DRIFT-test3-008 | MEDIUM | _(carried — potential 8+)_ → **agents/ thin-delegation coverage** | **VERIFIED-CLOSED in v2.9.0** (architect.theo pair-review spot-check confirmed 18 agents/*.md vs 16 swarm/personas/*.md; thin-delegation pattern in effect since FIX-I8) |
 
 **Action for v2.9.1 triage**: open each entry in the 2026-05-22 snapshot, copy the forensic detail forward into this file inline before the v2.9.1 plan locks. Not done now to avoid paraphrasing the snapshot.
 
@@ -74,8 +74,8 @@ Surfaced 2026-05-24 driving the form in real Chrome end-to-end with the DDIA fix
 
 ### DRIFT-test3-015 — Drizzle migrator needs `meta/_journal.json`; hand-written SQL lacks it
 
-- **Severity**: MEDIUM
-- **Status**: WORKAROUND-SHIPPED (`db.exec(rawSql)` bypass in TB; `pnpm db:migrate` still broken)
+- **Severity**: MEDIUM → **HIGH** (promoted v2.9.1 per code-reviewer: `pnpm db:migrate` ships broken for any persona using hand-written SQL scaffolding)
+- **Status**: WORKAROUND-SHIPPED → **CLOSED-IN-v2.9.1** (Component F: `skills/postgres-engineering/SKILL.md` § Hand-written SQL migrations + Drizzle migrator)
 - **Surface**: postgres-engineering skill / data-engineer persona for SQLite + Drizzle
 - **Repro**: a persona that hand-writes `0000_initial.sql` (no `drizzle-kit generate` invocation, because pnpm isn't installed at codegen time) cannot then run `drizzle-orm/better-sqlite3/migrator.migrate()` — it requires `meta/_journal.json` alongside the SQL.
 - **Suggested fix for v2.9.1**: postgres-engineering / data-engineer scaffolding should either (a) emit a hand-written `meta/_journal.json` next to any hand-written SQL migration, or (b) document the "fall back to `db.exec(rawSql)`" pattern as the SQLite hand-write convention. Probably (a).
@@ -93,7 +93,7 @@ Surfaced 2026-05-24 driving the form in real Chrome end-to-end with the DDIA fix
 ### DRIFT-test3-017 — webpack `require.resolve` of an ESM-only package errors with "ESM packages need to be imported"
 
 - **Severity**: HIGH
-- **Status**: WORKAROUND-SHIPPED (CWD-relative `path.join` constructs a runtime-only string webpack can't statically analyse)
+- **Status**: WORKAROUND-SHIPPED → **CLOSED-IN-v2.9.1** (Component A: `skills/next-js/SKILL.md` § Node-side ESM dep gotchas + standalone-deploy caveat)
 - **Surface**: next-js skill / react-frontend + node-backend-development personas for ESM-only deps
 - **Repro**: in a Next.js Route Handler, doing `require('foo-esm-pkg/path/to/file.mjs')` or `createRequire(import.meta.url).resolve('foo-esm-pkg/...')` triggers webpack's static analysis and fails. `serverComponentsExternalPackages` (Next 14) / `serverExternalPackages` (Next 15) alone is **not sufficient** for Route Handlers; the resolve still gets bundled.
 - **Suggested fix for v2.9.1**: codify the **"non-statically-analysable runtime path"** pattern — `join(process.cwd(), 'node_modules', pkg, ...)` — in the next-js skill's "Node-side ESM dep gotchas" subsection. Pair with a list of common offenders (pdfjs-dist, native deps with `.node` binaries).
@@ -102,7 +102,7 @@ Surfaced 2026-05-24 driving the form in real Chrome end-to-end with the DDIA fix
 ### DRIFT-test3-018 — tiktoken@1.0.15 rejects `gpt-4o-mini` as a model name
 
 - **Severity**: HIGH
-- **Status**: WORKAROUND-SHIPPED (mapped `gpt-4o-mini` → `gpt-4o` for encoding lookup; same o200k_base family)
+- **Status**: WORKAROUND-SHIPPED → **CLOSED-IN-v2.9.1** (Component B: `swarm/personas/08-ml-engineer.md` § Tiktoken model-name aliasing; tiktoken ≥1.0.16 documented as forward-looking deferred option)
 - **Surface**: ml-engineer persona / claude-api skill / cost-management ADR
 - **Repro**: `tiktoken@1.0.15` (the version pinned by ml-engineer scaffolding) throws `Invalid model: gpt-4o-mini` from `encoding_for_model()`. tiktoken released `gpt-4o-mini` recognition in a later version, but personas pin via `^1.0.x` without bumping. The error surfaces as a fully-bubbled "Invalid model: gpt-4o-mini" mid-stream, halting chapter generation — opaque to anyone who hasn't read tiktoken source.
 - **Suggested fix for v2.9.1**: either (a) bump tiktoken min version in the ml-engineer skill to a recognising release, or (b) ship a recommended `ENCODING_FOR_MODEL` alias map alongside the cost-arithmetic recipe — explicitly map gpt-4o-mini → gpt-4o (same encoding family) as a fall-forward. **Important** because the error message names the **billing model**, misleading the developer into thinking their API key lacks model access (curl probe to `/v1/models/gpt-4o-mini` returns 200 fine).

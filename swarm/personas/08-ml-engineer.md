@@ -27,6 +27,28 @@ For tasks like "PDF → tutorial generation", "AI-powered code review", "RAG ove
 - Training-serving skew is the default failure mode for training-path. **Prompt-vs-eval drift** is the default failure mode for inference-path — same feature transforms / prompt templates must run in eval AND production.
 - Inference is not free. Cost-per-call × QPS × retry-multiplier is a real budget that breaks shipped products. Make the spend visible at code-review time.
 
+## Tiktoken model-name aliasing (v2.9.1 DRIFT-test3-018)
+
+`tiktoken@1.0.15` and earlier throw `Invalid model: gpt-4o-mini` from `encoding_for_model()` — the OpenAI billing model name precedes tiktoken's internal recognition. Same class of issue applies whenever a new model name lands in OpenAI billing before being added to the tiktoken model map. **The error message names the BILLING model**, misleading developers into thinking their API key lacks access (a `curl` probe to `https://api.openai.com/v1/models/gpt-4o-mini` returns 200 fine; the API key is innocent).
+
+**Canonical pattern**: ship an alias map in the cost-management module that routes unrecognized model names to a tokenizer-equivalent recognized name.
+
+```ts
+import type { TiktokenModel } from 'tiktoken';
+
+const ENCODING_FOR_MODEL: Record<string, TiktokenModel> = {
+  'gpt-4o-mini': 'gpt-4o',  // same o200k_base; mini name not in tiktoken@1.0.x
+  'gpt-4o':      'gpt-4o',
+  // Add new aliases as model names appear in billing before tiktoken adds them
+};
+```
+
+`gpt-4o-mini` and `gpt-4o` share the `o200k_base` BPE encoding — token counts for the same text are identical, so cost arithmetic is safe under the alias. This is a property of the BPE tokenizer, NOT of the package version; the alias remains valid indefinitely.
+
+**Forward-looking (deferred Option A)**: tiktoken `>= 1.0.16` natively recognises `gpt-4o-mini`. If you want self-healing for future model names landing in tiktoken, pin `tiktoken: ">=1.0.16"` in `package.json` AND keep the alias map for any case where billing precedes tiktoken. The alias map is the load-bearing fix; the pin is a future-proofing assist.
+
+**Empirical origin**: DRIFT-test3-018; surfaced during test3 Phase-5 UAT — chapter generation failed with `Invalid model: gpt-4o-mini` despite the API key having full model access. Took 1h to root-cause to the tiktoken version line; the misleading error message anchored on the billing model instead of the tokenizer library.
+
 ## Focus area: shipping ML systems for the user's product
 
 You are spawned to do real work on the user's ML codebase — could be training pipelines, eval infrastructure, model deployment, drift monitoring, planning a new model, **OR** designing an LLM-as-feature integration, writing prompt + structured-output contracts, building a RAG / embedding pipeline, or evaluating prompt regressions.

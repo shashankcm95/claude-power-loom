@@ -8,6 +8,56 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [2.9.1] — 2026-05-24 — test3 substrate blockers (3 doc-only fixes)
+
+**Patch release.** Closes 3 substrate findings surfaced by test3 (PDF→Tutorial app, value-delivery sub-run of v2.9.0 dogfood) Phase-5 UAT on 2026-05-23/24. Each fix has a WORKAROUND-SHIPPED status in the test3 app code; this release codifies the canonical pattern into the substrate so the next consumer doesn't burn the same hour.
+
+**Cadence**: Plan-as-contract → architect.theo + code-reviewer pair-run (11 flags absorbed: 1 CRITICAL + 5 HIGH + 4 MEDIUM + 1 LOW; 1 LIVE-bug catch: Component B was originally targeting non-existent `skills/claude-api/SKILL.md`) → in-line implementation per plan.
+
+### Component A — `skills/next-js/SKILL.md` § Node-side ESM dep gotchas
+
+- **Drift**: DRIFT-test3-017 — webpack 5 statically analyses `require.resolve()` of ESM-only packages from Route Handlers and tries to bundle them. Fails with `Module not found: ESM packages (X) need to be imported.` `serverComponentsExternalPackages` alone is insufficient for Route Handlers.
+- **Fix**: new subsection documents the runtime path-construction pattern: `join(process.cwd(), 'node_modules', pkg, ...)` — webpack sees only an opaque runtime-built string. Includes explicit caveat box that `process.cwd()` is UNSAFE under `next build --standalone` (cwd differs from standalone dir); guidance to use `__dirname` / env-var for standalone deploys. Cross-references existing § Native-Node packages section for the orthogonal "externalize-then-import" case.
+- **Anchor**: `kb:architecture/crosscut/single-responsibility` — runtime path-construction and externalize-then-import solve different problems; document both surfaces and when to use each.
+
+### Component B — `swarm/personas/08-ml-engineer.md` § Tiktoken model-name aliasing
+
+- **Drift**: DRIFT-test3-018 — `tiktoken@1.0.15` and earlier throw `Invalid model: gpt-4o-mini` from `encoding_for_model()`. The error names the BILLING model, misleading developers into thinking their API key lacks access. tiktoken `>= 1.0.16` first recognises the model name.
+- **Fix**: new persona-brief subsection documents the alias-map convention (`'gpt-4o-mini' → 'gpt-4o'`; same `o200k_base` BPE so cost arithmetic is safe). Forward-looking deferred option: pin `tiktoken: ">=1.0.16"` for self-healing on future model names. Extends FIX-I8 scope-coherence fixture (`tests/unit/scripts/ml-engineer-scope-coherence.test.js`) with T7 (alias heading present) + T8 (`o200k_base` mentioned) — now 9/9 passing.
+- **Surface choice**: persona-brief (NOT a new skill) per architect H1 — persona-specific runtime convention, not cross-stack skill primitive.
+
+### Component F — `skills/postgres-engineering/SKILL.md` § Hand-written SQL migrations + Drizzle migrator
+
+- **Drift**: DRIFT-test3-015 — `drizzle-orm` migrator throws `ENOENT: meta/_journal.json` at boot when SQL is hand-written (no `drizzle-kit generate` available at scaffolding time). PROMOTED from MEDIUM to HIGH per code-reviewer: `pnpm db:migrate` ships broken for any persona using hand-written SQL.
+- **Fix**: new dialect-agnostic subsection documents two options — (1) hand-write `meta/_journal.json` alongside the SQL (recommended for production; full schema + idempotency), or (2) bypass migrator via `db.exec(rawSql)` (acceptable for MVP/bootstrap only).
+
+### Component E — observability + cutover
+
+- `bench/control-runs/test3/DRIFT-NOTES.md`: status updates for DRIFT-test3-015/017/018 (CLOSED-IN-v2.9.1), DRIFT-test3-008 (VERIFIED-CLOSED in v2.9.0 per architect.theo pair-review spot-check).
+- `swarm/thoughts/shared/HT-state.md`: in-place Python regex edit of `last_updated` + `last_session_phase` keys (no prepend, per drift-note 80 anti-pattern guard); soak counter HOLDS at 8/5+ STRENGTHENED ×3 (doc-only patch; advance reserved for substantive minors per H.9.13/H.9.14.1/H.9.18 precedent).
+
+### Tests + verification
+
+- `tests/smoke-ht.sh`: 2 new grep-based regression assertions (Component A heading + `process.cwd()` proximity + standalone warning; Component F heading + `meta/_journal.json` proximity).
+- `tests/unit/scripts/ml-engineer-scope-coherence.test.js`: 9/9 passing (was 6/6; +T7 + T8 for tiktoken aliasing).
+- ESLint: 0 errors. Markdownlint: 0 errors. Shellcheck: PASS.
+
+### Gate analysis (HT.1.6)
+
+2 of 5 triggers fire (fresh design surface + HIGH-class bug at design time) → below MANDATORY-gate (4/5+) AND below PAIR-REVIEW-RECOMMENDED (3/5+). Pair-review WAS justified by C1 catch alone (Component B originally targeted non-existent file).
+
+### Manifest
+
+- `.claude-plugin/plugin.json`: 2.9.0 → 2.9.1
+- README badge: 2.2.0 → 2.9.1 (also corrects pre-existing staleness — was lagging since well before v2.9.0)
+
+### Soak counter
+
+- Pre-implementation: 8/5+ STRENGTHENED ×3
+- Post-implementation: 8/5+ STRENGTHENED ×3 (HOLDS — doc-only patch does not advance)
+
+---
+
 ## [2.9.0] — 2026-05-22 — Substrate bundle: measurement + discoverability + doctor + observability gate
 
 **Minor release.** Closes 10 fixes (I1–I10) surfaced by deep audit across 4 bench runs (v2.8.2-run1, v2.8.3-run1, v2.8.5-treatment, v2.8.5-control). Per ADR-0007, this ships under MINOR (not PATCH) because four new substrate entrypoints are introduced: `_format-spec.md` canonical doc, `scripts/agent-team/doctor.js` CLI + probes, `_lib/env-placeholder.js` helper, and `hooks/scripts/validate-config-redirect.js` PreToolUse:Bash hook.

@@ -1303,3 +1303,59 @@ EOF
     failed=$((failed + 1))
   fi
 
+  # Test 105 (v2.9.1 Component A): skills/next-js/SKILL.md — Node-side ESM dep gotchas
+  # section present + canonical pattern (process.cwd()) appears + standalone-deploy
+  # warning present near the heading. Catches silent strip of new substrate convention
+  # (per code-reviewer LOW: doc-lint is not a regression catch).
+  echo -n "  Test 105 (v2.9.1 next-js SKILL — Node-side ESM dep gotchas heading + canonical pattern + standalone warning): "
+  T105_FILE="$SCRIPT_DIR/skills/next-js/SKILL.md"
+  if [ ! -f "$T105_FILE" ]; then
+    echo "FAIL: file missing ($T105_FILE)"
+    failed=$((failed + 1))
+  else
+    T105_HEADING_LINE=$(grep -n '^### Node-side ESM dep gotchas$' "$T105_FILE" | head -1 | cut -d: -f1) || true
+    if [ -z "$T105_HEADING_LINE" ]; then
+      echo "FAIL: heading '### Node-side ESM dep gotchas' missing"
+      failed=$((failed + 1))
+    else
+      T105_END=$((T105_HEADING_LINE + 40))
+      T105_WINDOW=$(sed -n "${T105_HEADING_LINE},${T105_END}p" "$T105_FILE")
+      T105_HAS_CWD=$(echo "$T105_WINDOW" | grep -c "process\.cwd()") || true
+      T105_HAS_STANDALONE=$(echo "$T105_WINDOW" | grep -c -- "--standalone") || true
+      if [ "${T105_HAS_CWD:-0}" -ge 1 ] && [ "${T105_HAS_STANDALONE:-0}" -ge 1 ]; then
+        echo "OK (heading + process.cwd() within 40 lines + standalone warning within 40 lines)"
+        passed=$((passed + 1))
+      else
+        echo "FAIL: heading@$T105_HEADING_LINE but cwd=$T105_HAS_CWD standalone=$T105_HAS_STANDALONE within 40 lines"
+        failed=$((failed + 1))
+      fi
+    fi
+  fi
+
+  # Test 106 (v2.9.1 Component F): skills/postgres-engineering/SKILL.md — Drizzle
+  # migrator hand-written SQL section present + meta/_journal.json literal mentioned
+  # in proximity to the heading. Catches silent strip per same code-reviewer LOW.
+  echo -n "  Test 106 (v2.9.1 postgres-engineering SKILL — Hand-written SQL migrations + meta/_journal.json): "
+  T106_FILE="$SCRIPT_DIR/skills/postgres-engineering/SKILL.md"
+  if [ ! -f "$T106_FILE" ]; then
+    echo "FAIL: file missing ($T106_FILE)"
+    failed=$((failed + 1))
+  else
+    T106_HEADING_LINE=$(grep -n '^### Hand-written SQL migrations' "$T106_FILE" | head -1 | cut -d: -f1) || true
+    if [ -z "$T106_HEADING_LINE" ]; then
+      echo "FAIL: heading '### Hand-written SQL migrations' missing"
+      failed=$((failed + 1))
+    else
+      T106_END=$((T106_HEADING_LINE + 30))
+      T106_WINDOW=$(sed -n "${T106_HEADING_LINE},${T106_END}p" "$T106_FILE")
+      T106_HAS_JOURNAL=$(echo "$T106_WINDOW" | grep -c "meta/_journal\.json") || true
+      if [ "${T106_HAS_JOURNAL:-0}" -ge 1 ]; then
+        echo "OK (heading + meta/_journal.json mentioned within 30 lines)"
+        passed=$((passed + 1))
+      else
+        echo "FAIL: heading@$T106_HEADING_LINE but meta/_journal.json not within 30 lines (count=$T106_HAS_JOURNAL)"
+        failed=$((failed + 1))
+      fi
+    fi
+  fi
+
