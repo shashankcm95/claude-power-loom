@@ -89,6 +89,49 @@ The hidden cost of DDL is locks, not disk. Default lock for most ALTER is `ACCES
 
 **`CREATE INDEX CONCURRENTLY` failure recovery** — if it leaves `indisvalid = false`, `REINDEX INDEX CONCURRENTLY` to rebuild, or `DROP INDEX` + retry.
 
+### Hand-written SQL migrations + Drizzle migrator (cross-dialect; SQLite-anchored)
+
+**Scope note**: this section is Drizzle-specific and applies to SQLite + Postgres consumers alike. Empirical surface was SQLite (`better-sqlite3`), but the migrator constraint is dialect-independent.
+
+When you ship hand-written `drizzle/migrations/NNNN_*.sql` files (no `drizzle-kit generate` available at codegen time — e.g. agent-spawned scaffolding before `pnpm install` runs), the `drizzle-orm` migrator throws at boot:
+
+```
+ENOENT: no such file or directory, open '.../drizzle/migrations/meta/_journal.json'
+```
+
+The migrator expects a `meta/_journal.json` index file alongside the SQL — the file `drizzle-kit generate` would have produced. Hand-written SQL skips that step.
+
+**Two options**:
+
+1. **Hand-write the journal** (recommended for production):
+
+   ```json
+   {
+     "version": "7",
+     "dialect": "sqlite",
+     "entries": [
+       { "idx": 0, "version": "7", "when": 1716567000000, "tag": "0000_initial", "breakpoints": true }
+     ]
+   }
+   ```
+
+   Place at `drizzle/migrations/meta/_journal.json`. `dialect` is `"sqlite"` / `"postgresql"` / `"mysql"` per project. `when` is unix milliseconds. `tag` matches the SQL filename minus the `.sql` extension. After this, `pnpm db:migrate` works normally and tracks applied migrations via the internal `__drizzle_migrations` (Postgres) / `__drizzle_migrations` table (SQLite) — idempotent.
+
+2. **Bypass the migrator** with raw exec (acceptable for MVP / single-shot bootstrap; NOT for production):
+
+   ```ts
+   import Database from 'better-sqlite3';
+   import fs from 'node:fs';
+   const db = new Database('./data/app.db');
+   db.exec(fs.readFileSync('./drizzle/migrations/0000_initial.sql', 'utf8'));
+   ```
+
+   Trade-off: no idempotency, no migration tracking — re-running the script errors with "table exists". Acceptable for prototype bootstrap with manual cleanup discipline. The Postgres equivalent uses `pg` / `postgres.js` with `await sql.unsafe(rawSql)`.
+
+**Recommended**: option 1 for any scaffolding that will outlive the prototype phase; option 2 only for one-shot bootstrap with explicit "drop + recreate" cleanup before second use.
+
+**Empirical origin**: DRIFT-test3-015; surfaced during test3 Phase-5 UAT — `pnpm db:migrate` failed at boot with the ENOENT, took ~1h to root-cause to the missing `_journal.json`. Persona that hand-wrote the SQL (no pnpm available at codegen time) didn't ship the journal alongside.
+
 ### Observability — what to enable on day 1
 
 - **`pg_stat_statements`** — top queries by `total_time`, `mean_time`, `calls`. Required for any production. Pre-load via `shared_preload_libraries = 'pg_stat_statements'` (needs restart).

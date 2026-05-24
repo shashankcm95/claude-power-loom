@@ -103,6 +103,17 @@ process.stdout.write('\n[FIX-I8] 08-ml-engineer scope coherence (training + infe
     'T6: persona brief uses inference-path vocabulary (prompt engineering / structured output / RAG / etc.)');
 }
 
+// T7 + T8 (v2.9.1 DRIFT-test3-018): tiktoken model-name aliasing section present
+{
+  const src = fs.readFileSync(PERSONA_BRIEF, 'utf8');
+  const hasAliasHeading = /##\s+Tiktoken model-name aliasing/i.test(src);
+  assert(hasAliasHeading,
+    'T7: persona brief has ## Tiktoken model-name aliasing section (DRIFT-test3-018)');
+  const hasO200kRef = /o200k_base/.test(src);
+  assert(hasO200kRef,
+    'T8: persona brief mentions o200k_base encoding (cost-arithmetic safety)');
+}
+
 process.stdout.write('\n=== Summary ===\n');
 process.stdout.write('  Passed: ' + passed + '\n');
 process.stdout.write('  Failed: ' + failed + '\n');

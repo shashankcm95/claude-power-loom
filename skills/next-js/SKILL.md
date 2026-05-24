@@ -212,6 +212,58 @@ Common candidates: `pdf-parse` / `pdfjs-dist`, `sharp`, `canvas`, `puppeteer` / 
 - Spawn a child process from a Route Handler / Server Action
 - Use a different library (e.g., `pdf2json` is pure JS — no workers, no native bindings)
 
+### Node-side ESM dep gotchas
+
+The § Native-Node packages pattern above solves "webpack bundler breaks the package" via the externals list — webpack leaves the package alone and Node's native loader handles it. A DIFFERENT problem class arises when the package itself needs an **absolute on-disk path to a sibling file** at module-load time (typical: a `workerSrc` for a worker file the package will load synchronously). The two problems require different fixes; both can be needed for the same package.
+
+**Symptom**: webpack build error or runtime throw:
+```
+Module not found: ESM packages (X) need to be imported.
+Use 'import' to reference the package instead.
+```
+Surfaces when you do `require('foo-esm/...')` or `createRequire(import.meta.url).resolve('foo-esm/...')` from a Route Handler. Webpack 5 statically analyses both forms and tries to bundle the ESM target — which fails because the target is `.mjs` and webpack's CJS-style resolve can't import it.
+
+**Anti-pattern catalog** (don't do):
+
+- `require('foo-esm/path/to/file.mjs')` from a Route Handler
+- `createRequire(import.meta.url).resolve('foo-esm/...')` — webpack STILL statically analyses
+- Setting `serverComponentsExternalPackages` alone — applies only to RSC, NOT Route Handlers; the resolve still gets bundled
+
+**Canonical pattern** (do):
+
+```javascript
+import { join } from 'node:path';
+import { GlobalWorkerOptions } from 'pdfjs-dist/legacy/build/pdf.mjs';
+
+// Build the path at runtime from process.cwd() so webpack sees only an
+// opaque string. The package's own runtime loads the file with its native
+// resolver — webpack stays out of the way.
+GlobalWorkerOptions.workerSrc = join(
+  process.cwd(),
+  'node_modules',
+  'pdfjs-dist',
+  'legacy',
+  'build',
+  'pdf.worker.mjs',
+);
+```
+
+> ⚠️ **`process.cwd()` is NOT reliable under `next build --standalone`**.
+>
+> Under `next dev` / `next start` / `next build` (non-standalone), `process.cwd()` resolves to the project root and `node_modules/` is adjacent — the pattern works.
+>
+> Under `--standalone` output (common for Docker / Railway / self-hosted Node deploys), the standalone server lives at `.next/standalone/server.js` with its own `node_modules/` at `.next/standalone/node_modules/`. If the operator launches with a different `cwd` (e.g. Docker `WORKDIR /app && CMD ["node", ".next/standalone/server.js"]` → `cwd = /app`), the path silently resolves to `/app/node_modules/...` which does not exist; `workerSrc` gets an invalid path and the package errors at first use.
+>
+> **For standalone deploys**: resolve relative to `__dirname` (CJS) or compute from `import.meta.url` via `fileURLToPath` (ESM), OR pass the absolute worker path via an env var (`WORKER_SRC`) set at container build time. Pick whichever is least fragile for your deploy topology.
+
+**Common offenders**:
+
+- `pdfjs-dist` (4.x is ESM-only; legacy build needs `GlobalWorkerOptions.workerSrc` set at module load)
+- native deps with `.node` binaries (better-sqlite3, sharp) — these ALSO need the externals list from § Native-Node packages above; the two fixes layer
+- `node-fetch` v3+ (ESM-only) — usually solved by externalize-then-import; the runtime-path pattern is only for the `workerSrc`-style case
+
+**Which pattern when**: if the package needs to be **imported normally** but webpack can't bundle it → externalize via § Native-Node packages above. If the package needs an **absolute on-disk path to a sibling file** at module-load → use the runtime path construction here. For packages that need both (pdfjs-dist + better-sqlite3 in the same Route Handler), layer the fixes — they're orthogonal.
+
 ### Streaming with Suspense
 
 Wrap slow Server Components in `<Suspense>` to send the rest of the page immediately and stream in the slow part:
