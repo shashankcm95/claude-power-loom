@@ -1,0 +1,10 @@
+what's the state of v3.0 phase 1 spike
+how did we handle stacked PR base retargeting drift
+what's the secret management plan for portfolio
+TB feature B voice and anchor wave 3
+HETS pair review caught security HIGHs
+harness contention git fetch workaround
+RFC v3.2 four class state model attestations
+DDIA chunking lazy hybrid cost per chapter
+Mermaid versus structured figure components for textbook
+why did self-improve never surface a real pattern
