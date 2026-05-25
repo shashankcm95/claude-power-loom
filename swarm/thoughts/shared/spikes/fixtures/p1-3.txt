@@ -1,0 +1,5 @@
+Convert this Promise-chained function to use async/await. Keep the function name and parameter the same. Output ONLY the rewritten function, no explanation.
+
+function fetchUser(id) {
+  return fetch(`/api/${id}`).then(r => r.json());
+}

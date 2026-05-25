@@ -1,0 +1,1 @@
+`@description Calculates the total cost of all items (price × quantity) plus the specified tax rate and returns the grand total including tax.`

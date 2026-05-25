@@ -1,0 +1,1 @@
+In exactly one sentence, define what a "pure function" is in JavaScript. Do not give examples. Do not list properties. One sentence, ending in a period.

@@ -1,0 +1,1 @@
+Write a JavaScript regular expression literal that matches a basic email address of the form local@domain.tld (alphanumeric + dots/underscores/hyphens in local part; alphanumeric + dots/hyphens in domain; 2+ letter TLD). Output ONLY the regex literal (e.g. /.../), no explanation, no flags.

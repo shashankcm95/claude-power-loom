@@ -1,0 +1,1 @@
+List exactly 3 reasons to prefer composition over inheritance in object-oriented design. Format as a numbered list (1., 2., 3.). One short sentence per reason. No preamble, no summary.

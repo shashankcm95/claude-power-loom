@@ -1,0 +1,7 @@
+Write a one-line JSDoc summary (just the @description line, no parameters) for a JavaScript function with this signature:
+
+function calculateTotal(items, taxRate)
+
+where items is an array of { price: number, quantity: number } and taxRate is a decimal (0.08 = 8%). Return total including tax.
+
+Output ONLY the JSDoc comment line. No explanation, no code.
