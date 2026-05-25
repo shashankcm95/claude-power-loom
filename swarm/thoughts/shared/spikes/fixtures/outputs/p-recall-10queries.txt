@@ -1,0 +1,180 @@
+===== QUERY: v3.0 phase 1 spike =====
+query: "v3.0 phase 1 spike"
+tokens: [phase, spike]
+scanned: 23 artifact(s)
+
+1. [score 0.502] v3.0 Phase 1 — Wave A SHIPPED + P3 retired from gate
+   relpath: toolkit/stacks/session-snapshots/volumes/2026-05-25-v30-phase-1-wave-a-shipped-p3-deferred.md
+   kw=0.004 tag=1.000 surface=1.000
+
+2. [score 0.251] v2.9.0 Phase B shipped — discoverability + format-spec hardening
+   relpath: toolkit/stacks/session-snapshots/volumes/2026-05-22-v2.9.0-phase-B-shipped-pre-phase-C.md
+   kw=0.002 tag=0.500 surface=0.500
+
+3. [score 0.251] TB Sprint C Phase 2 — Radix Popover + QuizSection celebration SHIPPED, 2026-05-24
+   relpath: toolkit/stacks/session-snapshots/volumes/2026-05-24-tb-sprint-c-phase-2-radix-popover-quiz-shipped.md
+   kw=0.002 tag=0.500 surface=0.500
+
+
+===== QUERY: git stash delta budget =====
+query: "git stash delta budget"
+tokens: [git, stash, delta, budget]
+scanned: 23 artifact(s)
+
+1. [score 0.204] v3.0 Phase 1 — Wave A SHIPPED + P3 retired from gate
+   relpath: toolkit/stacks/session-snapshots/volumes/2026-05-25-v30-phase-1-wave-a-shipped-p3-deferred.md
+   kw=0.008 tag=0.000 surface=1.000
+
+2. [score 0.203] 2026-05-24 — v2.9.1 SHIPPED + v3.0 RFC & Plan LOCKED
+   relpath: toolkit/stacks/session-snapshots/volumes/2026-05-24-v291-shipped-v30-rfc-and-plan-locked.md
+   kw=0.006 tag=0.000 surface=1.000
+
+3. [score 0.152] TB Sprint C Phase 1 + T3.5 — PARALLEL SHIP, 2026-05-24
+   relpath: toolkit/stacks/session-snapshots/volumes/2026-05-24-tb-sprint-c-phase-1-and-t3.5-parallel-ship.md
+   kw=0.004 tag=0.000 surface=0.750
+
+
+===== QUERY: HETS architect pair review =====
+query: "HETS architect pair review"
+tokens: [hets, architect, pair, review]
+scanned: 23 artifact(s)
+
+1. [score 0.204] test3 — Post-compact resume + Phase 3 mechanical prep
+   relpath: toolkit/stacks/session-snapshots/volumes/2026-05-22-test3-post-compact-phase3-mech-prep.md
+   kw=0.008 tag=0.000 surface=1.000
+
+2. [score 0.204] v3.0 Phase 1 — Wave A SHIPPED + P3 retired from gate
+   relpath: toolkit/stacks/session-snapshots/volumes/2026-05-25-v30-phase-1-wave-a-shipped-p3-deferred.md
+   kw=0.008 tag=0.000 surface=1.000
+
+3. [score 0.203] Session snapshot — 2026-05-21 — post-v2.8.0 ship; pre-compact handoff
+   relpath: toolkit/stacks/session-snapshots/volumes/2026-05-21-v2.7.1-v2.8.0-synthid-shape-A.md
+   kw=0.007 tag=0.000 surface=1.000
+
+
+===== QUERY: DRIFT-test3 substrate findings =====
+query: "DRIFT-test3 substrate findings"
+tokens: [drift, test3, substrate, findings]
+scanned: 23 artifact(s)
+
+1. [score 0.278] v2.9.0 SHIPPED — substrate bundle (5 phases, 10 fixes, 108 unit tests)
+   relpath: toolkit/stacks/session-snapshots/volumes/2026-05-22-v2.9.0-shipped-final.md
+   kw=0.007 tag=0.250 surface=1.000
+
+2. [score 0.278] test3 Phase 2 Wave 2 complete — TB_to_Tutorial_converter ready for feature phase
+   relpath: toolkit/stacks/session-snapshots/volumes/2026-05-22-test3-phase2-w2-complete-pre-phase-3.md
+   kw=0.006 tag=0.250 surface=1.000
+
+3. [score 0.228] test3 — Post-compact resume + Phase 3 mechanical prep
+   relpath: toolkit/stacks/session-snapshots/volumes/2026-05-22-test3-post-compact-phase3-mech-prep.md
+   kw=0.006 tag=0.250 surface=0.750
+
+
+===== QUERY: RFC v3.2 axiom theorem stochastic sample =====
+query: "RFC v3.2 axiom theorem stochastic sample"
+tokens: [rfc, axiom, theorem, stochastic, sample]
+scanned: 23 artifact(s)
+
+1. [score 0.263] 2026-05-24 — v2.9.1 SHIPPED + v3.0 RFC & Plan LOCKED
+   relpath: toolkit/stacks/session-snapshots/volumes/2026-05-24-v291-shipped-v30-rfc-and-plan-locked.md
+   kw=0.007 tag=0.200 surface=1.000
+
+2. [score 0.224] v3.0 Phase 1 — Wave A SHIPPED + P3 retired from gate
+   relpath: toolkit/stacks/session-snapshots/volumes/2026-05-25-v30-phase-1-wave-a-shipped-p3-deferred.md
+   kw=0.007 tag=0.200 surface=0.800
+
+3. [score 0.041] Session snapshot — 2026-05-21 — post-v2.8.0 ship; pre-compact handoff
+   relpath: toolkit/stacks/session-snapshots/volumes/2026-05-21-v2.7.1-v2.8.0-synthid-shape-A.md
+   kw=0.002 tag=0.000 surface=0.200
+
+
+===== QUERY: Anthropic plugin sub-agent hooks =====
+query: "Anthropic plugin sub-agent hooks"
+tokens: [anthropic, plugin, sub, agent, hooks]
+scanned: 23 artifact(s)
+
+1. [score 0.265] v3.0 Phase 1 — Wave A SHIPPED + P3 retired from gate
+   relpath: toolkit/stacks/session-snapshots/volumes/2026-05-25-v30-phase-1-wave-a-shipped-p3-deferred.md
+   kw=0.009 tag=0.200 surface=1.000
+
+2. [score 0.203] 2026-05-24 — v2.9.1 SHIPPED + v3.0 RFC & Plan LOCKED
+   relpath: toolkit/stacks/session-snapshots/volumes/2026-05-24-v291-shipped-v30-rfc-and-plan-locked.md
+   kw=0.007 tag=0.000 surface=1.000
+
+3. [score 0.167] Session snapshot — 2026-05-17 post-v2.1.0-soak
+   relpath: toolkit/stacks/session-snapshots/volumes/2026-05-17-post-migrate-session.md
+   kw=0.013 tag=0.000 surface=0.800
+
+
+===== QUERY: TB sprint shipped citation popover =====
+query: "TB sprint shipped citation popover"
+tokens: [sprint, shipped, citation, popover]
+scanned: 23 artifact(s)
+
+1. [score 0.429] TB Sprint C Phase 2 — Radix Popover + QuizSection celebration SHIPPED, 2026-05-24
+   relpath: toolkit/stacks/session-snapshots/volumes/2026-05-24-tb-sprint-c-phase-2-radix-popover-quiz-shipped.md
+   kw=0.009 tag=0.750 surface=1.000
+
+2. [score 0.279] TB round-2 quick wins SHIPPED — 2026-05-24
+   relpath: toolkit/stacks/session-snapshots/volumes/2026-05-24-tb-round-2-quick-wins-shipped.md
+   kw=0.009 tag=0.250 surface=1.000
+
+3. [score 0.279] TB Sprint C Phase 1 + T3.5 — PARALLEL SHIP, 2026-05-24
+   relpath: toolkit/stacks/session-snapshots/volumes/2026-05-24-tb-sprint-c-phase-1-and-t3.5-parallel-ship.md
+   kw=0.007 tag=0.250 surface=1.000
+
+
+===== QUERY: self-improve loop pattern recurrence =====
+query: "self-improve loop pattern recurrence"
+tokens: [self, improve, loop, pattern, recurrence]
+scanned: 23 artifact(s)
+
+1. [score 0.165] Session snapshot — 2026-05-17 post-v2.1.0-soak
+   relpath: toolkit/stacks/session-snapshots/volumes/2026-05-17-post-migrate-session.md
+   kw=0.010 tag=0.000 surface=0.800
+
+2. [score 0.164] Session snapshot — 2026-05-21 — post-v2.8.0 ship; pre-compact handoff
+   relpath: toolkit/stacks/session-snapshots/volumes/2026-05-21-v2.7.1-v2.8.0-synthid-shape-A.md
+   kw=0.009 tag=0.000 surface=0.800
+
+3. [score 0.164] Session checkpoint — Wave 3 built + reviewed; smoke regen running
+   relpath: toolkit/stacks/session-snapshots/volumes/2026-05-24-tb-feature-b-wave-3-built-and-reviewed-pre-smoke.md
+   kw=0.007 tag=0.000 surface=0.800
+
+
+===== QUERY: secret management Cloudflare BYO credentials =====
+query: "secret management Cloudflare BYO credentials"
+tokens: [secret, management, cloudflare, byo, credentials]
+scanned: 23 artifact(s)
+
+1. [score 0.203] 2026-05-24 — v2.9.1 SHIPPED + v3.0 RFC & Plan LOCKED
+   relpath: toolkit/stacks/session-snapshots/volumes/2026-05-24-v291-shipped-v30-rfc-and-plan-locked.md
+   kw=0.007 tag=0.000 surface=1.000
+
+2. [score 0.082] v3.0 Phase 1 — Wave A SHIPPED + P3 retired from gate
+   relpath: toolkit/stacks/session-snapshots/volumes/2026-05-25-v30-phase-1-wave-a-shipped-p3-deferred.md
+   kw=0.004 tag=0.000 surface=0.400
+
+3. [score 0.081] test3 Phase 2 Wave 2 complete — TB_to_Tutorial_converter ready for feature phase
+   relpath: toolkit/stacks/session-snapshots/volumes/2026-05-22-test3-phase2-w2-complete-pre-phase-3.md
+   kw=0.003 tag=0.000 surface=0.400
+
+
+===== QUERY: session-auth API key probe failure =====
+query: "session-auth API key probe failure"
+tokens: [session, auth, api, key, probe, failure]
+scanned: 23 artifact(s)
+
+1. [score 0.204] v2.9.0 Phase A Shipped — Pre-compact handoff for Phase B
+   relpath: toolkit/stacks/session-snapshots/volumes/2026-05-22-v2.9.0-phase-A-shipped-pre-phase-B.md
+   kw=0.007 tag=0.000 surface=1.000
+
+2. [score 0.188] Session checkpoint — pre-compact
+   relpath: toolkit/stacks/session-snapshots/volumes/2026-05-24-tb-to-tutorial-lazy-hybrid-chunking-shipped.md
+   kw=0.010 tag=0.167 surface=0.667
+
+3. [score 0.187] Session checkpoint — Wave 3 built + reviewed; smoke regen running
+   relpath: toolkit/stacks/session-snapshots/volumes/2026-05-24-tb-feature-b-wave-3-built-and-reviewed-pre-smoke.md
+   kw=0.007 tag=0.167 surface=0.667
+
+

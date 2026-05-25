@@ -1,0 +1,10 @@
+v3.0 phase 1 spike
+git stash delta budget
+HETS architect pair review
+DRIFT-test3 substrate findings
+RFC v3.2 axiom theorem stochastic sample
+Anthropic plugin sub-agent hooks
+TB sprint shipped citation popover
+self-improve loop pattern recurrence
+secret management Cloudflare BYO credentials
+session-auth API key probe failure
