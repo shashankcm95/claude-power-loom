@@ -18,7 +18,7 @@ Empirical probe results for the 5 load-bearing claims in RFC v3.2 + prototype ho
 |---|---|---|---|---|
 | P1 | Re-spawn equivalence (5 fixtures × 2 runs each, default-temp via CLI) | 2h | ✅ DONE | **PASS with caveat** — semantic equivalence holds |
 | P2 | Plugin sub-agent hook ban verification (Anthropic plugin reference) | 1h | ✅ DONE | **PASS** — claim verified |
-| P3 | API beta header probe (3 curl probes) | 2h | 🚫 BLOCKED | needs `ANTHROPIC_API_KEY` in env |
+| P3 | API beta header probe (3 curl probes) | 2h | 📦 DEFERRED | superseded by Dream-Lite local fallback (RFC §Dreaming Integration) |
 | P4 | Delta storage budget (10 spawns; git stash pre/post; p50+p99) | 3h | ⏳ PENDING | — |
 | P5 | GC-Process vs GC-Spawn fixture (Bash kill vs Agent timeout) | 2h | ⏳ PENDING | — |
 | P-Proto | Prototype `spawn-record.js` + bounded outputs (HETS: architect + node-backend + code-reviewer) | 4h | ⏳ PENDING | — |
@@ -119,13 +119,34 @@ Implication confirmed: any spawn-state capture for sub-agents MUST go through pl
 
 API key from `$ANTHROPIC_API_KEY` env (do NOT inline). Record HTTP status + body excerpt (first ~200 chars; redact any tokens).
 
-**Status**: 🚫 **BLOCKED** at probe time (2026-05-24). The Claude Code CLI authenticates via session token, not the `ANTHROPIC_API_KEY` env var; `echo $ANTHROPIC_API_KEY` returned empty. Two unblock paths:
-1. **Export key in this session** (`export ANTHROPIC_API_KEY=sk-ant-...`) — then re-run probe inline.
-2. **Defer to fresh CC session** — recommended in the kickoff plan anyway for Wave B+. Fresh session can be launched with the env var set.
+**Status**: 📦 **DEFERRED — superseded by RFC architecture, not blocking Phase 1 exit.**
 
-**Results**: _(pending unblock)_
+**Reasoning** (decided 2026-05-24 after probe-time discovery that `ANTHROPIC_API_KEY` isn't in env):
 
-**Verdict**: _(pending unblock)_
+The probe's original purpose was to verify the Anthropic Dreams API is gated to managed-agents-only — which would *confirm* the RFC's decision to ship a local Dream-Lite implementation instead of an API-integration. Re-reading the RFC clarifies that this confirmation isn't actually needed:
+
+- **RFC line 41**: "Dreams are managed-agents-only; not plugin-accessible. We replicate locally with schema-compatibility for future handoff."
+- **RFC line 48**: "Dream-lite at three cycles (spawn-close → persona → global) — schema-compatible with Anthropic Dreams API for mechanical future handoff"
+- **RFC line 76**: Documents the beta headers (`managed-agents-2026-04-01` + `dreaming-2026-04-21`) as "Research preview" — already publicly characterized as gated.
+- **RFC §Dreaming Integration — Three Cycles**: full local implementation of the 3 dream cycles, with immutable-input + sibling-output discipline mirroring the managed-agents API contract. Cost caps already specified ($0.10/spawn-close-dream, $0.50/persona/day).
+
+The local Dream-Lite is the **primary** Phase 3 deliverable; the Anthropic Dreams API would be an *opportunistic upgrade* via mechanical engine-swap if plugin access ever lands (already scoped to Phase 4 deferred).
+
+So P3's possible outcomes were:
+- **403/404 from Dreams** (expected) → confirms RFC assumption → no architecture change.
+- **200 from Dreams** (unexpected) → would *open* the Phase 4 handoff earlier, but still wouldn't change Phase 1/2/3 plans because Dream-Lite ships as primary regardless.
+
+**Either outcome → zero impact on Phase 1 exit gate or Phase 2 scope.** The probe is "nice-to-know" telemetry, not a load-bearing claim verifier.
+
+**Forward trigger to revisit**:
+- Re-probe IF/WHEN Anthropic publicly announces plugin access to Dreams API (watch `code.claude.com/changelog` or developer forum announcements).
+- Until that signal: local Dream-Lite is the integration, and P3 stays deferred.
+
+**`memory_20250818` + `context-management-2025-06-27` sub-probes**: same logic — both are managed-agents-side primitives that the local L_global/L_persona/L_spawn substrate already replicates. The RFC §"Non-goals" line 59 explicitly says: "Inventing a page manager / LRU cache — Anthropic's `context-editing` does this; we orchestrate." Verifying their behavior is interesting once we're ready to integrate (Phase 4+); not before.
+
+**Results**: N/A (probe scope retired)
+
+**Verdict**: 📦 DEFERRED — does not gate Phase 1 exit; revisit per forward trigger above.
 
 ---
 
@@ -219,16 +240,17 @@ API key from `$ANTHROPIC_API_KEY` env (do NOT inline). Record HTTP status + body
 
 ## Phase 1 exit checklist (for resuming session)
 
-ALL must be green before opening Phase 2:
-- [ ] P1 envelope quantified (avg semantic-similarity across 5 fixtures)
-- [ ] P2 plugin-hook-ban verified (or refuted — architecture adjusts either way)
-- [ ] P3 API beta headers tested (3 documented responses)
+ALL must be green before opening Phase 2 (P3 retired from gate per 2026-05-24 scope decision):
+- [x] P1 envelope quantified (avg semantic-similarity across 5 fixtures) — ✅ Wave A
+- [x] P2 plugin-hook-ban verified — ✅ Wave A
 - [ ] P4 delta budget measured (p50 + p99 written to retention defaults)
 - [ ] P5 GC split confirmed (fixture transcript)
 - [ ] Prototype hook works end-to-end on real spawn (P-Proto)
 - [ ] `04-architect` `state_interface` field landed (P-Persona)
 - [ ] `loom recall` returns real results on 10 queries (P-Recall)
 - [ ] Hit-rate ≥50% (P-Measure)
+
+**Forward trigger (replaces P3)**: re-probe Anthropic Dreams API gating IF/WHEN public plugin access is announced. Until then, local Dream-Lite (RFC §"Dreaming Integration — Three Cycles") is the integration; no API gating verification needed.
 
 ---
 
@@ -237,7 +259,7 @@ ALL must be green before opening Phase 2:
 Wave A delivered:
 - ✅ **P2 PASS** — Anthropic plugin reference confirms hooks/mcpServers/permissionMode unsupported for plugin-shipped agents. Parent-records pivot validated.
 - ✅ **P1 PASS (with caveat)** — semantic equivalence holds across re-spawns at default temp; f3 byte-identical; stochastic-sample "regenerable" claim supported.
-- 🚫 **P3 BLOCKED** — needs `ANTHROPIC_API_KEY` env var. Resume by either (a) exporting key in fresh shell + running 3 curl probes, or (b) using `claude --bare --betas memory_20250818 -p ...` style invocation if Bare mode + API key arrangement works.
+- 📦 **P3 DEFERRED** — retired from Phase 1 gate. RFC v3.2 already commits to local Dream-Lite (RFC §"Dreaming Integration — Three Cycles") as the primary Phase 3 deliverable; Anthropic Dreams API is the opportunistic-upgrade path scoped to Phase 4 deferred. Forward trigger: re-probe if/when Anthropic publicly announces plugin access. Scope decision recorded in §P3.
 
 Wave B+C+D next (fresh CC session recommended for HETS work in Wave C):
 1. **P4** — 10 spawns × `git stash create` pre/post; tabulate delta byte sizes; compute p50/p99. ~3h.
