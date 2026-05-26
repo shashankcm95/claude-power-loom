@@ -10,7 +10,7 @@
 // Behavioral tests are opt-in via env var BEHAVIORAL=1 because they cost
 // tokens. CI + default `node test.js` runs only static.
 //
-// Pattern mirrors scripts/agent-team/_h70-test.js (custom runner, no Jest dep).
+// Pattern mirrors packages/runtime/orchestration/_h70-test.js (custom runner, no Jest dep).
 
 'use strict';
 

@@ -1,0 +1,9 @@
+{
+  "name": "@power-loom/specs",
+  "version": "0.0.0-unversioned",
+  "private": true,
+  "description": "v4 transverse Docs/KB tier. Append-only reference material: RFCs, ADRs, plans, spike write-ups, architecture-substrate research, kb-architecture-planning, findings, bench scenarios. No code; no deps; never versioned.",
+  "scripts": {
+    "test": "echo '(specs is markdown-only — no tests; markdown lint runs at repo root)' && exit 0"
+  }
+}

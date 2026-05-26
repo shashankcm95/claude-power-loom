@@ -29,7 +29,7 @@
 
 const path = require('node:path');
 
-const HELPER = path.resolve(__dirname, '../../../scripts/agent-team/_lib/env-placeholder.js');
+const HELPER = path.resolve(__dirname, '../../../packages/kernel/_lib/env-placeholder.js');
 const { isPlaceholderEnvValue } = require(HELPER);
 
 let passed = 0;

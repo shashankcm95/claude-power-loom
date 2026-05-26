@@ -31,7 +31,7 @@
   T111_PIDS=()
   for p in "${T111_PERSONAS[@]}"; do
     ( CLAUDE_LIBRARY_ROOT="$T111_TMPROOT" \
-        node "$SCRIPT_DIR/scripts/agent-team/pattern-recorder.js" \
+        node "$SCRIPT_DIR/packages/runtime/orchestration/pattern-recorder.js" \
         record --task-signature "bulkhead-test" --persona "$p" --verdict pass >/dev/null 2>&1 ) &
     T111_PIDS+=($!)
   done
@@ -141,7 +141,7 @@ EOF
   # Confirm partition sentinel NOT present
   T113_SENT_PRE="absent"; [ -f "$T113_TMPROOT/.partition-complete" ] && T113_SENT_PRE="present"
   # Append a verdict via pattern-recorder (should land in consolidated.json, not per-persona)
-  CLAUDE_LIBRARY_ROOT="$T113_TMPROOT" node "$SCRIPT_DIR/scripts/agent-team/pattern-recorder.js" \
+  CLAUDE_LIBRARY_ROOT="$T113_TMPROOT" node "$SCRIPT_DIR/packages/runtime/orchestration/pattern-recorder.js" \
     record --task-signature t-upgrade --persona 01-hacker --verdict fail >/dev/null 2>&1
   # Verify: consolidated.json now has 3 entries; NO per-persona files created
   T113_CONS_COUNT=$(python3 -c "import json; print(len(json.load(open('$T113_VERDICTS_VOL/consolidated.json'))['patterns']))" 2>/dev/null)

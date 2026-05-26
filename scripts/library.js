@@ -36,9 +36,9 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const paths = require('./agent-team/_lib/library-paths');
-const catalog = require('./agent-team/_lib/library-catalog');
-const { writeAtomic, writeAtomicString } = require('./agent-team/_lib/atomic-write');
+const paths = require('../packages/kernel/_lib/library-paths');
+const catalog = require('../packages/kernel/_lib/library-catalog');
+const { writeAtomic, writeAtomicString } = require('../packages/kernel/_lib/atomic-write');
 
 // ===========================================================================
 // Dispatcher
@@ -725,7 +725,7 @@ function extractFirstContentLine(raw) {
 function readPendingCandidates() {
   // Delegate to self-improve-store pending --json. Bound the script lookup
   // to the conventional location; fail-soft if unavailable.
-  const scriptPath = path.join(os.homedir(), '.claude/scripts/self-improve-store.js');
+  const scriptPath = path.join(os.homedir(), '.claude/packages/kernel/spawn-state/self-improve-store.js');
   if (!fs.existsSync(scriptPath)) return { count: 0, top: [], reason: 'self-improve-store unavailable' };
   const result = spawnSync('node', [scriptPath, 'pending', '--json'], {
     encoding: 'utf8',

@@ -2,6 +2,10 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "power-loom",
   "version": "2.9.1",
+  "_phase0Comment": "Phase 0 (v3.0-alpha) workspace restructure: skills/commands/rules + hooks moved into packages/. Path fields below are advisory per design spec §5; Step 11 upgrade-over probe validates Claude Code's plugin loader resolves the new layout. Fallback if discovery breaks: top-level symlinks.",
+  "skills": "./packages/skills/library",
+  "commands": "./packages/skills/commands",
+  "hooks": "./packages/kernel/hooks.json",
   "description": "Power loom for multi-agent Claude Code orchestration. The Industrial Revolution mechanized weaving in 1784 by replacing skilled hand-craft with deterministic, scalable production; power-loom does the same for multi-agent coordination — turning ad-hoc prompt orchestration into hook-enforced substrate with persistent identity reputation, contract verification, and chaos-tested patterns. Hooks before (deterministic rules), persistence around (cross-session identity + pattern history), verification after (triple-contract output checks). Compensates for LLM non-determinism at the seams without trying to replace the LLM.",
   "author": {
     "name": "Shashank Chandrashekar Murigappa",

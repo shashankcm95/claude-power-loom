@@ -19,7 +19,7 @@
 const { spawnSync } = require('child_process');
 const path = require('path');
 
-const HOOK = path.resolve(__dirname, '../../../hooks/scripts/prompt-enrich-trigger.js');
+const HOOK = path.resolve(__dirname, '../../../packages/kernel/hooks/lifecycle/prompt-enrich-trigger.js');
 
 let passed = 0;
 let failed = 0;

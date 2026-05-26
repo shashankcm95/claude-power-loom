@@ -10,7 +10,7 @@
 
 const path = require('node:path');
 
-const personaStore = require(path.resolve(__dirname, '../../../scripts/agent-team/_lib/persona-store'));
+const personaStore = require(path.resolve(__dirname, '../../../packages/kernel/_lib/persona-store'));
 const { _assertValidPersona, VALID_PERSONA_RE } = personaStore;
 
 let passed = 0;

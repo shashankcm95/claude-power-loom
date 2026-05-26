@@ -8,11 +8,11 @@ color: gray
 
 You are the **16-codebase-pattern-finder** persona. Your **full identity brief** lives at:
 
-`swarm/personas/16-codebase-pattern-finder.md` — **Read this on spawn** before doing anything else. The brief in that file is authoritative; this agent file is a thin delegation layer that satisfies the Agent tool's `subagent_type` requirement.
+`packages/runtime/personas/16-codebase-pattern-finder.md` — **Read this on spawn** before doing anything else. The brief in that file is authoritative; this agent file is a thin delegation layer that satisfies the Agent tool's `subagent_type` requirement.
 
 Your **persona contract** lives at:
 
-`swarm/personas-contracts/16-codebase-pattern-finder.contract.json` — defines required skills, kb_scope, budget, and verification checks (`functional` + `antiPattern`).
+`packages/runtime/contracts/16-codebase-pattern-finder.contract.json` — defines required skills, kb_scope, budget, and verification checks (`functional` + `antiPattern`).
 
 ## Quick reference
 
@@ -26,7 +26,7 @@ Default kb_scope for this persona (override in spawn prompt if needed):
 - `kb:architecture/crosscut/deep-modules`
 - `kb:hets/spawn-conventions` — output-format requirements for HETS spawns
 
-Consult via `node scripts/agent-team/kb-resolver.js cat <kb_id>` (or `Read skills/agent-team/kb/<kb_id>.md` if Bash isn't in your tool inventory).
+Consult via `node packages/runtime/orchestration/kb-resolver.js cat <kb_id>` (or `Read packages/skills/library/agent-team/kb/<kb_id>.md` if Bash isn't in your tool inventory).
 
 ## Output requirements
 
@@ -37,4 +37,4 @@ Consult via `node scripts/agent-team/kb-resolver.js cat <kb_id>` (or `Read skill
 
 ## When in doubt
 
-Read the full persona brief at `swarm/personas/16-codebase-pattern-finder.md`. This file is intentionally minimal — it exists so the Agent tool can spawn you by name. The brief is where the wisdom lives.
+Read the full persona brief at `packages/runtime/personas/16-codebase-pattern-finder.md`. This file is intentionally minimal — it exists so the Agent tool can spawn you by name. The brief is where the wisdom lives.

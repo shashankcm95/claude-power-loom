@@ -29,7 +29,7 @@ jobs:
         run: |
           # H.7.9 fix: --hooks --test installs hooks first, then runs smoke.
           # Plain --test (H.7.8 CI bug) tested already-installed hooks at
-          # $CLAUDE_DIR/hooks/scripts/, which doesn't exist on a clean CI
+          # $CLAUDE_DIR/packages/kernel/hooks/, which doesn't exist on a clean CI
           # checkout — the script bailed with the "test without --hooks
           # tests already-installed hooks, not source" warning + exit 1.
           # H.7.8's CI never validated against a fresh checkout because
@@ -40,7 +40,7 @@ jobs:
 
       - name: Run contracts-validate
         run: |
-          node scripts/agent-team/contracts-validate.js 2>&1 | tee /tmp/contracts.log
+          node packages/runtime/orchestration/contracts-validate.js 2>&1 | tee /tmp/contracts.log
           grep -qE 'Total violations: 0' /tmp/contracts.log
 
   markdown-lint:
@@ -56,10 +56,14 @@ jobs:
 
       # Use npx to run markdownlint-cli2 without forcing a local npm install.
       # The .markdownlint.json at repo root is auto-discovered.
-      # Exclude swarm/ — those are historical phase findings docs; lint would
-      # require touching them, which dilutes their snapshot-at-phase property.
+      # Exclude swarm/ — historical phase findings docs; snapshot-at-phase property.
+      # Exclude packages/specs/ — Phase 0 (v3.0-alpha) moved swarm/thoughts/shared/*
+      # + swarm/H.*-findings.md + swarm/adrs/* + bench/* → packages/specs/*.
+      # Same snapshot-at-phase semantic. 35 pre-existing violations tracked in
+      # packages/specs/findings/markdownlint-debt-phase-0.md with a 3-tier
+      # remediation plan; once cleaned up, drop "#packages/specs" and re-enforce.
       - name: Run markdownlint
-        run: npx --yes markdownlint-cli2 "**/*.md" "#node_modules" "#swarm"
+        run: npx --yes markdownlint-cli2 "**/*.md" "#node_modules" "#swarm" "#packages/specs"
 
   json-validate:
     name: JSON validate

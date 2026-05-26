@@ -111,10 +111,10 @@ The toolkit has two distinct layers: **enforced** (hooks fire deterministically;
 | `validate-yaml-frontmatter.js` | PreToolUse:Edit\|Write | Blocks duplicate top-level YAML keys in HT-state.md (H.9.11; drift-note 80 closure) |
 | `validate-kb-doc.js` | PreToolUse:Edit\|Write | HARD-block frontmatter quality (kb_id + version + tags ≥3 + sources_consulted ≥2) + SOFT-advisory section presence (H.8.8 + H.9.12) |
 | `validate-adr-drift.js` | PreToolUse:Edit\|Write | Enforces per-phase pre-approval gate for substrate-fundament changes |
-| `validate-plan-schema.js` | PreToolUse:ExitPlanMode | Validates plan schema before exit; forcing-instruction on schema violation (HT.1.4) |
-| `verify-plan-gate.js` | PreToolUse:Edit\|Write | Ensures plan-mode approval ceremony before substantive code changes |
+| `validate-plan-schema.js` | PostToolUse:Edit\|Write | Validates plan schema after Edit/Write; forcing-instruction on schema violation (HT.1.4) |
+| `verify-plan-gate.js` | PreToolUse:ExitPlanMode | Ensures plan-mode approval ceremony before substantive code changes |
 
-(7 validators live in `hooks/scripts/validators/`; 11 top-level hooks live in `hooks/scripts/`. Registration count is 17 across 6 events per `hooks/hooks.json`.)
+(16 hooks live in `packages/kernel/hooks/{pre,post,lifecycle}/`; 7 validators live in `packages/kernel/validators/`; spawn-record.js in `packages/kernel/spawn-state/`. Registration count is 24 across 6 events per `packages/kernel/hooks.json`.)
 
 [Per-hook deep-dives → docs/hooks/](docs/hooks/)
 
@@ -169,7 +169,7 @@ These limitations are intentional architecture decisions, not gaps to fix.
 ## Project layout
 
 - `.claude-plugin/plugin.json` + `marketplace.json` — plugin manifests
-- `hooks/` — 18 deterministic hook scripts (11 top-level in `hooks/scripts/` + 7 validators in `hooks/scripts/validators/`; 17 registrations across 6 lifecycle events per `hooks/hooks.json`)
+- `packages/kernel/hooks/` + `packages/kernel/validators/` + `packages/kernel/spawn-state/` — 24 deterministic hook scripts (16 hooks split pre/post/lifecycle + 7 validators + spawn-record.js; 24 registrations across 6 lifecycle events per `packages/kernel/hooks.json`)
 - `agents/` — 5 specialist agent definitions
 - `skills/` — 17 skill workflows (including `agent-team/` for HETS)
 - `commands/` — 13 slash commands

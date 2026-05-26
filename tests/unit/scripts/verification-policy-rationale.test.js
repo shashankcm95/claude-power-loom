@@ -25,7 +25,7 @@ process.stdout.write('\n[FIX-I10] verification-policy rationale interpolation\n'
 // interpolation is `hash` not `synthIdHash`. This is a code-level regression
 // guard — if a future refactor accidentally renames it, the test fires.
 const fs = require('node:fs');
-const policyPath = path.resolve(__dirname, '../../../scripts/agent-team/identity/verification-policy.js');
+const policyPath = path.resolve(__dirname, '../../../packages/runtime/orchestration/identity/verification-policy.js');
 const src = fs.readFileSync(policyPath, 'utf8');
 
 // T1: rationale interpolation uses `tail[0].hash` and `tail[1].hash`
@@ -40,7 +40,7 @@ const src = fs.readFileSync(policyPath, 'utf8');
 
 // T2: synthid_history canonical entry shape documented in registry.js
 {
-  const registryPath = path.resolve(__dirname, '../../../scripts/agent-team/identity/registry.js');
+  const registryPath = path.resolve(__dirname, '../../../packages/runtime/orchestration/identity/registry.js');
   const regSrc = fs.readFileSync(registryPath, 'utf8');
   const hasCanonicalDoc = /CANONICAL ENTRY SHAPE/.test(regSrc) && /hash:\s+<8-hex/.test(regSrc);
   assert(hasCanonicalDoc, 'T2: registry.js documents canonical synthid_history entry shape');
@@ -68,7 +68,7 @@ const src = fs.readFileSync(policyPath, 'utf8');
   const REPO = path.resolve(__dirname, '../../..');
   // Use the architect.theo identity (we know it has drift state from this session)
   const r = spawnSync('node',
-    [path.join(REPO, 'scripts/agent-team/agent-identity.js'),
+    [path.join(REPO, 'packages/runtime/orchestration/agent-identity.js'),
      'recommend-verification',
      '--identity', '04-architect.theo'],
     { encoding: 'utf8', env: process.env }

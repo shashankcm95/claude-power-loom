@@ -1,0 +1,22 @@
+{
+  "name": "@power-loom/kernel",
+  "version": "0.1.0-alpha.0",
+  "private": true,
+  "description": "Loom Kernel layer (v4 §2 Layer 1). Pure-function gates, hooks, validators, recall, spawn-state, schemas. MAJOR-bump-protected. No deps on other workspace packages.",
+  "scripts": {
+    "test": "echo '(kernel tests TBD — see tests/ at repo root for cross-cutting suite)' && exit 0"
+  },
+  "files": [
+    "hooks",
+    "_lib",
+    "validators",
+    "algorithms",
+    "gc",
+    "recall",
+    "spawn-state",
+    "schema",
+    "worktree",
+    "enforcement",
+    "hooks.json"
+  ]
+}

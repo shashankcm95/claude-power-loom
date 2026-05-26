@@ -13,7 +13,7 @@
 
   # Test 1: fact-force-gate blocks unread file
   local result
-  result=$(echo '{"tool_name":"Edit","tool_input":{"file_path":"/tmp/test-fact-gate-unread.txt"}}' | node "$CLAUDE_DIR/hooks/scripts/fact-force-gate.js" 2>/dev/null)
+  result=$(echo '{"tool_name":"Edit","tool_input":{"file_path":"/tmp/test-fact-gate-unread.txt"}}' | node "$CLAUDE_DIR/packages/kernel/hooks/pre/fact-force-gate.js" 2>/dev/null)
   if echo "$result" | grep -q '"decision":"block"'; then
     echo "  ✓ fact-force-gate: blocks unread existing file"
     passed=$((passed + 1))
@@ -23,7 +23,7 @@
   fi
 
   # Test 2: fact-force-gate allows new file
-  result=$(echo '{"tool_name":"Write","tool_input":{"file_path":"/tmp/nonexistent-test-file-99999.txt"}}' | node "$CLAUDE_DIR/hooks/scripts/fact-force-gate.js" 2>/dev/null)
+  result=$(echo '{"tool_name":"Write","tool_input":{"file_path":"/tmp/nonexistent-test-file-99999.txt"}}' | node "$CLAUDE_DIR/packages/kernel/hooks/pre/fact-force-gate.js" 2>/dev/null)
   if echo "$result" | grep -q '"decision":"approve"'; then
     echo "  ✓ fact-force-gate: allows new file creation"
     passed=$((passed + 1))
@@ -33,7 +33,7 @@
   fi
 
   # Test 3: config-guard blocks eslintrc
-  result=$(echo '{"tool_name":"Edit","tool_input":{"file_path":"/app/.eslintrc.json"}}' | node "$CLAUDE_DIR/hooks/scripts/config-guard.js" 2>/dev/null)
+  result=$(echo '{"tool_name":"Edit","tool_input":{"file_path":"/app/.eslintrc.json"}}' | node "$CLAUDE_DIR/packages/kernel/hooks/pre/config-guard.js" 2>/dev/null)
   if echo "$result" | grep -q '"decision":"block"'; then
     echo "  ✓ config-guard: blocks .eslintrc edits"
     passed=$((passed + 1))
@@ -43,7 +43,7 @@
   fi
 
   # Test 4: config-guard allows normal files
-  result=$(echo '{"tool_name":"Edit","tool_input":{"file_path":"/app/src/index.ts"}}' | node "$CLAUDE_DIR/hooks/scripts/config-guard.js" 2>/dev/null)
+  result=$(echo '{"tool_name":"Edit","tool_input":{"file_path":"/app/src/index.ts"}}' | node "$CLAUDE_DIR/packages/kernel/hooks/pre/config-guard.js" 2>/dev/null)
   if echo "$result" | grep -q '"decision":"approve"'; then
     echo "  ✓ config-guard: allows normal file edits"
     passed=$((passed + 1))
@@ -55,7 +55,7 @@
   # Test 5: session-reset creates tracker (use node to resolve tmpdir)
   local tmpdir
   tmpdir=$(node -e "process.stdout.write(require('os').tmpdir())")
-  CLAUDE_SESSION_ID="smoke-test" node "$CLAUDE_DIR/hooks/scripts/session-reset.js" 2>/dev/null
+  CLAUDE_SESSION_ID="smoke-test" node "$CLAUDE_DIR/packages/kernel/hooks/lifecycle/session-reset.js" 2>/dev/null
   if [ -f "$tmpdir/claude-read-tracker-smoke-test.json" ]; then
     echo "  ✓ session-reset: creates tracker file"
     rm -f "$tmpdir/claude-read-tracker-smoke-test.json"
@@ -67,7 +67,7 @@
 
   # Test 6: prompt-enrich-trigger flags vague prompts
   local vague_result
-  vague_result=$(echo '{"prompt":"fix the auth"}' | node "$CLAUDE_DIR/hooks/scripts/prompt-enrich-trigger.js" 2>/dev/null)
+  vague_result=$(echo '{"prompt":"fix the auth"}' | node "$CLAUDE_DIR/packages/kernel/hooks/lifecycle/prompt-enrich-trigger.js" 2>/dev/null)
   if echo "$vague_result" | grep -q 'PROMPT-ENRICHMENT-GATE'; then
     echo "  ✓ prompt-enrich-trigger: flags vague prompt"
     passed=$((passed + 1))
@@ -78,7 +78,7 @@
 
   # Test 7: prompt-enrich-trigger skips clear prompts
   local clear_result
-  clear_result=$(echo '{"prompt":"git push origin main"}' | node "$CLAUDE_DIR/hooks/scripts/prompt-enrich-trigger.js" 2>/dev/null)
+  clear_result=$(echo '{"prompt":"git push origin main"}' | node "$CLAUDE_DIR/packages/kernel/hooks/lifecycle/prompt-enrich-trigger.js" 2>/dev/null)
   if [ -z "$clear_result" ]; then
     echo "  ✓ prompt-enrich-trigger: skips clear prompt"
     passed=$((passed + 1))
@@ -90,7 +90,7 @@
   # Test 8 (H.4.3): prompt-enrich-trigger skips "sure, go for it"-class
   # confirmation variants (was previously leaking past strict skip regex)
   local h43_variant_result
-  h43_variant_result=$(echo '{"prompt":"sure, go for it"}' | node "$CLAUDE_DIR/hooks/scripts/prompt-enrich-trigger.js" 2>/dev/null)
+  h43_variant_result=$(echo '{"prompt":"sure, go for it"}' | node "$CLAUDE_DIR/packages/kernel/hooks/lifecycle/prompt-enrich-trigger.js" 2>/dev/null)
   if [ -z "$h43_variant_result" ]; then
     echo "  ✓ prompt-enrich-trigger: H.4.3 confirmation-variant skip (sure, go for it)"
     passed=$((passed + 1))
@@ -101,7 +101,7 @@
 
   # Test 9 (H.4.3): prompt-enrich-trigger skips standalone "go for it"
   local h43_standalone_result
-  h43_standalone_result=$(echo '{"prompt":"go for it"}' | node "$CLAUDE_DIR/hooks/scripts/prompt-enrich-trigger.js" 2>/dev/null)
+  h43_standalone_result=$(echo '{"prompt":"go for it"}' | node "$CLAUDE_DIR/packages/kernel/hooks/lifecycle/prompt-enrich-trigger.js" 2>/dev/null)
   if [ -z "$h43_standalone_result" ]; then
     echo "  ✓ prompt-enrich-trigger: H.4.3 standalone confirmation skip (go for it)"
     passed=$((passed + 1))
@@ -115,7 +115,7 @@
   # fail strict skip regex. H.7.26 consolidated former [CONFIRMATION-UNCERTAIN]
   # into this tier of the unified marker (drift-note 57).
   local h43_uncertain_result
-  h43_uncertain_result=$(echo '{"prompt":"go on"}' | node "$CLAUDE_DIR/hooks/scripts/prompt-enrich-trigger.js" 2>/dev/null)
+  h43_uncertain_result=$(echo '{"prompt":"go on"}' | node "$CLAUDE_DIR/packages/kernel/hooks/lifecycle/prompt-enrich-trigger.js" 2>/dev/null)
   if echo "$h43_uncertain_result" | grep -q 'PROMPT-ENRICHMENT-GATE' && echo "$h43_uncertain_result" | grep -q 'tier: short-confirm'; then
     echo "  ✓ prompt-enrich-trigger: H.7.26 [PROMPT-ENRICHMENT-GATE] tier: short-confirm fires (consolidated from [CONFIRMATION-UNCERTAIN])"
     passed=$((passed + 1))

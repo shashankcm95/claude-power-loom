@@ -27,7 +27,7 @@ printf "${DIM}%s${RESET}\n" "$(date)"
 section "Component installation"
 [ -d "$CLAUDE_DIR/agents" ] && ok "agents/ ($(ls "$CLAUDE_DIR/agents" 2>/dev/null | wc -l | tr -d ' ') files)" || fail "agents/ missing"
 [ -d "$CLAUDE_DIR/rules/toolkit" ] && ok "rules/toolkit/ ($(find "$CLAUDE_DIR/rules/toolkit" -name '*.md' 2>/dev/null | wc -l | tr -d ' ') files)" || fail "rules/toolkit/ missing"
-[ -d "$CLAUDE_DIR/hooks/scripts" ] && ok "hooks/scripts/ ($(ls "$CLAUDE_DIR/hooks/scripts"/*.js 2>/dev/null | wc -l | tr -d ' ') scripts)" || fail "hooks/scripts/ missing"
+[ -d "$CLAUDE_DIR/packages/kernel/hooks" ] && ok "packages/kernel/hooks/ ($(find "$CLAUDE_DIR/packages/kernel/hooks" -maxdepth 2 -name "*.js" 2>/dev/null | wc -l | tr -d ' ') scripts)" || fail "packages/kernel/hooks/ missing"
 [ -d "$CLAUDE_DIR/commands" ] && ok "commands/ ($(ls "$CLAUDE_DIR/commands" 2>/dev/null | wc -l | tr -d ' ') files)" || fail "commands/ missing"
 [ -d "$CLAUDE_DIR/skills" ] && ok "skills/ ($(ls "$CLAUDE_DIR/skills" 2>/dev/null | wc -l | tr -d ' ') skills)" || fail "skills/ missing"
 
@@ -128,7 +128,7 @@ section "Local fallbacks"
 section "Live hook smoke checks"
 if command -v node &>/dev/null; then
   # fact-force-gate
-  result=$(echo '{"tool_name":"Edit","tool_input":{"file_path":"/tmp/never-read-test.txt"}}' | node "$CLAUDE_DIR/hooks/scripts/fact-force-gate.js" 2>/dev/null || true)
+  result=$(echo '{"tool_name":"Edit","tool_input":{"file_path":"/tmp/never-read-test.txt"}}' | node "$CLAUDE_DIR/packages/kernel/hooks/pre/fact-force-gate.js" 2>/dev/null || true)
   if echo "$result" | grep -q '"decision":"block"'; then
     ok "fact-force-gate blocks unread file edits"
   else
@@ -136,7 +136,7 @@ if command -v node &>/dev/null; then
   fi
 
   # prompt-enrich-trigger
-  result=$(echo '{"prompt":"fix the auth"}' | node "$CLAUDE_DIR/hooks/scripts/prompt-enrich-trigger.js" 2>/dev/null || true)
+  result=$(echo '{"prompt":"fix the auth"}' | node "$CLAUDE_DIR/packages/kernel/hooks/lifecycle/prompt-enrich-trigger.js" 2>/dev/null || true)
   if echo "$result" | grep -q "PROMPT-ENRICHMENT-GATE"; then
     ok "prompt-enrich-trigger flags vague prompts"
   else

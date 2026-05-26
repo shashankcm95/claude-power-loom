@@ -10,7 +10,7 @@
 const { spawnSync } = require('child_process');
 const path = require('path');
 
-const HOOK = path.resolve(__dirname, '../../../hooks/scripts/contract-reminder-on-agent-spawn.js');
+const HOOK = path.resolve(__dirname, '../../../packages/kernel/hooks/pre/contract-reminder-on-agent-spawn.js');
 
 let passed = 0;
 let failed = 0;

@@ -6,7 +6,7 @@
  *   The 08-ml-engineer persona covers BOTH training-pipeline AND
  *   inference-API consumption (LLM-as-feature). FIX-H2 patched
  *   the contract `_scope_note` and `agents/ml-engineer.md` but the
- *   load-bearing persona brief at `swarm/personas/08-ml-engineer.md`
+ *   load-bearing persona brief at `packages/runtime/personas/08-ml-engineer.md`
  *   still leads with training-only framing ("trained, evaluated,
  *   deployed, and operated production ML systems"). Drift between
  *   three sources of truth.
@@ -16,8 +16,8 @@
  *
  * The 3 sources of truth (must agree):
  *   1. agents/ml-engineer.md — Agent-tool subagent_type declaration
- *   2. swarm/personas-contracts/08-ml-engineer.contract.json — _scope_note
- *   3. swarm/personas/08-ml-engineer.md — full persona brief
+ *   2. packages/runtime/contracts/08-ml-engineer.contract.json — _scope_note
+ *   3. packages/runtime/personas/08-ml-engineer.md — full persona brief
  *
  * Tests:
  *   T1: agents/ml-engineer.md mentions BOTH training AND inference
@@ -35,8 +35,8 @@ const path = require('node:path');
 
 const REPO = path.resolve(__dirname, '../../..');
 const AGENT_MD = path.join(REPO, 'agents/ml-engineer.md');
-const CONTRACT = path.join(REPO, 'swarm/personas-contracts/08-ml-engineer.contract.json');
-const PERSONA_BRIEF = path.join(REPO, 'swarm/personas/08-ml-engineer.md');
+const CONTRACT = path.join(REPO, 'packages/runtime/contracts/08-ml-engineer.contract.json');
+const PERSONA_BRIEF = path.join(REPO, 'packages/runtime/personas/08-ml-engineer.md');
 
 let passed = 0;
 let failed = 0;

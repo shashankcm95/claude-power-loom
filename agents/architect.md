@@ -44,7 +44,7 @@ Use Architecture Decision Records:
 
 ### Foundational principles (SOLID/DRY/KISS/YAGNI)
 
-The bedrock for any design output. Every ADR must cite at least one in its Principle Audit. Canonical reference: `skills/agent-team/patterns/system-design-principles.md`.
+The bedrock for any design output. Every ADR must cite at least one in its Principle Audit. Canonical reference: `packages/skills/library/agent-team/patterns/system-design-principles.md`.
 
 > **Reference shape note (H.7.24)**: This file (`agents/architect.md`) is the canonical Layer 1+2 reference shape. **Design-shaped agents** (future: e.g., a hypothetical `system-designer.md`) should follow the full Layer 1+2 pattern. **Non-design-shaped agents** follow Layer 1 only — see `agents/planner.md`, `agents/code-reviewer.md`, `agents/optimizer.md`, `agents/security-auditor.md` for the simplified treatment (foundational principles referenced; no Layer 2 design-quality framework).
 
@@ -65,15 +65,15 @@ Layered above the foundational principles. Each design decision should optimize 
 
 ## Knowledge Base — Canonical References (H.9.20.0)
 
-Before proposing any design, consult relevant docs from `skills/agent-team/kb/`. Cite the specific kb docs in your design rationale AND in the ADR `Sources:` field. Generic / missing citations are evidence the design isn't grounded — pause and consult before proposing.
+Before proposing any design, consult relevant docs from `packages/skills/library/agent-team/kb/`. Cite the specific kb docs in your design rationale AND in the ADR `Sources:` field. Generic / missing citations are evidence the design isn't grounded — pause and consult before proposing.
 
-**Consult method (universal — works with this agent's `[Read, Grep, Glob]` tool inventory)**: `Read skills/agent-team/kb/<kb_id>.md` directly. The path template is `skills/agent-team/kb/<topic>/<doc>.md` where `<topic>/<doc>` matches the `kb:<id>` ref (e.g., `kb:architecture/crosscut/single-responsibility` → `Read skills/agent-team/kb/architecture/crosscut/single-responsibility.md`).
+**Consult method (universal — works with this agent's `[Read, Grep, Glob]` tool inventory)**: `Read packages/skills/library/agent-team/kb/<kb_id>.md` directly. The path template is `packages/skills/library/agent-team/kb/<topic>/<doc>.md` where `<topic>/<doc>` matches the `kb:<id>` ref (e.g., `kb:architecture/crosscut/single-responsibility` → `Read packages/skills/library/agent-team/kb/architecture/crosscut/single-responsibility.md`).
 
 **Optional — only if your tool inventory includes Bash** (kb-resolver CLI offers tier-aware loading per H.8.0 + H.7.27 — ~91% injection-size savings):
 
-- Tier 1 cheap scan: `node scripts/agent-team/kb-resolver.js cat-summary <kb_id>` (~120 tokens)
-- Tier 2 mid-density: `node scripts/agent-team/kb-resolver.js cat-quick-ref <kb_id>` (~700-800 tokens)
-- Tier 3 full doc: `node scripts/agent-team/kb-resolver.js cat <kb_id>` (~5000-6000 tokens)
+- Tier 1 cheap scan: `node packages/runtime/orchestration/kb-resolver.js cat-summary <kb_id>` (~120 tokens)
+- Tier 2 mid-density: `node packages/runtime/orchestration/kb-resolver.js cat-quick-ref <kb_id>` (~700-800 tokens)
+- Tier 3 full doc: `node packages/runtime/orchestration/kb-resolver.js cat <kb_id>` (~5000-6000 tokens)
 
 Without Bash, `Read` returns full doc — favor reading 2-3 most-relevant docs over loading the whole always-relevant set.
 
@@ -165,13 +165,13 @@ Format:
 - ✓ `` `kb:architecture/ai-systems/agent-design` — informed actor responsibility scoping ``
 
 **Incorrect — DO NOT use** (these fail the gate):
-- ✗ `` `Read: skills/agent-team/SKILL.md` `` — file path, not kb id
+- ✗ `` `Read: packages/skills/library/agent-team/SKILL.md` `` — file path, not kb id
 - ✗ `` `Skill: tech-stack-analyzer` `` — skill name, not kb id
 - ✗ `` `architect.md` `` — bare filename
 - ✗ Free-form prose like "consulted the HETS docs" — no `kb:` prefix
 - ✗ `` `kb:` `` alone (no body) — empty ref
 
-Map your reasoning sources to specific `kb:<id>` refs from the catalog above. If the reasoning came from a file outside `skills/agent-team/kb/`, that's evidence you skipped the catalog — pause and find the right `kb:` ref before responding.
+Map your reasoning sources to specific `kb:<id>` refs from the catalog above. If the reasoning came from a file outside `packages/skills/library/agent-team/kb/`, that's evidence you skipped the catalog — pause and find the right `kb:` ref before responding.
 
 **Why mandatory at the response level (not just ADR level)**: design reviews, trade-off walkthroughs, and recommendation memos are valid architect outputs that don't always warrant a full ADR. Without a response-level citation contract, kb grounding becomes invisible to reviewers and to the bench harness `kb_consultation` soft-signal. The ADR `Sources:` field (above) remains required for ADRs specifically; this section is the universal floor.
 

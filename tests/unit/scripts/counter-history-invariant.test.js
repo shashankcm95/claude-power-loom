@@ -14,7 +14,7 @@
 
 const path = require('node:path');
 
-const registry = require(path.resolve(__dirname, '../../../scripts/agent-team/identity/registry'));
+const registry = require(path.resolve(__dirname, '../../../packages/runtime/orchestration/identity/registry'));
 const { _backfillSchema } = registry;
 
 let passed = 0;

@@ -18,7 +18,7 @@ const path = require('node:path');
 const os = require('node:os');
 
 const { writeAtomic, writeAtomicString } = require(
-  path.resolve(__dirname, '../../../scripts/agent-team/_lib/atomic-write')
+  path.resolve(__dirname, '../../../packages/kernel/_lib/atomic-write')
 );
 
 let passed = 0;

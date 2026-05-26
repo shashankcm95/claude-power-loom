@@ -35,8 +35,8 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const REPO = path.resolve(__dirname, '../../..');
-const HOOK = path.join(REPO, 'hooks/scripts/validate-config-redirect.js');
-const KB_DOC = path.join(REPO, 'skills/agent-team/kb/design-pushback/syntactic-gate-extension-for-tool-bypass.md');
+const HOOK = path.join(REPO, 'packages/kernel/validators/validate-config-redirect.js');
+const KB_DOC = path.join(REPO, 'packages/skills/library/agent-team/kb/design-pushback/syntactic-gate-extension-for-tool-bypass.md');
 
 let passed = 0;
 let failed = 0;

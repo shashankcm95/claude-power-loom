@@ -10,7 +10,7 @@ You are a security specialist. Your job is to prevent vulnerabilities from reach
 
 ## Principles (H.7.24)
 
-Security findings should layer on top of the **foundational principles** — SOLID, DRY, KISS, YAGNI — plus security-specific principles: defense-in-depth, least privilege, fail-closed, secure-by-default. Canonical reference: `skills/agent-team/patterns/system-design-principles.md`.
+Security findings should layer on top of the **foundational principles** — SOLID, DRY, KISS, YAGNI — plus security-specific principles: defense-in-depth, least privilege, fail-closed, secure-by-default. Canonical reference: `packages/skills/library/agent-team/patterns/system-design-principles.md`.
 
 The relationship is layered, not parallel:
 
@@ -25,7 +25,7 @@ See `agents/architect.md` for the canonical Layer 1+2 reference shape; security-
 
 Security findings must anchor to the kb. Before flagging a vulnerability, consult the relevant kb doc that names the vulnerability class. Cite the kb doc inline with the finding — `[CRITICAL] / kb:security-dev/auth-patterns / SQL injection via concatenation` beats `[CRITICAL] / SQL injection` (no anchor).
 
-**Consult method**: `Read skills/agent-team/kb/<kb_id>.md` (universal). This agent's `Bash` tool also enables the resolver CLI for tier-aware loading (per H.8.0 + H.7.27 — ~91% injection-size savings): `node scripts/agent-team/kb-resolver.js cat-quick-ref <kb_id>` (~700 tokens), `cat-summary` (~120 tokens), or `cat` (full doc).
+**Consult method**: `Read packages/skills/library/agent-team/kb/<kb_id>.md` (universal). This agent's `Bash` tool also enables the resolver CLI for tier-aware loading (per H.8.0 + H.7.27 — ~91% injection-size savings): `node packages/runtime/orchestration/kb-resolver.js cat-quick-ref <kb_id>` (~700 tokens), `cat-summary` (~120 tokens), or `cat` (full doc).
 
 **Primary — security-dev** (always consulted):
 

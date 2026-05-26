@@ -1,0 +1,127 @@
+{
+  "agentId": "actor-code-reviewer",
+  "persona": "03-code-reviewer",
+  "role": "actor",
+  "skills": {
+    "required": [
+      "review"
+    ],
+    "recommended": [
+      "simplify",
+      "security-audit",
+      "research-mode"
+    ],
+    "skill_status": {
+      "review": "available",
+      "simplify": "not-yet-authored",
+      "security-audit": "available",
+      "research-mode": "available"
+    }
+  },
+  "kb_scope": {
+    "default": [
+      "kb:hets/spawn-conventions"
+    ]
+  },
+  "budget": {
+    "tokens": 30000,
+    "extensible": true,
+    "maxExtensions": 1,
+    "extensionAmount": 15000
+  },
+  "functional": [
+    {
+      "id": "F1",
+      "check": "outputContainsFrontmatter",
+      "required": true
+    },
+    {
+      "id": "F2",
+      "check": "frontmatterHasFields",
+      "args": {
+        "fields": [
+          "id",
+          "role",
+          "depth",
+          "parent",
+          "persona"
+        ]
+      },
+      "required": true
+    },
+    {
+      "id": "F3",
+      "check": "minFindings",
+      "args": {
+        "min": 3
+      },
+      "required": true
+    },
+    {
+      "id": "F4",
+      "check": "hasFileCitations",
+      "args": {
+        "min": 6
+      },
+      "required": true
+    },
+    {
+      "id": "F5",
+      "check": "hasSeveritySections",
+      "args": {
+        "severities": [
+          "CRITICAL",
+          "HIGH",
+          "MEDIUM",
+          "LOW"
+        ]
+      },
+      "required": true
+    },
+    {
+      "id": "F6",
+      "check": "kb_scope_consumed",
+      "required": true
+    },
+    {
+      "id": "F7",
+      "check": "containsKeywords",
+      "args": {
+        "keywords": [
+          "Principle"
+        ]
+      },
+      "required": false
+    }
+  ],
+  "antiPattern": [
+    {
+      "id": "A1",
+      "check": "claimsHaveEvidence",
+      "severity": "fail"
+    },
+    {
+      "id": "A2",
+      "check": "noTextSimilarityToPriorRun",
+      "args": {
+        "threshold": 0.55
+      },
+      "severity": "warn"
+    },
+    {
+      "id": "A3",
+      "check": "noTemplateRepetition",
+      "args": {
+        "minVariation": 0.3
+      },
+      "severity": "warn"
+    },
+    {
+      "id": "A4",
+      "check": "noPaddingPhrases",
+      "severity": "fail"
+    }
+  ],
+  "fallbackAcceptable": [],
+  "_format": "Findings format + frontmatter contract: see packages/runtime/schema/_format-spec.md (v2.9.0 Phase B.1)"
+}
