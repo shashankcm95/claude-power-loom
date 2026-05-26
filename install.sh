@@ -134,7 +134,8 @@ install_hooks() {
     echo "[DRY RUN] Note: --diff --hooks shows kernel/hooks + kernel/validators only."
     echo "[DRY RUN]       Full install also copies kernel/{_lib,recall,spawn-state,algorithms,schema},"
     echo "[DRY RUN]       runtime/{orchestration,contracts,personas,schema}, root scripts/,"
-    echo "[DRY RUN]       and back-compat ~/.claude/scripts/{loom-recall,self-improve-store,prompt-pattern-store}.js."
+    echo "[DRY RUN]       and back-compat ~/.claude/scripts/{loom-recall,self-improve-store,prompt-pattern-store}.js"
+    echo "[DRY RUN]       + back-compat ~/.claude/_lib/ (kernel _lib helpers for entrypoint resolution)."
     return
   fi
 
@@ -258,6 +259,34 @@ install_hooks() {
     fi
   done
   echo "  -> Back-compat ~/.claude/scripts/ entrypoints installed (loom-recall, self-improve-store, prompt-pattern-store)"
+
+  # 7c. Stage kernel _lib helpers under ~/.claude/_lib/ so the back-compat
+  # entrypoints above can resolve their `require('../_lib/X')` imports
+  # (atomic-write, lock) when invoked from ~/.claude/scripts/.
+  #
+  # Resolution: node resolves `require('../_lib/X')` relative to the file's
+  # directory. From ~/.claude/scripts/self-improve-store.js, `..` is
+  # ~/.claude/, so `../_lib/X` resolves to ~/.claude/_lib/X (NOT
+  # ~/.claude/scripts/_lib/X). This mirrors the kernel package layout
+  # where the same require from packages/kernel/spawn-state/script.js
+  # resolves to packages/kernel/_lib/X.
+  #
+  # Without this, self-improve-store.js and prompt-pattern-store.js crash
+  # with MODULE_NOT_FOUND on first hard require. (loom-recall.js has no
+  # _lib deps and works without this staging.)
+  #
+  # This is back-compat scaffolding for the Phase 0 transition. When the
+  # 20+ legacy callers are migrated to ~/.claude/packages/kernel/... paths,
+  # both step 7b and this step 7c can be removed together.
+  if [ -d "$SCRIPT_DIR/packages/kernel/_lib" ]; then
+    mkdir -p "$CLAUDE_DIR/_lib"
+    shopt -s nullglob
+    for f in "$SCRIPT_DIR"/packages/kernel/_lib/*.js; do
+      [ -f "$f" ] && cp "$f" "$CLAUDE_DIR/_lib/"
+    done
+    shopt -u nullglob
+    echo "  -> Back-compat _lib helpers installed (~/.claude/_lib/)"
+  fi
 
   echo "  -> Kernel + runtime substrate installed to $CLAUDE_DIR/packages/"
   echo ""
