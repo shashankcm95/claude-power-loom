@@ -94,7 +94,7 @@ const SECRET_PATTERNS = [
   /AKIA[0-9A-Z]{16}/g,                                              // AWS access key id
   /aws_secret_access_key\s*[:=]\s*['"]?[A-Za-z0-9/+=]{40}['"]?/gi,  // AWS secret
   /sk-[a-zA-Z0-9\-_]{20,}/g,                                        // OpenAI / Anthropic key prefix
-  /eyJ[a-zA-Z0-9_\-]+\.[a-zA-Z0-9_\-]+\.[a-zA-Z0-9_\-]+/g,          // JWT
+  /eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+/g,             // JWT
   /ghp_[a-zA-Z0-9]{36}/g,                                           // GitHub personal access token
   /gho_[a-zA-Z0-9]{36}/g,                                           // GitHub OAuth token
   /xox[abprs]-[a-zA-Z0-9-]{10,}/g,                                  // Slack token family

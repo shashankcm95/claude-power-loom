@@ -102,7 +102,7 @@ function walkMdFiles(root) {
     let entries;
     try {
       entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch (e) {
+    } catch (_e) {
       return;
     }
     for (const e of entries) {
@@ -193,7 +193,7 @@ function main(argv) {
   const ranked = [];
   for (const f of files) {
     let content;
-    try { content = fs.readFileSync(f, 'utf8'); } catch (e) { continue; }
+    try { content = fs.readFileSync(f, 'utf8'); } catch (_e) { continue; }
     const { frontmatter, body } = parseFrontmatter(content);
     const h1 = extractH1(body);
     const scored = scoreDocument(queryTokens, query, { frontmatter, body, h1 });
