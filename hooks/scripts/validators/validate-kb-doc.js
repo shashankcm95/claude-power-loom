@@ -65,7 +65,7 @@ const fs = require('fs');
 const { log } = require('../_log.js');
 const logger = log('validate-kb-doc');
 
-const { parseFrontmatter } = require('../../../scripts/agent-team/_lib/frontmatter.js');
+const { parseFrontmatter } = require('../_lib/frontmatter.js');
 
 // kb/architecture/**.md is the discipline-enforced surface (where the
 // 3-tier authoring rules apply, per swarm/kb-architecture-planning/_PRINCIPLES.md).

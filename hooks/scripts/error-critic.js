@@ -71,7 +71,7 @@ let acquireLock, releaseLock;
 // substrate sites uniformly consume _lib/atomic-write.js).
 let writeAtomicString;
 try {
-  ({ writeAtomicString } = require('../../scripts/agent-team/_lib/atomic-write'));
+  ({ writeAtomicString } = require('../../_lib/atomic-write'));
   if (typeof writeAtomicString !== 'function') {
     throw new Error('_lib/atomic-write.js API shape mismatch — missing writeAtomicString export');
   }
@@ -82,13 +82,13 @@ try {
   writeAtomicString = (filePath, str) => fs.writeFileSync(filePath, str);
 }
 try {
-  ({ acquireLock, releaseLock } = require('../../scripts/agent-team/_lib/lock'));
+  ({ acquireLock, releaseLock } = require('../../_lib/lock'));
   if (typeof acquireLock !== 'function' || typeof releaseLock !== 'function') {
     throw new Error('_lib/lock.js API shape mismatch — missing acquireLock or releaseLock export');
   }
 } catch {
   try {
-    ({ acquireLock, releaseLock } = require(path.join(os.homedir(), '.claude', 'scripts', 'agent-team', '_lib', 'lock')));
+    ({ acquireLock, releaseLock } = require(path.join(os.homedir(), '.claude', 'packages', 'kernel', '_lib', 'lock')));
     if (typeof acquireLock !== 'function' || typeof releaseLock !== 'function') {
       throw new Error('_lib/lock.js API shape mismatch');
     }
@@ -100,7 +100,7 @@ try {
     acquireLock = () => false;
     releaseLock = () => {};
     logger('lock_primitive_missing', {
-      tried: ['../../scripts/agent-team/_lib/lock', '~/.claude/scripts/agent-team/_lib/lock'],
+      tried: ['../../_lib/lock', '~/.claude/packages/kernel/_lib/lock'],
       fallback: 'fail-soft-skip',
     });
   }

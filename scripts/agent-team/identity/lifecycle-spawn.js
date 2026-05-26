@@ -36,7 +36,7 @@ const {
 } = require('./trust-scoring');
 // v2.8.0 — HETS-SynthId content-hash. computed at assign time + persisted
 // to identity.synthid_history for drift detection across sessions.
-const { computeContentHash, formatSynthId } = require('../_lib/synthid');
+const { computeContentHash, formatSynthId } = require('../../../kernel/_lib/synthid');
 
 // v2.8.0 — read plugin version once at module load. Falls back to '0.0.0'
 // if plugin.json is unreadable (e.g., dev-without-install); the SynthId
@@ -44,7 +44,7 @@ const { computeContentHash, formatSynthId } = require('../_lib/synthid');
 // stable-zero (which is acceptable for in-repo work).
 function _readPluginVersion() {
   try {
-    const { findToolkitRoot } = require('../_lib/toolkit-root');
+    const { findToolkitRoot } = require('../../../kernel/_lib/toolkit-root');
     const fp = path.join(findToolkitRoot(), '.claude-plugin', 'plugin.json');
     const pkg = JSON.parse(fs.readFileSync(fp, 'utf8'));
     return pkg.version || '0.0.0';
@@ -58,7 +58,7 @@ const _PLUGIN_VERSION = _readPluginVersion();
 // skills as forgeNeeded on the assign output.
 function _readPersonaContract(persona) {
   // H.7.14 — second fallback now uses shared `findToolkitRoot()` helper.
-  const { findToolkitRoot } = require('../_lib/toolkit-root');
+  const { findToolkitRoot } = require('../../../kernel/_lib/toolkit-root');
   const contractsBase = process.env.HETS_CONTRACTS_DIR ||
     path.join(findToolkitRoot(), 'swarm', 'personas-contracts');
   const fp = path.join(contractsBase, `${persona}.contract.json`);
@@ -74,7 +74,7 @@ function _readPersonaContract(persona) {
 // (the hash falls back to `agent_md_hash: null`, preserving existing
 // SynthId values for personas without a .md file).
 function _readPersonaMd(persona) {
-  const { findToolkitRoot } = require('../_lib/toolkit-root');
+  const { findToolkitRoot } = require('../../../kernel/_lib/toolkit-root');
   const personasBase = process.env.HETS_PERSONAS_DIR ||
     path.join(findToolkitRoot(), 'swarm', 'personas');
   const fp = path.join(personasBase, `${persona}.md`);

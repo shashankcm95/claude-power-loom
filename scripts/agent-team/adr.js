@@ -23,12 +23,12 @@
 
 const fs = require('fs');
 const path = require('path');
-const { findToolkitRoot } = require('./_lib/toolkit-root');
+const { findToolkitRoot } = require('../../kernel/_lib/toolkit-root');
 // H.8.7 (chaos H4): shared frontmatter parser; previously inline (see git
 // history at H.8.6). kb-resolver's inline parser had different bug surfaces.
-const { parseFrontmatter } = require('./_lib/frontmatter');
+const { parseFrontmatter } = require('../../kernel/_lib/frontmatter');
 // H.8.7 (chaos H5): cmdNew ID race; lock the read-then-write cycle.
-const { withLock } = require('./_lib/lock');
+const { withLock } = require('../../kernel/_lib/lock');
 
 const ADRS_DIR = process.env.HETS_ADRS_DIR ||
   path.join(findToolkitRoot(), 'swarm', 'adrs');

@@ -1,4 +1,4 @@
-// scripts/agent-team/_lib/library-catalog.js — Catalog read/write with lock-protected RMW.
+// packages/kernel/_lib/library-catalog.js — Catalog read/write with lock-protected RMW.
 //
 // H.9.21 v2.1.0 substrate component (B2). Pairs with library-paths.js (B1)
 // for SRP split per code-reviewer HIGH 3 absorbed at MANDATORY-gate. This

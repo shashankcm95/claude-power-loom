@@ -628,7 +628,7 @@ console.log('\n[7] byte-for-byte tierOf invariance (1 test)');
 // decision and the corresponding token addition needs reconsideration.
 
 console.log('\n[6] H.7.11 dictionary expansion regression (12 tests)');
-const routeDecide = require('./_lib/route-decide-export.js');
+const routeDecide = require('../../kernel/_lib/route-decide-export.js');
 
 // (a) Drift-note tasks — post-expansion projections per ari's design.
 // scoreTask takes a task STRING (positional arg), not an options object.
@@ -759,7 +759,7 @@ assertEqual(
 
 console.log('\n[8] HT.2.2 parseFrontmatter YAML 1.2 inline-comment strip (8 tests)');
 
-const { parseFrontmatter } = require('./_lib/frontmatter');
+const { parseFrontmatter } = require('../../kernel/_lib/frontmatter');
 
 // Test 1: bare scalar with trailing # comment → strip
 const fm1 = parseFrontmatter('---\nkey: value # comment\n---\nbody');
@@ -850,7 +850,7 @@ assertEqual(
 
 console.log('\n[9] HT.2.3 _lib/lock.js hooks-discipline-edge fixes (4 tests)');
 
-const lockLib = require('./_lib/lock');
+const lockLib = require('../../kernel/_lib/lock');
 
 // Test 1: acquireLock auto-creates missing lockfile parent dir (Part A; drift-note 75)
 const lockTest1Dir = path.join(os.tmpdir(), `ht23-lock-test-1-${process.pid}`);
@@ -938,7 +938,7 @@ try { fs.rmSync(path.dirname(lockTest4Dir), { recursive: true, force: true }); }
 // helper enhancement (cleanup-on-error semantic) absorbs the prior Class B
 // caller-side unlinkSync(tmp) bookkeeping into helper post-condition.
 
-const { writeAtomic: writeAtomicH98, writeAtomicString: writeAtomicStringH98 } = require('./_lib/atomic-write');
+const { writeAtomic: writeAtomicH98, writeAtomicString: writeAtomicStringH98 } = require('../../kernel/_lib/atomic-write');
 
 // Test 65 (Section 10.1): writeAtomic cleans up tmp on renameSync failure
 const h98TmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'h98-cleanup-rename-'));

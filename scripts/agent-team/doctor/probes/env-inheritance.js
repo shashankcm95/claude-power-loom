@@ -18,7 +18,7 @@ const { spawnSync } = require('child_process');
 // v2.9.0 Phase C.2 (FIX-I7) — placeholder detection lives in canonical
 // _lib helper. Single source of truth; tested separately under
 // tests/unit/scripts/env-placeholder.test.js.
-const { isPlaceholderEnvValue } = require('../../_lib/env-placeholder');
+const { isPlaceholderEnvValue } = require('../../../../kernel/_lib/env-placeholder');
 
 function run(args) {
   // Test-mode short circuit. Surfaces a synthetic pass with coverage:partial

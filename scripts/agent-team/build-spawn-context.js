@@ -51,11 +51,11 @@
 'use strict';
 
 const path = require('path');
-const { findToolkitRoot } = require('./_lib/toolkit-root');
+const { findToolkitRoot } = require('../../kernel/_lib/toolkit-root');
 // H.8.4: replaced execSync(string) with safe-exec helper (execFileSync array form).
 // The old string-build execSync paths were RCE-vulnerable to shell injection
 // (chaos C1 finding: `--task 'foo $(touch /tmp/PWNED) bar'` triggered RCE).
-const { invokeNodeJson, invokeNodeText } = require('./_lib/safe-exec');
+const { invokeNodeJson, invokeNodeText } = require('../../kernel/_lib/safe-exec');
 
 const TOOLKIT_ROOT = findToolkitRoot();
 const DETECTOR_PATH = path.join(TOOLKIT_ROOT, 'scripts', 'agent-team', 'architecture-relevance-detector.js');

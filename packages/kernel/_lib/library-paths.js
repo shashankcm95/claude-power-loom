@@ -1,4 +1,4 @@
-// scripts/agent-team/_lib/library-paths.js — Library/Section/Stack/Catalog/Volume path primitives.
+// packages/kernel/_lib/library-paths.js — Library/Section/Stack/Catalog/Volume path primitives.
 //
 // H.9.21 v2.1.0 introduces the in-house library memory organizer replacing
 // the single-growing ~/.claude/checkpoints/mempalace-fallback.md. This module
@@ -10,7 +10,7 @@
 //   - Content hashing for migration verification (Component B3)
 //   - Default-layout descriptor used by `library init` (Component A bootstrap)
 //
-// Sibling: scripts/agent-team/_lib/library-catalog.js depends on this module
+// Sibling: packages/kernel/_lib/library-catalog.js depends on this module
 // for path resolution + schema-version constants. Strict SRP split per
 // code-reviewer HIGH 3 absorption (paths vs catalog as separate change-axes;
 // see plan §"CRITICAL #1 + #2 + HIGH 3-6 absorbed at MANDATORY-gate").

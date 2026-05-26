@@ -30,14 +30,14 @@ const path = require('path');
 // family (kb-resolver, budget-tracker, pattern-runner, agent-identity,
 // _lib/runState) instead of being duplicated. Same priority chain:
 // env var → cwd → walk-up → hardcoded LAST.
-const { findToolkitRoot } = require('./_lib/toolkit-root');
+const { findToolkitRoot } = require('../../kernel/_lib/toolkit-root');
 // HT.1.2 — `parseFrontmatter` consolidated to canonical helper (was 1 of 4
 // inline copies post-H.8.7 chaos-H4 extraction; the inline version here
 // returned `{ fm: {}, body: text }` (note `fm` field name) while canonical
 // returns `{ frontmatter, body }`. Caller destructuring updated via rename
 // `const { frontmatter: fm } = ...` to keep downstream `fm` usages stable.
 // HT.0.9-verify code-reviewer enumerated the 4 sites.
-const { parseFrontmatter } = require('./_lib/frontmatter');
+const { parseFrontmatter } = require('../../kernel/_lib/frontmatter');
 
 const TOOLKIT = findToolkitRoot();
 const PATTERNS_DIR = path.join(TOOLKIT, 'skills', 'agent-team', 'patterns');

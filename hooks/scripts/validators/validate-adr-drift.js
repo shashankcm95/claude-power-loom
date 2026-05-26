@@ -26,13 +26,13 @@ const { log } = require('../_log.js');
 const logger = log('validate-adr-drift');
 
 // Same toolkit-root-finding as adr.js (for consistency)
-const { findToolkitRoot } = require('../../../scripts/agent-team/_lib/toolkit-root.js');
+const { findToolkitRoot } = require('../_lib/toolkit-root.js');
 const TOOLKIT_ROOT = findToolkitRoot();
 // H.8.4: use safe-exec helper (execFileSync array form) instead of execSync(string).
 // The old execSync string-build was RCE-vulnerable to shell injection via file_path
 // (chaos C1 finding; hook stdin is user-controlled). execFileSync with arg array
 // never passes args through a shell, eliminating injection risk.
-const { invokeNodeJson } = require(path.join(TOOLKIT_ROOT, 'scripts', 'agent-team', '_lib', 'safe-exec'));
+const { invokeNodeJson } = require(path.join(TOOLKIT_ROOT, 'packages', 'kernel', '_lib', 'safe-exec'));
 
 const ADRS_DIR = process.env.HETS_ADRS_DIR ||
   path.join(TOOLKIT_ROOT, 'swarm', 'adrs');

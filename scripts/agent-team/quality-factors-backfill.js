@@ -28,7 +28,7 @@ const os = require('os');
 // H.9.8 HIGH-CR3 absorption: migrated final-store-write (Class A2 standalone
 // CLI) from inline atomic-write pattern with WEAKEST tmp form (bare .tmp no
 // pid) to shared helper. Closes weakest-tmp-form across substrate.
-const { writeAtomic } = require('./_lib/atomic-write');
+const { writeAtomic } = require('../../kernel/_lib/atomic-write');
 
 const STORE_PATH = process.env.HETS_IDENTITY_STORE
   || path.join(os.homedir(), '.claude', 'agent-identities.json');

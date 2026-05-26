@@ -1,4 +1,4 @@
-// scripts/agent-team/_lib/synthid.js
+// packages/kernel/_lib/synthid.js
 //
 // HETS-SynthId — content-addressed agent identifier (v2.8.0 — Shape A only).
 //

@@ -15,9 +15,9 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { acquireLock: sharedAcquireLock, releaseLock: sharedReleaseLock } = require('./_lib/lock');
-const { writeAtomic: writeAtomicShared } = require('./_lib/atomic-write');
-const personaStore = require('./_lib/persona-store');
+const { acquireLock: sharedAcquireLock, releaseLock: sharedReleaseLock } = require('../../kernel/_lib/lock');
+const { writeAtomic: writeAtomicShared } = require('../../kernel/_lib/atomic-write');
+const personaStore = require('../../kernel/_lib/persona-store');
 
 // CS-13: env-var override for IRL test isolation. Default keeps prior
 // behavior (~/.claude/agent-patterns.json). Mirrors the env-var-with-default
@@ -44,13 +44,13 @@ function _isLegacyMode() {
 // under a single global lock — same behavior as v2.1.0 (no breakage on upgrade).
 function _isBulkheadActive() {
   if (_isLegacyMode()) return false;
-  const libraryPaths = require('./_lib/library-paths');
+  const libraryPaths = require('../../kernel/_lib/library-paths');
   return fs.existsSync(libraryPaths.partitionSentinelPath());
 }
 
 // H.9.21.1 — pre-bulkhead consolidated.json path (library v2.1.0 layout)
 function _consolidatedPath() {
-  const libraryPaths = require('./_lib/library-paths');
+  const libraryPaths = require('../../kernel/_lib/library-paths');
   return path.join(
     libraryPaths.volumesDir(libraryPaths.AGENTS_SECTION_ID, VERDICTS_STACK_ID),
     'consolidated.json'
@@ -274,7 +274,7 @@ function cmdRecord(args) {
     // Pre-bulkhead: library consolidated.json under its own lock (NOT STORE_PATH
     // since v2.1.0 migration symlinked STORE_PATH → consolidated.json).
     const lockPath = _consolidatedLockPath();
-    const { acquireLock: la, releaseLock: lr } = require('./_lib/lock');
+    const { acquireLock: la, releaseLock: lr } = require('../../kernel/_lib/lock');
     if (!la(lockPath, { maxWaitMs: LOCK_TIMEOUT_MS })) {
       console.error('Could not acquire pattern store lock (pre-bulkhead consolidated)');
       process.exit(2);

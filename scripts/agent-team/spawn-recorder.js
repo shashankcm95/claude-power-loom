@@ -54,7 +54,7 @@ function _warnLockFallback() {
   );
 }
 try {
-  withLock = require('./_lib/lock').withLock;
+  withLock = require('../../kernel/_lib/lock').withLock;
 } catch {
   withLock = (_lockPath, fn) => { _warnLockFallback(); return fn(); };
 }

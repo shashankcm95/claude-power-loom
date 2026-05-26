@@ -97,7 +97,7 @@ let _routeDecideExportCache = null;
 function _getRouteDecide() {
   if (_routeDecideExportCache === null) {
     try {
-      _routeDecideExportCache = require('../_lib/route-decide-export.js');
+      _routeDecideExportCache = require('../../../kernel/_lib/route-decide-export.js');
     } catch {
       _routeDecideExportCache = false;
     }

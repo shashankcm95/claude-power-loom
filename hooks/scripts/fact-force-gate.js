@@ -11,7 +11,7 @@ const logger = log('fact-force-gate');
 // H.9.8: migrated saveTracker (Class C hook fail-soft; function-scoped try-
 // catch + log('atomic_write_failed') preserved) from inline atomic-write
 // pattern to shared helper. Cross-tree require precedent per HT.2.3 Part B.
-const { writeAtomic } = require('../../scripts/agent-team/_lib/atomic-write');
+const { writeAtomic } = require('../../_lib/atomic-write');
 
 // Session-scoped tracker. PPID is the key: child hook processes spawned
 // from the same Claude Code parent share the parent's PPID, so reads

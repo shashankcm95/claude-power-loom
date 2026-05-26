@@ -25,11 +25,11 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { log: makeLogger } = require('./_log.js');
-const { acquireLock, releaseLock } = require('../../scripts/agent-team/_lib/lock');
+const { acquireLock, releaseLock } = require('../../_lib/lock');
 // H.9.8: migrated saveState (Class C hook fail-soft; function-scoped try-catch
 // + log('state_save_failed') preserved; STATE_DIR mkdirSync preserved per
 // HT.2.3 HIGH-A2 convention). Independent of lock primitive migration at HT.2.3.
-const { writeAtomic } = require('../../scripts/agent-team/_lib/atomic-write');
+const { writeAtomic } = require('../../_lib/atomic-write');
 const log = makeLogger('session-end-nudge');
 
 const NUDGE_THRESHOLD = parseInt(process.env.CLAUDE_SESSION_NUDGE_THRESHOLD || '10', 10);

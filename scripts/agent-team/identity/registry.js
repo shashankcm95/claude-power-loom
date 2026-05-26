@@ -28,10 +28,10 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { withLock: sharedWithLock } = require('../_lib/lock');
-const { writeAtomic: writeAtomicShared } = require('../_lib/atomic-write');
-const personaStore = require('../_lib/persona-store');
-const libraryPaths = require('../_lib/library-paths');
+const { withLock: sharedWithLock } = require('../../../kernel/_lib/lock');
+const { writeAtomic: writeAtomicShared } = require('../../../kernel/_lib/atomic-write');
+const personaStore = require('../../../kernel/_lib/persona-store');
+const libraryPaths = require('../../../kernel/_lib/library-paths');
 const {
   tierOf,
   aggregateQualityFactors,

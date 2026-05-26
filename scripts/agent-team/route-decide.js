@@ -634,7 +634,7 @@ function scoreTask(task, scoreArgs) {
 
 // ---------- module exports (H.7.0) ----------
 //
-// scoreTask is exported so scripts/agent-team/_lib/route-decide-export.js can
+// scoreTask is exported so packages/kernel/_lib/route-decide-export.js can
 // re-expose it for in-process consumers (e.g., agent-identity.js's
 // bucketTaskComplexity). The CLI behavior below only fires when this file is
 // invoked directly (require.main === module). Pure refactor; CLI semantics

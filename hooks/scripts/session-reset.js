@@ -19,7 +19,7 @@ const logger = log('session-reset');
 // preserved as fail-soft envelope per ADR-0001/0003) from inline atomic-write
 // pattern to shared helper. Cross-tree relative require mirrors HT.2.3 Part B
 // + session-self-improve-prompt.js precedents.
-const { writeAtomic } = require('../../scripts/agent-team/_lib/atomic-write');
+const { writeAtomic } = require('../../_lib/atomic-write');
 
 const SESSION_ID = process.env.CLAUDE_SESSION_ID || process.env.CLAUDE_CONVERSATION_ID || String(process.ppid || 'default');
 const TRACKER_PATH = path.join(os.tmpdir(), `claude-read-tracker-${SESSION_ID}.json`);

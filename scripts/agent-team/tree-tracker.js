@@ -20,15 +20,15 @@
 
 const fs = require('fs');
 const path = require('path');
-const { withLock } = require('./_lib/lock'); // H.3.2 (CS-1 code-reviewer X-3)
+const { withLock } = require('../../kernel/_lib/lock'); // H.3.2 (CS-1 code-reviewer X-3)
 // H.5.5 (CS-2/CS-3 theo HIGH): RUN_STATE_BASE was duplicated in 3 substrate
 // scripts; now single-sourced via _lib/runState.js (closes "_lib/ is a
 // directory of one" finding).
-const { runStateDir } = require('./_lib/runState');
+const { runStateDir } = require('../../kernel/_lib/runState');
 // H.9.8: migrated from inline atomic-write pattern (Class B substrate
 // try-catch-cleanup-throw) to shared helper. Cleanup-on-error absorbed into
 // helper post-condition; defensive mkdirSync preserved per HT.2.3 HIGH-A2.
-const { writeAtomic } = require('./_lib/atomic-write');
+const { writeAtomic } = require('../../kernel/_lib/atomic-write');
 
 function treePath(runId) {
   return path.join(runStateDir(runId), 'tree.json');

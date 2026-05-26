@@ -26,8 +26,8 @@ const logger = log('session-self-improve-prompt');
 // HT.audit-followup H4: writeAtomic migrated to `_lib/atomic-write.js` shared
 // primitive (pid + hrtime + crypto nonce; collision-resistant under PID-reuse
 // + async-retry races). First cross-tree relative require from hooks/scripts/
-// to scripts/agent-team/_lib/ following the HT.2.3 precedent in session-end-nudge.js.
-const { writeAtomic } = require('../../scripts/agent-team/_lib/atomic-write');
+// to packages/kernel/_lib/ following the HT.2.3 precedent in session-end-nudge.js.
+const { writeAtomic } = require('../../_lib/atomic-write');
 
 const SESSION_ID = process.env.CLAUDE_SESSION_ID || process.env.CLAUDE_CONVERSATION_ID || String(process.ppid || 'default');
 const PENDING_PATH = path.join(os.homedir(), '.claude', 'checkpoints', 'self-improve-pending.json');

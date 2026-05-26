@@ -118,7 +118,7 @@ Q6: Is the reference cross-internal (file-to-sibling-file documentation cross-re
 
 ## Substrate scripts (runtime resolution)
 
-Substrate scripts invoke `findToolkitRoot()` from `scripts/agent-team/_lib/toolkit-root.js` for portable runtime path resolution. The helper walks the priority chain:
+Substrate scripts invoke `findToolkitRoot()` from `packages/kernel/_lib/toolkit-root.js` for portable runtime path resolution. The helper walks the priority chain:
 
 1. `HETS_TOOLKIT_DIR` env var (explicit user override)
 2. `CLAUDE_PLUGIN_ROOT` env var (set by Claude Code when running as installed plugin)

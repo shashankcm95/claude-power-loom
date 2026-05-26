@@ -25,13 +25,13 @@ const { extractFilePaths } = require('./_lib/file-path-pattern');
 // + session-end-nudge.js precedent.
 let acquireLock; let releaseLock;
 try {
-  ({ acquireLock, releaseLock } = require('../../scripts/agent-team/_lib/lock'));
+  ({ acquireLock, releaseLock } = require('../../_lib/lock'));
   if (typeof acquireLock !== 'function' || typeof releaseLock !== 'function') {
     throw new Error('_lib/lock.js API shape mismatch');
   }
 } catch {
   try {
-    ({ acquireLock, releaseLock } = require(path.join(os.homedir(), '.claude', 'scripts', 'agent-team', '_lib', 'lock')));
+    ({ acquireLock, releaseLock } = require(path.join(os.homedir(), '.claude', 'packages', 'kernel', '_lib', 'lock')));
     if (typeof acquireLock !== 'function' || typeof releaseLock !== 'function') {
       throw new Error('_lib/lock.js API shape mismatch');
     }

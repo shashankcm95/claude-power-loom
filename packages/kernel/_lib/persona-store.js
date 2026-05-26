@@ -1,4 +1,4 @@
-// scripts/agent-team/_lib/persona-store.js — H.9.21.1 v2.1.1 per-persona bulkhead primitive.
+// packages/kernel/_lib/persona-store.js — H.9.21.1 v2.1.1 per-persona bulkhead primitive.
 //
 // Substrate primitive for the per-persona file partition (Component H FULL —
 // closes MANDATORY-gate HIGH 6 deferred from v2.1.0). v2.1.0 migrated agents

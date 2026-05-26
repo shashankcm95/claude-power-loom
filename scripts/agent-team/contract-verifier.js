@@ -19,7 +19,7 @@ const path = require('path');
 // `{frontmatter:{}, body:text}`. Caller code at the call site updated to
 // the canonical shape; semantically identical for documentary outputs.
 // HT.0.9-verify code-reviewer enumerated the 4 sites.
-const { parseFrontmatter } = require('./_lib/frontmatter');
+const { parseFrontmatter } = require('../_lib/frontmatter');
 // v2.8.0.x — SynthId suffix validation. Observability-only: the verifier
 // emits `synthIdValidation` in its JSON output so per-verdict records
 // surface persona-contract drift since the agent was spawned. NEVER fails
@@ -27,13 +27,13 @@ const { parseFrontmatter } = require('./_lib/frontmatter');
 // parseSynthId also imported so the recorder forward block can split a
 // suffixed identity into bare-form (--identity, store-key) + full-form
 // (--synthid, forensic record).
-const { validateSuffix, parseSynthId } = require('./_lib/synthid');
+const { validateSuffix, parseSynthId } = require('../_lib/synthid');
 
 // v2.8.0.x — plugin version reader, mirrors lifecycle-spawn.js. Falls
 // back to '0.0.0' if plugin.json is unreadable (dev-without-install).
 function _readPluginVersion() {
   try {
-    const { findToolkitRoot } = require('./_lib/toolkit-root');
+    const { findToolkitRoot } = require('../_lib/toolkit-root');
     const fp = path.join(findToolkitRoot(), '.claude-plugin', 'plugin.json');
     const pkg = JSON.parse(fs.readFileSync(fp, 'utf8'));
     return pkg.version || '0.0.0';
@@ -741,7 +741,7 @@ result.recommendation = verdict === 'pass' ? 'accept'
 let _resolvedIdentity = frontmatter.identity || args.identity || null;
 if (_resolvedIdentity === null && typeof output === 'string') {
   try {
-    const { _extractIdentityFromRaw } = require('./_lib/frontmatter');
+    const { _extractIdentityFromRaw } = require('../_lib/frontmatter');
     const recovered = _extractIdentityFromRaw(output);
     if (recovered) {
       _resolvedIdentity = recovered;

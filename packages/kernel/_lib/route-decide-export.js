@@ -6,7 +6,7 @@
 // CLI behavior is unchanged.
 //
 // Per architect-mira H.7.0 design pass (Implementation handoff §1):
-//   "scripts/agent-team/_lib/route-decide-export.js (NEW, ~15 LoC) — re-exports
+//   "packages/kernel/_lib/route-decide-export.js (NEW, ~15 LoC) — re-exports
 //    scoreTask as a function. Pure refactor; CLI behavior unchanged."
 //
 // All scoring constants + scoreTask logic live in route-decide.js; this module
@@ -17,7 +17,7 @@
 
 'use strict';
 
-const routeDecide = require('../route-decide.js');
+const routeDecide = require('../algorithms/route-decide.js');
 
 module.exports = {
   scoreTask: routeDecide.scoreTask,
