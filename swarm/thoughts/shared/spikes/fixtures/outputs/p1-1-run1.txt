@@ -1,0 +1,1 @@
+`@description Calculates the total cost of all items (price × quantity) with the given decimal tax rate applied.`

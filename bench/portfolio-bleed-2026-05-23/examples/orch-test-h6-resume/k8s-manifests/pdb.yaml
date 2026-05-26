@@ -1,0 +1,17 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: node-api
+  namespace: portfolio-prod
+  labels:
+    app.kubernetes.io/name: node-api
+    app.kubernetes.io/instance: node-api-prod
+    app.kubernetes.io/component: api
+    app.kubernetes.io/part-of: portfolio-platform
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: node-api
+      app.kubernetes.io/instance: node-api-prod
+  unhealthyPodEvictionPolicy: AlwaysAllow

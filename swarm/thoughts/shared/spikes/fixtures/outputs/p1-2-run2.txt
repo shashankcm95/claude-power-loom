@@ -1,0 +1,1 @@
+A pure function is a function that, given the same inputs, always returns the same output and produces no side effects on external state.

@@ -1,0 +1,10 @@
+[
+  {
+    "ts": "2026-05-26T12:12:57.096Z",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Agent",
+    "session_id": "4187a617-77fe-471a-bc85-9401449398ea",
+    "incoming_prompt_first_120": "Empirical probe for Wave -1 P-HookChain. Report observations only.\n\nSTEP 1: Look at the EXACT text of your prompt as you",
+    "saw_marker_A": true
+  }
+]

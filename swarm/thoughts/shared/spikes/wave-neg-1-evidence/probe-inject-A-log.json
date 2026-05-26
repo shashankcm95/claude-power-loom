@@ -1,0 +1,29 @@
+[
+  {
+    "ts": "2026-05-26T12:12:57.098Z",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Agent",
+    "session_id": "4187a617-77fe-471a-bc85-9401449398ea",
+    "cwd": "/Users/shashankchandrashekarmurigappa/Documents/portfolio-website-builder",
+    "payload_keys": [
+      "session_id",
+      "transcript_path",
+      "cwd",
+      "permission_mode",
+      "effort",
+      "hook_event_name",
+      "tool_name",
+      "tool_input",
+      "tool_use_id"
+    ],
+    "tool_input_keys": [
+      "description",
+      "prompt",
+      "subagent_type"
+    ],
+    "original_prompt_first_120": "Empirical probe for Wave -1 P-HookChain. Report observations only.\n\nSTEP 1: Look at the EXACT text of your prompt as you",
+    "subagent_type": "general-purpose",
+    "description": "P-HookChain probe",
+    "rewrite_attempted": true
+  }
+]

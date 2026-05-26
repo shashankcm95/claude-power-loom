@@ -1,0 +1,355 @@
+{
+  "seed": "847a93f98824d92e9a62cc0daf5e2597bc2cc2141cf5b6d2b094de74ec959fcc",
+  "queries": [
+    {
+      "query": "what's the state of v3.0 phase 1 spike",
+      "candidates": [
+        {
+          "label": "A",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-25-v30-phase-1-waves-b-and-c-shipped.md",
+          "source": "recall"
+        },
+        {
+          "label": "B",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-24-tb-round-2-quick-wins-shipped.md",
+          "source": "random"
+        },
+        {
+          "label": "C",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-25-v30-phase-1-wave-a-shipped-p3-deferred.md",
+          "source": "recall"
+        },
+        {
+          "label": "D",
+          "relpath": "toolkit/logbook.md",
+          "source": "random"
+        },
+        {
+          "label": "E",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-24-tb-to-tutorial-lazy-hybrid-chunking-shipped.md",
+          "source": "random"
+        },
+        {
+          "label": "F",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-22-v2.9.0-phase-B-shipped-pre-phase-C.md",
+          "source": "recall"
+        }
+      ]
+    },
+    {
+      "query": "how did we handle stacked PR base retargeting drift",
+      "candidates": [
+        {
+          "label": "A",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-24-tb-sprint-c-phase-1-and-t3.5-parallel-ship.md",
+          "source": "recall"
+        },
+        {
+          "label": "B",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-24-v291-shipped-v30-rfc-and-plan-locked.md",
+          "source": "random"
+        },
+        {
+          "label": "C",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-22-v2.8.1-v2.8.3-pdf-shakedown-and-baseline-corrections.md",
+          "source": "random"
+        },
+        {
+          "label": "D",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-24-tb-sprints-a-bv2-bv2.5-shipped.md",
+          "source": "recall"
+        },
+        {
+          "label": "E",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-22-v2.9.0-phase-B-shipped-pre-phase-C.md",
+          "source": "recall"
+        },
+        {
+          "label": "F",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-22-v2.9.0-phase-A-shipped-pre-phase-B.md",
+          "source": "random"
+        }
+      ]
+    },
+    {
+      "query": "what's the secret management plan for portfolio",
+      "candidates": [
+        {
+          "label": "A",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-25-v30-phase-1-wave-a-shipped-p3-deferred.md",
+          "source": "recall"
+        },
+        {
+          "label": "B",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-22-test3-phase2-w2-complete-pre-phase-3.md",
+          "source": "random"
+        },
+        {
+          "label": "C",
+          "relpath": "toolkit/stacks/decisions/volumes/test-vol-bench.md",
+          "source": "random"
+        },
+        {
+          "label": "D",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-25-v30-phase-1-waves-b-and-c-shipped.md",
+          "source": "recall"
+        },
+        {
+          "label": "E",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-24-v291-shipped-v30-rfc-and-plan-locked.md",
+          "source": "recall"
+        },
+        {
+          "label": "F",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-25-tb-sprint-d-e-shipped-pre-compaction.md",
+          "source": "random"
+        }
+      ]
+    },
+    {
+      "query": "TB feature B voice and anchor wave 3",
+      "candidates": [
+        {
+          "label": "A",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-22-test3-phase2-w2-complete-pre-phase-3.md",
+          "source": "recall"
+        },
+        {
+          "label": "B",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-24-tb-feature-a-plus-b-foundations-hets-validated.md",
+          "source": "random"
+        },
+        {
+          "label": "C",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-17-post-migrate-session.md",
+          "source": "random"
+        },
+        {
+          "label": "D",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-24-tb-feature-b-wave-3-built-and-reviewed-pre-smoke.md",
+          "source": "recall"
+        },
+        {
+          "label": "E",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-25-v30-phase-1-wave-a-shipped-p3-deferred.md",
+          "source": "recall"
+        },
+        {
+          "label": "F",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-25-v30-phase-1-waves-b-and-c-shipped.md",
+          "source": "random"
+        }
+      ]
+    },
+    {
+      "query": "HETS pair review caught security HIGHs",
+      "candidates": [
+        {
+          "label": "A",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-25-v30-phase-1-wave-a-shipped-p3-deferred.md",
+          "source": "random"
+        },
+        {
+          "label": "B",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-22-v2.9.0-shipped-final.md",
+          "source": "random"
+        },
+        {
+          "label": "C",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-25-v30-phase-1-waves-b-and-c-shipped.md",
+          "source": "recall"
+        },
+        {
+          "label": "D",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-24-tb-feature-b-wave-3-built-and-reviewed-pre-smoke.md",
+          "source": "recall"
+        },
+        {
+          "label": "E",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-20-v2.1.5-backlog-triage-ready.md",
+          "source": "random"
+        },
+        {
+          "label": "F",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-22-test3-phase2-w2-complete-pre-phase-3.md",
+          "source": "recall"
+        }
+      ]
+    },
+    {
+      "query": "harness contention git fetch workaround",
+      "candidates": [
+        {
+          "label": "A",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-24-tb-sprint-c-phase-2-radix-popover-quiz-shipped.md",
+          "source": "recall"
+        },
+        {
+          "label": "B",
+          "relpath": "toolkit/stacks/decisions/volumes/test-vol-bench.md",
+          "source": "random"
+        },
+        {
+          "label": "C",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-24-tb-sprint-c-phase-1-and-t3.5-parallel-ship.md",
+          "source": "recall"
+        },
+        {
+          "label": "D",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-25-v30-phase-1-wave-a-shipped-p3-deferred.md",
+          "source": "random"
+        },
+        {
+          "label": "E",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-22-v2.9.0-phase-B-shipped-pre-phase-C.md",
+          "source": "random"
+        },
+        {
+          "label": "F",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-24-tb-round-2-quick-wins-shipped.md",
+          "source": "recall"
+        }
+      ]
+    },
+    {
+      "query": "RFC v3.2 four class state model attestations",
+      "candidates": [
+        {
+          "label": "A",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-24-v291-shipped-v30-rfc-and-plan-locked.md",
+          "source": "recall"
+        },
+        {
+          "label": "B",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-22-v2.9.0-shipped-final.md",
+          "source": "random"
+        },
+        {
+          "label": "C",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-22-v2.8.1-v2.8.3-pdf-shakedown-and-baseline-corrections.md",
+          "source": "random"
+        },
+        {
+          "label": "D",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-25-v30-phase-1-wave-a-shipped-p3-deferred.md",
+          "source": "recall"
+        },
+        {
+          "label": "E",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-24-tb-sprint-c-phase-2-radix-popover-quiz-shipped.md",
+          "source": "random"
+        },
+        {
+          "label": "F",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-25-v30-phase-1-waves-b-and-c-shipped.md",
+          "source": "recall"
+        }
+      ]
+    },
+    {
+      "query": "DDIA chunking lazy hybrid cost per chapter",
+      "candidates": [
+        {
+          "label": "A",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-22-test3-post-compact-phase3-mech-prep.md",
+          "source": "random"
+        },
+        {
+          "label": "B",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-24-tb-feature-a-plus-b-foundations-hets-validated.md",
+          "source": "recall"
+        },
+        {
+          "label": "C",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-24-tb-to-tutorial-lazy-hybrid-chunking-shipped.md",
+          "source": "recall"
+        },
+        {
+          "label": "D",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-25-tb-sprint-d-e-shipped-pre-compaction.md",
+          "source": "recall"
+        },
+        {
+          "label": "E",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-24-tb-sprint-c-phase-2-radix-popover-quiz-shipped.md",
+          "source": "random"
+        },
+        {
+          "label": "F",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-22-v2.9.0-phase-B-shipped-pre-phase-C.md",
+          "source": "random"
+        }
+      ]
+    },
+    {
+      "query": "Mermaid versus structured figure components for textbook",
+      "candidates": [
+        {
+          "label": "A",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-24-tb-sprint-c-phase-2-radix-popover-quiz-shipped.md",
+          "source": "recall"
+        },
+        {
+          "label": "B",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-25-tb-sprint-d-e-shipped-pre-compaction.md",
+          "source": "recall"
+        },
+        {
+          "label": "C",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-22-test3-phase2-w2-complete-pre-phase-3.md",
+          "source": "random"
+        },
+        {
+          "label": "D",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-24-tb-sprints-a-bv2-bv2.5-shipped.md",
+          "source": "recall"
+        },
+        {
+          "label": "E",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-20-v2.1.5-backlog-triage-ready.md",
+          "source": "random"
+        },
+        {
+          "label": "F",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-22-v2.9.0-phase-A-shipped-pre-phase-B.md",
+          "source": "random"
+        }
+      ]
+    },
+    {
+      "query": "why did self-improve never surface a real pattern",
+      "candidates": [
+        {
+          "label": "A",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-24-tb-feature-a-plus-b-foundations-hets-validated.md",
+          "source": "recall"
+        },
+        {
+          "label": "B",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-21-v2.4.3-pre-compact-bench-extension.md",
+          "source": "random"
+        },
+        {
+          "label": "C",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-24-tb-sprint-c-phase-2-radix-popover-quiz-shipped.md",
+          "source": "random"
+        },
+        {
+          "label": "D",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-20-v2.1.5-backlog-triage-ready.md",
+          "source": "random"
+        },
+        {
+          "label": "E",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-24-tb-round-2-quick-wins-shipped.md",
+          "source": "recall"
+        },
+        {
+          "label": "F",
+          "relpath": "toolkit/stacks/session-snapshots/volumes/2026-05-25-tb-sprint-d-e-shipped-pre-compaction.md",
+          "source": "recall"
+        }
+      ]
+    }
+  ]
+}

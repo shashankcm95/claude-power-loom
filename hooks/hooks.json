@@ -182,6 +182,17 @@
         ]
       },
       {
+        "_comment": "v3.0 Phase 1 prototype (P-Proto). Captures an L_spawn record envelope to ~/.claude/spawn-state/<run_id>/spawn-<id>.json on every Agent|Task spawn close. Empirical anchor for RFC v3.2-LOCKED's parent-records design (§Pivot 1 + §L_spawn record). Phase 1 scope: axioms + bounded sample fingerprint only; delta capture and parent_state_id chain deferred. Fail-soft per ADR-0001.",
+        "matcher": "Agent|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/spawn-record.js",
+            "timeout": 5
+          }
+        ]
+      },
+      {
         "matcher": "Edit|Write",
         "hooks": [
           {

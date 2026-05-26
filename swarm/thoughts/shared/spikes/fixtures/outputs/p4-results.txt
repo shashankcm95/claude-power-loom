@@ -1,0 +1,11 @@
+scenario|delta_bytes|delta_kb
+S1-tweak-1line|141|.13
+S2-add-10lines|455|.44
+S3-new-small-file-50lines|2564|2.50
+S4-rename-2files|262|.25
+S5-new-medium-file-300lines|23119|22.57
+S6-multifile-refactor-5files|3555|3.47
+S7-large-new-file-1000lines|74018|72.28
+S8-schema-style-lockfile|434853|424.66
+S9-doc-bundle-3files|11133|10.87
+S10-binary-asset-512KB|675799|659.95

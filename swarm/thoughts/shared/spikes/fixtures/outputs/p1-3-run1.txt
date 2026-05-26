@@ -1,0 +1,6 @@
+```js
+async function fetchUser(id) {
+  const r = await fetch(`/api/${id}`);
+  return r.json();
+}
+```
