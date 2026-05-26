@@ -6,7 +6,7 @@ related:
   - architecture/discipline/refusal-patterns
   - architecture/discipline/error-handling-discipline
   - architecture/discipline/reliability-scalability-maintainability
-status: active+catalog
+status: active+enforced
 pattern: |
   When an existing deterministic gate (e.g., a PreToolUse hook on tool X)
   is found to be bypassable by tool Y, the reflex fix is to extend the
@@ -47,20 +47,32 @@ empirical_origin: |
   shipped fix is `validate-config-redirect.js` (PreToolUse:Bash) with
   WARN-not-BLOCK default + STRICT_CONFIG_GUARD=1 escalation env var, plus
   this catalog entry to mark the design-pushback for future similar reflexes.
-override_rationale: |
-  Override is reasonable when:
+override_requires: |
+  Override is reasonable when ALL of the following hold:
   - The deployment context is a CI audit run where false-positives have
     near-zero cost (no human in the loop to retrain)
   - The bypass demonstrated is the actual attack surface (not a
     capability gap), e.g., active secret exfiltration via redirect
   - The substrate is shipping a clean structured-input parser (not regex
     on free-form syntax)
+  - The override is gated behind an explicit env var or substrate-config
+    flag (not implicit; not silently-default)
 related_pattern_cross_links:
   - "kb:architecture/discipline/refusal-patterns — substrate-scope refusal is the parent category for substrate-internal decisions; this entry is the design-pushback view of the same trade-off."
   - "kb:architecture/discipline/error-handling-discipline — anti-silencing argues for WARN observability over silent-skip; this entry argues WARN observability over noisy-block."
 ---
 
-## Pattern explanation
+## Quick Reference
+
+**The anti-pattern**: An existing deterministic gate (e.g., a `PreToolUse:Write` hook on protected files) is found to be bypassable by another tool (e.g., a `Bash` redirect like `echo > tsconfig.json`). The reflex fix is to extend the same gate via syntactic parsing — regex over Bash command lines, heredoc detection, etc. — to plug the gap inline.
+
+**Why it bites**: free-form syntax has effectively unbounded edge cases (process substitution, heredoc, `dd`, redirected fds, `bash -c "..."` nesting, `mv` overwrites without a redirect token, command aliases). Each false positive trains operators to bypass the gate, eroding trust in ALL gates. The parser becomes a load-bearing dependency whose MTTR for bugs often exceeds the MTTR for the original bypass it was patching.
+
+**The fix**: add a secondary gate as **WARN-not-BLOCK** by default for observability, and reserve BLOCK behavior for explicit `--strict`/env-var opt-in where false-positives have near-zero cost. See `validate-config-redirect.js` (`PreToolUse:Bash`) + `STRICT_CONFIG_GUARD=1` escalation for the canonical example.
+
+## Full content
+
+### Pattern explanation
 
 Reflex fixes for tool-Y-bypass of tool-X-gates often have hidden costs equal to or greater than the original bypass cost. The substrate's gate architecture should be designed around what the protected resource IS (a file, an action), not around what tools happen to reach it. When a tool-specific bypass is found:
 
@@ -68,7 +80,7 @@ Reflex fixes for tool-Y-bypass of tool-X-gates often have hidden costs equal to 
 2. **Second**: if no tool-agnostic representation exists, add a secondary gate as WARN-not-BLOCK — observability is cheap and avoids the false-positive cliff.
 3. **Third**: reserve BLOCK behavior for explicit opt-in (env var, substrate config, CI mode) where false-positives have near-zero cost.
 
-## Worked example — validate-config-redirect.js
+### Worked example — validate-config-redirect.js
 
 ```
 PreToolUse:Write  → config-guard.js BLOCKS on protected file_path  ✓ load-bearing
@@ -78,12 +90,14 @@ PreToolUse:Bash   → validate-config-redirect.js WARNs on redirect    ✓ obser
 
 The WARN behavior preserves operator trust (no surprise blocks on legitimate build scripts writing `tsconfig.build.json`). The opt-in STRICT mode preserves the gate for tight-discipline contexts. The KB entry preserves the design rationale for future similar bypasses.
 
-## When not to apply this pushback
+### When not to apply this pushback
 
 - The bypass is **actively exploited**, not theoretical. Measured signal > theoretical concern.
 - The protected resource is **high-stakes** (production secrets, signing keys) where false-positive cost is small compared to false-negative cost.
 - The substrate ships a **structured-input** parser, not regex on free-form syntax. (e.g., AST-based shell parser).
 
-## Cross-reference
+## Related Patterns
 
 For the substrate-side decision framework, see `kb:architecture/discipline/refusal-patterns` — particularly the substrate-scope refusal axis. This design-pushback entry is the proactive-catalog view of the same trade-off; the refusal-patterns entry is the in-flight decision framework.
+
+See also `kb:architecture/discipline/error-handling-discipline` — the anti-silencing argument is structurally similar (WARN observability over silent-skip vs. WARN observability over noisy-block).
