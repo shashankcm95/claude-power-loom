@@ -20,7 +20,7 @@
 // patterns/validator-conventions.md). Catalog: skills/agent-team/patterns/
 // forcing-instruction-family.md.
 
-const { log: makeLogger } = require('./_log.js');
+const { log: makeLogger } = require('../_lib/_log.js');
 const log = makeLogger('prompt-enrich-trigger');
 
 // Vague action verbs followed by generic referents.

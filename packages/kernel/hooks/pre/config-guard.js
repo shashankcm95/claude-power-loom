@@ -9,7 +9,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { log } = require('./_log.js');
+const { log } = require('../_lib/_log.js');
 const logger = log('config-guard');
 
 // Essential fallback if patterns file is missing or invalid

@@ -59,7 +59,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { log: makeLogger } = require('./_log.js');
+const { log: makeLogger } = require('../_lib/_log.js');
 const { acquireLock, releaseLock } = require('../../_lib/lock');
 const { writeAtomic } = require('../../_lib/atomic-write');
 

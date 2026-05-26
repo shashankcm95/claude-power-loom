@@ -33,7 +33,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { log } = require('./_log.js');
+const { log } = require('../_lib/_log.js');
 const logger = log('route-decide-on-agent-spawn');
 
 const ROUTE_DECIDE_PATH = path.join(os.homedir(), '.claude/scripts/agent-team/route-decide.js');

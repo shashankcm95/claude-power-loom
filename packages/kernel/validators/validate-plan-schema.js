@@ -47,7 +47,7 @@
 
 'use strict';
 
-const { log } = require('../_log.js');
+const { log } = require('../hooks/_lib/_log.js');
 const logger = log('validate-plan-schema');
 
 // Path matcher: `~/.claude/plans/*.md` or `.claude/plans/*.md` (project-relative).

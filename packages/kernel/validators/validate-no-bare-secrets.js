@@ -29,7 +29,7 @@
 // don't preserve the exposed secret.
 
 const fs = require('fs');
-const { log } = require('../_log.js');
+const { log } = require('../hooks/_lib/_log.js');
 const logger = log('validate-no-bare-secrets');
 
 // Each pattern: { id, regex, description }. id is what the user sees.

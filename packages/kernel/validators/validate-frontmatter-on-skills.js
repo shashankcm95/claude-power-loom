@@ -20,7 +20,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { log } = require('../_log.js');
+const { log } = require('../hooks/_lib/_log.js');
 const logger = log('validate-frontmatter-on-skills');
 
 // Path patterns that require frontmatter. Add to this list (don't fork the

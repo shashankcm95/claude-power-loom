@@ -21,7 +21,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { log } = require('./_log.js');
+const { log } = require('../_lib/_log.js');
 const logger = log('session-self-improve-prompt');
 // HT.audit-followup H4: writeAtomic migrated to `_lib/atomic-write.js` shared
 // primitive (pid + hrtime + crypto nonce; collision-resistant under PID-reuse

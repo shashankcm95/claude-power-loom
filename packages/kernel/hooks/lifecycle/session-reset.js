@@ -13,7 +13,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { log } = require('./_log.js');
+const { log } = require('../_lib/_log.js');
 const logger = log('session-reset');
 // H.9.8: migrated tracker write (Class C hook fail-soft; outer try at L35
 // preserved as fail-soft envelope per ADR-0001/0003) from inline atomic-write
@@ -69,7 +69,7 @@ try {
   if (!looksLikePluginInstall) {
     try {
       // Lazy require — failure here must not crash session-reset.
-      const reader = require('./_lib/settings-reader.js');
+      const reader = require('../_lib/settings-reader.js');
       const marketplaces = reader.getRegisteredMarketplaces();
       const enabled = reader.isPluginEnabled('power-loom@power-loom-marketplace');
       if (marketplaces.includes('power-loom-marketplace') && !enabled) {
@@ -103,7 +103,7 @@ try {
   // `git log -1 --format=%ct` is sufficient for the 7-day threshold.
   if (looksLikePluginInstall) {
     try {
-      const marketplaceReader = require('./_lib/marketplace-state-reader.js');
+      const marketplaceReader = require('../_lib/marketplace-state-reader.js');
       const mirrorPath = marketplaceReader.getMirrorRoot();
       if (mirrorPath) {
         const ageDays = marketplaceReader.getMirrorAgeDays(mirrorPath);

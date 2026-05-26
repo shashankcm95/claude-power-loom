@@ -46,7 +46,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
-const { log } = require('./_log.js');
+const { log } = require('../_lib/_log.js');
 const logger = log('error-critic');
 
 // H.9.9 — fail-soft contract upgrade per ADR-0001 invariant 2 (hooks never

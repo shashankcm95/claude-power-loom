@@ -22,7 +22,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { log } = require('../_log.js');
+const { log } = require('../hooks/_lib/_log.js');
 const logger = log('validate-adr-drift');
 
 // Same toolkit-root-finding as adr.js (for consistency)

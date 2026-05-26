@@ -29,7 +29,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { log } = require('../_log.js');
+const { log } = require('../_lib/_log.js');
 const logger = log('verify-plan-gate');
 
 // Plan dir — same logic as validate-plan-schema.js (env override + default)

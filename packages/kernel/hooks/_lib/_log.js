@@ -2,7 +2,7 @@
 // Writes one JSON line per event to ~/.claude/logs/{hookName}.log
 //
 // Usage:
-//   const { log } = require('./_log.js');
+//   const { log } = require('../_lib/_log.js');
 //   const logger = log('fact-force-gate');
 //   logger('invoked', { toolName, filePath });
 //

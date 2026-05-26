@@ -62,7 +62,7 @@
 'use strict';
 
 const fs = require('fs');
-const { log } = require('../_log.js');
+const { log } = require('../hooks/_lib/_log.js');
 const logger = log('validate-kb-doc');
 
 const { parseFrontmatter } = require('../_lib/frontmatter.js');

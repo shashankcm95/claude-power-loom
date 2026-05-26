@@ -44,7 +44,7 @@
 // extending extractFrontmatter to track scalar-open state.
 
 const fs = require('fs');
-const { log } = require('../_log.js');
+const { log } = require('../hooks/_lib/_log.js');
 const logger = log('validate-yaml-frontmatter');
 
 // Path patterns that require dup-key check. Adding new entries requires

@@ -6,7 +6,7 @@
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const { log } = require('./_log.js');
+const { log } = require('../_lib/_log.js');
 const logger = log('console-log-check');
 
 let input = '';

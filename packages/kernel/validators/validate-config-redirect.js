@@ -33,7 +33,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { log } = require('./_log.js');
+const { log } = require('../hooks/_lib/_log.js');
 const logger = log('validate-config-redirect');
 
 // Reuse the same patterns config-guard.js consumes so the two hooks

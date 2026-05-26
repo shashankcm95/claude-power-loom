@@ -50,7 +50,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { log } = require('./_log.js');
+const { log } = require('../_lib/_log.js');
 const logger = log('contract-reminder-on-agent-spawn');
 
 const LOG_FILE = path.join(os.homedir(), '.claude/checkpoints/contract-reminder-log.jsonl');

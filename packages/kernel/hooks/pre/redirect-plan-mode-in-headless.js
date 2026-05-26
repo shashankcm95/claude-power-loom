@@ -50,7 +50,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execSync } = require('child_process');
-const { log: makeLogger } = require('./_log.js');
+const { log: makeLogger } = require('../_lib/_log.js');
 
 const logger = makeLogger('redirect-plan-mode-in-headless');
 

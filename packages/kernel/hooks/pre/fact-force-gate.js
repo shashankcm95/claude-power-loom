@@ -6,7 +6,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { log } = require('./_log.js');
+const { log } = require('../_lib/_log.js');
 const logger = log('fact-force-gate');
 // H.9.8: migrated saveTracker (Class C hook fail-soft; function-scoped try-
 // catch + log('atomic_write_failed') preserved) from inline atomic-write

@@ -6,7 +6,7 @@
 // copies on any future change.
 //
 // Usage:
-//   const { extractFilePaths } = require('./_lib/file-path-pattern');
+//   const { extractFilePaths } = require('../_lib/file-path-pattern');
 //   const paths = extractFilePaths(text); // returns Set<string>
 //
 // Coverage:

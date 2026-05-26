@@ -9,13 +9,13 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { log } = require('./_log.js');
+const { log } = require('../_lib/_log.js');
 const logger = log('pre-compact-save');
 
 // H.5.4 (CS-3 code-reviewer.blair H-4): file-path regex now lives in shared
 // `_lib/file-path-pattern.js` (de-duped from auto-store-enrichment.js). New
 // extractor adds Windows + quoted-paths-with-spaces coverage.
-const { extractFilePaths } = require('./_lib/file-path-pattern');
+const { extractFilePaths } = require('../_lib/file-path-pattern');
 
 // H.9.21 v2.1.0 Component G — fail-soft require of _lib/lock for compact-history
 // append serialization (code-reviewer HIGH 5 absorbed at MANDATORY-gate). Path

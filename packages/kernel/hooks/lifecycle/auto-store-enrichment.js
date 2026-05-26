@@ -16,7 +16,7 @@
 const { spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const { log: makeLogger } = require('./_log.js');
+const { log: makeLogger } = require('../_lib/_log.js');
 const log = makeLogger('auto-store-enrichment');
 
 // Phase-F3: prompt-pattern-store.js was relocated to scripts/.
@@ -218,7 +218,7 @@ const SELF_IMPROVE_SCRIPT = resolveSelfImproveScript();
 // `_lib/file-path-pattern.js` module so the regex shape is single-sourced (was
 // duplicated in pre-compact-save.js). New extractor handles Unix paths,
 // Windows paths (drive-letter + backslash), and quoted paths-with-spaces.
-const { extractFilePaths } = require('./_lib/file-path-pattern');
+const { extractFilePaths } = require('../_lib/file-path-pattern');
 
 function extractSignals(text) {
   const signals = [];

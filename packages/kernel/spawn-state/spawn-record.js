@@ -66,7 +66,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
-const { log } = require('./_log.js');
+const { log } = require('../hooks/_lib/_log.js');
 const logger = log('spawn-record');
 
 const SPAWN_STATE_DIR = path.join(os.homedir(), '.claude', 'spawn-state');
