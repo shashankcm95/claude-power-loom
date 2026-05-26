@@ -19,12 +19,12 @@ const path = require('path');
 const { log: makeLogger } = require('../_lib/_log.js');
 const log = makeLogger('auto-store-enrichment');
 
-// Phase-F3: prompt-pattern-store.js was relocated to scripts/.
+// Phase-F3: prompt-pattern-store.js was relocated to scripts/; Phase 0: moved to packages/kernel/spawn-state/.
 function resolveStoreScript() {
   const candidates = [
-    path.join(__dirname, '..', '..', 'scripts', 'prompt-pattern-store.js'),
-    path.join(__dirname, '..', 'scripts', 'prompt-pattern-store.js'),
-    path.join(__dirname, 'prompt-pattern-store.js'),
+    path.join(__dirname, '..', '..', 'spawn-state', 'prompt-pattern-store.js'),
+    path.join(__dirname, '..', 'spawn-state', 'prompt-pattern-store.js'),
+    path.join(require('os').homedir(), '.claude', 'packages', 'kernel', 'spawn-state', 'prompt-pattern-store.js'),
   ];
   for (const c of candidates) {
     try { fs.accessSync(c, fs.constants.F_OK); return c; } catch { /* next */ }
@@ -203,9 +203,9 @@ function storePattern(enrichment) {
 // path or the installed ~/.claude/scripts location.
 function resolveSelfImproveScript() {
   const candidates = [
-    path.join(__dirname, '..', '..', 'scripts', 'self-improve-store.js'),
-    path.join(__dirname, '..', 'scripts', 'self-improve-store.js'),
-    path.join(require('os').homedir(), '.claude', 'scripts', 'self-improve-store.js'),
+    path.join(__dirname, '..', '..', 'spawn-state', 'self-improve-store.js'),
+    path.join(__dirname, '..', 'spawn-state', 'self-improve-store.js'),
+    path.join(require('os').homedir(), '.claude', 'packages', 'kernel', 'spawn-state', 'self-improve-store.js'),
   ];
   for (const c of candidates) {
     try { fs.accessSync(c, fs.constants.F_OK); return c; } catch { /* next */ }

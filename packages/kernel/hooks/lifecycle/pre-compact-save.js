@@ -19,7 +19,7 @@ const { extractFilePaths } = require('../_lib/file-path-pattern');
 
 // H.9.21 v2.1.0 Component G — fail-soft require of _lib/lock for compact-history
 // append serialization (code-reviewer HIGH 5 absorbed at MANDATORY-gate). Path
-// resolution falls back to ~/.claude/scripts/ for installed-plugin layout; if
+// resolution falls back to ~/.claude/packages/kernel/ for installed-plugin layout; if
 // the module is missing, stub-out to no-op (ADR-0001 fail-soft contract — hook
 // must not crash on lock availability issues). Same shape as error-critic.js
 // + session-end-nudge.js precedent.
@@ -284,7 +284,7 @@ function writeCheckpoint(checkpoint) {
 
 /**
  * Locate the `self-improve-store.js` CLI script across both the canonical
- * repo path and the installed `~/.claude/scripts/` location. H.4.1
+ * repo path and the installed `~/.claude/packages/kernel/` location. H.4.1
  * pattern — mirrors auto-store-enrichment.js's `resolveStoreScript`. Used
  * to trigger a consolidation scan at compaction time.
  *

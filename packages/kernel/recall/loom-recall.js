@@ -25,10 +25,10 @@
  * RFC v3.2 anchor: §"Recall" / §"L_global query interface".
  *
  * Usage:
- *   node scripts/loom-recall.js "v3.0 phase 1 spike"
- *   node scripts/loom-recall.js --top 5 "git stash delta budget"
- *   node scripts/loom-recall.js --json "HETS architect review"
- *   node scripts/loom-recall.js --root /path/to/sections "query"
+ *   node packages/kernel/recall/loom-recall.js "v3.0 phase 1 spike"
+ *   node packages/kernel/recall/loom-recall.js --top 5 "git stash delta budget"
+ *   node packages/kernel/recall/loom-recall.js --json "HETS architect review"
+ *   node packages/kernel/recall/loom-recall.js --root /path/to/sections "query"
  *
  * Exit codes:
  *   0  success (zero or more results)

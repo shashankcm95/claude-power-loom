@@ -69,8 +69,8 @@ function buildReminder(candidates) {
     if (queued.length > 5) lines.push(`  ... and ${queued.length - 5} more`);
     lines.push('');
     lines.push('Surface this to the user once with options: approve specific IDs, dismiss all, or invoke /self-improve to triage. Use:');
-    lines.push('  node ~/.claude/scripts/self-improve-store.js promote --id <id>');
-    lines.push('  node ~/.claude/scripts/self-improve-store.js dismiss --id <id>');
+    lines.push('  node ~/.claude/packages/kernel/spawn-state/self-improve-store.js promote --id <id>');
+    lines.push('  node ~/.claude/packages/kernel/spawn-state/self-improve-store.js dismiss --id <id>');
   } else {
     lines.push('No items requiring approval — auto-graduated entries are informational.');
   }

@@ -36,7 +36,7 @@ const { spawnSync } = require('child_process');
 const { log } = require('../_lib/_log.js');
 const logger = log('route-decide-on-agent-spawn');
 
-const ROUTE_DECIDE_PATH = path.join(os.homedir(), '.claude/scripts/agent-team/route-decide.js');
+const ROUTE_DECIDE_PATH = path.join(os.homedir(), '.claude/packages/kernel/algorithms/route-decide.js');
 const LOG_FILE = path.join(os.homedir(), '.claude/checkpoints/route-decide-log.jsonl');
 const TIMEOUT_MS = 5000;
 

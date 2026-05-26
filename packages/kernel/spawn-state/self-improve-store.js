@@ -47,7 +47,7 @@ const OBSERVATIONS_LOG = path.join(HOME, '.claude', 'checkpoints', 'observations
 // HT.1.8: collapsed 3-tier require fallback (was: ~/.claude/... → __dirname/...
 // → no-op) to single-tier __dirname-relative require. The explicit ~/.claude/...
 // path was redundant — `__dirname`-relative resolution covers both deployed-
-// marketplace install (script at ~/.claude/scripts/) and local-checkout
+// marketplace install (script at ~/.claude/packages/kernel/spawn-state/) and local-checkout
 // (script at ~/Documents/claude-toolkit/scripts/) scenarios.
 let withLock;
 let _lockFallbackWarned = false;
@@ -61,7 +61,7 @@ function _warnLockFallback() {
   );
 }
 try {
-  withLock = require('./agent-team/_lib/lock').withLock;
+  withLock = require('../_lib/lock').withLock;
 } catch {
   withLock = (_lockPath, fn) => { _warnLockFallback(); return fn(); };
 }
@@ -157,7 +157,7 @@ function loadPending() {
 // because grep surfaced 12 substrate sites using the unhardened pid-only
 // pattern. 3 highest-touched sites (registry.js writeStore + pattern-recorder.js
 // saveStore + session-self-improve-prompt.js writeAtomic) migrate alongside.
-const { writeAtomic } = require('./agent-team/_lib/atomic-write');
+const { writeAtomic } = require('../_lib/atomic-write');
 
 function inferKindFromSignal(signal) {
   if (signal.startsWith('filePath:')) return 'observation-log';
