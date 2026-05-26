@@ -1,6 +1,6 @@
 # Vendored JSON Schemas
 
-These are vendored JSON Schemas used by `contract-marketplace-schema` (in `scripts/agent-team/contracts-validate.js`) to validate this plugin's manifest files at CI time.
+These are vendored JSON Schemas used by `contract-marketplace-schema` (in `packages/runtime/orchestration/contracts-validate.js`) to validate this plugin's manifest files at CI time.
 
 ## Files
 
@@ -22,7 +22,7 @@ Trade-off: vendoring creates upstream-drift maintenance debt. See drift-note 45 
 **Bi-monthly** (every other phase that touches `.claude-plugin/`). Manual refresh via:
 
 ```bash
-bash scripts/agent-team/refresh-plugin-schema.sh
+bash packages/runtime/orchestration/refresh-plugin-schema.sh
 ```
 
 The helper fetches both schemas, diffs against vendored copies, and writes the update if non-empty. Diff output is preserved so the refresh commit can summarize what changed.
@@ -41,7 +41,7 @@ The vendored schemas are checked-in to give future maintainers a reference for t
 
 ```bash
 # 1. Run the refresh helper — it will diff + update vendored copies
-bash scripts/agent-team/refresh-plugin-schema.sh
+bash packages/runtime/orchestration/refresh-plugin-schema.sh
 
 # 2. If the diff is non-empty, review the changes:
 git diff swarm/schemas/

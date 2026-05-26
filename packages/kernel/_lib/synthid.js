@@ -19,7 +19,7 @@
 // `parseSynthId` already accept lineage args for forward compatibility.
 //
 // CONTENT-HASH INPUTS (precise — anchors `kb:architecture/crosscut/idempotency`):
-//   - persona_contract: full JSON of swarm/personas-contracts/<persona>.contract.json
+//   - persona_contract: full JSON of packages/runtime/contracts/<persona>.contract.json
 //     with the `skill_status` field DELIBERATELY STRIPPED (it churns during
 //     bootstrap and would invalidate hashes for cosmetic reasons)
 //   - skills_required: sorted list (order-independent per CH12)

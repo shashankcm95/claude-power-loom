@@ -4,7 +4,7 @@
 //
 // GAP-C fix (caught by bench harness 2026-05-20). The workflow rule says:
 //   "Before invoking /build-team or spawning sub-agents for a user task,
-//    run node ~/Documents/claude-toolkit/scripts/agent-team/route-decide.js
+//    run node ~/Documents/claude-toolkit/packages/kernel/algorithms/route-decide.js
 //    --task '<task>' to get a routing recommendation"
 //
 // This rule was text-only — Claude consistently bypassed it in headless mode

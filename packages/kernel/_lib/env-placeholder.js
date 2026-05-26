@@ -4,7 +4,7 @@
 //
 // Canonical helper for "is this .env value a placeholder that should be
 // treated as absent?" Used by:
-//   - scripts/agent-team/doctor/probes/env-inheritance.js
+//   - packages/runtime/orchestration/doctor/probes/env-inheritance.js
 //   - any downstream hook or script that reads .env and needs to
 //     distinguish "operator set this to a real value" from
 //     "operator copy-pasted the template and never filled in the blank"

@@ -1,0 +1,163 @@
+{
+  "agentId": "actor-architect",
+  "persona": "04-architect",
+  "role": "actor",
+  "skills": {
+    "required": [
+      "plan"
+    ],
+    "recommended": [
+      "agent-team",
+      "review",
+      "research-mode"
+    ],
+    "skill_status": {
+      "plan": "available",
+      "agent-team": "available",
+      "review": "available",
+      "research-mode": "available"
+    }
+  },
+  "kb_scope": {
+    "default": [
+      "kb:hets/spawn-conventions",
+      "kb:design-pushback/_index"
+    ]
+  },
+  "budget": {
+    "tokens": 30000,
+    "extensible": true,
+    "maxExtensions": 1,
+    "extensionAmount": 15000
+  },
+  "functional": [
+    {
+      "id": "F1",
+      "check": "outputContainsFrontmatter",
+      "required": true
+    },
+    {
+      "id": "F2",
+      "check": "frontmatterHasFields",
+      "args": {
+        "fields": [
+          "id",
+          "role",
+          "depth",
+          "parent",
+          "persona"
+        ]
+      },
+      "required": true
+    },
+    {
+      "id": "F3",
+      "check": "outputLengthMin",
+      "args": {
+        "min": 2000
+      },
+      "required": true
+    },
+    {
+      "id": "F4",
+      "check": "containsKeywords",
+      "args": {
+        "keywords": [
+          "coherence",
+          "gap"
+        ]
+      },
+      "required": false
+    },
+    {
+      "id": "F5",
+      "check": "kb_scope_consumed",
+      "required": true
+    },
+    {
+      "id": "F6",
+      "check": "containsKeywords",
+      "args": {
+        "keywords": [
+          "Principle Audit"
+        ]
+      },
+      "required": true
+    }
+  ],
+  "antiPattern": [
+    {
+      "id": "A1",
+      "check": "noTextSimilarityToPriorRun",
+      "args": {
+        "threshold": 0.6
+      },
+      "severity": "warn"
+    },
+    {
+      "id": "A2",
+      "check": "noPaddingPhrases",
+      "severity": "fail"
+    },
+    {
+      "id": "A3",
+      "check": "acknowledgesFallback",
+      "severity": "warn"
+    }
+  ],
+  "fallbackAcceptable": [
+    "No code execution needed → architectural review is reasoning-based"
+  ],
+  "state_interface": {
+    "_spec_version": "v3.0-phase-1-prototype",
+    "_status": "schema-additive; not consumed by any runtime in Phase 1 (see RFC v3.2)",
+    "_rfc_anchor": "swarm/thoughts/shared/design/causal-recall-graph-rfc.md (Pivot 1, Persona contract field, Side-effects declaration, Persona contract additions)",
+    "affected_paths": {
+      "allow": [
+        "swarm/thoughts/shared/**",
+        "swarm/run-state/<run_id>/**",
+        "docs/**",
+        "ADRs/**",
+        "RFC.md"
+      ],
+      "deny": [
+        "packages/runtime/contracts/**",
+        ".claude-plugin/**",
+        "hooks/**",
+        "node_modules/**",
+        ".git/**"
+      ]
+    },
+    "delta_capture": {
+      "mode": "git-stash",
+      "max_delta_bytes": 100000,
+      "store_diff_content": true
+    },
+    "side_effects_declared": {
+      "filesystem": [
+        "swarm/thoughts/shared/**",
+        "docs/**",
+        "ADRs/**"
+      ],
+      "http": [],
+      "mcp_tools": [
+        "memory"
+      ],
+      "subprocess": []
+    },
+    "spawn_lifecycle": {
+      "timeout_seconds": 1800,
+      "idle_detection": false,
+      "max_retries": 3,
+      "on_timeout": "hold"
+    },
+    "retention": {
+      "pre_snapshot_lifetime_hours": 24,
+      "delta_lifetime_days": 30,
+      "attestation_lifetime_days": 90,
+      "dream_output_lifetime_days": 180,
+      "archive_after_days": 365
+    }
+  },
+  "_format": "Findings format + frontmatter contract: see packages/runtime/schema/_format-spec.md (v2.9.0 Phase B.1)"
+}
