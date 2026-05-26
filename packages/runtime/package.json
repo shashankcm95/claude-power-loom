@@ -1,0 +1,22 @@
+{
+  "name": "@power-loom/runtime",
+  "version": "0.1.0-alpha.0",
+  "private": true,
+  "description": "Loom Runtime layer (v4 §2 Layer 2). HETS orchestration, persona contracts + briefs, decomposition + verify (v3.2). Per-RFC semver. Depends on @power-loom/kernel via workspace:*.",
+  "scripts": {
+    "test": "echo '(runtime tests TBD)' && exit 0"
+  },
+  "dependencies": {
+    "@power-loom/kernel": "workspace:*"
+  },
+  "files": [
+    "contracts",
+    "personas",
+    "traits",
+    "schema",
+    "orchestration",
+    "decomposition",
+    "verify",
+    "test-runners"
+  ]
+}

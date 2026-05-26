@@ -1,0 +1,14 @@
+{
+  "name": "claude-power-loom-root",
+  "version": "0.0.0",
+  "private": true,
+  "description": "pnpm workspace root for the claude-power-loom plugin. Per-package code lives under packages/{kernel,runtime,lab,skills,specs}/. See packages/specs/plans/2026-05-25-phase-0-workspace-restructure.md for the v4 substrate rationale.",
+  "scripts": {
+    "test": "pnpm -r test && bash tests/smoke-ht.sh",
+    "test:unit": "pnpm -r test",
+    "test:smoke": "bash tests/smoke-ht.sh"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

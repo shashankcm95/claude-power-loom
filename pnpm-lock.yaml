@@ -1,0 +1,34 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .: {}
+
+  packages/kernel: {}
+
+  packages/lab:
+    dependencies:
+      '@power-loom/kernel':
+        specifier: workspace:*
+        version: link:../kernel
+      '@power-loom/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+
+  packages/runtime:
+    dependencies:
+      '@power-loom/kernel':
+        specifier: workspace:*
+        version: link:../kernel
+
+  packages/skills:
+    dependencies:
+      '@power-loom/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+
+  packages/specs: {}

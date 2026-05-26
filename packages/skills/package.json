@@ -1,0 +1,17 @@
+{
+  "name": "@power-loom/skills",
+  "version": "1.0.0",
+  "private": true,
+  "description": "User-facing skill layer. Skills, slash commands, and plugin-shipped rules. Cross-cuts Runtime + Kernel via the plugin shell — not a v4 layer per se. Per-skill-batch semver.",
+  "scripts": {
+    "test": "echo '(skills validation runs via plugin manifest checks)' && exit 0"
+  },
+  "dependencies": {
+    "@power-loom/runtime": "workspace:*"
+  },
+  "files": [
+    "library",
+    "commands",
+    "rules"
+  ]
+}
