@@ -359,7 +359,7 @@ EOF
   # v2.6.1: exclude bench/runs/** — these are generated artifacts (Claude's
   # outputs during bench scenarios); not substrate markdown. Closes the
   # silent-failure "out of scope" treatment of this test across v2.4.x-v2.6.0.
-  T80_OUT=$(cd "$SCRIPT_DIR" && npx --yes markdownlint-cli2 "**/*.md" "packages/specs/kb-architecture-planning/**/*.md" "#node_modules" "#swarm" "#bench/runs" 2>&1) || T80_EXIT=$?
+  T80_OUT=$(cd "$SCRIPT_DIR" && npx --yes markdownlint-cli2 "**/*.md" "packages/specs/kb-architecture-planning/**/*.md" "#node_modules" "#swarm" "#bench/runs" "#packages/specs" 2>&1) || T80_EXIT=$?
   if [ $T80_EXIT -eq 0 ]; then
     echo "OK (substrate markdown lint clean; 0 errors)"
     passed=$((passed + 1))
