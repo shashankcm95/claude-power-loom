@@ -16,7 +16,7 @@ const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 
-const HOOK_PATH = path.resolve(__dirname, '../../../hooks/scripts/fact-force-gate.js');
+const HOOK_PATH = path.resolve(__dirname, '../../../packages/kernel/hooks/pre/fact-force-gate.js');
 
 let passed = 0;
 let failed = 0;

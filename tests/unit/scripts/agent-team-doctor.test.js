@@ -13,7 +13,7 @@
  * Architect.theo HIGH-3: REJECT `library-migrate doctor` subverb;
  *   propose new `agent-team doctor` umbrella with N composable probes.
  *
- * Each probe is a separate module under `scripts/agent-team/doctor/probes/`.
+ * Each probe is a separate module under `packages/runtime/orchestration/doctor/probes/`.
  * Output JSON shape:
  *   { doctor_version, ran_at, probes: {<name>: {status, details}},
  *     summary: {pass, warn, fail, not_implemented}, exit_code }
@@ -41,8 +41,8 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const REPO = path.resolve(__dirname, '../../..');
-const DOCTOR = path.join(REPO, 'scripts/agent-team/doctor.js');
-const PROBES_DIR = path.join(REPO, 'scripts/agent-team/doctor/probes');
+const DOCTOR = path.join(REPO, 'packages/runtime/orchestration/doctor.js');
+const PROBES_DIR = path.join(REPO, 'packages/runtime/orchestration/doctor/probes');
 
 let passed = 0;
 let failed = 0;
@@ -66,8 +66,8 @@ process.stdout.write('\n[FIX-I4] agent-team doctor umbrella with N probes\n');
 
 // T1: doctor.js exists and is a regular file
 {
-  assert(fs.existsSync(DOCTOR), 'T1a: scripts/agent-team/doctor.js exists');
-  assert(fs.existsSync(PROBES_DIR), 'T1b: scripts/agent-team/doctor/probes/ directory exists');
+  assert(fs.existsSync(DOCTOR), 'T1a: packages/runtime/orchestration/doctor.js exists');
+  assert(fs.existsSync(PROBES_DIR), 'T1b: packages/runtime/orchestration/doctor/probes/ directory exists');
 }
 
 // T2: no-args run emits valid JSON shape with required top-level keys

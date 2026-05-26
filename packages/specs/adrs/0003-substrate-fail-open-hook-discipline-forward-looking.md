@@ -7,20 +7,20 @@ created: 2026-05-10
 author: root (HT.1.7 sub-plan; architect + code-reviewer per-phase pre-approval gate APPROVED-with-revisions; 7 FLAGs absorbed single-pass)
 superseded_by: null
 files_affected:
-  - hooks/scripts/fact-force-gate.js
-  - hooks/scripts/config-guard.js
-  - hooks/scripts/error-critic.js
-  - hooks/scripts/prompt-enrich-trigger.js
-  - hooks/scripts/session-self-improve-prompt.js
-  - hooks/scripts/session-reset.js
-  - hooks/scripts/auto-store-enrichment.js
-  - hooks/scripts/console-log-check.js
-  - hooks/scripts/pre-compact-save.js
-  - hooks/scripts/session-end-nudge.js
-  - hooks/scripts/validators/verify-plan-gate.js
-  - hooks/scripts/validators/validate-no-bare-secrets.js
-  - hooks/scripts/validators/validate-frontmatter-on-skills.js
-  - hooks/scripts/validators/validate-plan-schema.js
+  - packages/kernel/hooks/pre/fact-force-gate.js
+  - packages/kernel/hooks/pre/config-guard.js
+  - packages/kernel/hooks/post/error-critic.js
+  - packages/kernel/hooks/lifecycle/prompt-enrich-trigger.js
+  - packages/kernel/hooks/lifecycle/session-self-improve-prompt.js
+  - packages/kernel/hooks/lifecycle/session-reset.js
+  - packages/kernel/hooks/lifecycle/auto-store-enrichment.js
+  - packages/kernel/hooks/lifecycle/console-log-check.js
+  - packages/kernel/hooks/lifecycle/pre-compact-save.js
+  - packages/kernel/hooks/lifecycle/session-end-nudge.js
+  - packages/kernel/validators/verify-plan-gate.js
+  - packages/kernel/validators/validate-no-bare-secrets.js
+  - packages/kernel/validators/validate-frontmatter-on-skills.js
+  - packages/kernel/validators/validate-plan-schema.js
 invariants_introduced:
   - "All substrate hooks shipped after 2026-05-10 (HT.1.7 onward) MUST satisfy ADR-0001's four mechanical fail-open invariants; new hook PRs include verification of each invariant in the PR body or commit message (institutional commitment, not optional convention)"
   - "Substrate maintainers running code review on hook PRs apply ADR-0001's discipline as a load-bearing review gate; PRs that don't verify all four invariants are NEEDS-REVISION regardless of other merit (governance gate, not advisory)"

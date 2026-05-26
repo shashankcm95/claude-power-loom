@@ -3,7 +3,7 @@
  * generate-persona-agents.js — v2.8.4 FIX-A
  *
  * Generates minimal-viable `agents/<name>.md` for each persona that lacks
- * one. The full identity brief lives in `swarm/personas/<NN-name>.md`;
+ * one. The full identity brief lives in `packages/runtime/personas/<NN-name>.md`;
  * the agent file is a thin delegation layer that satisfies the Agent
  * tool's subagent_type requirement.
  *
@@ -141,11 +141,11 @@ color: ${p.color}
 
 You are the **${p.id}** persona. Your **full identity brief** lives at:
 
-\`swarm/personas/${p.id}.md\` — **Read this on spawn** before doing anything else. The brief in that file is authoritative; this agent file is a thin delegation layer that satisfies the Agent tool's \`subagent_type\` requirement.
+\`packages/runtime/personas/${p.id}.md\` — **Read this on spawn** before doing anything else. The brief in that file is authoritative; this agent file is a thin delegation layer that satisfies the Agent tool's \`subagent_type\` requirement.
 
 Your **persona contract** lives at:
 
-\`swarm/personas-contracts/${p.id}.contract.json\` — defines required skills, kb_scope, budget, and verification checks (\`functional\` + \`antiPattern\`).
+\`packages/runtime/contracts/${p.id}.contract.json\` — defines required skills, kb_scope, budget, and verification checks (\`functional\` + \`antiPattern\`).
 
 ## Quick reference
 
@@ -158,7 +158,7 @@ Default kb_scope for this persona (override in spawn prompt if needed):
 ${kbList}
 - \`kb:hets/spawn-conventions\` — output-format requirements for HETS spawns
 
-Consult via \`node scripts/agent-team/kb-resolver.js cat <kb_id>\` (or \`Read skills/agent-team/kb/<kb_id>.md\` if Bash isn't in your tool inventory).
+Consult via \`node packages/runtime/orchestration/kb-resolver.js cat <kb_id>\` (or \`Read packages/skills/library/agent-team/kb/<kb_id>.md\` if Bash isn't in your tool inventory).
 
 ## Output requirements
 
@@ -169,7 +169,7 @@ Consult via \`node scripts/agent-team/kb-resolver.js cat <kb_id>\` (or \`Read sk
 
 ## When in doubt
 
-Read the full persona brief at \`swarm/personas/${p.id}.md\`. This file is intentionally minimal — it exists so the Agent tool can spawn you by name. The brief is where the wisdom lives.
+Read the full persona brief at \`packages/runtime/personas/${p.id}.md\`. This file is intentionally minimal — it exists so the Agent tool can spawn you by name. The brief is where the wisdom lives.
 `;
 }
 

@@ -44,7 +44,7 @@ The caller at src/main.js:10 passes the result to processFile.
 EOF
   # H.9.16 drift-note 78(a) safe-pattern: source T_EXIT=0 + || T_EXIT=$?; downstream || true.
   T69_EXIT=0
-  T69_OUT=$(node "$SCRIPT_DIR/scripts/agent-team/contract-verifier.js" --contract "$T69_CONTRACT" --output "$T69_OUTPUT" 2>/dev/null) || T69_EXIT=$?
+  T69_OUT=$(node "$SCRIPT_DIR/packages/kernel/validators/contract-verifier.js" --contract "$T69_CONTRACT" --output "$T69_OUTPUT" 2>/dev/null) || T69_EXIT=$?
   T69_VERDICT=$(echo "$T69_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('verdict', ''))" 2>/dev/null) || true
   T69_A4_STATUS=$(echo "$T69_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('antiPattern', {}).get('A4', {}).get('status', ''))" 2>/dev/null) || true
   if [ "$T69_VERDICT" = "pass" ] && [ "$T69_A4_STATUS" = "pass" ]; then
@@ -80,7 +80,7 @@ to use a more idiomatic shape per the existing convention at src/main.js:10.
 EOF
   # H.9.16 drift-note 78(a) safe-pattern: source T_EXIT=0 + || T_EXIT=$?; downstream || true.
   T70_EXIT=0
-  T70_OUT=$(node "$SCRIPT_DIR/scripts/agent-team/contract-verifier.js" --contract "$T70_CONTRACT" --output "$T70_OUTPUT" 2>/dev/null) || T70_EXIT=$?
+  T70_OUT=$(node "$SCRIPT_DIR/packages/kernel/validators/contract-verifier.js" --contract "$T70_CONTRACT" --output "$T70_OUTPUT" 2>/dev/null) || T70_EXIT=$?
   T70_VERDICT=$(echo "$T70_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('verdict', ''))" 2>/dev/null) || true
   T70_A4_STATUS=$(echo "$T70_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('antiPattern', {}).get('A4', {}).get('status', ''))" 2>/dev/null) || true
   T70_A4_FOUND=$(echo "$T70_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('antiPattern', {}).get('A4', {}).get('foundPhrase', ''))" 2>/dev/null) || true
@@ -97,7 +97,7 @@ EOF
   # surface integrity). Exercises --help (exits 0; lists subcommands) and unknown-subcommand
   # error path (exits 1; emits usage to stderr). Per HT.1.5 sub-plan probe #4.
   echo -n "  Test 71 (HT.1.5 build-team-helpers.sh dispatch + subcommand surface): "
-  T71_HELPER="$SCRIPT_DIR/scripts/agent-team/build-team-helpers.sh"
+  T71_HELPER="$SCRIPT_DIR/packages/runtime/orchestration/build-team-helpers.sh"
   if [ ! -f "$T71_HELPER" ]; then
     echo "FAIL: helper script missing at $T71_HELPER"
     failed=$((failed + 1))
@@ -135,22 +135,22 @@ EOF
   # (commands/research.md path-extraction works post-HT.1.6 .full → .identity fix).
   echo -n "  Test 72 (HT.1.6 documentary persona DEFAULT_ROSTERS + /research integration): "
   T72_STORE=$(mktemp -u)
-  HETS_IDENTITY_STORE="$T72_STORE" node "$SCRIPT_DIR/scripts/agent-team/agent-identity.js" init >/dev/null 2>&1
+  HETS_IDENTITY_STORE="$T72_STORE" node "$SCRIPT_DIR/packages/runtime/orchestration/agent-identity.js" init >/dev/null 2>&1
   # H.9.16 drift-note 78(a) safe-pattern: source T_EXIT=0 + || T_EXIT=$?; downstream || true.
   T72_EXIT=0
-  T72_OUT=$(HETS_IDENTITY_STORE="$T72_STORE" node "$SCRIPT_DIR/scripts/agent-team/agent-identity.js" assign --persona 14-codebase-locator --task ht-1-6-test 2>&1) || T72_EXIT=$?
+  T72_OUT=$(HETS_IDENTITY_STORE="$T72_STORE" node "$SCRIPT_DIR/packages/runtime/orchestration/agent-identity.js" assign --persona 14-codebase-locator --task ht-1-6-test 2>&1) || T72_EXIT=$?
   T72_IDENTITY=$(echo "$T72_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('identity', ''))" 2>/dev/null) || true
   T72_PERSONA=$(echo "$T72_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('persona', ''))" 2>/dev/null) || true
   # Use if-form to bypass install.sh's `set -e` propagation when grep finds 0 matches
   # (grep -c emits "0" + exits 1; combined with `|| echo "?"` the substitution would
   # capture both grep's "0" + echo's "?" = "0\n?" which breaks string equality below).
   T72_RESEARCH_FULL_REFS=0
-  if grep -q "jq -r '\.full'" "$SCRIPT_DIR/commands/research.md" 2>/dev/null; then
-    T72_RESEARCH_FULL_REFS=$(grep -c "jq -r '\.full'" "$SCRIPT_DIR/commands/research.md")
+  if grep -q "jq -r '\.full'" "$SCRIPT_DIR/packages/skills/commands/research.md" 2>/dev/null; then
+    T72_RESEARCH_FULL_REFS=$(grep -c "jq -r '\.full'" "$SCRIPT_DIR/packages/skills/commands/research.md")
   fi
   T72_RESEARCH_IDENTITY_REFS=0
-  if grep -q "jq -r '\.identity'" "$SCRIPT_DIR/commands/research.md" 2>/dev/null; then
-    T72_RESEARCH_IDENTITY_REFS=$(grep -c "jq -r '\.identity'" "$SCRIPT_DIR/commands/research.md")
+  if grep -q "jq -r '\.identity'" "$SCRIPT_DIR/packages/skills/commands/research.md" 2>/dev/null; then
+    T72_RESEARCH_IDENTITY_REFS=$(grep -c "jq -r '\.identity'" "$SCRIPT_DIR/packages/skills/commands/research.md")
   fi
   if [ "$T72_PERSONA" = "14-codebase-locator" ] \
       && echo "$T72_IDENTITY" | grep -qE "^14-codebase-locator\.(scout|nav|atlas)$" \
@@ -166,11 +166,11 @@ EOF
 
   # Test 73: HT.1.7 — seed status enum in adr.js list filter. Validates that
   # ADR-0001 retagged from `accepted` to `seed` (HT.1.7 Design B) is queryable
-  # via `adr.js list --status seed`. Reads the live `swarm/adrs/` directory.
+  # via `adr.js list --status seed`. Reads the live `packages/specs/adrs/` directory.
   echo -n "  Test 73 (HT.1.7 seed status enum; adr.js list --status seed returns ADR-0001): "
   # H.9.16 drift-note 78(a) safe-pattern: source T_EXIT=0 + || T_EXIT=$?; downstream || true.
   T73_EXIT=0
-  T73_OUT=$(HETS_ADRS_DIR="$SCRIPT_DIR/swarm/adrs" node "$SCRIPT_DIR/scripts/agent-team/adr.js" list --status seed 2>/dev/null) || T73_EXIT=$?
+  T73_OUT=$(HETS_ADRS_DIR="$SCRIPT_DIR/packages/specs/adrs" node "$SCRIPT_DIR/packages/runtime/orchestration/adr.js" list --status seed 2>/dev/null) || T73_EXIT=$?
   T73_COUNT=$(echo "$T73_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('count', -1))" 2>/dev/null) || true
   T73_FIRST_ID=$(echo "$T73_OUT" | python3 -c "import json,sys; d=json.load(sys.stdin); adrs=d.get('adrs',[]); print(adrs[0]['adr_id'] if adrs else '')" 2>/dev/null) || true
   if [ "$T73_COUNT" = "1" ] && [ "$T73_FIRST_ID" = "0001" ]; then
@@ -182,14 +182,14 @@ EOF
   fi
 
   # Test 74: HT.1.7 — seed ADRs participate in drift detection (Design B).
-  # Validates that `touched-by hooks/scripts/fact-force-gate.js` returns BOTH
+  # Validates that `touched-by packages/kernel/hooks/pre/fact-force-gate.js` returns BOTH
   # ADR-0001 (seed; mechanical discipline) AND ADR-0003 (accepted; governance
   # commitment). isActive() widening at HT.1.7 admits seed status alongside
   # accepted; both ADRs share the same files_affected list (14 hook scripts).
   echo -n "  Test 74 (HT.1.7 seed active-for-drift; touched-by returns ADR-0001 + ADR-0003): "
   # H.9.16 drift-note 78(a) safe-pattern: source T_EXIT=0 + || T_EXIT=$?; downstream || true.
   T74_EXIT=0
-  T74_OUT=$(HETS_ADRS_DIR="$SCRIPT_DIR/swarm/adrs" node "$SCRIPT_DIR/scripts/agent-team/adr.js" touched-by hooks/scripts/fact-force-gate.js 2>/dev/null) || T74_EXIT=$?
+  T74_OUT=$(HETS_ADRS_DIR="$SCRIPT_DIR/packages/specs/adrs" node "$SCRIPT_DIR/packages/runtime/orchestration/adr.js" touched-by packages/kernel/hooks/pre/fact-force-gate.js 2>/dev/null) || T74_EXIT=$?
   T74_COUNT=$(echo "$T74_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('matched_count', -1))" 2>/dev/null) || true
   T74_HAS_0001=$(echo "$T74_OUT" | python3 -c "import json,sys; d=json.load(sys.stdin); print('yes' if any(a.get('adr_id') == '0001' for a in d.get('adrs', [])) else 'no')" 2>/dev/null) || true
   T74_HAS_0003=$(echo "$T74_OUT" | python3 -c "import json,sys; d=json.load(sys.stdin); print('yes' if any(a.get('adr_id') == '0003' for a in d.get('adrs', [])) else 'no')" 2>/dev/null) || true
@@ -208,7 +208,7 @@ EOF
   echo -n "  Test 75 (HT.1.13 ADR-0005 accepted; adr.js list --status accepted includes ADR-0005): "
   # H.9.16 drift-note 78(a) safe-pattern: source T_EXIT=0 + || T_EXIT=$?; downstream || true.
   T75_EXIT=0
-  T75_OUT=$(HETS_ADRS_DIR="$SCRIPT_DIR/swarm/adrs" node "$SCRIPT_DIR/scripts/agent-team/adr.js" list --status accepted 2>/dev/null) || T75_EXIT=$?
+  T75_OUT=$(HETS_ADRS_DIR="$SCRIPT_DIR/packages/specs/adrs" node "$SCRIPT_DIR/packages/runtime/orchestration/adr.js" list --status accepted 2>/dev/null) || T75_EXIT=$?
   T75_COUNT=$(echo "$T75_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('count', -1))" 2>/dev/null) || true
   T75_HAS_0005=$(echo "$T75_OUT" | python3 -c "import json,sys; d=json.load(sys.stdin); print('yes' if any(a.get('adr_id') == '0005' for a in d.get('adrs', [])) else 'no')" 2>/dev/null) || true
   if [ "$T75_COUNT" -ge "2" ] && [ "$T75_HAS_0005" = "yes" ]; then
@@ -224,8 +224,8 @@ EOF
   # loose ≥ 8 to also enforce upper bound to catch over-conditionalization).
   # 14 is the post-HT.1.13 baseline (workflow.md 11 + fundamentals.md 1 +
   # prompt-enrichment.md 1 + self-improvement.md 1).
-  echo -n "  Test 76 (HT.1.13 <important if> block-marker count in rules/core/ within target band): "
-  T76_COUNT=$(grep -rn "<important if" "$SCRIPT_DIR/rules/core/" 2>/dev/null | wc -l | tr -d ' ')
+  echo -n "  Test 76 (HT.1.13 <important if> block-marker count in packages/skills/rules/core/ within target band): "
+  T76_COUNT=$(grep -rn "<important if" "$SCRIPT_DIR/packages/skills/rules/core/" 2>/dev/null | wc -l | tr -d ' ')
   if [ "$T76_COUNT" -ge "8" ] && [ "$T76_COUNT" -le "14" ]; then
     echo "OK (count=$T76_COUNT; target ≥ 8 and ≤ 14)"
     passed=$((passed + 1))
@@ -246,7 +246,7 @@ EOF
   # H.9.16 drift-note 78(a) safe-pattern: source T_EXIT=0 + || T_EXIT=$?; downstream || true.
   T77_EXIT=0
   T77_OUT=$(HOME="$T77_TMPDIR" node -e "
-    const s = require('$SCRIPT_DIR/scripts/self-improve-store.js');
+    const s = require('$SCRIPT_DIR/packages/kernel/spawn-state/self-improve-store.js');
     const r = s.bumpBatch(['filePath:/tmp/foo.js', 'command:/test']);
     process.stdout.write(JSON.stringify(r));
   " 2>/dev/null) || T77_EXIT=$?
@@ -264,8 +264,8 @@ EOF
 
   # Test 78: HT.2.3 — session-end-nudge.js Stop event with absent sessions/ dir auto-creates
   # (drift-note 75 closure via _lib/lock.js Part A auto-mkdir). Validates:
-  #   (a) require resolution across hooks/scripts/ → ../../scripts/agent-team/_lib/lock works
-  #       (first cross-tree relative require in hooks/scripts/ per code-reviewer MEDIUM-CR3)
+  #   (a) require resolution across packages/kernel/hooks/ → ../../packages/kernel/_lib/lock works
+  #       (first cross-tree relative require in packages/kernel/hooks/ per code-reviewer MEDIUM-CR3)
   #   (b) auto-mkdir creates ~/.claude/sessions/ transparently (Part A behavior)
   #   (c) hook exits 0 + writes stdin through to stdout (fail-soft contract preserved)
   #   (d) state file is written with count=1
@@ -275,7 +275,7 @@ EOF
   # H.9.16 drift-note 78(a) safe-pattern: 3-line dead-code replacement (separate T_EXIT=$? was unreachable under set -e); downstream || true.
   T78_EXIT=0
   T78_OUT=$(echo "input-line-1" | HOME="$T78_TMPDIR" CLAUDE_SESSION_ID=t78-test \
-    node "$SCRIPT_DIR/hooks/scripts/session-end-nudge.js" 2>/dev/null) || T78_EXIT=$?
+    node "$SCRIPT_DIR/packages/kernel/hooks/lifecycle/session-end-nudge.js" 2>/dev/null) || T78_EXIT=$?
   T78_STATE_FILE="$T78_TMPDIR/.claude/sessions/nudge-t78-test.json"
   T78_COUNT=$(python3 -c "import json; print(json.load(open('$T78_STATE_FILE')).get('count', -1))" 2>/dev/null) || true
   if [ "$T78_EXIT" = "0" ] && [ "$T78_OUT" = "input-line-1" ] && [ "$T78_COUNT" = "1" ]; then
@@ -308,7 +308,7 @@ EOF
   T79_EXIT=0
   T79_OUT=$(echo "input-line-2" | HOME="$T79_TMPDIR" CLAUDE_SESSION_ID=t79-test \
     CLAUDE_SESSION_NUDGE_THRESHOLD=10 \
-    node "$SCRIPT_DIR/hooks/scripts/session-end-nudge.js" 2>/dev/null) || T79_EXIT=$?
+    node "$SCRIPT_DIR/packages/kernel/hooks/lifecycle/session-end-nudge.js" 2>/dev/null) || T79_EXIT=$?
   T79_END=$(date +%s)
   T79_ELAPSED=$((T79_END - T79_START))
   # kill + wait must tolerate killed-child exit codes under `set -euo pipefail`:
@@ -334,22 +334,22 @@ EOF
   # surfaced by 2026-05-11 CI markdown-lint failure post-HT.3.3 merge: 22 MD037/MD038
   # errors had accumulated across HT ledger entries because markdownlint wasn't in
   # local verification — CI was the sole enforcer + ran only on push to main).
-  # H.9.6 (2026-05-11): scope extended to include swarm/kb-architecture-planning/
+  # H.9.6 (2026-05-11): scope extended to include packages/specs/kb-architecture-planning/
   # planning docs (was excluded by blanket "#swarm" — H.9.4 surfaced the gap when
   # explicit lint on the 3 modified docs caught MD056 + MD037 issues that Test 80
   # didn't see; post-compact cumulative-audit confirmed scope right-sized).
   # Validates:
   #   (a) markdownlint-cli2 runs against substrate markdown via same command CI uses
-  #       PLUS swarm/kb-architecture-planning/ planning docs (5 underscore-prefix
+  #       PLUS packages/specs/kb-architecture-planning/ planning docs (5 underscore-prefix
   #       planning artifacts + README); swarm/ otherwise excluded (chaos-run-state
   #       noise + research/plan/HT-state narrative with carve-out backtick patterns)
   #   (b) Exit code 0 — substrate markdown lint clean
   # Approach: invoke same command as `.github/workflows/ci.yml` Markdown lint job,
-  # plus an explicit swarm/kb-architecture-planning/**/*.md include glob (markdownlint-cli2
+  # plus an explicit packages/specs/kb-architecture-planning/**/*.md include glob (markdownlint-cli2
   # ordered globs: explicit include before "#swarm" exclude takes precedence).
   # First-run on a fresh machine may take ~5-10s to fetch markdownlint-cli2 into
   # npx cache; subsequent runs are ~2-3s. Acceptable smoke-harness latency.
-  echo -n "  Test 80 (H.9.0+H.9.6 markdownlint in local smoke harness; substrate + swarm/kb-architecture-planning/): "
+  echo -n "  Test 80 (H.9.0+H.9.6 markdownlint in local smoke harness; substrate + packages/specs/kb-architecture-planning/): "
   # H.9.6.2: explicit `|| T80_EXIT=$?` guard required because install.sh runs with
   # `set -euo pipefail` (line 2); a bare `T80_OUT=$(failing_cmd 2>&1)` triggers
   # errexit BEFORE the if/else branch can report FAIL, hiding the failure mode
@@ -359,7 +359,7 @@ EOF
   # v2.6.1: exclude bench/runs/** — these are generated artifacts (Claude's
   # outputs during bench scenarios); not substrate markdown. Closes the
   # silent-failure "out of scope" treatment of this test across v2.4.x-v2.6.0.
-  T80_OUT=$(cd "$SCRIPT_DIR" && npx --yes markdownlint-cli2 "**/*.md" "swarm/kb-architecture-planning/**/*.md" "#node_modules" "#swarm" "#bench/runs" 2>&1) || T80_EXIT=$?
+  T80_OUT=$(cd "$SCRIPT_DIR" && npx --yes markdownlint-cli2 "**/*.md" "packages/specs/kb-architecture-planning/**/*.md" "#node_modules" "#swarm" "#bench/runs" 2>&1) || T80_EXIT=$?
   if [ $T80_EXIT -eq 0 ]; then
     echo "OK (substrate markdown lint clean; 0 errors)"
     passed=$((passed + 1))
@@ -413,7 +413,7 @@ EOF
   # 3rd application; closes JSON content-format-time discipline gap analogous to
   # H.9.0 markdownlint + H.9.1 shellcheck). Substrate has 30 substrate-active
   # *.json files (configs at .claude-plugin/, hooks/, .markdownlint.json; persona
-  # contracts at swarm/personas-contracts/; schemas at swarm/schemas/; test
+  # contracts at packages/runtime/contracts/; schemas at swarm/schemas/; test
   # fixtures at swarm/test-fixtures/) + 19 swarm/run-state/ chaos-artifact JSON
   # files excluded (chaos test outputs may contain non-JSON when capturing stderr
   # alongside stdout; not active substrate). H.9.2 baseline: 30 files, 0 errors
@@ -533,7 +533,7 @@ EOF
   # actual disable-DIRECTIVES (comment-form `//` or `/*` prefix immediately before
   # `eslint-disable`), NOT raw substring matches. This precision handles two
   # legitimate cases that contain the literal string but are NOT suppressions:
-  # (a) `hooks/scripts/console-log-check.js` regex literals `\/\/\s*eslint-disable`
+  # (a) `packages/kernel/hooks/lifecycle/console-log-check.js` regex literals `\/\/\s*eslint-disable`
   #     — escaped slashes don't match comment-form pattern;
   # (b) `eslint.config.js` documentation comments describing the rule itself
   #     — explicitly excluded from grep scope (the config IS where the discipline
@@ -588,7 +588,7 @@ EOF
   h99_log_size_before=$(stat -c %s "$h99_log" 2>/dev/null || stat -f %z "$h99_log" 2>/dev/null || echo 0)
   h99_start_ms=$(node -e "console.log(Date.now())")
   H99_EXIT=0
-  h99_result=$(echo '{"tool_name":"Bash","tool_input":{"command":"npm test"},"tool_response":{"stderr":"Error: failed","is_error":true}}' | CLAUDE_SESSION_ID="$h99_session" node "$SCRIPT_DIR/hooks/scripts/error-critic.js" 2>/dev/null) || H99_EXIT=$?
+  h99_result=$(echo '{"tool_name":"Bash","tool_input":{"command":"npm test"},"tool_response":{"stderr":"Error: failed","is_error":true}}' | CLAUDE_SESSION_ID="$h99_session" node "$SCRIPT_DIR/packages/kernel/hooks/post/error-critic.js" 2>/dev/null) || H99_EXIT=$?
   h99_end_ms=$(node -e "console.log(Date.now())")
   h99_elapsed_ms=$((h99_end_ms - h99_start_ms))
   rm -f "$h99_failure_dir/.lock"
@@ -648,7 +648,7 @@ EOF
     }));
   ")
   T86_EXIT=0
-  T86_OUT=$(echo "$T86_INPUT" | node "$SCRIPT_DIR/hooks/scripts/validators/validate-yaml-frontmatter.js") || T86_EXIT=$?
+  T86_OUT=$(echo "$T86_INPUT" | node "$SCRIPT_DIR/packages/kernel/validators/validate-yaml-frontmatter.js") || T86_EXIT=$?
 
   # Edit-event variant (drift-note 80 root cause is the Edit pattern, not Write)
   T86_EDIT_INPUT=$(node -e "
@@ -662,7 +662,7 @@ EOF
     }));
   ")
   T86_EDIT_EXIT=0
-  T86_EDIT_OUT=$(echo "$T86_EDIT_INPUT" | node "$SCRIPT_DIR/hooks/scripts/validators/validate-yaml-frontmatter.js") || T86_EDIT_EXIT=$?
+  T86_EDIT_OUT=$(echo "$T86_EDIT_INPUT" | node "$SCRIPT_DIR/packages/kernel/validators/validate-yaml-frontmatter.js") || T86_EDIT_EXIT=$?
 
   rm -rf "$T86_TMP"
   trap - EXIT
@@ -700,7 +700,7 @@ EOF
     const fs = require('fs');
     const path = require('path');
     const { spawn } = require('child_process');
-    const { acquireLock } = require('$SCRIPT_DIR/scripts/agent-team/_lib/lock');
+    const { acquireLock } = require('$SCRIPT_DIR/packages/kernel/_lib/lock');
     const lockPath = '$T87_LOCK';
     // Spawn child that holds the lock for 2s using a real different PID.
     const childScript = \`
@@ -754,7 +754,7 @@ EOF
   ln -s "$T65_TARGET/0099-malicious.md" "$T65_ADRS/0099-malicious.md" 2>/dev/null
   # touched-by + active should not crash + should not include the symlink as a loaded ADR
   # H.9.16 drift-note 78(a) safe-pattern: inline-pipeline cmd-sub suffix || true.
-  T65_LIST=$(HETS_ADRS_DIR="$T65_ADRS" node "$SCRIPT_DIR/scripts/agent-team/adr.js" list 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin).get('count', -1))" 2>/dev/null) || true
+  T65_LIST=$(HETS_ADRS_DIR="$T65_ADRS" node "$SCRIPT_DIR/packages/runtime/orchestration/adr.js" list 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin).get('count', -1))" 2>/dev/null) || true
   if [ "$T65_LIST" = "0" ]; then
     echo "OK (symlink filtered out)"
     passed=$((passed + 1))
@@ -783,14 +783,14 @@ EOF
   T88_EXIT=0
   T88_RESULT=$(node -e "
     const { spawnSync } = require('child_process');
-    const validator = '$SCRIPT_DIR/hooks/scripts/validators/validate-kb-doc.js';
+    const validator = '$SCRIPT_DIR/packages/kernel/validators/validate-kb-doc.js';
     const fixtures = [
       {
         name: 'F1_missing_version',
         payload: {
           tool_name: 'Write',
           tool_input: {
-            file_path: '/tmp/h912-fixture/skills/agent-team/kb/architecture/test/no-version.md',
+            file_path: '/tmp/h912-fixture/packages/skills/library/agent-team/kb/architecture/test/no-version.md',
             content: '---\nkb_id: architecture/test/no-version\ntags:\n  - a\n  - b\n  - c\nsources_consulted:\n  - x\n  - y\n---\n## Summary\nf\n## Quick Reference\nb\n## Intent\nz\n## When NOT to use\nf\n## Failure modes\nb\n## Substrate applications\nz'
           }
         },
@@ -802,7 +802,7 @@ EOF
         payload: {
           tool_name: 'Write',
           tool_input: {
-            file_path: '/tmp/h912-fixture/skills/agent-team/kb/architecture/test/tags-2.md',
+            file_path: '/tmp/h912-fixture/packages/skills/library/agent-team/kb/architecture/test/tags-2.md',
             content: '---\nkb_id: architecture/test/tags-2\nversion: 1\ntags:\n  - a\n  - b\nsources_consulted:\n  - x\n  - y\n---\n## Summary\nf\n## Quick Reference\nb'
           }
         },
@@ -814,7 +814,7 @@ EOF
         payload: {
           tool_name: 'Write',
           tool_input: {
-            file_path: '/tmp/h912-fixture/skills/agent-team/kb/architecture/test/sources-1.md',
+            file_path: '/tmp/h912-fixture/packages/skills/library/agent-team/kb/architecture/test/sources-1.md',
             content: '---\nkb_id: architecture/test/sources-1\nversion: 1\ntags:\n  - a\n  - b\n  - c\nsources_consulted:\n  - x\n---\n## Summary\nf'
           }
         },
@@ -826,7 +826,7 @@ EOF
         payload: {
           tool_name: 'Write',
           tool_input: {
-            file_path: '/tmp/h912-fixture/skills/agent-team/kb/architecture/test/no-when-not.md',
+            file_path: '/tmp/h912-fixture/packages/skills/library/agent-team/kb/architecture/test/no-when-not.md',
             content: '---\nkb_id: architecture/test/no-when-not\nversion: 1\ntags:\n  - a\n  - b\n  - c\nsources_consulted:\n  - x\n  - y\nrelated:\n  - architecture/other/foo\n---\n## Summary\nf\n## Quick Reference\nb\n## Intent\nz\n## Failure modes\nb\n## Substrate applications\nz'
           }
         },
@@ -905,8 +905,8 @@ EOF
   T89_RESULT=$(node -e "
     const fs = require('fs');
     const { execSync } = require('child_process');
-    const targetDoc = '$SCRIPT_DIR/skills/agent-team/kb/architecture/crosscut/single-responsibility.md';
-    const validator = '$SCRIPT_DIR/scripts/agent-team/contracts-validate.js';
+    const targetDoc = '$SCRIPT_DIR/packages/skills/library/agent-team/kb/architecture/crosscut/single-responsibility.md';
+    const validator = '$SCRIPT_DIR/packages/runtime/orchestration/contracts-validate.js';
     function runValidator() {
       let output = '', exitCode = 0;
       try { output = execSync('node ' + validator + ' 2>&1', { encoding: 'utf8' }); }
@@ -967,7 +967,7 @@ EOF
   # H.9.16 drift-note 78(a) safe-pattern: source T_EXIT=0 + || T_EXIT=$?; downstream || true.
   T90_EXIT=0
   T90_RESULT=$(node -e "
-    const { parseFrontmatter } = require('$SCRIPT_DIR/scripts/agent-team/_lib/frontmatter.js');
+    const { parseFrontmatter } = require('$SCRIPT_DIR/packages/kernel/_lib/frontmatter.js');
     const lf = '---\nkb_id: test/x\nversion: 1\n---\nbody';
     const crlf = '---\r\nkb_id: test/x\r\nversion: 1\r\n---\r\nbody';
     const a = parseFrontmatter(lf);
@@ -983,7 +983,7 @@ EOF
   # H.9.16 drift-note 78(a) safe-pattern: source T_EXIT=0 + || T_EXIT=$?; downstream || true.
   T91_EXIT=0
   T91_RESULT=$(node -e "
-    const { parseFrontmatter } = require('$SCRIPT_DIR/scripts/agent-team/_lib/frontmatter.js');
+    const { parseFrontmatter } = require('$SCRIPT_DIR/packages/kernel/_lib/frontmatter.js');
     const bom = '﻿---\nkb_id: test/x\nversion: 1\n---\nbody';
     const r = parseFrontmatter(bom);
     if (r.frontmatter.kb_id !== 'test/x') { console.log('FAIL: BOM-prefixed doc kb_id=' + r.frontmatter.kb_id); process.exit(1); }
@@ -998,7 +998,7 @@ EOF
   T92_EXIT=0
   T92_RESULT=$(node -e "
     const { spawnSync } = require('child_process');
-    const r = spawnSync('node', ['-e', \"const { parseFrontmatter } = require('$SCRIPT_DIR/scripts/agent-team/_lib/frontmatter.js'); const r = parseFrontmatter('---\\\nkey: |-\\\n---\\\nbody'); console.log(JSON.stringify({val: r.frontmatter.key}));\"], { encoding: 'utf8' });
+    const r = spawnSync('node', ['-e', \"const { parseFrontmatter } = require('$SCRIPT_DIR/packages/kernel/_lib/frontmatter.js'); const r = parseFrontmatter('---\\\nkey: |-\\\n---\\\nbody'); console.log(JSON.stringify({val: r.frontmatter.key}));\"], { encoding: 'utf8' });
     const stderr = r.stderr || '';
     const stdout = r.stdout || '';
     if (!stderr.includes('block scalar indicator')) { console.log('FAIL: no block-scalar warning in stderr; stderr=' + stderr.slice(0, 200)); process.exit(1); }
@@ -1013,7 +1013,7 @@ EOF
   # H.9.16 drift-note 78(a) safe-pattern: source T_EXIT=0 + || T_EXIT=$?; downstream || true.
   T93_EXIT=0
   T93_RESULT=$(node -e "
-    const { parseFrontmatter } = require('$SCRIPT_DIR/scripts/agent-team/_lib/frontmatter.js');
+    const { parseFrontmatter } = require('$SCRIPT_DIR/packages/kernel/_lib/frontmatter.js');
     const r = parseFrontmatter('---\ncoerce_int: 1\ncoerce_zero: 0\ncoerce_float: 1.5\npreserve_leading_zero: 0001\npreserve_quoted: \"1\"\n---');
     const fm = r.frontmatter;
     if (typeof fm.coerce_int !== 'number' || fm.coerce_int !== 1) { console.log('FAIL: coerce_int typeof=' + typeof fm.coerce_int + ' val=' + fm.coerce_int); process.exit(1); }
@@ -1031,7 +1031,7 @@ EOF
   T94_EXIT=0
   T94_RESULT=$(node -e "
     const { spawnSync } = require('child_process');
-    const validator = '$SCRIPT_DIR/hooks/scripts/validators/validate-kb-doc.js';
+    const validator = '$SCRIPT_DIR/packages/kernel/validators/validate-kb-doc.js';
     const content = '---\nkb_id: architecture/test/tilde\nversion: 1\ntags:\n  - a\n  - b\n  - c\nsources_consulted:\n  - x\n  - y\nrelated:\n  - architecture/other/foo\n---\n## Summary\nbody\n\n## Quick Reference\nbody\n\n## Intent\nbody\n\n## When NOT to use\nbody\n\n## Failure modes\nbody\n\n## Substrate applications\nbody\n\n~~~\n## Inside tilde fence (should not count)\n~~~\n';
     const payload = JSON.stringify({ tool_name: 'Write', tool_input: { file_path: '/tmp/h915-fixture/kb/architecture/test/tilde.md', content } });
     const r = spawnSync('node', [validator], { input: payload, encoding: 'utf8' });
@@ -1047,7 +1047,7 @@ EOF
   T95_EXIT=0
   T95_RESULT=$(node -e "
     const { spawnSync } = require('child_process');
-    const validator = '$SCRIPT_DIR/hooks/scripts/validators/validate-no-bare-secrets.js';
+    const validator = '$SCRIPT_DIR/packages/kernel/validators/validate-no-bare-secrets.js';
     const content = 'config block with sk-proj-' + 'A'.repeat(40) + ' embedded';
     const payload = JSON.stringify({ tool_name: 'Write', tool_input: { file_path: '/tmp/h915-fixture/secret-openai.txt', content } });
     const r = spawnSync('node', [validator], { input: payload, encoding: 'utf8' });
@@ -1064,7 +1064,7 @@ EOF
   T96_EXIT=0
   T96_RESULT=$(node -e "
     const { spawnSync } = require('child_process');
-    const validator = '$SCRIPT_DIR/hooks/scripts/validators/validate-no-bare-secrets.js';
+    const validator = '$SCRIPT_DIR/packages/kernel/validators/validate-no-bare-secrets.js';
     const content = '-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA...\n-----END RSA PRIVATE KEY-----';
     const payload = JSON.stringify({ tool_name: 'Write', tool_input: { file_path: '/tmp/h915-fixture/key.pem', content } });
     const r = spawnSync('node', [validator], { input: payload, encoding: 'utf8' });
@@ -1082,7 +1082,7 @@ EOF
   T97_EXIT=0
   T97_RESULT=$(node -e "
     const { spawnSync } = require('child_process');
-    const validator = '$SCRIPT_DIR/hooks/scripts/validators/validate-no-bare-secrets.js';
+    const validator = '$SCRIPT_DIR/packages/kernel/validators/validate-no-bare-secrets.js';
     const content = 'OPENAI_API' + '_KEY=your_api_key_here';
     const payload = JSON.stringify({ tool_name: 'Write', tool_input: { file_path: '/tmp/h915-fixture/env-placeholder.env', content } });
     const r = spawnSync('node', [validator], { input: payload, encoding: 'utf8' });
@@ -1099,7 +1099,7 @@ EOF
   T98_EXIT=0
   T98_RESULT=$(node -e "
     const { spawnSync } = require('child_process');
-    const validator = '$SCRIPT_DIR/hooks/scripts/validators/validate-no-bare-secrets.js';
+    const validator = '$SCRIPT_DIR/packages/kernel/validators/validate-no-bare-secrets.js';
     const content = 'DB_PASS' + 'WORD=changeme_default_value_v2';
     const payload = JSON.stringify({ tool_name: 'Write', tool_input: { file_path: '/tmp/h915-fixture/env-changeme.env', content } });
     const r = spawnSync('node', [validator], { input: payload, encoding: 'utf8' });
@@ -1164,7 +1164,7 @@ EOF
   T101_EXIT=0
   T101_RESULT=$(node -e "
     const { spawnSync } = require('child_process');
-    const validator = '$SCRIPT_DIR/hooks/scripts/validators/validate-no-bare-secrets.js';
+    const validator = '$SCRIPT_DIR/packages/kernel/validators/validate-no-bare-secrets.js';
     const content = 'DB_PASS' + 'WORD=SuperLongSecretValueWith@Special!Chars';
     const payload = JSON.stringify({ tool_name: 'Write', tool_input: { file_path: '/tmp/h915-fixture/env-db.env', content } });
     const r = spawnSync('node', [validator], { input: payload, encoding: 'utf8' });
@@ -1221,7 +1221,7 @@ EOF
   # with `version` in reason. H.9.16 drift-note 78(a) safe-pattern applied.
   echo -n "  Test 103 (H.9.19 validate-kb-doc.js Edit-simulation; removing version line via Edit must HARD-block): "
   T103_TMPDIR=$(mktemp -d)
-  T103_KB_DOC="$T103_TMPDIR/skills/agent-team/kb/architecture/test/h919-fixture.md"
+  T103_KB_DOC="$T103_TMPDIR/packages/skills/library/agent-team/kb/architecture/test/h919-fixture.md"
   mkdir -p "$(dirname "$T103_KB_DOC")"
   cat > "$T103_KB_DOC" <<'EOF'
 ---
@@ -1251,7 +1251,7 @@ EOF
     }));
   " 2>/dev/null) || true
   T103_EXIT=0
-  T103_OUT=$(echo "$T103_PAYLOAD" | node "$SCRIPT_DIR/hooks/scripts/validators/validate-kb-doc.js" 2>&1) || T103_EXIT=$?
+  T103_OUT=$(echo "$T103_PAYLOAD" | node "$SCRIPT_DIR/packages/kernel/validators/validate-kb-doc.js" 2>&1) || T103_EXIT=$?
   rm -rf "$T103_TMPDIR"
   T103_DECISION=$(echo "$T103_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('decision',''))" 2>/dev/null) || true
   T103_REASON_HAS_VERSION=$(echo "$T103_OUT" | python3 -c "import json,sys; print('version' in json.load(sys.stdin).get('reason',''))" 2>/dev/null) || true
@@ -1272,7 +1272,7 @@ EOF
   echo -n "  Test 104 (H.9.19 validate-frontmatter-on-skills.js MultiEdit + replace_all + dollar-pattern; 3-fixture suite): "
   T104_RESULT=$(node -e "
     const { spawnSync } = require('child_process');
-    const validator = '$SCRIPT_DIR/hooks/scripts/validators/validate-frontmatter-on-skills.js';
+    const validator = '$SCRIPT_DIR/packages/kernel/validators/validate-frontmatter-on-skills.js';
     // Fixture 1: MultiEdit via spawnSync — validator approves (out of scope per H.9.19 absorption)
     const p1 = { tool_name:'Edit', tool_input:{ file_path:'/tmp/h919-fixture/skill.md', edits:[{old_string:'a',new_string:'b'}] } };
     const r1 = spawnSync('node', [validator], { input: JSON.stringify(p1), encoding:'utf8' });
@@ -1308,7 +1308,7 @@ EOF
   # warning present near the heading. Catches silent strip of new substrate convention
   # (per code-reviewer LOW: doc-lint is not a regression catch).
   echo -n "  Test 105 (v2.9.1 next-js SKILL — Node-side ESM dep gotchas heading + canonical pattern + standalone warning): "
-  T105_FILE="$SCRIPT_DIR/skills/next-js/SKILL.md"
+  T105_FILE="$SCRIPT_DIR/packages/skills/library/next-js/SKILL.md"
   if [ ! -f "$T105_FILE" ]; then
     echo "FAIL: file missing ($T105_FILE)"
     failed=$((failed + 1))
@@ -1336,7 +1336,7 @@ EOF
   # migrator hand-written SQL section present + meta/_journal.json literal mentioned
   # in proximity to the heading. Catches silent strip per same code-reviewer LOW.
   echo -n "  Test 106 (v2.9.1 postgres-engineering SKILL — Hand-written SQL migrations + meta/_journal.json): "
-  T106_FILE="$SCRIPT_DIR/skills/postgres-engineering/SKILL.md"
+  T106_FILE="$SCRIPT_DIR/packages/skills/library/postgres-engineering/SKILL.md"
   if [ ! -f "$T106_FILE" ]; then
     echo "FAIL: file missing ($T106_FILE)"
     failed=$((failed + 1))

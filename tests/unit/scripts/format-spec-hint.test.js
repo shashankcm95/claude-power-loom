@@ -34,9 +34,9 @@ const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 
 const REPO = path.resolve(__dirname, '../../..');
-const VERIFIER = path.join(REPO, 'scripts/agent-team/contract-verifier.js');
-const ENG_CONTRACT = path.join(REPO, 'swarm/personas-contracts/engineering-task.contract.json');
-const SPEC_PATH = path.join(REPO, 'swarm/personas-contracts/_format-spec.md');
+const VERIFIER = path.join(REPO, 'packages/kernel/validators/contract-verifier.js');
+const ENG_CONTRACT = path.join(REPO, 'packages/runtime/contracts/engineering-task.contract.json');
+const SPEC_PATH = path.join(REPO, 'packages/runtime/schema/_format-spec.md');
 
 let passed = 0;
 let failed = 0;
@@ -63,7 +63,7 @@ function runVerifier(bodyMarkdown) {
     '',
   ].join('\n');
   // Include a token file citation so F4 doesn't dominate the failure (we want F3 surface).
-  fs.writeFileSync(out, fm + bodyMarkdown + '\n\nFile citation: `scripts/agent-team/contract-verifier.js:77`\n');
+  fs.writeFileSync(out, fm + bodyMarkdown + '\n\nFile citation: `packages/kernel/validators/contract-verifier.js:77`\n');
   const r = spawnSync('node', [VERIFIER, '--contract', ENG_CONTRACT, '--output', out, '--no-record'], {
     encoding: 'utf8',
     env: { ...process.env, AGENT_TEAM_NO_RECORD: '1' },
@@ -130,7 +130,7 @@ process.stdout.write('\n[FIX-I1] _format-spec.md + structured F3 hint\n');
 
 // T4: _format-spec.md canonical doc exists
 {
-  assert(fs.existsSync(SPEC_PATH), 'T4a: swarm/personas-contracts/_format-spec.md exists');
+  assert(fs.existsSync(SPEC_PATH), 'T4a: packages/runtime/schema/_format-spec.md exists');
   if (fs.existsSync(SPEC_PATH)) {
     const spec = fs.readFileSync(SPEC_PATH, 'utf8');
     const hasFindingFormat = /(?:Finding format|Findings format|H2.*severity.*bucket)/i.test(spec);

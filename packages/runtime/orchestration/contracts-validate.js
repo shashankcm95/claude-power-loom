@@ -681,7 +681,7 @@ function extractCommandSuffix(command) {
 //     a fresh checkout that hasn't fully bootstrapped yet)
 //
 // Convention A declared (repo-internal correctness — schemas vendored).
-const SCHEMAS_DIR = path.join(TOOLKIT, 'swarm', 'schemas');
+const SCHEMAS_DIR = path.join(TOOLKIT, 'packages', 'kernel', 'schema');
 const PLUGIN_MANIFEST_PATH = path.join(TOOLKIT, '.claude-plugin', 'plugin.json');
 const MARKETPLACE_MANIFEST_PATH = path.join(TOOLKIT, '.claude-plugin', 'marketplace.json');
 

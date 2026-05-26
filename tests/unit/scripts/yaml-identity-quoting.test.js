@@ -33,10 +33,10 @@ const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 
 const REPO = path.resolve(__dirname, '../../..');
-const VERIFIER = path.join(REPO, 'scripts/agent-team/contract-verifier.js');
-const ENG_CONTRACT = path.join(REPO, 'swarm/personas-contracts/engineering-task.contract.json');
-const FRONTMATTER = path.join(REPO, 'scripts/agent-team/_lib/frontmatter.js');
-const LIFECYCLE = path.join(REPO, 'scripts/agent-team/identity/lifecycle-spawn.js');
+const VERIFIER = path.join(REPO, 'packages/kernel/validators/contract-verifier.js');
+const ENG_CONTRACT = path.join(REPO, 'packages/runtime/contracts/engineering-task.contract.json');
+const FRONTMATTER = path.join(REPO, 'packages/kernel/_lib/frontmatter.js');
+const LIFECYCLE = path.join(REPO, 'packages/runtime/orchestration/identity/lifecycle-spawn.js');
 
 let passed = 0;
 let failed = 0;
@@ -52,7 +52,7 @@ process.stdout.write('\n[FIX-I2] YAML-quote identity + null-fallback parser\n');
 //     (Spawn-time emit is convention-driven; actors copy the canonical frontmatter from this doc.
 //     Defending the convention is therefore equivalent to defending the emit — see architect HIGH-2.)
 {
-  const conv = path.join(REPO, 'skills/agent-team/kb/hets/spawn-conventions.md');
+  const conv = path.join(REPO, 'packages/skills/library/agent-team/kb/hets/spawn-conventions.md');
   const src = fs.readFileSync(conv, 'utf8');
   // Look for: `identity: "{persona}.{name}~{hash}"` (double-quoted form with placeholder),
   // OR `identity: "<full-identity>"` (any quoted form), OR a comment block
@@ -119,7 +119,7 @@ process.stdout.write('\n[FIX-I2] YAML-quote identity + null-fallback parser\n');
     '### LOW-1: trivial cleanup',
     'Body.',
     '',
-    'File: `scripts/agent-team/contract-verifier.js:77`',
+    'File: `packages/kernel/validators/contract-verifier.js:77`',
     '',
   ].join('\n');
   fs.writeFileSync(out, body);
@@ -172,7 +172,7 @@ process.stdout.write('\n[FIX-I2] YAML-quote identity + null-fallback parser\n');
     '### LOW-1: x',
     'Body.',
     '',
-    'File: `scripts/agent-team/contract-verifier.js:77`',
+    'File: `packages/kernel/validators/contract-verifier.js:77`',
     '',
   ].join('\n');
   fs.writeFileSync(out, body);

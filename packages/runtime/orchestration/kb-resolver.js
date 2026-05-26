@@ -55,8 +55,9 @@ const { parseFrontmatter } = require('../../kernel/_lib/frontmatter');
 // (from `_lib/toolkit-root.js`) instead of hardcoded `~/Documents/claude-toolkit/`.
 // Env override (HETS_KB_DIR) preserved as primary fallback.
 const { findToolkitRoot } = require('../../kernel/_lib/toolkit-root');
+// Phase 0 (v3.0-alpha): KB moved to packages/skills/library/agent-team/kb/.
 const KB_BASE = process.env.HETS_KB_DIR ||
-  path.join(findToolkitRoot(), 'skills', 'agent-team', 'kb');
+  path.join(findToolkitRoot(), 'packages', 'skills', 'library', 'agent-team', 'kb');
 const MANIFEST_PATH = path.join(KB_BASE, 'manifest.json');
 // H.5.5 (CS-2/CS-3 theo HIGH): single-source RUN_STATE_BASE via _lib/runState.
 const { runStateDir } = require('../../kernel/_lib/runState');

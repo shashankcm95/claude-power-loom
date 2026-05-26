@@ -23,7 +23,7 @@
   rm -rf "$tmp_failures"
   local h77_session="test-h7-7-session-A"
   local h77_first_result
-  h77_first_result=$(echo '{"tool_name":"Bash","tool_input":{"command":"npm test"},"tool_response":{"stderr":"Error: failed","is_error":true}}' | CLAUDE_SESSION_ID="$h77_session" node "$CLAUDE_DIR/hooks/scripts/error-critic.js" 2>/dev/null)
+  h77_first_result=$(echo '{"tool_name":"Bash","tool_input":{"command":"npm test"},"tool_response":{"stderr":"Error: failed","is_error":true}}' | CLAUDE_SESSION_ID="$h77_session" node "$CLAUDE_DIR/packages/kernel/hooks/post/error-critic.js" 2>/dev/null)
   if [ -z "$h77_first_result" ]; then
     echo "  ✓ error-critic: H.7.7 first failure stays silent (below threshold)"
     passed=$((passed + 1))
@@ -35,7 +35,7 @@
   # Test 12 (H.7.7): error-critic emits [FAILURE-REPEATED] forcing instruction
   # on the SECOND failure of the same command. Same session as test 11.
   local h77_second_result
-  h77_second_result=$(echo '{"tool_name":"Bash","tool_input":{"command":"npm test"},"tool_response":{"stderr":"Error: failed again","is_error":true}}' | CLAUDE_SESSION_ID="$h77_session" node "$CLAUDE_DIR/hooks/scripts/error-critic.js" 2>/dev/null)
+  h77_second_result=$(echo '{"tool_name":"Bash","tool_input":{"command":"npm test"},"tool_response":{"stderr":"Error: failed again","is_error":true}}' | CLAUDE_SESSION_ID="$h77_session" node "$CLAUDE_DIR/packages/kernel/hooks/post/error-critic.js" 2>/dev/null)
   if echo "$h77_second_result" | grep -q 'FAILURE-REPEATED'; then
     echo "  ✓ error-critic: H.7.7 [FAILURE-REPEATED] forcing instruction on 2nd same-command failure"
     passed=$((passed + 1))
@@ -53,7 +53,7 @@
   # across the test boundary is what catches the cross-session leak.
   local h7_10_session="test-h7-10-session-B"
   local h7_10_result
-  h7_10_result=$(echo '{"tool_name":"Bash","tool_input":{"command":"npm test"},"tool_response":{"stderr":"Error: failed in B","is_error":true}}' | CLAUDE_SESSION_ID="$h7_10_session" node "$CLAUDE_DIR/hooks/scripts/error-critic.js" 2>/dev/null)
+  h7_10_result=$(echo '{"tool_name":"Bash","tool_input":{"command":"npm test"},"tool_response":{"stderr":"Error: failed in B","is_error":true}}' | CLAUDE_SESSION_ID="$h7_10_session" node "$CLAUDE_DIR/packages/kernel/hooks/post/error-critic.js" 2>/dev/null)
   if [ -z "$h7_10_result" ]; then
     echo "  ✓ error-critic: H.7.10 cross-session leak fix — fresh session count starts at 1 (silent)"
     passed=$((passed + 1))
@@ -67,7 +67,7 @@
   # Compliant plan has all Tier 1 + Tier 2 + Tier 3 sections + Routing Decision JSON
   local h7_12_compliant_json='{"tool_name":"Write","tool_input":{"file_path":"/Users/foo/.claude/plans/h7-12-test.md","content":"# Title\n\n## Context\nbody\n\n## Routing Decision\nJSON block\n\n## HETS Spawn Plan\nN/A\n\n## Files To Modify\nfiles\n\n## Phases\nphases\n\n## Verification Probes\nprobes\n\n## Out of Scope\noos\n\n## Drift Notes\nnotes\n"}}'
   local h7_12_compliant
-  h7_12_compliant=$(printf '%s' "$h7_12_compliant_json" | node "$CLAUDE_DIR/hooks/scripts/validators/validate-plan-schema.js" 2>&1)
+  h7_12_compliant=$(printf '%s' "$h7_12_compliant_json" | node "$CLAUDE_DIR/packages/kernel/validators/validate-plan-schema.js" 2>&1)
   if echo "$h7_12_compliant" | grep -q 'PLAN-SCHEMA-DRIFT'; then
     echo "  ✗ validate-plan-schema: H.7.12 compliant plan emitted forcing instruction (false positive)"
     failed=$((failed + 1))
@@ -79,7 +79,7 @@
   # Test 15 (H.7.12): missing Tier 1 (Verification Probes absent) → forcing instruction
   local h7_12_missing_t1_json='{"tool_name":"Write","tool_input":{"file_path":"/Users/foo/.claude/plans/h7-12-missing-t1.md","content":"# Title\n\n## Context\nbody\n\n## Files To Modify\nfiles\n"}}'
   local h7_12_missing_t1
-  h7_12_missing_t1=$(printf '%s' "$h7_12_missing_t1_json" | node "$CLAUDE_DIR/hooks/scripts/validators/validate-plan-schema.js" 2>&1)
+  h7_12_missing_t1=$(printf '%s' "$h7_12_missing_t1_json" | node "$CLAUDE_DIR/packages/kernel/validators/validate-plan-schema.js" 2>&1)
   if echo "$h7_12_missing_t1" | grep -q '\[PLAN-SCHEMA-DRIFT\]' && echo "$h7_12_missing_t1" | grep -q 'Verification Probes'; then
     echo "  ✓ validate-plan-schema: H.7.12 missing Tier 1 (Verification Probes) fires forcing instruction"
     passed=$((passed + 1))
@@ -92,7 +92,7 @@
   # Plan mentions Routing Decision in body (signaling new-style) but missing HETS Spawn Plan section
   local h7_12_missing_t2_json='{"tool_name":"Write","tool_input":{"file_path":"/Users/foo/.claude/plans/h7-12-missing-t2.md","content":"# Title\n\n## Context\nbody mentioning Routing Decision somewhere\n\n## Files To Modify\nfiles\n\n## Verification Probes\nprobes\n"}}'
   local h7_12_missing_t2
-  h7_12_missing_t2=$(printf '%s' "$h7_12_missing_t2_json" | node "$CLAUDE_DIR/hooks/scripts/validators/validate-plan-schema.js" 2>&1)
+  h7_12_missing_t2=$(printf '%s' "$h7_12_missing_t2_json" | node "$CLAUDE_DIR/packages/kernel/validators/validate-plan-schema.js" 2>&1)
   if echo "$h7_12_missing_t2" | grep -q '\[PLAN-SCHEMA-DRIFT\]' && echo "$h7_12_missing_t2" | grep -q 'Tier 2'; then
     echo "  ✓ validate-plan-schema: H.7.12 Tier 2 conditional fires on new-style plan missing HETS Spawn Plan"
     passed=$((passed + 1))
@@ -104,7 +104,7 @@
   # Test 17 (H.7.12): non-plan path stays silent (path filter excludes)
   local h7_12_nonplan_json='{"tool_name":"Write","tool_input":{"file_path":"/tmp/random-doc.md","content":"random content with no sections"}}'
   local h7_12_nonplan
-  h7_12_nonplan=$(printf '%s' "$h7_12_nonplan_json" | node "$CLAUDE_DIR/hooks/scripts/validators/validate-plan-schema.js" 2>&1)
+  h7_12_nonplan=$(printf '%s' "$h7_12_nonplan_json" | node "$CLAUDE_DIR/packages/kernel/validators/validate-plan-schema.js" 2>&1)
   if echo "$h7_12_nonplan" | grep -q 'PLAN-SCHEMA-DRIFT'; then
     echo "  ✗ validate-plan-schema: H.7.12 non-plan path should be silent (path filter)"
     failed=$((failed + 1))
@@ -119,7 +119,7 @@
   # without env var: silent (test 17-style); with env var: forcing instruction fires.
   local h7_15_custom_path_json='{"tool_name":"Write","tool_input":{"file_path":"/tmp/custom-plans/test.md","content":"# Title\n\n## Context\nbody\n"}}'
   local h7_15_custom_result
-  h7_15_custom_result=$(printf '%s' "$h7_15_custom_path_json" | CLAUDE_PLAN_DIR=/tmp/custom-plans node "$CLAUDE_DIR/hooks/scripts/validators/validate-plan-schema.js" 2>&1)
+  h7_15_custom_result=$(printf '%s' "$h7_15_custom_path_json" | CLAUDE_PLAN_DIR=/tmp/custom-plans node "$CLAUDE_DIR/packages/kernel/validators/validate-plan-schema.js" 2>&1)
   if echo "$h7_15_custom_result" | grep -q '\[PLAN-SCHEMA-DRIFT\]' && echo "$h7_15_custom_result" | grep -q 'Tier 1'; then
     echo "  ✓ validate-plan-schema: H.7.15 CLAUDE_PLAN_DIR env var enables custom plan path enforcement"
     passed=$((passed + 1))
@@ -169,7 +169,7 @@ Body content here.
 SKILL_EOF
   local h7_20_remove_json='{"tool_name":"Edit","tool_input":{"file_path":"/tmp/h7-20-skills/skills/test/SKILL.md","old_string":"---\nname: test-skill\ndescription: H.7.20 test fixture\n---\n\n","new_string":""}}'
   local h7_20_remove_result
-  h7_20_remove_result=$(printf '%s' "$h7_20_remove_json" | node "$CLAUDE_DIR/hooks/scripts/validators/validate-frontmatter-on-skills.js" 2>&1)
+  h7_20_remove_result=$(printf '%s' "$h7_20_remove_json" | node "$CLAUDE_DIR/packages/kernel/validators/validate-frontmatter-on-skills.js" 2>&1)
   if echo "$h7_20_remove_result" | grep -q '"decision":"block"'; then
     echo "  ✓ validate-frontmatter-on-skills: H.7.20 Edit-removes-frontmatter → block"
     passed=$((passed + 1))
@@ -181,7 +181,7 @@ SKILL_EOF
   # Test 23 (H.7.20): Edit that touches body but preserves frontmatter → approve
   local h7_20_preserve_json='{"tool_name":"Edit","tool_input":{"file_path":"/tmp/h7-20-skills/skills/test/SKILL.md","old_string":"Body content here.","new_string":"Updated body content."}}'
   local h7_20_preserve_result
-  h7_20_preserve_result=$(printf '%s' "$h7_20_preserve_json" | node "$CLAUDE_DIR/hooks/scripts/validators/validate-frontmatter-on-skills.js" 2>&1)
+  h7_20_preserve_result=$(printf '%s' "$h7_20_preserve_json" | node "$CLAUDE_DIR/packages/kernel/validators/validate-frontmatter-on-skills.js" 2>&1)
   if echo "$h7_20_preserve_result" | grep -q '"decision":"approve"'; then
     echo "  ✓ validate-frontmatter-on-skills: H.7.20 Edit-preserves-frontmatter → approve"
     passed=$((passed + 1))
@@ -199,7 +199,7 @@ SKILL_EOF
   printf 'API_KEY=PLACEHOLDER\n' > /tmp/h7-21/test1.env
   local h7_21_complete_json='{"tool_name":"Edit","tool_input":{"file_path":"/tmp/h7-21/test1.env","old_string":"PLACEHOLDER","new_string":"abcd1234efgh5678ijkl"}}'
   local h7_21_complete_result
-  h7_21_complete_result=$(printf '%s' "$h7_21_complete_json" | node "$CLAUDE_DIR/hooks/scripts/validators/validate-no-bare-secrets.js" 2>&1)
+  h7_21_complete_result=$(printf '%s' "$h7_21_complete_json" | node "$CLAUDE_DIR/packages/kernel/validators/validate-no-bare-secrets.js" 2>&1)
   if echo "$h7_21_complete_result" | grep -q '"decision":"block"' && echo "$h7_21_complete_result" | grep -q 'literal-secret-assignment'; then
     echo "  ✓ validate-no-bare-secrets: H.7.21 Edit-completes-assignment → block"
     passed=$((passed + 1))
@@ -212,7 +212,7 @@ SKILL_EOF
   printf 'Hello world\n' > /tmp/h7-21/test2.txt
   local h7_21_unrelated_json='{"tool_name":"Edit","tool_input":{"file_path":"/tmp/h7-21/test2.txt","old_string":"world","new_string":"there"}}'
   local h7_21_unrelated_result
-  h7_21_unrelated_result=$(printf '%s' "$h7_21_unrelated_json" | node "$CLAUDE_DIR/hooks/scripts/validators/validate-no-bare-secrets.js" 2>&1)
+  h7_21_unrelated_result=$(printf '%s' "$h7_21_unrelated_json" | node "$CLAUDE_DIR/packages/kernel/validators/validate-no-bare-secrets.js" 2>&1)
   if echo "$h7_21_unrelated_result" | grep -q '"decision":"approve"'; then
     echo "  ✓ validate-no-bare-secrets: H.7.21 Edit-unrelated-text → approve"
     passed=$((passed + 1))
@@ -229,7 +229,7 @@ SKILL_EOF
   printf 'STRIPE_KEY=sk_live_%s\nNAME=Bob\n' "$h7_21_stripe_value" > /tmp/h7-21/test3.env
   local h7_21_preexist_json='{"tool_name":"Edit","tool_input":{"file_path":"/tmp/h7-21/test3.env","old_string":"NAME=Bob","new_string":"NAME=Alice"}}'
   local h7_21_preexist_result
-  h7_21_preexist_result=$(printf '%s' "$h7_21_preexist_json" | node "$CLAUDE_DIR/hooks/scripts/validators/validate-no-bare-secrets.js" 2>&1)
+  h7_21_preexist_result=$(printf '%s' "$h7_21_preexist_json" | node "$CLAUDE_DIR/packages/kernel/validators/validate-no-bare-secrets.js" 2>&1)
   if echo "$h7_21_preexist_result" | grep -q '"decision":"block"' && echo "$h7_21_preexist_result" | grep -q 'stripe-live-key'; then
     echo "  ✓ validate-no-bare-secrets: H.7.21 Edit-with-preexisting-secret → block"
     passed=$((passed + 1))
@@ -251,7 +251,7 @@ SKILL_EOF
   local h7_22_plan_json
   h7_22_plan_json=$(printf '{"tool_name":"Write","tool_input":{"file_path":"/tmp/h7-22-plan-test/.claude/plans/test-plan.md","content":%s}}' "$(printf "%b" "$h7_22_plan_no_audit" | node -e "let s='';process.stdin.on('data',c=>s+=c);process.stdin.on('end',()=>process.stdout.write(JSON.stringify(s)))")")
   local h7_22_plan_result
-  h7_22_plan_result=$(echo "$h7_22_plan_json" | node "$CLAUDE_DIR/hooks/scripts/validators/validate-plan-schema.js" 2>&1)
+  h7_22_plan_result=$(echo "$h7_22_plan_json" | node "$CLAUDE_DIR/packages/kernel/validators/validate-plan-schema.js" 2>&1)
   if echo "$h7_22_plan_result" | grep -q 'Principle Audit'; then
     echo "  ✓ validate-plan-schema: H.7.22 requires Principle Audit on HETS-routed plan"
     passed=$((passed + 1))
@@ -265,7 +265,7 @@ SKILL_EOF
   # AND emits the "schemas: 2 validated" confirmation (per H.7.23 plan code-reviewer FLAG #7
   # — assert validation actually ran, not just exit code 0)
   local h7_23_schema_result
-  h7_23_schema_result=$(node "$SCRIPT_DIR/scripts/agent-team/contracts-validate.js" --scope contract-marketplace-schema 2>&1)
+  h7_23_schema_result=$(node "$SCRIPT_DIR/packages/runtime/orchestration/contracts-validate.js" --scope contract-marketplace-schema 2>&1)
   if echo "$h7_23_schema_result" | grep -q 'schemas: 2 validated' && echo "$h7_23_schema_result" | grep -q '0 violation'; then
     echo "  ✓ contract-marketplace-schema: H.7.23 validates HEAD plugin.json + marketplace.json"
     passed=$((passed + 1))
@@ -283,7 +283,7 @@ SKILL_EOF
   local h7_23_plan_json
   h7_23_plan_json=$(printf '{"tool_name":"Write","tool_input":{"file_path":"/tmp/h7-23-plan-test/.claude/plans/test-plan.md","content":%s}}' "$(printf "%b" "$h7_23_plan_no_paver" | node -e "let s='';process.stdin.on('data',c=>s+=c);process.stdin.on('end',()=>process.stdout.write(JSON.stringify(s)))")")
   local h7_23_plan_result
-  h7_23_plan_result=$(echo "$h7_23_plan_json" | node "$CLAUDE_DIR/hooks/scripts/validators/validate-plan-schema.js" 2>&1)
+  h7_23_plan_result=$(echo "$h7_23_plan_json" | node "$CLAUDE_DIR/packages/kernel/validators/validate-plan-schema.js" 2>&1)
   if echo "$h7_23_plan_result" | grep -q 'Pre-Approval Verification'; then
     echo "  ✓ validate-plan-schema: H.7.23 requires Pre-Approval Verification on HETS-routed plan"
     passed=$((passed + 1))
@@ -299,7 +299,7 @@ SKILL_EOF
   # verifying the helper module loads and resolves the live mirror.
   local h7_23_reader_result
   h7_23_reader_result=$(node -e "
-const r = require('$SCRIPT_DIR/hooks/scripts/_lib/marketplace-state-reader.js');
+const r = require('$SCRIPT_DIR/packages/kernel/hooks/_lib/marketplace-state-reader.js');
 const root = r.getMirrorRoot();
 if (!root) { console.log('NO-MIRROR'); process.exit(0); }
 const age = r.getMirrorAgeDays(root);
@@ -341,7 +341,7 @@ N/A.
 KISS, DRY checked.
 GATE_EOF
   local h7_23_1_block_result
-  h7_23_1_block_result=$(echo '{"tool_name":"ExitPlanMode"}' | CLAUDE_PLAN_DIR=/tmp/h7-23-1-gate-test node "$CLAUDE_DIR/hooks/scripts/validators/verify-plan-gate.js" 2>&1)
+  h7_23_1_block_result=$(echo '{"tool_name":"ExitPlanMode"}' | CLAUDE_PLAN_DIR=/tmp/h7-23-1-gate-test node "$CLAUDE_DIR/packages/kernel/hooks/pre/verify-plan-gate.js" 2>&1)
   if echo "$h7_23_1_block_result" | grep -q '"block"' && echo "$h7_23_1_block_result" | grep -q 'PRE-APPROVAL-VERIFICATION-NEEDED'; then
     echo "  ✓ verify-plan-gate: H.7.23.1 blocks ExitPlanMode when verification missing"
     passed=$((passed + 1))
@@ -358,7 +358,7 @@ GATE_EOF
 Verified by parallel spawn. Verdict: PASS.
 GATE_EOF
   local h7_23_1_approve_result
-  h7_23_1_approve_result=$(echo '{"tool_name":"ExitPlanMode"}' | CLAUDE_PLAN_DIR=/tmp/h7-23-1-gate-test node "$CLAUDE_DIR/hooks/scripts/validators/verify-plan-gate.js" 2>&1)
+  h7_23_1_approve_result=$(echo '{"tool_name":"ExitPlanMode"}' | CLAUDE_PLAN_DIR=/tmp/h7-23-1-gate-test node "$CLAUDE_DIR/packages/kernel/hooks/pre/verify-plan-gate.js" 2>&1)
   if echo "$h7_23_1_approve_result" | grep -q '"approve"'; then
     echo "  ✓ verify-plan-gate: H.7.23.1 approves when verification section present"
     passed=$((passed + 1))
@@ -384,7 +384,7 @@ None.
 N/A.
 GATE_EOF
   local h7_23_1_bypass_result
-  h7_23_1_bypass_result=$(echo '{"tool_name":"ExitPlanMode"}' | SKIP_VERIFY_PLAN=1 CLAUDE_PLAN_DIR=/tmp/h7-23-1-gate-test node "$CLAUDE_DIR/hooks/scripts/validators/verify-plan-gate.js" 2>&1)
+  h7_23_1_bypass_result=$(echo '{"tool_name":"ExitPlanMode"}' | SKIP_VERIFY_PLAN=1 CLAUDE_PLAN_DIR=/tmp/h7-23-1-gate-test node "$CLAUDE_DIR/packages/kernel/hooks/pre/verify-plan-gate.js" 2>&1)
   if echo "$h7_23_1_bypass_result" | grep -q '"approve"'; then
     echo "  ✓ verify-plan-gate: H.7.23.1 SKIP_VERIFY_PLAN=1 bypass works"
     passed=$((passed + 1))
@@ -413,7 +413,7 @@ GATE_EOF
 
   # Test 37 (H.7.24): prompt-enrich-trigger SKIPs `?` (drift-note 52 closure)
   local h7_24_qmark_result
-  h7_24_qmark_result=$(echo '{"prompt":"?"}' | node "$CLAUDE_DIR/hooks/scripts/prompt-enrich-trigger.js" 2>&1)
+  h7_24_qmark_result=$(echo '{"prompt":"?"}' | node "$CLAUDE_DIR/packages/kernel/hooks/lifecycle/prompt-enrich-trigger.js" 2>&1)
   if [ -z "$h7_24_qmark_result" ] || ! echo "$h7_24_qmark_result" | grep -q 'PROMPT-ENRICHMENT-GATE'; then
     echo "  ✓ prompt-enrich-trigger: H.7.24 single ? prompt does NOT fire enrichment gate"
     passed=$((passed + 1))
@@ -433,7 +433,7 @@ GATE_EOF
 }
 SETTINGS_EOF
   local h7_24_enabled_result
-  h7_24_enabled_result=$(HOME=/tmp/h7-24-mock-home node "$SCRIPT_DIR/scripts/agent-team/contracts-validate.js" --scope contract-plugin-hook-deployment 2>&1 || true)
+  h7_24_enabled_result=$(HOME=/tmp/h7-24-mock-home node "$SCRIPT_DIR/packages/runtime/orchestration/contracts-validate.js" --scope contract-plugin-hook-deployment 2>&1 || true)
   if echo "$h7_24_enabled_result" | grep -q 'enabledPlugins shows.*enabled'; then
     echo "  ✓ contract-plugin-hook-deployment: H.7.24 informational stderr fires when enabledPlugins truthy"
     passed=$((passed + 1))
@@ -447,7 +447,7 @@ SETTINGS_EOF
   # markers in TABLE-ROW context (per code-reviewer FLAG #3 — strengthen from
   # presence-only grep to assert each marker appears in a markdown table cell,
   # not just in prose). Closes drift-note 21 catalog completeness.
-  local h7_25_catalog="$SCRIPT_DIR/skills/agent-team/patterns/forcing-instruction-family.md"
+  local h7_25_catalog="$SCRIPT_DIR/packages/skills/library/agent-team/patterns/forcing-instruction-family.md"
   local h7_25_markers="PROMPT-ENRICHMENT-GATE ROUTE-DECISION-UNCERTAIN CONFIRMATION-UNCERTAIN FAILURE-REPEATED SELF-IMPROVE PLAN-SCHEMA-DRIFT ROUTE-META-UNCERTAIN MARKDOWN-EMPHASIS-DRIFT PLUGIN-NOT-LOADED MARKETPLACE-STALE PRE-APPROVAL-VERIFICATION-NEEDED"
   local h7_25_missing_markers=0
   if [ ! -f "$h7_25_catalog" ]; then
@@ -473,7 +473,7 @@ SETTINGS_EOF
   # AND contains "Class 1", "Class 2", "decision tree", and "N=15" tokens
   # (per code-reviewer FLAG #4 — assert structural completeness, not just
   # heading presence). Closes drift-note 21 taxonomy codification.
-  local h7_25_conv="$SCRIPT_DIR/skills/agent-team/patterns/validator-conventions.md"
+  local h7_25_conv="$SCRIPT_DIR/packages/skills/library/agent-team/patterns/validator-conventions.md"
   local h7_25_conv_missing=0
   if [ ! -f "$h7_25_conv" ]; then
     h7_25_conv_missing=4

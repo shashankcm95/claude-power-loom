@@ -10,12 +10,12 @@ superseded_by: null
 files_affected:
   - eslint.config.js
   - tests/smoke-ht.sh
-  - scripts/agent-team/contract-verifier.js
-  - scripts/agent-team/contracts-validate.js
-  - scripts/agent-team/identity/trust-scoring.js
-  - scripts/agent-team/pattern-recorder.js
-  - scripts/agent-team/spawn-recorder.js
-  - scripts/agent-team/weight-fit.js
+  - packages/kernel/validators/contract-verifier.js
+  - packages/runtime/orchestration/contracts-validate.js
+  - packages/runtime/orchestration/identity/trust-scoring.js
+  - packages/runtime/orchestration/pattern-recorder.js
+  - packages/runtime/orchestration/spawn-recorder.js
+  - packages/runtime/orchestration/weight-fit.js
   - scripts/prompt-pattern-store.js
 invariants_introduced:
   - "Substrate maintains a 0-finding lint baseline across all installed lints (Test 80 markdownlint + Test 81 shellcheck + Test 82 jq + Test 83 yaml-lint + Test 84 ESLint). CI + local smoke harness MUST report 0 errors at every commit landing on main. **Enforcement scope clarification (per architect FLAG-4)**: this invariant is enforced at smoke-harness + CI time (post-edit, pre-merge); pre-edit hook enforcement (catching convention violations at Edit/Write time) is a separate currently-deferred discipline tracked at drift-note 78 (PreToolUse ADR-status validator scope expansion candidate at H.9.11)."

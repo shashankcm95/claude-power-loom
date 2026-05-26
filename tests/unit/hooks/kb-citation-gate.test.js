@@ -19,7 +19,7 @@
 //   - section present but zero kb: refs
 //
 // TDD-treatment: tests first (this file), then regex change in
-// hooks/scripts/kb-citation-gate.js. Initial run vs v2.7.0: numbered-prefix
+// packages/kernel/hooks/post/kb-citation-gate.js. Initial run vs v2.7.0: numbered-prefix
 // tests FAIL; canonical-form tests PASS.
 
 'use strict';
@@ -27,7 +27,7 @@
 const { spawnSync } = require('child_process');
 const path = require('path');
 
-const HOOK = path.resolve(__dirname, '../../../hooks/scripts/kb-citation-gate.js');
+const HOOK = path.resolve(__dirname, '../../../packages/kernel/hooks/post/kb-citation-gate.js');
 
 let passed = 0;
 let failed = 0;

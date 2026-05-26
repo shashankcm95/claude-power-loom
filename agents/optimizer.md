@@ -14,7 +14,7 @@ Raise agent completion quality by tuning harness configuration: hooks, rules, co
 
 ## Principles (H.7.24)
 
-Optimization decisions should respect the **foundational principles** — SOLID, DRY, KISS, YAGNI. Canonical reference: `skills/agent-team/patterns/system-design-principles.md`.
+Optimization decisions should respect the **foundational principles** — SOLID, DRY, KISS, YAGNI. Canonical reference: `packages/skills/library/agent-team/patterns/system-design-principles.md`.
 
 - **KISS**: prefer the smallest reversible change with measurable effect. Don't bundle 5 optimizations when 1 is the bottleneck.
 - **YAGNI**: don't add a hook / rule / agent without an observed problem. Speculative tuning bloats context for zero return.
@@ -25,9 +25,9 @@ See `agents/architect.md` for the canonical Layer 1+2 reference shape; optimizer
 
 ## Knowledge Base — Canonical References (H.9.20.0)
 
-Optimization is grounded in the kb. Before proposing config / hook / rule / agent tuning, consult relevant docs from `skills/agent-team/kb/`. Cite the specific kb docs in the Optimization Report's `KB Sources Consulted` section.
+Optimization is grounded in the kb. Before proposing config / hook / rule / agent tuning, consult relevant docs from `packages/skills/library/agent-team/kb/`. Cite the specific kb docs in the Optimization Report's `KB Sources Consulted` section.
 
-**Consult method**: `Read skills/agent-team/kb/<kb_id>.md` (universal). This agent's `Bash` tool also enables the resolver CLI for tier-aware loading (per H.8.0 + H.7.27 — ~91% injection-size savings): `node scripts/agent-team/kb-resolver.js cat-quick-ref <kb_id>` (~700 tokens), `cat-summary` (~120 tokens), or `cat` (full doc).
+**Consult method**: `Read packages/skills/library/agent-team/kb/<kb_id>.md` (universal). This agent's `Bash` tool also enables the resolver CLI for tier-aware loading (per H.8.0 + H.7.27 — ~91% injection-size savings): `node packages/runtime/orchestration/kb-resolver.js cat-quick-ref <kb_id>` (~700 tokens), `cat-summary` (~120 tokens), or `cat` (full doc).
 
 **Always-relevant — RSM + measurement**:
 

@@ -36,8 +36,8 @@ const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 
 const REPO = path.resolve(__dirname, '../../..');
-const VERIFIER = path.join(REPO, 'scripts/agent-team/contract-verifier.js');
-const ENG_CONTRACT = path.join(REPO, 'swarm/personas-contracts/engineering-task.contract.json');
+const VERIFIER = path.join(REPO, 'packages/kernel/validators/contract-verifier.js');
+const ENG_CONTRACT = path.join(REPO, 'packages/runtime/contracts/engineering-task.contract.json');
 
 let passed = 0;
 let failed = 0;
@@ -61,7 +61,7 @@ function runVerifierOnBody(body) {
     '---',
     '',
   ].join('\n');
-  fs.writeFileSync(out, fm + body + '\n\nFile: `scripts/agent-team/contract-verifier.js:322`\n');
+  fs.writeFileSync(out, fm + body + '\n\nFile: `packages/kernel/validators/contract-verifier.js:322`\n');
   const r = spawnSync('node', [VERIFIER, '--contract', ENG_CONTRACT, '--output', out, '--no-record'], {
     encoding: 'utf8',
     env: { ...process.env, AGENT_TEAM_NO_RECORD: '1' },

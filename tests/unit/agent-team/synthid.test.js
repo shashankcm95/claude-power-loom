@@ -21,7 +21,7 @@
 
 const path = require('path');
 
-const SYNTHID = path.resolve(__dirname, '../../../scripts/agent-team/_lib/synthid.js');
+const SYNTHID = path.resolve(__dirname, '../../../packages/kernel/_lib/synthid.js');
 
 let passed = 0;
 let failed = 0;

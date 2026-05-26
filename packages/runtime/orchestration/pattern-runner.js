@@ -28,7 +28,7 @@ const { findToolkitRoot } = require('../../kernel/_lib/toolkit-root');
 // supports all three). HT.0.9-verify code-reviewer enumerated the 4 sites.
 const { parseFrontmatter } = require('../../kernel/_lib/frontmatter');
 const PATTERNS_BASE = process.env.HETS_PATTERNS_DIR ||
-  path.join(findToolkitRoot(), 'skills', 'agent-team', 'patterns');
+  path.join(findToolkitRoot(), 'packages', 'skills', 'library', 'agent-team', 'patterns');
 
 function parseArgs(argv) {
   const args = {};

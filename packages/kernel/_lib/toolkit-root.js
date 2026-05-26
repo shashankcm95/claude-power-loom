@@ -37,13 +37,13 @@ const path = require('path');
  *   2. `CLAUDE_PLUGIN_ROOT` env var (set by Claude Code when running as
  *      installed plugin)
  *   3. `process.cwd()` if it looks like a toolkit checkout (has the
- *      `skills/agent-team/SKILL.md` sentinel file)
+ *      `packages/skills/library/agent-team/SKILL.md` sentinel file)
  *   4. Walk up from `__dirname` (8-deep) looking for the same sentinel
  *      — handles arbitrary install nesting
  *   5. Hardcoded `~/Documents/claude-toolkit/` as last-resort fallback
  *      (the author's machine; preserved for backwards compatibility)
  *
- * Sentinel file (`skills/agent-team/SKILL.md`) was chosen because it's
+ * Sentinel file (`packages/skills/library/agent-team/SKILL.md`) was chosen because it's
  * load-bearing for the toolkit (every install must have it) and stable
  * (its location hasn't moved since H.2-bridge).
  *
@@ -60,13 +60,13 @@ function findToolkitRoot() {
   }
   // 3. cwd if it looks like a toolkit checkout
   const cwd = process.cwd();
-  if (fs.existsSync(path.join(cwd, 'skills', 'agent-team', 'SKILL.md'))) {
+  if (fs.existsSync(path.join(cwd, 'packages', 'skills', 'library', 'agent-team', 'SKILL.md'))) {
     return cwd;
   }
   // 4. Walk up from __dirname looking for skills/agent-team/SKILL.md
   let dir = __dirname;
   for (let i = 0; i < 8; i++) {
-    if (fs.existsSync(path.join(dir, 'skills', 'agent-team', 'SKILL.md'))) {
+    if (fs.existsSync(path.join(dir, 'packages', 'skills', 'library', 'agent-team', 'SKILL.md'))) {
       return dir;
     }
     const parent = path.dirname(dir);

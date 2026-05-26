@@ -14,7 +14,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const HOOK = path.resolve(__dirname, '../../../hooks/scripts/redirect-plan-mode-in-headless.js');
+const HOOK = path.resolve(__dirname, '../../../packages/kernel/hooks/pre/redirect-plan-mode-in-headless.js');
 
 let passed = 0;
 let failed = 0;

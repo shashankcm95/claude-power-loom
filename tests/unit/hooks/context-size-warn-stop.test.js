@@ -31,7 +31,7 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 
-const HOOK = path.resolve(__dirname, '../../../hooks/scripts/context-size-warn-stop.js');
+const HOOK = path.resolve(__dirname, '../../../packages/kernel/hooks/lifecycle/context-size-warn-stop.js');
 
 let passed = 0;
 let failed = 0;

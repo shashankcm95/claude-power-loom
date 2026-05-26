@@ -17,7 +17,7 @@ const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 
 const REPO = path.resolve(__dirname, '../../..');
-const SCRIPT = path.join(REPO, 'bench/control-runs/extract-run.sh');
+const SCRIPT = path.join(REPO, 'packages/specs/bench/control-runs/extract-run.sh');
 
 let passed = 0;
 let failed = 0;

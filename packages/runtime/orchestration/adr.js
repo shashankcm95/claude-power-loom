@@ -31,7 +31,7 @@ const { parseFrontmatter } = require('../../kernel/_lib/frontmatter');
 const { withLock } = require('../../kernel/_lib/lock');
 
 const ADRS_DIR = process.env.HETS_ADRS_DIR ||
-  path.join(findToolkitRoot(), 'swarm', 'adrs');
+  path.join(findToolkitRoot(), 'packages', 'specs', 'adrs');
 
 // ============================================================================
 // ADR LISTING + READING

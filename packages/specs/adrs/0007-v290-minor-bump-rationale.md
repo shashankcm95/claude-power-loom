@@ -9,11 +9,11 @@ superseded_by: null
 files_affected:
   - .claude-plugin/plugin.json
   - CHANGELOG.md
-  - scripts/agent-team/doctor.js
-  - scripts/agent-team/doctor/probes/
-  - scripts/agent-team/_lib/env-placeholder.js
+  - packages/runtime/orchestration/doctor.js
+  - packages/runtime/orchestration/doctor/probes/
+  - packages/kernel/_lib/env-placeholder.js
   - swarm/personas-contracts/_format-spec.md
-  - hooks/scripts/validate-config-redirect.js
+  - packages/kernel/validators/validate-config-redirect.js
 invariants_introduced:
   - "Substrate-fundament additions (new CLI surface, new shared _lib helpers, new hook entries) bump MINOR even without a breaking API change"
   - "PATCH bumps reserved for bug-fix-only commits; the bench-fix-bundle pattern that shipped v2.8.2 → v2.8.5 was PATCH-only and is the empirical anchor for the rule"
@@ -33,9 +33,9 @@ v2.9.0 was originally scoped as v2.8.6 — a patch bundle following the v2.8.5 l
 | Fix | Substrate addition |
 |-----|---------------------|
 | FIX-I1 | New `swarm/personas-contracts/_format-spec.md` canonical doc; all 18 contracts now carry `_format` pointer |
-| FIX-I4 | New `scripts/agent-team/doctor.js` CLI + 4 probes under `doctor/probes/`; new 4-value status enum (`not-implemented` 4th value) |
-| FIX-I7 | New `scripts/agent-team/_lib/env-placeholder.js` canonical helper |
-| FIX-I9 | New `hooks/scripts/validate-config-redirect.js` hook + new entry in `hooks/hooks.json` under PreToolUse:Bash matcher |
+| FIX-I4 | New `packages/runtime/orchestration/doctor.js` CLI + 4 probes under `doctor/probes/`; new 4-value status enum (`not-implemented` 4th value) |
+| FIX-I7 | New `packages/kernel/_lib/env-placeholder.js` canonical helper |
+| FIX-I9 | New `packages/kernel/validators/validate-config-redirect.js` hook + new entry in `hooks/hooks.json` under PreToolUse:Bash matcher |
 
 None of these break an existing API. The bare-string version-bump tool (`refresh-plugin-schema.sh`) doesn't distinguish "added CLI" from "fixed bug". The semver rule does.
 
@@ -55,11 +55,11 @@ The semver rule we follow:
 
 Three forces:
 
-1. **Operator-facing discoverability**: `node scripts/agent-team/doctor.js --probe env-inheritance` is a NEW invocation operators didn't have at v2.8.5. They learn about it via release notes — and release notes get attention when the bump signals "something new shipped." A PATCH bump under-communicates.
+1. **Operator-facing discoverability**: `node packages/runtime/orchestration/doctor.js --probe env-inheritance` is a NEW invocation operators didn't have at v2.8.5. They learn about it via release notes — and release notes get attention when the bump signals "something new shipped." A PATCH bump under-communicates.
 
 2. **kb-citation gate composability**: KB docs added (`kb:design-pushback/syntactic-gate-extension-for-tool-bypass`, `_format-spec.md`) participate in the kb-citation gate. Citations to a kb_id that didn't exist in v2.8.5 would fail any contract verifier still on v2.8.5 — that's not a breaking *change* but it IS a substrate-fundament expansion.
 
-3. **Substrate-philosophy precedent**: ADR-0002 establishes the "bridge-script entrypoint criterion" — new entrypoints in `scripts/agent-team/` are first-class substrate, not implementation detail. The doctor umbrella IS a new entrypoint. Hiding that under PATCH would erode the discipline.
+3. **Substrate-philosophy precedent**: ADR-0002 establishes the "bridge-script entrypoint criterion" — new entrypoints in `packages/runtime/orchestration/` are first-class substrate, not implementation detail. The doctor umbrella IS a new entrypoint. Hiding that under PATCH would erode the discipline.
 
 ## Trade-offs surfaced
 

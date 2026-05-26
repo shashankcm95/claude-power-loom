@@ -36,9 +36,9 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const paths = require('./agent-team/_lib/library-paths');
-const catalog = require('./agent-team/_lib/library-catalog');
-const { writeAtomic, writeAtomicString } = require('./agent-team/_lib/atomic-write');
+const paths = require('../packages/kernel/_lib/library-paths');
+const catalog = require('../packages/kernel/_lib/library-catalog');
+const { writeAtomic, writeAtomicString } = require('../packages/kernel/_lib/atomic-write');
 
 // ===========================================================================
 // Dispatcher

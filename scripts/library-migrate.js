@@ -47,10 +47,10 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const paths = require('./agent-team/_lib/library-paths');
-const catalog = require('./agent-team/_lib/library-catalog');
-const personaStore = require('./agent-team/_lib/persona-store');
-const { writeAtomic, writeAtomicString } = require('./agent-team/_lib/atomic-write');
+const paths = require('../packages/kernel/_lib/library-paths');
+const catalog = require('../packages/kernel/_lib/library-catalog');
+const personaStore = require('../packages/kernel/_lib/persona-store');
+const { writeAtomic, writeAtomicString } = require('../packages/kernel/_lib/atomic-write');
 
 // ===========================================================================
 // Legacy path manifest
@@ -559,15 +559,15 @@ function cmdAddSynthid(args) {
   // Lazy requires — these modules pull in the live identity store + persona
   // contract scanner; isolate them inside the subcommand so other subcommands
   // (migrate / rollback / partition-personas) don't pay the import cost.
-  const registry = require('./agent-team/identity/registry');
-  const lifecycleSpawn = require('./agent-team/identity/lifecycle-spawn');
-  const { computeContentHash } = require('./agent-team/_lib/synthid');
+  const registry = require('../packages/runtime/orchestration/identity/registry');
+  const lifecycleSpawn = require('../packages/runtime/orchestration/identity/lifecycle-spawn');
+  const { computeContentHash } = require('../packages/kernel/_lib/synthid');
 
   // Plugin version mirrors lifecycle-spawn.js / contract-verifier.js. The
   // SynthId hash uses MAJOR.MINOR only — patch versions don't churn hashes.
   let pluginVersion = '0.0.0';
   try {
-    const { findToolkitRoot } = require('./agent-team/_lib/toolkit-root');
+    const { findToolkitRoot } = require('../packages/kernel/_lib/toolkit-root');
     const fp = path.join(findToolkitRoot(), '.claude-plugin', 'plugin.json');
     pluginVersion = JSON.parse(fs.readFileSync(fp, 'utf8')).version || '0.0.0';
   } catch { /* keep fallback */ }
@@ -689,7 +689,7 @@ function cmdSyncLegacy(args) {
 
   // Lazy require — these modules pull in the live identity store +
   // bulkhead detection; isolate them inside the subcommand.
-  const registry = require('./agent-team/identity/registry');
+  const registry = require('../packages/runtime/orchestration/identity/registry');
 
   // Bulkhead must be active for sync-legacy to do anything meaningful.
   // Pre-partition, the legacy file IS the source-of-truth (no divergence
@@ -764,7 +764,7 @@ function cmdFixSymlinks(args) {
   // legacy consolidated.json files MUST NOT be symlinked back — that would
   // route writes to consolidated.json, bypassing the per-persona partition.
   // Use sync-legacy instead for those two.
-  const registry = require('./agent-team/identity/registry');
+  const registry = require('../packages/runtime/orchestration/identity/registry');
   const bulkheadActive = registry._isBulkheadActive && registry._isBulkheadActive();
   const BULKHEAD_EXCLUDE = bulkheadActive
     ? new Set([
@@ -877,7 +877,7 @@ function cmdCleanupBogusVolumes(args) {
   const opts = parseOpts(args);
   const isDryRun = !!opts['dry-run'];
 
-  const { VALID_PERSONA_RE } = require('./agent-team/_lib/persona-store');
+  const { VALID_PERSONA_RE } = require('../packages/kernel/_lib/persona-store');
   const SAFE_LIST = new Set(['consolidated.json']);
   const STACKS = ['identities', 'verdicts'];
 

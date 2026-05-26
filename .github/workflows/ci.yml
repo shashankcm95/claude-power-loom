@@ -29,7 +29,7 @@ jobs:
         run: |
           # H.7.9 fix: --hooks --test installs hooks first, then runs smoke.
           # Plain --test (H.7.8 CI bug) tested already-installed hooks at
-          # $CLAUDE_DIR/hooks/scripts/, which doesn't exist on a clean CI
+          # $CLAUDE_DIR/packages/kernel/hooks/, which doesn't exist on a clean CI
           # checkout — the script bailed with the "test without --hooks
           # tests already-installed hooks, not source" warning + exit 1.
           # H.7.8's CI never validated against a fresh checkout because
@@ -40,7 +40,7 @@ jobs:
 
       - name: Run contracts-validate
         run: |
-          node scripts/agent-team/contracts-validate.js 2>&1 | tee /tmp/contracts.log
+          node packages/runtime/orchestration/contracts-validate.js 2>&1 | tee /tmp/contracts.log
           grep -qE 'Total violations: 0' /tmp/contracts.log
 
   markdown-lint:

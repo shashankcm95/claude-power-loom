@@ -7,20 +7,20 @@ created: 2026-05-08
 author: substrate (codified retrospectively in H.8.2; retagged seed at HT.1.7 per ADR system enum extension)
 superseded_by: null
 files_affected:
-  - hooks/scripts/fact-force-gate.js
-  - hooks/scripts/config-guard.js
-  - hooks/scripts/error-critic.js
-  - hooks/scripts/prompt-enrich-trigger.js
-  - hooks/scripts/session-self-improve-prompt.js
-  - hooks/scripts/session-reset.js
-  - hooks/scripts/auto-store-enrichment.js
-  - hooks/scripts/console-log-check.js
-  - hooks/scripts/pre-compact-save.js
-  - hooks/scripts/session-end-nudge.js
-  - hooks/scripts/validators/verify-plan-gate.js
-  - hooks/scripts/validators/validate-no-bare-secrets.js
-  - hooks/scripts/validators/validate-frontmatter-on-skills.js
-  - hooks/scripts/validators/validate-plan-schema.js
+  - packages/kernel/hooks/pre/fact-force-gate.js
+  - packages/kernel/hooks/pre/config-guard.js
+  - packages/kernel/hooks/post/error-critic.js
+  - packages/kernel/hooks/lifecycle/prompt-enrich-trigger.js
+  - packages/kernel/hooks/lifecycle/session-self-improve-prompt.js
+  - packages/kernel/hooks/lifecycle/session-reset.js
+  - packages/kernel/hooks/lifecycle/auto-store-enrichment.js
+  - packages/kernel/hooks/lifecycle/console-log-check.js
+  - packages/kernel/hooks/lifecycle/pre-compact-save.js
+  - packages/kernel/hooks/lifecycle/session-end-nudge.js
+  - packages/kernel/validators/verify-plan-gate.js
+  - packages/kernel/validators/validate-no-bare-secrets.js
+  - packages/kernel/validators/validate-frontmatter-on-skills.js
+  - packages/kernel/validators/validate-plan-schema.js
 invariants_introduced:
   - "Every hook has a top-level try/catch that prevents uncaught exceptions"
   - "Hooks that fail return decision: approve (PreToolUse) or exit cleanly (other lifecycles); never block on hook errors"
@@ -53,7 +53,7 @@ The substrate needs a discipline that prevents hook-error-from-breaking-session 
 Concretely:
 
 - Every hook script's top-level execution is wrapped in `try { ... } catch (err) { logger('error', { error: err.message }); /* exit cleanly or return decision: approve */ }`
-- The `logger` is the substrate's structured logger (`hooks/scripts/_log.js`); it writes to `~/.claude/logs/<hook>.log`
+- The `logger` is the substrate's structured logger (`packages/kernel/hooks/_log.js`); it writes to `~/.claude/logs/<hook>.log`
 - For PreToolUse hooks: on hook error, the JSON output is `{ "decision": "approve" }` (don't block over our own bug)
 - For other lifecycles: exit non-zero is acceptable; the hook protocol treats exit-non-zero as recoverable
 - Hard-block decisions (`decision: block`) are reserved for genuine policy violations (must Read before Edit; must include Pre-Approval Verification section), NEVER for hook internal errors

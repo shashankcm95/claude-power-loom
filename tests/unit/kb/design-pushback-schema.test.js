@@ -2,7 +2,7 @@
 /**
  * design-pushback-schema.test.js — v2.8.6 schema validation
  *
- * Verifies every entry under skills/agent-team/kb/design-pushback/ conforms
+ * Verifies every entry under packages/skills/library/agent-team/kb/design-pushback/ conforms
  * to the schema defined in _index.md.
  */
 
@@ -11,7 +11,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const DIR = path.resolve(__dirname, '../../../skills/agent-team/kb/design-pushback');
+const DIR = path.resolve(__dirname, '../../../packages/skills/library/agent-team/kb/design-pushback');
 const REPO = path.resolve(__dirname, '../../..');
 
 let passed = 0;
@@ -90,7 +90,7 @@ for (const file of entries) {
       .map((l) => l.replace(/^\s{2}- /, '').trim())
       .filter(Boolean);
     for (const ref of refs) {
-      const refPath = path.join(REPO, 'skills/agent-team/kb', ref + '.md');
+      const refPath = path.join(REPO, 'packages/skills/library/agent-team/kb', ref + '.md');
       assert(fs.existsSync(refPath), 'F[' + slug + ']: related "' + ref + '" exists');
     }
   }

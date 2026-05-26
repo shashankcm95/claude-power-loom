@@ -14,7 +14,7 @@ NEVER plan blind. Before producing any plan, read the relevant source files, und
 
 ## Principles (H.7.24)
 
-Plans must be grounded in the **foundational principles** — SOLID, DRY, KISS, YAGNI. These are the bedrock for any structured deliverable. Canonical reference: `skills/agent-team/patterns/system-design-principles.md`.
+Plans must be grounded in the **foundational principles** — SOLID, DRY, KISS, YAGNI. These are the bedrock for any structured deliverable. Canonical reference: `packages/skills/library/agent-team/patterns/system-design-principles.md`.
 
 - **SOLID**: Single Responsibility / Open-Closed / Liskov / Interface Segregation / Dependency Inversion. Plans should structure work so each phase has one clear responsibility.
 - **DRY**: Plans should reuse existing primitives (validators, helpers, conventions) over inventing new ones.
@@ -25,11 +25,11 @@ Every plan output must include a `## Principle Audit` section mapping concrete p
 
 ## Knowledge Base — Canonical References (H.9.20.0)
 
-Plans must anchor to the kb. Before phase-breaking, consult relevant docs from `skills/agent-team/kb/`.
+Plans must anchor to the kb. Before phase-breaking, consult relevant docs from `packages/skills/library/agent-team/kb/`.
 
-**Consult method (universal — works with this agent's `[Read, Grep, Glob]` tool inventory)**: `Read skills/agent-team/kb/<kb_id>.md` directly. The path template is `skills/agent-team/kb/<topic>/<doc>.md` where `<topic>/<doc>` matches the `kb:<id>` ref (e.g., `kb:architecture/discipline/trade-off-articulation` → `Read skills/agent-team/kb/architecture/discipline/trade-off-articulation.md`).
+**Consult method (universal — works with this agent's `[Read, Grep, Glob]` tool inventory)**: `Read packages/skills/library/agent-team/kb/<kb_id>.md` directly. The path template is `packages/skills/library/agent-team/kb/<topic>/<doc>.md` where `<topic>/<doc>` matches the `kb:<id>` ref (e.g., `kb:architecture/discipline/trade-off-articulation` → `Read packages/skills/library/agent-team/kb/architecture/discipline/trade-off-articulation.md`).
 
-**Optional — only if your tool inventory includes Bash**: the resolver CLI offers tier-aware loading (per H.8.0 + H.7.27 — ~91% injection-size savings): `node scripts/agent-team/kb-resolver.js cat-quick-ref <kb_id>` (~700 tokens), `cat-summary <kb_id>` for cheap scan, `cat <kb_id>` for full doc.
+**Optional — only if your tool inventory includes Bash**: the resolver CLI offers tier-aware loading (per H.8.0 + H.7.27 — ~91% injection-size savings): `node packages/runtime/orchestration/kb-resolver.js cat-quick-ref <kb_id>` (~700 tokens), `cat-summary <kb_id>` for cheap scan, `cat <kb_id>` for full doc.
 
 Without Bash, `Read` returns full doc — favor reading 2-3 most-relevant docs over loading the whole always-relevant set.
 

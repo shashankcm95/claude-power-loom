@@ -35,7 +35,7 @@ const TOOLKIT_ROOT = findToolkitRoot();
 const { invokeNodeJson } = require(path.join(TOOLKIT_ROOT, 'packages', 'kernel', '_lib', 'safe-exec'));
 
 const ADRS_DIR = process.env.HETS_ADRS_DIR ||
-  path.join(TOOLKIT_ROOT, 'swarm', 'adrs');
+  path.join(TOOLKIT_ROOT, 'packages', 'specs', 'adrs');
 
 /**
  * Emit the [ADR-DRIFT-CHECK] forcing instruction with details about
@@ -55,7 +55,7 @@ function buildForcingInstruction(filePath, matchedAdrs) {
   ];
   for (const adr of matchedAdrs) {
     lines.push(`**ADR-${adr.adr_id}**: ${adr.title}`);
-    lines.push(`  File: \`swarm/adrs/${adr.filename}\``);
+    lines.push(`  File: \`packages/specs/adrs/${adr.filename}\``);
     lines.push('  Invariants:');
     for (const inv of adr.invariants_introduced || []) {
       lines.push(`    - ${inv}`);
@@ -93,7 +93,7 @@ function getAdrsTouchingFile(filePath) {
   if (!fs.existsSync(ADRS_DIR)) return [];
   // Prefer invoking adr.js directly (single source of truth for the matching logic).
   // H.8.4: invokeNodeJson uses execFileSync with arg array — no shell injection.
-  const adrJsPath = path.join(TOOLKIT_ROOT, 'scripts', 'agent-team', 'adr.js');
+  const adrJsPath = path.join(TOOLKIT_ROOT, 'packages', 'runtime', 'orchestration', 'adr.js');
   if (fs.existsSync(adrJsPath)) {
     const result = invokeNodeJson(adrJsPath, ['touched-by', filePath], { timeout: 3000 });
     if (result !== null) {

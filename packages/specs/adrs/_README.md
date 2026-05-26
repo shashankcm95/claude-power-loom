@@ -80,18 +80,18 @@ Active ADRs are those with status `accepted` OR `seed`, AND `superseded_by` is n
 
 ```bash
 # Create new ADR (auto-increments ID)
-node scripts/agent-team/adr.js new --title "Adopt fail-open hooks"
+node packages/runtime/orchestration/adr.js new --title "Adopt fail-open hooks"
 
 # List ADRs (default: all; --status filter available)
-node scripts/agent-team/adr.js list
-node scripts/agent-team/adr.js list --status accepted
+node packages/runtime/orchestration/adr.js list
+node packages/runtime/orchestration/adr.js list --status accepted
 
 # Read specific ADR
-node scripts/agent-team/adr.js read 0001
-node scripts/agent-team/adr.js read 1     # leading zeros optional
+node packages/runtime/orchestration/adr.js read 0001
+node packages/runtime/orchestration/adr.js read 1     # leading zeros optional
 
 # List currently active ADRs (status=accepted OR seed, not superseded)
-node scripts/agent-team/adr.js active
+node packages/runtime/orchestration/adr.js active
 ```
 
 ## Drift detection (validate-adr-drift.js)

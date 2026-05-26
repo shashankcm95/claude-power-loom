@@ -14,7 +14,7 @@ const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 
-const HOOK_PATH = path.resolve(__dirname, '../../../hooks/scripts/validators/validate-no-bare-secrets.js');
+const HOOK_PATH = path.resolve(__dirname, '../../../packages/kernel/validators/validate-no-bare-secrets.js');
 
 let passed = 0;
 let failed = 0;
