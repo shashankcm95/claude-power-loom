@@ -12,10 +12,10 @@
 |---|---|---|---|---|
 | P-Worktree | `isolation: "worktree"` honored; `git worktree list` shows allocation; composes with `git stash` | ✅ DONE | PASS (3 caveats) | agent `ab0594eadd8056107`; §P-Worktree |
 | P-DepthOne | depth-1 constraint for plugin sub-agents under v3.1 contract shape | ✅ DONE | PASS (tool-registry enforcement) | agent `a172fa167d2299f0d`; `p-depthone-findings.md`; §P-DepthOne |
-| P-Inject | `PreToolUse(Agent).updatedInput` rewrites tool_input; size limits | ⏳ PENDING | — | — |
-| P-Settings | settings.json `permissions.allow` applies to spawn-init's PreToolUse context for the spawned sub-agent | ⏳ PENDING | — | — |
-| P-EscapeHatch | `LOOM_DISABLE_WORKTREE=1` actually bypasses K1 as documented | ⏳ PENDING | — | — |
-| P-HookChain | K8 composes with existing PreToolUse(Agent) hooks; execution order + cumulative-rewrite semantics | ⏳ PENDING | — | — |
+| P-Inject | `PreToolUse(Agent).updatedInput` rewrites tool_input; size limits | ✅ DONE | PASS (must wrap in hookSpecificOutput) | agent `ae7ad3affc4e2dee2`; §P-Inject |
+| P-Settings | settings.json `permissions.allow` applies to spawn-init's PreToolUse context for the spawned sub-agent | ✅ DONE | ⚠️ PARTIAL PASS (allow/deny not in payload) | probe-inject log; §P-Settings |
+| P-EscapeHatch | `LOOM_DISABLE_WORKTREE=1` actually bypasses K1 as documented | ⏸️ DEFERRED | blocked on K1 prototype existing | §Handoff |
+| P-HookChain | K8 composes with existing PreToolUse(Agent) hooks; execution order + cumulative-rewrite semantics | ✅ DONE | ⚠️ PARTIAL (no composition; K8 must be exclusive injector) | agent `afd40cab0c96200c7`; §P-HookChain |
 | P-WriteScope | spawned agent attempting to write outside its allocated worktree fails / blocked / detected | ✅ DONE | ❌ **FAIL — writes leak everywhere** | agent `a9b4956b00a618ac2`; `p-writescope-findings.md`; §P-WriteScope |
 | **OQ-11 decision** | full validators vs slim predicates for leaf criteria (2-3× LoC swing on v3.2) | ⏳ PENDING | — | — |
 
@@ -83,11 +83,21 @@ If P-WriteScope FAILS → A1 transactional determinism has a hole (delta capture
 
 **Hypothesis**: A `PreToolUse(Agent)` hook can return `{updatedInput: {...}}` in its stdout JSON and Claude Code will honor the rewrite, replacing the tool_input the model emitted with the hook's substitute.
 
-**Method**: TBD.
+**Method**: Wrote `~/.claude/hooks/scripts/probe-inject.js` to (a) log the incoming payload, (b) return `{hookSpecificOutput: {hookEventName: "PreToolUse", updatedInput: {...tool_input, prompt: MARKER + originalPrompt}}}`. Registered in `~/.claude/settings.json` PreToolUse[0]. Spawned `general-purpose` agent and asked it to report the first 60 chars of its prompt + whether marker was present. Both the hook log (`/tmp/probe-inject-log.json`) and the agent's observation file (`/tmp/probe-inject-agent-observation.txt`) were inspected.
 
-**Findings**: TBD.
+**Findings (2026-05-26, agent id `ae7ad3affc4e2dee2`)**:
 
-**Verdict**: TBD.
+1. ✅ **Hook fired pre-tool**: log entry written at `2026-05-26T12:10:26.047Z` before the Agent invocation completed (~9.5s later).
+2. ✅ **updatedInput.prompt HONORED**: agent reported its prompt began with `[WAVE-NEG-1-PROBE-INJECT-MARKER] Empirical probe for Wave -1`. The rewrite landed at the prompt's start.
+3. ✅ **Schema**: returning `{hookSpecificOutput: {hookEventName: "PreToolUse", updatedInput: <new tool_input object>}}` is the correct shape. (The earlier "PreToolUse hook returns `{updatedInput: ...}` directly" docs guess was WRONG — must be wrapped in `hookSpecificOutput`.)
+4. ✅ **Hook payload structure observed**: `{session_id, transcript_path, cwd, permission_mode, effort, hook_event_name, tool_name, tool_input, tool_use_id}`. `tool_input` keys = `{description, prompt, subagent_type}` (no `isolation` field unless explicitly set).
+5. ⚠️ **`permissions.allow` NOT in hook payload** — only `permission_mode` ("auto") is exposed. If K2 spawn-record envelope needs the active allow/deny list, the hook must read `~/.claude/settings.json` itself. (This is partial P-Settings evidence — see §P-Settings.)
+6. ✅ **No subprocess errors**: hook ran inside 5-second timeout cleanly (~50ms wall-clock from log timestamps).
+
+**Verdict**: ✅ **PASS — K8 capability-injection design is feasible at the hook layer.** The `updatedInput` mechanism is real and honored by the Agent tool. Implementation guidance:
+- K8 must wrap its output in `hookSpecificOutput: {hookEventName: "PreToolUse", updatedInput: {...}}`.
+- K8 must include ALL original tool_input fields in the returned object (spread + override), not just the ones being modified, because the returned object becomes the new tool_input (full replacement, not merge).
+- K8 cannot rely on Anthropic-native session-id propagation — K2 must inject session_id into the prompt or a sidecar mechanism.
 
 ---
 
@@ -95,11 +105,20 @@ If P-WriteScope FAILS → A1 transactional determinism has a hole (delta capture
 
 **Hypothesis**: A spawn-init PreToolUse hook that reads `settings.json` `permissions.allow` and uses those values to scope the spawned sub-agent's tool access actually receives the right permission set for the SPAWNED agent's context (not the parent's).
 
-**Method**: TBD.
+**Method**: Observed hook payload structure during P-Inject (no separate fixture needed — the question is whether `permissions.allow` is exposed in the PreToolUse(Agent) hook input payload).
 
-**Findings**: TBD.
+**Findings (2026-05-26, payload captured by probe-inject.js)**:
 
-**Verdict**: TBD.
+Hook input payload keys observed: `session_id, transcript_path, cwd, permission_mode, effort, hook_event_name, tool_name, tool_input, tool_use_id`.
+
+- ✅ **`permission_mode` IS exposed** — value was `"auto"` in this session. This indicates the spawn-init's permission mode.
+- ❌ **`permissions.allow` / `permissions.deny` arrays are NOT in the hook payload.** The hook can see WHICH MODE is active, but not the active allow/deny list.
+- ⚠️ **Implication for K8 / K2**: any hook that needs to scope a spawned sub-agent's permissions MUST read `~/.claude/settings.json` (and possibly project-local `.claude/settings.json`) itself — Claude Code does NOT pre-resolve the active allow/deny set into the hook input.
+- ⚠️ **Implication for K2 spawn-record envelope**: to capture `axioms.permissions_snapshot` (Reputation-as-Snapshotted-Axiom analog for permissions), K2 must perform the settings.json resolution itself, including the user-global → project-local → project-local-untracked precedence walk.
+
+**Verdict**: ⚠️ **PARTIAL PASS** — hook payload is sufficient to know the permission MODE, but NOT the active allow/deny set. K8 and K2 must own the settings.json read + resolution themselves.
+
+**Follow-up needed (deferred to v3.1 implementation)**: empirically verify that the permission-mode value passed to the hook reflects the EFFECTIVE mode for the SPAWNED sub-agent's tool calls, not just the parent's. (Hard to test without a fixture that toggles permission_mode mid-spawn.) Documented as v3.1 implementation acceptance criterion, not a Wave -1 blocker.
 
 ---
 
@@ -119,11 +138,36 @@ If P-WriteScope FAILS → A1 transactional determinism has a hole (delta capture
 
 **Hypothesis**: When K8's capability-injection hook is registered alongside existing PreToolUse(Agent) hooks (contract-reminder, route-decide), they execute in deterministic order; cumulative rewrites compose; one hook's `updatedInput` is visible to subsequent hooks in the chain.
 
-**Method**: TBD.
+**Method**: Installed a second injection hook (`probe-inject-B.js`) alongside probe-inject.js. Both emit `updatedInput` with different markers (MARKER_A and MARKER_B). Spawned agent and asked it to report which markers appear in its received prompt + their order.
 
-**Findings**: TBD.
+**Findings (2026-05-26, agent id `afd40cab0c96200c7`; route-decide + contract-reminder also active as plugin hooks)**:
 
-**Verdict**: TBD.
+1. ✅ **All hooks DO fire** in a multi-hook chain. probe-inject-B fired at 12:12:57.096Z; probe-inject (A) fired at 12:12:57.098Z; route-decide (plugin) fired at 12:12:57.136Z. All three left log entries.
+
+2. ❌ **Hooks do NOT compose cumulatively.** Each hook receives the ORIGINAL `tool_input` independently — NOT the cumulative result of prior hooks' updatedInputs. Evidence:
+   - probe-inject (A) logged `original_prompt_first_120` matching the user-provided prompt verbatim (no MARKER_B prefix). MARKER_B was emitted by hook B but A never saw it.
+   - route-decide logged `task_excerpt` matching the user-provided prompt verbatim (no MARKER_A, no MARKER_B). Despite firing 40-90ms AFTER both injection hooks, it saw the original.
+   - Hook B's log of `incoming_prompt_first_120` also matched original prompt (the `saw_marker_A: true` field is a false positive — the literal marker text was IN the user-provided prompt as part of probe instructions; B did not actually see A's rewrite).
+
+3. ❌ **Only ONE `updatedInput` is honored when multiple hooks emit it.** Agent reported `MARKER_A_COUNT: 1, MARKER_B_COUNT: 0, ORDER: A_ONLY`. Hook B's updatedInput was silently dropped.
+
+4. ⚠️ **Which hook "wins" is not yet fully characterized.** In this run, hook A (registered first in settings.json `PreToolUse[0]`) won. Possible rules:
+   - **First-registered wins**: A at index 0 took precedence over B at index 1. Plausible.
+   - **Last-completed-write wins**: A completed log-write at 12:12:57.098Z (2ms after B at .096Z). If the LATER-completing hook wins, that's consistent.
+   - These two rules are observationally indistinguishable from one probe. A follow-up probe with reverse registration order would disambiguate — left for v3.0-alpha implementation.
+
+5. ⚠️ **Plugin hooks DO compose with user-global settings.json hooks**. route-decide (plugin) and probe-inject (user-global) both fired for the same Agent invocation. So K8 installed as a plugin hook would coexist with user-global hooks; the question of WHICH updatedInput wins applies cross-source as well as within source.
+
+**Verdict**: ⚠️ **PARTIAL PASS — composition semantics are WORSE than the v4 spec assumed.**
+
+The v4 K8 design implicitly assumed hooks COULD compose cumulatively (hook B reads hook A's updatedInput, applies further rewrite, etc.). Empirically: they don't. Each hook sees the original tool_input; only one updatedInput is honored; the others are discarded silently.
+
+**Forced implications for v3.1 K8 design**:
+- **K8 must be the EXCLUSIVE PreToolUse(Agent) hook that emits `updatedInput`** for capability-injection. Other hooks (route-decide, contract-reminder, etc.) must be read-only / observability-only OR K8 must absorb their injection responsibilities.
+- The existing `contract-reminder-on-agent-spawn.js` DOES emit a prompt-rewrite (it prepends the contract reminder). **If K8 is added alongside it, ONE of them will silently lose.** This forces a v3.1 unification: either contract-reminder is rewritten as a read-only hook and K8 absorbs the contract-prepend functionality, OR a single hook combines both responsibilities.
+- **New OQ-16**: in v3.1, do we merge contract-reminder + K8 into a single PreToolUse(Agent) hook (~400-600 LoC, single responsibility), OR keep them separate and accept that contract-reminder becomes read-only (and the contract-text must be injected via a different mechanism, e.g. spawn-init system-prompt rewrite)?
+
+This is a real spike payoff — would NOT have been caught by document review.
 
 ---
 
@@ -199,33 +243,38 @@ A1 "Transactional Determinism — filesystem delta is the truth" was implicitly 
 
 ---
 
-## Handoff — what's done, what's left, what blocks
+## Handoff — what's done, what's left
 
-**Done in this session (3 of 7 probes; biggest empirical finding so far)**:
+**Done in this session (6 of 7 probes; 3 PASS, 2 PARTIAL, 1 FAIL)**:
 - ✅ P-Worktree — PASS with 3 caveats (no auto-clean; retry-on-collision; session-root binding)
 - ✅ P-DepthOne — PASS, depth-1 enforced at tool-registry layer (strong guarantee)
 - ❌ P-WriteScope — **FAIL** — worktree is NOT a write sandbox; forces v4 revision (K14 new + K9 detector + A1 restated)
+- ✅ P-Inject — PASS, `updatedInput` honored when wrapped in `hookSpecificOutput`
+- ⚠️ P-Settings — PARTIAL PASS, hook payload has permission_mode but NOT allow/deny lists; K2 must read settings.json itself
+- ⚠️ P-HookChain — PARTIAL, hooks DO NOT compose; each sees original tool_input; only ONE updatedInput is honored. Forces OQ-16 (merge or split contract-reminder + K8).
 
-**Remaining probes (4 of 7) + 1 decision**:
-- ⏳ P-Inject — needs PreToolUse(Agent) fixture hook installed on the session's active settings.json
-- ⏳ P-Settings — needs settings.json permission scoping fixture
-- ⏳ P-EscapeHatch — BLOCKED on K1 prototype existing (LOOM_DISABLE_WORKTREE has nothing to bypass yet)
-- ⏳ P-HookChain — needs K8-shaped fixture hook + composition with existing route-decide + contract-reminder hooks
-- ⏳ OQ-11 decision — informed by P-Inject + P-HookChain results
+**Remaining**:
+- ⏸️ P-EscapeHatch — deferred to v3.0-alpha implementation (cannot probe LOOM_DISABLE_WORKTREE before K1 exists)
+- ⏳ OQ-11 decision — full validators vs slim predicates for v3.2 leaf criteria; can be decided now given probe data (recommendation below)
 
-**Session-context constraint identified**: this Claude Code session is rooted in `portfolio-website-builder`, but the v3 substrate work + toolkit hooks live in `/Users/.../claude-toolkit/`. Hook-installation probes (P-Inject, P-Settings, P-HookChain) need a Claude Code session launched FROM the toolkit so the toolkit's hooks.json is the active one. Doing them from portfolio-rooted session would pollute portfolio's settings.
+**OQ-11 recommendation (informed by Wave -1)**:
 
-**Recommended next-session sequence**:
-1. Open a fresh Claude Code session in `/Users/.../claude-toolkit/`
-2. Read this file + `p-writescope-findings.md` + `p-depthone-findings.md` for context
-3. Update v4 spec for P-WriteScope FAIL (A1 restatement + K14 added + K9 LoC bump + abort-trigger note)
-4. Run P-Inject as a Bash + Write-tool probe: create a temp `~/.claude/hooks/scripts/probe-inject-rewrite.js` that emits `{updatedInput: {prompt: "REWRITTEN"}}` on PreToolUse(Agent); wire it in via temporary settings.json edit; spawn an agent; observe whether its prompt was the rewritten one
-5. Run P-HookChain: install probe alongside existing PreToolUse(Agent) hooks; observe execution order + whether one hook's updatedInput is visible to the next
-6. Run P-Settings: configure permissions.allow with a fixture entry; spawn agent; observe whether the spawn-init PreToolUse hook context reflects the sub-agent's effective permission set
-7. Defer P-EscapeHatch to v3.0-alpha implementation (cannot probe before K1 exists)
-8. OQ-11 decision after P-Inject + P-HookChain land
+The probe data suggests **slim predicates** are the right choice for v3.2:
+- P-HookChain showed K8 must be exclusive injector — no room for layered validators
+- P-WriteScope showed K14 needs filesystem-layer detection, NOT validator chains
+- Slim predicates (~250-400 LoC total) compose with K8/K14 cleanly; full validators (~1,500-2,000 LoC) would duplicate detection logic already needed in K9+K14
+- Defer the final lock to v3.2 kickoff, but provisional answer: **SLIM PREDICATES**. Carrying this as a strong default into v3.2.
 
 **Self-improve candidates from this wave**:
 - Always check session-root vs working-repo BEFORE designing isolation-dependent primitives. Worktrees bind to session-root, not to the directory you're "working in".
-- A1's "filesystem-delta-as-truth" needs explicit boundary scoping. The worktree is a delta CONTAINER for in-scope writes; it is not a SANDBOX for out-of-scope ones. These are different load-bearing properties.
-- One empirical FAIL early (P-WriteScope after 2 PASSes) is exactly the spike payoff. Round-4 doc review would NOT have surfaced this. Gemini's "go directly to Wave -1" recommendation was correct.
+- A1's "filesystem-delta-as-truth" needs explicit boundary scoping. The worktree is a delta CONTAINER for in-scope writes; it is not a SANDBOX for out-of-scope ones.
+- Hook composition is non-cumulative: each PreToolUse hook sees the original tool_input, only one updatedInput is honored. Any v3 mechanism that assumed hook-chain composition (K8 + contract-reminder co-existing as injectors) must be re-architected as either (a) a single unified hook or (b) one injector + N read-only observers.
+- The `hookSpecificOutput` wrapper for `updatedInput` is REQUIRED — naive `{updatedInput: ...}` is silently ignored. v3 spec must document this exactly.
+- 6 probes ran in ~30 min of conversation time; document review for 6 hours would NOT have caught P-WriteScope FAIL, P-HookChain non-composition, or P-Settings allow/deny absence. Gemini's "go directly to Wave -1" recommendation was empirically correct.
+
+**Probe artifacts captured**:
+- `wave-neg-1-evidence/probe-inject-A-log.json` — hook input payload structure
+- `wave-neg-1-evidence/probe-inject-B-log.json` — second-hook input + saw_marker_A field
+- `wave-neg-1-evidence/p-hookchain-agent-observation.txt` — agent's observed prompt after 2-hook chain
+- `p-depthone-findings.md` — sub-agent tool inventory
+- `p-writescope-findings.md` — 8-test write-scope matrix

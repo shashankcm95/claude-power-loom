@@ -1,0 +1,6 @@
+<system-reminder>
+The following deferred tools are now available via ToolSearch. Their schem
+MARKER_A_COUNT: 1
+MARKER_B_COUNT: 0
+ORDER: A_ONLY
+END_OF_PROBE
