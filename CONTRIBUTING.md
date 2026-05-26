@@ -171,7 +171,7 @@ CS-1 confused-user.sam caught this gap concretely: after H.2.5 shipped `commands
 
 ### Post-phase install convention
 
-Run after every PR merge that touches `commands/`, `skills/`, `agents/`, `rules/`, or `hooks/scripts/`:
+Run after every PR merge that touches `commands/`, `skills/`, `agents/`, `rules/`, or `packages/kernel/hooks/`:
 
 ```bash
 cd ~/Documents/claude-toolkit

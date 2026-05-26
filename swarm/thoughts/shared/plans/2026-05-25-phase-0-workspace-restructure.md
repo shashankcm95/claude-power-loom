@@ -451,7 +451,7 @@ Architect LOW absorbed: `${DATE}` parameterized; not committed with `XX` placeho
 
 ### Step 10 — Verify plugin manifest + hooks.json + smoke tests (45 min, expanded v2)
 - Fresh Claude Code session loads plugin without warnings
-- All 23 hooks fire on no-op action
+- All 24 hooks fire on no-op action
 - `pnpm -r test` → 108/108 unit
 - `bash tests/smoke-ht.sh` → 116/116 smoke
 - `node packages/kernel/validators/contract-verifier.js` → 16/16 contracts pass
@@ -592,7 +592,7 @@ Pre-restructure tag pushed to origin = off-machine recovery.
 **Realistic failure modes & detection**:
 - Mid-move test failures → discovered at Step 10 (45min budget + 90-180min buffer)
 - Plugin manifest path breakage → discovered at Step 11 upgrade-over probe
-- Hook chain ordering change → discovered at Step 10 (all 23 hooks must fire)
+- Hook chain ordering change → discovered at Step 10 (all 24 hooks must fire)
 - Plugin discovers wrong files → discovered at Step 11 upgrade-over probe
 
 ## 14. Forcing Functions for Future Repo Split
@@ -614,7 +614,7 @@ Pre-restructure tag pushed to origin = off-machine recovery.
 - [ ] `pnpm -r test` matches pre-restructure unit count (108/108)
 - [ ] `bash tests/smoke-ht.sh` matches pre-restructure smoke count (116/116)
 - [ ] Fresh Claude Code session loads plugin without warnings
-- [ ] **All 23 hooks fire on no-op action** (architect MEDIUM expanded — was vague "all hooks")
+- [ ] **All 24 hooks fire on no-op action** (architect MEDIUM expanded — was vague "all hooks")
 - [ ] All 16 personas pass `packages/kernel/validators/contract-verifier.js`
 - [ ] `loom-recall.js` returns results on 10 fixture queries (Phase 1 Wave C baseline)
 - [ ] `.claude-plugin/manifest.json` validates against `packages/kernel/schema/plugin-manifest.schema.json`

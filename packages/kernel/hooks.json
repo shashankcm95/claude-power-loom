@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/session-reset.js",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/packages/kernel/hooks/lifecycle/session-reset.js",
             "timeout": 3
           }
         ]
@@ -19,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/prompt-enrich-trigger.js",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/packages/kernel/hooks/lifecycle/prompt-enrich-trigger.js",
             "timeout": 3
           }
         ]
@@ -29,7 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/session-self-improve-prompt.js",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/packages/kernel/hooks/lifecycle/session-self-improve-prompt.js",
             "timeout": 5
           }
         ]
@@ -42,7 +42,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/redirect-plan-mode-in-headless.js",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/packages/kernel/hooks/pre/redirect-plan-mode-in-headless.js",
             "timeout": 3
           }
         ]
@@ -52,7 +52,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/validators/verify-plan-gate.js",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/packages/kernel/hooks/pre/verify-plan-gate.js",
             "timeout": 5
           }
         ]
@@ -62,7 +62,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/route-decide-on-agent-spawn.js",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/packages/kernel/hooks/pre/route-decide-on-agent-spawn.js",
             "timeout": 6
           }
         ]
@@ -72,7 +72,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/contract-reminder-on-agent-spawn.js",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/packages/kernel/hooks/pre/contract-reminder-on-agent-spawn.js",
             "timeout": 5
           }
         ]
@@ -82,7 +82,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/fact-force-gate.js",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/packages/kernel/hooks/pre/fact-force-gate.js",
             "timeout": 5
           }
         ]
@@ -92,7 +92,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/config-guard.js",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/packages/kernel/hooks/pre/config-guard.js",
             "timeout": 5
           }
         ]
@@ -103,7 +103,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/validators/validate-yaml-frontmatter.js",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/packages/kernel/validators/validate-yaml-frontmatter.js",
             "timeout": 5
           }
         ]
@@ -113,7 +113,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/validators/validate-no-bare-secrets.js",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/packages/kernel/validators/validate-no-bare-secrets.js",
             "timeout": 5
           }
         ]
@@ -123,7 +123,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/validators/validate-frontmatter-on-skills.js",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/packages/kernel/validators/validate-frontmatter-on-skills.js",
             "timeout": 5
           }
         ]
@@ -133,7 +133,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/validators/validate-adr-drift.js",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/packages/kernel/validators/validate-adr-drift.js",
             "timeout": 5
           }
         ]
@@ -143,7 +143,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/validators/validate-kb-doc.js",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/packages/kernel/validators/validate-kb-doc.js",
             "timeout": 5
           }
         ]
@@ -154,7 +154,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/validate-config-redirect.js",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/packages/kernel/validators/validate-config-redirect.js",
             "timeout": 5
           }
         ]
@@ -166,7 +166,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/error-critic.js",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/packages/kernel/hooks/post/error-critic.js",
             "timeout": 5
           }
         ]
@@ -176,7 +176,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/kb-citation-gate.js",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/packages/kernel/hooks/post/kb-citation-gate.js",
             "timeout": 5
           }
         ]
@@ -187,7 +187,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/spawn-record.js",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/packages/kernel/spawn-state/spawn-record.js",
             "timeout": 5
           }
         ]
@@ -197,7 +197,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/validators/validate-plan-schema.js",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/packages/kernel/validators/validate-plan-schema.js",
             "timeout": 5
           }
         ]
@@ -209,7 +209,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre-compact-save.js",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/packages/kernel/hooks/lifecycle/pre-compact-save.js",
             "timeout": 10
           }
         ]
@@ -221,7 +221,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/console-log-check.js",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/packages/kernel/hooks/lifecycle/console-log-check.js",
             "timeout": 5
           }
         ]
@@ -231,7 +231,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/auto-store-enrichment.js",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/packages/kernel/hooks/lifecycle/auto-store-enrichment.js",
             "timeout": 10
           }
         ]
@@ -241,7 +241,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/session-end-nudge.js",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/packages/kernel/hooks/lifecycle/session-end-nudge.js",
             "timeout": 3
           }
         ]
@@ -252,7 +252,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/context-size-warn-stop.js",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/packages/kernel/hooks/lifecycle/context-size-warn-stop.js",
             "timeout": 5
           }
         ]
