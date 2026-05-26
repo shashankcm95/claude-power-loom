@@ -3,8 +3,8 @@
 **Status**: post-architect-pair-review revision. v1 preserved at `2026-05-25-phase-0-workspace-restructure-v1.md`.
 **Created**: 2026-05-25
 **Origin**: sister-Claude draft → same-session critique → v1 plan → architect pressure-test (3 CRITICAL + 8 HIGH + 6 MEDIUM + 3 LOW found) → v2 absorbs findings
-**Predecessor**: **v5.3 substrate synthesis (BLUEPRINT-LOCKED 2026-05-26)** at `swarm/thoughts/shared/design/v3.3-substrate-synthesis.md` — the locked spec input. No further blueprint amendments before Phase 0 begins.
-**Successor**: Phase 2 v3.0-alpha implementation lands in restructured packages. v5.3 §6.9 Operational Invariants become property-test targets in v3.0-alpha; suggested location `packages/kernel/_lib/invariants/`. v5.3 INV-A6-PolicyVersionedReplay flags a recommended K2 schema-additive update (`policy_version` field, ~5 LoC) — to be folded into v3.0-alpha K2 implementation work, not Phase 0.
+**Predecessor**: **v5.4 substrate synthesis (BLUEPRINT-LOCKED 2026-05-26)** at `swarm/thoughts/shared/design/v3.3-substrate-synthesis.md` — the locked spec input. **Category-B field-survey debt** (10 items) captured at `swarm/thoughts/shared/backlog/v3.1-v3.2-field-survey-debt.md` — Phase 0 does not interact with these; they activate in v3.0-alpha through v3.3 release windows. No further blueprint amendments before Phase 0 begins.
+**Successor**: Phase 2 v3.0-alpha implementation lands in restructured packages. v5.4 §6.9 Operational Invariants become property-test targets in v3.0-alpha; suggested location `packages/kernel/_lib/invariants/`. v5.4 INV-A6-PolicyVersionedReplay flags a recommended K2 schema-additive update (`policy_version` field, ~5 LoC) — to be folded into v3.0-alpha K2 implementation work, not Phase 0. Backlog items B7 (K9 cherry-pick latency benchmarks) and B9 (concurrency-strategy first-class naming) also activate in v3.0-alpha.
 **Phase**: phase-0-pre-substrate
 
 ## 0. Why Phase 0 — and what changed v1→v2
