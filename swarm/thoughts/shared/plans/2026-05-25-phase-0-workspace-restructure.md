@@ -3,8 +3,8 @@
 **Status**: post-architect-pair-review revision. v1 preserved at `2026-05-25-phase-0-workspace-restructure-v1.md`.
 **Created**: 2026-05-25
 **Origin**: sister-Claude draft → same-session critique → v1 plan → architect pressure-test (3 CRITICAL + 8 HIGH + 6 MEDIUM + 3 LOW found) → v2 absorbs findings
-**Predecessor**: v4 substrate synthesis at `swarm/thoughts/shared/design/v3.3-substrate-synthesis.md`
-**Successor**: Phase 2 v3.0-alpha implementation lands in restructured packages
+**Predecessor**: **v5.3 substrate synthesis (BLUEPRINT-LOCKED 2026-05-26)** at `swarm/thoughts/shared/design/v3.3-substrate-synthesis.md` — the locked spec input. No further blueprint amendments before Phase 0 begins.
+**Successor**: Phase 2 v3.0-alpha implementation lands in restructured packages. v5.3 §6.9 Operational Invariants become property-test targets in v3.0-alpha; suggested location `packages/kernel/_lib/invariants/`. v5.3 INV-A6-PolicyVersionedReplay flags a recommended K2 schema-additive update (`policy_version` field, ~5 LoC) — to be folded into v3.0-alpha K2 implementation work, not Phase 0.
 **Phase**: phase-0-pre-substrate
 
 ## 0. Why Phase 0 — and what changed v1→v2
