@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: node-api
+  namespace: portfolio-prod
+  labels:
+    app.kubernetes.io/name: node-api
+    app.kubernetes.io/instance: node-api-prod
+    app.kubernetes.io/component: api
+    app.kubernetes.io/part-of: portfolio-platform
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: node-api
+    app.kubernetes.io/instance: node-api-prod
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+  sessionAffinity: None

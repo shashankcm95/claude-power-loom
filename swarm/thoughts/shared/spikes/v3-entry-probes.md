@@ -14,10 +14,12 @@
 | P-DepthOne | depth-1 constraint for plugin sub-agents under v3.1 contract shape | ✅ DONE | PASS (tool-registry enforcement) | agent `a172fa167d2299f0d`; `p-depthone-findings.md`; §P-DepthOne |
 | P-Inject | `PreToolUse(Agent).updatedInput` rewrites tool_input; size limits | ✅ DONE | PASS (must wrap in hookSpecificOutput) | agent `ae7ad3affc4e2dee2`; §P-Inject |
 | P-Settings | settings.json `permissions.allow` applies to spawn-init's PreToolUse context for the spawned sub-agent | ✅ DONE | ⚠️ PARTIAL PASS (allow/deny not in payload) | probe-inject log; §P-Settings |
-| P-EscapeHatch | `LOOM_DISABLE_WORKTREE=1` actually bypasses K1 as documented | ⏸️ DEFERRED | blocked on K1 prototype existing | §Handoff |
+| P-EscapeHatch | `LOOM_DISABLE_WORKTREE=1` actually bypasses K1 as documented | ⏸️ DEFERRED | **DEFERRED-TO-V3.0-ALPHA** (untestable pre-K1; promoted to K1/K10 acceptance criterion) | §P-EscapeHatch |
 | P-HookChain | K8 composes with existing PreToolUse(Agent) hooks; execution order + cumulative-rewrite semantics | ✅ DONE | ⚠️ PARTIAL (no composition; K8 must be exclusive injector) | agent `afd40cab0c96200c7`; §P-HookChain |
 | P-WriteScope | spawned agent attempting to write outside its allocated worktree fails / blocked / detected | ✅ DONE | ❌ **FAIL — writes leak everywhere** | agent `a9b4956b00a618ac2`; `p-writescope-findings.md`; §P-WriteScope |
-| **OQ-11 decision** | full validators vs slim predicates for leaf criteria (2-3× LoC swing on v3.2) | ⏳ PENDING | — | — |
+| **OQ-11 decision** | full validators vs slim predicates for leaf criteria (2-3× LoC swing on v3.2) | ✅ DECIDED | **SLIM PREDICATES** (matches blueprint v4.2 §11 OQ-11 lock) | §OQ-11 |
+
+**Wave -1 exit gate (2026-05-26): SATISFIED.** All 7 probes have verdicts; OQ-11 decided (slim predicates); P-EscapeHatch dispositioned as a v3.0-alpha K1/K10 acceptance criterion (untestable until K1 exists). The lone FAIL (P-WriteScope) already forced the v3.0-alpha re-plan — K14 Write-Scope Enforcer added, A1 split into A1+A7 — absorbed into blueprint v5.4 (BLUEPRINT-LOCKED). **Phase 0 workspace restructure is unblocked.**
 
 ## Load-bearing assumptions under test
 
@@ -126,11 +128,15 @@ Hook input payload keys observed: `session_id, transcript_path, cwd, permission_
 
 **Hypothesis**: Setting `LOOM_DISABLE_WORKTREE=1` in the environment causes K1's worktree allocation to be bypassed — the sub-agent inherits the parent's working tree instead. K10 (the escape hatch) is empirically real, not just designed.
 
-**Method**: TBD.
+**Method**: N/A — **untestable in Wave -1.** `LOOM_DISABLE_WORKTREE` is a *Loom-controlled* env var that K1 would read to decide whether to allocate a worktree. K1 does not exist yet: worktree allocation today is Anthropic-native (the `isolation: "worktree"` flag on the Agent tool), and Loom does not gate it. There is therefore no Loom code path to disable and nothing for the env var to short-circuit. Probing it now would only confirm that an unimplemented mechanism is unimplemented.
 
-**Findings**: TBD.
+**Findings**: deferred to v3.0-alpha (once K1 lands the escape hatch becomes a real, testable code path).
 
-**Verdict**: TBD.
+**Verdict**: ⏸️ **DEFERRED-TO-V3.0-ALPHA** — promoted from a Wave -1 probe to a **K1/K10 implementation acceptance criterion**.
+
+**Acceptance criterion (carried into v3.0-alpha)**: once K1 orchestrates worktree allocation, a spawn invoked with `LOOM_DISABLE_WORKTREE=1` MUST inherit the parent's working tree (no worktree allocated) AND emit a Class-4 audit event recording the bypass, per K10's escape-hatch pattern. This is verified as part of v3.0-alpha's acceptance suite (§7 v3.0-alpha row: "escape hatch … empirically verified"), not as a Phase 0 dependency.
+
+**Why this does NOT block Phase 0**: Phase 0 is a mechanical workspace restructure (`git mv` + `_lib/` DAG refactor). It adds no kernel code and does not exercise the escape hatch. The deferral is orthogonal to the restructure.
 
 ---
 
@@ -231,7 +237,14 @@ A1 "Transactional Determinism — filesystem delta is the truth" was implicitly 
 
 **Trade-off**: full validators (~300-400 LoC per criterion, 5 criteria, ~1,500-2,000 LoC total) vs slim predicates (~50-80 LoC per criterion, ~250-400 LoC total). 2-3× LoC swing on the single largest v3.2 component.
 
-**Resolution**: TBD after probe results inform what runtime hooks are realistically composable.
+**Resolution (2026-05-26): ✅ DECIDED — SLIM PREDICATES.** Confirms and matches the blueprint v4.2 §11 OQ-11 lock (already BLUEPRINT-LOCKED through v5.4); this entry records the Wave -1 evidence behind that lock so the probe doc's exit gate is self-contained.
+
+**Wave -1 evidence supporting slim predicates**:
+- **P-HookChain** proved K8 must be the *exclusive* `updatedInput` injector (hooks do not compose; only one `updatedInput` is honored). There is no room for layered/chained validators in the PreToolUse path.
+- **P-WriteScope** forced K14 to own filesystem-layer write-scope detection — full validators would duplicate detection logic already required in K9 + K14.
+- Slim predicates (~250-400 LoC) compose cleanly with K8/K14; full validators (~1,500-2,000 LoC) would both duplicate that work and tighten the v3.2 effort table upward for no benefit.
+
+**Final lock** confirmed at v3.2 kickoff per the blueprint, but carried as the locked default into all intervening planning (v3.2 effort table already tightened to 1,200-1,600 LoC on this basis).
 
 ---
 
@@ -253,17 +266,17 @@ A1 "Transactional Determinism — filesystem delta is the truth" was implicitly 
 - ⚠️ P-Settings — PARTIAL PASS, hook payload has permission_mode but NOT allow/deny lists; K2 must read settings.json itself
 - ⚠️ P-HookChain — PARTIAL, hooks DO NOT compose; each sees original tool_input; only ONE updatedInput is honored. Forces OQ-16 (merge or split contract-reminder + K8).
 
-**Remaining**:
-- ⏸️ P-EscapeHatch — deferred to v3.0-alpha implementation (cannot probe LOOM_DISABLE_WORKTREE before K1 exists)
-- ⏳ OQ-11 decision — full validators vs slim predicates for v3.2 leaf criteria; can be decided now given probe data (recommendation below)
+**Remaining (both CLOSED 2026-05-26 — Wave -1 exit gate now SATISFIED)**:
+- ⏸️ P-EscapeHatch — **CLOSED as DEFERRED-TO-V3.0-ALPHA.** Untestable before K1 exists (no Loom-controlled worktree allocation to bypass); promoted to a K1/K10 acceptance criterion verified in v3.0-alpha's acceptance suite. Does not block Phase 0. See §P-EscapeHatch.
+- ⏳ OQ-11 decision — **CLOSED to SLIM PREDICATES**, matching the blueprint v4.2 §11 lock. See §OQ-11 for the Wave -1 evidence.
 
-**OQ-11 recommendation (informed by Wave -1)**:
+**OQ-11 decision rationale (informed by Wave -1; now recorded in §OQ-11)**:
 
-The probe data suggests **slim predicates** are the right choice for v3.2:
+The probe data confirms **slim predicates** for v3.2:
 - P-HookChain showed K8 must be exclusive injector — no room for layered validators
 - P-WriteScope showed K14 needs filesystem-layer detection, NOT validator chains
 - Slim predicates (~250-400 LoC total) compose with K8/K14 cleanly; full validators (~1,500-2,000 LoC) would duplicate detection logic already needed in K9+K14
-- Defer the final lock to v3.2 kickoff, but provisional answer: **SLIM PREDICATES**. Carrying this as a strong default into v3.2.
+- Final lock confirmed at v3.2 kickoff per blueprint; carried as the locked default (v3.2 effort table already at 1,200-1,600 LoC on this basis).
 
 **Self-improve candidates from this wave**:
 - Always check session-root vs working-repo BEFORE designing isolation-dependent primitives. Worktrees bind to session-root, not to the directory you're "working in".
