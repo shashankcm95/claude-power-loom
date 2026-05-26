@@ -91,127 +91,213 @@ install_agents() {
 }
 
 install_rules() {
+  # Phase 0 (v3.0-alpha): source moved rules/ → packages/skills/rules/. Install
+  # target unchanged (~/.claude/rules/toolkit/) — Claude Code convention.
+  local rules_src="$SCRIPT_DIR/packages/skills/rules"
   if $DRY_RUN; then
     echo "[DRY RUN] Rules:"
-    find "$SCRIPT_DIR/rules" -name '*.md' | while read -r f; do
-      local rel="${f#"$SCRIPT_DIR"/rules/}"
+    find "$rules_src" -name '*.md' | while read -r f; do
+      local rel="${f#"$rules_src"/}"
       diff_component "$f" "$CLAUDE_DIR/rules/toolkit/$rel" "rules/$rel"
     done
     return
   fi
   echo "Installing rules..."
   mkdir -p "$CLAUDE_DIR/rules/toolkit"
-  cp -r "$SCRIPT_DIR"/rules/* "$CLAUDE_DIR/rules/toolkit/"
+  cp -r "$rules_src"/* "$CLAUDE_DIR/rules/toolkit/"
   echo "  -> Rules installed to ~/.claude/rules/toolkit/"
 }
 
 install_hooks() {
+  # Phase 0 (v3.0-alpha): mirror the new packages/kernel + packages/runtime layout
+  # to ~/.claude/packages/. The plugin install path uses ${CLAUDE_PLUGIN_ROOT} so
+  # it resolves from the plugin-managed source tree directly — this legacy path
+  # mirror is for shell-only / CI use.
+  #
+  # settings-reference.json (already updated in Step 5) points hook commands at
+  # HOME_DIR/.claude/packages/kernel/hooks/... so this mirror is the layout users
+  # need for the legacy install path to actually work.
+  local k_src="$SCRIPT_DIR/packages/kernel"
+  local r_src="$SCRIPT_DIR/packages/runtime"
+  local k_dst="$CLAUDE_DIR/packages/kernel"
+  local r_dst="$CLAUDE_DIR/packages/runtime"
+
   if $DRY_RUN; then
-    echo "[DRY RUN] Hooks:"
-    for f in "$SCRIPT_DIR"/hooks/scripts/*.js; do
-      diff_component "$f" "$CLAUDE_DIR/hooks/scripts/$(basename "$f")" "hooks/scripts/$(basename "$f")"
+    echo "[DRY RUN] Hooks (kernel hooks + validators):"
+    find "$k_src/hooks" -name '*.js' 2>/dev/null | while read -r f; do
+      local rel="${f#"$k_src"/}"
+      diff_component "$f" "$k_dst/$rel" "packages/kernel/$rel"
     done
+    find "$k_src/validators" -name '*.js' 2>/dev/null | while read -r f; do
+      diff_component "$f" "$k_dst/validators/$(basename "$f")" "packages/kernel/validators/$(basename "$f")"
+    done
+    echo "[DRY RUN] Note: --diff --hooks shows kernel/hooks + kernel/validators only."
+    echo "[DRY RUN]       Full install also copies kernel/{_lib,recall,spawn-state,algorithms,schema},"
+    echo "[DRY RUN]       runtime/{orchestration,contracts,personas,schema}, root scripts/,"
+    echo "[DRY RUN]       and back-compat ~/.claude/scripts/{loom-recall,self-improve-store,prompt-pattern-store}.js."
     return
   fi
-  echo "Installing hooks..."
-  mkdir -p "$CLAUDE_DIR/hooks/scripts"
-  # Phase-G10: nullglob prevents silent abort under set -e if dir is empty
+
+  echo "Installing kernel substrate (hooks + validators + _lib + recall + spawn-state + algorithms)..."
+
+  # 1. kernel/hooks/ — split into pre/post/lifecycle/ + hooks/_lib/
+  mkdir -p "$k_dst/hooks/pre" "$k_dst/hooks/post" "$k_dst/hooks/lifecycle" "$k_dst/hooks/_lib"
   shopt -s nullglob
-  hook_files=("$SCRIPT_DIR"/hooks/scripts/*.js)
+  for sub in pre post lifecycle _lib; do
+    files=("$k_src"/hooks/$sub/*.js)
+    if [ ${#files[@]} -gt 0 ]; then
+      cp "${files[@]}" "$k_dst/hooks/$sub/"
+      # _lib is library code — no +x; hook entrypoints are +x
+      [ "$sub" != "_lib" ] && chmod +x "$k_dst"/hooks/$sub/*.js
+    fi
+  done
   shopt -u nullglob
-  if [ ${#hook_files[@]} -eq 0 ]; then
-    echo "  WARNING: no hook scripts found in $SCRIPT_DIR/hooks/scripts/"
-    return
+
+  # 2. kernel/validators/ (formerly hooks/scripts/validators/ — now hosts contract-verifier.js too)
+  mkdir -p "$k_dst/validators"
+  shopt -s nullglob
+  validator_files=("$k_src"/validators/*.js)
+  shopt -u nullglob
+  if [ ${#validator_files[@]} -gt 0 ]; then
+    cp "${validator_files[@]}" "$k_dst/validators/"
+    chmod +x "$k_dst"/validators/*.js
   fi
-  cp "${hook_files[@]}" "$CLAUDE_DIR/hooks/scripts/"
-  chmod +x "$CLAUDE_DIR"/hooks/scripts/*.js
-  # H.7.12: also copy validators/ subdirectory (and _lib/ if present).
-  # Previously only top-level *.js were copied — the validator family at
-  # validators/ was unreachable via legacy installer + smoke tests.
-  if [ -d "$SCRIPT_DIR/hooks/scripts/validators" ]; then
-    mkdir -p "$CLAUDE_DIR/hooks/scripts/validators"
-    shopt -s nullglob
-    validator_files=("$SCRIPT_DIR"/hooks/scripts/validators/*.js)
-    shopt -u nullglob
-    if [ ${#validator_files[@]} -gt 0 ]; then
-      cp "${validator_files[@]}" "$CLAUDE_DIR/hooks/scripts/validators/"
-      chmod +x "$CLAUDE_DIR"/hooks/scripts/validators/*.js
+
+  # 3. kernel/_lib/ (shared substrate primitives — frontmatter, lock, atomic-write, etc.)
+  mkdir -p "$k_dst/_lib"
+  shopt -s nullglob
+  klib_files=("$k_src"/_lib/*.js)
+  shopt -u nullglob
+  if [ ${#klib_files[@]} -gt 0 ]; then
+    cp "${klib_files[@]}" "$k_dst/_lib/"
+  fi
+
+  # 4. kernel/recall/ + kernel/spawn-state/ + kernel/algorithms/ + kernel/schema/
+  for sub in recall spawn-state algorithms schema; do
+    if [ -d "$k_src/$sub" ]; then
+      mkdir -p "$k_dst/$sub"
+      shopt -s nullglob
+      sub_files=("$k_src"/$sub/*)
+      shopt -u nullglob
+      if [ ${#sub_files[@]} -gt 0 ]; then
+        cp -r "$k_src"/$sub/* "$k_dst/$sub/"
+        find "$k_dst/$sub" -name '*.js' -exec chmod +x {} \;
+      fi
     fi
-  fi
-  if [ -d "$SCRIPT_DIR/hooks/scripts/_lib" ]; then
-    mkdir -p "$CLAUDE_DIR/hooks/scripts/_lib"
-    shopt -s nullglob
-    lib_files=("$SCRIPT_DIR"/hooks/scripts/_lib/*.js)
-    shopt -u nullglob
-    if [ ${#lib_files[@]} -gt 0 ]; then
-      cp "${lib_files[@]}" "$CLAUDE_DIR/hooks/scripts/_lib/"
+  done
+
+  # 5. kernel/hooks.json + kernel/config-guard-patterns.json + kernel/settings-reference.json
+  for f in hooks.json config-guard-patterns.json settings-reference.json; do
+    [ -f "$k_src/$f" ] && cp "$k_src/$f" "$k_dst/$f"
+  done
+
+  # 6. runtime/ (HETS orchestration — was scripts/agent-team/)
+  echo "Installing runtime substrate (HETS orchestration + contracts + personas)..."
+  mkdir -p "$r_dst/orchestration/identity" "$r_dst/orchestration/doctor/probes" \
+           "$r_dst/orchestration/aggregate" "$r_dst/contracts" "$r_dst/personas" "$r_dst/schema"
+  shopt -s nullglob
+  # orchestration top-level .js + .sh
+  for f in "$r_src"/orchestration/*.js "$r_src"/orchestration/*.sh; do
+    [ -f "$f" ] && cp "$f" "$r_dst/orchestration/"
+  done
+  find "$r_dst/orchestration" -maxdepth 1 -name '*.js' -exec chmod +x {} \;
+  find "$r_dst/orchestration" -maxdepth 1 -name '*.sh' -exec chmod +x {} \;
+  # orchestration nested subdirs
+  for sub in identity aggregate; do
+    sub_files=("$r_src"/orchestration/$sub/*.js)
+    if [ ${#sub_files[@]} -gt 0 ]; then
+      cp "${sub_files[@]}" "$r_dst/orchestration/$sub/"
+      chmod +x "$r_dst"/orchestration/$sub/*.js
     fi
+  done
+  # doctor/probes nested
+  probe_files=("$r_src"/orchestration/doctor/probes/*.js)
+  if [ ${#probe_files[@]} -gt 0 ]; then
+    cp "${probe_files[@]}" "$r_dst/orchestration/doctor/probes/"
+    chmod +x "$r_dst"/orchestration/doctor/probes/*.js
   fi
-  # Phase D: also copy config-guard-patterns.json (data file used by config-guard.js)
-  if [ -f "$SCRIPT_DIR/hooks/config-guard-patterns.json" ]; then
-    cp "$SCRIPT_DIR/hooks/config-guard-patterns.json" "$CLAUDE_DIR/hooks/"
-    echo "  -> config-guard-patterns.json installed"
-  fi
-  # Phase F3: install scripts/ (CLI utilities, not hooks)
+  # contracts + personas + schema
+  for f in "$r_src"/contracts/*.json; do
+    [ -f "$f" ] && cp "$f" "$r_dst/contracts/"
+  done
+  for f in "$r_src"/personas/*.md; do
+    [ -f "$f" ] && cp "$f" "$r_dst/personas/"
+  done
+  for f in "$r_src"/schema/*; do
+    [ -f "$f" ] && cp "$f" "$r_dst/schema/"
+  done
+  shopt -u nullglob
+
+  # 7. Plugin-level CLI scripts at scripts/ root (library, library-migrate, generate-persona-agents, etc.)
   if [ -d "$SCRIPT_DIR/scripts" ]; then
     mkdir -p "$CLAUDE_DIR/scripts"
-    for f in "$SCRIPT_DIR"/scripts/*.js; do
+    shopt -s nullglob
+    for f in "$SCRIPT_DIR"/scripts/*.js "$SCRIPT_DIR"/scripts/*.sh; do
       [ -f "$f" ] && cp "$f" "$CLAUDE_DIR/scripts/" && chmod +x "$CLAUDE_DIR/scripts/$(basename "$f")"
     done
-    for f in "$SCRIPT_DIR"/scripts/*.sh; do
-      [ -f "$f" ] && cp "$f" "$CLAUDE_DIR/scripts/" && chmod +x "$CLAUDE_DIR/scripts/$(basename "$f")"
-    done
+    shopt -u nullglob
     echo "  -> CLI scripts installed to $CLAUDE_DIR/scripts/"
   fi
-  # publish-polish-H.0: install scripts/agent-team/ (HETS substrate — was previously
-  # only synced via per-phase manual cp; legacy installer now mirrors it explicitly).
-  # Plugin install path resolves these via ${CLAUDE_PLUGIN_ROOT} so it doesn't need
-  # this step — but legacy installer users now get the HETS infrastructure too.
-  if [ -d "$SCRIPT_DIR/scripts/agent-team" ]; then
-    mkdir -p "$CLAUDE_DIR/scripts/agent-team/_lib"
-    for f in "$SCRIPT_DIR"/scripts/agent-team/*.js; do
-      [ -f "$f" ] && cp "$f" "$CLAUDE_DIR/scripts/agent-team/" && chmod +x "$CLAUDE_DIR/scripts/agent-team/$(basename "$f")"
-    done
-    if [ -d "$SCRIPT_DIR/scripts/agent-team/_lib" ]; then
-      for f in "$SCRIPT_DIR"/scripts/agent-team/_lib/*.js; do
-        [ -f "$f" ] && cp "$f" "$CLAUDE_DIR/scripts/agent-team/_lib/"
-      done
+
+  # 7b. Back-compat for legacy ~/.claude/scripts/ entrypoints (Phase 0 transition).
+  # Scripts that moved kernel-side (loom-recall, self-improve-store, prompt-pattern-store)
+  # are still referenced by their legacy paths in:
+  #   - 20+ skill SKILL.md docs (packages/skills/library/*/SKILL.md)
+  #   - Persona briefs (packages/runtime/personas/*.md)
+  #   - Global rules (packages/skills/rules/core/self-improvement.md)
+  #   - The SessionStart self-improve queue injection
+  # Updating all those references is Step 10 path-fix work. Until then, dual-install
+  # these specific entrypoints so legacy callers resolve. The kernel-side copies (step 4
+  # above) are the canonical install; these are duplicates for back-compat.
+  for src_rel in "packages/kernel/recall/loom-recall.js" \
+                  "packages/kernel/spawn-state/self-improve-store.js" \
+                  "packages/kernel/spawn-state/prompt-pattern-store.js"; do
+    if [ -f "$SCRIPT_DIR/$src_rel" ]; then
+      cp "$SCRIPT_DIR/$src_rel" "$CLAUDE_DIR/scripts/$(basename "$src_rel")"
+      chmod +x "$CLAUDE_DIR/scripts/$(basename "$src_rel")"
     fi
-    echo "  -> HETS scripts installed to $CLAUDE_DIR/scripts/agent-team/"
-  fi
-  echo "  -> Hook scripts installed"
+  done
+  echo "  -> Back-compat ~/.claude/scripts/ entrypoints installed (loom-recall, self-improve-store, prompt-pattern-store)"
+
+  echo "  -> Kernel + runtime substrate installed to $CLAUDE_DIR/packages/"
   echo ""
   echo "  NOTE: Hook configuration must be manually merged."
-  echo "  See hooks/settings-reference.json for the configuration template."
+  echo "  See packages/kernel/settings-reference.json for the configuration template."
   echo "  Replace HOME_DIR with your actual home directory path."
 }
 
 install_commands() {
+  # Phase 0 (v3.0-alpha): source moved commands/ → packages/skills/commands/.
+  local commands_src="$SCRIPT_DIR/packages/skills/commands"
   if $DRY_RUN; then
     echo "[DRY RUN] Commands:"
-    for f in "$SCRIPT_DIR"/commands/*.md; do
+    for f in "$commands_src"/*.md; do
       diff_component "$f" "$CLAUDE_DIR/commands/$(basename "$f")" "commands/$(basename "$f")"
     done
     return
   fi
   echo "Installing commands..."
   mkdir -p "$CLAUDE_DIR/commands"
-  cp "$SCRIPT_DIR"/commands/*.md "$CLAUDE_DIR/commands/"
-  echo "  -> $(ls "$SCRIPT_DIR"/commands/*.md | wc -l | tr -d ' ') commands installed"
+  cp "$commands_src"/*.md "$CLAUDE_DIR/commands/"
+  echo "  -> $(ls "$commands_src"/*.md | wc -l | tr -d ' ') commands installed"
 }
 
 install_skills() {
+  # Phase 0 (v3.0-alpha): source moved skills/ → packages/skills/library/.
+  # Install target preserves the original ~/.claude/skills/<name>/SKILL.md
+  # convention (Claude Code skill discovery is library-flat).
+  local skills_src="$SCRIPT_DIR/packages/skills/library"
   if $DRY_RUN; then
     echo "[DRY RUN] Skills:"
-    find "$SCRIPT_DIR/skills" -name 'SKILL.md' | while read -r f; do
-      local rel="${f#"$SCRIPT_DIR"/}"
-      diff_component "$f" "$CLAUDE_DIR/$rel" "$rel"
+    find "$skills_src" -name 'SKILL.md' | while read -r f; do
+      local rel="${f#"$skills_src"/}"
+      diff_component "$f" "$CLAUDE_DIR/skills/$rel" "skills/$rel"
     done
     return
   fi
   echo "Installing skills..."
   mkdir -p "$CLAUDE_DIR/skills"
-  cp -r "$SCRIPT_DIR"/skills/* "$CLAUDE_DIR/skills/"
+  cp -r "$skills_src"/* "$CLAUDE_DIR/skills/"
   echo "  -> Skills installed to ~/.claude/skills/"
 }
 
