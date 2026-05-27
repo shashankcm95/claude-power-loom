@@ -134,9 +134,9 @@ Risk classification: **CRITICAL** = LIVE substrate hook touched; **HIGH** = new 
 | `tests/unit/kernel/_lib/_test-harness.js` | MODIFY | MEDIUM | F6: real computeIdempotencyKey in synthesizeChain; F15: atomic writeWAL; F23: code-path-only injection | 2 |
 | `tests/unit/kernel/_lib/_fs-watch-harness.js` | NEW | MEDIUM | Injectable fs-watch event emitter (~150-300 LoC) | 2 |
 | `tests/unit/kernel/_lib/_crash-harness.js` | NEW | MEDIUM | Kernel-crash-mid-write injection (~150-250 LoC); INV-A9 critical-path | 2 |
-| `packages/kernel/_lib/k9-promote-deltas.js` | NEW | **CRITICAL** | K9 cherrypick + reverse-cherrypick journal + CWE-22 + F11 conflict-abort + F12 MAX_EVIDENCE_CHAIN_DEPTH (~650-1,050 LoC). **Verify-plan PRINCIPLE (jade) — 800-LoC ceiling**: at HIGH-end estimate this breaches fundamentals.md 800-LoC file limit. **Pre-authorized split** if impl-actual exceeds 700 LoC at PR finalization: `k9-path-guard.js` (CWE-22 validation, ~150-250), `k9-promote-deltas.js` (cherrypick orchestration, ~300-450), `k9-journal.js` (reverse-cherrypick journal, ~200-350). Implementer decides at PR-prep time; SRP per file. | 3 |
+| `packages/kernel/_lib/k9-promote-deltas.js` | NEW | **CRITICAL** | K9 cherrypick + reverse-cherrypick journal + CWE-22 + F11 conflict-abort + F12 MAX_EVIDENCE_CHAIN_DEPTH (~650-1,050 LoC). **Verify-plan PRINCIPLE (jade) — 800-LoC ceiling**: at HIGH-end estimate this breaches fundamentals.md 800-LoC file limit. **Mandatory split (reviewer amendment 2026-05-27)** — trigger moved from "impl-actual exceeds 700 LoC at PR-finalization" to **"projected impl-LoC exceeds 700 at end of TDD Phase 1 (failing tests written + scaffolding stubs)"**. Split into `k9-path-guard.js` (CWE-22 validation, ~150-250), `k9-promote-deltas.js` (cherrypick orchestration, ~300-450), `k9-journal.js` (reverse-cherrypick journal, ~200-350). LoC projection method: count test-fixture cases × average impl-LoC-per-fixture from comparable existing primitives (atomic-write.js ratio is ~3 impl LoC per test case for substrate code). Earlier trigger prevents impl-then-refactor waste. Implementer SHOULD pause Phase 3 (impl-to-green) until split decision recorded; split decision records to ADR-0010. | 3 |
 | `tests/fixtures/k9/cwe-22/*` | NEW | HIGH | 5-category × 4 = 20 path-traversal fixtures + 4 semantic-invalidity fixtures + 6th conflict-bailout category | 3 |
-| `packages/kernel/_lib/k14-write-scope.js` | NEW | **CRITICAL** | K14 snapshot algorithm + tail-window + symlink/TOCTOU (~500-900 LoC). **Verify-plan PRINCIPLE (jade)**: at HIGH-end approaches 800-LoC ceiling. **Pre-authorized split** if impl-actual exceeds 700 LoC: `k14-snapshot.js` (snapshot + hash, ~200-300), `k14-tail-window.js` (timer + tail logic, ~150-250), `k14-symlink-guard.js` (TOCTOU + symlink-race, ~150-200). | 4 |
+| `packages/kernel/_lib/k14-write-scope.js` | NEW | **CRITICAL** | K14 snapshot algorithm + tail-window + symlink/TOCTOU (~500-900 LoC). **Verify-plan PRINCIPLE (jade)**: at HIGH-end approaches 800-LoC ceiling. **Mandatory split (reviewer amendment 2026-05-27)** — trigger moved from "impl-actual exceeds 700 LoC" to **"projected impl-LoC exceeds 700 at end of TDD Phase 1"** (same method as K9 above). Split into `k14-snapshot.js` (snapshot + hash, ~200-300), `k14-tail-window.js` (timer + tail logic, ~150-250), `k14-symlink-guard.js` (TOCTOU + symlink-race, ~150-200). Same Phase-3 pause + ADR-0010 recording discipline. | 4 |
 | `packages/kernel/spawn-state/post-spawn-resolver.js` | NEW | **CRITICAL** | Per Decision 1: 5-path state machine resolver (~120-180 LoC); union audit-log emission | 4 |
 | `packages/kernel/spawn-state/recovery-sweep.js` | NEW | **CRITICAL** | F3 + F20: sweep holds K13 lock; tail_window_close_at.txt anchor; recovery_sweep sentinel | 4 |
 | `tests/fixtures/k14/violations/*` | NEW | HIGH | 4 violation classes × 3 transports = 12 fixtures + F7 parent-scope false-positive case + F19 default-empty advisory case | 4 |
@@ -275,7 +275,25 @@ Risk classification: **CRITICAL** = LIVE substrate hook touched; **HIGH** = new 
 **Depends on**: 2 merged (uses K7 path-canonicalize + `_crash-harness.js`).
 **TDD-treatment**: MANDATORY (substrate-fundament ≥80 LoC + behavior change).
 
-**Verify-plan ROUND 2 FAIL (ari) resolution — K9 ships DORMANT**: K9 module + tests land in PR 3 but NO production import path uses K9 in this PR. Only test files in `tests/unit/kernel/_lib/k9-promote-deltas.test.js` (and K9 CWE-22 fixtures) import the module. The first production importer is `post-spawn-resolver.js` which ships in PR 4. Why this matters: if PR 4 stalls (review, hotfix, holiday), K9 sits on main as ~700-1,050 LoC of unimported code — carrying cost is real but no half-shipped behavior risk. Pre-merge probe for PR 3: `grep -r "require.*k9-promote-deltas" packages/ | grep -v "tests/"` returns zero hits (asserts dormancy).
+**Verify-plan ROUND 2 FAIL (ari) resolution — K9 ships DORMANT**: K9 module + tests land in PR 3 but NO production import path uses K9 in this PR. Only test files in `tests/unit/kernel/_lib/k9-promote-deltas.test.js` (and K9 CWE-22 fixtures) import the module. The first production importer is `post-spawn-resolver.js` which ships in PR 4. Why this matters: if PR 4 stalls (review, hotfix, holiday), K9 sits on main as ~700-1,050 LoC of unimported code — carrying cost is real but no half-shipped behavior risk.
+
+**Reviewer amendment 2026-05-27 — dormancy is a merge-blocking CI gate, NOT advisory**. PR 3 CI workflow adds a new job `dormancy-assertion-k9` (or extends `kernel-property-tests` with a pre-test step) that runs:
+
+```bash
+# Must return zero hits; any hit means K9 is being imported by production code
+# (anything outside tests/), which violates the ship-dormant contract
+hits=$(grep -r "require.*k9-promote-deltas\|from.*k9-promote-deltas" packages/ \
+  | grep -v "tests/" \
+  | grep -v "^packages/kernel/_lib/k9-promote-deltas.js" || true)
+if [ -n "$hits" ]; then
+  echo "::error::K9 dormancy violation — production import detected:"
+  echo "$hits"
+  exit 1
+fi
+echo "K9 dormancy verified: zero production importers."
+```
+
+CI job failure BLOCKS the PR merge button. PR 3 description includes a checkbox: `[ ] dormancy-assertion-k9 CI job green (manually verified by reviewer)`. PR 4 deletes this CI job in the same commit that adds the first production importer (post-spawn-resolver), so the gate self-removes when dormancy ends.
 
 **Files** (PR=3 rows):
 - `_lib/k9-promote-deltas.js` (NEW; K9 cherrypick + journal + CWE-22 + F11 + F12)
@@ -304,6 +322,14 @@ Risk classification: **CRITICAL** = LIVE substrate hook touched; **HIGH** = new 
 **Risk**: **CRITICAL**. K9↔K14 contract glue lands here.
 **Depends on**: 3 merged.
 **TDD-treatment**: MANDATORY.
+
+**Reviewer amendment 2026-05-27 — PR 4 runbook-familiarity pre-merge gate**: PR 4 introduces state-machine modifications that interact with LIVE WAL writes. The Rollback Strategy section's "Operator runbook for PR 4 revert specifically" enumerates the procedure (revert + manual ABORTED record emission for in-flight PENDING records + LIVE-session restart + post-revert smoke test). **Before PR 4 can merge**:
+1. PR 4 description includes a `[ ]` checkbox: "I (designated rollback operator for v3.0-alpha) have read packages/specs/plans/2026-05-27-phase-1-alpha-v3.0-alpha-kernel.md §Rollback Strategy operator runbook and acknowledge the manual ABORTED-record injection procedure."
+2. At least 2 named reviewers (project owners) must check this box explicitly in the PR review.
+3. CI workflow adds a pre-merge step: `gh pr view <PR-4> --json reviews | jq '.reviews | map(select(.body | contains("Runbook acknowledged"))) | length >= 2'` — must return true.
+4. ADR-0010 captures the runbook AS the canonical reference (not just plan-file prose), so even after the plan PR is squashed/merged, the runbook persists as an ADR.
+
+Why: PR 4 is the only PR in Phase 1-alpha whose rollback requires manual filesystem operations on operator runtime (WAL ABORTED-record emission). All other PR reverts are pure git operations. The pre-merge gate ensures rollback-readiness is verified BEFORE the substrate is exposed to PR 4's risk surface.
 
 **Files** (PR=4 rows):
 - `_lib/k14-write-scope.js` (NEW; K14 snapshot + tail-window + symlink/TOCTOU)
@@ -608,3 +634,38 @@ The /verify-plan skill explicitly says "recursive verification is over-engineeri
 ### Aggregate round-2 verdict: **READY for USER GATE 1**
 
 All FAIL-class findings resolved (5 convergent + 3 ari-specific + 1 nova-specific = 9 distinct FAILs across rounds 1+2). 11 FLAGs addressed inline. Plan now in shippable shape; no remaining blockers.
+
+## Reviewer Amendments (2026-05-27 — post-verify, pre-USER-GATE-1)
+
+User-supplied reviewer notes after round 2 closed. Three constraints tightening enforcement of existing plan provisions (no new design decisions; elevates implicit checks to explicit blocking gates).
+
+### RA-1 — K9/K14 split trigger moved earlier (TDD Phase 1, not PR-finalization)
+
+**Original (rounds 1+2 outcome)**: pre-authorized split fires at PR-finalization if impl-actual exceeds 700 LoC.
+**Amended**: split decision fires at end of TDD Phase 1 (failing tests + scaffolding stubs written, before impl-to-green) based on **projected** impl-LoC (test-fixture count × ~3 impl-LoC-per-fixture, calibrated to atomic-write.js ratio). Phase 3 (impl-to-green) pauses until split decision is recorded to ADR-0010.
+
+**Rationale**: catching the breach BEFORE impl wastes less work. The original PR-finalization trigger meant the implementer might write 1,050 LoC, then refactor — wasteful. TDD-stage trigger uses projection so the split shape is locked before impl invests heavily.
+
+**Files touched**: Files To Modify table — K9 row + K14 row (LoC-ceiling notes updated to reflect TDD-stage trigger).
+
+### RA-2 — K9 dormancy probe elevated to merge-blocking CI gate
+
+**Original (round 2 outcome)**: "Pre-merge probe for PR 3: `grep -r ...` returns zero hits (asserts dormancy)." Advisory.
+**Amended**: new CI job `dormancy-assertion-k9` runs on PR 3 specifically; failure BLOCKS the merge button. PR 3 description includes a manual-verification checkbox. PR 4 deletes the CI job in the same commit that introduces the first production importer, so the gate self-removes when dormancy ends.
+
+**Rationale**: K9 dormancy is the load-bearing safety property that prevents PR 3 from leaving main in a half-shipped state. Advisory probes drift; merge-blocking gates don't.
+
+**Files touched**: PR 3 phase section (dormancy paragraph rewritten with full CI snippet).
+
+### RA-3 — PR 4 runbook-familiarity pre-merge gate
+
+**Original (round 2 outcome)**: Rollback Strategy section includes a PR 4 operator runbook for WAL ABORTED-record emission.
+**Amended**: PR 4 cannot merge until at least 2 named reviewers explicitly check a runbook-acknowledgment checkbox in the PR description. CI verifies via `gh pr view ... | jq` query. ADR-0010 becomes the canonical home of the runbook (persists post-plan-PR-squash).
+
+**Rationale**: PR 4 is the only Phase 1-alpha PR whose rollback requires manual filesystem operations on operator runtime (other reverts are pure git). Pre-merge runbook acknowledgment ensures rollback-readiness BEFORE the substrate is exposed to the risk surface.
+
+**Files touched**: PR 4 phase section (new "Reviewer amendment 2026-05-27" subsection at top of phase).
+
+### RA aggregate
+
+Three amendments. Zero new design decisions. All three tighten existing provisions from advisory → blocking, OR move existing checks earlier in the workflow where they cost less to act on. No re-verification round needed (all amendments add gates, don't change design). Plan stays at READY verdict.
