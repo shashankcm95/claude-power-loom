@@ -127,7 +127,7 @@ v5.4 hard-codes discovery paths across hooks, validators, and recall-CLI. v6 int
 - **Two new ADRs** (ADR-0013 endorsement-derived-view; ADR-0014 memory-root-pointer).
 - **One new §10b entry** (endorsement-records-as-primitive rejected, with reasoning).
 
-This is honestly a MAJOR-tier change. v6 is not a PATCH amendment to v5.4; it is the substrate's first integrated transactional-memory specification. The v3.0-alpha K2 reservation PR scope (~180-285 LoC, ~6-9h) sits inside the existing budget envelope; full v3.0-alpha through v3.4 hour ranges are unchanged from v5.4 BLUEPRINT-LOCKED.
+This is honestly a MAJOR-tier change. v6 is not a PATCH amendment to v5.4; it is the substrate's first integrated transactional-memory specification. **v3.0-alpha K2 reservation PR honest scope (Round-3d update per 5-persona pair-review C1)**: ~260-405 LoC / ~8-12h — includes memory-root.js reader (130-205) + transaction-record envelope schema-additive fields (~50-80) + K2.b settings.json resolution (~80-120). The prior "~180-285 LoC / ~6-9h" figure omitted K2.b. Either ship K2.b as a sibling PR (lower bound stays at ~180 for the pointer-only PR) OR bundle K2.b into the K2 reservation PR (260-405 honest). Full v3.0-alpha through v3.4 hour ranges intended unchanged from v5.4 BLUEPRINT-LOCKED, but HD-3 disclosure (§6.11) acknowledges v3.0-alpha row may need expansion at v3.0-alpha LOCK.
 
 ### v6 IS / v6 is NOT
 
@@ -140,6 +140,7 @@ This is honestly a MAJOR-tier change. v6 is not a PATCH amendment to v5.4; it is
 - Final Phase-1-alpha implementation specification (algorithm signatures + contract schemas are v3.0-alpha through v3.4 deliverables).
 - A primitive-implementation document (e.g., reverse-cherrypick journal format is still a v3.0-alpha deliverable, not specified at blueprint level).
 - Free of open questions (~17-19 OQs after v6 absorptions; see §11).
+- **A defense against local filesystem tampering** (Round-3d explicit declaration per 5-persona pair-review C5): v3.0-alpha assumes a trusted local filesystem. An attacker with local filesystem write access CAN rewrite WAL records, replace `memory-root.json`, or insert forged COMMITTED records — and v3.0-alpha will NOT detect this. Tamper-evidence (cryptographic chain anchoring, signed WAL records, or external-anchor hash log) is OQ-20, deferred to v3.1 threat-model ADR. The honest threat model for v3.0-alpha is: local-trust-anchored; defends against agent-level out-of-scope writes and partial-failure recovery, NOT against host-level filesystem tampering.
 
 ---
 
@@ -474,6 +475,20 @@ These three sentinels are the ONLY admissible empty-chain bootstrap-evidence for
 
 **Implementation contract**: K9 pre-commit gate runs after K5/K7 schema validation, before atomic rename. Algorithm: for each `evidence_ref` in the proposed transaction, walk the chain from `prev_state_hash` backward; reject if any ref is not found. Performance: O(|evidence_refs| × |chain-depth|); chain-depth is bounded by R10 budget envelope + serial-only K13.
 
+**Debuggability — `abort_detail` field on K9-rejected records (Round-3d Patch per persona-Maya M3, ~10 LoC schema-additive)**: when K9 pre-commit rejects with `commit_outcome: ABORTED, abort_reason: "k9-pre-commit-rejected"`, the substrate MUST also populate an `abort_detail` block with structured diagnostic data:
+
+```yaml
+abort_detail:
+  rule_violated: "INV-21-EvidenceLinkPreCommit" | "INV-A10-BootstrapSentinelMismatch" | "INV-K2-SchemaForwardCompat" | ...
+  failing_ref: "<id of the evidence_ref that failed validation>" | null
+  failing_field: "evidence_refs" | "prev_state_hash" | "operation_class" | ...
+  chain_depth_walked: <integer>
+  detection_phase: "schema-validate" | "evidence-link" | "bootstrap-sentinel" | "chain-walk"
+  human_message: "<one-sentence human-readable explanation>"
+```
+
+Without `abort_detail`, a developer debugging a v3.0-alpha spawn failure has only the string `"k9-pre-commit-rejected"` and must re-read source to figure out WHY K9 rejected. With `abort_detail`, the WAL itself answers the diagnostic question. The field is schema-additive (per INV-K2-SchemaForwardCompat); v3.0-alpha emits it; older readers tolerate it as an unknown field.
+
 **Served by**: Pillar 1 (false-memory at write boundary) + Pillar 3 (evidence-link is auditable).
 
 ---
@@ -645,7 +660,21 @@ Implementations MUST canonicalize whitespace and use lowercase hex; reference im
 | **K13** | **Serial-only spawn enforcer (NEW v4)** | Active rejection or queue of concurrent spawns; spawn-init detects active spawns via lock file + **PID-staleness check + orphan-lock recovery on Claude-Code-crash-mid-spawn** (lock file includes PID + start_at; reaping stale locks via `kill -0` + age threshold) (~150-220 LoC honest per Round-4 architect HIGH; was 80) | **v3.0-alpha (mandatory per user concern #4)** |
 | **K14** | **Write-Scope Enforcer (NEW v4.1 per Wave -1 P-WriteScope FAIL)** | Filesystem-layer write-scope detection (out-of-scope writes detected post-hoc → REJECTED or ROLLED-BACK per A7); composes with K9 at §6.5.1 K9↔K14 sequencing contract; full spec at §6.5.K14 | **v3.0-alpha (mandatory per Wave -1 probe + A7 axiom; was inadvertently omitted from this table — added v6 LOCK per GPT-2.B)** |
 
-**Kernel total**: 14 primitives (K1-K14). K14 row added to this table per v6 LOCK-review GPT-2.B (previously specified in detail at §6.5.K14 but missing from this catalog table — HD-2 follow-on). **Verification surface**: pure functions only. **Stability**: MAJOR-bump-protected.
+**Kernel total**: 14 top-level primitives (K1-K14). K14 row added to this table per v6 LOCK-review GPT-2.B (previously specified in detail at §6.5.K14 but missing from this catalog table — HD-2 follow-on).
+
+**Compound primitive disclosure (Round-3d per persona-Alex A2)**: while the top-level count is 14, the K2 primitive has grown into a **compound surface** through v4-v6 evolution:
+
+| K2 sub-component | Shipping release | LoC | Purpose |
+|---|---|---|---|
+| K2 spawn-record envelope (v2 schema) | v3.0-alpha | base — Phase 1 port + ~50-80 schema-additive v6 fields | core envelope + transaction-record-shape extension (§4.2) |
+| K2.b settings.json resolution walk | v3.0-alpha | ~80-120 LoC | per-precedence permissions snapshot into envelope |
+| K2.c per-tool-call observability | v3.1 | ~100-200 LoC | per-tool-call event capture for replay |
+| `references_transaction_id` field | v3.0-alpha | ~5-10 LoC | phase-1 ↔ phase-2 linkage in two-phase commit |
+| `abort_detail` field (Round-3d M3) | v3.0-alpha | ~10 LoC | structured K9-rejection diagnostics |
+
+Future readers consulting "K-primitive count" should understand this expansion — the headline number stays at 14 (no new top-level K-letter introduced) but K2's surface has materially grown. Honest disclosure prevents the K15/K16 phantom-primitive class of fabrication caught at LOCK-review HD-1.
+
+**Verification surface**: pure functions only. **Stability**: MAJOR-bump-protected.
 
 ### 6.1.2 Loom Runtime Primitives (13 total — unchanged)
 
@@ -786,6 +815,18 @@ On substrate startup, after pointer resolution per §5a.9, the kernel runs the r
      - All other §4.2 fields per the orphan-PENDING (copied verbatim where applicable; `post_state_hash` set to `prev_state_hash` since no canonical state change ultimately occurred).
 6. **fsync** after every emitted ABORTED record AND every emitted `RECOVERY_DIVERGENCE` attestation. Recovery is durable.
 7. **Worktree pruning (v6 LOCK Patch G4)**: for each emitted ABORTED record whose `operation_class` involved a K1 worktree, attempt to prune the associated worktree directory via `git worktree remove --force`; if removal fails, log a `worktree-prune-failed` attestation and continue (pruning is best-effort; failure does not block startup, but accumulating prune-failures should trigger operator attention per K1 lifecycle invariant).
+
+**Operator runbook for `QUARANTINED_REQUIRES_MANUAL_RECONCILE` state (Round-3d Patch per persona-Sam S5)**: when recovery sweep emits a `RECOVERY_DIVERGENCE` attestation and marks the workspace QUARANTINED, the substrate refuses to start new spawns. The operator unquarantine procedure for v3.0-alpha (until a `loom recovery` CLI ships at v3.1 per OQ-23-adjacent):
+
+1. **Inspect**: `cat ~/.claude/checkpoints/attestation-log.jsonl | tail -50` to find the latest `RECOVERY_DIVERGENCE` record. Read `expected_hash`, `actual_hash`, `orphan_transaction_id`, and `divergence_at`.
+2. **Diagnose**: compare the on-disk filesystem state at the affected worktree against the chain's expected `prev_state_hash`. If the filesystem matches an OLDER chain hash, the substrate likely crashed mid-commit (partial-failure recovery case). If it matches NEITHER expected nor older, manual intervention is required (corruption / external tampering / unclean shutdown).
+3. **Resolve** (choose one):
+   - **Accept current filesystem state**: emit a manual ABORTED record closing the orphan PENDING with `abort_reason: "operator-resolved-divergence"`; reset the workspace's `last_known_committed_hash` to a new sentinel (operator-attested).
+   - **Rollback to expected state**: run K9's reverse-cherrypick (when v3.0-alpha ships) against the orphan transaction's reverse-journal to restore the filesystem to `prev_state_hash`, then emit ABORTED.
+   - **Wipe and rebuild**: if divergence is irrecoverable (worktree corrupted), delete the worktree, emit a `workspace-wiped` attestation, and let the next spawn re-create from genesis sentinel.
+4. **Unquarantine marker**: emit a `quarantine-resolved` attestation to the WAL with `references_transaction_id` pointing at the original `RECOVERY_DIVERGENCE` record. Substrate startup-checks for this marker and admits new spawns.
+
+This runbook is the v3.0-alpha interim discipline; v3.1+ should ship a `loom recovery` CLI verb that wraps these steps with safety guards.
 
 **Resolved sub-tension 3 (recovery-sweep idempotency)**: codified as the testable property contract below.
 
@@ -969,7 +1010,14 @@ This composition makes schema migration auditable: the WAL records a clear "sche
 
 1. **Phase 1 — Intent record (in the OLD pointer's WAL, before rename)**: emit `memory_root_schema_migrating` intent with `commit_outcome: PENDING`, carrying `from_schema_version`, `to_schema_version`, `from_content_hash` (pre-rename pointer SHA), `to_content_hash` (proposed post-rename pointer SHA), `intent_recorded_at`. fsync the WAL.
 2. **Phase 1.5 — Atomic rename**: tmp-write the new pointer; fsync; atomic-rename. The rename is the storage-layer commit point but A9-level commit comes next.
-3. **Phase 2 — Commit record (in the NEW pointer's WAL, after rename)**: emit `memory_root_schema_migrated` commit with `references_transaction_id` matching the intent record, `commit_outcome: COMMITTED`, `committed_at`. fsync the WAL.
+3. **Phase 2 — Commit record (in the NEW pointer's WAL, after rename)**: emit `memory_root_schema_migrated` commit with `references_transaction_id` matching the intent record, `commit_outcome: COMMITTED`, `committed_at`. fsync the WAL. **Fd-lifecycle discipline (Round-3d Patch M2a per persona-Maya)**: phase-2 commit uses a FRESH pointer-resolve+open sequence, NOT a held fd from phase-1. Any fd opened against the OLD WAL is closed before atomic rename; the NEW WAL is opened fresh via the post-rename pointer resolution. This avoids POSIX rename-with-open-fd semantics where the fd would continue pointing at the renamed inode regardless of the new pointer state.
+
+**Cross-mount EXDEV handling (Round-3d Patch M2b per persona-Maya — load-bearing for per-user ↔ per-project pointer migration)**: when migrating between per-user (`~/.claude/...`) and per-project (`<cwd>/.loom/...`) scopes, the source and destination paths may sit on different filesystems (host volume vs project-mounted volume; user-home on a different mount than the working directory). POSIX `rename(2)` returns `EXDEV` (cross-device link) and fails atomically. The substrate MUST handle this case:
+
+1. Detect: attempt `rename(2)`; if `EXDEV` returned, fall through to the cross-mount fallback.
+2. Cross-mount fallback algorithm: (a) emit a `memory_root_cross_mount_migrating` intent record with `commit_outcome: PENDING` to BOTH the OLD pointer's WAL AND the destination filesystem's WAL stub (a marker file). (b) Copy the new pointer content to a tmp file on the destination filesystem; fsync the tmp file; atomic-rename within the destination filesystem (same-mount rename, guaranteed atomic). (c) Emit phase-2 commit to the NEW pointer's WAL. (d) Unlink the old pointer from its source filesystem; emit a corresponding `memory_root_cross_mount_old_pointer_unlinked` attestation to the NEW WAL.
+3. Recovery on crash during cross-mount: both pointers may exist on disk during the windowed-PENDING state. Recovery sweep reads both filesystems' WALs; if BOTH pointers exist AND the intent record is still PENDING on either WAL, the substrate falls-closed (refuse to start; manual operator intervention required per §5.3 QUARANTINED workspace handling).
+4. The cross-mount migration is materially more expensive than same-mount (~10× the IO; documented honestly so operators can choose to keep scopes on the same volume when feasible).
 
 **Crash-recovery semantics** (the load-bearing property): on next startup, recovery sweep finds the orphan PENDING intent record. The sweep then probes the pointer file on disk:
 - If pointer's content-hash equals `to_content_hash` from the intent record → rename happened pre-crash; recovery sweep emits the missing commit-record with `commit_outcome: COMMITTED`, `abort_reason: null`, closing the intent.
@@ -1026,6 +1074,25 @@ The Memory Root Pointer is the substrate's single discovery artifact for locatin
 - **(d) Fail-closed default**: if any check fails OR the per-project pointer is malformed, the substrate MUST fall back to the per-user pointer + emit a `per-project-pointer-rejected` advisory attestation. No silent adoption of untrusted pointer state.
 
 This discipline composes with `kb:architecture/discipline/error-handling-discipline` (fail-closed) and prevents the Memory Root Pointer from becoming a capability-bearing config-injection vector (per GPT external review §3.D + Alt 4).
+
+**Operator-recovery procedure for `per-project-pointer-rejected` (Round-3d Patch per persona-Sam S3)**: when the substrate emits this attestation and falls back to the per-user pointer, the operator's options for v3.0-alpha (until `loom trust add <project>` ships per OQ-23):
+
+1. **Inspect the rejection reason**: `grep per-project-pointer-rejected ~/.claude/checkpoints/attestation-log.jsonl | tail -5` shows which trust-check failed (owner mismatch / realpath divergence / allowlist miss / schema-invalid).
+2. **If the per-project pointer is legitimate** (you trust the project): edit `~/.claude/loom/trusted-projects.json` (create if absent) to add the project's `project_context` to the allowed list:
+   ```json
+   {
+     "schema_version": "v6.0",
+     "trusted_project_contexts": [
+       "/Users/yourname/Documents/trusted-project-1",
+       "/Users/yourname/Documents/trusted-project-2"
+     ]
+   }
+   ```
+   The file MUST be owned by the user running the substrate (owner check enforced on read). Next substrate startup will admit the per-project pointer.
+3. **If the per-project pointer is suspect**: leave the per-user fallback in place. The substrate continues to operate against the per-user WAL; the per-project pointer's existence is ignored until trust is granted.
+4. **If the project is no longer trusted**: remove the project from `trusted-projects.json`. Next startup falls back to per-user without warning (no quarantine for revocation; the previously-trusted per-project WAL retains its history but stops being canonically read).
+
+This procedure is the v3.0-alpha interim; v3.1+ should ship a `loom trust add <project>` and `loom trust list` CLI per OQ-23.
 
 **Atomicity**: updates to `memory-root.json` use tmp-write + fsync + atomic-rename per §5a.2 (composes with A9 and §5a.2). Codified as INV-26-MRAtomicWrite.
 
@@ -1218,11 +1285,18 @@ E14 (~350-510 LoC / 8-12h) is intended to fit within v3.3's slack against the up
 
 **Scope**: ~140 LoC of probe scripts + write-up. **6-9h total.**
 
-### 6.5 v3.0-alpha — PURE KERNEL TRANSACTION LOOP (v6 RENUMBER: was §6.1 release-scope; v6 HD-4 note: heading carries stale v3-era figures ~20-28h, ~900-1,300 LoC; canonical post-v4.2 figures are ~2,225-3,550 LoC / ~41-71h per §6.11 effort summary, ~+~180-285 LoC / ~6-9h for v6 K2 reservation PR per HD-3 disclosure)
+### 6.5 v3.0-alpha — PURE KERNEL TRANSACTION LOOP (v6 RENUMBER: was §6.1 release-scope; v6 HD-4 note: heading carries stale v3-era figures ~20-28h, ~900-1,300 LoC; canonical post-v4.2 figures are ~2,225-3,550 LoC / ~41-71h per §6.11 effort summary; v6 K2 reservation PR honest scope ~260-405 LoC / ~8-12h per Round-3d C1 reset; v3.0-alpha total post-Round-3d ~52-87h per §6.11 update)
 
 **Per user concern #2**: K6 + K8 removed; v3.0-alpha is the absolute smallest kernel that proves the deterministic transaction loop.
 
-**In scope** (10 items — K6/K8 removed; K12/K13 added; **K14 added v4.1 per P-WriteScope FAIL**; **K9 + K14 hardened in v4.2 per Round-5 architect**):
+**Round-3d v3.0-alpha additions (per 5-persona implementation pair-review)**
+
+The following items are net-NEW in v3.0-alpha scope per the 5-persona implementation pair-review (Round-3d):
+
+- **`pre-spawn-tool-mask.js` hook (NEW per persona-Sam S4 + Round-3d C2 — THE ONE THING)** (~30-50 LoC, ~+1h): a PreToolUse(Agent) hook that strips `WebFetch` + network-Bash patterns (`curl|wget|gh|aws|nc|ssh`) + MCP tools (`mcp__*`) from the spawned agent's tool list at K1/spawn-init, **regardless of persona contract**. This enforces the v3.0-alpha network-side-effecting tool prohibition at the kernel layer (Pillar-2 Byzantine-treatment-of-LLM) rather than via persona-contract discipline (Pillar-4 TDD/role-separation) which is honor-system. Without this hook, v3.0-alpha ships the central security claim "no network side effects" with no kernel-layer mechanism backing it — the §2.4 "enforce, not document" anti-pattern. Composes with v3.1 K8 capability injection (K8 narrows further; this hook is the v3.0-alpha-before-K8-ships safety net).
+- **Property-test harness + clock-injection infra (NEW per persona-Tess T1/T2 + Round-3d C3+C4)** (~+500-1000 LoC / ~+10-15h): the §6.13 invariants require property tests; the harness LoC was rolled into per-primitive estimates but the cross-cutting infrastructure (synthetic-WAL fixture builder for INV-A9-RecoverySweepIdempotent; injectable-clock + injectable-fs-watch sources for INV-28-K13K14SerialClosure to avoid wallclock-bounded test flakiness; kernel-crash-mid-write injection for INV-26-MRAtomicWrite) is NOT budgeted in any prior §6.5 line item. Honest disclosure: v3.0-alpha LOCK ships ~10-12 invariants with property tests + ~8-10 invariants with manual-verification or deferred-to-v3.0-alpha-patch tests. Implementation may choose to add multi-OS CI matrix (~+6-10h additional) here OR explicitly caveat per persona-Tess T4.
+
+**In scope** (10 items — K6/K8 removed; K12/K13 added; **K14 added v4.1 per P-WriteScope FAIL**; **K9 + K14 hardened in v4.2 per Round-5 architect**; **2 Round-3d additions above per 5-persona pair-review**):
 - K1 Worktree integration (declarative)
 - K2 Spawn-record envelope v2 (port + parent_state_id + forward-compat tolerance per Round-3 architect HIGH)
   - **K2.b settings.json resolution walk (NEW v4.2 per Round-5 HIGH-4)**: ~80-120 LoC; resolves user-global → project-local → project-local-untracked precedence; emits `axioms.permissions_snapshot` into spawn-record envelope at spawn-init. K2 owns this because the hook payload exposes only `permission_mode` (P-Settings finding); allow/deny lists are NOT propagated. K2.b is an honest sub-primitive, not a footnote.
@@ -1306,7 +1380,7 @@ Both primitives touch post-spawn state-resolution. Without an explicit contract 
 **K9 dedicated security discipline (per user concern #3 + Round-4 architect MEDIUM on fixture taxonomy)**:
 - MANDATORY: architect + code-reviewer + security-auditor pair-review (3-actor; already in v3 plan, reaffirmed)
 - NEW: dedicated test suite for path-traversal cases (CWE-22) — **5-category fixture taxonomy × 4 instances minimum = 20+ fixtures**: (1) classic `..`/absolute paths, (2) symlink races + TOCTOU, (3) encoded paths (URL-encoded, unicode normalization), (4) control characters + null bytes, (5) path-length / canonicalization edge cases
-- NEW: fuzz testing on path inputs as part of unit tests
+- NEW: fuzz testing on path inputs as part of unit tests — **Round-3d pin per persona-Tess T5**: `fast-check`-based property tests with ≥1000 random path inputs per case (mixed encoding: ASCII / UTF-8 / Unicode normalization edge cases / control chars / null bytes / path-length boundary / URL-encoded), ≤30s per run; ~+3-5h implementation
 - NEW: security-auditor explicit pre-merge approval gate (advisory finding required to be addressed, not just acknowledged)
 - NEW: K9 is the only v3.0-alpha primitive that requires dedicated post-merge soak (1 week with `delete_branch_on_merge` watching for any path-related drift)
 - NEW: **reverse-cherrypick journal format + recovery algorithm are v3.0-alpha implementation deliverables** (not specified at blueprint level — explicit acknowledgment that "designed mechanism" ≠ "specified mechanism" per Round-4 honesty MEDIUM)
@@ -1464,7 +1538,8 @@ Both primitives touch post-spawn state-resolution. Without an explicit contract 
 - **v6 synthesis (LIVE-DRAFTING 2026-05-27)**: HD-3 honest framing **strengthened post-Gemini-3.1-Pro review**. v3.0-alpha and v3.3 row totals are CLAIMED to absorb v6 additions inside existing slack, but explicit math (per Gemini 3.1 Pro §2 honesty audit) tells a more complicated story:
   - **K2 reservation PR explicit math**: Memory Root Pointer reader (130-205 LoC) + transaction-record-shape schema-additive K2 envelope fields (~50-80 LoC) = ~180-285 LoC total. **But K2.b settings.json resolution (~80-120 LoC per existing v3.0-alpha §6.5 line item) is a separate concern shipping in the same K2 reservation PR**. 130 + 80 = 210 LoC — fits in the upper bound (285) but BLOWS PAST the lower bound (180). **Honest framing**: K2.b should either ship in a sibling PR OR the K2 reservation PR's headline range becomes 260-405 LoC, NOT 180-285. Either way, v3.0-alpha's row TOTAL (~2,225-3,550 LoC / ~41-71h) likely has the slack to absorb, but the K2-reservation-PR scope claim was understated.
   - **E14 framing correction**: E14 at 350-510 LoC is **47-102% of the entire existing v3.3 budget bound (500-750 LoC)**. Framing E14 as "fits inside the existing envelope" is spin; the honest framing is "E14 consumes ~70% of the remaining v3.3 budget at midpoint". E1-E4 line items in v3.3 (~350-460 LoC per §6.8 itemization) plus E14 (350-510) = ~700-970 LoC, which EXCEEDS the v3.3 envelope upper bound (750). v3.3 row WILL need expansion at v3.3 LOCK; the "absorbed" framing is forward-looking, not arithmetic.
-  - **Net v6 structural delta**: +3 axioms, +14 invariants (per Gemini 3.1 Pro GP1 addition of INV-28), +1 §5a section, +1 E14 Lab spec, +2 ADRs (0013/0014), +3 §10b reject-entries (endorsement-primitive + active_state_hash + SQLite-as-canonical-ledger per Round-3c), +8 OQ entries (OQ-20..27 per LOCK reviews + Round-3c cross-reviewer convergence). **Zero new K-primitives** (Kernel total stays at 14; K15/K16 were phantom claims in early drafts, removed per LOCK-review HD-1 fix).
+  - **Net v6 structural delta**: +3 axioms, +14 invariants (per Gemini 3.1 Pro GP1 addition of INV-28), +1 §5a section, +1 E14 Lab spec, +2 ADRs (0013/0014), +3 §10b reject-entries (endorsement-primitive + active_state_hash + SQLite-as-canonical-ledger per Round-3c), +8 OQ entries (OQ-20..27 per LOCK reviews + Round-3c cross-reviewer convergence), **+2 v3.0-alpha scope additions (Round-3d per 5-persona pair-review): `pre-spawn-tool-mask.js` hook (~30-50 LoC / +1h) closing the network-prohibition enforcement gap + property-test harness infra (~+500-1000 LoC / +10-15h) covering fixture-build budget for 20 v3.0-alpha-activated invariants**. **Zero new K-primitives** (Kernel total stays at 14; K15/K16 were phantom claims in early drafts, removed per LOCK-review HD-1 fix).
+  - **Round-3d v3.0-alpha budget impact (per 5-persona pair-review C2+C3)**: the Round-3d additions inflate v3.0-alpha by ~+11-16h relative to the §6.5 effort table's existing 41-71h envelope. New honest range: ~52-87h (still inside the 140h abort trigger). Implementation may choose to time-box P-Snapshot probe (per Round-3d OQ-25 update) to recover slack OR accept the inflation as the honest cost of v3.0-alpha LOCK-quality network-prohibition enforcement + property-test coverage.
 
 **Honest trade-off statement**: v4 is +63-130h more total time than v2 in exchange for per-release blast radius reduction, per-release rollback, layer-enforcement, serial-only enforcement, and v3.4 deferral discipline. This is a real trade with real costs and real benefits — not a regression. v6 layers additional discipline (consistency model, evidence-link admission, derived-view anti-amplification) on top of v4's structural scaffolding — at zero net code cost claimed, with the table-update honesty caveat above.
 
@@ -1756,9 +1831,9 @@ The field consensus (container/microVM-per-agent: E2B 15M sessions/mo; OpenHands
 
 24. **NEW v6 (per Gemini 3.1 Pro external review §1.3)**: **WAL compaction / snapshotting strategy**. A8 + §5a.9 explicitly forbid caching `active_state_hash` in `memory-root.json` (correctly — per PB-1 user-lock that prevents dual-write inconsistency). However, walking the entire WAL tail on every substrate startup is O(N) where N grows monotonically. A long-lived install with millions of transactions will see startup time degrade linearly. Options: (a) periodic checkpoint snapshots — write a checkpoint record to the WAL at intervals containing the state-hash at that point; recovery walks back only to the most recent checkpoint, not to genesis; this preserves A8 single-source-of-truth (the checkpoint IS in the chain) while bounding startup work. (b) Compact-and-archive: roll the WAL into a new file after N records; keep archived WAL files for audit but exclude from default startup walk. (c) Per-persona WAL sharding to bound per-persona walk to per-persona chain length. **Decision deferred to v3.5+ when WAL size becomes empirically painful**; current v3.0-alpha-through-v3.4 walks remain O(N) with explicit acknowledgment that the linear-startup-time cost is real and accepted.
 
-25. **NEW v6 (per Gemini 3.1 Pro external review §5)**: **K14 snapshot-fallback performance for large repos**. K14's mtime+size+sha256 snapshot fallback (per §6.5.K14) scans the entire project tree before and after every spawn. For repos with 50k+ files, the 500ms p99 claim is unverified. Options: (a) empirical P-Snapshot probe sub-case measuring K14 snapshot cost across repo sizes (1k / 10k / 50k / 100k files); (b) lazy/incremental snapshot via `fs.watch` real-time event stream (the v3.1+ event-stream variant); (c) git-status-based delta detection that piggy-backs on git's already-indexed file metadata. **Decision deferred to v3.0-alpha P-Snapshot probe** (per OQ-18); if the polling fallback proves unacceptable, v3.0-alpha may need to ship the event-stream variant earlier than v3.1.
+25. **NEW v6 (per Gemini 3.1 Pro external review §5)**: **K14 snapshot-fallback performance for large repos**. K14's mtime+size+sha256 snapshot fallback (per §6.5.K14) scans the entire project tree before and after every spawn. For repos with 50k+ files, the 500ms p99 claim is unverified. Options: (a) empirical P-Snapshot probe sub-case measuring K14 snapshot cost across repo sizes (1k / 10k / 50k / 100k files); (b) lazy/incremental snapshot via `fs.watch` real-time event stream (the v3.1+ event-stream variant); (c) git-status-based delta detection that piggy-backs on git's already-indexed file metadata. **Decision deferred to v3.0-alpha P-Snapshot probe** (per OQ-18); if the polling fallback proves unacceptable, v3.0-alpha may need to ship the event-stream variant earlier than v3.1. **P-Snapshot probe time-box (Round-3d per persona-Tess T3)**: the probe is allotted **≤8h of investigation time**; if no implementation candidate clearly wins within that budget, v3.0-alpha ships reverse-cherrypick journal (current v4.3 default) and revisits at v3.1 kickoff. The time-box prevents probe-creep from blowing the v3.0-alpha 140h abort trigger.
 
-26. **NEW v6 (per Gemini 3.1 Pro external review §5)**: **Node.js fsync correctness across OS/filesystems**. A9 + §5a.2 lean heavily on `_lib/atomic-write.js` (tmp-write + fsync + atomic-rename) for durability. Gemini 3.1 Pro flagged that Node.js `fsync` behavior varies across OS/filesystem combinations (notably ext4 delayed allocation, APFS soft-sync semantics, NTFS journaling). The partial-write corruptions A9 is designed to prevent could be reintroduced if fsync doesn't actually flush to durable storage. Options: (a) empirical fsync-correctness probe across common host environments (macOS APFS, Linux ext4, Linux btrfs, WSL2); (b) explicit `fsync(parent_dir)` after rename (POSIX requires this for rename durability — easy to forget in JS implementations); (c) substrate-level write-amplification mitigation (group commits to reduce fsync count). **Decision deferred to v3.0-alpha implementation gate**; the atomic-write test suite must include cross-OS fsync correctness fixtures before K9 ships.
+26. **NEW v6 (per Gemini 3.1 Pro external review §5)**: **Node.js fsync correctness across OS/filesystems**. A9 + §5a.2 lean heavily on `_lib/atomic-write.js` (tmp-write + fsync + atomic-rename) for durability. Gemini 3.1 Pro flagged that Node.js `fsync` behavior varies across OS/filesystem combinations (notably ext4 delayed allocation, APFS soft-sync semantics, NTFS journaling). The partial-write corruptions A9 is designed to prevent could be reintroduced if fsync doesn't actually flush to durable storage. Options: (a) empirical fsync-correctness probe across common host environments (macOS APFS, Linux ext4, Linux btrfs, WSL2); (b) explicit `fsync(parent_dir)` after rename (POSIX requires this for rename durability — easy to forget in JS implementations); (c) substrate-level write-amplification mitigation (group commits to reduce fsync count). **Decision deferred to v3.0-alpha implementation gate**; the atomic-write test suite must include cross-OS fsync correctness fixtures before K9 ships. **Cross-OS CI matrix declaration (Round-3d per persona-Tess T4)**: v3.0-alpha CI MUST run the atomic-write fsync correctness fixtures on macOS Darwin + Linux ext4 + WSL2 at minimum (~+6-10h CI matrix setup). ALTERNATIVELY, if multi-OS CI is not feasible in v3.0-alpha timeframe, v3.0-alpha SHIPS with an explicit caveat: "v3.0-alpha tests fsync correctness on macOS only; Linux/WSL2 cross-OS correctness is community-contribution-validated; INV-26-MRAtomicWrite carries a known-untested-on-non-macOS caveat for v3.0-alpha LOCK." The current v3.0-alpha plan does not specify which path is taken — implementation gate decision.
 
 27. **NEW v6 Round-3c (per cross-reviewer convergence finding from GPT + Gemini Pro)**: **Context-assembly traversal algorithm**. v6 specifies the storage layer (deeply: WAL, transactions, two-phase commit, recovery, MRP, atomic writes) and the admission layer (deeply: A10, evidence-link, A6 snapshot mediation), but the **consumption layer** — how the substrate decides which memory blocks to load into the active LLM context for a given task — is unspecified beyond §0a.3.1 (what derived views may/may-not do) and INV-27 (canonical-records-only indexing). Per Gemini Pro: *"the logic for deciding which edges to follow becomes the hardest part of the system."* Three orthogonal sub-questions are unresolved at v6 LOCK:
     - **(a) Traversal start point**: from what seed node does context assembly begin for a given spawn? Candidates: (i) current spawn's pinned `prev_state_hash` (the MVCC view) + a topic-keyword seed; (ii) the orchestrator-task spec itself (treat task as axiom; assemble evidence reachable from it); (iii) the persona's most-recent COMMITTED L_persona promotion (the "where did I leave off" anchor). The choice depends on whether the spawn is task-fresh, continuation-of-prior-spawn, or memory-recall-only.
