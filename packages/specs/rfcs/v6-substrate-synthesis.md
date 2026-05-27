@@ -1162,7 +1162,7 @@ E14 (~350-510 LoC / 8-12h) is intended to fit within v3.3's slack against the up
 
 **Scope**: ~140 LoC of probe scripts + write-up. **6-9h total.**
 
-### 6.5 v3.0-alpha — PURE KERNEL TRANSACTION LOOP (v6 RENUMBER: was §6.1 release-scope; ~20-28h, ~900-1,300 LoC honest)
+### 6.5 v3.0-alpha — PURE KERNEL TRANSACTION LOOP (v6 RENUMBER: was §6.1 release-scope; v6 HD-4 note: heading carries stale v3-era figures ~20-28h, ~900-1,300 LoC; canonical post-v4.2 figures are ~2,225-3,550 LoC / ~41-71h per §6.11 effort summary, ~+~180-285 LoC / ~6-9h for v6 K2 reservation PR per HD-3 disclosure)
 
 **Per user concern #2**: K6 + K8 removed; v3.0-alpha is the absolute smallest kernel that proves the deterministic transaction loop.
 
@@ -1402,8 +1402,11 @@ Both primitives touch post-spawn state-resolution. Without an explicit contract 
 - v5 synthesis: ~7,515-9,890 LoC / 169-237h (Round-6 architect; field-survey absorbed; v3.0-alpha +K3.b; v3.1 +R13 +K2.c; OQ-17 closed to v3.1; OQ-18 P-Snapshot probe added)
 - v5.1 synthesis: ~7,415-9,770 LoC / 167-235h (Round-7 architect; vision-pillar alignment; K12 downgraded -100-120 LoC / -2h; OQ-19 upgrade-trigger added)
 - **v5.2 synthesis: same LoC / hours as v5.1** (text-only amendment; §0a Four Vision Pillars map + M1/M2 reframing as pillar-extensions). Net effect: structural alignment test added; future amendments must pass "which pillar?" check.
+- **v5.3 synthesis: same LoC / hours as v5.2** (§0 audience-specific framings + §0c Organizational Engineering Analogy + §6.13 Operational Invariants 15 executable property contracts — additive normative discipline, no v3.x release-scope code change).
+- **v5.4 synthesis: same LoC / hours as v5.3** (Category-A positioning corrections — Power Loom-in-Work-Bench Execute+Constrain pillars; SWE-EVO honest value-claim; DeltaBox/Hermes prior-art acknowledgment; Category-B field-survey debt indexed to a backlog file outside v3.x scope).
+- **v6 synthesis (LIVE-DRAFTING 2026-05-27)**: HD-3 honest framing — v3.0-alpha and v3.3 totals are CLAIMED to absorb v6 additions inside existing slack (K2 reservation PR ~180-285 LoC / ~6-9h in v3.0-alpha; E14 endorsement-view ~350-510 LoC / ~8-12h in v3.3). The current table rows (line items above this list) were NOT updated to reflect the v6 work explicitly. At v3.0-alpha LOCK time, the v3.0-alpha row may need expansion if the K2 reservation PR + memory-root.js reader + transaction-record schema fields exceed the existing 41-71h envelope. At v3.3 LOCK time, the v3.3 row may need expansion because E14's 350-510 LoC is 47-102% of the entire existing v3.3 budget (500-750 LoC). The "envelope absorbed" framing is forward-looking and partially aspirational; honest disclosure pre-LOCK so the v3.x LOCK reviews can correct the table without surprise. Net v6 structural delta: +3 axioms, +13 invariants, +1 §5a section, +1 E14 Lab spec, +2 ADRs (0013/0014), +1 §10b entry. Zero new K-primitives (Kernel total stays at 14; K15/K16 were phantom claims in early drafts, removed per LOCK-review HD-1 fix).
 
-**Honest trade-off statement**: v4 is +63-130h more total time than v2 in exchange for per-release blast radius reduction, per-release rollback, layer-enforcement, serial-only enforcement, and v3.4 deferral discipline. This is a real trade with real costs and real benefits — not a regression.
+**Honest trade-off statement**: v4 is +63-130h more total time than v2 in exchange for per-release blast radius reduction, per-release rollback, layer-enforcement, serial-only enforcement, and v3.4 deferral discipline. This is a real trade with real costs and real benefits — not a regression. v6 layers additional discipline (consistency model, evidence-link admission, derived-view anti-amplification) on top of v4's structural scaffolding — at zero net code cost claimed, with the table-update honesty caveat above.
 
 ### 6.12 Release Dependency Graph (v6 RENUMBER: was §6.8)
 
@@ -1655,13 +1658,13 @@ The field consensus (container/microVM-per-agent: E2B 15M sessions/mo; OpenHands
 
 17. ~~OQ-17~~ — **CLOSED v5 to option (b) shipping in v3.1, NOT v3.2** per Round-6 architect MUST-ABSORB-PRE-PHASE-0. Rationale: v3.1 introduces K6 capability subset check. The MOMENT K6 enables network-side-effecting tools, the ACRFence semantic-rollback surface opens. Deferring R13 to v3.2 ships v3.1 with a known hole AND asks persona authors to enforce idempotency by discipline — which violates §2.4's "enforce, not document" principle. **R13 Idempotency-Key Enforcer** (~150-250 LoC) ships in v3.1 alongside K6+K8, as a parallel sub-wave (zero new dependencies — uses K2's spawn_id + tool_use_id, already in v3.0-alpha). Idempotency key shape derived per `kb:architecture/crosscut/idempotency` Patterns 1+3 (Dedupe-via-Request-ID + Conditional Write). v3.1 effort estimate updates: +150-250 LoC, +3-5h, total ~2,550-3,150 LoC / 24-36h. v3.0-alpha is unaffected (no K6 yet, so persona contracts forbid network-side-effecting tools entirely).
 
-19. **NEW v5.1 (per Round-7 architect K12 downgrade)**: K12 upgrade trigger to mandatory CI enforcement. The v5.1 downgrade is empirically grounded (zero observed drift in 6 months) but is NOT a permanent decision — it's a defer-until-evidence stance. **Re-upgrade to mandatory CI blocking when ≥3 distinct cross-layer drift events are observed across v3.1-v3.3**, each requiring post-hoc cleanup commits. Track in `swarm/drift-events.jsonl` (NEW; ~20 LoC append-only log). At threshold, the convention + advisory tier becomes mandatory enforcement (~+100-120 LoC; aligns with v4 original K12 spec). Until then: convention + advisory is the v3.x default.
-
 18. **NEW v5 (per Round-6 architect C2/O4)**: K9 implementation choice — reverse-cherrypick journal vs snapshot-restore. Field consensus is snapshot-restore (Cursor zips, Hermes content-addressable shadow git, Aider `git reset HEAD`); estimated 400-700 LoC simplification vs v4.3's reverse-cherrypick (650-1,050 LoC). Three implementation candidates:
     - **(a)** Reverse-cherrypick journal (current v4.3 design): ~650-1,050 LoC; preserves per-cherrypick audit granularity (`spawn-state.journal[]`).
     - **(b)** Spawn-bookended zip snapshot (Cursor-style): ~200-300 LoC; bigger disk; simpler atomic rollback.
     - **(c)** Content-addressable shadow git (Hermes Agent pattern): ~300-500 LoC; smaller disk via dedup; more storage indirection.
     - **Decision deferred to v3.0-alpha kickoff via P-Snapshot probe**: implement all 3 on toy fixtures; run §6.5.1's 5 K14-sequencing sub-cases through each; measure LoC + disk + correctness under semantic-invalidity. Phase 0 file moves are agnostic to which implementation lands. Probe spec lives in `swarm/thoughts/shared/spikes/p-snapshot-spec.md` (TBD).
+
+19. **NEW v5.1 (per Round-7 architect K12 downgrade)**: K12 upgrade trigger to mandatory CI enforcement. The v5.1 downgrade is empirically grounded (zero observed drift in 6 months) but is NOT a permanent decision — it's a defer-until-evidence stance. **Re-upgrade to mandatory CI blocking when ≥3 distinct cross-layer drift events are observed across v3.1-v3.3**, each requiring post-hoc cleanup commits. Track in `swarm/drift-events.jsonl` (NEW; ~20 LoC append-only log). At threshold, the convention + advisory tier becomes mandatory enforcement (~+100-120 LoC; aligns with v4 original K12 spec). Until then: convention + advisory is the v3.x default.
 
 ---
 
@@ -1699,25 +1702,24 @@ Each LLM-driven revision absorbs prior findings BUT can introduce new aspiration
 
 ---
 
-## 13. What This Document IS / SUPERSEDES (v4)
+## 13. What This Document IS / SUPERSEDES (v6 — refreshed from v4)
 
-**v4 IS**:
-- Implementation-grade blueprint for v3.0-alpha through v3.4
-- Source for RFC v3.3 amendment (drafted after v4 acceptance)
-- Supersedes v1 + v2 + v3 of this synthesis + original execution plan §C2 sections + the "single monster Phase 2" framing
-- Acknowledges Round-3 deep pair-review findings (6 CRITICAL + ~20 HIGH absorbed)
-- Adopts ~141-209h as honest effort target
+**v6 IS** (refreshed for v6 LOCK-readiness):
+- Implementation-grade blueprint for v3.0-alpha through v3.4 with consistency model explicit (§3 A8/A9/A10 + §5 WAL + §5a Memory Consistency Discipline)
+- Source for RFC v3.3 amendment (drafted after v6 LOCK)
+- Supersedes v1 + v2 + v3 + v4 + v4.1 + v4.2 + v4.3 + v5 + v5.1 + v5.2 + v5.3 + v5.4 of this synthesis lineage + original execution plan §C2 sections + the "single monster Phase 2" framing
+- Acknowledges full review trail: Round-1/2/3 deep pair-reviews (6 CRITICAL + ~20 HIGH absorbed in v4); Round-5 architect (v4.2 + ADR renumber); external research brief (v4.3, 3 verified citations); Round-6 architect + field-survey triage (v5); Round-7 architect vision-pillar alignment (v5.1); v5.2 pillars-grounding test; v5.3 audience-framings + §6.13 invariants; v5.4 positioning corrections + Category-A fixes; v6 Round-1+2+3 drafting + LOCK review (architect `a0bf0cd9` + honesty-auditor `abf4a296`, HD-1 K15/K16 fabrication caught and removed)
+- Adopts ~141-209h as honest effort target through v3.4; v6 additions claimed inside existing envelope with HD-3 disclosure for v3.x LOCK reviews
 
-**v4 is NOT**:
+**v6 is NOT**:
 - Final RFC v3.3 (that comes after acceptance + RFC-format conversion)
-- Implementation specification (algorithm signatures + contract schemas are v3.0-alpha through v3.4 deliverables)
-- Free of all open questions (15 OQs remain; 1 deleted from v3, 1 added)
+- Implementation specification (algorithm signatures + contract schemas are v3.0-alpha through v3.4 deliverables; ADRs 0009-0012 stubs are v3.0-alpha deliverables not yet written)
+- Free of all open questions (~17-19 OQs remain across §11; OQ-14 deleted, OQ-15/16/17 closed)
+- Free of all honesty debts — Round-3b cleanup remains: HD-3 (§6.11 effort summary table v6 envelope explicit math), HD-4 (§6.5 stale LoC figures reconciliation), T-7 (§5/§5a vs §6.1/§6.2 in-file ordering deferred to v6.1)
 
-**Next step**: user decision on whether to:
-- (a) Commit v4 as final blueprint + start Wave -1 entry-probe in fresh session
-- (b) Run Round-4 verification (lighter touch: architect + honesty-auditor) to confirm Round-3 absorption + catch v3→v4 drift
-- (c) Accept v4 + move directly to Wave -1 implementation
+**Next step** (post-v6-LOCK):
+- (a) Lock v6, open PR against main, begin v3.0-alpha K2 reservation PR (Task #10) — the K2 envelope schema-additive extension that ships the §4.2 transaction-record-shape reservation + `memory-root.js` reader stub + ADR-0013/0014 references
+- (b) After K2 reservation PR merges, begin Phase 1-alpha (v3.0-alpha kernel) implementation (~30h)
+- (c) Round-3b cleanup at any point (non-blocking)
 
-Honest recommendation: **(b) lighter Round-4 verification then commit then Wave -1**. The v3→v4 changes are substantial (K12 + K13 added, K6+K8 moved, effort estimates revised, layer enforcement mandatory, rollback per primitive). One verification pass catches absorption drift; then Wave -1 becomes the real signal.
-
-If user prefers efficiency: **(a) commit + Wave -1 directly**. Wave -1 empirically validates the Anthropic-native assumptions; that signal is more valuable than another document-review round at this point.
+Honest recommendation: **(a) then (b)**. Round-3b cleanup is cosmetic; it should not block K2 reservation PR or v3.0-alpha implementation.
