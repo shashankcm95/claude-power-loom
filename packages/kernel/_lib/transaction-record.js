@@ -163,7 +163,7 @@ function isStateChanging(operationClass) {
 const BOOTSTRAP_SENTINEL_PATTERNS = [
   /^USER_INTENT_AXIOM:[a-f0-9]{64}$/,
   /^GENESIS_EVIDENCE:v[0-9]+(\.[0-9]+)?:(per-user|per-project)$/,
-  /^ROOT_TASK_RECORD:[A-Za-z0-9_\-]+$/,
+  /^ROOT_TASK_RECORD:[A-Za-z0-9_-]+$/,
 ];
 
 function isBootstrapSentinel(ref) {

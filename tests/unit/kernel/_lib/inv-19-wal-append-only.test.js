@@ -91,7 +91,7 @@ test('INV-19: each WAL line is valid JSON', (tmp) => {
   }
 });
 
-test('INV-19: synthesized chain has proper prev_state_hash linkage', (tmp) => {
+test('INV-19: synthesized chain has proper prev_state_hash linkage', () => {
   const records = synthesizeChain({ count: 4 });
   for (let i = 1; i < records.length; i++) {
     assert.strictEqual(
