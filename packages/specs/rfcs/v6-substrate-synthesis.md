@@ -1,6 +1,8 @@
-# v3 Substrate Architecture — Comprehensive Synthesis Report (v5.4)
+<!-- v6 DRAFT IN PROGRESS — §0/§0a/§3 at v6; §4+ still at v5.4 pending Rounds 2-3 -->
 
-**Status**: BLUEPRINT-LOCKED after 8 review rounds + 6 Wave -1 empirical probes + external research-brief + field-survey absorption + v5.3 positioning/analogy/invariants pair-review + v5.4 Category-A field-survey positioning fixes (deep-read of MI9 / SAGA / Policies-on-Paths / TVP / SWE-EVO / RACE-bench / DeltaBox / Hermes / AGT / Praetorian / Temporal / LangGraph / OpenAI Agents SDK / Cleanlab). Implementation-grade input for v3.0-alpha kernel transaction loop. 11/11 alignment with vision-pillar analysis. **Phase 0 workspace restructure is the next stream; Category-B field-survey debt captured in `swarm/thoughts/shared/backlog/v3.1-v3.2-field-survey-debt.md` (no v5.x amendments before implementation begins).**
+# v6 Substrate Synthesis — Power Loom (LIVE-DRAFTING)
+
+**Status**: v6 LIVE-DRAFTING (Round 1 of 3 — §0/§0a/§3 at v6 quality; §4+ pending). Supersedes v5.4 BLUEPRINT-LOCKED upon Round-3 completion. v5.4 provenance preserved below; v6 changelog inlined at §0.v6.
 **Branch**: `feat/v3.0-phase-1-verification-spike` (no-merge spike).
 **Version provenance chain**:
 - v1 (initial synthesis) → Round-1 pair-review (3 reviewers; 5 CRITICAL + 21 HIGH)
@@ -14,7 +16,8 @@
 - v5.1 = vision-pillar alignment analysis absorbed (Round-7 architect `a6def7d4996a71b24`): K12 DOWNGRADED from mandatory CI enforcement to convention + advisory after empirical-zero-drift finding (6 months on spike branch, zero cross-layer drift observed; `_lib/` extraction pattern yields acyclic-by-construction without K12); OQ-19 added (upgrade trigger: ≥3 drift events); v3.0-alpha effort -100-120 LoC / -2h
 - v5.2 = §0a Four Vision Pillars map added as load-bearing alignment test for all future amendments; M1 reframed as Pillar 2 EXTENSION (inputs-as-Byzantine); M2 reframed as Pillar 1+3 EXTENSION (rollback-completeness); pillar-grounding test codified for future amendments (principle-tier → convention+advisory; pillar-tier → mandatory). Full alignment (11/11) with vision-pillar analysis achieved.
 - v5.3 = external GPT v5.2 review + architect pair-review (`ab188213c13a2f8cd`) + independent web research absorbed. **3 amendments applied**: (1) §0 audience-specific framings (CI/CD-moved-earlier; databases→CI/CD→Loom reliability lineage; production wager marked AS a wager not a fact; human-org one-liner); (2) §0c Organizational Engineering Analogy section — full mapping table with release-availability per row + "physical embodiment / K13" framing + honest org-structure gap acknowledgment; (3) §6.9 Operational Invariants — 15 executable property contracts, per-primitive naming (`INV-{Primitive}-{Property}`), version-gated per activation release, with field-standard terminology notes (POLA, Temporal-replay-relaxation, ACID atomicity, Nix hermetic builds, GitHub required-checks). Architect rewrites incorporated: K4 corrected to K5/K7/K9-pre (K4 is recall not a gate); syntactic-vs-semantic atomicity caveat per §6.1.2; 6 missing invariants added (INV-K2-SchemaForwardCompat, INV-K2-SpawnRecordSchemaValid, INV-K3-LineageAcyclicity, INV-K14-PostDetectionEnforcement, INV-K13-SerialOnly, INV-R13-IdempotencyKeyUniqueness); INV-A6-PolicyVersionedReplay flags a schema-additive K2 update for v3.0-alpha (`policy_version` field, ~5 LoC) to prevent v3.3 envelope-schema break. Independent web verification confirmed all field-survey citations (Microsoft Agent Governance Toolkit 2026/04, Praetorian verbatim "leaf node" sub-agent quote, arxiv 2603.16586 "Policies on Paths" matching K9↔K14 framing, MI9 arxiv 2508.03858 runtime-only-risk framing, SAGA arxiv 2504.21034, Temporal "complexity cliff", LangGraph durable-execution docs) — no fabrications detected this round.
-- **v5.4 (this document)** = deep mechanism-level read of 8 academic papers + 7 industry artifacts (NOT verification — actual mechanism analysis). **3 Category-A positioning fixes**: (1) §0 industry-category positioning corrected — Power Loom slots into Work-Bench's "Agent Runtime" Execute+Constrain pillars (alongside E2B/Modal/AuthZed), NOT Cleanlab's "Reliability Stack" (output-scoring vendors); also explicit "NOT durable execution" (Temporal/LangGraph is a different layer). (2) §0 honest value-claim per SWE-EVO arxiv 2512.18470 empirical finding — long-horizon coding gap is model-capability-bound (47.8pp gap, scaling curves clean, context ablations modest); substrate delivers containment/recovery/reproducibility, NOT better outcomes. Marketing "fixes long-horizon coding" overclaims. (3) §10a.1 NEW direct prior art on K9-style pattern: DeltaBox (arxiv 2605.22781, OS-overlayfs implementation, 14ms checkpoint strict perf superior to git-cherrypick) + Hermes Agent (NousResearch, shipping product implementing K1+K9 combo). Acknowledges K9-as-pattern is shared prior art; what remains genuinely novel: K1+K9+K14 triple, K2 envelope synthesis, E1 typed failure artifacts, A6 reputation snapshot, honest K12-advisory framing. **Category-B field-survey debt** (Σ session state vs Policies-on-Paths; K2 envelope signing vs SAGA C3; A6-as-observer-only ADR vs TVP arxiv 2510.18563; MI9 goal-conditioned drift detection; TRiSM multi-agent correlation accounting; AGENTS.md interop; K9 cherry-pick latency benchmarks vs DeltaBox baseline; Praetorian 5-role HETS template; LangGraph concurrency-strategy naming; policy-DSL pluggability vs AGT) captured in `swarm/thoughts/shared/backlog/v3.1-v3.2-field-survey-debt.md` with target releases and effort estimates. **BLUEPRINT LOCKED at v5.4. No further amendments before Phase 0.**
+- **v6 (this document, LIVE-DRAFTING)** = MAJOR-tier amendment to v5.4. Drivers (full text in §0.v6 below): (D1) file-based memory as DB requires explicit consistency model → +A8/A9/A10 axioms; (D2) C0 endorsements decision — derived view not primitive → +E14 Lab spec + 3 invariants; (D3) Pillar 3 anti-amplifier clause refined post-3-FAIL → §0a.3.1 normative text; (D4) Memory Root Pointer Convention → §5a.9 + INV-26/27. Net additions: +3 axioms (7→10), +2 kernel primitives (K15/K16, 14→16), +1 Lab spec (E14), +12 invariants (15→27), +1 new section (§5a Memory Consistency Discipline), +2 ADRs (ADR-0013, ADR-0014). v3.0-alpha through v3.4 hour ranges UNCHANGED from v5.4 BLUEPRINT-LOCKED; K2 reservation PR (~180-285 LoC, ~6-9h) sits inside existing v3.0-alpha envelope. Two-round cross-artifact composition review GO verdict (architects `abeab45aa7a080a27` + `a441e3cbe874c2209`, 2026-05-27).
+- **v5.4** = deep mechanism-level read of 8 academic papers + 7 industry artifacts (NOT verification — actual mechanism analysis). **3 Category-A positioning fixes**: (1) §0 industry-category positioning corrected — Power Loom slots into Work-Bench's "Agent Runtime" Execute+Constrain pillars (alongside E2B/Modal/AuthZed), NOT Cleanlab's "Reliability Stack" (output-scoring vendors); also explicit "NOT durable execution" (Temporal/LangGraph is a different layer). (2) §0 honest value-claim per SWE-EVO arxiv 2512.18470 empirical finding — long-horizon coding gap is model-capability-bound (47.8pp gap, scaling curves clean, context ablations modest); substrate delivers containment/recovery/reproducibility, NOT better outcomes. Marketing "fixes long-horizon coding" overclaims. (3) §10a.1 NEW direct prior art on K9-style pattern: DeltaBox (arxiv 2605.22781, OS-overlayfs implementation, 14ms checkpoint strict perf superior to git-cherrypick) + Hermes Agent (NousResearch, shipping product implementing K1+K9 combo). Acknowledges K9-as-pattern is shared prior art; what remains genuinely novel: K1+K9+K14 triple, K2 envelope synthesis, E1 typed failure artifacts, A6 reputation snapshot, honest K12-advisory framing. **Category-B field-survey debt** (Σ session state vs Policies-on-Paths; K2 envelope signing vs SAGA C3; A6-as-observer-only ADR vs TVP arxiv 2510.18563; MI9 goal-conditioned drift detection; TRiSM multi-agent correlation accounting; AGENTS.md interop; K9 cherry-pick latency benchmarks vs DeltaBox baseline; Praetorian 5-role HETS template; LangGraph concurrency-strategy naming; policy-DSL pluggability vs AGT) captured in `swarm/thoughts/shared/backlog/v3.1-v3.2-field-survey-debt.md` with target releases and effort estimates. **BLUEPRINT LOCKED at v5.4. No further amendments before Phase 0.**
 - v1/v2/v3 preserved at `v3.3-substrate-synthesis-v{1,2,3}.md` for diff
 
 **Honest meta-pattern observed across versions**: each LLM-driven revision absorbs prior findings BUT can introduce new aspirational claims under cover of new structure. v3 added "delete before add" rhetoric (actually 1 real deletion vs +17 net primitives), buried v2→v3 time regression (+27-50h overhead admitted as "obsolete framing"), inflated GPT source-class. **v4 corrects these and admits the meta-pattern.** Further document iteration has diminishing returns; Wave -1 entry-probe = first real empirical validation.
@@ -72,6 +75,74 @@ v3's optimistic "~85-129h" estimate was 65-95% low per Round-3 planner calibrati
 
 ---
 
+## 0.v6 — v6 Motivation & Changelog (NEW v6, supersedes nothing in v5.4 § ordering)
+
+v5.4 was BLUEPRINT-LOCKED with the explicit gate "no further amendments before Phase 0." Phase 0 has now landed (PR #158 merged 2026-05-27); v6 is the first post-Phase-0 amendment. Four load-bearing drivers warrant the MAJOR version bump, not a PATCH.
+
+### Driver 1 — File-based memory as DB requires a consistency model
+
+v5.4 specifies the four-class state model (Axioms/Theorems/Samples/Attestations) and the parent-records pivot, but treats persona memory as **schema-shaped files** without specifying the underlying consistency model. Working through the v3.0-alpha implementation surfaced that the kernel transaction loop (Spawn → worktree → delta → verify → promote/reject → spawn-record) is itself a **database transaction**, and the substrate has been silently relying on `git stash` + atomic file ops without making the consistency story explicit. v6 makes the model load-bearing:
+
+- **A8 Memory-as-Content-Addressed-State-Machine** — replay of the transaction chain IS the canonical state; in-place mutation of canonical state is forbidden.
+- **A9 Memory-Transaction-Atomicity** — two-phase commit at spawn boundaries with explicit `intent_recorded_at` / `committed_at` + WAL recovery sweep for crash-mid-spawn.
+- **A10 Evidence-Linked Admission** — every transaction carries `evidence_refs` to kernel-emitted records that exist in the chain; K9 pre-commit rejects forged refs (syntactic-layer false-memory defense).
+
+These three axioms compose with v5.4's A1 + A7 (transactional determinism + write-scope detection) to form a coherent transactional substrate. Without them, the v3.0-alpha kernel would ship with implicit consistency assumptions that block clean v3.1+ extension.
+
+### Driver 2 — Endorsements decision (C0)
+
+The v5.4 → v3.3 plan had `E14 Endorsement primitive` on the roadmap with 4-5 invariants and 5 security launch-blockers. C0 architect decision (HETS-routed spawn 2026-05-27; full text in `/tmp/c0-decision-summary.md`) concluded that endorsements are a **derived view**, NOT a first-class primitive. Six load-bearing reasons:
+
+1. §0a pillar-grounding test fails for the primitive option (principle-tier, not pillar-tier; K12 v5.1 precedent applies).
+2. v5.4 K2 envelope + R13 advisory-findings + A6 reputation already contain every field needed; a primitive duplicates data.
+3. SRP violation in the primitive option (two writers for the same evidence class).
+4. DIP cleaner in the derived-view (E4 → kernel records, not E4 → endorsement-records → kernel records).
+5. **Security cost asymmetry — load-bearing**: the 5 launch-blockers exist BECAUSE the primitive creates the attack surface; removing the primitive removes the surface.
+6. The only unique enabler the primitive offers (endorser-side reputation) IS the Trust-Vulnerability Paradox amplifier B3 forbids.
+
+v6 ships `E14: Endorsement-as-derived-view` (Lab layer, `packages/lab/_lib/endorsement-view.js`) with 3 invariants (INV-16/17/18) replacing the 4-5 the primitive would have needed. Endorser-side reputation is out of scope indefinitely.
+
+### Driver 3 — Pillar 3 anti-amplifier clarification (refined post-3-FAIL)
+
+Three property tests against the draft Pillar 3 clause FAIL'd (counterfactual-brittle test, trust-by-tenure recency-smuggling gap, "authorize promotion" underspecification). The refined clause (§0a.3.1) is pillar-tier normative text that:
+
+- Defines derived views as pure projections over kernel-emitted records.
+- Permits reorder / surface / recommend / monotonic-narrow.
+- Forbids capability-widen / state-transition-input / instruction-text propagation / non-evidence-linked trust.
+- Composes with A10 (syntactic-layer) as a two-layer false-memory defense. Transitive amplification is closed by the clause's own "MUST NOT widen K6/K8 capability scope" prohibition (no separate invariant required).
+
+The clause is not itself a derived view — it is normative text WITHIN Pillar 3, governing what derived views may and may not do.
+
+### Driver 4 — Memory Root Pointer Convention (operational discovery primitive)
+
+v5.4 hard-codes discovery paths across hooks, validators, and recall-CLI. v6 introduces `memory-root.json` as the single discovery artifact, with explicit per-user vs per-project scope precedence, atomic-write discipline (INV-26), canonical-only indexing (INV-27 — prevents derived views from being selected as `evidence_refs`), and explicit non-scope (no custom binary format, no mmap, no free-block tracking). The pointer is **discovery-only** — the `active_state_hash` field was dropped per user-lock (Patch 1) so A8's single-source-of-truth property is preserved (state is always computed by walking the WAL tail).
+
+### Honest scope of the v5.4 → v6 jump
+
+- **Three new axioms** (A1-A7 → A1-A10).
+- **Two new K-primitives** (K15 DeltaRef, surviving from v5.5 amendment; K16 Memory-Read-Audit, renamed from "Memory IAM" per HIGH-1 honesty fix). Kernel total: 14 → 16.
+- **One new Lab-layer spec** (E14 endorsement-view; Lab not Kernel).
+- **Twelve new invariants** (15 → 27). Numbered INV-16..INV-27, spanning C0 (3), consistency model (7), Memory Root Pointer (2).
+- **One new §5a section** (Memory Consistency Discipline; 9 subsections).
+- **Two new ADRs** (ADR-0013 endorsement-derived-view; ADR-0014 memory-root-pointer).
+- **One new §10b entry** (endorsement-records-as-primitive rejected, with reasoning).
+
+This is honestly a MAJOR-tier change. v6 is not a PATCH amendment to v5.4; it is the substrate's first integrated transactional-memory specification. The v3.0-alpha K2 reservation PR scope (~180-285 LoC, ~6-9h) sits inside the existing budget envelope; full v3.0-alpha through v3.4 hour ranges are unchanged from v5.4 BLUEPRINT-LOCKED.
+
+### v6 IS / v6 is NOT
+
+**v6 IS**:
+- Implementation-grade blueprint for v3.0-alpha through v3.4 with consistency model explicit.
+- Source for RFC v3.3 amendment (drafted after v6 acceptance).
+- Supersedes v5.x synthesis lineage upon Round-3 LOCK.
+
+**v6 is NOT**:
+- Final Phase-1-alpha implementation specification (algorithm signatures + contract schemas are v3.0-alpha through v3.4 deliverables).
+- A primitive-implementation document (e.g., reverse-cherrypick journal format is still a v3.0-alpha deliverable, not specified at blueprint level).
+- Free of open questions (~17-19 OQs after v6 absorptions; see §11).
+
+---
+
 ## 0a. The Four Vision Pillars (NEW v5.1 — load-bearing alignment test for all future amendments)
 
 The substrate's vision is "deterministic state management for stochastic agents." Operationally, this decomposes into **four pillars** — load-bearing properties the substrate exists to deliver. Every axiom, primitive, and amendment in this document MUST map to at least one pillar. The check "does this serve a pillar concretely?" is now an explicit gate for adding new mechanisms.
@@ -93,6 +164,24 @@ The substrate's vision is "deterministic state management for stochastic agents.
 > Spawns are replayable from their recorded envelope. Reputation snapshots make Lab→Kernel data flow deterministic. Per-tool-call traces make replay verifiable. Cross-spawn determinism requires explicit context propagation.
 
 **Served by**: A6 (Reputation snapshot), K2 (spawn-record envelope), K2.b (settings.json resolution), K2.c (per-tool-call observability), K3 (lineage), K3.b (context envelope), K13 (serial-only spawn — defends against TOCTOU on shared state), R13 (idempotency-key for external side effects), advisory CI lint (K12 v5.1).
+
+#### §0a.3.1 — Derived-View No-Amplification Clause (v6, NEW; pillar-tier normative)
+
+> A **derived view** is a pure projection over kernel-emitted records (K2 spawn-records, R13 advisory-findings, A6 reputation snapshots, K3 lineage; see §6.4 endorsement-view spec for the canonical shape). Derived views include — but are not limited to — reputation aggregates, endorsement views, persona-memory *summary/dashboard* projections, archetype-grouping summaries, tier-progression histories, and skill-vector morph aggregates. Chain-replay producing the canonical kernel-state itself is NOT a derived view in the sense of this clause; it is the realization of A8. Derived views are projections layered ON TOP of the canonical state for informational use (reordering, surfacing, ranking, recommending), distinct from the state itself.
+>
+> Derived views MAY reorder candidate sets, MAY surface evidence to the orchestrator or to a human reviewer, and MAY recommend actions to the orchestrator. They MAY narrow K6/K8 capability scope (narrowing composes with INV-K6-CapabilityMonotonic and is monotonically safe).
+>
+> Derived views MUST NOT widen K6/K8 capability scope; MUST NOT enter as input to any state transition that writes a kernel-canonical record (K9 promote-deltas, memory promotion L_spawn→L_persona, persona-contract update, capability assignment); MUST NOT be propagated as instruction-text into peer LLM contexts; and MUST NOT grant trust that is not evidence-linked to a kernel-emitted record of verified outcome (i.e., no trust-by-tenure, no trust-by-recency-alone, no trust-by-frequency-alone).
+>
+> This clause is normative text within Pillar 3; it is not itself a derived view. Transitive amplification — a derived view recommending a spawn whose K8 grant then widens capability — is forbidden by this clause directly: the "MUST NOT widen K6/K8 capability scope" prohibition closes the chain at the K8 widen point regardless of whether the upstream input was a derived view's recommendation. No separate invariant is required.
+
+**Composes with**:
+- A10 Evidence-Linked Admission (§3) — A10 is the syntactic-layer false-memory defense (K9 pre-commit rejects forged `evidence_refs`); §0a.3.1 is the semantic-layer defense (read-time rules on how views may be used). Two-layer defense.
+- INV-A6-NonAuthorizing (per `packages/specs/research/v3.1-v3.2-field-survey-debt.md` §B3) — reputation cannot widen capability; this clause generalizes that constraint to all derived views.
+- INV-27-PersonaIndexCanonicalOnly — `persona_memory_index` indexes ONLY kernel-canonical records; derived views cannot backdoor into evidence-link via the index.
+- §6.4 E14 Endorsement-as-Derived-View spec — first concrete derived view; reads as kernel-record projection; cannot re-enter K9 as canonical-record input.
+
+**Test (refined post-3-FAIL)**: a derived view is anti-amplification-compliant iff every action it enables can be traced to a kernel-emitted record of verified outcome that is structurally accessible via `evidence_refs` at admission time. "Trust by tenure" (long-lived persona implicit-trust), "trust by recency" (recent endorsement weighted higher), and "trust by frequency" (often-recommended persona promoted) ALL fail the trace test and are explicitly forbidden.
 
 ### Pillar 4 — TDD / Role-Separation Contracts
 
@@ -266,9 +355,11 @@ OQ-14 is **deleted** from open-question list; it's now mandatory work in v3.0-al
 
 ---
 
-## 3. The Seven Axioms (v4.2: A7 added per Wave -1 P-WriteScope + Round-5 architect CRITICAL-1)
+## 3. The Ten Axioms (v6 expansion: A8/A9/A10 added per Memory Consistency Discipline)
 
 **v4.2 architectural note (2026-05-26, per Round-5 architect CRITICAL-1)**: in v4.1 we restated A1 with a footnote saying "the kernel MUST detect out-of-scope writes." That made A1 contingent on K14 — i.e., a theorem dependent on a primitive, not a true axiom. v4.2 fixes this by introducing **A7 (Write-Scope Detection)** as a co-equal kernel invariant. A1 remains pure ("validated in-scope filesystem deltas are the substrate's unit of truth"); A7 carries the load that out-of-scope writes are detected post-hoc and treated as policy violations. Together, A1 + A7 form the transactional-determinism story; neither depends on the other's implementation.
+
+**v6 architectural note (2026-05-27, NEW)**: v5.4's seven axioms specified the kernel transaction loop but did not specify the consistency model under which persona memory writes commit. A8/A9/A10 close this gap. A8 makes the transaction chain (not in-place file contents) the source of truth; A9 specifies two-phase commit with explicit intent/commit timestamps and a recovery sweep for crash-mid-spawn; A10 makes evidence-link admission a kernel pre-commit gate, composing with the §0a.3.1 Derived-View No-Amplification Clause to form a two-layer false-memory defense. These three axioms are NOT contingent on A1-A7 and vice versa — they are co-equal kernel invariants for transactional memory consistency. The Memory Root Pointer Convention (§5a.9) is the operational discovery artifact that makes A8 implementable without hard-coded paths.
 
 ### Axiom 1 — Transactional Determinism (Kernel)
 
@@ -326,6 +417,52 @@ Without this extension, the E3 → K4 closed loop violates kernel determinism. v
 **Forbids**: silently accepting out-of-scope writes; relying on tool-layer hooks alone (Bash bypasses them); inferring scope from `pwd` alone (symlinks + absolute paths defeat this).
 
 **Override**: `LOOM_ALLOW_OUT_OF_SCOPE_WRITES=1` audit-logged escape hatch, per K10's pattern.
+
+### Axiom 8 — Memory-as-Content-Addressed-State-Machine (Kernel; v6, NEW)
+
+> The authoritative memory of a persona at time T is defined as the deterministic replay of the chain of transactions terminating at T. The chain — not any in-place file contents — is the source of truth. In-place mutation of canonical state is forbidden. Every transition produces a sibling record in the chain referencing its predecessor by content-hash.
+
+**Forbids**: in-place edits to canonical persona-memory records; treating any single file's current bytes as authoritative; bootstrap procedures that infer state from filesystem scan when the WAL is present.
+
+**Enables**: deterministic replay-from-record (Pillar 3); bisect-style debugging of memory-state transitions; principled migration via SUPERSEDE-as-transaction (§5a.8).
+
+**Implementation contract**: the `prev_state_hash` field on every transaction record (§4.2 transaction-record shape) is what binds the chain. The genesis sentinel (§4.3) defines the well-defined empty-chain state. The Memory Root Pointer (§5a.9) is discovery-only — it does NOT cache the active state hash (per Patch 1 user-lock; eliminates dual-write inconsistency surface).
+
+**Served by**: Pillar 1 (chain replay produces canonical state) + Pillar 3 (replay determinism).
+
+### Axiom 9 — Memory-Transaction-Atomicity (Kernel; v6, NEW)
+
+> State transitions commit at spawn boundaries via two-phase commit: (phase 1) intent recorded in WAL with `intent_recorded_at` and `commit_outcome: PENDING`; (phase 2) commit consummated with `committed_at` and `commit_outcome: COMMITTED` after K14 write-scope validation, atomic file rename, and fsync(2). On recovery sweep, any record with `commit_outcome: PENDING` for which no subsequent state transition exists is reclassified `ABORTED` with `abort_reason: "recovery-sweep-orphan"`. K9 promote-deltas + K14 write-scope-enforcer compose to implement this two-phase commit.
+
+**Forbids**: single-phase commits that conflate intent with completion (cannot distinguish "crashed-after-write" from "decided-not-to-write"); recovery procedures that replay COMMITTED records as if they were PENDING; silent acceptance of orphan-PENDING records.
+
+**Enables**: principled crash recovery (per §5a.5 recovery sweep); idempotent replay (per §5a.6); bounded reasoning about partial-failure states.
+
+**Composes with**:
+- A1 + A7 — A9 specifies WHEN the in-scope delta becomes durable; A1 specifies that it IS the unit of truth; A7 specifies the out-of-scope detection that gates phase 2.
+- R13 Idempotency-Key Enforcer — idempotency keys dedupe at the intent-record phase; two-phase commit handles partial-failure recovery. Orthogonal mechanisms; both required.
+- §5a.9 Memory Root Pointer — recovery sweep presupposes pointer resolution (Patch 2); pointer must be resolved before sweep can locate the WAL.
+
+**Implementation contract**: K9 owns the cherrypick + journal; K14 owns the write-scope validation; both compose at the K9↔K14 sequencing contract (§6.1.1) which is now load-bearing for A9. The WAL itself lives at `manifests.attestation_wal` per §5a.9 (default `~/.claude/checkpoints/attestation-log.jsonl`).
+
+**Served by**: Pillar 1 + Pillar 3.
+
+### Axiom 10 — Evidence-Linked Admission (Kernel; v6, NEW)
+
+> Every memory transaction MUST carry non-empty `evidence_refs` to kernel-emitted records that exist in the chain at `prev_state_hash`. K9 pre-commit MUST reject any transaction whose `evidence_refs` point to records not present in the chain (forgery detection at syntactic layer). This composes with the §0a.3.1 Derived-View No-Amplification Clause (semantic layer at read-time) to form the two-layer false-memory defense.
+
+**Forbids**: transactions with empty `evidence_refs`; transactions whose evidence-refs point to derived views (per INV-27 `persona_memory_index` indexes ONLY kernel-canonical records); transactions whose evidence-refs point to records outside the chain at `prev_state_hash` (forgery detection — even a record that exists in some other chain at some other time fails the in-chain check).
+
+**Enables**: kernel-layer false-memory defense at WRITE time (syntactic); §0a.3.1's semantic defense at READ time becomes the second layer.
+
+**Composes with**:
+- §0a.3.1 Derived-View No-Amplification Clause — two-layer defense; A10 syntactic, §0a.3.1 semantic.
+- INV-A6-NonAuthorizing — A6 reputation is consumable as an `evidence_ref` (it is a kernel-emitted record), but per INV-A6-NonAuthorizing it cannot widen capability — so even valid evidence-link cannot route around the capability discipline.
+- INV-27-PersonaIndexCanonicalOnly — `persona_memory_index` indexes ONLY kernel-canonical records; derived views are never indexable and therefore never selectable as `evidence_refs`. INV-27 closes the path by which derived views could backdoor into evidence-link.
+
+**Implementation contract**: K9 pre-commit gate runs after K5/K7 schema validation, before atomic rename. Algorithm: for each `evidence_ref` in the proposed transaction, walk the chain from `prev_state_hash` backward; reject if any ref is not found. Performance: O(|evidence_refs| × |chain-depth|); chain-depth is bounded by R10 budget envelope + serial-only K13.
+
+**Served by**: Pillar 1 (false-memory at write boundary) + Pillar 3 (evidence-link is auditable).
 
 ---
 
