@@ -569,6 +569,20 @@ Chain-replay semantics: `walkChain(start_hash)` skips `commit_outcome ∈ {NOT_A
 
 This resolution keeps A8's single-source-of-truth property cleanly: every record lives in the chain, but only COMMITTED state-transition records contribute to the canonical state. NOT_APPLICABLE is the explicit sentinel that distinguishes audit-only entries from gated-out partial-failure ones.
 
+**Edges-embedded-in-nodes design (v6 Round-3e — per Gemini Flash external review CAS Blueprint Rule 2)**: the transaction-record envelope is intentionally **self-contained** — graph edges between records are stored INSIDE each record, not in a separate edge-index file. Specifically:
+
+- `prev_state_hash` → chain edge to the predecessor COMMITTED record (the canonical-state lineage; this is what `walkChain()` follows).
+- `parent_state_id` → K3 lineage edge to the parent spawn-record (the orchestrator-spawn relationship).
+- `evidence_refs[*]` → A10 evidence edges to the kernel-emitted records this transaction admits (typed: K2 spawn-record / R13 advisory-finding / A6 snapshot / K3 lineage).
+- `references_transaction_id` → phase-1 ↔ phase-2 commit-pair edge (the two-phase-commit linkage).
+- `affected_records[*]` → SUPERSEDE/TOMBSTONE edges to the records being superseded or removed from canonical-state view.
+
+**Why this matters (load-bearing)**: storing edges as a separate index file would create the **dual-write inconsistency** problem (Gemini Flash CAS Blueprint Trap 1). If the substrate writes a new node file successfully but crashes before updating an edge-index, the graph would be corrupted with orphan nodes (dangling files) AND broken links (missing references). Recovery would require reconciling two sources of truth — and per ADR-0014, dual-writes without distributed transactions ALWAYS lead to inconsistency (the same load-bearing rationale that rejected `active_state_hash` in `memory-root.json` per PB-1 user-lock).
+
+By embedding edges in nodes, v6 makes the graph **tamper-evident by construction**: a record's `transaction_id` is the sha256 of its full content (including its edges); changing any edge changes the content hash; the new hash doesn't match the predecessor's pointer, breaking the chain visibly. The graph IS the WAL; the WAL IS the graph. There is no edge-index to drift out of sync.
+
+This composes with: A8 (chain is canonical); INV-19-WALAppendOnly (no in-place mutation); §10b SQLite-rejection (a separate index database would be exactly the second-source-of-truth this design forecloses; if a derived index ships at v3.5+ per OQ-24 it is explicitly a CACHE, not canonical). Cross-reviewer convergent: all 4 of Gemini Flash's CAS Blueprint Rules (content-addressed + immutable + edges-in-nodes + single-mutable-head-pointer + tombstoning-for-deletion) are now explicitly mapped to v6 primitives — see §10b derived-views and §5a.9 MRP for Rules 3+4.
+
 **Composes with**:
 - A8 (chain is canonical) — chain includes all envelope-emitted records; canonical state is the COMMITTED subset.
 - A9 (two-phase commit) — `intent_recorded_at` / `committed_at` / `commit_outcome` enum implement the two phases.
