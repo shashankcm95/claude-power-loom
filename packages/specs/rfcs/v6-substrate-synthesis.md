@@ -120,7 +120,7 @@ v5.4 hard-codes discovery paths across hooks, validators, and recall-CLI. v6 int
 ### Honest scope of the v5.4 → v6 jump
 
 - **Three new axioms** (A1-A7 → A1-A10).
-- **Two new K-primitives** (K15 DeltaRef, surviving from v5.5 amendment; K16 Memory-Read-Audit, renamed from "Memory IAM" per HIGH-1 honesty fix). Kernel total: 14 → 16.
+- **Zero new K-primitives**. Kernel total UNCHANGED at 14 (K1-K14). v6's load-bearing additions are implemented as **disciplines + invariants + schema additions to existing primitives**: K2 envelope gets the §4.2 transaction-record-shape extension; K9 gains §6.5.1 pre-commit evidence-link gating (A10) and §5.2 two-phase commit responsibility; K14 gains §5.2 phase-2 validation responsibility; `_lib/atomic-write.js` is reused for `memory-root.json` writes (§5a.2). **Honest disclosure (LOCK-review HD-1 fix)**: an earlier draft of this §0.v6 list named "K15 DeltaRef" and "K16 Memory-Read-Audit" as new kernel primitives. Those names were aspirational placeholders that never received body-level specifications — no table entry, no LoC budget, no schedule. Per Round-3 LOCK review (architect `a0bf0cd9` + honesty-auditor `abf4a296`), both removed. v6 ships ZERO new K-primitives; all consistency-model additions are inside existing K1-K14 surfaces.
 - **One new Lab-layer spec** (E14 endorsement-view; Lab not Kernel).
 - **Thirteen new invariants** (15 → 28). Numbered INV-16..INV-27 plus INV-A9-RecoverySweepIdempotent (codified per Round-2 sub-tension 3 resolution; honest disclosure — the locked drafting bundle counted 27, Round 2 added the 28th when codifying recovery-sweep idempotency). Spanning C0 (3: INV-16/17/18), consistency model (8: INV-19/20/21/22/23/24/25 + INV-A9), Memory Root Pointer (2: INV-26/27).
 - **One new §5a section** (Memory Consistency Discipline; 9 subsections).
@@ -612,7 +612,7 @@ Implementations MUST canonicalize whitespace and use lowercase hex; reference im
 
 ## 6.1 Primitives by Layer (v6 RENUMBER: was §4 — primitive tables kept verbatim below pending Round 3 full reorganization)
 
-### 6.1.1 Loom Kernel Primitives (13 total — was 11; K12+K13 added)
+### 6.1.1 Loom Kernel Primitives (14 total — was 11; K12+K13 added v5.1, K14 added v4.1; K14 full spec at §6.5.K14)
 
 | # | Primitive | Source / Mechanism | Shipping release |
 |---|---|---|---|
@@ -630,7 +630,7 @@ Implementations MUST canonicalize whitespace and use lowercase hex; reference im
 | K12 | Layer-boundary convention (v5.1 DOWNGRADED from mandatory) | Per-file `// @loom-layer:` frontmatter markers + advisory CI lint that warns (does NOT block) on cross-layer imports (~50-80 LoC). Upgrade trigger captured as OQ-19. | v3.0-alpha (convention + advisory) |
 | **K13** | **Serial-only spawn enforcer (NEW v4)** | Active rejection or queue of concurrent spawns; spawn-init detects active spawns via lock file + **PID-staleness check + orphan-lock recovery on Claude-Code-crash-mid-spawn** (lock file includes PID + start_at; reaping stale locks via `kill -0` + age threshold) (~150-220 LoC honest per Round-4 architect HIGH; was 80) | **v3.0-alpha (mandatory per user concern #4)** |
 
-**Kernel total**: 13 primitives. **Verification surface**: pure functions only. **Stability**: MAJOR-bump-protected.
+**Kernel total**: 14 primitives (K1-K14; K14 full spec at §6.5.K14; v6 corrects pre-existing stale "13" line per HD-2). **Verification surface**: pure functions only. **Stability**: MAJOR-bump-protected.
 
 ### 6.1.2 Loom Runtime Primitives (13 total — unchanged)
 
@@ -1118,7 +1118,7 @@ Per §6.13 (full property-test sketches in invariant tables):
 
 ### v3.3 budget impact
 
-E14 sits **inside the existing v3.3 envelope** (~14-20h / ~500-750 LoC per §6.8). No new v3.3 scope addition needed — the view replaces the budget the primitive would have consumed, at honestly lower cost.
+E14 (~350-510 LoC / 8-12h) is intended to fit within v3.3's slack against the upper envelope bound (~500-750 LoC / 14-20h per §6.8). **Honest framing (HD-5 fix)**: v5.4's §6.8 listed E14 as a roadmap entry with "4-5 invariants and 5 security launch-blockers" but no itemized LoC budget; there is no concrete "primitive budget" being reallocated. The substantive savings vs the rejected primitive path come from eliminating the 5 launch-blocker security workstream (anti-gaming + external-evidence + acyclic-chain + idempotency + restraint-type), each of which would have been its own multi-hour effort. v3.3's §6.11 effort summary table has NOT been updated for v6 (HD-3 cleanup deferred); if E14's LoC pushes against the existing E1-E4 line items, v3.3 budget expansion is the honest disclosure at v3.3 LOCK time.
 
 ### Composes with
 
