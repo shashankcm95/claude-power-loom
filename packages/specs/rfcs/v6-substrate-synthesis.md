@@ -1299,7 +1299,9 @@ E14 (~350-510 LoC / 8-12h) is intended to fit within v3.3's slack against the up
 
 **Scope**: ~140 LoC of probe scripts + write-up. **6-9h total.**
 
-### 6.5 v3.0-alpha — PURE KERNEL TRANSACTION LOOP (v6 RENUMBER: was §6.1 release-scope; v6 HD-4 note: heading carries stale v3-era figures ~20-28h, ~900-1,300 LoC; canonical post-v4.2 figures are ~2,225-3,550 LoC / ~41-71h per §6.11 effort summary; v6 K2 reservation PR honest scope ~260-405 LoC / ~8-12h per Round-3d C1 reset; v3.0-alpha total post-Round-3d ~52-87h per §6.11 update)
+### 6.5 v3.0-alpha — PURE KERNEL TRANSACTION LOOP (~2,755-4,600 LoC / ~52-87h per §6.11; v6 RENUMBER: was §6.1)
+
+**Provenance (Round-3b HD-4 cleanup 2026-05-27)**: prior v3-era heading carried stale "~20-28h, ~900-1,300 LoC" figures; v4.2/Round-5 calibration moved the canonical range to ~2,225-3,550 LoC / ~41-71h; Round-3d 5-persona pair-review (C1+C2+C3) added pre-spawn-tool-mask hook (~30-50 LoC / +1h) + property-test harness infra (~+500-1,000 LoC / +10-15h), producing the current honest range ~2,755-4,600 LoC / ~52-87h. K2 reservation PR shipped via [#161](https://github.com/shashankcm95/claude-power-loom/pull/161) merged 2026-05-27 (~260-405 LoC / ~8-12h, scope counted inside the row total above). Abort trigger remains 140h wall-clock per the v4.2 §6.5 body discussion below.
 
 **Per user concern #2**: K6 + K8 removed; v3.0-alpha is the absolute smallest kernel that proves the deterministic transaction loop.
 
@@ -1529,13 +1531,13 @@ Both primitives touch post-spawn state-resolution. Without an explicit contract 
 | Release | LoC (honest) | Hours (honest) | Pair-Review |
 |---|---|---|---|
 | Wave -1 | ~140 | 6-9 | architect (sniff) |
-| v3.0-alpha | ~2,225-3,550 (v5.1: K12 downgrade -100-120 LoC) | 41-71 (abort 140) | architect + code-reviewer + security-auditor (×2 on K9+K14) |
+| v3.0-alpha | ~2,755-4,600 (v5.1: -100-120 LoC K12 downgrade; v6 Round-3d: +30-50 LoC pre-spawn-tool-mask + +500-1,000 LoC property-test harness) | 52-87 (abort 140; v6 Round-3d: +1h hook + +10-15h harness over v5.1's 41-71h) | architect + code-reviewer + security-auditor (×2 on K9+K14) + Round-3d 5-persona pair-review checkpoint |
 | v3.1 | ~2,550-3,150 (v5: +R13 +K2.c) | 24-36 | architect (kickoff) + code-reviewer per-sub-wave |
 | v3.2 | ~1,200-1,600 (OQ-11 closed: slim predicates) | 16-22 | architect + code-reviewer + honesty-auditor |
-| v3.3 | ~500-750 | 14-20 | architect + code-reviewer + honesty-auditor |
+| v3.3 | ~500-750 base + 350-510 LoC v6 E14 derived-view = honest ~700-970 (HD-3 disclosure: exceeds v5.x upper bound 750; v3.3 envelope expansion pending v3.3 LOCK) | 14-20 base + 8-12h v6 E14 = honest ~22-32 (HD-3 disclosure: expansion pending v3.3 LOCK) | architect + code-reviewer + honesty-auditor |
 | v3.4 | ~800-1,200 code + 96-160h human | 35-55 + human | architect + honesty-auditor (ground-truth ADR) |
 | Release-cycle overhead | — | +30-45 (separately tracked) | 5 × per-release CHANGELOG/smoke/tag/cross-release-validation |
-| **TOTAL through v3.4** | **~5,840-8,290 LoC + ~96-160h human** | **141-209h + human work** | 6 layered checkpoints |
+| **TOTAL through v3.4 (v6 LOCK)** | **~8,295-11,330 LoC + ~96-160h human** (v4 baseline 5,840-8,290 → v5.1 7,415-9,770 → v6 +Round-3d/+E14) | **186-263h + human work** (v4 baseline 141-209 → v5.1 167-235 → v6 +19-28h) | 6 layered checkpoints + Round-3d 5-persona pair-review |
 
 **Honest comparison to prior versions** (no "obsolete framing" obfuscation):
 - Original execution plan (2026-05-24): ~30h, no explicit LoC
@@ -1554,6 +1556,7 @@ Both primitives touch post-spawn state-resolution. Without an explicit contract 
   - **E14 framing correction**: E14 at 350-510 LoC is **47-102% of the entire existing v3.3 budget bound (500-750 LoC)**. Framing E14 as "fits inside the existing envelope" is spin; the honest framing is "E14 consumes ~70% of the remaining v3.3 budget at midpoint". E1-E4 line items in v3.3 (~350-460 LoC per §6.8 itemization) plus E14 (350-510) = ~700-970 LoC, which EXCEEDS the v3.3 envelope upper bound (750). v3.3 row WILL need expansion at v3.3 LOCK; the "absorbed" framing is forward-looking, not arithmetic.
   - **Net v6 structural delta**: +3 axioms, +14 invariants (per Gemini 3.1 Pro GP1 addition of INV-28), +1 §5a section, +1 E14 Lab spec, +2 ADRs (0013/0014), +3 §10b reject-entries (endorsement-primitive + active_state_hash + SQLite-as-canonical-ledger per Round-3c), +8 OQ entries (OQ-20..27 per LOCK reviews + Round-3c cross-reviewer convergence), **+2 v3.0-alpha scope additions (Round-3d per 5-persona pair-review): `pre-spawn-tool-mask.js` hook (~30-50 LoC / +1h) closing the network-prohibition enforcement gap + property-test harness infra (~+500-1000 LoC / +10-15h) covering fixture-build budget for 20 v3.0-alpha-activated invariants**. **Zero new K-primitives** (Kernel total stays at 14; K15/K16 were phantom claims in early drafts, removed per LOCK-review HD-1 fix).
   - **Round-3d v3.0-alpha budget impact (per 5-persona pair-review C2+C3)**: the Round-3d additions inflate v3.0-alpha by ~+11-16h relative to the §6.5 effort table's existing 41-71h envelope. New honest range: ~52-87h (still inside the 140h abort trigger). Implementation may choose to time-box P-Snapshot probe (per Round-3d OQ-25 update) to recover slack OR accept the inflation as the honest cost of v3.0-alpha LOCK-quality network-prohibition enforcement + property-test coverage.
+- **v6 LOCK synthesis (rolled up; Round-3b HD-3 cleanup 2026-05-27)**: ~8,295-11,330 LoC code + ~96-160h human work / **186-263h + human work** through v3.4. v6 deltas absorbed into row totals: v3.0-alpha 41-71h → 52-87h (+Round-3d hook +harness); v3.3 14-20h → honest 22-32h (+E14 derived-view) with v3.3 envelope expansion DEFERRED to v3.3 LOCK per §6.8 disclosure. v3.1, v3.2, v3.4, Wave -1 rows unchanged. K2 reservation PR (~260-405 LoC / ~8-12h, Round-3d C1) SHIPPED via PR #161 (merged 2026-05-27); shipped fields counted inside v3.0-alpha row total, not separately. v3.3 row honesty caveat remains: "absorbed" framing is forward-looking, not arithmetic — expansion will be made explicit at v3.3 LOCK.
 
 **Honest trade-off statement**: v4 is +63-130h more total time than v2 in exchange for per-release blast radius reduction, per-release rollback, layer-enforcement, serial-only enforcement, and v3.4 deferral discipline. This is a real trade with real costs and real benefits — not a regression. v6 layers additional discipline (consistency model, evidence-link admission, derived-view anti-amplification) on top of v4's structural scaffolding — at zero net code cost claimed, with the table-update honesty caveat above.
 
@@ -1907,11 +1910,12 @@ Each LLM-driven revision absorbs prior findings BUT can introduce new aspiration
 - Final RFC v3.3 (that comes after acceptance + RFC-format conversion)
 - Implementation specification (algorithm signatures + contract schemas are v3.0-alpha through v3.4 deliverables; ADRs 0009-0012 stubs are v3.0-alpha deliverables not yet written)
 - Free of all open questions (~17-19 OQs remain across §11; OQ-14 deleted, OQ-15/16/17 closed)
-- Free of all honesty debts — Round-3b cleanup remains: HD-3 (§6.11 effort summary table v6 envelope explicit math), HD-4 (§6.5 stale LoC figures reconciliation), T-7 (§5/§5a vs §6.1/§6.2 in-file ordering deferred to v6.1)
+- Free of all honesty debts — Round-3b cleanup status (updated 2026-05-27): HD-3 (§6.11 effort summary table v6 envelope explicit math) ✅ CLOSED in Round-3b cleanup PR; HD-4 (§6.5 stale LoC figures reconciliation) ✅ CLOSED in Round-3b cleanup PR; T-7 (§5/§5a vs §6.1/§6.2 in-file ordering) deferred to v6.1 per original Round-3b scope decision (structural in-file ordering, not arithmetic-honesty)
 
-**Next step** (post-v6-LOCK):
-- (a) Lock v6, open PR against main, begin v3.0-alpha K2 reservation PR (Task #10) — the K2 envelope schema-additive extension that ships the §4.2 transaction-record-shape reservation + `memory-root.js` reader stub + ADR-0013/0014 references
-- (b) After K2 reservation PR merges, begin Phase 1-alpha (v3.0-alpha kernel) implementation (~30h)
-- (c) Round-3b cleanup at any point (non-blocking)
+**Next step** (state as of 2026-05-27; updated Round-3b HD cleanup):
+- (a) ✅ DONE — v6 LOCKED via [PR #160](https://github.com/shashankcm95/claude-power-loom/pull/160); K2 reservation shipped via [PR #161](https://github.com/shashankcm95/claude-power-loom/pull/161) — `transaction-record.js` + `memory-root.js` reader + K2.b settings resolution + `pre-spawn-tool-mask.js` (THE ONE THING) + ADR-0013/0014.
+- (b) ✅ DONE (this PR) — Round-3b HD-3 + HD-4 cleanup; §6.11 envelope math made explicit (v3.0-alpha row 52-87h; v3.3 row honest 22-32h with v3.3-LOCK expansion deferral); §6.5 heading reconciled. T-7 (§5/§5a vs §6.1/§6.2 ordering) remains deferred to v6.1 per the original Round-3b scope decision.
+- (c) **CURRENT GATE** — begin Phase 1-alpha (v3.0-alpha kernel) implementation. v3.0-alpha row honest scope ~2,755-4,600 LoC / ~52-87h. Remaining in-scope primitives (post-K2-reservation): K1 worktree, K3 lineage, K3.b context envelope, K4 recall-CLI port, K7 path canonicalize, K9 promote-deltas (cherrypick + journal + CWE-22 + K14 hook + ≥4 semantic-invalidity fixtures), K10 escape hatch, K12 layer-boundary convention, K13 serial enforcer, K14 write-scope enforcer, ADRs 0008-0010, property-test harness infra. Discipline gates per workflow rule: route-decide with --context → `/build-plan` (architect-paired) → `/verify-plan` (HETS-routed phase requires pre-approval verification) → TDD-treatment (failing tests first per §6.13 invariants A8/A9/A10 + INV-19..28) → impl.
+- (d) v6.1 will close T-7 (§5/§5a vs §6.1/§6.2 in-file ordering) and any new honesty debts surfaced during Phase 1-alpha LOCK review.
 
-Honest recommendation: **(a) then (b)**. Round-3b cleanup is cosmetic; it should not block K2 reservation PR or v3.0-alpha implementation.
+Honest recommendation: **(c) is the live gate**. Round-3b HD-1/HD-2 closed in v6 LOCK; HD-3 + HD-4 closed in this cleanup PR. T-7 is deferred to v6.1 by design — it's structural in-file ordering, not arithmetic-honesty, and waiting for it would block Phase 1-alpha for no load-bearing benefit.
