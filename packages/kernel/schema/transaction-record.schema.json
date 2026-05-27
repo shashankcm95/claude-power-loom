@@ -1,0 +1,156 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://power-loom.dev/schemas/transaction-record.schema.json",
+  "title": "Transaction Record Envelope (v6 §4.2)",
+  "description": "K2 envelope extension carrying the v6 transaction-record shape per `packages/specs/rfcs/v6-substrate-synthesis.md` §4.2. Schema-additive at v3.0-alpha (per INV-K2-SchemaForwardCompat): v5.4 K2-v2 readers tolerate the new fields as unknowns; v3.0-alpha+ readers consume them per A9 two-phase commit semantics. Round-3e GP4 reclassification: DERIVED-VIEW-INVALIDATE is informational (commit_outcome NOT_APPLICABLE), not state-changing. Round-3d delta 7: abort_detail field added for K9-rejection diagnostics.",
+  "type": "object",
+  "required": [
+    "transaction_id",
+    "prev_state_hash",
+    "writer_persona_id",
+    "writer_spawn_id",
+    "operation_class",
+    "intent_recorded_at",
+    "commit_outcome",
+    "schema_version"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "transaction_id": {
+      "description": "sha256(canonical_json(record_minus_this_field)) — fixed-point content hash. See `_lib/transaction-record.js` computeTransactionId.",
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "prev_state_hash": {
+      "description": "Chain edge to predecessor COMMITTED record; equals GENESIS_HASH for chain root (per §4.3). Edges-embedded-in-nodes design per §4.2 Round-3e (Gemini Flash CAS Rule 2).",
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "post_state_hash": {
+      "description": "State hash after this transaction; null in phase-1 PENDING intent records (per §5.2 two-phase commit).",
+      "oneOf": [
+        { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        { "type": "null" }
+      ]
+    },
+    "writer_persona_id": {
+      "description": "The persona that authored this transaction. Matches a persona contract in packages/runtime/personas/.",
+      "type": "string",
+      "minLength": 1
+    },
+    "writer_spawn_id": {
+      "description": "The spawn that performed the work. Format: sp-<ISO timestamp>-<persona-short>-<seq>.",
+      "type": "string",
+      "minLength": 1
+    },
+    "parent_state_id": {
+      "description": "K3 lineage edge to the parent spawn-record. Null for root spawns (no parent in the K3 chain).",
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        { "type": "null" }
+      ]
+    },
+    "operation_class": {
+      "description": "CRUD taxonomy per §5a.1. CREATE/APPEND/SUPERSEDE/TOMBSTONE are state-changing (subject to A10 evidence_refs enforcement). DERIVED-VIEW-INVALIDATE is informational (Round-3e GP4 reclassification) — carries commit_outcome NOT_APPLICABLE and MAY have empty evidence_refs.",
+      "type": "string",
+      "enum": [
+        "CREATE",
+        "APPEND",
+        "SUPERSEDE",
+        "TOMBSTONE",
+        "DERIVED-VIEW-INVALIDATE"
+      ]
+    },
+    "affected_records": {
+      "description": "Block IDs this transaction touches. For SUPERSEDE/TOMBSTONE, the predecessor records this entry replaces or marks removed.",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "default": []
+    },
+    "evidence_refs": {
+      "description": "A10 evidence edges to kernel-emitted records that exist in the chain at prev_state_hash. Required non-empty for state-changing operation_classes (CREATE/APPEND/SUPERSEDE/TOMBSTONE) per A10; MAY be empty for DERIVED-VIEW-INVALIDATE. Bootstrap-exception sentinels per A10 (Round-3d Patch GPT-1.B): USER_INTENT_AXIOM:<sha256>, GENESIS_EVIDENCE:<schema_version>:<scope>, ROOT_TASK_RECORD:<task_id>.",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "default": []
+    },
+    "schema_version": {
+      "description": "K2 envelope schema version. v2 = v5.4 baseline; v3+ = v6 transaction-record extension.",
+      "type": "string",
+      "pattern": "^v[0-9]+(\\.[0-9]+)?$"
+    },
+    "policy_version": {
+      "description": "Per INV-A6-PolicyVersionedReplay (v5.3). sha256 of the active policy-axioms snapshot at spawn-init. Schema-additive in v3.0-alpha; consumed by E3 in v3.3.",
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "intent_recorded_at": {
+      "description": "Phase-1 timestamp (per §5.2 two-phase commit). ISO 8601.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "committed_at": {
+      "description": "Phase-2 timestamp; null while PENDING. ISO 8601.",
+      "oneOf": [
+        { "type": "string", "format": "date-time" },
+        { "type": "null" }
+      ]
+    },
+    "commit_outcome": {
+      "description": "Two-phase commit state per §5.2. NOT_APPLICABLE classifies informational records (spawn-init, GC events, DERIVED-VIEW-INVALIDATE) that don't advance canonical state.",
+      "type": "string",
+      "enum": [
+        "PENDING",
+        "COMMITTED",
+        "ABORTED",
+        "ROLLED-BACK",
+        "NOT_APPLICABLE"
+      ]
+    },
+    "abort_reason": {
+      "description": "Populated for ABORTED/ROLLED-BACK; null otherwise. Canonical reasons per §5.4: k9-pre-commit-rejected, out_of_scope_writes_detected, out_of_scope_writes_tail_window, recovery-sweep-orphan, budget-exhausted.",
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        { "type": "null" }
+      ]
+    },
+    "idempotency_key": {
+      "description": "sha256(canonical_json({writer_persona_id, operation_class, content_hash, prev_state_hash})). Two records with same key are the same transaction; replay is no-op (§5a.6).",
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "references_transaction_id": {
+      "description": "Round-2 Tension 6 / §5.2 phase-1 ↔ phase-2 linkage. Populated on commit-records pointing back to intent-record's transaction_id; null on intent-records and standalone records.",
+      "oneOf": [
+        { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        { "type": "null" }
+      ]
+    },
+    "abort_detail": {
+      "description": "Round-3d delta 7 (persona-Maya M3 debuggability). Structured diagnostic block populated only when commit_outcome is ABORTED/ROLLED-BACK and a specific invariant violation triggered the abort. Schema-additive; older readers tolerate it.",
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "rule_violated": { "type": "string", "minLength": 1 },
+            "failing_ref": {
+              "oneOf": [
+                { "type": "string", "minLength": 1 },
+                { "type": "null" }
+              ]
+            },
+            "failing_field": { "type": "string", "minLength": 1 },
+            "chain_depth_walked": { "type": "integer", "minimum": 0 },
+            "detection_phase": {
+              "type": "string",
+              "enum": ["schema-validate", "evidence-link", "bootstrap-sentinel", "chain-walk"]
+            },
+            "human_message": { "type": "string", "minLength": 1 }
+          },
+          "required": ["rule_violated", "detection_phase", "human_message"]
+        }
+      ]
+    }
+  }
+}
