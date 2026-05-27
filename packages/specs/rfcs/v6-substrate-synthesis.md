@@ -10,12 +10,12 @@
 - v2 + external GPT analysis → **v3** (three-layer formalization + MVP staging) → Round-3 deep pair-review (3 reviewers; **6 CRITICAL** + ~20 HIGH)
 - v4 = v3 + Round-3 absorptions + user-direct concerns
 - v4.1 = Wave -1 P-WriteScope FAIL forced K14 + A1 restatement
-- v4.2 = Round-5 architect absorbed (BLUEPRINT-READY): A7 promoted; K9↔K14 §6.1.1; OQ-11/16 closed; effort 40-70h / abort 140h; ADR renumber
-- v4.3 = external research brief absorbed (3 verified citations, 2 misquotes rejected): K9 rollback scope §6.1.2; K8 read-only path mask criterion; OQ-17 added
+- v4.2 = Round-5 architect absorbed (BLUEPRINT-READY): A7 promoted; K9↔K14 §6.5.1; OQ-11/16 closed; effort 40-70h / abort 140h; ADR renumber
+- v4.3 = external research brief absorbed (3 verified citations, 2 misquotes rejected): K9 rollback scope §6.5.2; K8 read-only path mask criterion; OQ-17 added
 - v5 = field-survey triage absorbed (Round-6 architect; ext-research-agent): R13 idempotency promoted to v3.1; K3.b context envelope NEW in v3.0-alpha; §10b "Considered and Rejected"; container adapter / prompt-injection / network-egress deferred to v3.5+ with v3.1 stopgaps; OQ-18 P-Snapshot probe; per-tool-call observability vs gating split
 - v5.1 = vision-pillar alignment analysis absorbed (Round-7 architect `a6def7d4996a71b24`): K12 DOWNGRADED from mandatory CI enforcement to convention + advisory after empirical-zero-drift finding (6 months on spike branch, zero cross-layer drift observed; `_lib/` extraction pattern yields acyclic-by-construction without K12); OQ-19 added (upgrade trigger: ≥3 drift events); v3.0-alpha effort -100-120 LoC / -2h
 - v5.2 = §0a Four Vision Pillars map added as load-bearing alignment test for all future amendments; M1 reframed as Pillar 2 EXTENSION (inputs-as-Byzantine); M2 reframed as Pillar 1+3 EXTENSION (rollback-completeness); pillar-grounding test codified for future amendments (principle-tier → convention+advisory; pillar-tier → mandatory). Full alignment (11/11) with vision-pillar analysis achieved.
-- v5.3 = external GPT v5.2 review + architect pair-review (`ab188213c13a2f8cd`) + independent web research absorbed. **3 amendments applied**: (1) §0 audience-specific framings (CI/CD-moved-earlier; databases→CI/CD→Loom reliability lineage; production wager marked AS a wager not a fact; human-org one-liner); (2) §0c Organizational Engineering Analogy section — full mapping table with release-availability per row + "physical embodiment / K13" framing + honest org-structure gap acknowledgment; (3) §6.9 Operational Invariants — 15 executable property contracts, per-primitive naming (`INV-{Primitive}-{Property}`), version-gated per activation release, with field-standard terminology notes (POLA, Temporal-replay-relaxation, ACID atomicity, Nix hermetic builds, GitHub required-checks). Architect rewrites incorporated: K4 corrected to K5/K7/K9-pre (K4 is recall not a gate); syntactic-vs-semantic atomicity caveat per §6.1.2; 6 missing invariants added (INV-K2-SchemaForwardCompat, INV-K2-SpawnRecordSchemaValid, INV-K3-LineageAcyclicity, INV-K14-PostDetectionEnforcement, INV-K13-SerialOnly, INV-R13-IdempotencyKeyUniqueness); INV-A6-PolicyVersionedReplay flags a schema-additive K2 update for v3.0-alpha (`policy_version` field, ~5 LoC) to prevent v3.3 envelope-schema break. Independent web verification confirmed all field-survey citations (Microsoft Agent Governance Toolkit 2026/04, Praetorian verbatim "leaf node" sub-agent quote, arxiv 2603.16586 "Policies on Paths" matching K9↔K14 framing, MI9 arxiv 2508.03858 runtime-only-risk framing, SAGA arxiv 2504.21034, Temporal "complexity cliff", LangGraph durable-execution docs) — no fabrications detected this round.
+- v5.3 = external GPT v5.2 review + architect pair-review (`ab188213c13a2f8cd`) + independent web research absorbed. **3 amendments applied**: (1) §0 audience-specific framings (CI/CD-moved-earlier; databases→CI/CD→Loom reliability lineage; production wager marked AS a wager not a fact; human-org one-liner); (2) §0c Organizational Engineering Analogy section — full mapping table with release-availability per row + "physical embodiment / K13" framing + honest org-structure gap acknowledgment; (3) §6.13 Operational Invariants — 15 executable property contracts, per-primitive naming (`INV-{Primitive}-{Property}`), version-gated per activation release, with field-standard terminology notes (POLA, Temporal-replay-relaxation, ACID atomicity, Nix hermetic builds, GitHub required-checks). Architect rewrites incorporated: K4 corrected to K5/K7/K9-pre (K4 is recall not a gate); syntactic-vs-semantic atomicity caveat per §6.5.2; 6 missing invariants added (INV-K2-SchemaForwardCompat, INV-K2-SpawnRecordSchemaValid, INV-K3-LineageAcyclicity, INV-K14-PostDetectionEnforcement, INV-K13-SerialOnly, INV-R13-IdempotencyKeyUniqueness); INV-A6-PolicyVersionedReplay flags a schema-additive K2 update for v3.0-alpha (`policy_version` field, ~5 LoC) to prevent v3.3 envelope-schema break. Independent web verification confirmed all field-survey citations (Microsoft Agent Governance Toolkit 2026/04, Praetorian verbatim "leaf node" sub-agent quote, arxiv 2603.16586 "Policies on Paths" matching K9↔K14 framing, MI9 arxiv 2508.03858 runtime-only-risk framing, SAGA arxiv 2504.21034, Temporal "complexity cliff", LangGraph durable-execution docs) — no fabrications detected this round.
 - **v6 (this document, LIVE-DRAFTING)** = MAJOR-tier amendment to v5.4. Drivers (full text in §0.v6 below): (D1) file-based memory as DB requires explicit consistency model → +A8/A9/A10 axioms; (D2) C0 endorsements decision — derived view not primitive → +E14 Lab spec + 3 invariants; (D3) Pillar 3 anti-amplifier clause refined post-3-FAIL → §0a.3.1 normative text; (D4) Memory Root Pointer Convention → §5a.9 + INV-26/27. Net additions: +3 axioms (7→10), +2 kernel primitives (K15/K16, 14→16), +1 Lab spec (E14), +12 invariants (15→27), +1 new section (§5a Memory Consistency Discipline), +2 ADRs (ADR-0013, ADR-0014). v3.0-alpha through v3.4 hour ranges UNCHANGED from v5.4 BLUEPRINT-LOCKED; K2 reservation PR (~180-285 LoC, ~6-9h) sits inside existing v3.0-alpha envelope. Two-round cross-artifact composition review GO verdict (architects `abeab45aa7a080a27` + `a441e3cbe874c2209`, 2026-05-27).
 - **v5.4** = deep mechanism-level read of 8 academic papers + 7 industry artifacts (NOT verification — actual mechanism analysis). **3 Category-A positioning fixes**: (1) §0 industry-category positioning corrected — Power Loom slots into Work-Bench's "Agent Runtime" Execute+Constrain pillars (alongside E2B/Modal/AuthZed), NOT Cleanlab's "Reliability Stack" (output-scoring vendors); also explicit "NOT durable execution" (Temporal/LangGraph is a different layer). (2) §0 honest value-claim per SWE-EVO arxiv 2512.18470 empirical finding — long-horizon coding gap is model-capability-bound (47.8pp gap, scaling curves clean, context ablations modest); substrate delivers containment/recovery/reproducibility, NOT better outcomes. Marketing "fixes long-horizon coding" overclaims. (3) §10a.1 NEW direct prior art on K9-style pattern: DeltaBox (arxiv 2605.22781, OS-overlayfs implementation, 14ms checkpoint strict perf superior to git-cherrypick) + Hermes Agent (NousResearch, shipping product implementing K1+K9 combo). Acknowledges K9-as-pattern is shared prior art; what remains genuinely novel: K1+K9+K14 triple, K2 envelope synthesis, E1 typed failure artifacts, A6 reputation snapshot, honest K12-advisory framing. **Category-B field-survey debt** (Σ session state vs Policies-on-Paths; K2 envelope signing vs SAGA C3; A6-as-observer-only ADR vs TVP arxiv 2510.18563; MI9 goal-conditioned drift detection; TRiSM multi-agent correlation accounting; AGENTS.md interop; K9 cherry-pick latency benchmarks vs DeltaBox baseline; Praetorian 5-role HETS template; LangGraph concurrency-strategy naming; policy-DSL pluggability vs AGT) captured in `swarm/thoughts/shared/backlog/v3.1-v3.2-field-survey-debt.md` with target releases and effort estimates. **BLUEPRINT LOCKED at v5.4. No further amendments before Phase 0.**
 - v1/v2/v3 preserved at `v3.3-substrate-synthesis-v{1,2,3}.md` for diff
@@ -122,7 +122,7 @@ v5.4 hard-codes discovery paths across hooks, validators, and recall-CLI. v6 int
 - **Three new axioms** (A1-A7 → A1-A10).
 - **Two new K-primitives** (K15 DeltaRef, surviving from v5.5 amendment; K16 Memory-Read-Audit, renamed from "Memory IAM" per HIGH-1 honesty fix). Kernel total: 14 → 16.
 - **One new Lab-layer spec** (E14 endorsement-view; Lab not Kernel).
-- **Twelve new invariants** (15 → 27). Numbered INV-16..INV-27, spanning C0 (3), consistency model (7), Memory Root Pointer (2).
+- **Thirteen new invariants** (15 → 28). Numbered INV-16..INV-27 plus INV-A9-RecoverySweepIdempotent (codified per Round-2 sub-tension 3 resolution; honest disclosure — the locked drafting bundle counted 27, Round 2 added the 28th when codifying recovery-sweep idempotency). Spanning C0 (3: INV-16/17/18), consistency model (8: INV-19/20/21/22/23/24/25 + INV-A9), Memory Root Pointer (2: INV-26/27).
 - **One new §5a section** (Memory Consistency Discipline; 9 subsections).
 - **Two new ADRs** (ADR-0013 endorsement-derived-view; ADR-0014 memory-root-pointer).
 - **One new §10b entry** (endorsement-records-as-primitive rejected, with reasoning).
@@ -151,7 +151,7 @@ The substrate's vision is "deterministic state management for stochastic agents.
 
 > The substrate's unit of truth is the in-scope filesystem delta. Out-of-scope writes are policy violations. Transactions are verifiable by replaying their inputs.
 
-**Served by**: A1 (Transactional Determinism), A7 (Write-Scope Detection), K1 (Worktree), K9 (Promote-deltas), K14 (Write-Scope Enforcer), K7 (Path canonicalize), §6.1.1 (K9↔K14 sequencing contract), §6.1.2 (K9 rollback scope clarification).
+**Served by**: A1 (Transactional Determinism), A7 (Write-Scope Detection), K1 (Worktree), K9 (Promote-deltas), K14 (Write-Scope Enforcer), K7 (Path canonicalize), §6.5.1 (K9↔K14 sequencing contract), §6.5.2 (K9 rollback scope clarification).
 
 ### Pillar 2 — Byzantine Treatment of LLM (Outputs AND Inputs)
 
@@ -443,7 +443,7 @@ Without this extension, the E3 → K4 closed loop violates kernel determinism. v
 - R13 Idempotency-Key Enforcer — idempotency keys dedupe at the intent-record phase; two-phase commit handles partial-failure recovery. Orthogonal mechanisms; both required.
 - §5a.9 Memory Root Pointer — recovery sweep presupposes pointer resolution (Patch 2); pointer must be resolved before sweep can locate the WAL.
 
-**Implementation contract**: K9 owns the cherrypick + journal; K14 owns the write-scope validation; both compose at the K9↔K14 sequencing contract (§6.1.1) which is now load-bearing for A9. The WAL itself lives at `manifests.attestation_wal` per §5a.9 (default `~/.claude/checkpoints/attestation-log.jsonl`).
+**Implementation contract**: K9 owns the cherrypick + journal; K14 owns the write-scope validation; both compose at the K9↔K14 sequencing contract (§6.5.1) which is now load-bearing for A9. The WAL itself lives at `manifests.attestation_wal` per §5a.9 (default `~/.claude/checkpoints/attestation-log.jsonl`).
 
 **Served by**: Pillar 1 + Pillar 3.
 
@@ -701,7 +701,7 @@ The first record shows a COMMITTED transaction (both `intent_recorded_at` and `c
 **Composes with**:
 - A8 (chain is canonical) — the WAL IS the chain's on-disk encoding; chain-walk = WAL-walk (modulo `commit_outcome` filtering per §4.2 resolved sub-tension 1).
 - §5a.1 (no bare UPDATE; SUPERSEDE writes a sibling) — WAL append-only is the implementation of §5a.1 at the WAL layer.
-- INV-19-WALAppendOnly (§6.9 v3.0-alpha+ activations) — property test: after N transactions, the WAL file has exactly N lines (no in-place edits detectable via mtime + line-count drift).
+- INV-19-WALAppendOnly (§6.13 v3.0-alpha+ activations) — property test: after N transactions, the WAL file has exactly N lines (no in-place edits detectable via mtime + line-count drift).
 
 ### 5.2 — Two-phase commit (v6, NEW)
 
@@ -725,7 +725,7 @@ The intent-record is fsync'd before the spawn dispatches. If the kernel crashes 
 
 **Phase 2 — Commit-or-Abort record (spawn-close)**:
 
-After K14 write-scope validation and (per §6.1.1 K9↔K14 sequencing contract) the K9 cherrypick-or-reject decision, the kernel emits a SECOND WAL entry — **never mutating the phase-1 record**:
+After K14 write-scope validation and (per §6.5.1 K9↔K14 sequencing contract) the K9 cherrypick-or-reject decision, the kernel emits a SECOND WAL entry — **never mutating the phase-1 record**:
 
 - `transaction_id`: a NEW hash for the commit-record itself (it has different content from the intent-record).
 - `references_transaction_id`: the phase-1 record's `transaction_id` — this is the linkage primitive.
@@ -744,8 +744,8 @@ After K14 write-scope validation and (per §6.1.1 K9↔K14 sequencing contract) 
 
 **Composes with**:
 - A9 (two-phase commit) — this IS the implementation.
-- §6.1.1 K9↔K14 sequencing contract — K14 runs first; K9 runs second; both inputs feed the phase-2 `commit_outcome` decision.
-- INV-20-TwoPhaseCommitClosure (§6.9) — property test: for every PENDING record, there exists either (a) a subsequent commit-record referencing it, OR (b) the WAL ends and recovery sweep will reclassify it ABORTED. No PENDING record may be permanently orphan-in-the-middle-of-the-WAL.
+- §6.5.1 K9↔K14 sequencing contract — K14 runs first; K9 runs second; both inputs feed the phase-2 `commit_outcome` decision.
+- INV-20-TwoPhaseCommitClosure (§6.13) — property test: for every PENDING record, there exists either (a) a subsequent commit-record referencing it, OR (b) the WAL ends and recovery sweep will reclassify it ABORTED. No PENDING record may be permanently orphan-in-the-middle-of-the-WAL.
 
 **Chain-walk semantics with two-phase commit**: when computing `active_state_hash` by walking the WAL tail, `walkChain()` consumes commit-records (not intent-records) — the intent-record's `post_state_hash` is null and cannot advance the state. The commit-record's `post_state_hash` is what advances the chain. Intent-records are visible to the recovery sweep and to audit-trail consumers; they are invisible to canonical-state replay (filtered by `commit_outcome` per §4.2 sub-tension 1 resolution).
 
@@ -787,7 +787,7 @@ This invariant is the formal statement of "orphan-PENDING reclassification is id
 - §5a.5 (recovery sweep on substrate startup) — §5a.5 governs the WHEN; §5.3 governs the HOW.
 - §5a.9 (pointer resolution precondition) — sweep CANNOT run before pointer resolution; the sweep needs `manifests.attestation_wal` to know which file to read.
 - INV-A9-RecoverySweepIdempotent (above) — the testable contract.
-- INV-20-TwoPhaseCommitClosure (§6.9) — every PENDING resolves, eventually.
+- INV-20-TwoPhaseCommitClosure (§6.13) — every PENDING resolves, eventually.
 
 ### 5.4 — Spawn-boundary commit semantics
 
@@ -799,8 +799,8 @@ Spawn-execution boundaries map to A9's two-phase commit transitions concretely.
 - K13 serial-only enforces that no other spawn is in PENDING state — at most one PENDING transaction per persona at any time. Concurrent spawn attempts are rejected or queued (per K13 v3.0-alpha mandatory enforcement). This composes with INV-K13-SerialOnly.
 
 **At spawn-close** (PostToolUse:Agent|Task fires):
-- K14 runs first per §6.1.1 — produces SCOPE_OK or VIOLATION verdict.
-- If K14 PASS, K9 cherrypicks per §6.1.1 — produces PROMOTED or REJECTED verdict.
+- K14 runs first per §6.5.1 — produces SCOPE_OK or VIOLATION verdict.
+- If K14 PASS, K9 cherrypicks per §6.5.1 — produces PROMOTED or REJECTED verdict.
 - Kernel writes phase-2 commit-record per §5.2:
   - K14 PASS + K9 PASS → `commit_outcome: COMMITTED`.
   - K14 PASS + K9 REJECT (e.g., schema validation failure) → `commit_outcome: ABORTED`, `abort_reason: "k9-pre-commit-rejected"`.
@@ -813,10 +813,10 @@ Spawn-execution boundaries map to A9's two-phase commit transitions concretely.
 
 **Composes with**:
 - A9 (two-phase commit at spawn boundaries) — the spawn boundary IS the commit boundary.
-- §6.1.1 K9↔K14 sequencing contract — defines WHICH outcomes feed the phase-2 record.
+- §6.5.1 K9↔K14 sequencing contract — defines WHICH outcomes feed the phase-2 record.
 - R10 budget envelope — budget-exhaust composes as a valid abort cause; no new commit_outcome enum value needed.
 - K13 serial-only — bounds the PENDING set to ≤1 per persona at any time; makes recovery O(personas), not O(WAL size).
-- INV-K13-SerialOnly, INV-R10-BudgetMonotonic (both in §6.9) — testable contracts on the spawn-boundary properties.
+- INV-K13-SerialOnly, INV-R10-BudgetMonotonic (both in §6.13) — testable contracts on the spawn-boundary properties.
 
 ---
 
@@ -838,7 +838,7 @@ The taxonomy is what makes A8's content-addressed state machine implementable. E
 
 **Why "no bare UPDATE" matters**: bare UPDATE (in-place mutation of a record's content) would (a) break A8 (chain ceases to be content-addressed because record content can change underneath its `transaction_id`), (b) make concurrent readers see inconsistent states, (c) eliminate the audit-trail property (history can be rewritten by mutating an entry). SUPERSEDE-as-sibling-write is the discipline that preserves all three properties.
 
-**Cross-reference**: composes with INV-24-NoBareUpdate (§6.9). Implementation guidance: any K-primitive that wants to "update" a record must instead emit a SUPERSEDE record. The K9 implementation has had this discipline since v5.4; v6 codifies the discipline at the substrate level so future primitives (R-tier and E-tier) inherit it.
+**Cross-reference**: composes with INV-24-NoBareUpdate (§6.13). Implementation guidance: any K-primitive that wants to "update" a record must instead emit a SUPERSEDE record. The K9 implementation has had this discipline since v5.4; v6 codifies the discipline at the substrate level so future primitives (R-tier and E-tier) inherit it.
 
 ### 5a.2 — Atomic-write discipline
 
@@ -848,7 +848,7 @@ The pattern is the v5.4 K1/K9 atomic-write primitive (`_lib/atomic-write.js` in 
 
 **Implementation guidance**: every K-primitive that writes to a canonical path (WAL, snapshot index, derived-views-cache invalidation marker, Memory Root Pointer per §5a.9) MUST use the shared `_lib/atomic-write.js` helper. Direct `fs.writeFile`/`fs.appendFile` to canonical paths is FORBIDDEN at the kernel layer. Runtime layer primitives that write to spawn-scratch are exempt (scratch is per-spawn and discarded at spawn-close per K1 worktree teardown).
 
-**Cross-reference**: composes with A9 (atomicity), §5a.9 (Memory Root Pointer writes use this primitive), INV-K9-SyntacticAtomicity (§6.9 — K9 cherrypick is atomic at git-state level via this primitive).
+**Cross-reference**: composes with A9 (atomicity), §5a.9 (Memory Root Pointer writes use this primitive), INV-K9-SyntacticAtomicity (§6.13 — K9 cherrypick is atomic at git-state level via this primitive).
 
 ### 5a.3 — WAL location and write cadence
 
@@ -858,7 +858,7 @@ The default path is what fresh installs initialize the pointer to; existing inst
 
 Append-only and per-write fsync are restated here (§5.1 already covers the format and write discipline) so that §5a stands alone as the discipline reference — readers consulting §5a in isolation get the complete WAL contract without needing to cross-read §5.
 
-**Cross-reference**: §5.1 (full WAL spec); INV-19-WALAppendOnly (§6.9); §5a.9 (pointer discovery).
+**Cross-reference**: §5.1 (full WAL spec); INV-19-WALAppendOnly (§6.13); §5a.9 (pointer discovery).
 
 ### 5a.4 — MVCC snapshot isolation at spawn boundary
 
@@ -870,7 +870,7 @@ Under K13 serial-only (v3.0-alpha mandatory), this is degenerate — only one sp
 
 **Implementation guidance**: pin `prev_state_hash` in the spawn's `axioms.evolution_snapshot` block (per A6 mechanism). All reads against the chain consult the snapshot, never the live WAL tail.
 
-**Cross-reference**: A1 (transactional determinism); A6 (evolution_snapshot mechanism); INV-23-MVCCSnapshotPinned (§6.9).
+**Cross-reference**: A1 (transactional determinism); A6 (evolution_snapshot mechanism); INV-23-MVCCSnapshotPinned (§6.13).
 
 ### 5a.5 — Recovery sweep precondition
 
@@ -898,7 +898,7 @@ This composition is what makes recovery and retry safe:
 - External callers retrying a network operation (R13 in v3.1) cannot accidentally double-commit — the second retry's idempotency_key matches, kernel returns existing transaction_id, no second WAL write.
 - Replay of a recorded chain (e.g., for debugging or audit reconstruction) is safe — replaying a transaction whose idempotency_key already exists is a no-op.
 
-**Cross-reference**: R13 (v3.1 implementation owner); INV-R13-IdempotencyKeyUniqueness (§6.9); §5.3 (recovery sweep idempotency).
+**Cross-reference**: R13 (v3.1 implementation owner); INV-R13-IdempotencyKeyUniqueness (§6.13); §5.3 (recovery sweep idempotency).
 
 ### 5a.7 — Sibling-output discipline for derived views
 
@@ -942,7 +942,7 @@ This composition makes schema migration auditable: the WAL records a clear "sche
 
 This is the ONLY substrate-emitted record that legitimately has `intent_recorded_at == committed_at` with no preceding PENDING phase. All other transactions follow §5.2's strict two-phase discipline.
 
-**Cross-reference**: §5a.9 (pointer convention and self-migration clause); INV-25-SchemaMigrationIsTransaction (§6.9 — with the §5a.8 exception documented); §5a.2 (atomic-write primitive).
+**Cross-reference**: §5a.9 (pointer convention and self-migration clause); INV-25-SchemaMigrationIsTransaction (§6.13 — with the §5a.8 exception documented); §5a.2 (atomic-write primitive).
 
 ### 5a.9 — Memory Root Pointer Convention (v6, NEW; canonical from Artifact 4)
 
@@ -988,7 +988,7 @@ The Memory Root Pointer is the substrate's single discovery artifact for locatin
 - No free-block tracking.
 - No state caching beyond what the WAL + content-addressed chain already provide.
 
-**Cross-reference**: A8 (chain is canonical; pointer is discovery-only); A9 (pointer resolution precedes recovery sweep); §5a.2 (atomic-write primitive shared); §5a.5 (recovery sweep precondition); §5a.8 (self-migration exception); INV-26-MRAtomicWrite, INV-27-PersonaIndexCanonicalOnly (§6.9 invariants 26 + 27).
+**Cross-reference**: A8 (chain is canonical; pointer is discovery-only); A9 (pointer resolution precedes recovery sweep); §5a.2 (atomic-write primitive shared); §5a.5 (recovery sweep precondition); §5a.8 (self-migration exception); INV-26-MRAtomicWrite, INV-27-PersonaIndexCanonicalOnly (§6.13 invariants 26 + 27).
 
 **Honest scope** (from Artifact 4):
 
@@ -1025,16 +1025,129 @@ Sits inside v3.0-alpha K2 reservation PR scope without expanding that PR's budge
 
 ---
 
-## 6. MVP-Staged Release Plan (v4 — PURE MVP cut per user concern #2; honest effort per Round-3 planner)
+## 6.4 E14 Endorsement-as-Derived-View (Lab layer; v6, NEW)
 
-### 6.0 PURE Minimum Viable v3 Definition (sharpened per user concern #2)
+**Status**: APPROVED per C0 architect decision 2026-05-27 (HETS-routed spawn; full text in `/tmp/c0-decision-summary.md`; ADR-0013 codifies the decision).
+
+**Headline**: Endorsements are a **derived view** computed from K2 spawn-records + R13 advisory-findings + A6 reputation snapshot + K3 lineage. **NOT a first-class persistent primitive.** This is a v6 reversal of the v5.4 → v3.3 roadmap, which had `E14 Endorsement primitive` on the schedule with 4-5 invariants and 5 security launch-blockers. The 6 load-bearing reasons (priority order):
+
+1. **§0a pillar-grounding test fails for the primitive option**. K12 v5.1 precedent applies: principle-tier not pillar-tier → ship as convention + advisory, not mandatory enforcement / new persisted record.
+2. **Data already captured**: v5.4 K2 envelope + R13 advisory-findings + A6 reputation already contain every field needed to derive endorsement-equivalent signal. A derived view is a pure projection; a primitive is duplication.
+3. **SRP violation in the primitive option**: two writers for evidence-about-persona-N-performed-task-T (existing K2/R13/A6 + new endorsement-record duplicate). Derived-view preserves single-writer-per-evidence-class.
+4. **DIP cleaner in derived-view**: E4 reputation depends on kernel record abstractions directly (Lab → Kernel). Primitive creates horizontal Lab-layer coupling.
+5. **Security cost asymmetry — load-bearing**: the 5 security launch-blockers exist BECAUSE the primitive creates the attack surface. Removing the primitive removes the surface. Endorsement-records-as-primitive is structurally a Trust-Vulnerability Paradox amplifier (B3 field-survey debt; arxiv 2510.18563).
+6. **Only unique primitive-enabler is endorser-side reputation** — which IS the Trust-Vulnerability Paradox amplifier B3 explicitly forbids. Negative disambiguator.
+
+### Architectural framing — Lab not Kernel (per C0 reason #4 DIP cleanliness)
+
+E14 lives in the **Loom Evolution Lab** layer (`packages/lab/_lib/endorsement-view.js`, sibling of E4 reputation aggregator), NOT in Loom Kernel. The derived-view's inputs are all kernel-emitted records (K2/R13/A6/K3); the projection itself is Lab-layer code that depends ON kernel record abstractions. This is the correct DIP direction — Lab depends on Kernel, not vice versa. The primitive option would have introduced horizontal Lab-layer coupling (E4 reputation aggregator consuming endorsement-records that themselves depend on K2/R13/A6 — three-hop indirection through a duplicating intermediate).
+
+### Spec location
+
+`packages/lab/_lib/endorsement-view.js` (sibling of E4 reputation aggregator at `packages/lab/_lib/reputation-aggregator.js` once E4 lands in v3.3 per §6.8).
+
+### Core query pseudo-code (verbatim from C0; ~80-120 LoC)
+
+```js
+function deriveEndorsements({ k2Records, r13Findings, a6Snapshot, k3Lineage, filter }) {
+  return k2Records
+    .filter(r => r.parent_state_id != null)
+    .filter(r => r.spawn_id !== r.parent_state_id)
+    .filter(r => r.promotion_status !== 'pending')
+    .map(spawn => ({
+      endorser_persona_id: lookupParent(k3Lineage, spawn.parent_state_id).persona_id,
+      endorsed_persona_id: spawn.persona_id,
+      skill_scope: { task_type, quality_axis, repo_area },
+      grade: deriveGrade(spawn, r13Findings),
+      evidence_refs: [spawn.spawn_id, spawn.k9_journal_id, ...r13Findings.matching(spawn).map(f=>f.id)],
+      policy_version: spawn.policy_version,
+      derived_at: now(),
+    }))
+    .filter(matchesFilter(filter));
+}
+```
+
+### Grade rubric
+
+| Condition | Grade |
+|---|---|
+| K9 promoted + zero R13 findings | strong |
+| K9 promoted + low-severity findings only | adequate |
+| K9 promoted + higher-severity findings | weak |
+| not-promoted (K9 REJECT, K14 violation, budget abort, etc.) | inadequate |
+
+`deriveGrade(spawn, r13Findings)` reads the spawn's `commit_outcome` (per §4.2 transaction-record shape) and the `r13Findings.matching(spawn)` severities and returns one of the four labels above. Pure function; same inputs always produce the same grade.
+
+### Cache discipline
+
+The view IS a pure function. The view MAY be cached as a perf optimization at `manifests.derived_views_cache` (per §5a.9 Memory Root Pointer; default `~/.claude/library/_meta/derived-views/endorsement-view.json`) keyed by an input-hash:
+
+```
+cache_key = sha256(k2_records_sha + r13_findings_sha + a6_snapshot_sha + k3_lineage_sha)
+```
+
+**Cache contract** — readers MUST re-verify the input-hash before consuming a cached projection. A stale cache (inputs have changed since cache write) is silently re-computed; the cache is never trusted blindly. This composes with §5a.7 sibling-output discipline and with the §5a.1 DERIVED-VIEW-INVALIDATE operation_class.
+
+### Invariants (3; replace 4-5 that the primitive would have needed)
+
+Per §6.13 (full property-test sketches in invariant tables):
+
+- **INV-16-EndorsementViewDeterministic** (P3): pure function; byte-equal output across calls (modulo `derived_at` timestamp) for fixed inputs.
+- **INV-17-EvidenceLinkRequired** (P3): every derived endorsement carries ≥1 evidence_ref to a kernel-emitted record that exists in the input.
+- **INV-18-NoSelfEndorsement** (P2): `endorser_persona_id != endorsed_persona_id` enforced at query-time, not at record-write-time.
+
+**Collapsed from the primitive option** (no separate invariants needed for the derived-view): nonce-uniqueness, acyclic chain, chain-depth-bound, external-evidence-required — all moot under derived-view semantics; INV-17 absorbs external-evidence-required (input domain IS kernel-emitted evidence).
+
+### Boundary discipline
+
+- **E4 reputation MAY consume** the endorsement view as a read shape (Lab→Lab projection composition).
+- **E4 reputation MAY NOT cause** the endorsement view to be persisted as canonical state.
+- **INV-A6-NonAuthorizing** (per `packages/specs/research/v3.1-v3.2-field-survey-debt.md` §B3) is preserved — the view is read-only; cannot widen K6/K8 capability scope. The §0a.3.1 Derived-View No-Amplification Clause closes any routing path.
+- **Endorser-side reputation use case is explicitly out of scope indefinitely**. Triggers for revisit captured in ADR-0013.
+
+### LoC + hours budget (Round-3 planner-calibrated)
+
+| Component | Honest |
+|---|---|
+| Core `deriveEndorsements` function | 80-120 LoC |
+| Grade rubric + threshold tuning | 40-60 LoC |
+| Integration glue with E4 aggregator | 50-80 LoC |
+| Invariant property tests (3 × ~50 LoC: INV-16/17/18) | 180-250 LoC |
+| ADR-0013 (endorsement-as-derived-view rationale + scope discipline) | 3-4h pair-reviewed text |
+| **TOTAL** | **350-510 LoC / 8-12h** |
+
+### v3.3 budget impact
+
+E14 sits **inside the existing v3.3 envelope** (~14-20h / ~500-750 LoC per §6.8). No new v3.3 scope addition needed — the view replaces the budget the primitive would have consumed, at honestly lower cost.
+
+### Composes with
+
+- §0a.3.1 Derived-View No-Amplification Clause — E14 is the first concrete derived view; serves as the worked example for the pillar-tier clause.
+- §4.2 transaction-record shape — E14 reads `commit_outcome` and `evidence_refs` directly from kernel-emitted records; no schema additions required.
+- §5a.7 sibling-output discipline — E14 cache writes go to `derived_views_cache`, never to canonical paths.
+- §5a.9 Memory Root Pointer — `manifests.derived_views_cache` is the discovery point.
+- INV-27-PersonaIndexCanonicalOnly — derived views are NEVER indexed in `persona_memory_index`; the endorsement view cannot backdoor into evidence-link via the index.
+- A10 Evidence-Linked Admission — the endorsement view's `evidence_refs` are pre-validated by virtue of being derived from kernel-emitted records.
+
+### Cross-reference
+
+- C0 architect decision: `/tmp/c0-decision-summary.md`.
+- ADR-0013 (endorsement-derived-view) at `packages/specs/adrs/0013-endorsement-derived-view.md`.
+- §6.13 invariants 16/17/18 (testable property contracts).
+- §6.8 v3.3 release plan (E14 ships inside the existing envelope).
+
+---
+
+### 6.3 PURE Minimum Viable v3 Definition (v6 RENUMBER: was §6.0; sharpened per user concern #2)
+
+**Round-3 renumber bridge**: §6.1 catalogues the primitives; §6.2 specifies the capability model; §6.4 specifies the first concrete derived view (E14). §6.3 through §6.13 schedule WHICH primitives ship in WHICH release. The collision between Round-2's new §6.1/§6.2 (Primitives + Capability Model) and Round-1's old §6.0 through §6.13-OLD (release scope) is resolved by promoting the release-plan subsections to §6.3 through §6.13. The old `## 6. MVP-Staged Release Plan` top-level heading is removed; §6 is a single section with four sub-blocks (primitives → capability model → first concrete derived view → release plan).
 
 > **The smallest deterministic transaction loop:**
 > **Spawn → isolated worktree → capture delta → deterministic verify (path + schema only) → promote or reject → write spawn record.**
 
 **Capability injection and subset checking are NOT in the PURE MVP.** They land in v3.1 when contracts exist to check/inject against. v3.0-alpha proves the transaction loop works with the existing Phase 1 architect contract as the single test spawnee.
 
-### 6.0a Wave -1 — Entry-Gate Probe (~6-9h on spike branch; EXPANDED per Round-3 planner HIGHs)
+### 6.3a Wave -1 — Entry-Gate Probe (v6 RENUMBER: was §6.0a; ~6-9h on spike branch; EXPANDED per Round-3 planner HIGHs)
 
 **Probes (5 total — was 3)**:
 - **P-Inject** (~1h): `PreToolUse(Agent).updatedInput` rewrites Agent tool_input. Size limits.
@@ -1049,7 +1162,7 @@ Sits inside v3.0-alpha K2 reservation PR scope without expanding that PR's budge
 
 **Scope**: ~140 LoC of probe scripts + write-up. **6-9h total.**
 
-### 6.1 v3.0-alpha — PURE KERNEL TRANSACTION LOOP (~20-28h, ~900-1,300 LoC honest)
+### 6.5 v3.0-alpha — PURE KERNEL TRANSACTION LOOP (v6 RENUMBER: was §6.1 release-scope; ~20-28h, ~900-1,300 LoC honest)
 
 **Per user concern #2**: K6 + K8 removed; v3.0-alpha is the absolute smallest kernel that proves the deterministic transaction loop.
 
@@ -1065,10 +1178,10 @@ Sits inside v3.0-alpha K2 reservation PR scope without expanding that PR's budge
 - K10 LOOM_DISABLE_WORKTREE escape hatch with explicit bypass semantics + audit-log Class-4 event
 - **K12 Layer-boundary convention (v5.1 DOWNGRADED from mandatory per Round-7 architect empirical-zero-drift finding)** — frontmatter markers + advisory CI lint (~50-80 LoC). Original v4 mandatory enforcement was preemptive against a problem that hasn't occurred in 6 months of spike branch work. Convention + advisory retains 80% of the value at ~30% of the cost; upgrade trigger to mandatory captured in OQ-19.
 - **K13 Serial-only spawn enforcer (NEW; mandatory per user concern #4)** — kernel actively rejects or queues concurrent spawns; spawn-init detects active spawns via lock file or spawn-state directory scan (~80 LoC)
-- **K14 Write-Scope Enforcer (HARDENED v4.2 per Round-5 CRITICAL-2)** — see §6.1.K14 below for full spec. Honest LoC: **500-900** (not 200-400 as v4.1 claimed).
+- **K14 Write-Scope Enforcer (HARDENED v4.2 per Round-5 CRITICAL-2)** — see §6.5.K14 below for full spec. Honest LoC: **500-900** (not 200-400 as v4.1 claimed).
 - ADR-0008 + ADR-0009 + **ADR-0010 (write-scope enforcement rationale + P-WriteScope evidence + K9↔K14 sequencing contract)** (~5-6h pair-reviewed text per Round-3 planner LOW)
 
-### §6.1.K14 — Write-Scope Enforcer detailed spec (v4.2; CRITICAL-2 fix)
+### §6.5.K14 — Write-Scope Enforcer detailed spec (v6 RENUMBER: was §6.5.K14; v4.2; CRITICAL-2 fix)
 
 **Scope**: parent's worktree root (`git rev-parse --show-toplevel` on parent) + an explicit `LOOM_MONITORED_SIBLINGS` env-var-configured whitelist (default empty). NOT the full user home directory — bounded by what the agent is plausibly likely to touch.
 
@@ -1098,7 +1211,7 @@ Sits inside v3.0-alpha K2 reservation PR scope without expanding that PR's budge
 - Test fixtures (4 violation classes × 3 transports = 12 fixtures minimum): ~250 LoC
 - **Total: ~900 LoC (honest range 500-900 depending on platform variance)**
 
-### §6.1.1 — K9 ↔ K14 sequencing contract (NEW v4.2; Round-5 CRITICAL-3 fix)
+### §6.5.1 — K9 ↔ K14 sequencing contract (v6 RENUMBER: was §6.5.1; NEW v4.2; Round-5 CRITICAL-3 fix)
 
 Both primitives touch post-spawn state-resolution. Without an explicit contract they grow ad-hoc cross-references and violate kernel single-responsibility (§2).
 
@@ -1118,7 +1231,7 @@ Both primitives touch post-spawn state-resolution. Without an explicit contract 
 
 **Effort**: ~1-2h to write the contract section in ADR-0010 + ~50 LoC of state-machine glue in K9 to handle the rollback-from-K14-violation path.
 
-### §6.1.2 — K9 rollback scope clarification (NEW v4.3; per external research brief absorption)
+### §6.5.2 — K9 rollback scope clarification (v6 RENUMBER: was §6.5.2; NEW v4.3; per external research brief absorption)
 
 **K9 rollback restores FILESYSTEM state only.** Reverse-cherrypick reverts the cherrypicked delta; it does NOT undo external side effects that the spawned agent performed during its run. Specifically, the following CANNOT be rolled back by K9:
 - HTTP POSTs to external APIs (issue creation, deploys, payments)
@@ -1132,7 +1245,7 @@ Both primitives touch post-spawn state-resolution. Without an explicit contract 
 
 **v3.0-alpha mitigation**: K6 capability subset check (v3.1) is the FIRST line of defense — by default, spawns are denied network-side-effecting tools entirely. v3.0-alpha lacks K6, so v3.0-alpha agents are NOT allowed to perform external side effects at all (enforced via persona contracts + audit). This is an honest scoping decision, not a hole.
 
-**v3.1+ mitigation (OQ-17 CLOSED v5 → R13 ships in v3.1)**: when network-side-effecting tools are enabled via K6, **R13 Idempotency-Key Enforcer** (~150-250 LoC; parallel sub-wave with K6/K8) wraps such calls and requires an explicit idempotency key derived from `spawn_id + tool_use_id`. Closes the ACRFence semantic-rollback-attack surface at the moment K6 opens network tools. See §11 OQ-17 + §6.2 v3.1 scope.
+**v3.1+ mitigation (OQ-17 CLOSED v5 → R13 ships in v3.1)**: when network-side-effecting tools are enabled via K6, **R13 Idempotency-Key Enforcer** (~150-250 LoC; parallel sub-wave with K6/K8) wraps such calls and requires an explicit idempotency key derived from `spawn_id + tool_use_id`. Closes the ACRFence semantic-rollback-attack surface at the moment K6 opens network tools. See §11 OQ-17 + §6.6 v3.1 scope.
 
 **K9 dedicated security discipline (per user concern #3 + Round-4 architect MEDIUM on fixture taxonomy)**:
 - MANDATORY: architect + code-reviewer + security-auditor pair-review (3-actor; already in v3 plan, reaffirmed)
@@ -1175,16 +1288,16 @@ Both primitives touch post-spawn state-resolution. Without an explicit contract 
 | K10 escape hatch | 40-60 | 1 |
 | K12 layer convention + advisory lint (v5.1 downgrade) | 50-80 | 1-2 |
 | K13 serial enforcer | 150-220 | 3-4 |
-| K14 (honest spec; see §6.1.K14) | 500-900 | 9-15 |
+| K14 (honest spec; see §6.5.K14) | 500-900 | 9-15 |
 | ADRs 0008/0009/0010 (pair-reviewed text) | n/a | 6-8 |
 | Pair-review cycles (architect + code-reviewer + security-auditor on K9 + K14) | n/a | 6-10 |
 | **TOTAL** | **2,245-3,520 LoC** | **53-78h** (round to 40-70h with parallelism savings) |
 
-**Abort trigger (v4.2)**: if v3.0-alpha actual effort exceeds **140h wall-clock (2× the v4.2 upper estimate)**, STOP and re-evaluate scope before pushing through. Symptoms to fire early: K14 fsevents/inotify integration requires native build chain; K9↔K14 contract grows ad-hoc cross-references beyond the §6.1.1 spec; K14 fixture taxonomy expands past 20 cases; K9 path-traversal fixture taxonomy expanding past 30 cases; K12 import-graph check requiring custom AST work beyond a 200-LoC budget; K9 reverse-cherrypick journal algorithm requiring its own spec round. Rationale: the value proposition (Lab adaptive cognition, reputation tracking) doesn't land until v3.3-v3.4 — burning the entire budget on substrate scaffolding is the dominant failure mode. Hitting this trigger is a re-plan signal, not a failure; the spike's job is to expose mis-scoping.
+**Abort trigger (v4.2)**: if v3.0-alpha actual effort exceeds **140h wall-clock (2× the v4.2 upper estimate)**, STOP and re-evaluate scope before pushing through. Symptoms to fire early: K14 fsevents/inotify integration requires native build chain; K9↔K14 contract grows ad-hoc cross-references beyond the §6.5.1 spec; K14 fixture taxonomy expands past 20 cases; K9 path-traversal fixture taxonomy expanding past 30 cases; K12 import-graph check requiring custom AST work beyond a 200-LoC budget; K9 reverse-cherrypick journal algorithm requiring its own spec round. Rationale: the value proposition (Lab adaptive cognition, reputation tracking) doesn't land until v3.3-v3.4 — burning the entire budget on substrate scaffolding is the dominant failure mode. Hitting this trigger is a re-plan signal, not a failure; the spike's job is to expose mis-scoping.
 
 **Acceptance**: Wave -1 PASSED → 10 real spawns through full pure-MVP loop (architect spawning architect with existing Phase 1 contract is acceptable here since K6/K8 are not in scope) → 0 CRITICAL pair-review findings → escape hatch + layer-enforcer + serial-enforcer all empirically verified.
 
-### 6.2 v3.1 — RUNTIME FOUNDATION (~24-36h, ~2,550-3,150 LoC honest per Round-6 architect; was 18-26h / 2,300-2,700 in v4)
+### 6.6 v3.1 — RUNTIME FOUNDATION (v6 RENUMBER: was §6.2 release-scope; ~24-36h, ~2,550-3,150 LoC honest per Round-6 architect; was 18-26h / 2,300-2,700 in v4)
 
 **v4 effort correction**: v3 estimated 800-1,200 LoC / 10-15h. Round-3 planner CRITICAL: 16 contracts × 138 LoC avg = ~2,200 LoC minimum just for content + traits + verifier work = ~2,300-2,700 LoC. v4 adopts honest estimate.
 
@@ -1206,7 +1319,7 @@ Both primitives touch post-spawn state-resolution. Without an explicit contract 
 - Trait composition errors at contract-load time (R4) are caught BEFORE merge by contract-verifier; if a trait conflict surfaces post-merge, hot-fix via removing trait reference from one contract (no full revert needed).
 - K6/K8 bugs: feature-flag via `LOOM_DISABLE_CAPABILITY_CHECK=1` and `LOOM_DISABLE_CAPABILITY_INJECTION=1` env vars (NEW; add to escape-hatch family).
 
-### 6.3 v3.2 — RUNTIME DECOMPOSITION (~18-26h, ~1,200-2,200 LoC honest)
+### 6.7 v3.2 — RUNTIME DECOMPOSITION (v6 RENUMBER: was §6.3 release-scope; ~18-26h, ~1,200-2,200 LoC honest)
 
 **OQ-11 forced to Wave -1 decision (per Round-3 planner HIGH)**: full-validators vs slim-predicates for leaf criteria — this is a 2-3× LoC swing on the single largest v3.2 component. **Cannot defer to v3.2 kickoff; decide at Wave -1 design session.**
 
@@ -1223,7 +1336,7 @@ Both primitives touch post-spawn state-resolution. Without an explicit contract 
 
 **Rollback story**: spawn-verify dispatcher routes by discipline; bypass via `LOOM_DISCIPLINE_OVERRIDE=spec-driven` env var (fall back to schema-only verification).
 
-### 6.4 v3.3 — EVOLUTION LAB FOUNDATION (~14-20h, ~500-750 LoC honest)
+### 6.8 v3.3 — EVOLUTION LAB FOUNDATION (v6 RENUMBER: was §6.4 release-scope; ~14-20h, ~500-750 LoC honest)
 
 **In scope**:
 - E1 Negative attestation Class-4 witness (~60 LoC)
@@ -1235,7 +1348,7 @@ Both primitives touch post-spawn state-resolution. Without an explicit contract 
 - E3 store can be drained via `loom policy-axiom drain --since <date>` if E2 produces malformed axioms
 - E4 reputation: `loom reputation reset --persona <id> --task-type <type>` for false-positive cleanup
 
-### 6.5 v3.4 — EVOLUTION LAB FULL (~35-55h code + ~96-160h human-authored seed content)
+### 6.9 v3.4 — EVOLUTION LAB FULL (v6 RENUMBER: was §6.5 release-scope; ~35-55h code + ~96-160h human-authored seed content)
 
 **v4 effort correction**: v3 estimated 30-50h / 360 LoC code. Round-3 planner CRITICAL: ratio is incoherent (5-8h per 60 LoC); E5 attribution graph at 120 LoC alone is laughable. **Honest: 800-1,200 LoC code.**
 
@@ -1252,7 +1365,7 @@ Both primitives touch post-spawn state-resolution. Without an explicit contract 
 - E7 evolve/forge triggers: manual-confirm gate prevents auto-fire; if triggered erroneously, no destructive action (just queue + notify)
 - E11 circuit-breaker: `LOOM_DISABLE_CIRCUIT_BREAKER=1` env var bypasses
 
-### 6.6 Deferred (v3.5+ / Phase 4)
+### 6.10 Deferred (v3.5+ / Phase 4) (v6 RENUMBER: was §6.6)
 
 - E12 Pattern B multi-spawn trampoline
 - E13 Dream-Lite cycles
@@ -1266,7 +1379,7 @@ Both primitives touch post-spawn state-resolution. Without an explicit contract 
 - **Blocking-grade prompt-injection / trust-boundary defense (NEW v5 per Round-6 M1; v3.5+) — Pillar 2 EXTENSION (inputs-as-Byzantine)**: v5.1 framing — this is NOT a new pillar; it is the principled extension of Pillar 2 (Byzantine treatment of LLM) from LLM OUTPUTS to LLM-MEDIATED INPUTS. v4.3's A3a/A3b axioms already treat LLM outputs as Byzantine (verified against external ground truth via pure gates); M1 extends the same treatment to LLM-mediated inputs reaching the orchestrator (WebFetch results, retrieved docs, MCP tool returns, user-pasted snippets). Same pillar; same epistemic frame; new boundary. Design choices: (a) dual-LLM gateway, (b) content-source tagging + K6 capability-attestation (untrusted content in context ⇒ K6 denies side-effecting tools), (c) deterministic content-classifier. **v3.1+ stopgap**: persona contracts that consume external content declare `consumes_untrusted_input: true`; K6 narrows their network-side-effecting capability set automatically. v3.0-alpha through v3.4 ship A3b-advisory LLM-mediated detection only (non-blocking, audit-logged). v3.5+ promotes to blocking-grade.
 - **Kernel-layer network egress policy (NEW v5 per Round-6 M2; v3.5+) — Pillar 1 + Pillar 3 EXTENSION (rollback-completeness)**: v5.1 framing — without kernel-layer network egress control, K9 rollback's claim ("filesystem delta is the transaction unit") is dishonest. Network calls cannot be rolled back by K9 or any snapshot mechanism (Pillar 1 violation: out-of-scope side effects); they also leave no trace in the spawn-record envelope (Pillar 3 violation: replay-from-record produces different external state on re-execution). Preventing network calls at the kernel makes rollback-completeness a property of the substrate, not a hope. Implementation: iptables / netns / eBPF / Docker network policy — requires ContainerAdapter (see above), so kernel-layer egress lands as a ContainerAdapter responsibility in v3.5+, not a standalone kernel primitive. **v3.0-alpha through v3.1 stopgap**: K6 denies network-side-effecting tools by default at the persona contract layer; Bash can still curl, that residual gap closes in v3.5 via ContainerAdapter. R13 idempotency (v3.1) partially mitigates by making repeated side effects safe even when they occur.
 
-### 6.7 Release-Cycle Effort Summary (Round-3 planner-calibrated; HONEST)
+### 6.11 Release-Cycle Effort Summary (v6 RENUMBER: was §6.7; Round-3 planner-calibrated; HONEST)
 
 | Release | LoC (honest) | Hours (honest) | Pair-Review |
 |---|---|---|---|
@@ -1292,7 +1405,7 @@ Both primitives touch post-spawn state-resolution. Without an explicit contract 
 
 **Honest trade-off statement**: v4 is +63-130h more total time than v2 in exchange for per-release blast radius reduction, per-release rollback, layer-enforcement, serial-only enforcement, and v3.4 deferral discipline. This is a real trade with real costs and real benefits — not a regression.
 
-### 6.8 Release Dependency Graph
+### 6.12 Release Dependency Graph (v6 RENUMBER: was §6.8)
 
 ```
 Wave -1 (entry gate; 5+ probes; OQ-11 decision)
@@ -1312,7 +1425,7 @@ Phase 4 (deferred; only if triggers fire)
 
 ---
 
-### 6.9 Operational Invariants — Executable Property Contracts (NEW v5.3)
+### 6.13 Operational Invariants — Executable Property Contracts (v6 RENUMBER: was §6.13; NEW v5.3; v6 expansion adds INV-16..27 + INV-A9-RecoverySweepIdempotent)
 
 This section converts the substrate's implicit guarantees into **testable property contracts**. Each invariant has (a) a primitive owner, (b) an activation release (cannot fire before its primitive lands), (c) a property-test sketch, and (d) field-standard terminology notes where relevant. **All 15 invariants pass the §0a pillar-grounding test** — every invariant maps to at least one of the Four Vision Pillars.
 
@@ -1320,20 +1433,30 @@ This section converts the substrate's implicit guarantees into **testable proper
 
 **Discipline**: an invariant whose primitive does not ship until release vN is NOT testable before vN — it is aspirational until activation. Each invariant below names its activation release explicitly.
 
-### v3.0-alpha activations (10 invariants — testable from first kernel release)
+### v3.0-alpha activations (20 invariants — testable from first kernel release; v6 expansion: +10 from consistency model + memory-root-pointer + recovery-sweep)
 
 | # | Name | Owner | Property test sketch | Pillar |
 |---|---|---|---|---|
 | 1 | **INV-K9-RejectFidelity** | K9 | For any spawn whose K9-pre gate returns FAIL, post-spawn host worktree state equals pre-spawn state byte-for-byte. | P1 |
 | 2 | **INV-Replay-K5K7K9Equivalence** | K2 envelope + K5/K7/K9 | Replay of a recorded spawn envelope under the same `axioms.evolution_snapshot` reproduces the same K9 PASS/FAIL verdict AND the same K5/K7 validator outcomes. *Relaxation note*: this is weaker than Temporal-style command-trace determinism — we relax to **outcome-determinism** (same policy-relevant decisions, not necessarily same command sequence). Document the relaxation; do not let readers assume Temporal-strength equivalence. | P3 |
 | 3 | **INV-A3a-A3b-Separation** | A3a / A3b boundary | Advisory findings (A3b / R-primitive output) cannot affect K5/K7/K9 PASS/FAIL outcomes. Property test: synthesize arbitrary `advisory_findings[]` entries into spawn-state; assert K9 promotion decision is unchanged. *Closest mainstream analogue*: GitHub "required vs optional status checks" — no formal term-of-art in the field. | P2 |
-| 4 | **INV-K9-SyntacticAtomicity** | K9 | K9 promote-deltas are atomic at the git-state level. Property test: inject K9-mid-cherrypick abort signal; assert filesystem state ∈ {pre-K9, post-K9}, never partial-cherrypick. **Caveat per §6.1.2**: syntactic atomicity does NOT imply semantic validity; caller must re-run verification gates post-rollback. *Field references*: ACID atomicity (Haerder & Reuter 1983); long-running compensable variant = saga pattern + compensating transactions (Garcia-Molina & Salem 1987). | P1 |
+| 4 | **INV-K9-SyntacticAtomicity** | K9 | K9 promote-deltas are atomic at the git-state level. Property test: inject K9-mid-cherrypick abort signal; assert filesystem state ∈ {pre-K9, post-K9}, never partial-cherrypick. **Caveat per §6.5.2**: syntactic atomicity does NOT imply semantic validity; caller must re-run verification gates post-rollback. *Field references*: ACID atomicity (Haerder & Reuter 1983); long-running compensable variant = saga pattern + compensating transactions (Garcia-Molina & Salem 1987). | P1 |
 | 5 | **INV-K2-SchemaForwardCompat** | K2 | K2-v2 envelopes can be parsed by K2-v3 readers without data loss. Property test: emit K2-v2 envelope → parse with forward-compat tolerant reader (per Round-3 architect HIGH) → assert all v2 fields round-trip. | P3 |
 | 6 | **INV-K2-SpawnRecordSchemaValid** | K2 | Every spawn-record emitted by the K2 hook validates against the v2 JSON schema. Property test: random-spawn fuzz × N; assert every emitted envelope passes schema validation; assert envelopes that fail validation never reach K9 promotion. | P3 |
 | 7 | **INV-K3-LineageAcyclicity** | K3 | The `parent_state_id` graph is a DAG (acyclic). Property test: from any spawn-record, walking `parent_state_id` links terminates at a root in ≤ depth bound; no node revisited. Under serial-only K13, cycles cannot form by construction — but the test still catches future bugs. Per `kb:architecture/crosscut/acyclic-dependencies`. | P1, P3 |
-| 8 | **INV-K14-PostDetectionEnforcement** | K14 | If K14 detects an out-of-scope write and `spawn-state.status` is set to REJECTED, no subsequent K9 promotion executes. Property test: synthesize a K14 violation record; assert K9 path is not entered. Codifies §6.1.1's K9↔K14 sequencing contract as a testable assertion. | P1 |
+| 8 | **INV-K14-PostDetectionEnforcement** | K14 | If K14 detects an out-of-scope write and `spawn-state.status` is set to REJECTED, no subsequent K9 promotion executes. Property test: synthesize a K14 violation record; assert K9 path is not entered. Codifies §6.5.1's K9↔K14 sequencing contract as a testable assertion. | P1 |
 | 9 | **INV-P-DepthOne** | (Anthropic platform contract) | A depth-2 spawn attempt either (a) emits no Agent/Task tool in the spawned context, OR (b) emits a hook-blocked Agent tool call. *Note*: we do NOT enforce this — Anthropic does (validated by Wave -1 P-DepthOne probe). The invariant tests that **our assumption holds**, so if Anthropic ever changes this, we notice. | P1, P3 |
 | 10 | **INV-K13-SerialOnly** | K13 | At any moment t, at most one spawn is in the `spawn-active` state. Property test: attempt concurrent spawn; assert second spawn is rejected or queued, never both active. This IS the "physical embodiment" substrate-supplied equivalent (see §0c). | P1, P3 |
+| 19 | **INV-19-WALAppendOnly** | WAL substrate (§5.1) | The WAL file at `manifests.attestation_wal` is append-only. Property test: after N transactions, the WAL has exactly N lines; mtime of any historical line equals its original write time (no in-place mutation). Synthesize: write 10 records → snapshot byte-length and per-line mtime → perform 5 more transactions → assert first-10-lines byte-prefix unchanged AND mtime sentinel preserved. *Field reference*: append-only log discipline (Kreps "The Log" 2013). | P3 |
+| 20 | **INV-20-TwoPhaseCommitClosure** | A9 / K9+K14 | Every PENDING intent-record in the WAL has either (a) a subsequent commit-record with `references_transaction_id` matching it, OR (b) the WAL ends and recovery sweep will reclassify it on next startup. No PENDING record may be permanently orphan-in-the-middle-of-the-WAL. Property test: synthesize a WAL with K PENDING + K commit-records + 1 orphan PENDING in the middle (followed by COMMITTED records); run sweep; assert orphan PENDING gets a sweep-emitted ABORTED commit-record. *Field reference*: ACID atomicity (Haerder & Reuter 1983); two-phase commit (Gray 1978). | P3 |
+| 21 | **INV-21-EvidenceLinkPreCommit** | A10 / K9 pre-commit | K9 pre-commit rejects any state-changing transaction (operation_class ∈ {CREATE, APPEND, SUPERSEDE, TOMBSTONE}) whose `evidence_refs` is empty OR points to records not present in the chain at `prev_state_hash`. Property test: emit transaction with empty `evidence_refs`; assert K9 rejects pre-commit. Emit transaction with `evidence_refs` pointing to a record in a DIFFERENT chain (different `(schema_version, scope)`); assert K9 rejects pre-commit. Emit transaction with valid `evidence_refs`; assert K9 accepts. | P3 |
+| 22 | **INV-22-IdempotencyKeyUniqueness** | §4.2 idempotency_key derivation + §5a.6 | Replaying a transaction with an existing `idempotency_key` is a no-op (returns existing `transaction_id`, no new WAL record). Property test: emit transaction T1 → record T1.transaction_id → replay T1 verbatim; assert second emit returns T1.transaction_id and WAL line-count unchanged. Distinct from INV-R13-IdempotencyKeyUniqueness (R13's v3.1 narrower scope: external-side-effecting tool calls); INV-22 covers ALL transactions including in-substrate ones. | P3 |
+| 23 | **INV-23-MVCCSnapshotPinned** | §5a.4 spawn-boundary MVCC | At spawn-init, the spawn's `prev_state_hash` is pinned in `axioms.evolution_snapshot`; all chain reads during the spawn's lifetime resolve against the pinned hash, not the live WAL tail. Property test: spawn S1 at t=0 with pinned hash H0; commit transaction T2 at t=1 advancing chain to H1; query chain from S1's context at t=2; assert result reflects H0 view (not H1). Under K13 serial-only this is degenerate (only one spawn at a time); the test still pins the contract for forward-compat to K13-relax in v3.5+. | P3 |
+| 24 | **INV-24-NoBareUpdate** | §5a.1 CRUD taxonomy | No emitted transaction record has `operation_class = UPDATE` (the value is not in the enum). All updates flow through SUPERSEDE-as-sibling-write. Property test: enumerate all WAL records; assert `operation_class ∈ {CREATE, APPEND, SUPERSEDE, TOMBSTONE, DERIVED-VIEW-INVALIDATE}`; assert SUPERSEDE records reference a predecessor via `affected_records` AND emit a `superseded_by` pointer on the predecessor (computed at chain-walk time, not stored). | P3 |
+| 25 | **INV-25-SchemaMigrationIsTransaction** | §5a.8 (with pointer-self-migration exception) | Substrate schema migrations (schema_version v6.0 → v6.1, etc.) emit an A9 two-phase commit transaction with `operation_class = SUPERSEDE` and `affected_records = [<schema-record-id>]`. **Exception**: `memory-root.json`'s own schema migration is NOT an A9 transaction — it uses §5a.2 atomic tmp+fsync+rename directly AND emits a `memory_root_schema_migrated` attestation with `commit_outcome: COMMITTED` set directly (no separate PENDING phase). Property test (general case): force a substrate schema_version bump; assert WAL contains intent-record + commit-record pair with `operation_class=SUPERSEDE, affected_records=[<schema-record-id>]`. Property test (exception case): force a pointer schema_version bump; assert WAL contains exactly one record with `intent_recorded_at == committed_at` and `commit_outcome: COMMITTED` referencing the pointer migration. | P3 |
+| 26 | **INV-26-MRAtomicWrite** | §5a.9 Memory Root Pointer + §5a.2 atomic-write primitive | Updates to `memory-root.json` use tmp+fsync+rename atomic write pattern (reuses K1/K9 atomic-write primitive). Property test: simulate kernel-crash between tmp-write and atomic-rename; assert the old `memory-root.json` is still present and parseable (not truncated). Simulate crash between atomic-rename and `memory_root_schema_migrated` WAL emission; assert the new pointer is present AND substrate startup re-emits the missing attestation (or treats absence as "migration completed pre-crash" — both are recoverable). | P3 |
+| 27 | **INV-27-PersonaIndexCanonicalOnly** | §5a.9 (Patch 3 index scope) | `persona_memory_index` indexes ONLY kernel-canonical records (K2/K3/K9 chain entries, R13 advisory-findings, A6 snapshots). Derived views are NEVER indexed there. Property test: enumerate all entries in `persona_memory_index`; assert every entry's `record_type` ∈ `{K2-spawn-record, K3-lineage, K9-promotion, R13-finding, A6-snapshot}`; assert NO entry has `record_type` ∈ `{endorsement-view, reputation-aggregate, persona-summary, …}` (derived-view types). Composes with A10 — derived views cannot be selected as `evidence_refs` via the index. | P3 |
+| A9 | **INV-A9-RecoverySweepIdempotent** | A9 recovery sweep (§5.3) | Walking the WAL twice during recovery produces identical state. Invoke `recoverySweep(WAL_path)` at T1 → completes → invoke again at T2 > T1 with NO intervening writes to the WAL → assert second invocation emits zero new ABORTED records. Run sweep a third time; assert zero again. *Round-2 disclosure*: codified per sub-tension 3 resolution; not in the original Artifact 3 invariant list. Brings v6 total from 27 to 28. | P3 |
 
 ### v3.1+ activations (2 invariants — require K6/K8/R13 to ship)
 
@@ -1348,29 +1471,32 @@ This section converts the substrate's implicit guarantees into **testable proper
 |---|---|---|---|---|
 | 13 | **INV-R10-BudgetMonotonic** | R10 | Budget envelope cannot expand downstream: `sum(child_budgets) ≤ parent_budget` at every spawn boundary. Property test: instrument R10 budget-pass; assert no spawn boundary widens the budget. | P4 |
 
-### v3.3+ activations (2 invariants — require Evolution Lab)
+### v3.3+ activations (5 invariants — require Evolution Lab; INV-16/17/18 added v6 per E14 §6.4)
 
 | # | Name | Owner | Property test sketch | Pillar |
 |---|---|---|---|---|
 | 14 | **INV-A6-SnapshotImmutability** | A6 + E4 | Reputation updates are asynchronous-only. A spawn's reputation snapshot at envelope-emit time is identical to what it sees throughout its execution. Property test: emit envelope at t=0 capturing reputation snapshot R0; mutate reputation store at t=1; assert spawn at t=2 still reads R0. | P3 |
-| 15 | **INV-A6-PolicyVersionedReplay** | A6 + E3 | Derived policy cannot retroactively affect replay. Property test: replay an old spawn envelope under a newer policy version; assert it produces the same K9 verdict as the original. *Field analogue*: Nix derivations / Bazel hermetic builds — **input-addressed reproducibility**. **Schema implication for v3.0-alpha**: K2 envelope MUST include a `policy_version` field starting v3.0-alpha (~5 LoC schema-additive) to enable this invariant when E3 lands. Adding now is cheap; failing to add forces a K2-v2→v3 envelope-schema break in v3.3. **Recommended pre-Phase-0 update to §6.1 K2 spec**. | P3 |
+| 15 | **INV-A6-PolicyVersionedReplay** | A6 + E3 | Derived policy cannot retroactively affect replay. Property test: replay an old spawn envelope under a newer policy version; assert it produces the same K9 verdict as the original. *Field analogue*: Nix derivations / Bazel hermetic builds — **input-addressed reproducibility**. **Schema implication for v3.0-alpha**: K2 envelope MUST include a `policy_version` field starting v3.0-alpha (~5 LoC schema-additive) to enable this invariant when E3 lands. Adding now is cheap; failing to add forces a K2-v2→v3 envelope-schema break in v3.3. **Recommended pre-Phase-0 update to §6.5 v3.0-alpha K2 spec**. | P3 |
+| 16 | **INV-16-EndorsementViewDeterministic** | E14 (§6.4) | The endorsement view is a pure function: same `(k2Records, r13Findings, a6Snapshot, k3Lineage, filter)` inputs always produce byte-equal output (modulo the `derived_at` timestamp). Property test: call `deriveEndorsements(I)` → record output O1; call again with identical I → assert canonical-JSON-byte-equal to O1 modulo `derived_at`. Determinism is the load-bearing property that makes the view safely cacheable (§5a.7). | P3 |
+| 17 | **INV-17-EvidenceLinkRequired** | E14 (§6.4) | Every derived endorsement output carries ≥1 `evidence_ref` pointing to a kernel-emitted record present in the input set. Property test: enumerate all outputs; assert `endorsement.evidence_refs.length ≥ 1`; for each ref, assert it resolves to a record in the input K2/R13/A6/K3 sets. Composes with A10 — the view's evidence-link is structurally a subset of A10's syntactic guarantee. | P3 |
+| 18 | **INV-18-NoSelfEndorsement** | E14 (§6.4) | `endorser_persona_id != endorsed_persona_id` is enforced at query-time, not at record-write-time. Property test: synthesize K2 records where `spawn.persona_id == lookupParent(k3, spawn.parent_state_id).persona_id` (self-parented spawn); assert `deriveEndorsements` filters these out (zero endorsements emitted). Codifies the C0 reason-#5 security cost asymmetry — the primitive option would have needed an explicit write-time check; the derived-view forecloses it by construction at the projection. | P2 |
 
 ### Cross-reference: invariants vs Four Vision Pillars (§0a)
 
 | Pillar | Invariants serving it (executable form) |
 |---|---|
 | Pillar 1 — Filesystem-Delta-as-Truth | INV-K9-RejectFidelity, INV-K9-SyntacticAtomicity, INV-K14-PostDetectionEnforcement, INV-K3-LineageAcyclicity, INV-P-DepthOne, INV-K13-SerialOnly |
-| Pillar 2 — Byzantine Treatment of LLM | INV-A3a-A3b-Separation, INV-K6-CapabilityMonotonic, INV-R13-IdempotencyKeyUniqueness |
-| Pillar 3 — Deterministic / Auditable Execution | INV-Replay-K5K7K9Equivalence, INV-K2-SchemaForwardCompat, INV-K2-SpawnRecordSchemaValid, INV-K3-LineageAcyclicity (dual), INV-P-DepthOne (dual), INV-K13-SerialOnly (dual), INV-A6-SnapshotImmutability, INV-A6-PolicyVersionedReplay |
+| Pillar 2 — Byzantine Treatment of LLM | INV-A3a-A3b-Separation, INV-K6-CapabilityMonotonic, INV-R13-IdempotencyKeyUniqueness, INV-18-NoSelfEndorsement |
+| Pillar 3 — Deterministic / Auditable Execution | INV-Replay-K5K7K9Equivalence, INV-K2-SchemaForwardCompat, INV-K2-SpawnRecordSchemaValid, INV-K3-LineageAcyclicity (dual), INV-P-DepthOne (dual), INV-K13-SerialOnly (dual), INV-A6-SnapshotImmutability, INV-A6-PolicyVersionedReplay, INV-19-WALAppendOnly, INV-20-TwoPhaseCommitClosure, INV-21-EvidenceLinkPreCommit, INV-22-IdempotencyKeyUniqueness, INV-23-MVCCSnapshotPinned, INV-24-NoBareUpdate, INV-25-SchemaMigrationIsTransaction, INV-26-MRAtomicWrite, INV-27-PersonaIndexCanonicalOnly, INV-A9-RecoverySweepIdempotent, INV-16-EndorsementViewDeterministic, INV-17-EvidenceLinkRequired |
 | Pillar 4 — TDD / Role-Separation | INV-K6-CapabilityMonotonic (dual), INV-R10-BudgetMonotonic |
 
-All four pillars get executable coverage. **§6.9 passes the §0a pillar-grounding test** — no invariant is a principle-tier mechanism dressed up as a pillar contract.
+All four pillars get executable coverage. **§6.13 passes the §0a pillar-grounding test** — no invariant is a principle-tier mechanism dressed up as a pillar contract.
 
-### Explicitly OUT of §6.9 (deferred or rejected)
+### Explicitly OUT of §6.13 (deferred or rejected)
 
 The following were considered as invariants and deliberately excluded — recorded here so future amendments don't propose them again without context:
 
-- **Per-tool-call gating invariants** — gating is v3.5+ per §6.6; v3.1 ships K2.c observability only, not gating. Don't propose invariants for unimplemented mechanisms.
+- **Per-tool-call gating invariants** — gating is v3.5+ per §6.10; v3.1 ships K2.c observability only, not gating. Don't propose invariants for unimplemented mechanisms.
 - **Container-isolation invariants** — ContainerAdapter is v3.5+ per §10c. K14's audit-record property is what we test in v3.0-alpha; container-enforcement properties belong to the adapter.
 - **Hash-chained tamper-evidence invariants** — OQ-3 threat model decision pending.
 - **Cross-spawn convergence invariants** (ConvergenceRate stability) — v3.4+ Lab work; per §7 "treated as a signal, not a load-bearing exit criterion." Goodhart-prone.
@@ -1442,7 +1568,7 @@ The following papers were citation-verified and confirm independent convergence 
 | Paper ★ | arxiv / venue | Convergence with v4.2 |
 |---|---|---|
 | Tian et al., "A WBFT Consensus Driven Trusted Multiple LLM Network" (2025) | arxiv 2505.05103 | Reputation-weighted voting on LLM outputs ≈ our A6 + E4. Independent convergence. |
-| **ACRFence**: Preventing Semantic Rollback Attacks (2026) | arxiv 2603.20625 | Directly addresses the semantic-rollback-attack surface we now flag in §6.1.2 + OQ-17. **Recommended reading before implementing R13.** |
+| **ACRFence**: Preventing Semantic Rollback Attacks (2026) | arxiv 2603.20625 | Directly addresses the semantic-rollback-attack surface we now flag in §6.5.2 + OQ-17. **Recommended reading before implementing R13.** |
 | Wu et al., "StateFlow" (COLM 2024) | arxiv 2403.11322 | Process-grounding via state machines ≈ our v3.0-alpha linear kernel loop. Independent convergence. |
 
 **NOT cited** (problems discovered during verification):
@@ -1458,7 +1584,7 @@ Two artifacts implement the **effect-containment-with-atomic-promotion** pattern
 | Artifact ★ | What it ships | Relationship to K9 |
 |---|---|---|
 | **DeltaBox** (arxiv 2605.22781, 2026) | OS-overlayfs-level delta containment + CRIU soft-dirty-page checkpoint/restore. **14ms checkpoint, 5ms restore** vs git-cherrypick ~100ms-1s. Evaluated on SWE-bench Verified and RL fan-out; MCTS state-management overhead drops from 47-77% to 3-6% of trajectory time. | **Strict perf superior to git-cherrypick K9 if OS-level dependency is acceptable.** Same effect-containment-with-atomic-promotion pattern. Same network-side-effect gap (neither solves rollback of sent HTTP requests). Requires root/CRIU privileges; ours runs in user-space git. **Implication**: K9's git-cherrypick implementation is one valid backend; OS-overlayfs is another. Future v3.x may swap K9 backends keeping the K9 interface stable. Phase 0 file moves are agnostic to backend choice (same as P-Snapshot OQ-18). |
-| **Hermes Agent** (NousResearch) | Git-worktree isolation + automatic pre-destructive-op snapshots + rollback. **Most direct shipping-product prior art for K1+K9 combo.** | Power-Loom-in-the-small. Our differentiator vs Hermes is the broader substrate around K9 — K2 envelope (lineage + policy_version + capability set + reputation snapshot), A6 reputation snapshot for Lab→Kernel determinism, K12 layer-lint, HETS pair-review, four-pillar architecture, §6.9 invariants codified as property tests, three-layer Kernel/Runtime/Lab split, Evolution-Lab failure-memory loop. Not the worktree+rollback core. |
+| **Hermes Agent** (NousResearch) | Git-worktree isolation + automatic pre-destructive-op snapshots + rollback. **Most direct shipping-product prior art for K1+K9 combo.** | Power-Loom-in-the-small. Our differentiator vs Hermes is the broader substrate around K9 — K2 envelope (lineage + policy_version + capability set + reputation snapshot), A6 reputation snapshot for Lab→Kernel determinism, K12 layer-lint, HETS pair-review, four-pillar architecture, §6.13 invariants codified as property tests, three-layer Kernel/Runtime/Lab split, Evolution-Lab failure-memory loop. Not the worktree+rollback core. |
 
 **Repositioning implication**: §10a previously claimed "none of these papers are load-bearing for our architecture." With DeltaBox now visible, that claim narrows. **DeltaBox does not invalidate K9** (different abstraction layer; same problem class), but Power Loom must position itself as **the broader substrate around the worktree-rollback pattern**, not as the inventor of the pattern. The novelty claims that survive scrutiny (per the Category A research review): (1) K1+K9+K14 as a coordinated triple where K14 audits the boundary K1 isolates; (2) K2 envelope as a synthesis (Temporal has narrower event-history; LangGraph has narrower checkpoint; AGT has policy-without-envelope); (3) E1 negative attestations as typed first-class artifacts (the field treats failure as a containment trigger, not structured output); (4) A6 reputation snapshot for Lab→Kernel determinism (no analogue in the field); (5) Layer-boundary advisory lint with honest "not mandatory" framing (rarer than it should be). The worktree+rollback pattern itself is shared prior art.
 
@@ -1485,13 +1611,25 @@ Industry consensus diverges from v4.3/v5 in three places. v5 records the diverge
 - Industry signal: snapshot-restore dominates (Cursor zip, Hermes shadow-git, Aider `git reset HEAD`).
 - v5 keeps reverse-cherrypick as the v4.3 design but adds OQ-18 + P-Snapshot probe to empirically choose among 3 implementations before v3.0-alpha K9 lands. Phase 0 file moves are agnostic to the choice.
 
+**endorsement-records-as-primitive (REJECTED at C0 decision 2026-05-27)**:
+
+- The v5.4 → v3.3 plan had `E14 Endorsement primitive` on the roadmap with 4-5 invariants and 5 security launch-blockers (anti-gaming, external-evidence, acyclic chain, idempotency, restraint type). C0 architect decision (HETS-routed spawn 2026-05-27; full text in `/tmp/c0-decision-summary.md`; codified in ADR-0013) rejected the primitive in favor of a derived view.
+- **Six load-bearing reasons** (priority order): (1) §0a pillar-grounding test fails — principle-tier not pillar-tier; K12 v5.1 precedent applies. (2) Data already captured — v5.4 K2 envelope + R13 advisory-findings + A6 reputation already contain every field needed; the primitive duplicates. (3) SRP violation — two writers for evidence-about-persona-N-performed-task-T. (4) DIP cleaner in derived-view — E4 → kernel-records direct, not E4 → endorsement-records → kernel records. (5) **Security cost asymmetry — load-bearing**: the 5 launch-blockers exist BECAUSE the primitive creates the attack surface; removing the primitive removes the surface. Endorsement-records-as-primitive is structurally a Trust-Vulnerability Paradox amplifier (B3 field-survey debt; arxiv 2510.18563). (6) The only unique enabler the primitive offers (endorser-side reputation) IS the TVP amplifier B3 forbids.
+- **What v6 ships instead**: §6.4 E14 Endorsement-as-Derived-View — pure projection over K2/R13/A6/K3 kernel-emitted records; lives in Lab layer at `packages/lab/_lib/endorsement-view.js`; ~350-510 LoC / 8-12h inside the existing v3.3 budget envelope; 3 invariants (INV-16/17/18) replacing the primitive's 4-5; endorser-side reputation explicitly out of scope indefinitely. Full ADR at `packages/specs/adrs/0013-endorsement-derived-view.md`.
+
+**`active_state_hash` dual-write field in memory-root.json (REJECTED per PB-1 user-lock 2026-05-27)**:
+
+- Proposed Artifact 4 of the v6 drafting bundle initially included an `active_state_hash` field in `memory-root.json` as a cache of the WAL-tail-computed state hash. This was rejected at PB-1 user-lock review.
+- **Why rejected**: would have re-opened the dual-write inconsistency surface the consistency model is designed to eliminate. The WAL tail is the canonical source of truth per A8; caching the active state hash in a separate file creates a SECOND source that can disagree (when the WAL advances but the cache wasn't updated, or when the cache is corrupted but the WAL is intact). Resolving the disagreement requires choosing one source over the other — and A8 already says the chain (WAL) is canonical. The cache would either always be authoritative-or-disregarded (in which case it has no value) or sometimes-disagree-with-WAL (in which case A8 is violated).
+- **What v6 ships instead**: `memory-root.json` is **discovery-only** — it tells the substrate WHERE the WAL lives (`manifests.attestation_wal`), and nothing more. The active state hash is ALWAYS computed by walking the WAL tail. A8's single-source-of-truth property is preserved. Full discipline at §5a.9; rationale codified in ADR-0014.
+
 ### 10c. K1+K14 vs containers — complementary, not competing (NEW v5 per Round-6 architect C1)
 
 The field consensus (container/microVM-per-agent: E2B 15M sessions/mo; OpenHands V1; Devin cloud VMs; SWE-bench Docker-pinned) is correct for hosted-runtime distribution. v5's K1+K14 is correct for Anthropic-native plugin distribution. **They are not competing strategies — they are complementary substrates of the same architecture.**
 
 - **Containers enforce** the worktree boundary (filesystem cannot leak outside).
 - **K14 audits** the worktree boundary (filesystem-event records for the spawn-record envelope).
-- Both are needed regardless: even with container enforcement, you still want the audit record. v3.5+ ContainerAdapter (see §6.6) will retain K14 as the audit-record producer; containers replace its enforcement role.
+- Both are needed regardless: even with container enforcement, you still want the audit record. v3.5+ ContainerAdapter (see §6.10) will retain K14 as the audit-record producer; containers replace its enforcement role.
 - v5 ships K14 in v3.0-alpha because (a) plugin distribution can't assume Docker availability, (b) K14 is ~500-900 LoC vs ContainerAdapter + runtime-detection + fallback (~2,000+ LoC), (c) K14's audit value persists when containers ship.
 
 ---
@@ -1523,7 +1661,7 @@ The field consensus (container/microVM-per-agent: E2B 15M sessions/mo; OpenHands
     - **(a)** Reverse-cherrypick journal (current v4.3 design): ~650-1,050 LoC; preserves per-cherrypick audit granularity (`spawn-state.journal[]`).
     - **(b)** Spawn-bookended zip snapshot (Cursor-style): ~200-300 LoC; bigger disk; simpler atomic rollback.
     - **(c)** Content-addressable shadow git (Hermes Agent pattern): ~300-500 LoC; smaller disk via dedup; more storage indirection.
-    - **Decision deferred to v3.0-alpha kickoff via P-Snapshot probe**: implement all 3 on toy fixtures; run §6.1.1's 5 K14-sequencing sub-cases through each; measure LoC + disk + correctness under semantic-invalidity. Phase 0 file moves are agnostic to which implementation lands. Probe spec lives in `swarm/thoughts/shared/spikes/p-snapshot-spec.md` (TBD).
+    - **Decision deferred to v3.0-alpha kickoff via P-Snapshot probe**: implement all 3 on toy fixtures; run §6.5.1's 5 K14-sequencing sub-cases through each; measure LoC + disk + correctness under semantic-invalidity. Phase 0 file moves are agnostic to which implementation lands. Probe spec lives in `swarm/thoughts/shared/spikes/p-snapshot-spec.md` (TBD).
 
 ---
 
