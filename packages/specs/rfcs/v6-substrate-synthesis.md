@@ -466,9 +466,153 @@ Without this extension, the E3 → K4 closed loop violates kernel determinism. v
 
 ---
 
-## 4. Primitives by Layer (v4.2 — K6+K8 in v3.1; K12+K13+K14 in v3.0-alpha)
+## 4. State Model — Four-Class + Transaction-Record Shape (v6 RENUMBER: was Primitives by Layer; primitive grouping moved to §6)
 
-### 4.1 Loom Kernel Primitives (13 total — was 11; K12+K13 added)
+**v6 structural note (2026-05-27)**: in v5.4 (and earlier), §4 was "Primitives by Layer" — a catalog of K/R/E primitives. v6 promotes §4 to the **State Model** that the primitives operate on. This is the load-bearing reframe: v5.4 specified the kernel transaction loop (Spawn → worktree → delta → verify → promote/reject → spawn-record) without making the state representation it transacts ON explicit. v6 closes that gap. The primitive catalog moves to §6.1 (kernel / runtime / lab tables); MVP-staged release plan moves to §6.3+ (Round 3 will complete the §6 full renumber per architect Tension 5).
+
+### 4.1 — Four-Class State (folded from causal-recall RFC v3.2 §"The Four-Class State Model")
+
+Every piece of state in the v6 substrate lands in exactly one of four classes. This taxonomy is the load-bearing foundation that A8/A9/A10 build atop — without a class-precise vocabulary, "memory consistency" devolves into hand-waving about files.
+
+| Class | Definition | Storage discipline | Examples |
+|---|---|---|---|
+| **Axioms** | Irreducible, deterministic inputs to a transaction. | Persistent; durable; **immutable** (per A8, in-place mutation forbidden). | ADRs, KB anchors, persona contracts (content-hashed + semver-versioned), input prompts, model IDs, `parent_state_id`, `evolution_snapshot` (A6), `policy_version` (A6 + INV-A6-PolicyVersionedReplay). |
+| **Deterministic Theorems** | Pure functions of axioms (graph walks, recall, set operations). | Memoized opportunistically; recoverable trivially on miss (re-derive from axioms). | `recall(topic)` over snapshot, `causal_chain(node_id)`, K6 subset-check result, K7 path-canonicalize result, K5 schema-validate verdict, endorsement-view projection (§6.4 E14). |
+| **Stochastic Samples** | LLM-derived re-renderings; not deterministic by construction (per A1). | Memoized per-spawn at most; explicit "draw from distribution conditioned on axioms" framing in any CLI surface. | Agent reasoning traces (re-derived on demand; never authoritative), dream-consolidated insights (sibling-output, awaiting promotion), advisory findings from R-primitives (A3b — non-blocking). |
+| **Attestations** | Action witnesses; verifiable proofs that something happened on the filesystem or in an external system. | Persistent; small; chained via `prev_state_hash` per A8; verifiable via §4.2 transaction-record shape. | K9 promotion records, K14 violation records, filesystem deltas (`git stash` SHA or path-list sha256), bounded outputs, K2 spawn-record envelopes, R13 idempotency-key records, GC events. |
+
+**Class invariants** (referenced throughout §5a):
+
+1. **Axioms are not theorems** — an axiom is an input you cannot derive; a theorem is a function output you can re-derive. The boundary is what makes A1 + A8 implementable: replay walks the chain of attestations applied to axioms; theorems are by-products of replay, not state.
+2. **Theorems and stochastic samples are NOT the same thing** — theorems memoize cleanly (same inputs → same outputs); stochastic samples "memoize" only in the sense of caching one drawn sample. CLI surfaces that conflate the two violate Pillar 3 (audit honesty).
+3. **Attestations are the chain** — A8's "deterministic replay of the chain of transactions" is precisely the replay of the attestation sequence applied to the axiom snapshot at `prev_state_hash`. The transaction-record shape in §4.2 is the on-disk encoding of an attestation.
+
+**Composes with**:
+- Pillar 1 (Filesystem-Delta-as-Truth): attestations include filesystem deltas; the delta IS the canonical attestation of in-scope filesystem-state change.
+- Pillar 3 (Deterministic/Auditable): every spawn's behavior is replayable from its axioms + attested predecessors; stochastic samples are honestly labeled as such, never as "the truth."
+- A6 (reputation snapshot): captured into `axioms.evolution_snapshot` at spawn-init; Lab→Kernel data flow is mediated by axiom-class storage, not by live reads.
+
+**Cite**: this taxonomy moves verbatim from `packages/specs/rfcs/causal-recall-graph-rfc.md` §"The Four-Class State Model". See §4.4 for which other sections of the causal-recall RFC fold in vs. remain referenced.
+
+### 4.2 — Transaction-Record Shape (v6, NEW; K2 envelope extension)
+
+Every kernel-emitted record in the chain is a **transaction-record**: an envelope extending K2's spawn-record shape with 17 fields that make A8/A9/A10 implementable. The schema is **additive at v3.0-alpha** — existing K2-v2 readers see the new fields as forward-compat-tolerant unknowns (INV-K2-SchemaForwardCompat); v3.0-alpha+ readers consume the fields per A9's two-phase commit semantics.
+
+```yaml
+# v6 transaction-record envelope (extends K2-v2 spawn-record)
+transaction_id:           <sha256(canonical_json(record_minus_this_field))>
+prev_state_hash:          <sha256>                # chains to predecessor; GENESIS_HASH for chain root (§4.3)
+post_state_hash:          <sha256> | null         # state hash after this transaction; null in phase-1 intent records
+writer_persona_id:        <persona-name>          # the persona that authored this transaction
+writer_spawn_id:          <spawn_id>              # the spawn that performed the work
+parent_state_id:          <prior spawn_id>        # K3 lineage (unchanged from v5.4)
+operation_class:          CREATE | APPEND | SUPERSEDE | TOMBSTONE | DERIVED-VIEW-INVALIDATE
+affected_records:         [<block_id>, ...]       # the records this transaction touches
+evidence_refs:            [<kernel_record_id>, ...] # per A10; non-empty for state-changing transactions
+schema_version:           <v2|v3|...>             # K2 envelope schema version
+policy_version:           <hash>                  # per INV-A6-PolicyVersionedReplay; v3.0-alpha schema-additive
+intent_recorded_at:       <iso>                   # phase 1 of A9 two-phase commit
+committed_at:             <iso> | null            # phase 2; null while PENDING
+commit_outcome:           PENDING | COMMITTED | ABORTED | ROLLED-BACK | NOT_APPLICABLE
+abort_reason:             <string> | null         # populated only when commit_outcome ∈ {ABORTED, ROLLED-BACK}
+idempotency_key:          <sha256(canonical_json({writer_persona_id, operation_class, content_hash, prev_state_hash}))>
+references_transaction_id: <transaction_id> | null # NEW v6 Round-2 Tension 6: phase-2 commit-records reference their phase-1 intent-record by transaction_id; null for intent-records and standalone records
+```
+
+**Field-by-field semantics**:
+
+- `transaction_id` is the content hash of the record itself (minus the `transaction_id` field — fixed-point computation). Two records with identical content have the same `transaction_id`; this is what makes A10 evidence-link checks O(1) per lookup.
+- `prev_state_hash` is the load-bearing chain pointer. For the first transaction in any `(schema_version, scope)` chain, it MUST equal the genesis sentinel (§4.3). Subsequent transactions MUST set it to the `post_state_hash` of the most recent COMMITTED transaction in the chain — never to an ABORTED or PENDING predecessor (would violate A8's "chain of transactions terminating at T").
+- `evidence_refs` are validated by K9 pre-commit (per A10). Empty `evidence_refs` is rejected for any state-changing `operation_class` (CREATE/APPEND/SUPERSEDE/TOMBSTONE). DERIVED-VIEW-INVALIDATE MAY carry empty `evidence_refs` because invalidation is a cache-clear, not a state-change (still informational; still attested).
+- `idempotency_key` is derived deterministically from the four fields shown. Two records with the same idempotency key are the same transaction — replay is a no-op (§5a.6). The key composes with R13 Idempotency-Key Enforcer (v3.1) which adds `(spawn_id, tool_use_id)`-derived keys for external side effects; the in-substrate idempotency-key in §4.2 is broader (covers all transactions, not only external-side-effecting ones).
+- `references_transaction_id` (v6 Round-2 Tension 6 disclosure): the phase-2 commit-record's pointer back to its phase-1 intent-record. The bundle's original Artifact 3 envelope did not include this field; it is necessary for the two-phase WAL contract in §5.2 (separate-entry-per-phase decision) to be implementable. Default `null`; populated only on commit-records that resolve a prior PENDING intent. Storing the linkage in `evidence_refs` instead was rejected because `evidence_refs` is A10-load-bearing (forgery detection) and intent→commit linkage is a different semantic — overloading would weaken both. Dedicated field is the SRP-cleaner choice.
+
+**Resolved sub-tension 1 (do ALL K2 records carry the full envelope?)**: **Yes — schema-additively at v3.0-alpha, with a sentinel `commit_outcome: NOT_APPLICABLE` for purely-informational entries.**
+
+The argument for "yes":
+- DRY: one envelope shape across all K2-emitted records; readers handle one schema, not two.
+- SRP / Single-Source-of-Truth: the chain is THE source of truth (A8); fragmenting K2 emissions into "real transactions vs. informational entries" creates a second source readers must consult.
+- Forward-compat: v5.4's `INV-K2-SchemaForwardCompat` already requires K2-v2 readers to tolerate unknown fields; adding the transaction-record fields is exactly the case that invariant was designed to handle.
+
+The honest accommodation: **K2 emits some records that are NOT state transitions** — e.g., `spawn-init` records (pre-K14, pre-K9), GC events (`gc_sweep_complete`, `lock_recovered`), advisory findings dropping into `spawn-state.advisory_findings[]`. These records DO carry the full envelope (DRY), but their `commit_outcome` is set to the sentinel value **`NOT_APPLICABLE`**, signaling to readers "this record is informational, not a state transition; do NOT include it when walking the chain to compute `post_state_hash`."
+
+Chain-replay semantics: `walkChain(start_hash)` skips `commit_outcome ∈ {NOT_APPLICABLE, PENDING, ABORTED}` entries; COMMITTED is the only outcome that advances state. PENDING records are visible to the recovery sweep (§5a.5) but not to canonical-state replay. ABORTED and NOT_APPLICABLE records are audit-trail-only.
+
+This resolution keeps A8's single-source-of-truth property cleanly: every record lives in the chain, but only COMMITTED state-transition records contribute to the canonical state. NOT_APPLICABLE is the explicit sentinel that distinguishes audit-only entries from gated-out partial-failure ones.
+
+**Composes with**:
+- A8 (chain is canonical) — chain includes all envelope-emitted records; canonical state is the COMMITTED subset.
+- A9 (two-phase commit) — `intent_recorded_at` / `committed_at` / `commit_outcome` enum implement the two phases.
+- A10 (evidence-linked admission) — `evidence_refs` is the syntactic enforcement point at K9 pre-commit.
+- INV-K2-SchemaForwardCompat (v5.4) — the schema-additive at v3.0-alpha lands exactly in this invariant's tolerance window.
+- INV-R13-IdempotencyKeyUniqueness (v3.1) — the `idempotency_key` field is the storage location for R13's per-tool-call dedup keys; R13 derives, INV checks, K9 enforces non-collision.
+
+### 4.3 — Genesis Sentinel (v6, NEW)
+
+The empty-chain (pre-first-transaction) state is defined as the deterministic empty replay. Without an explicit sentinel, `prev_state_hash` for the first transaction in any chain would be either undefined (forces nullable handling) or zero (collides across schema versions and scopes — two fresh per-user chains under different schema versions would have identical first-transaction hashes, breaking content-addressability).
+
+**Sentinel definition**:
+
+```
+GENESIS_HASH = sha256('GENESIS|' + schema_version + '|' + scope)
+```
+
+where `scope ∈ { "per-user", "per-project" }` (per §5a.9 Memory Root Pointer scope precedence).
+
+**The first transaction in any chain MUST set `prev_state_hash = GENESIS_HASH`** for that chain's `(schema_version, scope)` pair. This:
+- Binds the chain root to the schema version. Schema migration re-anchors the chain (per §5a.8 — schema migration is itself a SUPERSEDE transaction, and the SUPERSEDE's successor chain is anchored to the new schema_version's genesis).
+- Disambiguates per-user vs per-project chains so identical `idempotency_key`s cannot collide at fresh-bootstrap (the only point of natural collision — both chains are at length-zero with no prior records to differentiate).
+- Provides a well-defined `active_state_hash` for empty chains (computed as `GENESIS_HASH`, NOT `undefined`). This is what makes A8 implementable for fresh installs: the substrate's "canonical state at install-time" is the deterministic empty replay, hash-pinned.
+
+**Example computation** for the canonical `("v6.0", "per-user")` chain:
+
+```
+input  = 'GENESIS|v6.0|per-user'
+sha256 = (computed by reference implementation; pinned in test suite for INV-23 + INV-A8)
+```
+
+Implementations MUST canonicalize whitespace and use lowercase hex; reference implementation will pin the expected 64-char hex in the v3.0-alpha test suite.
+
+**Forbids**:
+- `prev_state_hash = null` or `prev_state_hash = "0x0000…"` on the first transaction — both forms are ambiguous; the sentinel is the only well-defined form.
+- Cross-scope chain merging — a per-project chain's first record cannot reference a per-user chain's `post_state_hash` as its `prev_state_hash`, because the scopes are partitioned by genesis sentinel. Mediation between scopes is via the Memory Root Pointer (§5a.9), not via chain-merging.
+
+**Composes with**:
+- A8 (chain is canonical) — sentinel is the well-defined empty-replay anchor.
+- §5a.8 (schema migration as transaction) — sentinel re-anchoring on schema version bump is what makes migration auditable.
+- §5a.9 (Memory Root Pointer bootstrap) — bootstrap writes no WAL record; the WAL remains empty until the first real transaction, whose `prev_state_hash` is the sentinel for the bootstrapped `(schema_version, scope)` pair.
+
+### 4.4 — Causal-Recall Graph (fold-in from RFC v3.2; architecturally-load-bearing sections only)
+
+**Resolved sub-tension 2 (fold-in scope)**: **fold in architectural-load-bearing sections; reference implementation-detail sections.** Rationale: a full fold-in pushes v6 from ~2,500 LoC to >5,000 LoC and duplicates content that already has a durable home in `causal-recall-graph-rfc.md`. The fold-in target is the **architectural substrate** that v6 depends on; the **implementation specifics** (cherry-pick algorithm, on-disk file layouts, sweep scheduling, dream-prompt designs) remain in the standalone RFC where they belong.
+
+**Folds in (architecturally-load-bearing — restated or summarized within v6 §4)**:
+
+1. **Four-class state model** (causal-recall RFC §"The Four-Class State Model") → v6 §4.1 (above; canonical class definitions are now part of v6).
+2. **L_spawn invocation-level semantics** → v6 §4 invariant: spawn-records capture invocation-level events only; sub-step-level capture is out of scope (plugin runtime limitation).
+3. **Filesystem-as-shared-observable** → v6 §4 invariant: the filesystem delta is the canonical attestation; reasoning is private (theorem/sample class).
+4. **Dream-lite cycle definition** (causal-recall RFC §"Dreaming Integration — Three Cycles") → v6 §4 covers ONLY the architectural property that all dream cycles enforce **immutable-input + sibling-output discipline**. Concrete prompts, cost caps, schedule specifics remain in the standalone RFC.
+5. **GC split policy** (causal-recall RFC §"Spawn Lifecycle + GC + Retention") → v6 §4 covers ONLY the architectural split: **GC-Process** (PID-addressable; signal-based recovery) vs **GC-Spawn** (contractual; "stop waiting" recovery). Specific triggers, schedule cadences, recovery contracts remain in the standalone RFC.
+6. **Attestation-log format** (causal-recall RFC §"New attestation types") → v6 §5.1 (WAL at `~/.claude/checkpoints/attestation-log.jsonl`; one record per line; fsync per write).
+
+**References (NOT folded in; remain in the standalone RFC)**:
+
+- Specific dream-prompt designs (cost caps, schedules, 4-phase Orient→Gather→Consolidate→Prune) — implementation detail.
+- Per-scope causal-graph index format (`~/.claude/library/_meta/causal-graph-{scope}.json`) — discoverable via §5a.9 Memory Root Pointer's `manifests.causal_recall` entry; file format is implementation detail.
+- CLI verb specifications (`loom recall`, `loom causal-chain`, `loom dream`, etc.) — implementation detail.
+- Sweep scheduling specifics (Stop hook 50ms, PreCompact 8s hard limit, daily 10s budget) — implementation detail, governed by the `hooks.json` budgets.
+- TOCTOU defense algorithm for lock recovery (`(pid, mtime, inode)` tuple check) — implementation detail.
+- The four verification probes in causal-recall RFC §Phase 1 — superseded by the v6 Wave -1 probe list.
+
+**Pointer**: v6 readers wanting full causal-recall implementation detail consult `packages/specs/rfcs/causal-recall-graph-rfc.md` directly. v6 is the architectural substrate; the causal-recall RFC is the implementation-detail durable artifact.
+
+**Honest reason for split**: v6 aims to stay ≤2,500 LoC as the single architecturally-load-bearing substrate spec. The causal-recall RFC is already 660 LoC of locked-and-reviewed text; duplicating its implementation specifics into v6 would (a) push v6 past its size budget, (b) create dual sources of truth (drift inevitable), (c) require re-review of content that's already been through 4 review rounds. KISS + YAGNI both argue for fold-in-by-reference at the architectural seam, not fold-in-by-copy.
+
+---
+
+## 6.1 Primitives by Layer (v6 RENUMBER: was §4 — primitive tables kept verbatim below pending Round 3 full reorganization)
+
+### 6.1.1 Loom Kernel Primitives (13 total — was 11; K12+K13 added)
 
 | # | Primitive | Source / Mechanism | Shipping release |
 |---|---|---|---|
@@ -488,7 +632,7 @@ Without this extension, the E3 → K4 closed loop violates kernel determinism. v
 
 **Kernel total**: 13 primitives. **Verification surface**: pure functions only. **Stability**: MAJOR-bump-protected.
 
-### 4.2 Loom Runtime Primitives (13 total — unchanged)
+### 6.1.2 Loom Runtime Primitives (13 total — unchanged)
 
 | # | Primitive | Layer | Shipping release |
 |---|---|---|---|
@@ -506,7 +650,7 @@ Without this extension, the E3 → K4 closed loop violates kernel determinism. v
 | R12 | Test-runner adapter library | Runtime | v3.2 |
 | R13 | Advisory verification path | Runtime | Phase 1 SHIPPED (extends in v3.2) |
 
-### 4.3 Loom Evolution Lab Primitives (13 total — unchanged structure; E2 spec sharpened)
+### 6.1.3 Loom Evolution Lab Primitives (13 total — unchanged structure; E2 spec sharpened)
 
 | # | Primitive | Status | Shipping release |
 |---|---|---|---|
@@ -530,7 +674,338 @@ Without this extension, the E3 → K4 closed loop violates kernel determinism. v
 
 ---
 
-## 5. Capability Model
+## 5. WAL + Spawn-Boundary Semantics (v6 NEW SECTION)
+
+This section specifies the Write-Ahead Log (WAL) format and the two-phase commit semantics by which A9 (Memory-Transaction-Atomicity) becomes implementable. §5 is purely architectural — concrete file paths and persistence details live under §5a.3 + §5a.9 (Memory Root Pointer's `manifests.attestation_wal`); algorithms for chain-walk, evidence-link check, and recovery sweep are v3.0-alpha implementation deliverables, not v6 spec content.
+
+### 5.1 — Append-only WAL
+
+**Format**: JSONL (one record per line; UTF-8; LF-terminated). Each record is a transaction-record envelope per §4.2.
+
+**Location**: `~/.claude/checkpoints/attestation-log.jsonl` per §5a.3, **discovered via** the Memory Root Pointer's `manifests.attestation_wal` entry (§5a.9). No path is hard-coded in hooks/validators beyond the pointer-resolution sequence; the WAL's literal path is configuration, not contract.
+
+**Write discipline**:
+- One record per `fsync(2)` call. Multi-record batches are FORBIDDEN — a partial batch on crash leaves the WAL in an indeterminate state that A9's recovery sweep cannot disambiguate.
+- Append-only by file mode (`O_APPEND`-equivalent — on Node.js, `fs.appendFileSync` with `fsync` post-write; on the eventual native runtime, `open(O_APPEND)` + `write()` + `fsync()`).
+- **NO in-place mutation of any WAL record, ever.** This is the load-bearing realization of A8 at the WAL layer: state transitions are SUPERSEDE (sibling write referencing the predecessor by content-hash), never bare UPDATE. See §5.2 for how two-phase commit composes with this constraint.
+
+**Example records** (illustrative; one COMMITTED, one PENDING):
+
+```jsonl
+{"transaction_id":"a1b2…","prev_state_hash":"0fc9…","post_state_hash":"7e3d…","writer_persona_id":"04-architect","writer_spawn_id":"sp-2026-05-27T10:00:00Z-arch-0001","parent_state_id":null,"operation_class":"CREATE","affected_records":["spawn-state-001"],"evidence_refs":["axiom-prompt-001"],"schema_version":"v2","policy_version":"pv-2026-05-27a","intent_recorded_at":"2026-05-27T10:00:00.123Z","committed_at":"2026-05-27T10:00:01.456Z","commit_outcome":"COMMITTED","abort_reason":null,"idempotency_key":"e5f6…","references_transaction_id":null}
+{"transaction_id":"b2c3…","prev_state_hash":"7e3d…","post_state_hash":null,"writer_persona_id":"03-code-reviewer","writer_spawn_id":"sp-2026-05-27T10:01:00Z-cr-0001","parent_state_id":"sp-2026-05-27T10:00:00Z-arch-0001","operation_class":"APPEND","affected_records":["spawn-state-002"],"evidence_refs":["sp-2026-05-27T10:00:00Z-arch-0001"],"schema_version":"v2","policy_version":"pv-2026-05-27a","intent_recorded_at":"2026-05-27T10:01:00.789Z","committed_at":null,"commit_outcome":"PENDING","abort_reason":null,"idempotency_key":"f6a7…","references_transaction_id":null}
+```
+
+The first record shows a COMMITTED transaction (both `intent_recorded_at` and `committed_at` populated); the second shows a PENDING transaction awaiting its phase-2 commit-record (which would itself carry `references_transaction_id: "b2c3…"`).
+
+**Composes with**:
+- A8 (chain is canonical) — the WAL IS the chain's on-disk encoding; chain-walk = WAL-walk (modulo `commit_outcome` filtering per §4.2 resolved sub-tension 1).
+- §5a.1 (no bare UPDATE; SUPERSEDE writes a sibling) — WAL append-only is the implementation of §5a.1 at the WAL layer.
+- INV-19-WALAppendOnly (§6.9 v3.0-alpha+ activations) — property test: after N transactions, the WAL file has exactly N lines (no in-place edits detectable via mtime + line-count drift).
+
+### 5.2 — Two-phase commit (v6, NEW)
+
+A9 specifies two-phase commit at spawn boundaries. v6 implements both phases as **separate WAL entries**, NOT as a single entry that gets mutated. This preserves A8's single-source-of-truth property AND §5a.1's "no bare UPDATE" discipline.
+
+**Decision: separate-entry-per-phase**. The intent-record and the commit-record are sibling WAL entries linked by shared `references_transaction_id`. Rationale below.
+
+**Phase 1 — Intent record (spawn-init)**:
+
+At spawn-init, the kernel emits a WAL entry with:
+- `transaction_id`: computed from the proposed transaction content.
+- `prev_state_hash`: the `post_state_hash` of the most recent COMMITTED entry in the WAL (or the genesis sentinel for an empty chain).
+- `post_state_hash`: **null** (not yet known; depends on K14 verdict).
+- `intent_recorded_at`: current ISO timestamp.
+- `committed_at`: null.
+- `commit_outcome`: `PENDING`.
+- `references_transaction_id`: null.
+- All other §4.2 fields populated per the proposed transaction.
+
+The intent-record is fsync'd before the spawn dispatches. If the kernel crashes after this fsync but before phase 2, the PENDING record is what the recovery sweep (§5.3) reclassifies.
+
+**Phase 2 — Commit-or-Abort record (spawn-close)**:
+
+After K14 write-scope validation and (per §6.1.1 K9↔K14 sequencing contract) the K9 cherrypick-or-reject decision, the kernel emits a SECOND WAL entry — **never mutating the phase-1 record**:
+
+- `transaction_id`: a NEW hash for the commit-record itself (it has different content from the intent-record).
+- `references_transaction_id`: the phase-1 record's `transaction_id` — this is the linkage primitive.
+- `prev_state_hash`: same as the intent-record's `prev_state_hash` (commit-record applies the same proposed transition).
+- `post_state_hash`: populated (computed from the now-known final state).
+- `intent_recorded_at`: copied verbatim from the phase-1 record (audit trail).
+- `committed_at`: current ISO timestamp.
+- `commit_outcome`: `COMMITTED` (if K14 PASS + K9 PASS) or `ABORTED` (if K14 FAIL pre-K9, or K9 reject) or `ROLLED-BACK` (if K14 FAIL post-K9 — see K9↔K14 contract).
+- `abort_reason`: populated for ABORTED / ROLLED-BACK; null for COMMITTED.
+
+**Why separate-entry-per-phase, not single-entry-mutated**:
+- §5a.1 normatively forbids bare UPDATE; mutating a WAL entry to flip `commit_outcome` from PENDING → COMMITTED is EXACTLY the bare UPDATE pattern the discipline forbids.
+- A8's "chain of transactions" is the chain of WAL entries; if entries are mutable, the chain is not content-addressable (the `transaction_id` of a record changes when its bytes change). Mutability breaks A8 at the storage layer.
+- Append-only files are trivially safe under concurrent readers (any reader sees a consistent prefix); in-place-mutated files require reader synchronization that the substrate has no machinery for and no Pillar-grounded reason to add.
+- Audit trail: the phase-1 record's `intent_recorded_at` and the phase-2 record's `committed_at` together give the COMPLETE spawn duration AND prove that intent preceded commit. A single mutated record can fake this (mtime-revisable); two records cannot (phase-2's content references phase-1's `transaction_id`, which IS phase-1's content hash).
+
+**Composes with**:
+- A9 (two-phase commit) — this IS the implementation.
+- §6.1.1 K9↔K14 sequencing contract — K14 runs first; K9 runs second; both inputs feed the phase-2 `commit_outcome` decision.
+- INV-20-TwoPhaseCommitClosure (§6.9) — property test: for every PENDING record, there exists either (a) a subsequent commit-record referencing it, OR (b) the WAL ends and recovery sweep will reclassify it ABORTED. No PENDING record may be permanently orphan-in-the-middle-of-the-WAL.
+
+**Chain-walk semantics with two-phase commit**: when computing `active_state_hash` by walking the WAL tail, `walkChain()` consumes commit-records (not intent-records) — the intent-record's `post_state_hash` is null and cannot advance the state. The commit-record's `post_state_hash` is what advances the chain. Intent-records are visible to the recovery sweep and to audit-trail consumers; they are invisible to canonical-state replay (filtered by `commit_outcome` per §4.2 sub-tension 1 resolution).
+
+### 5.3 — Recovery sweep (v6, NEW)
+
+On substrate startup, after pointer resolution per §5a.9, the kernel runs the recovery sweep against the resolved WAL.
+
+**Algorithm** (architectural; v3.0-alpha implementation owns the concrete code):
+
+1. **Resolve pointer** — read `memory-root.json` per §5a.9; locate `manifests.attestation_wal`.
+2. **Walk WAL from tail backward** until either (a) the file head is reached, or (b) a COMMITTED transaction's content-hash matches the in-memory snapshot's `last_known_committed_hash` (substrate's prior state-pin from its own snapshot, if any). The tail-walk bounds the sweep's work.
+3. **For each PENDING intent-record encountered during the tail-walk**, check if a subsequent commit-record exists in the WAL with `references_transaction_id` matching this PENDING record's `transaction_id`.
+4. **If a commit-record exists** (any outcome — COMMITTED, ABORTED, ROLLED-BACK), the intent-record is already resolved; sweep takes no action.
+5. **If no commit-record exists** (orphan-PENDING), the sweep emits a NEW commit-record with:
+   - `references_transaction_id`: the orphan PENDING's `transaction_id`.
+   - `commit_outcome`: `ABORTED`.
+   - `abort_reason`: `"recovery-sweep-orphan"`.
+   - `committed_at`: current ISO timestamp (the recovery moment).
+   - All other §4.2 fields per the orphan-PENDING (copied verbatim where applicable; `post_state_hash` set to `prev_state_hash` since no state change occurred).
+6. **fsync** after every emitted ABORTED record. Recovery is durable.
+
+**Resolved sub-tension 3 (recovery-sweep idempotency)**: codified as the testable property contract below.
+
+**INV-A9-RecoverySweepIdempotent** (P3; codification of A9's recovery clause):
+
+> Walking the WAL twice during recovery produces identical state. Specifically: if `recoverySweep(WAL_path)` is invoked at time T1, completes, and then is invoked again at time T2 > T1 with no intervening writes to the WAL, the second invocation MUST emit zero new ABORTED records (every prior orphan-PENDING was already resolved by T1's sweep; there are no NEW orphan-PENDING records to find).
+>
+> Property test: synthesize a WAL with K orphan-PENDING records; run sweep; assert K ABORTED records emitted. Run sweep again with no other writes; assert zero ABORTED records emitted. Run sweep a third time; assert zero again.
+
+This invariant is the formal statement of "orphan-PENDING reclassification is idempotent on re-run." It composes with §5a.6 (idempotency: replaying a transaction with an existing `idempotency_key` is a no-op) — the recovery sweep IS a special case of idempotent replay, where the "transaction" being replayed is "reclassify orphan to ABORTED."
+
+**Forbids**:
+- Replaying COMMITTED records as if they were PENDING. The sweep filters by `commit_outcome` first, then walks; COMMITTED records are skipped at the filter stage.
+- Modifying ABORTED records to COMMITTED post-hoc. Once a record's `commit_outcome` is set, it is immutable (A8 + §5a.1). If a previously-aborted transaction needs to be retried, a NEW intent-record is emitted with a new `transaction_id` — never mutation of the old one.
+- Recovery-sweep emission of records other than commit-record-with-ABORTED. The sweep is a single-purpose reclassifier; it does not retry, does not roll forward, does not synthesize new intents. Retries are a Runtime concern, not a Kernel-recovery concern.
+
+**Composes with**:
+- A9 (two-phase commit, recovery clause) — implements the "reclassify orphan PENDING as ABORTED with reason: recovery-sweep-orphan" requirement.
+- §5a.5 (recovery sweep on substrate startup) — §5a.5 governs the WHEN; §5.3 governs the HOW.
+- §5a.9 (pointer resolution precondition) — sweep CANNOT run before pointer resolution; the sweep needs `manifests.attestation_wal` to know which file to read.
+- INV-A9-RecoverySweepIdempotent (above) — the testable contract.
+- INV-20-TwoPhaseCommitClosure (§6.9) — every PENDING resolves, eventually.
+
+### 5.4 — Spawn-boundary commit semantics
+
+Spawn-execution boundaries map to A9's two-phase commit transitions concretely.
+
+**At spawn-init** (PreToolUse:Agent|Task fires):
+- Kernel writes phase-1 intent-record per §5.2.
+- `commit_outcome: PENDING`; spawn dispatch proceeds.
+- K13 serial-only enforces that no other spawn is in PENDING state — at most one PENDING transaction per persona at any time. Concurrent spawn attempts are rejected or queued (per K13 v3.0-alpha mandatory enforcement). This composes with INV-K13-SerialOnly.
+
+**At spawn-close** (PostToolUse:Agent|Task fires):
+- K14 runs first per §6.1.1 — produces SCOPE_OK or VIOLATION verdict.
+- If K14 PASS, K9 cherrypicks per §6.1.1 — produces PROMOTED or REJECTED verdict.
+- Kernel writes phase-2 commit-record per §5.2:
+  - K14 PASS + K9 PASS → `commit_outcome: COMMITTED`.
+  - K14 PASS + K9 REJECT (e.g., schema validation failure) → `commit_outcome: ABORTED`, `abort_reason: "k9-pre-commit-rejected"`.
+  - K14 FAIL pre-K9 → `commit_outcome: ABORTED`, `abort_reason: "out_of_scope_writes_detected"`.
+  - K14 FAIL post-K9 (tail-window detection) → `commit_outcome: ROLLED-BACK`, `abort_reason: "out_of_scope_writes_tail_window"`.
+
+**R10 budget envelope composition** (v3.2+ activation): budget exhaustion mid-spawn produces a phase-2 commit-record with `commit_outcome: ABORTED`, `abort_reason: "budget-exhausted"`. The kernel's spawn-watchdog detects budget exhaustion and emits the abort record exactly as if K14/K9 had reached a reject verdict — the WAL doesn't care WHY the spawn ended, only that it ended with one of the four outcomes.
+
+**K13 serial-only composition** (v3.0-alpha mandatory): at most ONE PENDING transaction per persona at any time. The spawn-init check for "is any spawn currently in PENDING state for this persona?" is implemented as a WAL tail-scan for the most recent intent-record without a corresponding commit-record. If found, K13 rejects or queues the new spawn-init. This composes with INV-K13-SerialOnly and is what makes the recovery sweep bounded — there is at most one orphan-PENDING per persona to reclassify on crash recovery, never an unbounded fan-out.
+
+**Composes with**:
+- A9 (two-phase commit at spawn boundaries) — the spawn boundary IS the commit boundary.
+- §6.1.1 K9↔K14 sequencing contract — defines WHICH outcomes feed the phase-2 record.
+- R10 budget envelope — budget-exhaust composes as a valid abort cause; no new commit_outcome enum value needed.
+- K13 serial-only — bounds the PENDING set to ≤1 per persona at any time; makes recovery O(personas), not O(WAL size).
+- INV-K13-SerialOnly, INV-R10-BudgetMonotonic (both in §6.9) — testable contracts on the spawn-boundary properties.
+
+---
+
+## 5a. Memory Consistency Discipline (v6 NEW SECTION)
+
+This section codifies the discipline by which axioms A8/A9/A10 become operational. Each subsection is a normative rule that primitives implementing the kernel transaction loop MUST follow. Most subsections are short — the discipline is precise but not voluminous.
+
+### 5a.1 — CRUD taxonomy: no bare UPDATE
+
+> **Normative**: the CRUD taxonomy for canonical-state writes is **CREATE | APPEND | SUPERSEDE | TOMBSTONE | DERIVED-VIEW-INVALIDATE**. No bare UPDATE; **SUPERSEDE writes a sibling record and references the predecessor by content-hash**.
+
+The taxonomy is what makes A8's content-addressed state machine implementable. Each operation_class has well-defined semantics:
+
+- **CREATE** — first record in a chain or first record for a previously-non-existent `affected_records` entry. Predecessor is the genesis sentinel (§4.3) or another COMMITTED record; no predecessor on the affected record itself.
+- **APPEND** — adds new content without invalidating predecessor content. The predecessor remains canonical for its content; the new record extends it.
+- **SUPERSEDE** — replaces a predecessor's content. The predecessor is still in the WAL (immutable per A8) but is no longer canonical for the `affected_records` it covered. Readers walking the chain see the predecessor's `superseded_by` field pointing to this record.
+- **TOMBSTONE** — explicit deletion. The predecessor remains in the WAL; the tombstone record marks it removed from the canonical-state view. Tombstoned records are skipped by `loom recall` and chain-replay's state computation, but are visible to audit-trail consumers.
+- **DERIVED-VIEW-INVALIDATE** — cache-clear signal for derived views (§0a.3.1). NOT a state-change; carries empty `evidence_refs` legitimately; informs readers that any cached projection MUST be recomputed before next use.
+
+**Why "no bare UPDATE" matters**: bare UPDATE (in-place mutation of a record's content) would (a) break A8 (chain ceases to be content-addressed because record content can change underneath its `transaction_id`), (b) make concurrent readers see inconsistent states, (c) eliminate the audit-trail property (history can be rewritten by mutating an entry). SUPERSEDE-as-sibling-write is the discipline that preserves all three properties.
+
+**Cross-reference**: composes with INV-24-NoBareUpdate (§6.9). Implementation guidance: any K-primitive that wants to "update" a record must instead emit a SUPERSEDE record. The K9 implementation has had this discipline since v5.4; v6 codifies the discipline at the substrate level so future primitives (R-tier and E-tier) inherit it.
+
+### 5a.2 — Atomic-write discipline
+
+> **Normative**: all canonical writes use tmp-write + fsync + atomic-rename.
+
+The pattern is the v5.4 K1/K9 atomic-write primitive (`_lib/atomic-write.js` in the implementation), reused unchanged. The three-step pattern guarantees that readers never see a half-written file: either the rename succeeds (new content visible atomically) or it doesn't (old content remains visible). The fsync between write and rename is what makes the durability of the new content load-bearing — without it, a crash between write and rename could leave the old name pointing to truncated content.
+
+**Implementation guidance**: every K-primitive that writes to a canonical path (WAL, snapshot index, derived-views-cache invalidation marker, Memory Root Pointer per §5a.9) MUST use the shared `_lib/atomic-write.js` helper. Direct `fs.writeFile`/`fs.appendFile` to canonical paths is FORBIDDEN at the kernel layer. Runtime layer primitives that write to spawn-scratch are exempt (scratch is per-spawn and discarded at spawn-close per K1 worktree teardown).
+
+**Cross-reference**: composes with A9 (atomicity), §5a.9 (Memory Root Pointer writes use this primitive), INV-K9-SyntacticAtomicity (§6.9 — K9 cherrypick is atomic at git-state level via this primitive).
+
+### 5a.3 — WAL location and write cadence
+
+> **Normative**: the WAL is `~/.claude/checkpoints/attestation-log.jsonl` (append-only, fsync per write), **discovered via §5a.9 Memory Root Pointer's `manifests.attestation_wal`**.
+
+The default path is what fresh installs initialize the pointer to; existing installs may have the WAL elsewhere if a per-project pointer overrides per-user (per §5a.9 scope precedence). Hooks and validators MUST resolve via the pointer; hard-coding the default path is FORBIDDEN.
+
+Append-only and per-write fsync are restated here (§5.1 already covers the format and write discipline) so that §5a stands alone as the discipline reference — readers consulting §5a in isolation get the complete WAL contract without needing to cross-read §5.
+
+**Cross-reference**: §5.1 (full WAL spec); INV-19-WALAppendOnly (§6.9); §5a.9 (pointer discovery).
+
+### 5a.4 — MVCC snapshot isolation at spawn boundary
+
+> **Normative**: MVCC snapshot isolation at spawn boundary — each spawn reads from a `prev_state_hash`-pinned view; concurrent spawns see independent views.
+
+At spawn-init, the kernel captures the current `prev_state_hash` (the `post_state_hash` of the most recent COMMITTED record). Throughout the spawn's lifetime, any read against the chain (e.g., `loom recall`, evidence-link lookups, persona-memory queries) is mediated through this pinned hash. Subsequent COMMITTED records added to the WAL during the spawn's lifetime are INVISIBLE to that spawn.
+
+Under K13 serial-only (v3.0-alpha mandatory), this is degenerate — only one spawn is active at a time, so "concurrent spawns see independent views" is trivially satisfied. The invariant exists for forward-compat: when K13 relaxes to bounded-concurrency in v3.5+/Phase 4, MVCC snapshot isolation is what preserves A1 (transactional determinism) under concurrent spawn dispatch. v6 ships the discipline now so the implementation has it from the start; the K13-relax milestone gets MVCC for free.
+
+**Implementation guidance**: pin `prev_state_hash` in the spawn's `axioms.evolution_snapshot` block (per A6 mechanism). All reads against the chain consult the snapshot, never the live WAL tail.
+
+**Cross-reference**: A1 (transactional determinism); A6 (evolution_snapshot mechanism); INV-23-MVCCSnapshotPinned (§6.9).
+
+### 5a.5 — Recovery sweep precondition
+
+> **Normative**: recovery sweep on substrate startup walks WAL, reclassifies orphan PENDING records, never replays already-COMMITTED records. **Recovery sweep presupposes pointer resolution per §5a.9** (Patch 2): the pointer must be resolved before the sweep can locate the WAL.
+
+The full algorithm is in §5.3; §5a.5 captures the precondition discipline. The startup ordering is:
+
+1. Resolve `memory-root.json` per §5a.9 (read existing or bootstrap).
+2. Resolve `manifests.attestation_wal` from the pointer.
+3. Run recovery sweep against the resolved WAL.
+4. Substrate is ready to accept new spawn-inits.
+
+Steps 1-3 are sequenced; no parallel-with-other-startup-work is permitted. If pointer resolution fails (corrupt pointer, schema-version below floor), the substrate refuses to start — DOES NOT attempt to run the sweep against a guessed default path. Failing closed on pointer-resolution error is what makes the rest of the substrate's invariants composable; failing open would allow the sweep to operate on the wrong WAL and silently corrupt the chain.
+
+**Cross-reference**: §5.3 (sweep algorithm); §5a.9 (pointer resolution); INV-A9-RecoverySweepIdempotent (§5.3); error-handling per `kb:architecture/discipline/error-handling-discipline` (fail-closed).
+
+### 5a.6 — Idempotency
+
+> **Normative**: replaying a transaction with an existing `idempotency_key` is a no-op (INV-R13-IdempotencyKeyUniqueness; extended in v6 to cover all transactions, not only external-side-effecting ones).
+
+Two transactions with the same `idempotency_key` (per §4.2 derivation: sha256 of `{writer_persona_id, operation_class, content_hash, prev_state_hash}`) are semantically the same transaction. The kernel's intent-record-write step (§5.2 phase 1) checks the WAL for an existing record with the proposed `idempotency_key`; if found, the new intent-record is NOT emitted, and the kernel returns the existing record's `transaction_id` to the caller.
+
+This composition is what makes recovery and retry safe:
+- Recovery sweep can be invoked multiple times without producing duplicate ABORTED records (idempotency at the sweep level — INV-A9-RecoverySweepIdempotent).
+- External callers retrying a network operation (R13 in v3.1) cannot accidentally double-commit — the second retry's idempotency_key matches, kernel returns existing transaction_id, no second WAL write.
+- Replay of a recorded chain (e.g., for debugging or audit reconstruction) is safe — replaying a transaction whose idempotency_key already exists is a no-op.
+
+**Cross-reference**: R13 (v3.1 implementation owner); INV-R13-IdempotencyKeyUniqueness (§6.9); §5.3 (recovery sweep idempotency).
+
+### 5a.7 — Sibling-output discipline for derived views
+
+> **Normative**: derived views write to sibling paths, never in-place over canonical records.
+
+Per §0a.3.1 (Pillar 3 Derived-View No-Amplification Clause), derived views are pure projections over kernel-emitted records. The sibling-output discipline is the storage-layer corollary: when a derived view is materialized (e.g., the E14 endorsement-view cache), it MUST write to a sibling path discovered via §5a.9's `manifests.derived_views_cache` directory — never overwriting a kernel-canonical record.
+
+Sibling-output is what makes derived views safely invalidatable: a DERIVED-VIEW-INVALIDATE record (per §5a.1 CRUD taxonomy) signals "discard the cached sibling; recompute on next read." If derived views shared paths with canonical records, invalidation would risk eating canonical data.
+
+**Implementation guidance**: every derived-view producer reads canonical records from the chain (via §5a.4 pinned-snapshot view), computes its projection, writes to a sibling path under `manifests.derived_views_cache`, and indexes the sibling under an input-hash key. Readers re-verify the input-hash before consuming the sibling (per the C0 cache-discipline rule).
+
+**Cross-reference**: §0a.3.1 (Pillar 3 clause); §6.4 E14 endorsement-view spec; §5a.9 (`manifests.derived_views_cache`); INV-17-EvidenceLinkRequired.
+
+### 5a.8 — Schema-version migration as transaction (with pointer-migration exception)
+
+> **Normative**: schema-version migration is itself a transaction (SUPERSEDE with `operation_class=SUPERSEDE, affected_records=[<schema-record-id>]`). **Exception**: `memory-root.json`'s own schema migration is NOT executed as an A9 transaction (it is the precondition of A9); see §5a.9 self-migration clause.
+
+The general rule: when the substrate's schema_version advances (e.g., v6.0 → v6.1), the migration that re-anchors the chain to the new genesis sentinel is itself an A9 transaction. It emits intent-record + commit-record per §5.2; it carries `operation_class=SUPERSEDE` with `affected_records=[<schema-record-id>]`; it carries non-empty `evidence_refs` to the prior schema's most recent canonical record (per A10). After commit, the new chain's first real transaction's `prev_state_hash` is the new schema_version's genesis sentinel.
+
+This composition makes schema migration auditable: the WAL records a clear "schema v6.0 → v6.1 migration committed at T with content-hash X" entry, replayable from the chain.
+
+**Exception — pointer self-migration**: the Memory Root Pointer (§5a.9) is the precondition of A9 — without the pointer, the WAL cannot be located, so A9 transactions cannot be emitted. Therefore, the pointer's OWN schema migration cannot itself be an A9 transaction (chicken-and-egg).
+
+**Resolved sub-tension 4 (pointer self-migration paradox)**: pointer migration is NOT an A9 transaction. Instead:
+
+- The pointer's schema migration uses §5a.2's atomic tmp-write + fsync + atomic-rename primitive directly (no two-phase commit).
+- The atomic rename IS the commit-act for the pointer itself; once renamed, the new pointer is durable and visible.
+- AFTER the rename succeeds, the substrate emits a `memory_root_schema_migrated` attestation to the WAL — but this attestation has `commit_outcome: COMMITTED` set directly, with NO separate intent-record phase. The atomic rename has already happened; the WAL entry is the durable audit trail, not a gate.
+- This breaks the chicken-and-egg cleanly: pointer migration is NOT a transaction (it's the precondition); the WAL attestation is informational (audit-trail), not gating.
+
+**Why a single COMMITTED entry is safe here**: A9's two-phase commit exists to handle "crash between intent and commit" — i.e., partial-failure recovery. For pointer migration, the atomic rename itself is the partial-failure-safe primitive (rename either succeeds or doesn't; no partial state). Adding a two-phase WAL dance around an already-atomic operation would be redundant ceremony without serving any pillar; KISS argues against it. The single COMMITTED audit-attestation is the right shape.
+
+**Implementation guidance**: the `memory_root_schema_migrated` attestation carries:
+- `from_schema_version`: the pre-migration pointer's schema_version.
+- `to_schema_version`: the post-migration pointer's schema_version.
+- `from_content_hash`: sha256 of the pre-migration pointer file content.
+- `to_content_hash`: sha256 of the post-migration pointer file content.
+- `committed_at`: the timestamp of the atomic rename.
+- `commit_outcome: COMMITTED` directly.
+- `intent_recorded_at: <same as committed_at>` (the migration IS atomic; intent and commit coincide).
+
+This is the ONLY substrate-emitted record that legitimately has `intent_recorded_at == committed_at` with no preceding PENDING phase. All other transactions follow §5.2's strict two-phase discipline.
+
+**Cross-reference**: §5a.9 (pointer convention and self-migration clause); INV-25-SchemaMigrationIsTransaction (§6.9 — with the §5a.8 exception documented); §5a.2 (atomic-write primitive).
+
+### 5a.9 — Memory Root Pointer Convention (v6, NEW; canonical from Artifact 4)
+
+The Memory Root Pointer is the substrate's single discovery artifact for locating persona memory. It is **discovery-only** — the `active_state_hash` field was dropped per user-lock (Patch 1) to preserve A8's single-source-of-truth property. The active state hash is always computed by walking the WAL tail; the pointer's job is to tell the substrate WHERE the WAL lives, nothing more.
+
+**Canonical schema**:
+
+```json
+// ~/.claude/loom/memory-root.json  (per-user)
+// .claude/loom/memory-root.json    (per-project, when present)
+{
+  "schema_version": "v6.0",
+  "scope": "per-user" | "per-project",
+  "project_context": "/Users/.../my-project",
+  "manifests": {
+    "causal_recall":         "~/.claude/library/_meta/causal-graph-{scope}.json",
+    "attestation_wal":       "~/.claude/checkpoints/attestation-log.jsonl",
+    "persona_memory_index":  "~/.claude/library/_meta/persona-blocks-index.json",
+    "derived_views_cache":   "~/.claude/library/_meta/derived-views/"
+  },
+  "schema_compat_floor": "v5.4"
+}
+```
+
+**Discovery**: the kernel locates persona memory by reading `memory-root.json` first. No path is hard-coded in hooks/validators beyond the root pointer location itself.
+
+**Scope precedence**: when a per-project `memory-root.json` exists at `<cwd>/.claude/loom/memory-root.json` AND its `project_context` matches CWD, it overrides the per-user pointer at `~/.claude/loom/memory-root.json`. Otherwise the per-user pointer is canonical. This permits project-scoped substrate state (e.g., a sandboxed dev environment) without breaking the per-user default.
+
+**Atomicity**: updates to `memory-root.json` use tmp-write + fsync + atomic-rename per §5a.2 (composes with A9 and §5a.2). Codified as INV-26-MRAtomicWrite.
+
+**Startup ordering (Patch 2)**: (1) resolve `memory-root.json` (read existing or bootstrap); (2) resolve `manifests.attestation_wal`; (3) run A9 recovery sweep against the resolved WAL. The pointer is a precondition of the sweep — see §5a.5.
+
+**Bootstrap/recovery**: if `memory-root.json` is missing, the kernel reconstructs it by scanning the well-known default paths and writes a fresh pointer. If the file is present but schema-invalid (e.g., missing required field, unparseable JSON, schema_version below schema_compat_floor of the running substrate), treat as missing — do not half-parse. On bootstrap, the active state is the deterministic empty replay; the first real transaction's `prev_state_hash` MUST equal the genesis sentinel for that `(schema_version, scope)` pair (see §4.3). Bootstrap writes no WAL record; the WAL remains empty until the first real transaction.
+
+**Index scope (Patch 3)**: `persona_memory_index` indexes ONLY kernel-canonical records (K2/K3/K9 chain entries, R13 advisory-findings, A6 snapshots). Derived views MUST NOT be indexed here; they live in `derived_views_cache` and are discoverable separately. Indexing derived views in `persona_memory_index` would allow them to be selected as `evidence_refs`, violating A10 and Pillar 3. Codified as INV-27-PersonaIndexCanonicalOnly.
+
+**Pointer self-migration (Patch 5)**: `memory-root.json` schema migrations are NOT executed as A9 transactions (they are the precondition of A9; see §5a.8 exception). Instead, pointer schema migrations are written via the same atomic tmp+fsync+rename primitive AND emit a `memory_root_schema_migrated` attestation to the WAL once the new pointer is in place, carrying `from_schema_version`, `to_schema_version`, and content-hash of both pointer states. The attestation has `commit_outcome: COMMITTED` set directly with no separate PENDING phase (per §5a.8 exception). This preserves audit trail while breaking the chicken-and-egg.
+
+**What this convention does NOT add** (explicit non-scope):
+- No custom binary format.
+- No byte-offset allocation or block-pointer tables.
+- No mmap of memory-root.json.
+- No free-block tracking.
+- No state caching beyond what the WAL + content-addressed chain already provide.
+
+**Cross-reference**: A8 (chain is canonical; pointer is discovery-only); A9 (pointer resolution precedes recovery sweep); §5a.2 (atomic-write primitive shared); §5a.5 (recovery sweep precondition); §5a.8 (self-migration exception); INV-26-MRAtomicWrite, INV-27-PersonaIndexCanonicalOnly (§6.9 invariants 26 + 27).
+
+**Honest scope** (from Artifact 4):
+
+| Component | LoC / hours |
+|---|---|
+| `memory-root.js` reader (resolve scope, parse, schema-validate) | 50-80 LoC |
+| Atomic-write helper invocation (reuse existing primitive) | 10-15 LoC |
+| Bootstrap/recovery sweep on missing or corrupt | 30-50 LoC |
+| INV-MR-AtomicWrite property test | 40-60 LoC |
+| ADR-0014 (memory-root convention, scope rules, what-NOT-to-add) | 3-4h pair-reviewed text |
+| **TOTAL** | **130-205 LoC / 4-6h** |
+
+Sits inside v3.0-alpha K2 reservation PR scope without expanding that PR's budget envelope.
+
+---
+
+## 6.2 Capability Model (v6 RENUMBER: was §5)
 
 **v4 clarification per user concern #2**: capability injection (K8) and subset check (K6) are NOT in v3.0-alpha. They land in v3.1 when persona contracts have capabilities to inject/check. v3.0-alpha kernel ships without these enforcement primitives because the PURE MVP (worktree → delta → verify → promote/reject → spawn-record) doesn't require them.
 
