@@ -181,11 +181,24 @@ function isBootstrapSentinel(ref) {
  * advisory to K5/K7 (schema validators); K9 pre-commit consumes it and
  * synthesizes the abort_detail block on rejection.
  *
+ * Per F9 (post-compact PR-1 R1 F-1): callers MAY pass `{isGenesisPosition: true}`
+ * to opt into genesis-position validation. At genesis position, prev_state_hash
+ * may be a bootstrap sentinel (e.g., "GENESIS") instead of a 64-char sha256
+ * hex. Default (omitted or false) preserves v2.x callers' behavior — sentinel
+ * is REJECTED, forward-compat with non-genesis chain heads.
+ *
+ * The first production caller of `isGenesisPosition: true` is K9 pre-commit
+ * gate (ships PR 3); PR-1-era tests call this opt-in path directly to
+ * exercise the new branch.
+ *
  * @param {Object} record
+ * @param {Object} [options]
+ * @param {boolean} [options.isGenesisPosition=false] Permit bootstrap sentinel as prev_state_hash
  * @returns {{ valid: boolean, errors?: string[] }}
  */
-function validateTransactionRecord(record) {
+function validateTransactionRecord(record, options) {
   const errors = [];
+  const isGenesisPosition = !!(options && options.isGenesisPosition);
 
   if (!record || typeof record !== 'object') {
     return { valid: false, errors: ['record must be a non-null object'] };
@@ -215,7 +228,23 @@ function validateTransactionRecord(record) {
     errors.push('transaction_id must be 64-char lowercase hex sha256');
   }
   if (typeof record.prev_state_hash === 'string' && !/^[a-f0-9]{64}$/.test(record.prev_state_hash)) {
-    errors.push('prev_state_hash must be 64-char lowercase hex sha256');
+    // F9 (post-compact PR-1 R1): at genesis position, the chain head's
+    // `prev_state_hash` MAY be the literal "GENESIS" marker OR a
+    // bootstrap-sentinel pattern (USER_INTENT_AXIOM:..., GENESIS_EVIDENCE:...,
+    // ROOT_TASK_RECORD:...). At non-genesis positions, the strict 64-char hex
+    // contract applies — preserves v2.x callers' behavior.
+    //
+    // Note: the canonical GENESIS_HASH computed via computeGenesisHash() is
+    // ALSO a 64-char hex and would already pass the strict check above. This
+    // branch handles the alternate form where callers pass the literal
+    // "GENESIS" marker rather than the computed hash (which K9 pre-commit
+    // PR 3 will use during chain-head detection).
+    const isGenesisHead =
+      isGenesisPosition &&
+      (record.prev_state_hash === 'GENESIS' || isBootstrapSentinel(record.prev_state_hash));
+    if (!isGenesisHead) {
+      errors.push('prev_state_hash must be 64-char lowercase hex sha256');
+    }
   }
 
   // A10 / Round-3e GP4: state-changing records MUST carry non-empty evidence_refs
@@ -236,6 +265,27 @@ function validateTransactionRecord(record) {
   return errors.length === 0 ? { valid: true } : { valid: false, errors };
 }
 
+/**
+ * Clear the module-level schema cache. Per F16 (post-compact PR-1 R1): the
+ * cached schema (read once at first validation) becomes stale if the schema
+ * file on disk changes between substrate writes (rare but possible during
+ * substrate upgrades / hot-reload scenarios). Callers can force a fresh
+ * read via this export.
+ *
+ * Idempotent: repeat calls have no additional effect.
+ *
+ * Threading note (code-review Phase-10 FLAG #4): `_schemaCache` is module-level
+ * mutable. Node.js is single-threaded; concurrent invocations cannot truly
+ * interleave. If a future change introduces Worker threads consuming this
+ * module, callers must serialize clearSchemaCache + validateTransactionRecord
+ * pairs externally — the failure mode of an interleaved race is a benign
+ * redundant readFileSync (not data corruption), but Workers would need an
+ * explicit lock.
+ */
+function clearSchemaCache() {
+  _schemaCache = null;
+}
+
 module.exports = {
   canonicalJsonSerialize,
   computeTransactionId,
@@ -244,6 +294,7 @@ module.exports = {
   isStateChanging,
   isBootstrapSentinel,
   validateTransactionRecord,
+  clearSchemaCache,
   // Exposed for testing only:
   _BOOTSTRAP_SENTINEL_PATTERNS: BOOTSTRAP_SENTINEL_PATTERNS,
 };

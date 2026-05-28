@@ -198,6 +198,29 @@ function applyTrustPolicy(pointerPath, pointer, cwd) {
   // (c) Optional allowlist
   const allowlistPath = path.join(os.homedir(), '.claude', 'loom', 'trusted-projects.json');
   if (fs.existsSync(allowlistPath)) {
+    // F13 (post-compact PR-1 R1 F-2): 100KB size cap on the allowlist file.
+    // Failure mode = reject + treat as untrusted (consistent with the existing
+    // fail-closed semantics in this function). The cap protects against
+    // accidentally-pathological allowlist files (e.g., committed log dumps,
+    // garbage-collected blobs from past tooling). Per ADR-0011 §F13 the cap
+    // is STRICT `>` (allow exactly 100KB; reject anything strictly above).
+    try {
+      const stat = fs.statSync(allowlistPath);
+      if (stat.size > 100 * 1024) {
+        return {
+          trusted: false,
+          reason:
+            'allowlist-size-cap-exceeded (' +
+            stat.size +
+            ' bytes > 100KB; treating ~/.claude/loom/trusted-projects.json as untrusted)',
+        };
+      }
+    } catch (err) {
+      return {
+        trusted: false,
+        reason: 'allowlist-stat-failed (' + String(err && err.message).slice(0, 200) + ')',
+      };
+    }
     try {
       const allowlist = JSON.parse(fs.readFileSync(allowlistPath, 'utf8'));
       const trusted = Array.isArray(allowlist.trusted_project_contexts)
@@ -210,7 +233,13 @@ function applyTrustPolicy(pointerPath, pointer, cwd) {
         };
       }
     } catch (err) {
-      return { trusted: false, reason: 'allowlist-parse-failed (' + err.message + ')' };
+      // F13 (post-compact PR-1 R1 F-2): bound the error-message embed to
+      // prevent oversized parse errors from polluting the WAL JSONL audit
+      // log; per ADR-0011 §F13 codified ordering, future audit-log emissions
+      // route through JSON.stringify (never concatenation) for full CWE-74
+      // hygiene. PR 1 establishes the bounded-message convention.
+      const safeMsg = String(err && err.message).slice(0, 200);
+      return { trusted: false, reason: 'allowlist-parse-failed (' + safeMsg + ')' };
     }
   }
 

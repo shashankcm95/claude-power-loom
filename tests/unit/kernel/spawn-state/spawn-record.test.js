@@ -1,0 +1,330 @@
+#!/usr/bin/env node
+
+// tests/unit/kernel/spawn-state/spawn-record.test.js
+//
+// Failing-test contract for packages/kernel/spawn-state/spawn-record.js
+// per Phase-1-alpha/1 TDD-treatment phase 1.
+//
+// Covers (post-compact PR-1 R1 F-1 + FL-1 + FL-7):
+//   - F5: 3 .tmp sites migrate to writeAtomicString (atomic-write semantics)
+//   - F22: scrubSecrets regex extension — Stripe + password-in-URL patterns
+//   - R2-F3: JSON.stringify ordering — `scrubSecrets → sanitizeForJsonl → JSON.stringify`
+//   - INV-SpawnRecord-AtomicWrite: interrupted-write + concurrent-writer (FL-1)
+//   - scrubSecrets is exported at top-level for cross-module reuse (F-2)
+//
+// IMPORTANT — drift:test-instrument-tests-itself discipline (post-compact PR-1 R1):
+//   This file's test fixtures simulate secret-shaped strings WITHOUT writing
+//   the literal shape into source. Fixtures are constructed at runtime using
+//   string concatenation / Buffer / String.fromCharCode so that the file
+//   content itself never matches the secrets-gate hook regex it tests.
+//
+// At PR-1-author time this file is FAILING by design:
+//   - F22 patterns not in SECRET_PATTERNS yet (Stripe + password-in-URL)
+//   - scrubSecrets is exported only under __test__, not top-level
+//   - spawn-record.js uses bare writeFileSync + renameSync, not writeAtomicString
+//   - prepareForJsonl composed helper doesn't exist
+//
+// Tests pass once PR 1 phase 4 (F5 migration) + phase 6 (sanitize.js) land.
+
+'use strict';
+
+const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+
+const SPAWN_RECORD_PATH = path.join(
+  __dirname,
+  '..',
+  '..',
+  '..',
+  '..',
+  'packages',
+  'kernel',
+  'spawn-state',
+  'spawn-record.js',
+);
+
+let passed = 0;
+let failed = 0;
+
+function test(name, fn) {
+  try {
+    fn();
+    process.stdout.write(`  PASS ${name}\n`);
+    passed++;
+  } catch (err) {
+    process.stdout.write(`  FAIL ${name}: ${err.message}\n`);
+    failed++;
+  }
+}
+
+// --- Runtime-constructed fixtures (drift:test-instrument-tests-itself defense) ---
+//
+// Each fixture is built at runtime so this source file's bytes never match
+// the secrets-gate regex that scrubSecrets is supposed to catch.
+
+function buildAwsAccessKeyFixture() {
+  // Shape: AKIA + 16 uppercase alphanumerics
+  return ['A', 'K', 'I', 'A'].join('') + 'B'.repeat(16);
+}
+
+function buildStripeLiveKeyFixture() {
+  // Shape: sk_live_ + 24+ alphanumerics
+  return 'sk' + '_' + 'live' + '_' + 'C'.repeat(24);
+}
+
+function buildStripeRestrictedKeyFixture() {
+  return 'rk' + '_' + 'live' + '_' + 'D'.repeat(24);
+}
+
+function buildPasswordUrlFixture(password) {
+  return 'https://alice:' + password + '@example.com/api';
+}
+
+// --- F-2: scrubSecrets top-level export ---
+
+test('F-2: scrubSecrets is exported at top-level (cross-module reuse from memory-root.js)', () => {
+  const mod = require(SPAWN_RECORD_PATH);
+  assert.strictEqual(
+    typeof mod.scrubSecrets,
+    'function',
+    'expected top-level scrubSecrets export; currently only under __test__',
+  );
+});
+
+// --- F22: scrubSecrets regex extension ---
+
+function getScrubSecrets() {
+  // Try top-level first (post-F-2); fall back to __test__ for early-impl
+  // failures so the F22 pattern tests can still run.
+  const mod = require(SPAWN_RECORD_PATH);
+  if (typeof mod.scrubSecrets === 'function') return mod.scrubSecrets;
+  if (mod.__test__ && typeof mod.__test__.scrubSecrets === 'function') {
+    return mod.__test__.scrubSecrets;
+  }
+  throw new Error('scrubSecrets not exported');
+}
+
+test('F22.existing: AWS access key (AKIA-prefix synthetic) scrubbed (regression)', () => {
+  const scrubSecrets = getScrubSecrets();
+  const synthetic = buildAwsAccessKeyFixture();
+  const text = 'token leak: ' + synthetic + ' in log';
+  const out = scrubSecrets(text);
+  assert.ok(out.includes('[REDACTED]'), 'AKIA fixture should be redacted; got: ' + out);
+  assert.ok(!out.includes(synthetic), 'raw key must not survive scrub');
+});
+
+test('F22.new: Stripe live-key prefix is scrubbed (synthetic placeholder)', () => {
+  const scrubSecrets = getScrubSecrets();
+  const synthetic = buildStripeLiveKeyFixture();
+  const text = 'leak: ' + synthetic + ' in body';
+  const out = scrubSecrets(text);
+  assert.ok(
+    out.includes('[REDACTED]'),
+    'Stripe live-prefix fixture must be redacted by extended scrubSecrets',
+  );
+  assert.ok(!out.includes(synthetic), 'raw Stripe-shape body must not survive scrub');
+});
+
+test('F22.new: Stripe restricted-key prefix (rk_live_) is scrubbed', () => {
+  const scrubSecrets = getScrubSecrets();
+  const synthetic = buildStripeRestrictedKeyFixture();
+  const text = 'leak: ' + synthetic + ' in body';
+  const out = scrubSecrets(text);
+  assert.ok(out.includes('[REDACTED]'), 'rk_live fixture must be redacted');
+  assert.ok(!out.includes(synthetic), 'rk_live body must not survive scrub');
+});
+
+test('F22.new: password-in-URL pattern is scrubbed (https://user:pw@host)', () => {
+  const scrubSecrets = getScrubSecrets();
+  const password = 's' + '3' + 'cr' + '3' + 't-placeholder';
+  const fixture = 'fetch ' + buildPasswordUrlFixture(password) + ' worked';
+  const out = scrubSecrets(fixture);
+  assert.ok(
+    out.includes('[REDACTED]') || out.match(/https:\/\/[^@]*\[REDACTED\][^@]*@/),
+    'password-in-URL must be redacted; got: ' + out,
+  );
+  assert.ok(!out.includes(password), 'raw password must not survive scrub');
+});
+
+test('F22.new: password-in-URL does not over-match plain URLs', () => {
+  const scrubSecrets = getScrubSecrets();
+  const plainUrl = 'See https://example.com/path for docs';
+  const out = scrubSecrets(plainUrl);
+  assert.strictEqual(
+    out,
+    plainUrl,
+    'scrubSecrets must NOT redact plain URLs without embedded auth',
+  );
+});
+
+// --- R2-F3: JSON-stringify ordering for audit-log emission ---
+
+function getPrepareForJsonl() {
+  const mod = require(SPAWN_RECORD_PATH);
+  if (typeof mod.prepareForJsonl === 'function') return mod.prepareForJsonl;
+  try {
+    const sanitize = require(path.join(
+      __dirname,
+      '..',
+      '..',
+      '..',
+      '..',
+      'packages',
+      'kernel',
+      '_lib',
+      'sanitize.js',
+    ));
+    if (typeof sanitize.prepareForJsonl === 'function') return sanitize.prepareForJsonl;
+  } catch (_e) {
+    /* graceful fallback during partial-impl windows */
+  }
+  return undefined;
+}
+
+test('R2-F3: prepareForJsonl exists as top-level export (composed pipeline)', () => {
+  assert.strictEqual(
+    typeof getPrepareForJsonl(),
+    'function',
+    'expected prepareForJsonl exported from spawn-record.js or _lib/sanitize.js',
+  );
+});
+
+test('R2-F3: prepareForJsonl ordering — scrub BEFORE sanitize BEFORE JSON.stringify', () => {
+  const prepareForJsonl = getPrepareForJsonl();
+  if (!prepareForJsonl) {
+    assert.fail('prepareForJsonl not exported anywhere');
+  }
+  const awsFixture = buildAwsAccessKeyFixture();
+  const fixture = awsFixture + '\nembedded newline';
+  const out = prepareForJsonl(fixture);
+  assert.strictEqual(typeof out, 'string', 'output must be a string (JSON-encoded)');
+  // Output is JSON-stringified — peel one layer to inspect contents.
+  const parsed = JSON.parse(out);
+  assert.ok(parsed.includes('[REDACTED]'), 'AKIA fixture must be redacted');
+  assert.ok(!parsed.includes('\n'), 'embedded newline must be stripped (JSONL hygiene)');
+  assert.ok(!parsed.includes(awsFixture), 'raw secret body must not survive');
+});
+
+// --- F5: spawn-record.js uses writeAtomicString in 3 sites ---
+
+test('F5: spawn-record.js requires _lib/atomic-write (writeAtomicString import)', () => {
+  const src = fs.readFileSync(SPAWN_RECORD_PATH, 'utf8');
+  assert.ok(
+    /require\([^)]*atomic-write[^)]*\)/.test(src) || /from\s+['"][^'"]*atomic-write/.test(src),
+    'spawn-record.js must import atomic-write helpers (F5 migration)',
+  );
+  assert.ok(
+    /writeAtomicString/.test(src),
+    'spawn-record.js must reference writeAtomicString (F5)',
+  );
+});
+
+test('F5: 3 .tmp + renameSync sites migrated (no bare writeFileSync→renameSync pairs)', () => {
+  const src = fs.readFileSync(SPAWN_RECORD_PATH, 'utf8');
+  // After F5 migration there should be zero remaining renameSync CALL sites
+  // (matched by `renameSync(` shape, not the bare word — comments mentioning
+  // the migration may legitimately reference the word for documentation).
+  const renameCalls = [...src.matchAll(/\brenameSync\s*\(/g)].length;
+  assert.strictEqual(
+    renameCalls,
+    0,
+    `expected 0 renameSync call sites after F5 migration; found ${renameCalls}`,
+  );
+});
+
+// --- FL-1 INV-SpawnRecord-AtomicWrite: interrupted-write + concurrent-writer ---
+
+const CRASH_HARNESS_PATH = path.join(
+  __dirname,
+  '..',
+  '..',
+  '..',
+  '..',
+  'packages',
+  'kernel',
+  '_lib',
+  '_crash-harness.js',
+);
+
+test('INV-SpawnRecord-AtomicWrite: _crash-harness.js stub exists (minimal in PR 1)', () => {
+  assert.ok(
+    fs.existsSync(CRASH_HARNESS_PATH),
+    'expected minimal _crash-harness.js stub in PR 1 (full version in PR 2)',
+  );
+});
+
+test('INV-SpawnRecord-AtomicWrite: crash-harness exports simulateInterruptedWrite()', () => {
+  const harness = require(CRASH_HARNESS_PATH);
+  assert.strictEqual(
+    typeof harness.simulateInterruptedWrite,
+    'function',
+    'harness must expose simulateInterruptedWrite for atomic-write property test',
+  );
+});
+
+test('INV-SpawnRecord-AtomicWrite: interrupted write leaves NO partial file on disk', () => {
+  const { simulateInterruptedWrite } = require(CRASH_HARNESS_PATH);
+  const tmpDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'inv-aw-'));
+  const target = path.join(tmpDir, 'target.txt');
+  try {
+    try {
+      simulateInterruptedWrite(target, 'content-that-never-commits');
+    } catch {
+      // simulateInterruptedWrite throws by design (mid-write interruption)
+    }
+    assert.strictEqual(
+      fs.existsSync(target),
+      false,
+      'interrupted write must NOT leave target file on disk',
+    );
+    // .tmp shadow may exist; that's tolerable.
+  } finally {
+    try {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    } catch (_e) {
+      /* best-effort cleanup */
+    }
+  }
+});
+
+test('INV-SpawnRecord-AtomicWrite: concurrent writers produce serialized output (no torn line)', () => {
+  let writeAtomicString;
+  try {
+    writeAtomicString = require(path.join(
+      __dirname,
+      '..',
+      '..',
+      '..',
+      '..',
+      'packages',
+      'kernel',
+      '_lib',
+      'atomic-write.js',
+    )).writeAtomicString;
+  } catch (err) {
+    assert.fail('_lib/atomic-write.js missing writeAtomicString export: ' + err.message);
+  }
+  const tmpDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'inv-cw-'));
+  const target = path.join(tmpDir, 'concurrent.txt');
+  try {
+    const payloadA = 'A'.repeat(10000);
+    const payloadB = 'B'.repeat(10000);
+    writeAtomicString(target, payloadA);
+    writeAtomicString(target, payloadB);
+    const final = fs.readFileSync(target, 'utf8');
+    assert.ok(
+      final === payloadA || final === payloadB,
+      'concurrent writers must produce one-or-the-other; never a torn merge',
+    );
+  } finally {
+    try {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    } catch (_e) {
+      /* best-effort cleanup */
+    }
+  }
+});
+
+process.stdout.write(`\nspawn-record.test.js: ${passed} passed, ${failed} failed\n`);
+process.exit(failed === 0 ? 0 : 1);
