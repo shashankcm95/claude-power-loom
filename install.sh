@@ -142,14 +142,18 @@ install_hooks() {
   echo "Installing kernel substrate (hooks + validators + _lib + recall + spawn-state + algorithms)..."
 
   # 1. kernel/hooks/ — split into pre/post/lifecycle/ + hooks/_lib/
+  # Phase-1-alpha/0a (SC2206): quote $sub inside array-glob; nullglob handles
+  # the *.js expansion. Original `"$k_src"/hooks/$sub/*.js` left $sub unquoted
+  # which exposed it to word-splitting if $sub ever contained whitespace
+  # (defensive — current values are safe literal strings).
   mkdir -p "$k_dst/hooks/pre" "$k_dst/hooks/post" "$k_dst/hooks/lifecycle" "$k_dst/hooks/_lib"
   shopt -s nullglob
   for sub in pre post lifecycle _lib; do
-    files=("$k_src"/hooks/$sub/*.js)
+    files=("$k_src/hooks/$sub"/*.js)
     if [ ${#files[@]} -gt 0 ]; then
       cp "${files[@]}" "$k_dst/hooks/$sub/"
       # _lib is library code — no +x; hook entrypoints are +x
-      [ "$sub" != "_lib" ] && chmod +x "$k_dst"/hooks/$sub/*.js
+      [ "$sub" != "_lib" ] && chmod +x "$k_dst/hooks/$sub"/*.js
     fi
   done
   shopt -u nullglob
@@ -174,14 +178,16 @@ install_hooks() {
   fi
 
   # 4. kernel/recall/ + kernel/spawn-state/ + kernel/algorithms/ + kernel/schema/
+  # Phase-1-alpha/0a (SC2206): quote $sub inside array-glob (same fix-pattern
+  # as section 1 above).
   for sub in recall spawn-state algorithms schema; do
     if [ -d "$k_src/$sub" ]; then
       mkdir -p "$k_dst/$sub"
       shopt -s nullglob
-      sub_files=("$k_src"/$sub/*)
+      sub_files=("$k_src/$sub"/*)
       shopt -u nullglob
       if [ ${#sub_files[@]} -gt 0 ]; then
-        cp -r "$k_src"/$sub/* "$k_dst/$sub/"
+        cp -r "$k_src/$sub"/* "$k_dst/$sub/"
         find "$k_dst/$sub" -name '*.js' -exec chmod +x {} \;
       fi
     fi
@@ -204,11 +210,13 @@ install_hooks() {
   find "$r_dst/orchestration" -maxdepth 1 -name '*.js' -exec chmod +x {} \;
   find "$r_dst/orchestration" -maxdepth 1 -name '*.sh' -exec chmod +x {} \;
   # orchestration nested subdirs
+  # Phase-1-alpha/0a (SC2206): quote $sub inside array-glob (same fix-pattern
+  # as kernel section 1/4 above).
   for sub in identity aggregate; do
-    sub_files=("$r_src"/orchestration/$sub/*.js)
+    sub_files=("$r_src/orchestration/$sub"/*.js)
     if [ ${#sub_files[@]} -gt 0 ]; then
       cp "${sub_files[@]}" "$r_dst/orchestration/$sub/"
-      chmod +x "$r_dst"/orchestration/$sub/*.js
+      chmod +x "$r_dst/orchestration/$sub"/*.js
     fi
   done
   # doctor/probes nested

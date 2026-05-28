@@ -378,13 +378,13 @@ EOF
   # by `install.sh run_smoke_tests()` so `local` IS function-scope at runtime; the
   # directives declare shell + suppress the false positive shellcheck can't follow.
   # Validates:
-  #   (a) shellcheck --severity=error runs against all substrate .sh files
-  #   (b) Exit code 0 — substrate shellcheck clean at error severity
+  #   (a) shellcheck --severity=warning runs against all substrate .sh files
+  #   (b) Exit code 0 — substrate shellcheck clean at warning severity
   # Approach: enumerate substrate .sh files via `find` (future-extensible to new
-  # `*.sh` additions), pipe to `xargs` → `npx --yes shellcheck --severity=error`.
+  # `*.sh` additions), pipe to `xargs` → `npx --yes shellcheck --severity=warning`.
   # First-run on a fresh machine may take ~10-15s to download shellcheck binary
   # into npx cache; subsequent runs are ~1-2s. Acceptable smoke-harness latency.
-  echo -n "  Test 81 (H.9.1 shellcheck error-severity in local smoke harness; system shellcheck preferred, npx fallback): "
+  echo -n "  Test 81 (H.9.1 → Phase-1-alpha/0a; shellcheck warning-severity; .shellcheckrc disables SC2034): "
   # H.9.6.2: see Test 80 comment for `|| T81_EXIT=$?` rationale.
   # H.9.12.1 hotfix: prefer system `shellcheck` binary over `npx --yes shellcheck`.
   # The npm `shellcheck` package downloads a Haskell binary from GitHub
@@ -396,12 +396,12 @@ EOF
   # without either.
   T81_EXIT=0
   if command -v shellcheck >/dev/null 2>&1; then
-    T81_OUT=$(cd "$SCRIPT_DIR" && find . -name "*.sh" -not -path "./node_modules/*" -not -path "./.git/*" -print0 | xargs -0 shellcheck --severity=error 2>&1) || T81_EXIT=$?
+    T81_OUT=$(cd "$SCRIPT_DIR" && find . -name "*.sh" -not -path "./node_modules/*" -not -path "./.git/*" -print0 | xargs -0 shellcheck --severity=warning 2>&1) || T81_EXIT=$?
   else
-    T81_OUT=$(cd "$SCRIPT_DIR" && find . -name "*.sh" -not -path "./node_modules/*" -not -path "./.git/*" -print0 | xargs -0 npx --yes shellcheck --severity=error 2>&1) || T81_EXIT=$?
+    T81_OUT=$(cd "$SCRIPT_DIR" && find . -name "*.sh" -not -path "./node_modules/*" -not -path "./.git/*" -print0 | xargs -0 npx --yes shellcheck --severity=warning 2>&1) || T81_EXIT=$?
   fi
   if [ $T81_EXIT -eq 0 ]; then
-    echo "OK (substrate shellcheck clean at error severity; 0 errors)"
+    echo "OK (substrate shellcheck clean at warning severity; 0 warnings/errors)"
     passed=$((passed + 1))
   else
     echo "FAIL: shellcheck reported errors (exit $T81_EXIT)"

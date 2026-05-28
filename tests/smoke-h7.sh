@@ -395,14 +395,18 @@ GATE_EOF
   rm -rf /tmp/h7-23-1-gate-test
 
   # Test 36 (H.7.24): all SKILL.md files have frontmatter (drift-note 49 closure)
+  # Phase-1-alpha/0a (SC2044): rewritten from `for f in $(find ...)` to
+  # null-delimited `while read -d ''` per SC2044 — same fix-pattern as
+  # #164 nova round-2 absorption. For-loops over find output are fragile
+  # to whitespace in paths.
   local h7_24_missing_frontmatter=0
-  for skill_file in $(find "$SCRIPT_DIR/skills" -name "SKILL.md" 2>/dev/null); do
+  while IFS= read -r -d '' skill_file; do
     local first_line
     first_line=$(head -1 "$skill_file")
     if [ "$first_line" != "---" ]; then
       h7_24_missing_frontmatter=$((h7_24_missing_frontmatter + 1))
     fi
-  done
+  done < <(find "$SCRIPT_DIR/skills" -name "SKILL.md" -print0 2>/dev/null)
   if [ "$h7_24_missing_frontmatter" -eq 0 ]; then
     echo "  ✓ skill-files-frontmatter: H.7.24 all SKILL.md files have frontmatter"
     passed=$((passed + 1))

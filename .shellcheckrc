@@ -1,0 +1,27 @@
+# Substrate-wide shellcheck configuration
+# Phase-1-alpha/0a — codifies the substrate's intentional shell patterns
+# so warning-severity gates focus on real fragility (SC2044, SC2206, etc.)
+# rather than mechanical noise from the codebase's deliberate idioms.
+
+# SC2034: variable appears unused
+#
+# Disabled at project level because the substrate's smoke-test harnesses
+# (tests/smoke-h{4,7,8,ht}.sh + tests/smoke-library-*.sh) use the
+# `command || VAR=$?` pattern to capture exit codes without immediately
+# branching on them. This is intentional — the captured exit code is
+# inspected in subsequent assertions or logged for diagnostic purposes.
+# Example pattern (well-established across ~30 sites):
+#
+#   T68_OUT=$(some-command 2>/dev/null) || T68_EXIT=$?
+#   # T68_EXIT may be read by a downstream assertion or just kept for
+#   # forward-compat diagnostic capture
+#
+# Forcing SC2034 compliance would require either:
+#   (a) mechanical `_` prefix on ~30 variables (noise; no semantic value)
+#   (b) per-site `# shellcheck disable=SC2034` directives (clutter)
+# Project-level disable documents the substrate's stance and keeps the
+# warning-gate focused on load-bearing fragility classes.
+#
+# If a future contributor introduces a TRUE unused-var bug, they should
+# remove the assignment entirely — not rely on this disable as cover.
+disable=SC2034
