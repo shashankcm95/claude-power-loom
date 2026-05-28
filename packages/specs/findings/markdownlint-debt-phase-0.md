@@ -41,17 +41,17 @@ The 35 violations remain in the files (no content edits in Phase 0 — `git mv` 
 | File | Count |
 |---|---|
 | `packages/specs/research/HT-state.md` | 18 |
-| `packages/specs/plans/2026-05-09-H.8.7-batch-h1-h5-chaos-fixes.md` | 3 |
-| `packages/specs/plans/2026-05-10-HT.1.7-adr-retroactive-shape.md` | 2 |
-| `packages/specs/plans/2026-05-10-HT.2.2-parsefrontmatter-yaml-comment-strip.md` | 2 |
-| `packages/specs/plans/2026-05-12-H.9.6.2-test83-hardening.md` | 2 |
+| `packages/specs/plans/_archive/2026-05-09-H.8.7-batch-h1-h5-chaos-fixes.md` | 3 |
+| `packages/specs/plans/_archive/2026-05-10-HT.1.7-adr-retroactive-shape.md` | 2 |
+| `packages/specs/plans/_archive/2026-05-10-HT.2.2-parsefrontmatter-yaml-comment-strip.md` | 2 |
+| `packages/specs/plans/_archive/2026-05-12-H.9.6.2-test83-hardening.md` | 2 |
 | `packages/specs/findings/H.5.7-findings.md` | 1 |
-| `packages/specs/plans/2026-05-10-HT.1.6-documentary-persona-md.md` | 1 |
-| `packages/specs/plans/2026-05-10-HT.2-doc-lag-measurement-methodology-sweep-master-plan.md` | 1 |
-| `packages/specs/plans/2026-05-11-H.9.4-pending-docs-completion.md` | 1 |
-| `packages/specs/plans/2026-05-11-H.9.5-yamllint-frontmatter.md` | 1 |
-| `packages/specs/plans/2026-05-11-HT.3.1-adr-tier-taxonomy.md` | 1 |
-| `packages/specs/plans/2026-05-12-H.9.15-chaos-findings-closure.md` | 1 |
+| `packages/specs/plans/_archive/2026-05-10-HT.1.6-documentary-persona-md.md` | 1 |
+| `packages/specs/plans/_archive/2026-05-10-HT.2-doc-lag-measurement-methodology-sweep-master-plan.md` | 1 |
+| `packages/specs/plans/_archive/2026-05-11-H.9.4-pending-docs-completion.md` | 1 |
+| `packages/specs/plans/_archive/2026-05-11-H.9.5-yamllint-frontmatter.md` | 1 |
+| `packages/specs/plans/_archive/2026-05-11-HT.3.1-adr-tier-taxonomy.md` | 1 |
+| `packages/specs/plans/_archive/2026-05-12-H.9.15-chaos-findings-closure.md` | 1 |
 | `packages/specs/plans/2026-05-24-v3.0-multiphase-hets-execution-plan.md` | 1 |
 
 ### Hotspot: `HT-state.md` (51% of errors)
@@ -65,21 +65,21 @@ The 35 violations remain in the files (no content edits in Phase 0 — `git mv` 
 
 ```
 packages/specs/findings/H.5.7-findings.md:147:53 error MD037/no-space-in-emphasis Spaces inside emphasis markers [Context: "6 _"]
-packages/specs/plans/2026-05-09-H.8.7-batch-h1-h5-chaos-fixes.md:62:188 error MD038/no-space-in-code Spaces inside code span elements [Context: "`  - one`"]
-packages/specs/plans/2026-05-09-H.8.7-batch-h1-h5-chaos-fixes.md:108:39 error MD038/no-space-in-code Spaces inside code span elements [Context: "`  - architecture/ai-systems/a..."]
-packages/specs/plans/2026-05-09-H.8.7-batch-h1-h5-chaos-fixes.md:154:1 error MD056/table-column-count Table column count [Expected: 4; Actual: 3; Too few cells, row will be missing data]
-packages/specs/plans/2026-05-10-HT.1.6-documentary-persona-md.md:71:147 error MD038/no-space-in-code Spaces inside code span elements [Context: "`  - <kb_id>  # planned — not ..."]
-packages/specs/plans/2026-05-10-HT.1.7-adr-retroactive-shape.md:54:61 error MD056/table-column-count Table column count [Expected: 3; Actual: 10; Too many cells, extra data will be missing]
-packages/specs/plans/2026-05-10-HT.1.7-adr-retroactive-shape.md:60:140 error MD056/table-column-count Table column count [Expected: 3; Actual: 5; Too many cells, extra data will be missing]
-packages/specs/plans/2026-05-10-HT.2-doc-lag-measurement-methodology-sweep-master-plan.md:133:139 error MD038/no-space-in-code Spaces inside code span elements [Context: "`  - architecture/ai-systems/a..."]
-packages/specs/plans/2026-05-10-HT.2.2-parsefrontmatter-yaml-comment-strip.md:18:315 error MD038/no-space-in-code Spaces inside code span elements [Context: "`  - architecture/ai-systems/a..."]
-packages/specs/plans/2026-05-10-HT.2.2-parsefrontmatter-yaml-comment-strip.md:169:79 error MD038/no-space-in-code Spaces inside code span elements [Context: "`# `"]
-packages/specs/plans/2026-05-11-H.9.4-pending-docs-completion.md:150:74 error MD037/no-space-in-emphasis Spaces inside emphasis markers [Context: "+ _"]
-packages/specs/plans/2026-05-11-H.9.5-yamllint-frontmatter.md:71:55 error MD038/no-space-in-code Spaces inside code span elements [Context: "`  - value`"]
-packages/specs/plans/2026-05-11-HT.3.1-adr-tier-taxonomy.md:209:115 error MD037/no-space-in-emphasis Spaces inside emphasis markers [Context: "+ _"]
-packages/specs/plans/2026-05-12-H.9.15-chaos-findings-closure.md:106:117 error MD038/no-space-in-code Spaces inside code span elements [Context: "`*/$ `"]
-packages/specs/plans/2026-05-12-H.9.6.2-test83-hardening.md:135:265 error MD038/no-space-in-code Spaces inside code span elements [Context: "`Results: `"]
-packages/specs/plans/2026-05-12-H.9.6.2-test83-hardening.md:152:188 error MD056/table-column-count Table column count [Expected: 3; Actual: 2; Too few cells, row will be missing data]
+packages/specs/plans/_archive/2026-05-09-H.8.7-batch-h1-h5-chaos-fixes.md:62:188 error MD038/no-space-in-code Spaces inside code span elements [Context: "`  - one`"]
+packages/specs/plans/_archive/2026-05-09-H.8.7-batch-h1-h5-chaos-fixes.md:108:39 error MD038/no-space-in-code Spaces inside code span elements [Context: "`  - architecture/ai-systems/a..."]
+packages/specs/plans/_archive/2026-05-09-H.8.7-batch-h1-h5-chaos-fixes.md:154:1 error MD056/table-column-count Table column count [Expected: 4; Actual: 3; Too few cells, row will be missing data]
+packages/specs/plans/_archive/2026-05-10-HT.1.6-documentary-persona-md.md:71:147 error MD038/no-space-in-code Spaces inside code span elements [Context: "`  - <kb_id>  # planned — not ..."]
+packages/specs/plans/_archive/2026-05-10-HT.1.7-adr-retroactive-shape.md:54:61 error MD056/table-column-count Table column count [Expected: 3; Actual: 10; Too many cells, extra data will be missing]
+packages/specs/plans/_archive/2026-05-10-HT.1.7-adr-retroactive-shape.md:60:140 error MD056/table-column-count Table column count [Expected: 3; Actual: 5; Too many cells, extra data will be missing]
+packages/specs/plans/_archive/2026-05-10-HT.2-doc-lag-measurement-methodology-sweep-master-plan.md:133:139 error MD038/no-space-in-code Spaces inside code span elements [Context: "`  - architecture/ai-systems/a..."]
+packages/specs/plans/_archive/2026-05-10-HT.2.2-parsefrontmatter-yaml-comment-strip.md:18:315 error MD038/no-space-in-code Spaces inside code span elements [Context: "`  - architecture/ai-systems/a..."]
+packages/specs/plans/_archive/2026-05-10-HT.2.2-parsefrontmatter-yaml-comment-strip.md:169:79 error MD038/no-space-in-code Spaces inside code span elements [Context: "`# `"]
+packages/specs/plans/_archive/2026-05-11-H.9.4-pending-docs-completion.md:150:74 error MD037/no-space-in-emphasis Spaces inside emphasis markers [Context: "+ _"]
+packages/specs/plans/_archive/2026-05-11-H.9.5-yamllint-frontmatter.md:71:55 error MD038/no-space-in-code Spaces inside code span elements [Context: "`  - value`"]
+packages/specs/plans/_archive/2026-05-11-HT.3.1-adr-tier-taxonomy.md:209:115 error MD037/no-space-in-emphasis Spaces inside emphasis markers [Context: "+ _"]
+packages/specs/plans/_archive/2026-05-12-H.9.15-chaos-findings-closure.md:106:117 error MD038/no-space-in-code Spaces inside code span elements [Context: "`*/$ `"]
+packages/specs/plans/_archive/2026-05-12-H.9.6.2-test83-hardening.md:135:265 error MD038/no-space-in-code Spaces inside code span elements [Context: "`Results: `"]
+packages/specs/plans/_archive/2026-05-12-H.9.6.2-test83-hardening.md:152:188 error MD056/table-column-count Table column count [Expected: 3; Actual: 2; Too few cells, row will be missing data]
 packages/specs/plans/2026-05-24-v3.0-multiphase-hets-execution-plan.md:131:221 error MD056/table-column-count Table column count [Expected: 2; Actual: 3; Too many cells, extra data will be missing]
 packages/specs/research/HT-state.md:302:1771 error MD037/no-space-in-emphasis Spaces inside emphasis markers [Context: "3 _"]
 packages/specs/research/HT-state.md:303:2065 error MD037/no-space-in-emphasis Spaces inside emphasis markers [Context: "3 _"]
