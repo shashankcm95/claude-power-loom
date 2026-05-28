@@ -86,3 +86,60 @@ jobs:
             fi
           done
           exit $fail
+
+  kernel-property-tests:
+    # Phase 1-alpha PR 0b (per packages/specs/plans/2026-05-27-phase-1-alpha-v3.0-alpha-kernel.md
+    # §"Sub-PR Phase-1-alpha/0b"). Closes a CI gap surfaced during /verify-plan
+    # round 1 (jade) + round 2 (nova): kernel property-test files at
+    # tests/unit/kernel/**/*.test.js are written but NOT executed in CI.
+    # Existing `pnpm -r test` echoes "deferred" for every package; existing
+    # smoke job runs install.sh smoke tests + contracts-validate but does NOT
+    # invoke the kernel property tests directly.
+    #
+    # Round 1 (jade) caught a silent false-green: `node --test
+    # tests/unit/kernel/**/*.test.js` would load the imperative-assert test
+    # files, see zero node:test-format `test()`/`describe()` calls, and pass
+    # vacuously even when assertions failed — making the gate WORSE than no
+    # gate. Round 2 (nova) caught additional fragility: relative `find` path
+    # could silently match zero files without an explicit `working-directory`,
+    # recreating the original vacuous-pass; `for f in $(find)` word-splits on
+    # whitespace.
+    #
+    # Corrected approach: per-file script-runner loop with explicit working
+    # dir, null-delimited find -print0 + read -d '' for whitespace safety,
+    # and a `count -eq 0` vacuous-pass guard that fails fast if zero test
+    # files matched (defense-in-depth against the cwd / glob mismatch bug).
+    name: Kernel property tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run kernel property tests
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        run: |
+          set +e  # explicit; the loop manages exit code via $failed accumulator
+          failed=0
+          count=0
+          while IFS= read -r -d '' f; do
+            count=$((count+1))
+            echo "::group::$f"
+            node "$f"
+            rc=$?
+            echo "::endgroup::"
+            [ $rc -ne 0 ] && failed=1
+          done < <(find "$GITHUB_WORKSPACE/tests/unit/kernel" -name '*.test.js' -type f -print0)
+          echo "Ran $count test files; failures: $failed"
+          # Vacuous-pass guard: if find matched zero files (cwd mismatch, path
+          # rename, or globbing failure), fail the job. Without this, a CI
+          # config error would silently mark the gate green per nova FAIL.
+          if [ "$count" -eq 0 ]; then
+            echo "::error::Zero test files matched at $GITHUB_WORKSPACE/tests/unit/kernel — vacuous-pass guard failing the job."
+            exit 2
+          fi
+          exit $failed
