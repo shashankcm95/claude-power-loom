@@ -67,6 +67,11 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const { log } = require('../hooks/_lib/_log.js');
+// F5 (post-compact PR-1 R1): migrate 3 .tmp+rename sites to writeAtomicString.
+// writeAtomicString encapsulates the write-tmp + rename pattern (with
+// best-effort cleanup-on-error per H.9.8) — closes torn-read race + simplifies
+// audit trail.
+const { writeAtomicString } = require('../_lib/atomic-write.js');
 const logger = log('spawn-record');
 
 const SPAWN_STATE_DIR = path.join(os.homedir(), '.claude', 'spawn-state');
@@ -90,6 +95,9 @@ const DIR_MODE = 0o700;                    // hygienic mode for spawn-state (cod
 // The user's MEMORY.md captures the broader secret-management discipline
 // (BYO-credentials Cloudflare deployment goal); per-user-keys MUST NOT leak
 // into spawn-state envelopes that are world-readable on shared hosts.
+// F22 (post-compact PR-1 R1) — extended pattern enumeration per ADR-0011 §F22.
+// The plan + ADR explicitly enumerate the additions; impl MUST match the
+// ADR's enumeration (no more, no less) — rationale-before-code discipline.
 const SECRET_PATTERNS = [
   /AKIA[0-9A-Z]{16}/g,                                              // AWS access key id
   /aws_secret_access_key\s*[:=]\s*['"]?[A-Za-z0-9/+=]{40}['"]?/gi,  // AWS secret
@@ -98,7 +106,20 @@ const SECRET_PATTERNS = [
   /ghp_[a-zA-Z0-9]{36}/g,                                           // GitHub personal access token
   /gho_[a-zA-Z0-9]{36}/g,                                           // GitHub OAuth token
   /xox[abprs]-[a-zA-Z0-9-]{10,}/g,                                  // Slack token family
+  /sk_(live|test)_[A-Za-z0-9]{24,}/g,                               // F22: Stripe live + test secret keys
+  /rk_(live|test)_[A-Za-z0-9]{24,}/g,                               // F22: Stripe restricted-permission keys
+  /(https?|ftp):\/\/[^:/\s@]+:[^@\s/]+@/g,                          // F22: password embedded in URL (`://user:pw@host`)
 ];
+// F22 regex edge-case notes (code-review Phase-10 FLAG #10):
+//   - Empty password (`://user:@host`) is NOT matched — `[^@\s/]+` requires
+//     1+ chars in the password segment. Acceptable — empty passwords are
+//     not real secrets.
+//   - Colon in username (`://name:rest:pw@host`) treats `rest` as password.
+//     Rare URL form; defense-in-depth via subsequent patterns.
+//   - URL-encoded `%40` in password is preserved correctly (no literal `@`
+//     in the password segment).
+// scrubSecrets is a coarse net (defense-in-depth), not a primary control
+// — per comment at line 88-89 above.
 
 function scrubSecrets(text) {
   if (!text) return text;
@@ -200,12 +221,11 @@ function resolveRunId(input) {
     if (!map[ppid]) {
       map[ppid] = crypto.randomUUID();
       const out = Object.entries(map).map(([k, v]) => `${k}=${v}`).join('\n') + '\n';
-      // Atomic write via tmp+rename (code-reviewer MED-1) — match the
-      // envelope-write discipline so two near-simultaneous hooks with the
-      // same ppid don't last-writer-wins different run_ids.
-      const tmp = RUN_ID_FALLBACK_FILE + '.tmp';
-      fs.writeFileSync(tmp, out);
-      fs.renameSync(tmp, RUN_ID_FALLBACK_FILE);
+      // Atomic write via writeAtomicString (F5: post-compact PR-1 R1 migration
+      // from bare writeFileSync+renameSync). Encapsulates the write-tmp +
+      // rename + cleanup-on-error pattern; same POSIX-atomic semantics as
+      // before, plus consistent best-effort .tmp cleanup on error.
+      writeAtomicString(RUN_ID_FALLBACK_FILE, out);
     }
     return { run_id: map[ppid].slice(0, 16), source: 'ppid_fallback' };
   } catch (err) {
@@ -308,12 +328,10 @@ function writeEnvelope(envelope, runId) {
   const dir = path.join(SPAWN_STATE_DIR, runId);
   const file = path.join(dir, `spawn-${envelope.spawn_id}.json`);
   fs.mkdirSync(dir, { recursive: true, mode: DIR_MODE });
-  // Atomic-ish write: stage to tmp then rename. Cheap insurance against
-  // a torn read by an in-progress recall CLI walker. Same-filesystem
-  // (both paths under SPAWN_STATE_DIR/<runId>/) so rename is POSIX atomic.
-  const tmp = file + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(envelope, null, 2));
-  fs.renameSync(tmp, file);
+  // Atomic-ish write via writeAtomicString (F5: post-compact PR-1 R1 migration
+  // from bare writeFileSync+renameSync). Cheap insurance against torn reads
+  // by an in-progress recall CLI walker; same-filesystem so POSIX-atomic.
+  writeAtomicString(file, JSON.stringify(envelope, null, 2));
   return file;
 }
 
@@ -344,14 +362,20 @@ function main() {
     // Backfill duration AFTER all I/O so the stored metric matches the
     // <50ms p99 budget the RFC §"Periodic sweep cadences" defines.
     envelope.diagnostics.hook_duration_ms = computeDurationMs(startedAt);
-    // Re-write with the final duration. Second tiny write; acceptable
-    // because it's the same atomic tmp+rename path and the consumer reads
-    // the FINAL file. Keeps the metric inside the envelope (single source
-    // of truth) instead of in a sidecar log only.
+    // Re-write with the final duration via writeAtomicString (F5 migration).
+    // Second tiny write; acceptable because it's the same atomic write path
+    // and the consumer reads the FINAL file. Keeps the metric inside the
+    // envelope (single source of truth) instead of in a sidecar log only.
+    //
+    // FL-9 tradeoff note (post-compact PR-1 R1): collapsing the two writes
+    // into one would shift the captured duration from "after all I/O" to
+    // "before final I/O" — for the <50ms diagnostic budget this is
+    // tolerable, but the current double-write preserves the original
+    // "measure-after-write" semantics that the RFC §"Periodic sweep
+    // cadences" defines. Future micro-optimization can collapse here with
+    // an explicit code comment on the semantic shift.
     try {
-      const tmp = file + '.tmp';
-      fs.writeFileSync(tmp, JSON.stringify(envelope, null, 2));
-      fs.renameSync(tmp, file);
+      writeAtomicString(file, JSON.stringify(envelope, null, 2));
     } catch (err) {
       logger('duration-backfill-failed', { error: err.message, file });
     }
@@ -373,8 +397,22 @@ function main() {
 if (require.main === module) main();
 
 module.exports = {
+  // F-2 (post-compact PR-1 R1): scrubSecrets exported at top-level for
+  // cross-module reuse by `_lib/sanitize.js` (`prepareForJsonl` composed
+  // pipeline) and any future audit-log emitters (e.g., memory-root.js
+  // bounded-error-message hygiene). The top-level export is the CANONICAL
+  // path for cross-module callers; `__test__.scrubSecrets` is a legacy alias
+  // (same function reference) preserved for in-module test access — see
+  // canonical-export note in __test__ block below.
+  scrubSecrets,
   // Exported for unit/integration tests + the smoke harness. Not used by
   // the hook runtime path (which calls main() directly).
+  // NOTE (code-review Phase-10 FLAG #5): `__test__.scrubSecrets` is an
+  // ALIAS for `module.exports.scrubSecrets` above (same function reference).
+  // Cross-module callers MUST import via `require('./spawn-record.js').scrubSecrets`
+  // (top-level path), not via `__test__`. If SECRET_PATTERNS changes in a
+  // future PR, both paths stay in sync automatically because they reference
+  // the same closure.
   __test__: {
     buildEnvelope,
     normalizeSubagentType,

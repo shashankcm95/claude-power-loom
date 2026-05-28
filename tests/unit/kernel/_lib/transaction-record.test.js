@@ -242,6 +242,80 @@ test('validateTransactionRecord rejects non-hex transaction_id', () => {
   assert.ok(result.errors.some((e) => e.includes('transaction_id')));
 });
 
+// --- F9 INV-K2-SchemaForwardCompat genesis-position (post-compact PR-1 R1 F-1) ---
+//
+// Per plan PR 1 phase 5: add isGenesisPosition param to validateTransactionRecord.
+// At genesis position (chain head), prev_state_hash MAY be the bootstrap sentinel
+// "GENESIS" (or another sentinel) instead of a 64-char sha256 hex. The validator
+// currently rejects any non-64-char-hex prev_state_hash — these tests assert the
+// new opt-in {isGenesisPosition: true} path accepts the bootstrap shape.
+//
+// Note (FL on F9): K9 is the first production caller of isGenesisPosition=true
+// and ships in PR 3, NOT PR 1. PR-1 tests call validator with the option
+// directly to exercise the new branch. Implementer MUST NOT mistake the
+// unused-in-PR-1 param for dead code.
+
+test('F9 INV-K2-SchemaForwardCompat: genesis-position accepts GENESIS prev_state_hash', () => {
+  const record = validRecord({ prev_state_hash: 'GENESIS' });
+  const result = validateTransactionRecord(record, { isGenesisPosition: true });
+  assert.strictEqual(
+    result.valid,
+    true,
+    'isGenesisPosition=true should accept GENESIS sentinel; got errors: ' + JSON.stringify(result.errors),
+  );
+});
+
+test('F9 INV-K2-SchemaForwardCompat: non-genesis still rejects GENESIS sentinel', () => {
+  // The new opt-in must NOT loosen validation when isGenesisPosition is absent
+  // or false — that's the forward-compat contract: existing callers see no
+  // behavior change.
+  const record = validRecord({ prev_state_hash: 'GENESIS' });
+  const resultNoFlag = validateTransactionRecord(record);
+  assert.strictEqual(resultNoFlag.valid, false, 'omitted flag must reject GENESIS sentinel');
+  const resultFalse = validateTransactionRecord(record, { isGenesisPosition: false });
+  assert.strictEqual(resultFalse.valid, false, 'isGenesisPosition=false must reject GENESIS sentinel');
+});
+
+test('F9 INV-K2-SchemaForwardCompat: genesis-position still validates other required fields', () => {
+  // isGenesisPosition relaxes ONLY prev_state_hash format — other required
+  // fields (writer_persona_id, operation_class, etc.) still mandatory.
+  const record = validRecord({ prev_state_hash: 'GENESIS' });
+  delete record.writer_persona_id;
+  const result = validateTransactionRecord(record, { isGenesisPosition: true });
+  assert.strictEqual(result.valid, false, 'genesis-position must still require writer_persona_id');
+  assert.ok(result.errors.some((e) => e.includes('writer_persona_id')));
+});
+
+test('F9 INV-K2-SchemaForwardCompat: genesis-position with valid 64-hex prev_state_hash is also OK', () => {
+  // Genesis-position is permissive — accepts EITHER bootstrap sentinel OR
+  // valid hash. (Otherwise it would force a sentinel-only chain head.)
+  const result = validateTransactionRecord(validRecord(), { isGenesisPosition: true });
+  assert.strictEqual(result.valid, true, 'errors: ' + JSON.stringify(result.errors));
+});
+
+// --- F16 clearSchemaCache export (post-compact PR-1 R1 F-1) ---
+
+test('F16 clearSchemaCache: exported as top-level function', () => {
+  const mod = require('../../../../packages/kernel/_lib/transaction-record');
+  assert.strictEqual(typeof mod.clearSchemaCache, 'function', 'expected top-level clearSchemaCache export');
+});
+
+test('F16 clearSchemaCache: call is idempotent + does not throw', () => {
+  const { clearSchemaCache } = require('../../../../packages/kernel/_lib/transaction-record');
+  assert.doesNotThrow(() => {
+    clearSchemaCache();
+    clearSchemaCache();
+    clearSchemaCache();
+  });
+});
+
+test('F16 clearSchemaCache: re-validation after clear still works (no broken state)', () => {
+  const mod = require('../../../../packages/kernel/_lib/transaction-record');
+  mod.clearSchemaCache();
+  const result = mod.validateTransactionRecord(validRecord());
+  assert.strictEqual(result.valid, true, 'errors: ' + JSON.stringify(result.errors));
+});
+
 // --- summary ---
 
 process.stdout.write(`\ntransaction-record.test.js: ${passed} passed, ${failed} failed\n`);

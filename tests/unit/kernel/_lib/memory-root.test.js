@@ -15,6 +15,7 @@ const {
   resolvePointer,
   validatePointer,
   checkPerProjectPathDiscipline,
+  applyTrustPolicy,
   writePointerAtomic,
   defaultPerUserPath,
   defaultPerUserManifests,
@@ -209,6 +210,139 @@ test('defaultPerUserPath resolves under home directory', () => {
   const p = defaultPerUserPath();
   assert.ok(p.startsWith(os.homedir()));
   assert.ok(p.endsWith(path.join('.claude', 'loom', 'memory-root.json')));
+});
+
+// --- F13: 100KB size cap on trusted-projects.json allowlist (post-compact PR-1 R1 F-2) ---
+//
+// applyTrustPolicy() reads ~/.claude/loom/trusted-projects.json. F13 adds a 100KB
+// size cap on this read. Per F-2 resolution: failure mode is REJECT + treat as
+// UNTRUSTED (consistent with applyTrustPolicy's existing fail-closed semantics).
+// The cap protects against accidentally-pathological allowlist files (e.g.,
+// committed log dumps, garbage-collected blobs from past tooling).
+//
+// These tests stub fs.readFileSync + fs.statSync for the allowlist path to
+// simulate >100KB allowlist content without touching user's actual home dir.
+
+function withStubbedAllowlist(allowlistContent, fn) {
+  const origRead = fs.readFileSync;
+  const origStat = fs.statSync;
+  const origExists = fs.existsSync;
+  const origRealpath = fs.realpathSync;
+
+  const allowlistPath = path.join(os.homedir(), '.claude', 'loom', 'trusted-projects.json');
+
+  fs.existsSync = function (p) {
+    if (p === allowlistPath) return true;
+    return origExists.apply(fs, arguments);
+  };
+
+  fs.statSync = function (p) {
+    if (p === allowlistPath) {
+      return {
+        uid: typeof process.getuid === 'function' ? process.getuid() : 0,
+        size: Buffer.byteLength(allowlistContent, 'utf8'),
+      };
+    }
+    return origStat.apply(fs, arguments);
+  };
+
+  fs.readFileSync = function (p) {
+    if (p === allowlistPath) return allowlistContent;
+    return origRead.apply(fs, arguments);
+  };
+
+  // Pointer-path realpath stub (so applyTrustPolicy passes the CWD check).
+  // The test passes pointer.project_context = cwd so realpath is identity.
+  fs.realpathSync = function (p) {
+    return p; // identity — sufficient since the test passes pre-resolved paths
+  };
+
+  try {
+    return fn(allowlistPath);
+  } finally {
+    fs.readFileSync = origRead;
+    fs.statSync = origStat;
+    fs.existsSync = origExists;
+    fs.realpathSync = origRealpath;
+  }
+}
+
+test('F13 size-cap: <100KB allowlist with project in trusted list is accepted', (tmp) => {
+  const allowlist = JSON.stringify({
+    trusted_project_contexts: [tmp.path],
+  });
+  withStubbedAllowlist(allowlist, () => {
+    // Create a real pointer file in tmp so applyTrustPolicy's owner-stat
+    // works (it stat()s the pointer path, NOT the allowlist).
+    const pointerPath = path.join(tmp.path, 'memory-root.json');
+    fs.writeFileSync(pointerPath, '{}');
+    const pointer = { project_context: tmp.path };
+    const result = applyTrustPolicy(pointerPath, pointer, tmp.path);
+    assert.strictEqual(
+      result.trusted,
+      true,
+      'small allowlist with trusted project should be accepted; got: ' + JSON.stringify(result),
+    );
+  });
+});
+
+test('F13 size-cap: allowlist >100KB is REJECTED with size-cap reason', (tmp) => {
+  // Build a >100KB allowlist with valid JSON shape. Padding goes inside a
+  // dummy comment-style field so the JSON parses but exceeds the cap.
+  const padding = 'x'.repeat(110 * 1024); // 110KB padding
+  const allowlist = JSON.stringify({
+    trusted_project_contexts: [tmp.path],
+    _padding: padding,
+  });
+  assert.ok(Buffer.byteLength(allowlist, 'utf8') > 100 * 1024, 'fixture must exceed 100KB');
+
+  withStubbedAllowlist(allowlist, () => {
+    const pointerPath = path.join(tmp.path, 'memory-root.json');
+    fs.writeFileSync(pointerPath, '{}');
+    const pointer = { project_context: tmp.path };
+    const result = applyTrustPolicy(pointerPath, pointer, tmp.path);
+    assert.strictEqual(
+      result.trusted,
+      false,
+      'oversized allowlist must reject + treat as untrusted (fail-closed per F-2)',
+    );
+    assert.ok(
+      result.reason && /size|100KB|oversize|too[-\s]large/i.test(result.reason),
+      'reason must mention size; got: ' + result.reason,
+    );
+  });
+});
+
+test('F13 size-cap: exact-100KB boundary is accepted (cap is strict >, not >=)', (tmp) => {
+  // Open question worth pinning: is the cap "> 100KB" or ">= 100KB"?
+  // Plan F-2 says "100KB size cap" which we interpret as "reject when > 100KB"
+  // (allow exactly 100KB; reject anything strictly above). This test pins
+  // the boundary contract.
+  const trustedListContent = { trusted_project_contexts: [tmp.path] };
+  const baseLen = Buffer.byteLength(JSON.stringify(trustedListContent), 'utf8');
+  const paddingLen = 100 * 1024 - baseLen - '","_padding":""'.length;
+  const padding = paddingLen > 0 ? 'x'.repeat(paddingLen) : '';
+  trustedListContent._padding = padding;
+  const allowlist = JSON.stringify(trustedListContent);
+  // Trim to exactly 100KB if necessary (it should be very close).
+  const exactly100KB =
+    Buffer.byteLength(allowlist, 'utf8') <= 100 * 1024
+      ? allowlist
+      : allowlist.slice(0, 100 * 1024);
+
+  withStubbedAllowlist(exactly100KB, () => {
+    const pointerPath = path.join(tmp.path, 'memory-root.json');
+    fs.writeFileSync(pointerPath, '{}');
+    const pointer = { project_context: tmp.path };
+    const result = applyTrustPolicy(pointerPath, pointer, tmp.path);
+    // We don't require trusted=true here (the JSON might be malformed after
+    // the slice). What we DO require: reason must NOT be the size-cap reason
+    // for an exactly-100KB allowlist. Any other reject reason is the
+    // existing fail-closed semantics, not F13.
+    if (!result.trusted && result.reason && /size|100KB|oversize/i.test(result.reason)) {
+      assert.fail('100KB exactly should NOT trigger F13 size-cap reject; got: ' + result.reason);
+    }
+  });
 });
 
 process.stdout.write(`\nmemory-root.test.js: ${passed} passed, ${failed} failed\n`);

@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://power-loom.dev/schema/context-envelope/1.0.0-provisional",
+  "title": "K3.b Context Envelope (provisional)",
+  "description": "Provisional schema for v3.0-alpha. ZERO production consumers ship in v3.0-alpha; personas opt-in at v3.1 via `consumes_context_envelope: true` in their persona contract. v3.1 may amend without backward-compat guarantee — see ADR-0011 §K3.b for handshake protocol.",
+  "type": "object",
+  "required": ["schemaVersion", "contextItems"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "1.0.0-provisional",
+      "description": "v3.0-alpha ships 1.0.0-provisional. v3.1 consumers MUST reject envelopes whose schemaVersion does not start with '1.' (MAJOR-version handshake per ADR-0011 §K3.b)."
+    },
+    "contextItems": {
+      "type": "array",
+      "description": "Ordered list of context items carried in K8's updatedInput payload. v3.0-alpha defines no item shape constraints (provisional); v3.1 will tighten via consumes_context_envelope opt-in.",
+      "items": {
+        "type": "object"
+      }
+    }
+  }
+}
