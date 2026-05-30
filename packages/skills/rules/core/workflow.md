@@ -90,6 +90,20 @@ When the multi-file change is ALSO a **substantive substrate rewrite (≥80 LoC)
 
 **Origin**: v2.6.0 GAP-F signal redesign was the first explicit TDD-treatment data point in a discipline experiment deferred ~10 days. Full Phase 1-5 metrics in `bench/EXPERIMENT-LOG.md`. Bundled into Plan-Before-Edit (vs a parallel predicate block) per T76 anti-over-conditionalization ceiling — TDD-treatment is a SUB-rule of Plan-Before-Edit, not a parallel discipline.
 
+### Runtime-Claim Probe Discipline (v3.0-alpha codification — ADVISORY sub-rule)
+
+When a plan contains a **claim about current substrate state** — "file X exists", "hook Y fires on Z", "the spawn carries `tools[]`", "CI gate W is present", "directory is empty" — the plan MUST cite a **probe** (one-line grep, runtime invocation, test output, or file `ls`) that verifies the claim against the actual repo/runtime BEFORE impl acts on it.
+
+**Form**: inline `Probe: <command> → <observed result>` next to the claim, or a dedicated `## Runtime Probes` section listing each (claim, probe, result) tuple.
+
+**Why**: plan prose absorbs premises from recon, prior PRs, or architect/reviewer reasoning. Premises decay (repo state moves) and abstract reasoning skips empirical verification. The failure mode is: a reviewer blesses a runtime claim abstractly → impl discovers it is wrong → mid-flight design change OR a substrate-bricking near-miss. **Multi-reviewer blessing is NOT runtime verification.**
+
+**Skip the probe** for: FUTURE-state claims ("PR 3 will introduce K9"); claims already backed by a same-session probe logged in the plan; pure-design claims with no runtime referent ("the simplest factoring is X").
+
+**Gate**: `/verify-plan` architect spawn (Check #9) FLAGs un-probed runtime claims; NEEDS-REVISION if any FAIL.
+
+**Origin**: `drift:plan-honesty` converged at 3 → graduated 2026-05-30 (PR-1 verify-plan R1/R2 plan-vs-repo-state mismatches + PR-2 F2, the `tools[]` blessed-resolution-vs-runtime contradiction that would have bricked the spawn substrate as a literal block; resolved as audit-not-block). The same-day self-improve audit surfaced two more instances — the 2026-05-26 postmortem's un-probed "disabled 2 of 3 hooks" claim (the live manifest still wired all three) and an option-description's "retire the Stop hook" (the hook is dual-purpose: it also does prompt-pattern capture). Full lineage in `library/sections/toolkit/stacks/ghost-protocol/volumes/drift-taxonomy.md`. Bundled into Plan-Before-Edit per T76 — a SUB-rule, not a parallel discipline.
+
 </important>
 
 

@@ -52,8 +52,9 @@ This is THE critical step — Claude (the orchestrator running this skill) invok
 > 6. Specific dogfood / recursive claims — honest or oversold?
 > 7. Drift-note treatment — acknowledgments fig-leaf or genuine?
 > 8. Open design choices — surface defensibility?
+> 9. Runtime-claim probes — for every claim about CURRENT substrate state (file X exists / hook Y fires / tool emits field Z / CI gate W present / directory empty), is a probe cited (grep, runtime invocation, test output, `ls`)? Un-probed runtime claims = FAIL. Skip for future-state + pure-design claims. See `rules/core/workflow.md` Runtime-Claim Probe Discipline.
 >
-> Output structured findings (verdict + 1-3 sentences each). End with overall verdict: READY / NEEDS-REVISION / BLOCKED. Cap at 600 words. NO redesign — verify only.
+> Output structured findings (verdict + 1-3 sentences each). End with overall verdict: READY / NEEDS-REVISION / BLOCKED. Cap at 700 words. NO redesign — verify only.
 
 **Code-reviewer spawn brief**:
 
