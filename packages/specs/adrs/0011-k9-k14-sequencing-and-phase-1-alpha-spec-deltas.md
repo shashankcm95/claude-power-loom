@@ -2,9 +2,9 @@
 adr_id: 0011
 title: "K9↔K14 sequencing, Phase 1-alpha spec deltas, and rationale-before-code obligations"
 tier: technical
-status: provisional-until-pr-4
+status: accepted
 created: 2026-05-28
-author: 04-architect.theo (HETS-routed Phase 1-alpha design) + post-compact PR-1 R1 amendments
+author: 04-architect.theo (HETS-routed Phase 1-alpha design) + post-compact PR-1 R1 amendments + PR-4b reconcile
 superseded_by: null
 files_affected:
   - packages/kernel/_lib/k9-promote-deltas.js
@@ -331,3 +331,16 @@ Augments the earlier §sweep-timeout: (1) **step-(b) per-spawn hash failure** (p
 ### §reconcile-as-phase + status flip (closes the floating-checkbox HIGH)
 
 ADR-0010 and ADR-0011 ship `status: provisional-until-pr-4`, but the reconcile obligation lived only as a PR-description checkbox — not a build phase. **Correction**: PR-4b's final phase is a numbered step — diff §canonical-resolver-table / §sweep-timeout / §combined-bypass against the final `post-spawn-resolver.js` + `recovery-sweep.js` + `k14-write-scope.js`; amend on any divergence; **flip both ADRs' `status` from `provisional-until-pr-4` → `accepted`.** A verification probe asserts neither ADR retains `provisional-until-pr-4` after PR-4b. The runbook-familiarity `gh pr view | jq` CI step (plan line 342) **does not exist** in `ci.yml`; either implement it in PR-4b or downgrade the plan claim to "manual reviewer confirmation" (it currently over-claims CI enforcement).
+
+### §reconcile EXECUTED (PR-4b, 2026-05-30)
+
+PR-4b's reconcile phase ran. **Both ADRs flipped `provisional-until-pr-4` → `accepted`.** Diff of the spec sections against the shipped `post-spawn-resolver.js` + `recovery-sweep.js` + the K9 modifies:
+
+- **§canonical-resolver-table** — `post-spawn-resolver.js` encodes the table as a frozen `RESOLVER_TABLE` map (data, not if/else); all six K9 outcomes map with no unhandled default; `ABORT_UNCONFIRMED` → whole-tree `git status --porcelain` (clean=`REJECT_CONFLICT` / dirty=`HARD_RESET` + Class-4); `NOOP_ALREADY_PRESENT` → ACCEPT, no re-promote. **Conforms.**
+- **§recovery-replay** — `rollbackPromotion` runs arg-array `git revert --no-edit` reading the `promoted_sha` field (never the string); `REVERTED` added to `JOURNAL_OUTCOMES`; `reverse_op`→`reverse_op_description` rename complete (grep-zero). **Conforms.**
+- **§sweep-timeout** — `recovery-sweep.js` holds the K13 lock across (a)→(c); step-(b) hash failure → spawn stays PENDING (fail-closed, never a forged `ABORTED`); WAL-write failure is per-orphan isolated (Class-4 `wal-write-error`, sibling still aborts); force-admit Class-4 record carries `pending_spawn_ids[]`. **Conforms (+ hardened).**
+- **§combined-bypass** — `LOOM_CI_DENY_COMBINED_BYPASS=1` now set as a top-level `ci.yml` env (the SEC-PR4-02 correction). The `dormancy-assertion-k9` job is deleted in the same PR that adds the first K9 importer; `dormancy-assertion-k3b` remains (K3.b still dormant). **Conforms.**
+
+**One honest divergence (recorded, not amended-away)** — the table's two crash rows distinguish `SWEEP_ABORT` (tail not elapsed at crash) from `SWEEP_ABORT_FINAL` (tail elapsed at crash). The shipped `recovery-sweep.js` **cannot observe crash-time tail-elapsed state** in v3.0-alpha (the crashed process left no readable `tail_window_close_at` marker), so it emits ONE abort disposition regardless. The two-row distinction is **v3.1-deferred** (needs crash-time tail persistence the sweep can read post-crash). Impl behavior is correct and tested; the two-row taxonomy is the eventual-state spec. (architect-theo residual MEDIUM, PR-4b review.)
+
+**Deferred (v3.1 hygiene, non-blocking)** — crash dispositions live in `recovery-sweep.js` as `SWEEP_DISPOSITIONS` while the six K9-outcome rows live in `post-spawn-resolver.js` as `RESOLVER_TABLE` — two inspectable data structures across two modules rather than one unified table. Every row's behavior is correct + tested; unification is a v3.1 pass.

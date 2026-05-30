@@ -4,7 +4,10 @@
 // Per master plan Phase-1-alpha/1 + post-compact PR-1 R1 FL-5:
 //   - PR 1 ships this module + the JSON schema
 //   - ZERO production importers in v3.0-alpha (personas opt-in at v3.1)
-//   - The dormancy-assertion CI grep enforces this (one-line check)
+//   - Enforced by the `dormancy-assertion-k3b` CI job (.github/workflows/ci.yml,
+//     MERGE-BLOCKING) — greps packages/ for any production importer of this
+//     module; self-removes at v3.1's first consumer. Parallel to
+//     `dormancy-assertion-k9`. Do not import from production code until v3.1.
 //
 // Schema lives at: packages/kernel/schema/context-envelope.schema.json
 //
