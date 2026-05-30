@@ -414,6 +414,8 @@ Why: 4b is the only Phase-1-alpha PR whose rollback requires manual filesystem o
 
 ### Sub-PR Phase-1-alpha/5 — K12 layer-boundary advisory CI lint (~50-80 LoC, ~1-2h)
 
+> **✅ EXECUTED (2026-05-30, HETS-persona workflow) — Phase-1-alpha COMPLETE.** `packages/kernel/_lib/layer-boundary-lint.js` (128 code LoC) + the non-blocking `layer-boundary-advisory` CI job (`continue-on-error: true`). Path-primary layer identity resolves the §337-vs-§339 marker tension (missing-marker is NOT a finding — would break the 0-on-main baseline; marker parsing OMITTED per YAGNI). Two finding kinds: `inner-imports-outer` (kernel<runtime<lab<adapter) + `prod-imports-tests` (F23 layer (b)). Independently verified: 0 findings on main (non-vacuous — synthetics fire, negative controls don't), eslint 0/0, kernel 27/0, smoke 118/0. 3-lens review (architect/code-reviewer/honesty-auditor) all READY, no CRIT/HIGH; honesty-auditor disconfirmed the jade vacuous-pass mode. K12 details in ADR-0011 §K12-EXECUTED. **K1–K14 all shipped.**
+
 **Branch**: `feat/phase-1-alpha/5-k12-layer-lint`
 **Risk**: LOW. Independent. Can ship parallel to any other PR if review bandwidth allows.
 **Depends on**: 0b merged (uses the CI pattern).

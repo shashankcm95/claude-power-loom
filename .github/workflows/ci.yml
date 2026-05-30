@@ -186,3 +186,34 @@ jobs:
             exit 1
           fi
           echo "K3.b dormancy verified: zero production importers."
+
+  layer-boundary-advisory:
+    # Phase 1-alpha PR 5 (FINAL sub-PR) — K12 layer-boundary ADVISORY lint
+    # (packages/specs/rfcs/v6-substrate-synthesis.md §329-353; v5.1 DOWNGRADE from
+    # mandatory after the 6-months-zero-observed-drift empirical finding). Flags
+    # inner->outer cross-layer imports (kernel<runtime<lab<adapter dependency rule)
+    # + any production->tests import (F23 defense-layer (b), guarding
+    # validateTestRecord from a production code path).
+    #
+    # ADVISORY, NOT merge-blocking: `continue-on-error: true` is the ENTIRE
+    # non-blocking mechanism. The lint script exits non-zero on findings (ground
+    # truth / mechanism), and this CI line sets the severity (policy) — so the
+    # OQ-19 upgrade-to-mandatory (>=3 observed cross-layer drift events across
+    # v3.1-v3.3) is a one-line change here: delete `continue-on-error` + add this
+    # job to branch-protection required checks. Zero rework in the lint itself.
+    #
+    # Returns 0 findings on current main (the empirical-zero-drift baseline,
+    # v5.1 Round-7). The script computes its own repo root, so cwd is irrelevant.
+    name: K12 layer-boundary (advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run K12 layer-boundary lint (advisory; non-blocking)
+        run: node packages/kernel/_lib/layer-boundary-lint.js
