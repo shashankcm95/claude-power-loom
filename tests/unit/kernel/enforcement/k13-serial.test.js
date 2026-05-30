@@ -337,5 +337,61 @@ test('INV-K13-ReleaseRetry: the default sleep seam is injectable (no env-var tri
     'no env-var-triggered retry/backoff (F23 — sleep is an injectable argument seam)');
 });
 
+// ════════════════════════════════════════════════════════════════════════════
+// PR-4b addition — INV-28-K13K14SerialClosure against the REAL K13
+// (runSerialAdmission / releaseSerialMarker), NOT the pure-function stub in
+// k13-k14-interlock.test.js. Plan §Sub-PR-4b TDD step 1: "INV-28 against the
+// REAL runSerialAdmission/releaseSerialMarker (NOT the existing stub ...);
+// injectable clock". The serial-closure property here is realized through the
+// real marker lifecycle: a second admission within maxSpawnAgeMs BLOCKS; after
+// the owner releases the marker (the PR-4b resolver's job), a second admission
+// ALLOWS. This binds the invariant to production code, not a model.
+//
+// These PASS today against the merged real K13 (admission/release already exist);
+// they are added in the 4b test wave so the integration invariant is asserted
+// against the REAL primitive the resolver wires, retiring the stub's modelled
+// proxy. The injectable clock (nowMs) keeps them deterministic + flake-free.
+// ════════════════════════════════════════════════════════════════════════════
+
+test('INV-28 (real K13): a second admission within maxSpawnAgeMs BLOCKS (serial closure — no concurrent admit)', () => {
+  const dir = tmpStateDir();
+  try {
+    // Injectable clock: both admissions read caller-authoritative nowMs (the K13
+    // age math seam). S2 is 1ms after S1 — well inside maxSpawnAgeMs.
+    const r1 = k13.runSerialAdmission({ stateDir: dir, spawnId: 'S1', nowMs: 1000, maxSpawnAgeMs: AGE });
+    const r2 = k13.runSerialAdmission({ stateDir: dir, spawnId: 'S2', nowMs: 1001, maxSpawnAgeMs: AGE });
+    assert.strictEqual(r1.decision, 'allow', 'first admission allowed');
+    assert.strictEqual(r2.decision, 'block', 'a second admission within the window must BLOCK (serial closure)');
+    assert.strictEqual(r2.reason, 'serial-only-spawn-active');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('INV-28 (real K13): after the owner RELEASES the marker, a second admission is ALLOWED (closure opens on release)', () => {
+  const dir = tmpStateDir();
+  try {
+    k13.runSerialAdmission({ stateDir: dir, spawnId: 'S1', nowMs: 1000, maxSpawnAgeMs: AGE });
+    // The resolver sources the id via readMarker (§K13-spawn-id-provenance), then
+    // releases — modelling exactly the PR-4b spawn-close path.
+    const marker = k13.readMarker(k13.markerPathFor(dir));
+    const rel = k13.releaseSerialMarker({ stateDir: dir, spawnId: marker.spawn_id });
+    assert.strictEqual(rel.released, true, 'owner release succeeds');
+    const r2 = k13.runSerialAdmission({ stateDir: dir, spawnId: 'S2', nowMs: 1002, maxSpawnAgeMs: AGE });
+    assert.strictEqual(r2.decision, 'allow', 'after release, the next admission is allowed (serial slot freed)');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('INV-28 (real K13): the closure is exactly-one-admitted — across 3 sequential attempts within the window, only 1 is admitted', () => {
+  const dir = tmpStateDir();
+  try {
+    const decisions = [
+      k13.runSerialAdmission({ stateDir: dir, spawnId: 'A', nowMs: 1000, maxSpawnAgeMs: AGE }),
+      k13.runSerialAdmission({ stateDir: dir, spawnId: 'B', nowMs: 1001, maxSpawnAgeMs: AGE }),
+      k13.runSerialAdmission({ stateDir: dir, spawnId: 'C', nowMs: 1002, maxSpawnAgeMs: AGE }),
+    ];
+    const admitted = decisions.filter((d) => d.decision === 'allow');
+    assert.strictEqual(admitted.length, 1, 'exactly one admission within the window (serial closure holds across N attempts)');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 process.stdout.write(`\nk13-serial.test.js: ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);

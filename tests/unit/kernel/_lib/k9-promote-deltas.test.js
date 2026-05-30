@@ -568,14 +568,27 @@ test('F11 [real git]: a 3-way conflict -> cherry-pick --abort -> NO .orig/.rej r
   }
 });
 
-// ── dormancy (PASSES on stub — architectural guarantee for PR 3) ────────────
+// ── dormancy-end (PR-4b: the first production importers land) ───────────────
+//
+// PR 3 shipped K9 DORMANT (zero production importers). PR-4b is the integration
+// PR that BRINGS the first importers — exactly post-spawn-resolver.js +
+// recovery-sweep.js (ADR-0011 §canonical-resolver-table / §recovery-replay:
+// "PR 4 introduces the first production importer ... in the same commit"). So
+// this in-test mirror flips from "zero importers" to an ALLOWLIST of the two
+// DESIGNED importers — the test-side lockstep with the orchestrator deleting the
+// `dormancy-assertion-k9` CI job. It still catches a REGRESSION: any K9 importer
+// OTHER than the two integration entry points fails the assertion.
+const EXPECTED_K9_IMPORTERS = Object.freeze([
+  'kernel/spawn-state/post-spawn-resolver.js',
+  'kernel/spawn-state/recovery-sweep.js',
+]);
 
-test('dormancy: no production code under packages/ imports any k9-* module', () => {
-  // Mirror of the CI dormancy-assertion-k9 gate, split-aware (all 3 filenames).
+test('dormancy-end: the ONLY production importers of K9 are the PR-4b integration entry points (resolver + recovery-sweep)', () => {
   // Walk packages/ for .js files that require a k9-* module, excluding tests/
-  // and the k9-*.js module files themselves.
+  // and the k9-*.js module files themselves; the result must be EXACTLY the two
+  // designed integration importers (split-aware over all 3 k9 filenames).
   const pkgRoot = path.join(__dirname, '..', '..', '..', '..', 'packages');
-  const offenders = [];
+  const importers = [];
   const K9_IMPORT = /require\(['"][^'"]*k9-(promote-deltas|path-guard|journal)['"]\)|from\s+['"][^'"]*k9-(promote-deltas|path-guard|journal)['"]/;
   const walk = (dir) => {
     for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -586,12 +599,22 @@ test('dormancy: no production code under packages/ imports any k9-* module', () 
       } else if (ent.isFile() && ent.name.endsWith('.js')) {
         if (/^k9-(promote-deltas|path-guard|journal)\.js$/.test(ent.name)) continue; // self / intra-K9
         const src = fs.readFileSync(full, 'utf8');
-        if (K9_IMPORT.test(src)) offenders.push(path.relative(pkgRoot, full));
+        if (K9_IMPORT.test(src)) importers.push(path.relative(pkgRoot, full));
       }
     }
   };
   walk(pkgRoot);
-  assert.deepStrictEqual(offenders, [], `K9 must ship dormant; production importers: ${JSON.stringify(offenders)}`);
+  // An UNEXPECTED importer (anything outside the integration allowlist) is a
+  // regression — the dormancy-end is scoped to exactly the resolver + sweep.
+  const unexpected = importers.filter((p) => !EXPECTED_K9_IMPORTERS.includes(p));
+  assert.deepStrictEqual(unexpected, [],
+    `the only K9 importers may be the PR-4b integration entry points; unexpected: ${JSON.stringify(unexpected)}`);
+  // Both designed importers MUST be present (proves dormancy actually ended via
+  // the integration layer, not that the grep silently matched nothing).
+  for (const expected of EXPECTED_K9_IMPORTERS) {
+    assert.ok(importers.includes(expected),
+      `the PR-4b integration importer ${expected} must import K9 (dormancy-end is realized through the integration layer)`);
+  }
 });
 
 test('DAG: k9-promote-deltas imports the two leaves but neither leaf imports it', () => {
@@ -599,6 +622,173 @@ test('DAG: k9-promote-deltas imports the two leaves but neither leaf imports it'
   const orch = fs.readFileSync(path.join(lib, 'k9-promote-deltas.js'), 'utf8');
   assert.ok(/require\(['"]\.\/k9-path-guard['"]\)/.test(orch), 'orchestrator imports path-guard');
   assert.ok(/require\(['"]\.\/k9-journal['"]\)/.test(orch), 'orchestrator imports journal');
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// PR-4b additions — TDD Phase 1 (RED until rollbackPromotion + the is_recovery_
+// sweep F20 skip land). ADR-0011 §recovery-replay + §recovery-replay K9
+// rollbackPromotion + §F20-recovery-sweep-sentinel.
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── rollbackPromotion round-trip (RED — export does not exist yet) ───────────
+//
+// rollbackPromotion({ worktreeRoot, promotedSha, runGitFn }) executes
+// runGitDefault(worktreeRoot, ['revert','--no-edit', promotedSha]) via the
+// invoke-git arg-array seam (CWE-78: NO shell) and appends a REVERTED journal
+// entry. The promotedSha is the hex-validated FIELD, never a parsed string.
+
+test('rollbackPromotion: reverts a prior promote via the arg-array git seam (revert --no-edit <sha>)', () => {
+  const tmp = createTmpDir('k9-rollback');
+  try {
+    const runGit = makeRunGit(() => ({ ok: true, code: 0, stdout: '', stderr: '' }));
+    const sha = 'a'.repeat(40);
+    const res = k9.rollbackPromotion({
+      worktreeRoot: tmp.path,
+      promotedSha: sha,
+      journalPath: path.join(tmp.path, 'reverse-cherrypick.jsonl'),
+      runGitFn: runGit,
+    });
+    assert.ok(res && res.reverted === true, `rollback must report reverted:true, got ${JSON.stringify(res)}`);
+    // The git call MUST be the exact arg-array — no shell string, no concatenation.
+    const revertCall = runGit.calls.find((c) => c.includes('revert'));
+    assert.ok(Array.isArray(revertCall), 'revert must be issued as an arg array (CWE-78: no shell)');
+    assert.ok(revertCall.includes('--no-edit'), 'revert must be --no-edit (non-interactive)');
+    assert.ok(revertCall.includes(sha), 'the promoted SHA is a discrete argv element (not interpolated into a string)');
+    // A REVERTED journal entry is appended (INV-19 forward-only undo ledger).
+    const jp = path.join(tmp.path, 'reverse-cherrypick.jsonl');
+    assert.ok(fs.existsSync(jp), 'rollback must append a REVERTED journal entry');
+    const entries = fs.readFileSync(jp, 'utf8').split('\n').filter((l) => l.trim().length > 0).map((l) => JSON.parse(l));
+    assert.ok(entries.some((e) => e.outcome === 'REVERTED'), 'the journal must record a REVERTED outcome');
+  } finally { tmp.cleanup(); }
+});
+
+test('rollbackPromotion: full round-trip — promote then rollback (the REVERTED entry references the promoted SHA)', () => {
+  const tmp = createTmpDir('k9-rollback-roundtrip');
+  try {
+    const jp = path.join(tmp.path, 'reverse-cherrypick.jsonl');
+    const sha = 'a'.repeat(40);
+    // Promote first (clean apply via a happy git double) so a PROMOTED entry lands.
+    const promoteGit = makeRunGit(() => ({ ok: true, code: 0, stdout: '', stderr: '' }));
+    k9.promoteDelta({
+      deltaSha: sha,
+      parentRoot: tmp.path,
+      candidatePath: path.join(tmp.path, 'host.txt'),
+      record: validRecord({ prev_state_hash: 'GENESIS' }),
+      isGenesisPosition: true,
+      journalPath: jp,
+      runGitFn: promoteGit,
+    });
+    // Now roll it back.
+    const revertGit = makeRunGit(() => ({ ok: true, code: 0, stdout: '', stderr: '' }));
+    k9.rollbackPromotion({ worktreeRoot: tmp.path, promotedSha: sha, journalPath: jp, runGitFn: revertGit });
+    const entries = fs.readFileSync(jp, 'utf8').split('\n').filter((l) => l.trim().length > 0).map((l) => JSON.parse(l));
+    const promoted = entries.find((e) => e.outcome === 'PROMOTED');
+    const reverted = entries.find((e) => e.outcome === 'REVERTED');
+    assert.ok(promoted, 'the forward promote must be journaled');
+    assert.ok(reverted, 'the rollback must be journaled as REVERTED');
+    assert.strictEqual(reverted.promoted_sha, sha, 'the REVERTED entry references the SHA it reverted');
+  } finally { tmp.cleanup(); }
+});
+
+// ── NEGATIVE shell-injection: a poisoned description replays ONLY the arg-array ──
+
+test('SECURITY (CWE-78 negative): a journal entry whose reverse_op_description = "git revert <sha>; rm -rf /" replays ONLY the arg-array — the "; rm -rf /" NEVER executes', () => {
+  const tmp = createTmpDir('k9-rollback-injection');
+  try {
+    const sha = 'a'.repeat(40);
+    // The threat: a stored description string carrying a shell payload. rollback
+    // MUST read the hex-validated promoted_sha FIELD and pass it as a discrete
+    // argv element — never exec the description string. We model a runGit that
+    // FAILS LOUD if it is ever handed anything but a clean arg-array containing
+    // the bare SHA (no shell metacharacters, no "rm").
+    const runGit = makeRunGit((args) => {
+      const joined = args.join(' ');
+      assert.ok(!/rm -rf/.test(joined), `the "; rm -rf /" payload must NEVER reach git; got ${JSON.stringify(args)}`);
+      assert.ok(!args.some((a) => /;|&&|\|/.test(a)), `no shell metacharacter may appear in any argv element; got ${JSON.stringify(args)}`);
+      return { ok: true, code: 0, stdout: '', stderr: '' };
+    });
+    const poisonedJournalEntry = {
+      outcome: 'REVERTED',
+      promoted_sha: sha, // the hex-validated FIELD the impl must use
+      reverse_op_description: 'git revert ' + sha + '; rm -rf /', // documentation-only; NEVER executed
+      worktree_root: tmp.path,
+    };
+    // The impl reads promotedSha from the FIELD (poisonedJournalEntry.promoted_sha),
+    // not from reverse_op_description.
+    k9.rollbackPromotion({
+      worktreeRoot: tmp.path,
+      promotedSha: poisonedJournalEntry.promoted_sha,
+      journalPath: path.join(tmp.path, 'reverse-cherrypick.jsonl'),
+      runGitFn: runGit,
+    });
+    const revertCall = runGit.calls.find((c) => c.includes('revert'));
+    assert.ok(Array.isArray(revertCall), 'revert ran as an arg array');
+    assert.ok(revertCall.includes(sha) && revertCall.includes('--no-edit'),
+      'only the clean arg-array (revert --no-edit <sha>) ran — the description string was never interpreted');
+  } finally { tmp.cleanup(); }
+});
+
+test('SECURITY: rollbackPromotion REJECTS a non-hex / shell-metachar promotedSha (defense-in-depth at the executor)', () => {
+  const tmp = createTmpDir('k9-rollback-badsha');
+  try {
+    const runGit = makeRunGit(() => ({ ok: true, code: 0, stdout: '', stderr: '' }));
+    // A metachar SHA must be rejected BEFORE any git runs (the executor is a
+    // CWE-78 boundary; it must not trust the caller to have validated).
+    const res = k9.rollbackPromotion({
+      worktreeRoot: tmp.path,
+      promotedSha: 'a'.repeat(40) + '; rm -rf /',
+      journalPath: path.join(tmp.path, 'reverse-cherrypick.jsonl'),
+      runGitFn: runGit,
+    });
+    assert.ok(res && res.reverted === false, 'a metachar SHA must NOT be reverted');
+    assert.strictEqual(runGit.calls.length, 0, 'no git may run for an invalid promotedSha (rejected before the transaction)');
+  } finally { tmp.cleanup(); }
+});
+
+// ── F20 recovery-sweep sentinel: is_recovery_sweep skips the evidence gate ───
+//
+// NON-VACUOUS: a record that FAILS checkEvidenceLinkPreCommit WITHOUT the flag
+// must PASS with is_recovery_sweep:true (the skip is real, not a no-op on an
+// already-passing record).
+
+test('F20 (non-vacuous): a record that FAILS the evidence-link gate without is_recovery_sweep PASSES the gate with is_recovery_sweep:true', () => {
+  // A non-genesis record with no resolveParent FAILS the gate (fail-closed
+  // unwalkable-chain rejection — proven in the DIP test above). With the
+  // recovery-sweep sentinel the evidence-link check is SKIPPED (sweep records
+  // would otherwise be circularly rejected by K9 pre-commit — eli-M2).
+  const record = validRecord({ prev_state_hash: 'b'.repeat(64) }); // non-genesis, no walk seam
+  // (1) WITHOUT the flag → REJECTED (establishes the test is non-vacuous).
+  const without = k9.checkEvidenceLinkPreCommit({ record, isGenesisPosition: false });
+  assert.strictEqual(without.ok, false, 'control: the record must FAIL the gate without the recovery-sweep flag');
+  assert.strictEqual(without.reason, 'missing-resolve-parent-for-non-genesis-record',
+    'control: rejection is the fail-closed unwalkable-chain reason');
+  // (2) WITH is_recovery_sweep:true → ACCEPTED (the skip).
+  const withFlag = k9.checkEvidenceLinkPreCommit({ record, isGenesisPosition: false, is_recovery_sweep: true });
+  assert.strictEqual(withFlag.ok, true,
+    'is_recovery_sweep:true must SKIP the evidence-link gate (avoids circular rejection of sweep records — F20)');
+});
+
+test('F20: promoteDelta honors is_recovery_sweep — a sweep record that would fail the gate is admitted to the git transaction', () => {
+  const tmp = createTmpDir('k9-f20-promote');
+  try {
+    const runGit = makeRunGit(() => ({ ok: true, code: 0, stdout: '', stderr: '' }));
+    // Non-genesis record with no resolveParent — fails the gate normally; the
+    // sweep sentinel admits it so the cherry-pick proceeds.
+    const res = k9.promoteDelta({
+      deltaSha: 'a'.repeat(40),
+      parentRoot: tmp.path,
+      candidatePath: path.join(tmp.path, 'host.txt'),
+      record: validRecord({ prev_state_hash: 'b'.repeat(64) }),
+      isGenesisPosition: false,
+      is_recovery_sweep: true,
+      journalPath: path.join(tmp.path, 'journal.jsonl'),
+      runGitFn: runGit,
+    });
+    assert.notStrictEqual(res.outcome, 'REJECTED_EVIDENCE',
+      'a recovery-sweep promote must not be rejected by the evidence gate (F20 skip)');
+    assert.ok(runGit.calls.some((c) => c.includes('cherry-pick')),
+      'the git transaction runs for a recovery-sweep record (gate skipped)');
+  } finally { tmp.cleanup(); }
 });
 
 // `os` is used by the F11 real-git test (mkdtemp); this void keeps the lint

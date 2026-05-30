@@ -118,15 +118,30 @@ function isGenesisPosition(record) {
  * accepted at depth 0 — an unwalkable non-genesis chain has unverified
  * provenance. Genesis-position records terminate before reaching the seam.
  *
+ * F20 recovery-sweep sentinel (ADR-0011 §F20-recovery-sweep-sentinel / eli-M2):
+ * when the record carries `is_recovery_sweep: true`, the evidence-link walk is
+ * SKIPPED entirely. A recovery-sweep promotes a crashed spawn's already-recorded
+ * delta whose chain provenance the sweep cannot re-walk (the parent records may
+ * be the very PENDING entries being reclassified) — without the skip K9 would
+ * circularly reject every sweep record. The skip is the ONLY behavioral change;
+ * a record WITHOUT the flag is validated exactly as before (non-vacuous: a
+ * fail-closed unwalkable-chain record passes ONLY with the flag).
+ *
  * @param {object} opts
  * @param {object} opts.record            the transaction record being promoted
  * @param {boolean} [opts.isGenesisPosition=false]
+ * @param {boolean} [opts.is_recovery_sweep=false]  F20 sentinel — skip the gate
  * @param {function} [opts.resolveParent] (hash) => parentRecord|null — chain-walk seam
  * @returns {{ok: boolean, reason: string|null, depthWalked: number}}
  */
 function checkEvidenceLinkPreCommit(opts) {
   if (!opts || typeof opts !== 'object' || !opts.record) {
     return { ok: false, reason: 'missing-record', depthWalked: 0 };
+  }
+  // F20: a recovery-sweep record bypasses the evidence-link walk (it has no
+  // re-walkable provenance — the sweep is the recovery path, not a fresh commit).
+  if (opts.is_recovery_sweep === true) {
+    return { ok: true, reason: null, depthWalked: 0 };
   }
   const atGenesis = !!opts.isGenesisPosition;
   // 1. Validate the head record. F9: pass the genesis-position flag so a
@@ -389,7 +404,11 @@ function promoteDelta(opts) {
   }
 
   // ── Gate 2: evidence pre-commit (INV-21 / F9 / F12). No git if this fails. ──
-  const gate = checkEvidenceLinkPreCommit({ record, isGenesisPosition: atGenesis, resolveParent });
+  //    F20: a recovery-sweep promote threads is_recovery_sweep through so the
+  //    gate is skipped (the sweep record has no re-walkable provenance).
+  const gate = checkEvidenceLinkPreCommit({
+    record, isGenesisPosition: atGenesis, resolveParent, is_recovery_sweep: opts.is_recovery_sweep === true,
+  });
   if (!gate.ok) {
     return {
       promoted: false, outcome: 'REJECTED_EVIDENCE', reason: gate.reason,
@@ -429,9 +448,79 @@ function promoteDelta(opts) {
   });
 }
 
+// A git object name is 40 (sha1) or 64 (sha256) lowercase hex chars. Duplicated
+// from k9-journal's PROMOTED_SHA_PATTERN intentionally: rollbackPromotion is a
+// CWE-78 boundary and must validate the SHA shape LOCALLY before any git runs,
+// not depend on the journal module's build-time guard having fired first
+// (defense-in-depth — boundary validation must not be call-order-dependent).
+const ROLLBACK_SHA_PATTERN = /^[a-f0-9]{40}$|^[a-f0-9]{64}$/;
+
+/**
+ * Reverse a prior promote (ADR-0011 §recovery-replay — the recovery executor the
+ * post-spawn-resolver / recovery-sweep consume when an undo is needed). Runs
+ * `git revert --no-edit <promotedSha>` in worktreeRoot via the no-shell arg-array
+ * seam (CWE-78) with hooks disabled (CWE-732), then appends a REVERTED entry to
+ * the append-only journal (INV-19 forward-only undo ledger — the undo is itself
+ * recorded, never a history rewrite).
+ *
+ * SECURITY (CWE-78, the load-bearing contract): `promotedSha` is the hex-validated
+ * FIELD. It is validated HERE (fail-closed: reject a non-hex / shell-metachar SHA
+ * BEFORE any git runs) and passed as a DISCRETE argv element. The journal's
+ * `reverse_op_description` string is DOCUMENTATION ONLY and is NEVER handed to a
+ * shell-interpreting function — a stored description carrying `'; rm -rf /'` is
+ * inert because only the arg-array `['revert','--no-edit', <sha>]` ever executes.
+ *
+ * Fail-soft on the journal write (ADR-0001 — audit never blocks the operation):
+ * the revert result is reported even if the REVERTED entry fails to append.
+ *
+ * @param {object} opts
+ * @param {string} opts.worktreeRoot   the parent worktree the promote landed in
+ * @param {string} opts.promotedSha    the hex SHA that was promoted (the FIELD)
+ * @param {string} [opts.journalPath]  append-only journal to record the REVERTED entry
+ * @param {function} [opts.runGitFn]   (args[]) => {ok,code,stdout,stderr} seam; default invoke-git
+ * @returns {{reverted: boolean, reason: string, code: number, journalEntry: object|null}}
+ */
+function rollbackPromotion(opts) {
+  if (!opts || typeof opts !== 'object') {
+    throw new Error('K9 rollbackPromotion: opts object is required');
+  }
+  const { worktreeRoot, promotedSha, journalPath } = opts;
+  const runGit = typeof opts.runGitFn === 'function'
+    ? opts.runGitFn
+    : ((args) => runGitDefault(worktreeRoot, args));
+
+  // Fail-closed SHA-shape guard at the executor boundary. A metachar / non-hex
+  // SHA is rejected BEFORE any git runs (the recorder asserts call-count 0).
+  if (typeof promotedSha !== 'string' || !ROLLBACK_SHA_PATTERN.test(promotedSha)) {
+    return { reverted: false, reason: 'invalid-promoted-sha', code: -1, journalEntry: null };
+  }
+
+  // CWE-78 / CWE-732: arg array + hooks disabled. The SHA is a discrete argv
+  // element — no shell, no string concatenation, no description-string exec.
+  const revertArgs = HOOKS_DISABLED_ARGS.concat(['revert', '--no-edit', promotedSha]);
+  const res = runGit(revertArgs);
+  const ok = !!(res && res.ok);
+
+  // INV-19: record the undo as a forward REVERTED entry (fail-soft journal). The
+  // revert creates a new commit; its post-state hash is not read back here (the
+  // resolver re-derives HEAD if it needs it), so post_state_hash is left null.
+  const entry = recordOutcome(journalPath, {
+    promoted_sha: promotedSha, pre_state_hash: 'unknown', post_state_hash: null,
+    worktree_root: worktreeRoot, outcome: 'REVERTED', abort_reason: null,
+  });
+
+  return {
+    reverted: ok,
+    reason: ok ? 'revert-clean' : 'revert-failed',
+    code: (res && typeof res.code === 'number') ? res.code : -1,
+    journalEntry: entry,
+  };
+}
+
 module.exports = {
   checkEvidenceLinkPreCommit,
   promoteDelta,
+  rollbackPromotion,
   isGenesisPosition,
   runGitDefault,
   MAX_EVIDENCE_CHAIN_DEPTH,

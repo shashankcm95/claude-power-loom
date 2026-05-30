@@ -35,12 +35,27 @@ const JOURNAL_SCHEMA_VERSION = 'k9-journal-v1';
 // depend on the orchestrator having run admitPromoteRequest first (defense-in-
 // depth — boundary validation must not be call-order-dependent). Without it, a
 // caller invoking buildJournalEntry directly with promoted_sha = '; rm -rf /'
-// would mint reverse_op = 'git revert ; rm -rf /' — a shell-injection payload
-// stored at rest in the undo ledger PR 4's recovery-sweep replays.
+// would mint reverse_op_description = 'git revert ; rm -rf /' — a shell-injection
+// payload stored at rest in the undo ledger PR-4b's recovery-sweep replays. PR-4b
+// also kills the temptation at the schema level: the field is a non-actionable
+// LABEL (reverse_op_description) and the rollback executor reads the promoted_sha
+// FIELD, never this string (ADR-0011 §recovery-replay).
 const PROMOTED_SHA_PATTERN = /^[a-f0-9]{40}$|^[a-f0-9]{64}$/;
 
-// Outcome enum for a journal entry.
-const JOURNAL_OUTCOMES = Object.freeze(['PROMOTED', 'ABORTED', 'NOOP_ALREADY_PRESENT']);
+// Outcome enum for a journal entry. PR-4b (ADR-0011 §recovery-replay) adds
+// 'REVERTED' — without it validateJournalEntry REJECTS the rollbackPromotion entry
+// ('invalid outcome: REVERTED'), the undo never journals, and the recovery is
+// unrecoverable from the append-only ledger (INV-19 breach).
+const JOURNAL_OUTCOMES = Object.freeze(['PROMOTED', 'ABORTED', 'NOOP_ALREADY_PRESENT', 'REVERTED']);
+
+// The outcomes that carry a meaningful forward git op described by
+// reverse_op_description: a PROMOTED entry documents `git revert <sha>` (the undo
+// available for it), and a REVERTED entry documents the revert that was replayed.
+// ABORTED / NOOP_ALREADY_PRESENT have nothing to reverse, so the field MUST be
+// null for them. validateJournalEntry keys its consistency check off this set so
+// the two op-bearing outcomes stay in lockstep (ADR-0011 §recovery-replay: "for
+// BOTH PROMOTED and REVERTED").
+const DESCRIPTION_BEARING_OUTCOMES = Object.freeze(['PROMOTED', 'REVERTED']);
 
 // The append-only reverse-cherrypick journal record shape. Every field is
 // REQUIRED unless marked optional. This is the canonical undo ledger: given a
@@ -74,8 +89,13 @@ function computeEntryId(entryWithoutId) {
  * computes entry_id as a content hash and fills derived fields. Lets tests
  * assert the schema without touching the filesystem.
  *
- * reverse_op is present ONLY for a PROMOTED outcome (`git revert <sha>`); for
- * ABORTED / NOOP_ALREADY_PRESENT there is nothing to reverse, so it is null.
+ * reverse_op_description is present ONLY for a description-bearing outcome
+ * (PROMOTED documents the `git revert <sha>` undo available for it; REVERTED
+ * documents the revert that was replayed by rollbackPromotion); for ABORTED /
+ * NOOP_ALREADY_PRESENT there is nothing to reverse, so it is null. The field is
+ * DOCUMENTATION ONLY — the rollback executor reads the promoted_sha FIELD, never
+ * this string (ADR-0011 §recovery-replay; the non-actionable LABEL name kills the
+ * CWE-78 temptation at the schema level).
  *
  * @param {object} fields  promote-outcome fields (see schema in JOURNAL_REQUIRED_FIELDS)
  * @returns {object} a complete journal entry
@@ -86,13 +106,15 @@ function buildJournalEntry(fields) {
   }
   const outcome = fields.outcome;
   const promotedSha = fields.promoted_sha;
-  const isPromoted = outcome === 'PROMOTED';
+  // Outcomes that retain the cherry-pick post-state hash + a forward op
+  // descriptor: PROMOTED (the original advance) + REVERTED (the replayed undo).
+  const hasDescription = DESCRIPTION_BEARING_OUTCOMES.includes(outcome);
   // Fail-closed SHA-shape guard (security PRINCIPLE/LOW): promoted_sha is
-  // interpolated into reverse_op for a PROMOTED entry and stored at rest for
-  // every entry. Reject a non-hex / shell-metachar SHA HERE so the undo ledger
-  // can never encode an injection payload regardless of call path (the
-  // orchestrator already gates via admitPromoteRequest, but a direct caller of
-  // this exported function must not be able to bypass it).
+  // interpolated into reverse_op_description for a description-bearing entry and
+  // stored at rest for every entry. Reject a non-hex / shell-metachar SHA HERE so
+  // the undo ledger can never encode an injection payload regardless of call path
+  // (the orchestrator already gates via admitPromoteRequest, but a direct caller
+  // of this exported function must not be able to bypass it).
   if (typeof promotedSha !== 'string' || !PROMOTED_SHA_PATTERN.test(promotedSha)) {
     throw new Error('K9 buildJournalEntry: promoted_sha must be 40- or 64-char lowercase hex');
   }
@@ -100,10 +122,10 @@ function buildJournalEntry(fields) {
     schema_version: JOURNAL_SCHEMA_VERSION,
     promoted_sha: promotedSha,
     pre_state_hash: fields.pre_state_hash,
-    post_state_hash: isPromoted ? (fields.post_state_hash || null) : null,
+    post_state_hash: hasDescription ? (fields.post_state_hash || null) : null,
     worktree_root: fields.worktree_root,
     outcome,
-    reverse_op: isPromoted ? ('git revert ' + promotedSha) : null,
+    reverse_op_description: hasDescription ? ('git revert ' + promotedSha) : null,
     abort_reason: outcome === 'ABORTED' ? (fields.abort_reason || null) : null,
     timestamp_iso: fields.timestamp_iso || new Date().toISOString(),
   };
@@ -112,7 +134,8 @@ function buildJournalEntry(fields) {
 
 /**
  * Validate a journal entry against the required-field set + outcome enum +
- * reverse_op consistency (reverse_op present iff outcome === 'PROMOTED').
+ * reverse_op_description consistency (present IFF the outcome is description-
+ * bearing, i.e. PROMOTED or REVERTED — ADR-0011 §recovery-replay).
  *
  * @param {object} entry
  * @returns {{valid: boolean, errors: string[]}}
@@ -133,13 +156,16 @@ function validateJournalEntry(entry) {
   if (entry.schema_version !== JOURNAL_SCHEMA_VERSION) {
     errors.push('schema_version must be ' + JOURNAL_SCHEMA_VERSION);
   }
-  // reverse_op present IFF outcome is PROMOTED.
-  const hasReverseOp = entry.reverse_op !== null && entry.reverse_op !== undefined;
-  if (entry.outcome === 'PROMOTED' && !hasReverseOp) {
-    errors.push('PROMOTED entry must carry a reverse_op');
+  // reverse_op_description present IFF the outcome is description-bearing
+  // (PROMOTED or REVERTED). ABORTED / NOOP_ALREADY_PRESENT have nothing to
+  // reverse, so the field must be null for them.
+  const hasDescription = entry.reverse_op_description !== null && entry.reverse_op_description !== undefined;
+  const wantsDescription = DESCRIPTION_BEARING_OUTCOMES.includes(entry.outcome);
+  if (wantsDescription && !hasDescription) {
+    errors.push(entry.outcome + ' entry must carry a reverse_op_description');
   }
-  if (entry.outcome !== 'PROMOTED' && hasReverseOp) {
-    errors.push('reverse_op must be present only for a PROMOTED outcome');
+  if (!wantsDescription && hasDescription) {
+    errors.push('reverse_op_description must be present only for a PROMOTED or REVERTED outcome');
   }
   return errors.length === 0 ? { valid: true, errors: [] } : { valid: false, errors };
 }

@@ -2,7 +2,7 @@
 adr_id: 0010
 title: "Write-scope enforcement via K14 snapshot + post-spawn-resolver (v3.0-alpha)"
 tier: technical
-status: provisional-until-pr-4
+status: accepted
 created: 2026-05-28
 author: 04-architect.theo (HETS-routed Phase 1-alpha design)
 superseded_by: null

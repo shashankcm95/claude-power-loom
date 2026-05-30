@@ -6,6 +6,15 @@ on:
   pull_request:
     branches: [main]
 
+env:
+  # ADR-0011 §combined-bypass: CI DENIES the combined K1+K14 bypass by default
+  # (LOOM_DISABLE_WORKTREE=1 + LOOM_ALLOW_OUT_OF_SCOPE_WRITES=1 together = effective
+  # kernel bypass). k10-escape-hatch.js evaluateEscapeHatches() returns action:'deny'
+  # when this is set alongside both bypass vars. Added in PR-4b (the SEC-PR4-02
+  # finding: the ADR claimed "denied in CI by default" but the var was set in no job).
+  # Diagnostic jobs needing the bypass must opt OUT explicitly (reviewer-approved).
+  LOOM_CI_DENY_COMBINED_BYPASS: "1"
+
 jobs:
   smoke:
     name: Hook smoke + contracts
@@ -143,50 +152,6 @@ jobs:
             exit 2
           fi
           exit $failed
-
-  dormancy-assertion-k9:
-    # Phase 1-alpha PR 3 (per packages/specs/plans/2026-05-27-phase-1-alpha-v3.0-alpha-kernel.md
-    # §"Sub-PR Phase-1-alpha/3 — K9 promote-deltas", reviewer amendment
-    # 2026-05-27): K9 ships DORMANT — the module + tests land in PR 3 but NO
-    # production code imports K9. This gate is MERGE-BLOCKING, not advisory.
-    #
-    # Verify-plan ROUND 1+2 HIGH (jade/ari): the K3.b template at plan line 244
-    # greps a SINGLE filename. K9's mandatory-split (plan line 138) realized
-    # THREE modules — k9-path-guard.js, k9-promote-deltas.js, k9-journal.js — so
-    # a single-token grep would (1) FALSE-NEGATIVE on a production importer of a
-    # leaf (PR 4 importing k9-path-guard directly slips the gate) and (2) FALSE-
-    # TRIP on the orchestrator's legitimate intra-K9 `require('./k9-path-guard')`.
-    # Corrected: a split-aware disjunction over all 3 filenames, excluding tests/
-    # AND all three k9-*.js module files themselves (so intra-K9 imports never
-    # trip). Mirrors the in-test dormancy gate in k9-promote-deltas.test.js.
-    #
-    # PR 4 (post-spawn-resolver) is the first production importer and DELETES
-    # this job in the same commit that adds the import — the gate self-removes
-    # when dormancy ends. ADR-0011 §K9-split records the split-aware pattern.
-    name: K9 dormancy assertion
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Assert zero production importers of any K9 module
-        working-directory: ${{ github.workspace }}
-        shell: bash
-        run: |
-          # Must return zero hits. Any hit means production code (anything under
-          # packages/ outside tests/, excluding the k9-*.js modules themselves)
-          # imports a K9 module — violating the ship-dormant contract.
-          hits=$(grep -rE \
-            "require\(['\"][^'\"]*k9-(promote-deltas|path-guard|journal)['\"]\)|from[[:space:]]+['\"][^'\"]*k9-(promote-deltas|path-guard|journal)['\"]" \
-            packages/ \
-            | grep -v "/tests/" \
-            | grep -vE "packages/kernel/_lib/k9-(promote-deltas|path-guard|journal)\.js" \
-            || true)
-          if [ -n "$hits" ]; then
-            echo "::error::K9 dormancy violation — production import detected:"
-            echo "$hits"
-            exit 1
-          fi
-          echo "K9 dormancy verified: zero production importers (split-aware over all 3 k9-* modules)."
 
   dormancy-assertion-k3b:
     # Phase 1-alpha K3.b context-envelope ships DORMANT — the validator module +
