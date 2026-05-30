@@ -187,3 +187,37 @@ jobs:
             exit 1
           fi
           echo "K9 dormancy verified: zero production importers (split-aware over all 3 k9-* modules)."
+
+  dormancy-assertion-k3b:
+    # Phase 1-alpha K3.b context-envelope ships DORMANT — the validator module +
+    # its JSON schema land in PR 1, but NO production code imports the module
+    # (personas opt-in at v3.1, per ADR-0011 §K3.b + plan FL-5). MERGE-BLOCKING,
+    # parallel to dormancy-assertion-k9. Specified at PR-1 plan time but omitted
+    # when PR 1 shipped; caught by the PR-4 re-grounding and folded into 4b per
+    # user decision (Option A). K3.b is a SINGLE module, so a single-token match
+    # suffices (vs K9's split-aware disjunction). v3.1's first consumer DELETES
+    # this job in the same commit that adds the import — self-removes at dormancy end.
+    name: K3.b dormancy assertion
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assert zero production importers of context-envelope
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        run: |
+          # Must return zero hits. Any hit means production code (under packages/,
+          # outside tests/, excluding the context-envelope.js module itself)
+          # imports the K3.b validator — violating the ship-dormant contract.
+          hits=$(grep -rE \
+            "require\(['\"][^'\"]*context-envelope['\"]\)|from[[:space:]]+['\"][^'\"]*context-envelope['\"]" \
+            packages/ \
+            | grep -v "/tests/" \
+            | grep -vE "packages/kernel/_lib/context-envelope\.js" \
+            || true)
+          if [ -n "$hits" ]; then
+            echo "::error::K3.b dormancy violation — production import detected:"
+            echo "$hits"
+            exit 1
+          fi
+          echo "K3.b dormancy verified: zero production importers."
