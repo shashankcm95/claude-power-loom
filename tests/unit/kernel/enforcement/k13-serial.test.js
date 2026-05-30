@@ -191,5 +191,42 @@ test('main() hook: non-Agent tool → allow (gate does not apply)', () => {
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// ── code-review fixes: HIGH-1 (nowMs guard) / MEDIUM (critical-section) / HIGH-3 ──
+
+test('HIGH-1: non-finite nowMs throws a clear programmer-error (not a cryptic Date throw)', () => {
+  assert.throws(
+    () => k13.runSerialAdmission({ stateDir: '/tmp/x', spawnId: 'A', nowMs: undefined, acquireLockFn: () => true, releaseLockFn: () => {} }),
+    /nowMs must be a finite number/
+  );
+});
+
+test('MEDIUM: critical-section failure (unwritable stateDir) → fail-closed block, NO throw, lock released', () => {
+  const dir = tmpStateDir();
+  const fileAsStateDir = path.join(dir, 'iam-a-file');
+  fs.writeFileSync(fileAsStateDir, 'x'); // stateDir is a FILE → writeMarker mkdir throws
+  let released = 0;
+  try {
+    const r = k13.runSerialAdmission({
+      stateDir: fileAsStateDir, spawnId: 'A', nowMs: 1000, maxSpawnAgeMs: AGE,
+      acquireLockFn: () => true, releaseLockFn: () => { released++; },
+      auditLogPath: path.join(dir, 'audit.jsonl'),
+    });
+    assert.strictEqual(r.decision, 'block');
+    assert.strictEqual(r.reason, 'admission-error');
+    assert.strictEqual(released, 1, 'lock released even on critical-section failure');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('HIGH-3: releaseSerialMarker lock-unavailable → audited (not silently lost)', () => {
+  const dir = tmpStateDir();
+  const log = path.join(dir, 'rel-audit.jsonl');
+  try {
+    const r = k13.releaseSerialMarker({ stateDir: dir, spawnId: 'A', acquireLockFn: () => false, auditLogPath: log });
+    assert.strictEqual(r.released, false);
+    assert.strictEqual(r.reason, 'lock-unavailable');
+    assert.ok(fs.existsSync(log), 'lock-unavailable release must be audited');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 process.stdout.write(`\nk13-serial.test.js: ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);

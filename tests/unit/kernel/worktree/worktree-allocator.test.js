@@ -128,5 +128,33 @@ test('default ref is HEAD when not provided', () => {
   assert.strictEqual(runGit.calls[0][3], 'HEAD');
 });
 
+// ── code-review fixes: PRINCIPLE (input validation) / HIGH-2 (cleanup audit) / LOW (clamp) ──
+
+test('PRINCIPLE: missing repoRoot/worktreePath fail fast (no silent undefined into git args)', () => {
+  assert.throws(() => k1.allocateWorktree({ worktreePath: '/wt', env: {} }), /repoRoot and worktreePath are required/);
+  assert.throws(() => k1.allocateWorktree({ repoRoot: '/x', env: {} }), /repoRoot and worktreePath are required/);
+  assert.throws(() => k1.cleanupWorktree({ repoRoot: '/x' }), /worktreePath is required/);
+});
+
+test('HIGH-2: cleanup failure during retries is folded into the final audit', () => {
+  const log = tmpLog();
+  const runGit = makeRunGit(() => ({ ok: false, stderr: 'boom' })); // add AND cleanup both fail
+  const r = k1.allocateWorktree({
+    repoRoot: '/x', worktreePath: '/wt', env: {},
+    runGitFn: runGit, maxAttempts: 2, auditLogPath: log, sleepFn: () => {},
+  });
+  assert.strictEqual(r.mode, 'escape-hatch-failed');
+  const rec = JSON.parse(fs.readFileSync(log, 'utf8').trim().split('\n').pop());
+  assert.strictEqual(rec.cleanup_degraded, true, 'cleanup failure surfaced in audit');
+  assert.ok(/cleanup-degraded/.test(rec.last_error), 'last_error notes the cleanup degradation');
+});
+
+test('LOW: maxAttempts<=0 clamps to DEFAULT_MAX_ATTEMPTS (documents clamp semantics)', () => {
+  let adds = 0;
+  const runGit = makeRunGit((args) => { if (args[1] === 'add') adds++; return { ok: false }; });
+  k1.allocateWorktree({ repoRoot: '/x', worktreePath: '/wt', env: {}, runGitFn: runGit, maxAttempts: 0, sleepFn: () => {} });
+  assert.strictEqual(adds, k1.DEFAULT_MAX_ATTEMPTS, 'maxAttempts=0 clamps to default (3)');
+});
+
 process.stdout.write(`\nworktree-allocator.test.js: ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);

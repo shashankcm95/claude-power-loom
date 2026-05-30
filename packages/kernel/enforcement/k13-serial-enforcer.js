@@ -22,6 +22,14 @@
 //   Explicit marker release is PR 4's post-spawn-resolver job (releaseSerialMarker
 //   below); in PR 2, AGE-reap is the only release.
 //
+// Guarantee scope (HONEST — architect pair-review FLAG-1): the lock guarantees
+//   "at most one ADMITTED marker within `maxSpawnAgeMs`", NOT "at most one LIVE
+//   spawn". A spawn that runs longer than maxSpawnAgeMs is reaped and a second
+//   admits while the first may still be alive. That is the accepted age-reap
+//   liveness/correctness trade for the local-trust model; PR 4's explicit
+//   release closes the normal-spawn-close side, leaving only the crashed-spawn
+//   case to age-reap.
+//
 // F8 (blair-HIGH-4): K13 calls `acquireLock` DIRECTLY — never `withLock`, whose
 //   lock-fail path is `process.exit(2)` (→ a UI error dialog instead of a clean
 //   hook-protocol rejection). A false `acquireLock` return is mapped to
@@ -54,6 +62,28 @@ function markerPathFor(stateDir) {
 }
 function lockPathFor(stateDir) {
   return path.join(stateDir || DEFAULT_STATE_DIR, LOCK_BASENAME);
+}
+
+function k13AuditPath() {
+  return path.join(os.homedir(), '.claude', 'checkpoints', 'k13-serial-log.jsonl');
+}
+
+/**
+ * Class-4 audit emit. Fail-soft (ADR-0001): audit failure never blocks. Log
+ * path injectable by ARGUMENT (F23 discipline — never an env var).
+ */
+function emitK13Audit(record, logPath) {
+  const target = logPath || k13AuditPath();
+  try {
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.appendFileSync(
+      target,
+      JSON.stringify({ ts: new Date().toISOString(), class: 4, kind: 'k13-serial-enforcer', ...record }) + '\n'
+    );
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -95,16 +125,29 @@ function writeMarker(markerPath, marker) {
  * Locked serial admission. Acquires the K13 lock (F8: DIRECTLY, not withLock),
  * reads + decides + (on admit) writes the marker, releases the lock.
  *
+ * Never throws at RUNTIME — the contract is a {decision, reason} object so the
+ * PR-4 resolver (which calls this directly, without main()'s catch) is safe. The
+ * one exception is a non-finite `nowMs`, which is a PROGRAMMER error (caller bug)
+ * and fails fast with a clear message rather than a cryptic Date throw.
+ *
  * @param {object} o
  * @param {string} [o.stateDir]
  * @param {string} o.spawnId
- * @param {number} o.nowMs
+ * @param {number} o.nowMs - ms since epoch (caller-authoritative; must be finite).
  * @param {number} [o.maxSpawnAgeMs]
  * @param {function} [o.acquireLockFn] - injectable for tests; default real lock.
  * @param {function} [o.releaseLockFn]
+ * @param {string} [o.auditLogPath]
  * @returns {{decision: 'allow'|'block', reason: string, reaped: boolean}}
  */
 function runSerialAdmission(o) {
+  // nowMs is caller-authoritative for age math — a non-finite value is a
+  // programmer error, not a runtime condition (HIGH-1, code-review). Fail fast
+  // with a clear message instead of a cryptic "Invalid time value" deep in
+  // writeMarker's new Date().
+  if (!Number.isFinite(o.nowMs)) {
+    throw new Error('K13 runSerialAdmission: nowMs must be a finite number (ms since epoch)');
+  }
   const stateDir = o.stateDir || DEFAULT_STATE_DIR;
   const maxAge = (typeof o.maxSpawnAgeMs === 'number') ? o.maxSpawnAgeMs : MAX_SPAWN_AGE_MS_DEFAULT;
   const lockPath = lockPathFor(stateDir);
@@ -126,6 +169,15 @@ function runSerialAdmission(o) {
       });
     }
     return { decision: decision.admit ? 'allow' : 'block', reason: decision.reason, reaped: decision.reaped };
+  } catch (err) {
+    // Runtime failure in the critical section (e.g. marker write failed: disk
+    // full, permissions). FAIL CLOSED — do not admit a spawn we cannot record —
+    // and return a structured result rather than throwing (HIGH-1 / MEDIUM).
+    emitK13Audit(
+      { event: 'admission-error', reason: String((err && err.message) || err).slice(0, 200), spawn_id: o.spawnId },
+      o.auditLogPath
+    );
+    return { decision: 'block', reason: 'admission-error', reaped: false };
   } finally {
     release();
   }
@@ -141,6 +193,7 @@ function runSerialAdmission(o) {
  * @param {string} o.spawnId
  * @param {function} [o.acquireLockFn]
  * @param {function} [o.releaseLockFn]
+ * @param {string} [o.auditLogPath]
  * @returns {{released: boolean, reason: string}}
  */
 function releaseSerialMarker(o) {
@@ -149,7 +202,14 @@ function releaseSerialMarker(o) {
   const acquire = o.acquireLockFn || (() => acquireLock(lockPath));
   const release = o.releaseLockFn || (() => releaseLock(lockPath));
 
-  if (!acquire()) return { released: false, reason: 'lock-unavailable' };
+  if (!acquire()) {
+    // HIGH-3 (code-review): a failed RELEASE is costlier than a failed admission
+    // — the marker persists and blocks all spawns until age-reap (maxSpawnAgeMs).
+    // Surface it as a Class-4 audit so PR 4 can add a bounded retry (retry itself
+    // is a PR-4 concern; PR-2 closes the silent-loss gap).
+    emitK13Audit({ event: 'release-lock-unavailable', spawn_id: o.spawnId }, o.auditLogPath);
+    return { released: false, reason: 'lock-unavailable' };
+  }
   try {
     const markerPath = markerPathFor(stateDir);
     const marker = readMarker(markerPath);
@@ -213,5 +273,6 @@ module.exports = {
   readMarker,
   markerPathFor,
   lockPathFor,
+  emitK13Audit,
   MAX_SPAWN_AGE_MS_DEFAULT,
 };

@@ -12,7 +12,9 @@
 //   1. retry — transient `git worktree add` failures are retried up to
 //      maxAttempts (default 3) with an injectable backoff.
 //   2. cleanup — every failed attempt removes any partial worktree before the
-//      next try (resource-leak guard — code-reviewer focus per plan phase 9).
+//      next try (resource-leak guard — code-reviewer focus per plan phase 9). A
+//      FAILED cleanup is folded into the audit trail (HIGH-2 code-review) rather
+//      than silently discarded, since it means a partial worktree persists.
 //   3. escape-hatch composition (K10) — respects LOOM_DISABLE_WORKTREE; and if
 //      allocation fails after all retries, "the escape hatch fires": K1 degrades
 //      to a no-worktree mode + Class-4 audit (plan verification probe:
@@ -87,6 +89,9 @@ function emitK1Audit(record, logPath) {
  * @returns {{cleaned: boolean, steps: Array<{step: string, ok: boolean}>}}
  */
 function cleanupWorktree(opts) {
+  if (!opts || !opts.worktreePath) {
+    throw new Error('K1 cleanupWorktree: worktreePath is required');
+  }
   const runGit = opts.runGitFn || ((args) => runGitDefault(opts.repoRoot, args));
   const steps = [];
   const rm = runGit(['worktree', 'remove', '--force', opts.worktreePath]);
@@ -100,8 +105,8 @@ function cleanupWorktree(opts) {
  * Allocate a git worktree for a spawn, with retry + cleanup + K10 escape-hatch.
  *
  * @param {object} opts
- * @param {string} opts.repoRoot
- * @param {string} opts.worktreePath
+ * @param {string} opts.repoRoot       (required)
+ * @param {string} opts.worktreePath   (required)
  * @param {string} [opts.ref='HEAD']
  * @param {number} [opts.maxAttempts=3]
  * @param {object} [opts.env=process.env]
@@ -111,6 +116,11 @@ function cleanupWorktree(opts) {
  * @returns {{allocated: boolean, mode: 'worktree'|'escape-hatch-disabled'|'escape-hatch-failed', path: string|null, attempts: number, reason: string, audited: boolean}}
  */
 function allocateWorktree(opts) {
+  // Fail fast on missing required inputs (PRINCIPLE, code-review): undefined
+  // paths would otherwise pass silently into git arg arrays as malformed args.
+  if (!opts || !opts.repoRoot || !opts.worktreePath) {
+    throw new Error('K1 allocateWorktree: repoRoot and worktreePath are required');
+  }
   const env = opts.env || process.env;
   const maxAttempts = (typeof opts.maxAttempts === 'number' && opts.maxAttempts > 0)
     ? opts.maxAttempts : DEFAULT_MAX_ATTEMPTS;
@@ -131,6 +141,7 @@ function allocateWorktree(opts) {
   }
 
   let lastErr = null;
+  let cleanupDegraded = false;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const res = runGit(['worktree', 'add', opts.worktreePath, ref]);
     if (res && res.ok) {
@@ -138,7 +149,14 @@ function allocateWorktree(opts) {
     }
     lastErr = (res && res.stderr) || 'unknown';
     // Resource-leak guard: clear any partial worktree before the next attempt.
-    cleanupWorktree({ repoRoot: opts.repoRoot, worktreePath: opts.worktreePath, runGitFn: runGit });
+    // A FAILED cleanup means the partial worktree persists and the next `add`
+    // will fail for the same reason — fold it into the audit trail (HIGH-2)
+    // rather than discarding it silently.
+    const cleaned = cleanupWorktree({ repoRoot: opts.repoRoot, worktreePath: opts.worktreePath, runGitFn: runGit });
+    if (!cleaned.cleaned) {
+      cleanupDegraded = true;
+      lastErr = `${lastErr} | cleanup-degraded: ${cleaned.steps.map((s) => `${s.step}=${s.ok}`).join(',')}`;
+    }
     if (attempt < maxAttempts) sleep(attempt);
   }
 
@@ -149,6 +167,7 @@ function allocateWorktree(opts) {
       reason: 'allocation-failed-after-retries',
       attempts: maxAttempts,
       last_error: String(lastErr).slice(0, 200),
+      cleanup_degraded: cleanupDegraded,
       worktree_path: opts.worktreePath,
       severity: 'HIGH',
     },
