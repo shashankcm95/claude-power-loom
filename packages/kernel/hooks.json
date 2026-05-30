@@ -23,16 +23,6 @@
             "timeout": 3
           }
         ]
-      },
-      {
-        "matcher": "*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/packages/kernel/hooks/lifecycle/session-self-improve-prompt.js",
-            "timeout": 5
-          }
-        ]
       }
     ],
     "PreToolUse": [
