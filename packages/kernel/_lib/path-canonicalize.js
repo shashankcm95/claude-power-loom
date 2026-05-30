@@ -126,8 +126,35 @@ function isWithinRoot(candidatePath, rootPath) {
 }
 
 /**
+ * True iff `candidatePath` is LEXICALLY inside `rootPath` (shares the root prefix
+ * at a separator boundary) BEFORE any symlink resolution. Distinguishes the
+ * out-of-scope reason: a path that is lexically inside root but resolves outside
+ * (via a symlinked ancestor / leaf) is a SYMLINK escape ('escapes-root'); a path
+ * that is lexically outside root never entered the namespace
+ * ('absolute-outside-root'). Pure string comparison — no filesystem access.
+ *
+ * @param {string} candidatePath
+ * @param {string} rootPath
+ * @returns {boolean}
+ */
+function isLexicallyWithin(candidatePath, rootPath) {
+  if (typeof candidatePath !== 'string' || typeof rootPath !== 'string') return false;
+  const candAbs = path.resolve(candidatePath);
+  const rootAbs = path.resolve(rootPath);
+  if (candAbs === rootAbs) return true;
+  const rootWithSep = rootAbs.endsWith(path.sep) ? rootAbs : rootAbs + path.sep;
+  return candAbs.startsWith(rootWithSep);
+}
+
+/**
  * The CWE-22 admission gate for K9/K14 write-scope. Combines the syntactic
- * screen with the resolved within-root check.
+ * screen with the resolved within-root check. K7 is the SINGLE source of truth
+ * for both the canonicalization AND the out-of-scope reason taxonomy (PR 3
+ * architect MEDIUM — consumers delegate rather than re-roll the discrimination).
+ *
+ * Reason tokens: 'traversal-markers' (`..` / null-byte / non-string),
+ * 'escapes-root' (lexically inside root but symlink-resolves outside), or
+ * 'absolute-outside-root' (lexically outside the root namespace).
  *
  * @param {string} candidatePath
  * @param {string} rootPath
@@ -138,12 +165,18 @@ function checkWithinRoot(candidatePath, rootPath) {
     return { ok: false, reason: 'traversal-markers' };
   }
   if (!isWithinRoot(candidatePath, rootPath)) {
+    // Discriminate by LEXICAL position, not path.isAbsolute: a symlink-escape
+    // path is absolute AND lexically inside root, so isAbsolute alone would
+    // mislabel it 'absolute-outside-root'. Lexically-inside-but-resolves-outside
+    // is the symlink-escape signature → 'escapes-root'.
     return {
       ok: false,
-      reason: path.isAbsolute(candidatePath) ? 'absolute-outside-root' : 'escapes-root',
+      reason: isLexicallyWithin(candidatePath, rootPath) ? 'escapes-root' : 'absolute-outside-root',
     };
   }
   return { ok: true, reason: null };
 }
 
-module.exports = { canonicalize, hasTraversalMarkers, isWithinRoot, checkWithinRoot };
+module.exports = {
+  canonicalize, hasTraversalMarkers, isWithinRoot, isLexicallyWithin, checkWithinRoot,
+};
