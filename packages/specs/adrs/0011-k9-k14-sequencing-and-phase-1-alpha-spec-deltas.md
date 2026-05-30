@@ -8,6 +8,8 @@ author: 04-architect.theo (HETS-routed Phase 1-alpha design) + post-compact PR-1
 superseded_by: null
 files_affected:
   - packages/kernel/_lib/k9-promote-deltas.js
+  - packages/kernel/_lib/k9-path-guard.js
+  - packages/kernel/_lib/k9-journal.js
   - packages/kernel/_lib/k14-write-scope.js
   - packages/kernel/spawn-state/post-spawn-resolver.js
   - packages/kernel/spawn-state/recovery-sweep.js
@@ -62,6 +64,41 @@ The sequencing is **sequential**, not concurrent: K14 must complete BEFORE K9 co
 - PR 3 lands the K9 module + tests but NO production code path imports it
 - The dormancy-assertion CI gate (`dormancy-assertion-k9`) BLOCKS PR 3 merge if any production importer is detected
 - PR 4 introduces the first production importer (post-spawn-resolver) AND deletes the CI gate in the same commit (gate self-removes when dormancy ends)
+
+## K9 split decision (PR 3)
+
+Per plan line 138 (reviewer amendment 2026-05-27): the mandatory-split trigger fires at **projected impl-LoC > 700 measured at end of TDD Phase 1** (failing tests written + scaffolding stubs), NOT at PR-finalization. The earlier trigger prevents the impl-then-refactor tax.
+
+**Projected impl-LoC: 760 → split verdict: SPLIT (3 files).** 760 > 700, so K9 ships as three single-responsibility modules rather than one `k9-promote-deltas.js`. The projection was authored up front during TDD Phase 1 so impl (Phase 3) writes straight to the partition.
+
+LoC projection method note: the bare `(fixtures + cases) × 3` formula (atomic-write.js ratio: ~3 impl-LoC per test case) yields ~195, which materially **undercounts** here. The INV-K9-RejectFidelity property test, the crash-mid-abort syntactic-atomicity case, and the real-git F11 conflict-bailout case each drive far more than 3 impl-LoC apiece. 760 is the sum of the three per-module mid-estimates and lands inside the plan's own 650–1,050 HIGH-end band.
+
+**Module breakdown (LOCKED partition; DAG strictly `orchestration → {leaves}`):**
+
+| Module | Responsibility | Projected impl-LoC | DAG role |
+|---|---|---|---|
+| `packages/kernel/_lib/k9-path-guard.js` | CWE-22 path-traversal guard (delegates to K7 `checkWithinRoot`) + delta-SHA validation (40/64-hex accept; empty/non-hex/shell-metachar reject) | ~230 | leaf (imports K7; NOT the orchestrator) |
+| `packages/kernel/_lib/k9-promote-deltas.js` | Cherry-pick orchestration + `--abort` conflict-bailout (F11) + evidence pre-commit gate (F9/INV-21) + F12 chain-walk bound | ~330 | orchestrator (imports both leaves) |
+| `packages/kernel/_lib/k9-journal.js` | Append-only reverse-cherry-pick ledger (INV-19 append-only; `reverse_op = 'git revert <sha>'`) | ~200 | leaf (imports neither sibling) |
+
+The acyclic guarantee is **tested**, not asserted: each leaf test (`k9-path-guard.test.js`, `k9-journal.test.js`) carries a `DAG: does NOT import k9-promote-deltas (no back-edge)` case, and `k9-promote-deltas.test.js` asserts the orchestrator imports both leaves while neither imports it (Martin acyclic-dependencies / morning-after-syndrome guard). Three test files mirror the three modules (closes the verify-plan HIGH "test coverage mapping ambiguous"). Probed 2026-05-30: all three test files load and run RED against the stubs (path-guard 3/6, journal 4/10, promote-deltas 5/9; each exits 1).
+
+**Dormancy grep is split-aware** — the in-test dormancy gate and the PR-3 CI job `dormancy-assertion-k9` MUST use a disjunction over all three filenames `k9-(promote-deltas|path-guard|journal)` (excluding the `k9-*.js` module files themselves), NOT the single-token plan template at lines 296–306. A single-token grep against only `k9-promote-deltas` would let a production importer of `k9-path-guard` or `k9-journal` slip past the dormancy gate, defeating the §K9↔K14-sequencing dormancy invariant above.
+
+### §F11 — cherry-pick conflict-bailout + execFile discipline
+
+K9's git interaction is `git cherry-pick` (forward) against the **parent worktree** (the cherry-pick `cwd` is `parentRoot`; the cherry-pick arg is the spawn's delta SHA). On a 3-way conflict the orchestrator runs `git cherry-pick --abort`, which restores the host worktree byte-for-byte and leaves ZERO `.orig`/`.rej` artifacts behind — verified empirically against real git 2.50.1 in a hermetic temp repo (the load-bearing runtime probe the verify-plan HIGH demanded; the test skips cleanly rather than false-RED if git is unavailable).
+
+- **CWE-78 (arg-array, no shell)**: git is invoked via an injectable `runGitFn` seam (`(args[]) => { ok, code, stdout, stderr }`, the K1 worktree-allocator pattern). F11's DRY premise was probed FALSE — `safe-exec.js` exports only `invokeNodeJson` / `invokeNodeText`, both hardcode `'node'`; there is NO general `execFile`/git wrapper. The seam keeps pure unit tests from shelling out; impl SHOULD consume a shared `invokeGit` only IF `safe-exec.js` later grows one. Arg-array discipline is asserted directly against recorded `runGitFn` calls (no string concatenation, no `shell: true`).
+- **CWE-732 (hooks suppression)**: cherry-pick runs with `HOOKS_DISABLED_ARGS` (`-c core.hooksPath=/dev/null`) so a malicious repo-local git hook cannot execute during promotion.
+
+### §F12 — MAX_EVIDENCE_CHAIN_DEPTH bound rationale + v3.1 R10 replacement
+
+`MAX_EVIDENCE_CHAIN_DEPTH = 1000` (defined `packages/kernel/_lib/k9-promote-deltas.js:63`).
+
+**Rationale (F12, eli-H3, CWE-400 — Uncontrolled Resource Consumption)**: the K9 pre-commit gate walks the evidence chain to validate the head transaction record (F9/INV-21). The walk is `O(|evidence_refs| × chain-depth)` with no intrinsic terminator — a forged or pathological chain could drive an unbounded walk and exhaust CPU/memory at commit time, a denial-of-service surface on the promotion path. The bound caps the walk: a chain deeper than 1000 is REJECTED at depth 1000 rather than walked to exhaustion (failing test: synthetic 1500-deep chain → rejected at the bound). 1000 is generously above any realistic Phase-1-alpha evidence depth (depth-1 spawn topology means chains are short) while still being a hard ceiling.
+
+**v3.1 R10 replacement**: this depth cap is a v3.0-alpha **interim** mitigation, not the permanent design. v3.1 R10 (the budget-envelope / full chain-integrity verifier) SUPERSEDES `MAX_EVIDENCE_CHAIN_DEPTH` (per plan line 441: "R10 budget envelope (replaces F12 MAX_EVIDENCE_CHAIN_DEPTH=1000) → v3.1"). When R10 lands, the constant is removed in favor of an explicit per-promotion resource budget rather than a fixed-depth heuristic. Until then the depth cap is the load-bearing CWE-400 guard.
 
 ## §combined-bypass policy
 

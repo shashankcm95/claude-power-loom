@@ -28,36 +28,14 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { execFileSync } = require('child_process');
 const { evaluateEscapeHatches } = require('../enforcement/k10-escape-hatch');
+// DRY (PR 3 architect HIGH): the no-shell git runner is the shared kernel
+// primitive in _lib/invoke-git.js — K1 and K9 both consume it so a future
+// CWE-78 hardening lives in exactly one place. Re-exported below to preserve
+// K1's public surface for existing importers.
+const { runGitDefault } = require('../_lib/invoke-git');
 
 const DEFAULT_MAX_ATTEMPTS = 3;
-
-/**
- * Default git runner — execFile (NO shell), returns a result object (never
- * throws). Injectable via opts.runGitFn so unit tests never touch real git.
- *
- * @param {string} repoRoot - cwd for the git invocation.
- * @param {string[]} args - argv array (e.g. ['worktree','add',path,ref]).
- * @returns {{ok: boolean, code: number, stdout: string, stderr: string}}
- */
-function runGitDefault(repoRoot, args) {
-  try {
-    const stdout = execFileSync('git', args, {
-      cwd: repoRoot,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    return { ok: true, code: 0, stdout: stdout || '', stderr: '' };
-  } catch (err) {
-    return {
-      ok: false,
-      code: (err && err.status != null) ? err.status : 1,
-      stdout: '',
-      stderr: String((err && (err.stderr || err.message)) || '').slice(0, 500),
-    };
-  }
-}
 
 function k1AuditPath() {
   return path.join(os.homedir(), '.claude', 'checkpoints', 'k1-worktree-log.jsonl');

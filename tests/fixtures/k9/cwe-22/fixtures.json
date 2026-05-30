@@ -1,0 +1,295 @@
+{
+  "_comment": "K9 CWE-22 fixture corpus. See README.md for taxonomy. <<ROOT>> is substituted with the test's hermetic tmp worktree root at load time. No real-shaped secrets (F22/F23).",
+  "schema_version": "k9-fixtures-v1",
+  "fixtures": [
+    {
+      "id": "dotdot-traversal-parent-escape",
+      "category": "dotdot-traversal",
+      "candidate_path": "<<ROOT>>/../escapee.txt",
+      "root": "<<ROOT>>",
+      "verdict": "reject",
+      "reason": "traversal-markers",
+      "note": "single ../ climbs out of the worktree root"
+    },
+    {
+      "id": "dotdot-traversal-deep-escape",
+      "category": "dotdot-traversal",
+      "candidate_path": "<<ROOT>>/sub/../../sibling/x.txt",
+      "root": "<<ROOT>>",
+      "verdict": "reject",
+      "reason": "traversal-markers",
+      "note": "../../ from a subdir lands in a sibling of root"
+    },
+    {
+      "id": "dotdot-traversal-to-etc",
+      "category": "dotdot-traversal",
+      "candidate_path": "<<ROOT>>/../../../../../../etc/hostname",
+      "root": "<<ROOT>>",
+      "verdict": "reject",
+      "reason": "traversal-markers",
+      "note": "long ../ chain targeting a neutral system file (not a secret path)"
+    },
+    {
+      "id": "dotdot-traversal-leading-segment",
+      "category": "dotdot-traversal",
+      "candidate_path": "../outside-root.txt",
+      "root": "<<ROOT>>",
+      "verdict": "reject",
+      "reason": "traversal-markers",
+      "note": "relative path whose first segment is .."
+    },
+
+    {
+      "id": "absolute-outside-tmp-evil",
+      "category": "absolute-outside-root",
+      "candidate_path": "/tmp/k9-evil-outside/payload.txt",
+      "root": "<<ROOT>>",
+      "verdict": "reject",
+      "reason": "absolute-outside-root",
+      "note": "absolute path in a different tmp subtree than the root"
+    },
+    {
+      "id": "absolute-outside-etc-neutral",
+      "category": "absolute-outside-root",
+      "candidate_path": "/etc/shells",
+      "root": "<<ROOT>>",
+      "verdict": "reject",
+      "reason": "absolute-outside-root",
+      "note": "absolute system path (neutral, non-secret) outside root"
+    },
+    {
+      "id": "absolute-outside-home",
+      "category": "absolute-outside-root",
+      "candidate_path": "/var/tmp/k9-elsewhere.txt",
+      "root": "<<ROOT>>",
+      "verdict": "reject",
+      "reason": "absolute-outside-root",
+      "note": "absolute var/tmp path outside the scoped root"
+    },
+    {
+      "id": "absolute-sibling-prefix-confusion",
+      "category": "absolute-outside-root",
+      "candidate_path": "<<ROOT>>-evil/payload.txt",
+      "root": "<<ROOT>>",
+      "verdict": "reject",
+      "reason": "absolute-outside-root",
+      "note": "root + '-evil' must NOT be treated as within root (separator-boundary prefix check)"
+    },
+
+    {
+      "id": "null-byte-truncation-mid",
+      "category": "null-byte",
+      "candidate_path": "<<ROOT>>/safe.txt\u0000/../../etc/hostname",
+      "root": "<<ROOT>>",
+      "verdict": "reject",
+      "reason": "traversal-markers",
+      "note": "NUL byte attempts C-string truncation past a safe-looking prefix (CWE-158)"
+    },
+    {
+      "id": "null-byte-suffix",
+      "category": "null-byte",
+      "candidate_path": "<<ROOT>>/file.txt\u0000.png",
+      "root": "<<ROOT>>",
+      "verdict": "reject",
+      "reason": "traversal-markers",
+      "note": "trailing NUL to smuggle an extension past a naive suffix check"
+    },
+    {
+      "id": "null-byte-leading",
+      "category": "null-byte",
+      "candidate_path": "\u0000<<ROOT>>/file.txt",
+      "root": "<<ROOT>>",
+      "verdict": "reject",
+      "reason": "traversal-markers",
+      "note": "leading NUL byte"
+    },
+    {
+      "id": "null-byte-bare",
+      "category": "null-byte",
+      "candidate_path": "<<ROOT>>/\u0000",
+      "root": "<<ROOT>>",
+      "verdict": "reject",
+      "reason": "traversal-markers",
+      "note": "lone NUL component"
+    },
+
+    {
+      "id": "symlink-escape-ancestor-to-outside",
+      "category": "symlink-escape",
+      "candidate_path": "<<ROOT>>/link-to-outside/payload.txt",
+      "root": "<<ROOT>>",
+      "verdict": "reject",
+      "reason": "escapes-root",
+      "note": "ancestor dir 'link-to-outside' is a symlink resolving outside root; test materializes the symlink",
+      "materialize_symlink": { "link": "link-to-outside", "target_outside_root": true }
+    },
+    {
+      "id": "symlink-escape-leaf-symlink",
+      "category": "symlink-escape",
+      "candidate_path": "<<ROOT>>/leaf-link",
+      "root": "<<ROOT>>",
+      "verdict": "reject",
+      "reason": "escapes-root",
+      "note": "the leaf itself is a symlink pointing outside root",
+      "materialize_symlink": { "link": "leaf-link", "target_outside_root": true }
+    },
+    {
+      "id": "symlink-escape-nested-ancestor",
+      "category": "symlink-escape",
+      "candidate_path": "<<ROOT>>/a/b/escape-link/c/payload.txt",
+      "root": "<<ROOT>>",
+      "verdict": "reject",
+      "reason": "escapes-root",
+      "note": "a deep symlinked ancestor escapes; canonicalize must resolve the symlinked component",
+      "materialize_symlink": { "link": "a/b/escape-link", "target_outside_root": true }
+    },
+    {
+      "id": "symlink-escape-to-etc",
+      "category": "symlink-escape",
+      "candidate_path": "<<ROOT>>/etc-link/hostname",
+      "root": "<<ROOT>>",
+      "verdict": "reject",
+      "reason": "escapes-root",
+      "note": "symlink ancestor pointing at /etc (neutral system dir, not a secret)",
+      "materialize_symlink": { "link": "etc-link", "target_absolute": "/etc" }
+    },
+
+    {
+      "id": "encoded-traversal-backslash-sep",
+      "category": "encoded-traversal",
+      "candidate_path": "<<ROOT>>\\..\\..\\escapee.txt",
+      "root": "<<ROOT>>",
+      "verdict": "reject",
+      "reason": "traversal-markers",
+      "note": "backslash separators with .. (mixed-separator smuggling — guard splits on [\\\\/]+)"
+    },
+    {
+      "id": "encoded-traversal-mixed-sep",
+      "category": "encoded-traversal",
+      "candidate_path": "<<ROOT>>/sub\\../..\\../outside.txt",
+      "root": "<<ROOT>>",
+      "verdict": "reject",
+      "reason": "traversal-markers",
+      "note": "interleaved forward/backslash separators around .. segments"
+    },
+    {
+      "id": "encoded-traversal-double-slash",
+      "category": "encoded-traversal",
+      "candidate_path": "<<ROOT>>//..//..//escapee.txt",
+      "root": "<<ROOT>>",
+      "verdict": "reject",
+      "reason": "traversal-markers",
+      "note": "doubled separators must still expose the .. segments after split"
+    },
+    {
+      "id": "encoded-traversal-trailing-dotdot",
+      "category": "encoded-traversal",
+      "candidate_path": "<<ROOT>>/sub/..",
+      "root": "<<ROOT>>",
+      "verdict": "reject",
+      "reason": "traversal-markers",
+      "note": "trailing .. as the final segment (resolves to root's parent-of-sub == root, but the literal .. marker is rejected pre-resolution for defense-in-depth)"
+    },
+
+    {
+      "id": "semantic-empty-sha",
+      "category": "semantic-invalidity",
+      "candidate_path": "<<ROOT>>/valid-target.txt",
+      "root": "<<ROOT>>",
+      "verdict": "reject",
+      "reason": "invalid-delta-sha",
+      "delta_sha": "",
+      "note": "path is fine but the delta SHA to cherry-pick is empty — request-level rejection"
+    },
+    {
+      "id": "semantic-nonhex-sha",
+      "category": "semantic-invalidity",
+      "candidate_path": "<<ROOT>>/valid-target.txt",
+      "root": "<<ROOT>>",
+      "verdict": "reject",
+      "reason": "invalid-delta-sha",
+      "delta_sha": "zzzznothex; rm -rf /",
+      "note": "non-hex / shell-metachar SHA — rejected before ever reaching git (defense against CWE-78 even though args are arrayed)"
+    },
+    {
+      "id": "semantic-missing-root",
+      "category": "semantic-invalidity",
+      "candidate_path": "<<ROOT>>/valid-target.txt",
+      "root": "",
+      "verdict": "reject",
+      "reason": "missing-root",
+      "note": "empty worktree root — cannot scope; fail closed"
+    },
+    {
+      "id": "semantic-nonstring-path",
+      "category": "semantic-invalidity",
+      "candidate_path": null,
+      "root": "<<ROOT>>",
+      "verdict": "reject",
+      "reason": "traversal-markers",
+      "note": "non-string candidate path (null) — hasTraversalMarkers fails closed on non-string"
+    },
+
+    {
+      "id": "conflict-bailout-clean-no-conflict",
+      "category": "conflict-bailout",
+      "candidate_path": "<<ROOT>>/clean.txt",
+      "root": "<<ROOT>>",
+      "verdict": "accept",
+      "reason": "cherry-pick-clean",
+      "conflict": {
+        "has_conflict": false,
+        "expect_abort": false,
+        "expect_no_orig_rej": true,
+        "expect_host_unchanged": false
+      },
+      "note": "control case: a clean cherry-pick applies, no abort, no .orig/.rej, host advances"
+    },
+    {
+      "id": "conflict-bailout-conflict-aborts-restored",
+      "category": "conflict-bailout",
+      "candidate_path": "<<ROOT>>/conflicted.txt",
+      "root": "<<ROOT>>",
+      "verdict": "reject",
+      "reason": "cherry-pick-conflict-aborted",
+      "conflict": {
+        "has_conflict": true,
+        "expect_abort": true,
+        "expect_no_orig_rej": true,
+        "expect_host_unchanged": true
+      },
+      "note": "conflict → non-zero exit → git cherry-pick --abort → host byte-for-byte pre-spawn (INV-K9-RejectFidelity)"
+    },
+    {
+      "id": "conflict-bailout-no-orig-rej-after-abort",
+      "category": "conflict-bailout",
+      "candidate_path": "<<ROOT>>/conflicted.txt",
+      "root": "<<ROOT>>",
+      "verdict": "reject",
+      "reason": "cherry-pick-conflict-aborted",
+      "conflict": {
+        "has_conflict": true,
+        "expect_abort": true,
+        "expect_no_orig_rej": true,
+        "expect_host_unchanged": true
+      },
+      "note": "explicit .orig/.rej-absence assertion after abort (the load-bearing F11 claim, verified empirically in a real tmp git repo)"
+    },
+    {
+      "id": "conflict-bailout-crash-between-fail-and-abort",
+      "category": "conflict-bailout",
+      "candidate_path": "<<ROOT>>/conflicted.txt",
+      "root": "<<ROOT>>",
+      "verdict": "reject",
+      "reason": "cherry-pick-conflict-aborted",
+      "conflict": {
+        "has_conflict": true,
+        "expect_abort": true,
+        "expect_no_orig_rej": true,
+        "expect_host_unchanged": true,
+        "simulate_crash_before_abort": true
+      },
+      "note": "INV-K9-SyntacticAtomicity: a crash injected between cherry-pick-fail and the abort call must leave host state in {pre, post}, never partial"
+    }
+  ]
+}
