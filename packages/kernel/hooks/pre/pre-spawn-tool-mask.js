@@ -111,11 +111,26 @@ const NETWORK_BASH_PATTERNS = [
   /\bnpx\b/,
   /\bcat\s+<</, // heredoc-pipe-exec class (e.g. `cat <<EOF | python`)
   /\bbase64\b[^\n]*\|\s*(sh|bash|zsh|python|python3|node|perl|ruby)\b/, // base64-piped exec
-  // Inline-interpreter exec with flag-stuffing tolerated (still requires -c/-e):
-  /\b(python|python3)(\s+-[A-Za-z])*\s+-c\b/,
-  /\bnode(\s+-[A-Za-z])*\s+-e\b/,
-  /\bperl(\s+-[A-Za-z])*\s+-e\b/,
-  /\bruby(\s+-[A-Za-z])*\s+-e\b/,
+  // Inline-interpreter exec. Hardened (review rec, 2026-05-30) to close real
+  // flag-stuffing bypasses the prior `(\s+-[A-Za-z])*\s+-c` form missed:
+  //   - combined short-flag groups ending in the exec flag: `python -Bc`,
+  //     `python -OBc` (the interpreter consumes the rest of the group as code,
+  //     so `-[A-Za-z]*c` is the right shape);
+  //   - flag-stuffing with VALUES: `python -W ignore -c`, `python -X dev -c`;
+  //   - python2; node long-form `--eval` and combined `-pe`.
+  // `[^|;&\n]*?` tolerates intervening flags/args but stops at a
+  // pipe/semicolon/ampersand boundary (won't span into an unrelated command).
+  //
+  // HONEST LIMIT (not a bug — verified in the test fixtures): a regex cannot
+  // fully parse a shell. `python deploy.py` or arbitrary `-m <module>` can also
+  // reach the network and are NOT all caught here. This gate is a best-effort
+  // tripwire for the OBVIOUS inline cases; the real network-prohibition
+  // enforcement is v3.1 K8 (deny the tool outright) + v3.5 container egress.
+  /\bpython[23]?\b[^|;&\n]*?\s-[A-Za-z]*c\b/, // python -c / -Bc / -W x -c / -OBc
+  /\bpython[23]?\b[^|;&\n]*\s-m\s+(http\.server|SimpleHTTPServer|socketserver|smtpd|ftplib)\b/, // python -m <net module>
+  /\bnode\b[^|;&\n]*?\s(-[A-Za-z]*e\b|--eval\b)/, // node -e / -pe / --eval
+  /\bperl\b[^|;&\n]*?\s-[A-Za-z]*e\b/, // perl -e / -ne / -Mfoo -e
+  /\bruby\b[^|;&\n]*?\s-[A-Za-z]*e\b/, // ruby -e / -ne
 ];
 
 function isNetworkBashCommand(command) {

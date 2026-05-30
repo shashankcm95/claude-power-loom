@@ -238,6 +238,49 @@ test('F4: no false positives on safe commands (doesn\'t-match fixtures)', () => 
   }
 });
 
+// --- flag-stuffing hardening (review rec, 2026-05-30) ---
+
+test('flag-stuffing: hardened inline-exec patterns close the real bypasses', () => {
+  const shouldMatch = [
+    'python -Bc "import urllib"', // combined short-flag group ending in c
+    'python -W ignore -c "x"', // flag-with-VALUE before -c
+    'python3 -OBc "x"', // multi-combined ending in c
+    'python2 -c "x"', // python2
+    'node -pe "require(net)"', // combined node print+eval
+    'node --eval "x"', // node long-form
+    'perl -ne "..."', // combined perl
+    'python -m http.server', // python network module
+    'python3 -m SimpleHTTPServer', // legacy python network module
+  ];
+  for (const cmd of shouldMatch) {
+    assert.strictEqual(isNetworkBashCommand(cmd), true, 'flag-stuffing should match: ' + cmd);
+  }
+});
+
+test('flag-stuffing: no false positives on safe interpreter invocations', () => {
+  const shouldNotMatch = [
+    'python manage.py migrate',
+    'python -m pytest -v',
+    'node --version',
+    'node server.js',
+    'perl -v',
+    'ruby script.rb',
+    'ls node_modules', // \bnode\b must NOT match inside node_modules
+  ];
+  for (const cmd of shouldNotMatch) {
+    assert.strictEqual(isNetworkBashCommand(cmd), false, 'should NOT match: ' + cmd);
+  }
+});
+
+test('flag-stuffing: DOCUMENTED LIMIT — a script body can network but is not regex-catchable', () => {
+  // These CAN reach the network (the script/module decides), but a regex gate
+  // cannot detect that without parsing the program. Asserting the current
+  // (uncaught) behavior makes the limit EXPLICIT, not a silent gap. The real
+  // network-prohibition enforcement is v3.1 K8 (deny the tool) + v3.5 egress.
+  assert.strictEqual(isNetworkBashCommand('python deploy_and_push.py'), false);
+  assert.strictEqual(isNetworkBashCommand('node ./scripts/upload.js'), false);
+});
+
 test('F4: denylist has 22+ patterns', () => {
   // imported lazily to avoid touching the top-of-file import block
   const { NETWORK_BASH_PATTERNS } = require('../../../../packages/kernel/hooks/pre/pre-spawn-tool-mask');

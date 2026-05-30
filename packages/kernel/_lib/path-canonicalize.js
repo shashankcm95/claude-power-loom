@@ -54,10 +54,17 @@ function canonicalize(filePath) {
     // on writes to not-yet-existing files).
     let dir = resolved;
     const tail = [];
-    // Guard against unbounded loop; filesystem depth is small in practice.
+    // The loop strictly reduces `dir` toward the filesystem root via
+    // path.dirname, so it terminates at the root (`parent === dir`) in at most
+    // (path-depth) steps — bounded by OS PATH_MAX (≤4096 bytes ⇒ ≤~2048
+    // components). The numeric ceiling is pure belt-and-suspenders.
+    let reachedRoot = false;
     for (let i = 0; i < 4096; i++) {
       const parent = path.dirname(dir);
-      if (parent === dir) break; // reached filesystem root
+      if (parent === dir) {
+        reachedRoot = true;
+        break; // reached filesystem root
+      }
       try {
         const real = fs.realpathSync(dir);
         return tail.length ? path.join(real, ...tail.slice().reverse()) : real;
@@ -66,7 +73,18 @@ function canonicalize(filePath) {
         dir = parent;
       }
     }
-    return resolved; // nothing along the chain existed; best-effort.
+    // reachedRoot: the whole path below root is non-existent (e.g. `/newfile`).
+    // `resolved` has no symlinked ancestor to collapse, so it IS canonical —
+    // safe to return.
+    //
+    // !reachedRoot: we hit the numeric ceiling WITHOUT reaching root. This is
+    // unreachable on any real OS (a path that deep exceeds PATH_MAX), but if it
+    // ever happens we could NOT guarantee symlink resolution. FAIL CLOSED ('')
+    // so the security consumers (isWithinRoot/checkWithinRoot) REJECT rather
+    // than trust a possibly-unresolved path. The advisory consumer
+    // (fact-force-gate) reads '' as "no path" and fails soft — acceptable for a
+    // PATH_MAX-exceeding input.
+    return reachedRoot ? resolved : '';
   }
 }
 
