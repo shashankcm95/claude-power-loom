@@ -282,6 +282,13 @@ function buildEnvelope({ input, toolName, toolInput, toolResponse }) {
     schema_phase: SCHEMA_PHASE,
     spawn_id: buildSpawnId(),
     parent_state_id: null,
+    // PR-4a (ADR-0010 INV-A7, ADR-0011 §write-scope-violations-schema): the
+    // write-scope violation set K14 populates at spawn-close and the PR-4b
+    // post-spawn-resolver consumes. Defaults to [] (clean spawn — empty = no
+    // out-of-scope writes). DORMANT in v3.0-alpha: nothing wires K14 to write
+    // here yet, so this stays [] in practice until 4b. Element shape:
+    // {path, kind, transport, detected_at_phase, sha256_pre, sha256_post, flags}.
+    write_scope_violations: [],
     captured_at: new Date().toISOString(),
     axioms: {
       tool_name: toolName,

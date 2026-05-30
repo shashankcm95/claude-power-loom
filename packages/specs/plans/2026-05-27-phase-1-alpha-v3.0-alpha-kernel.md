@@ -9,7 +9,7 @@ created: 2026-05-27
 gate_shape: HETS-routed; /verify-plan REQUIRED pre-ExitPlanMode per H.7.23
 manifest_bump_target: 3.0.0-alpha
 scope_estimate: ~2,755-4,600 LoC + ~52-87h per v6 §6.11 row (after Round-3b cleanup)
-pr_slicing: 5 sub-PRs + sibling CI sub-PRs (0a/0b) per HETS Decision 5
+pr_slicing: 6 sub-PRs (PR 4 split into 4a/4b at 2026-05-30 verify-plan HETS re-grounding) + sibling CI sub-PRs (0a/0b) per HETS Decision 5
 ---
 
 # Phase 1-alpha — v3.0-alpha Kernel Implementation
@@ -329,46 +329,88 @@ CI job failure BLOCKS the PR merge button. PR 3 description includes a checkbox:
 - F11 conflict-bailout: synthetic 3-way merge conflict → abort, NO `.orig`/`.rej` files produced
 - `bash install.sh --hooks --test` PASS
 
-### Sub-PR Phase-1-alpha/4 — K14 write-scope enforcer + post-spawn-resolver + recovery-sweep (~700-1,100 LoC, ~14-20h)
+### Sub-PR Phase-1-alpha/4 — RE-GROUNDED + SPLIT into 4a + 4b (2026-05-30 verify-plan HETS pass)
 
-**Branch**: `feat/phase-1-alpha/4-k14-resolver-recovery`
-**Risk**: **CRITICAL**. K9↔K14 contract glue lands here.
+> **Why split** (user decision 2026-05-30): the 4-lens verify-plan re-grounding against merged code (`cde3d2a`) returned unanimous NEEDS-REVISION — 5 CRITICAL + 9 HIGH. The honest re-estimate (~1,250-2,260 LoC, up from the pre-merge ~700-1,100) plus the natural producer/consumer seam justify two dependency-ordered PRs. **All findings + the canonical resolver table live in ADR-0011 §"PR-4 Re-grounding Amendment"** — that ADR is the build contract; the phases below reference it. The earlier single §Sub-PR-4 body is replaced wholesale by 4a + 4b.
+
+#### Sub-PR Phase-1-alpha/4a — K14 enforcer + spawn-record envelope field + K13 provenance/retry (~750-1,360 LoC, ~14-22h)
+
+**Branch**: `feat/phase-1-alpha/4a-k14-producer-primitives`
+**Risk**: **HIGH**. The write-scope PRODUCER + the K13 primitives; ships DORMANT (no resolver consumes the violation field yet).
 **Depends on**: 3 merged.
 **TDD-treatment**: MANDATORY.
 
-**Reviewer amendment 2026-05-27 — PR 4 runbook-familiarity pre-merge gate**: PR 4 introduces state-machine modifications that interact with LIVE WAL writes. The Rollback Strategy section's "Operator runbook for PR 4 revert specifically" enumerates the procedure (revert + manual ABORTED record emission for in-flight PENDING records + LIVE-session restart + post-revert smoke test). **Before PR 4 can merge**:
-1. PR 4 description includes a `[ ]` checkbox: "I (designated rollback operator for v3.0-alpha) have read packages/specs/plans/2026-05-27-phase-1-alpha-v3.0-alpha-kernel.md §Rollback Strategy operator runbook and acknowledge the manual ABORTED-record injection procedure."
-2. At least 2 named reviewers (project owners) must check this box explicitly in the PR review.
-3. CI workflow adds a pre-merge step: `gh pr view <PR-4> --json reviews | jq '.reviews | map(select(.body | contains("Runbook acknowledged"))) | length >= 2'` — must return true.
-4. ADR-0011 captures the runbook AS the canonical reference (not just plan-file prose), so even after the plan PR is squashed/merged, the runbook persists as an ADR.
-
-Why: PR 4 is the only PR in Phase 1-alpha whose rollback requires manual filesystem operations on operator runtime (WAL ABORTED-record emission). All other PR reverts are pure git operations. The pre-merge gate ensures rollback-readiness is verified BEFORE the substrate is exposed to PR 4's risk surface.
-
-**Files** (PR=4 rows):
-- `_lib/k14-write-scope.js` (NEW; K14 snapshot + tail-window + symlink/TOCTOU)
-- `spawn-state/post-spawn-resolver.js` (NEW; Decision 1 5-path state machine)
-- `spawn-state/recovery-sweep.js` (NEW; F3 K13-locked critical section + F20 sweep sentinel)
-- `tests/fixtures/k14/violations/*` (12 fixtures + F7 + F19)
+**Files**:
+- `_lib/k14-write-scope.js` (NEW; ORCHESTRATOR — imports the leaves, mirrors `k9-promote-deltas.js`). **Mandatory split at projected impl-LoC > 700 measured at end of TDD Phase 1** → leaves `_lib/k14-snapshot.js` (snapshot + hash) + `_lib/k14-tail-window.js` (timer + tail) + `_lib/k14-symlink-guard.js` (TOCTOU + symlink). Per-leaf `DAG: does NOT import the orchestrator` test; record split to ADR-0011 §K14-split. (ADR-0011 §K14-split)
+- `spawn-state/spawn-record.js` (MODIFY; **LIVE PostToolUse hook**) — add the `write_scope_violations[]` envelope field (default `[]`) per ADR-0011 §write-scope-violations-schema. CRITICAL: this is a live-hook change; pair-review for regression.
+- `enforcement/k13-serial-enforcer.js` (MODIFY) — bounded retry on `releaseSerialMarker` lock-unavailable (ADR-0011 §K13-release-retry); confirm `readMarker` exports the admission `spawn_id` for the resolver's release path (ADR-0011 §K13-spawn-id-provenance).
+- `tests/fixtures/k14/violations/*` (12 fixtures + F7 parent-scope false-positive + F19 default-empty advisory).
 
 **Phases**:
-1. **TDD-treatment**: write failing tests for: INV-K14-PostDetectionEnforcement (K14 violation → K9 path not entered); INV-28-K13K14SerialClosure (tail-window interlock; uses injectable-clock from existing harness); INV-19-WALAppendOnly (already passing — regression-only); INV-20-TwoPhaseCommitClosure; INV-A9-RecoverySweepIdempotent (uses `_crash-harness.js` from PR 2); F1 spawn_close_wall_ms anchor; F3 K13-locked recovery critical section; F7 parent-scope false-positive; F19 default-empty advisory.
-2. Architect-pair-run.
-3. Implement K14 minimum-code.
-4. Implement `post-spawn-resolver.js` — 5-state transition table as data; union audit-log emission.
-5. Implement `recovery-sweep.js` — F3 K13 lock + F20 sentinel.
-6. Security-auditor pair-run (TOCTOU + symlink-race coverage).
-7. Code-reviewer pair-run (state-machine completeness, error paths).
+1. **TDD-treatment** (failing first, behavioral pass criteria — NOT shape-match): `INV-K14-PostDetectionEnforcement` (fixture = spawn-record with populated `write_scope_violations[]`; assertion checks the FULL element shape, not a truthy array); K14 `symlink-escape` fixture (symlink inside worktree → outside root → flagged, NOT hashed in-scope); `INV-K13-SpawnIdProvenance` (positive: resolver-sourced release id via `readMarker` → `released:true`; **negative**: naive `envelope.spawn_id` → `not-owner` — captures the bug); `INV-K13-ReleaseRetry` (lock-unavailable N−1 then success → marker deleted); F1 `spawn_close_wall_ms` anchor; F7 false-positive flag; F19 default-empty advisory.
+2. Architect-pair-run (`architect` persona) against the failing-test set + ADR-0011 §K14-split / §write-scope-violations-schema.
+3. Implement K14 (orchestrator + leaves per split projection). Every visited file through K7 `checkWithinRoot` (fail-closed).
+4. Implement the `spawn-record.js` envelope field (`write_scope_violations[]`, default `[]`).
+5. Implement K13 modifies (bounded release retry; `readMarker`-based provenance seam).
+6. Security-auditor pair-run (`security-auditor`) — TOCTOU + symlink-race + the live-hook regression surface.
+7. Code-reviewer pair-run (`code-reviewer`) — element-shape completeness, K14 split DAG acyclicity, retry bound.
 
 **Verification probes**:
-- All 12 K14 fixtures pass (4 violation classes × 3 transports)
-- INV-K14-PostDetectionEnforcement PASS
-- INV-28-K13K14SerialClosure PASS (injectable-clock-driven, no wallclock dep)
-- INV-A9-RecoverySweepIdempotent PASS (twice-walk-WAL same-result)
-- F1: K13 unblocks based on `spawn_close_wall_ms.txt`, not WAL `committed_at`
-- F3: recovery sweep test where backgrounded subprocess writes during critical section → sweep emits violation record correctly
-- F7: parent-scope IDE-formatter fixture → emitted with `K14_SUSPECTED_FALSE_POSITIVE` flag
-- post-spawn-resolver: 5-path fixtures (PASS, pre-K9 FAIL, post-K9 tail FAIL, K9 event-stream FAIL, override) each produces correct audit record
-- E2E test: spawn → write in-scope → K14 PASS → K9 PASS → promoted; spawn → write out-of-scope → K14 FAIL → K9 not entered → REJECTED + reverse-cherrypick journal entry
+- All 12 K14 fixtures pass (4 violation classes × 3 transports) + symlink-escape fixture flagged.
+- `INV-K14-PostDetectionEnforcement` PASS (full element shape asserted).
+- `INV-K13-SpawnIdProvenance` PASS (positive + negative).
+- `INV-K13-ReleaseRetry` PASS (injectable sleep, no wallclock).
+- F1: tail-window anchors to `spawn_close_wall_ms.txt`, not WAL `committed_at`.
+- F7: parent-scope IDE-formatter fixture → `K14_SUSPECTED_FALSE_POSITIVE` flag.
+- K14 split DAG: each leaf test asserts no back-edge to the orchestrator.
+- Ships DORMANT: no production importer of `k14-write-scope.js` (the resolver lands in 4b).
+
+#### Sub-PR Phase-1-alpha/4b — post-spawn-resolver + recovery-sweep + K9 rollback + F20 skip (~500-900 LoC, ~12-18h)
+
+**Branch**: `feat/phase-1-alpha/4b-resolver-integration`
+**Risk**: **CRITICAL**. K9↔K14 contract glue + dormant-code-goes-live. First production importer of K9/K13/K14.
+**Depends on**: 4a merged.
+**TDD-treatment**: MANDATORY.
+
+**Reviewer amendment 2026-05-27 — runbook-familiarity pre-merge gate (now scoped to 4b)**: 4b introduces state-machine modifications that interact with LIVE WAL writes. The Rollback Strategy "Operator runbook for PR 4 revert" enumerates the procedure (revert + manual ABORTED record emission for in-flight PENDING records + LIVE-session restart + post-revert smoke test). **Before 4b can merge**:
+1. The 4b description includes a `[ ]` checkbox: "I (designated rollback operator for v3.0-alpha) have read §Rollback Strategy operator runbook and acknowledge the manual ABORTED-record injection procedure."
+2. At least 2 named reviewers (project owners) check this box explicitly.
+3. EITHER add the `gh pr view <PR-4b> --json reviews | jq '... contains("Runbook acknowledged") ... >= 2'` pre-merge CI step, OR downgrade the plan claim to "manual reviewer confirmation" (the jq step is NOT currently in `ci.yml` — do not over-claim CI enforcement). (ADR-0011 §reconcile-as-phase)
+4. ADR-0011 captures the runbook AS the canonical reference (survives plan squash).
+
+Why: 4b is the only Phase-1-alpha PR whose rollback requires manual filesystem operations (WAL ABORTED-record emission); all other reverts are pure git.
+
+**Files**:
+- `spawn-state/post-spawn-resolver.js` (NEW; the **canonical resolver table as DATA** per ADR-0011 §canonical-resolver-table — a map from `(terminal_state, condition)` → action, NOT if/else; union audit-log emission; imports K9 + K14 orchestrator only). Releases the K13 marker via the `readMarker`-sourced id (§K13-spawn-id-provenance). Maps all 6 K9 outcome codes (no unhandled default). `ABORT_UNCONFIRMED` → whole-tree `git status --porcelain` verify → clean=REJECT_CONFLICT / dirty=HARD_RESET + Class-4 audit.
+- `spawn-state/recovery-sweep.js` (NEW; F3 K13-lock critical section (a)→(c) + F20 sentinel + fail-closed step-(b) hash failure (skip + stay PENDING, NEVER forged ABORTED) + force-admit Class-4 record with `pending_spawn_ids[]` blast-radius per ADR-0011 §sweep-timeout). Consumes the K9 journal via `rollbackPromotion` (arg-array; NEVER shell-exec `reverse_op_description`).
+- `_lib/k9-promote-deltas.js` (MODIFY) — add `rollbackPromotion({worktreeRoot, promotedSha, runGitFn})` export (arg-array `git revert --no-edit`); add the `is_recovery_sweep` F20 skip to `checkEvidenceLinkPreCommit` (ADR-0011 §recovery-replay + §F20-recovery-sweep-sentinel).
+- `_lib/k9-journal.js` (MODIFY) — rename `reverse_op` → `reverse_op_description` (non-actionable label; kills the CWE-78 temptation at the schema level).
+- `.github/workflows/ci.yml` (MODIFY) — **delete the `dormancy-assertion-k9` job (lines 147-190 — the only dormancy job present in `ci.yml`; the PR-1-planned K3.b context-envelope grep was never added to `ci.yml`, so nothing else there to preserve)** in the SAME commit as the first K9 import (the gate is *designed* to self-remove exactly when dormancy ends — same-commit is the intended atomicity, NOT a race); **add `LOOM_CI_DENY_COMBINED_BYPASS=1`** to the CI env (ADR-0011 §combined-bypass correction).
+- `packages/specs/adrs/0010-write-scope-enforcement.md` + `0011-...md` (MODIFY) — flip `status: provisional-until-pr-4` → `accepted` after the reconcile phase.
+
+**Phases**:
+1. **TDD-treatment** (failing first, behavioral): `INV-K14-PostDetectionEnforcement` integration (K14 violation → `runGitFn` call-count 0 → resolver `REJECT_SCOPE`); `INV-28-K13K14SerialClosure` against the **REAL** `runSerialAdmission`/`releaseSerialMarker` (NOT the existing stub `k13-k14-interlock.test.js`; injectable clock); `INV-20-TwoPhaseCommitClosure` (PENDING + no COMMITTED → resolver ABORTED + new WAL ABORTED record, same `spawn_id`); `INV-A9-RecoverySweepIdempotent` (twice-walk → byte-identical WAL; uses `_crash-harness.js`); rollback round-trip (arg-array `['revert','--no-edit',sha]` + **negative** `'; rm -rf /'` description → safe); F20 skip **non-vacuous** (record fails evidence gate without the flag, passes with it); ABORT_UNCONFIRMED whole-tree (multi-file abort → `git status --porcelain` empty); 6-outcome → resolver-path mapping (no unhandled default); error paths (K14 throws → ABORTED no-K9-call; sweep-crash-in-critical-section; sweep-timeout fixture); INV-19-WALAppendOnly regression.
+2. Architect-pair-run against ADR-0011 §canonical-resolver-table.
+3. Implement `post-spawn-resolver.js` (canonical table as data).
+4. Implement K9 modifies (`rollbackPromotion` + F20 skip + `reverse_op_description` rename).
+5. Implement `recovery-sweep.js` (F3 K13-lock + F20 + fail-closed hash + force-admit record shape).
+6. Delete `dormancy-assertion-k9` + add `LOOM_CI_DENY_COMBINED_BYPASS=1` (same commit as first import).
+7. Security-auditor pair-run (CWE-78 replay, escape-hatch audit, fail-closed sweep).
+8. Code-reviewer pair-run (state-machine completeness, all 6 outcomes mapped, error paths).
+9. **Reconcile phase**: diff ADR-0010 §Decision + ADR-0011 §canonical-resolver-table / §sweep-timeout / §combined-bypass against final impl; amend on divergence; **flip both ADRs `status` → `accepted`.**
+
+**Verification probes**:
+- `INV-K14-PostDetectionEnforcement` (integration): K14 violation → `runGitFn` NOT called → `REJECT_SCOPE`.
+- `INV-28-K13K14SerialClosure` against the real K13 module (injectable-clock; no wallclock dep).
+- `INV-A9-RecoverySweepIdempotent`: twice-walk-WAL byte-identical.
+- F3: backgrounded subprocess writes during the (a)→(c) critical section → sweep emits violation correctly; step-(b) hash failure → spawn stays PENDING (no forged ABORTED).
+- Rollback: arg-array assertion + negative shell-injection fixture is safe.
+- F20 skip is non-vacuous (fails without the flag).
+- Resolver maps all 6 K9 outcomes; no fixture hits an unhandled default.
+- `LOOM_CI_DENY_COMBINED_BYPASS`: `evaluateEscapeHatches()` returns `action:'deny'` under both bypass vars + the deny var.
+- **Dormancy gate absent**: `grep dormancy-assertion-k9 .github/workflows/ci.yml` returns non-zero after 4b.
+- Neither ADR retains `provisional-until-pr-4`.
+- E2E: spawn → in-scope write → K14 PASS → K9 PASS → promoted; spawn → out-of-scope write → K14 FAIL → K9 not entered → REJECTED + reverse-cherrypick journal entry.
 
 ### Sub-PR Phase-1-alpha/5 — K12 layer-boundary advisory CI lint (~50-80 LoC, ~1-2h)
 
@@ -401,17 +443,18 @@ Per H.7.9 TDD-treatment sub-rule (substrate-fundament rewrite ≥80 LoC + behavi
 | 1 | INV-K3-LineageAcyclicity, INV-K2-SchemaForwardCompat genesis-pos, **INV-22-IdempotencyKeyUniqueness lightweight uniqueness fixture (per verify-plan mira FLAG)** | `tests/unit/kernel/_lib/k3-lineage.test.js`, extend `transaction-record.test.js`, extend `transaction-record.test.js` with INV-22 fixture (`computeIdempotencyKey` returns unique key for distinct (persona, op_class, contentHash, prev) tuples; collision-fixture asserts known-good input pairs do not collide) |
 | 2 | INV-K13-SerialOnly, INV-P-DepthOne, pre-spawn-tool-mask absent-tools (F2), K10 combined-bypass (F10) | `tests/unit/kernel/enforcement/k13-serial.test.js`, extend `pre-spawn-tool-mask.test.js`, new `k10-escape-hatch.test.js` |
 | 3 | INV-K9-RejectFidelity, INV-K9-SyntacticAtomicity, INV-21-EvidenceLinkPreCommit + 26 CWE-22 fixtures + F11/F12 | `tests/unit/kernel/_lib/k9-promote-deltas.test.js` |
-| 4 | INV-K14-PostDetectionEnforcement, INV-28-K13K14SerialClosure, INV-20-TwoPhaseCommitClosure, INV-A9-RecoverySweepIdempotent + F1/F3/F7 fixtures | `tests/unit/kernel/_lib/k14-write-scope.test.js`, `tests/unit/kernel/spawn-state/post-spawn-resolver.test.js`, `tests/unit/kernel/spawn-state/recovery-sweep.test.js` |
+| 4a | INV-K14-PostDetectionEnforcement (full element-shape), INV-K13-SpawnIdProvenance (pos+neg), INV-K13-ReleaseRetry + K14 symlink-escape/F7/F19 fixtures | `tests/unit/kernel/_lib/k14-write-scope.test.js` (+ split-leaf tests), extend `tests/unit/kernel/enforcement/k13-serial.test.js` |
+| 4b | INV-K14-PostDetectionEnforcement (integration), INV-28-K13K14SerialClosure (real K13 — NOT the stub `k13-k14-interlock.test.js`), INV-20-TwoPhaseCommitClosure, INV-A9-RecoverySweepIdempotent, rollback round-trip (+neg shell-injection), F20-skip (non-vacuous) + F1/F3 fixtures | `tests/unit/kernel/spawn-state/post-spawn-resolver.test.js`, `tests/unit/kernel/spawn-state/recovery-sweep.test.js`, extend `tests/unit/kernel/_lib/k9-promote-deltas.test.js` |
 
 Invariants explicitly DEFERRED to v3.0-alpha-patch (manual-verification at v3.0-alpha LOCK, property test at patch): INV-22-IdempotencyKeyUniqueness (covered transitively by synthesizeChain F6 fix), INV-23-MVCCSnapshotPinned (degenerate under K13 serial-only; activate when K13-relax v3.5+), INV-24-NoBareUpdate (schema-enforced; no operation_class=UPDATE in enum), INV-25-SchemaMigrationIsTransaction (per blair MED-5; defer), INV-27-PersonaIndexCanonicalOnly (defer until v3.3 E14 needs it), INV-A3a-A3b-Separation (deferred per blair MED-5 — R-primitives ship v3.1), INV-Replay-K5K7K9Equivalence (K5 doesn't ship in v3.0-alpha; defer).
 
-**Estimate-realism footnote (per verify-plan mira FLAG)**: per-sub-PR sum (~2,320-3,650 LoC / ~50.5-74.5h) is LOWER than the v6 §6.11 row total (~2,755-4,600 LoC / ~52-87h). The ~435-950 LoC delta is accounted for by: (a) K9 CWE-22 fixtures (26 fixtures × ~10-20 LoC each = ~260-520 LoC; fixture data NOT inside the K9 impl 650-1,050 estimate); (b) K14 violation fixtures (12 + F7/F19 cases × ~10-20 LoC = ~130-260 LoC); (c) ADR prose (3 ADRs × ~150-300 lines markdown = ~450-900 lines — counted as LoC); (d) per-test-file boilerplate + shared fixture setup helpers (~50-100 LoC). The 52-87h estimate honestly includes TDD-treatment 2× cost on PRs 3 + 4 (write tests first, then impl-to-green, then pair-review).
+**Estimate-realism footnote (per verify-plan mira FLAG)**: per-sub-PR sum (~2,320-3,650 LoC / ~50.5-74.5h) is LOWER than the v6 §6.11 row total (~2,755-4,600 LoC / ~52-87h). The ~435-950 LoC delta is accounted for by: (a) K9 CWE-22 fixtures (26 fixtures × ~10-20 LoC each = ~260-520 LoC; fixture data NOT inside the K9 impl 650-1,050 estimate); (b) K14 violation fixtures (12 + F7/F19 cases × ~10-20 LoC = ~130-260 LoC); (c) ADR prose (3 ADRs × ~150-300 lines markdown = ~450-900 lines — counted as LoC); (d) per-test-file boilerplate + shared fixture setup helpers (~50-100 LoC). The 52-87h estimate honestly includes TDD-treatment 2× cost on PRs 3 + 4 (write tests first, then impl-to-green, then pair-review). **PR-4 re-grounded post-merge (2026-05-30 verify-plan HETS pass)**: the original PR-4 ~700-1,100 LoC figure predated the K9/K13/K1 merges and omitted 4 surfaces (the new K9 `rollbackPromotion` executor, the LIVE `spawn-record.js` envelope field, whole-tree reject-fidelity wiring, K13 provenance/retry). Honest re-estimate after the 4a/4b split: ~1,250-2,260 LoC total (4a ~750-1,360 + 4b ~500-900). P2/P3 (±25% honesty probes) measure against this re-grounded baseline.
 
 ## Verification Probes (aggregate end-to-end)
 
 | Probe | Pass criterion |
 |---|---|
-| P1 | All 5 sub-PRs (+ 0a/0b) merged on main with zero reverts |
+| P1 | All 6 sub-PRs (incl. 4a/4b) (+ 0a/0b) merged on main with zero reverts |
 | P2 | Honest LoC actual vs estimated: within ±25% of 2,755-4,600 range (acknowledge if over) |
 | P3 | Honest hours actual vs estimated: within ±25% of 52-87h range; abort at 140h |
 | P4 | INV-19, INV-26, INV-27, INV-28 (from K2 reservation) still passing (regression-only) |
