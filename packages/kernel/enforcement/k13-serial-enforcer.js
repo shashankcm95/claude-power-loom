@@ -183,16 +183,63 @@ function runSerialAdmission(o) {
   }
 }
 
+// PR-4a (ADR-0011 §K13-release-retry): bounded-retry budget for a lock-unavailable
+// RELEASE. A failed release is costlier than a failed admission — the marker
+// persists and blocks ALL spawns until age-reap (maxSpawnAgeMs). Bounded to 3–5
+// attempts with a fixed ≈500ms backoff; total budget stays well under the sweep
+// critical-section ceiling. NOT env-overridable (F23 — the backoff is exercised
+// via an injectable sleepFn seam, never a process.env trigger).
+const RELEASE_RETRY_MAX_ATTEMPTS = 3;
+const RELEASE_RETRY_BACKOFF_MS = 500;
+
+/**
+ * Try to acquire the lock + perform the owner-scoped unlink exactly once.
+ * Returns a structured result. `null` means the lock was unavailable (caller
+ * decides whether to retry).
+ *
+ * @returns {{released: boolean, reason: string}|null}
+ */
+function attemptOwnerRelease(stateDir, spawnId, acquire, release) {
+  if (!acquire()) return null; // lock unavailable on this attempt
+  try {
+    const markerPath = markerPathFor(stateDir);
+    const marker = readMarker(markerPath);
+    if (marker && marker.spawn_id === spawnId) {
+      try { fs.unlinkSync(markerPath); } catch { /* already gone */ }
+      return { released: true, reason: 'owner-release' };
+    }
+    return { released: false, reason: marker ? 'not-owner' : 'no-marker' };
+  } finally {
+    release();
+  }
+}
+
 /**
  * Release the active-spawn marker IFF it belongs to spawnId. PR 4's
- * post-spawn-resolver calls this at spawn-close. Lock-guarded; a non-owner call
- * is a no-op (a spawn can never evict another spawn's marker).
+ * post-spawn-resolver calls this at spawn-close (the resolver sources spawnId by
+ * reading the active marker — ADR-0011 §K13-spawn-id-provenance — so the
+ * owner-check matches by construction). Lock-guarded; a non-owner call is a no-op
+ * (a spawn can never evict another spawn's marker).
+ *
+ * Two lock-unavailable behaviors, selected by whether a `sleepFn` seam is
+ * supplied (F23 — the retry is an injectable-clock concern, never env-triggered):
+ *   - sleepFn ABSENT  (legacy single-attempt): a lock-unavailable release is
+ *       audited Class-4 and returns reason:'lock-unavailable' immediately. The
+ *       marker persists for age-reap.
+ *   - sleepFn PRESENT (PR-4a bounded retry): up to RELEASE_RETRY_MAX_ATTEMPTS
+ *       (3) with a fixed backoff between attempts. If a later attempt acquires
+ *       the lock, the marker is released. On exhaustion it emits a Class-4
+ *       'release-retry-exhausted' audit and returns that reason; the marker
+ *       persists for age-reap (correctness over liveness). The PostToolUse hook
+ *       MUST exit cleanly regardless — this function never throws or blocks
+ *       indefinitely (the attempt count is hard-bounded).
  *
  * @param {object} o
  * @param {string} [o.stateDir]
  * @param {string} o.spawnId
  * @param {function} [o.acquireLockFn]
  * @param {function} [o.releaseLockFn]
+ * @param {function} [o.sleepFn]      injectable backoff seam (ms) → enables retry
  * @param {string} [o.auditLogPath]
  * @returns {{released: boolean, reason: string}}
  */
@@ -202,25 +249,33 @@ function releaseSerialMarker(o) {
   const acquire = o.acquireLockFn || (() => acquireLock(lockPath));
   const release = o.releaseLockFn || (() => releaseLock(lockPath));
 
-  if (!acquire()) {
-    // HIGH-3 (code-review): a failed RELEASE is costlier than a failed admission
-    // — the marker persists and blocks all spawns until age-reap (maxSpawnAgeMs).
-    // Surface it as a Class-4 audit so PR 4 can add a bounded retry (retry itself
-    // is a PR-4 concern; PR-2 closes the silent-loss gap).
-    emitK13Audit({ event: 'release-lock-unavailable', spawn_id: o.spawnId }, o.auditLogPath);
-    return { released: false, reason: 'lock-unavailable' };
-  }
-  try {
-    const markerPath = markerPathFor(stateDir);
-    const marker = readMarker(markerPath);
-    if (marker && marker.spawn_id === o.spawnId) {
-      try { fs.unlinkSync(markerPath); } catch { /* already gone */ }
-      return { released: true, reason: 'owner-release' };
+  // Legacy single-attempt path: no injectable sleep seam ⇒ no retry budget.
+  if (typeof o.sleepFn !== 'function') {
+    const once = attemptOwnerRelease(stateDir, o.spawnId, acquire, release);
+    if (once === null) {
+      emitK13Audit({ event: 'release-lock-unavailable', spawn_id: o.spawnId }, o.auditLogPath);
+      return { released: false, reason: 'lock-unavailable' };
     }
-    return { released: false, reason: marker ? 'not-owner' : 'no-marker' };
-  } finally {
-    release();
+    return once;
   }
+
+  // PR-4a bounded retry: 1 initial try + up to (MAX-1) retries, each preceded by
+  // a single injected backoff sleep. A non-lock-unavailable outcome (owner /
+  // not-owner / no-marker) returns immediately — only lock-unavailability retries.
+  for (let attempt = 1; attempt <= RELEASE_RETRY_MAX_ATTEMPTS; attempt++) {
+    if (attempt > 1) {
+      try { o.sleepFn(RELEASE_RETRY_BACKOFF_MS); } catch { /* sleep seam must not throw the hook */ }
+    }
+    const res = attemptOwnerRelease(stateDir, o.spawnId, acquire, release);
+    if (res !== null) return res; // acquired the lock — done (released or owner-mismatch)
+  }
+  // Exhausted: every attempt found the lock unavailable. Marker persists for
+  // age-reap; surface a distinct Class-4 reason so the resolver can alert.
+  emitK13Audit(
+    { event: 'release-retry-exhausted', spawn_id: o.spawnId, attempts: RELEASE_RETRY_MAX_ATTEMPTS },
+    o.auditLogPath
+  );
+  return { released: false, reason: 'release-retry-exhausted' };
 }
 
 // ── Dormant hook entry (NOT wired in hooks.json) ────────────────────────────

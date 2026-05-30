@@ -319,5 +319,77 @@ test('INV-SpawnRecord-AtomicWrite: concurrent writers produce serialized output 
   }
 });
 
+// ════════════════════════════════════════════════════════════════════════════
+// PR-4a additions — TDD Phase 1 (RED until buildEnvelope gains the
+// write_scope_violations[] field). ADR-0011 §write-scope-violations-schema +
+// ADR-0010 INV-A7. This is a LIVE PostToolUse hook — a MINIMAL surgical add of
+// one default-[] field; zero regression to existing envelope fields.
+// ════════════════════════════════════════════════════════════════════════════
+
+function getBuildEnvelope() {
+  const mod = require(SPAWN_RECORD_PATH);
+  if (mod.__test__ && typeof mod.__test__.buildEnvelope === 'function') return mod.__test__.buildEnvelope;
+  if (typeof mod.buildEnvelope === 'function') return mod.buildEnvelope;
+  throw new Error('buildEnvelope not exported (expected under __test__)');
+}
+
+function minimalBuildArgs() {
+  return {
+    input: { session_id: 'sess-pr4a', cwd: '/tmp/wt' },
+    toolName: 'Agent',
+    toolInput: { subagent_type: 'architect', prompt: 'do the thing' },
+    toolResponse: 'done',
+  };
+}
+
+const VIOLATION_ELEMENT_KEYS = ['path', 'kind', 'transport', 'detected_at_phase', 'sha256_pre', 'sha256_post', 'flags'];
+
+test('write_scope_violations: buildEnvelope carries the field, defaulting to an empty array', () => {
+  const buildEnvelope = getBuildEnvelope();
+  const env = buildEnvelope(minimalBuildArgs());
+  assert.ok(
+    Object.prototype.hasOwnProperty.call(env, 'write_scope_violations'),
+    'envelope must carry a write_scope_violations field (ADR-0010 INV-A7)',
+  );
+  assert.ok(Array.isArray(env.write_scope_violations), 'field is an array');
+  assert.strictEqual(env.write_scope_violations.length, 0, 'default is empty (clean spawn) []');
+});
+
+test('write_scope_violations: the default-[] field does NOT regress existing envelope fields', () => {
+  const buildEnvelope = getBuildEnvelope();
+  const env = buildEnvelope(minimalBuildArgs());
+  // Spot-check the load-bearing pre-existing fields are intact (surgical add).
+  assert.strictEqual(env.schema_version !== undefined, true, 'schema_version intact');
+  assert.strictEqual(typeof env.spawn_id, 'string', 'spawn_id intact');
+  assert.strictEqual(env.parent_state_id, null, 'parent_state_id (INV-P-DepthOne) intact');
+  assert.ok(env.axioms && typeof env.axioms === 'object', 'axioms block intact');
+  assert.ok(env.attestations && env.attestations.bounded_output, 'attestations.bounded_output intact');
+  assert.deepStrictEqual(env.theorems, [], 'theorems still []');
+  assert.deepStrictEqual(env.samples, [], 'samples still []');
+});
+
+test('write_scope_violations: a populated element conforms to the §write-scope-violations-schema shape', () => {
+  // The schema shape K14 (4a) produces + the resolver (4b) consumes. Asserted at
+  // the spawn-record boundary so the field is shape-correct before any consumer.
+  const populated = {
+    path: 'sub/ghost.txt',
+    kind: 'out-of-scope',
+    transport: 'snapshot',
+    detected_at_phase: 'spawn-close',
+    sha256_pre: 'a'.repeat(64),
+    sha256_post: 'b'.repeat(64),
+    flags: [],
+  };
+  for (const k of VIOLATION_ELEMENT_KEYS) {
+    assert.ok(Object.prototype.hasOwnProperty.call(populated, k), `element shape requires '${k}'`);
+  }
+  assert.ok(['out-of-scope', 'symlink-escape', 'parent-scope-suspected'].includes(populated.kind),
+    'kind is one of the three write-scope violation kinds');
+  assert.strictEqual(populated.transport, 'snapshot', 'v3.0-alpha transport is snapshot');
+  assert.ok(['spawn-close', 'tail-window', 'recovery-sweep'].includes(populated.detected_at_phase),
+    'detected_at_phase is one of the three phases');
+  assert.ok(Array.isArray(populated.flags), 'flags is an array (may carry K14_SUSPECTED_FALSE_POSITIVE)');
+});
+
 process.stdout.write(`\nspawn-record.test.js: ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);

@@ -8,8 +8,12 @@ author: 04-architect.theo (HETS-routed Phase 1-alpha design)
 superseded_by: null
 files_affected:
   - packages/kernel/_lib/k14-write-scope.js
+  - packages/kernel/_lib/k14-snapshot.js
+  - packages/kernel/_lib/k14-tail-window.js
+  - packages/kernel/_lib/k14-symlink-guard.js
   - packages/kernel/spawn-state/post-spawn-resolver.js
   - packages/kernel/spawn-state/recovery-sweep.js
+  - packages/kernel/spawn-state/spawn-record.js
   - packages/kernel/_lib/k9-promote-deltas.js
 invariants_introduced:
   - "INV-K14-PostDetectionEnforcement: K14 snapshot computed AFTER spawn completes; out-of-scope writes are detected, NOT prevented at write-time (the snapshot is the source of truth)"
@@ -32,6 +36,8 @@ related_kb:
 
 Without this gate, this ADR risks becoming a stale historical artifact at the moment it ships.
 
+> **PR-4 Re-grounding (2026-05-30 verify-plan HETS pass)**: the reconcile gate is now a **numbered phase in PR-4b** (not a floating checkbox), and the authoritative re-grounding of K14 / resolver / sweep against merged code lives in **ADR-0011 §"PR-4 Re-grounding Amendment"** (canonical resolver table, `write_scope_violations[]` schema, K13 provenance, recovery-replay). PR 4 ships split: **4a** = K14(+split) + the `spawn-record.js` envelope field + K13 fixes (dormant); **4b** = resolver + recovery-sweep + K9 `rollbackPromotion` + the status flip `provisional-until-pr-4` → `accepted`.
+
 ## Context
 
 The v6 substrate synthesis (per `packages/specs/rfcs/v6-substrate-synthesis.md` §6.5) commits to write-scope enforcement as a Pillar-2 invariant: every spawned actor MUST write only to declared paths. Violations are correctness failures that pollute the substrate state (introduce ghost writes, break lineage chains, create unattributable side effects).
@@ -53,7 +59,7 @@ Adopt **post-detection enforcement** via K14 snapshot algorithm. The substrate d
 
 1. **Spawn declares scope at admission** — write-scope-snapshot is a declarative claim recorded in the spawn-record at spawn-init time.
 2. **K14 snapshots the filesystem at spawn-close** — after the spawn completes (or after a tail-window timeout for crashed spawns), K14 walks the declared write paths + their parents and computes a content-hash snapshot.
-3. **post-spawn-resolver compares snapshot to declared scope** — any file outside the declared write paths whose content-hash changed since spawn-init is flagged as a `write_scope_violation`.
+3. **post-spawn-resolver compares snapshot to declared scope** — any file outside the declared write paths whose content-hash changed since spawn-init is flagged as a `write_scope_violation` and recorded in the spawn-record's `write_scope_violations[]` envelope field (added to `spawn-record.js` in PR-4a; per-element schema in ADR-0011 §write-scope-violations-schema).
 4. **K9 (PR 3) consumes the violation set** at pre-commit time — promote-deltas refuses to commit a chain if any spawn in its evidence chain has a non-empty `write_scope_violations[]` (unless explicitly bypassed via combined env-var per ADR-0011 §combined-bypass).
 
 ### Key mechanics
@@ -87,6 +93,6 @@ Pre-prevention requires syscall-level instrumentation (rejected above). Post-det
 
 - INV-K14-PostDetectionEnforcement: a synthetic out-of-scope-write fixture under `tests/fixtures/k14/violations/` produces a non-empty `write_scope_violations[]` array in the spawn-record AND is rejected by K9 pre-commit
 - INV-A7: every write_scope_violation is reproducible — re-running the snapshot algorithm on the same filesystem state produces the same violation set (determinism)
-- The 5-path resolver state machine (per Decision 1 of master plan) handles: (a) no violations + spawn completed; (b) violations + spawn completed; (c) no violations + crashed; (d) violations + crashed; (e) sweep-incomplete admission gate
+- The resolver transition table — **SUPERSEDED by ADR-0011 §canonical-resolver-table** (the prior cross-product enumeration here did not map K9's six outcome codes nor the override / `ABORT_UNCONFIRMED` whole-tree-verify cells). The canonical table is the single authoritative spine `post-spawn-resolver.js` encodes.
 
 Full verification probe enumeration lives in PR 4 phase section + INV-K14-PostDetectionEnforcement property test in `tests/unit/kernel/_lib/k14-write-scope.test.js` (PR 4 deliverable).

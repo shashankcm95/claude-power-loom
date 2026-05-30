@@ -228,5 +228,114 @@ test('HIGH-3: releaseSerialMarker lock-unavailable → audited (not silently los
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// ════════════════════════════════════════════════════════════════════════════
+// PR-4a additions — TDD Phase 1 (RED until the K13 release-retry + the
+// readMarker-sourced provenance resolution land). ADR-0011 §K13-spawn-id-
+// provenance + §K13-release-retry.
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── INV-K13-SpawnIdProvenance (ADR-0011 §K13-spawn-id-provenance) ────────────
+//
+// The resolver holds the spawn-record ENVELOPE, whose spawn_id is UUID-keyed
+// (buildSpawnId: `${ms}-${randomUUID()}`) and can NEVER equal the marker's
+// sessionId-keyed admission id (k13 main(): `${ms}-${sessionId}`). The fix: the
+// resolver recovers the admission-written id by READING THE MARKER (readMarker)
+// and releases with THAT id. Under serial-only there is ≤1 active marker, so
+// read-then-release matches the owner-check by construction.
+
+test('INV-K13-SpawnIdProvenance (POSITIVE): release-id sourced via readMarker → released:true, marker deleted', () => {
+  const dir = tmpStateDir();
+  try {
+    // Admission writes a marker with the admission id (here 'admit-xyz').
+    k13.runSerialAdmission({ stateDir: dir, spawnId: 'admit-xyz', nowMs: 1000, maxSpawnAgeMs: AGE });
+    // The resolver does NOT know the id scheme — it reads the active marker.
+    const marker = k13.readMarker(k13.markerPathFor(dir));
+    assert.ok(marker && typeof marker.spawn_id === 'string', 'readMarker recovers the admission-written id');
+    const rel = k13.releaseSerialMarker({ stateDir: dir, spawnId: marker.spawn_id });
+    assert.strictEqual(rel.released, true, 'releasing with the marker-sourced id succeeds');
+    assert.strictEqual(fs.existsSync(k13.markerPathFor(dir)), false, 'owner release deletes the marker');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('INV-K13-SpawnIdProvenance (NEGATIVE): a naive envelope.spawn_id → {released:false, reason:not-owner} (captures the bug)', () => {
+  const dir = tmpStateDir();
+  try {
+    // Admission id is sessionId-keyed; the envelope id is UUID-keyed — they can
+    // never be equal. Passing the envelope id is the BUG the read-marker fix avoids.
+    k13.runSerialAdmission({ stateDir: dir, spawnId: 'kf3a-sess123', nowMs: 1000, maxSpawnAgeMs: AGE });
+    const naiveEnvelopeSpawnId = 'kf3a-' + '550e8400-e29b-41d4-a716-446655440000'; // UUID-keyed
+    const rel = k13.releaseSerialMarker({ stateDir: dir, spawnId: naiveEnvelopeSpawnId });
+    assert.strictEqual(rel.released, false, 'the naive (non-owner) id must NOT release the marker');
+    assert.strictEqual(rel.reason, 'not-owner', 'the owner-check correctly rejects the envelope id');
+    assert.strictEqual(fs.existsSync(k13.markerPathFor(dir)), true,
+      'the marker SURVIVES a non-owner release — this is exactly why the resolver must read the marker');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// ── INV-K13-ReleaseRetry (ADR-0011 §K13-release-retry) ───────────────────────
+//
+// releaseSerialMarker currently returns immediately on lock-unavailable. PR-4a
+// adds a BOUNDED retry: up to N attempts (3–5) with a fixed backoff via an
+// INJECTABLE sleep seam (F23 — never an env-var trigger). On exhaustion it emits
+// Class-4 'release-retry-exhausted' and falls back to age-reap; the PostToolUse
+// hook MUST exit cleanly regardless (no indefinite block).
+
+test('INV-K13-ReleaseRetry: lock unavailable for N-1 attempts then success → marker deleted', () => {
+  const dir = tmpStateDir();
+  try {
+    k13.runSerialAdmission({ stateDir: dir, spawnId: 'R', nowMs: 1000, maxSpawnAgeMs: AGE });
+    const marker = k13.readMarker(k13.markerPathFor(dir));
+    let attempt = 0;
+    const sleeps = [];
+    // Acquire fails the first 2 times, succeeds on the 3rd (within the 3–5 bound).
+    const acquireLockFn = () => { attempt += 1; return attempt >= 3; };
+    const rel = k13.releaseSerialMarker({
+      stateDir: dir,
+      spawnId: marker.spawn_id,
+      acquireLockFn,
+      sleepFn: (ms) => { sleeps.push(ms); }, // injectable backoff seam (F23, no env trigger)
+    });
+    assert.strictEqual(rel.released, true, 'a retry that eventually acquires the lock releases the marker');
+    assert.ok(attempt >= 3, 'the retry made multiple bounded attempts');
+    assert.ok(sleeps.length >= 1 && sleeps.every((s) => typeof s === 'number'),
+      'backoff used the injectable sleep seam (no real wall-sleep, no env trigger)');
+    assert.strictEqual(fs.existsSync(k13.markerPathFor(dir)), false, 'marker deleted after the retried release');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('INV-K13-ReleaseRetry: bounded attempts, all-fail → release-retry-exhausted + audited + clean (no throw, no infinite loop)', () => {
+  const dir = tmpStateDir();
+  const log = path.join(dir, 'retry-exhausted-audit.jsonl');
+  try {
+    k13.runSerialAdmission({ stateDir: dir, spawnId: 'R2', nowMs: 1000, maxSpawnAgeMs: AGE });
+    let attempt = 0;
+    const sleeps = [];
+    const rel = k13.releaseSerialMarker({
+      stateDir: dir,
+      spawnId: 'R2',
+      acquireLockFn: () => { attempt += 1; return false; }, // never acquires
+      sleepFn: (ms) => { sleeps.push(ms); },
+      auditLogPath: log,
+    });
+    assert.strictEqual(rel.released, false, 'exhausted retry does not release');
+    assert.strictEqual(rel.reason, 'release-retry-exhausted', 'exhaustion surfaces a distinct reason');
+    assert.ok(attempt >= 3 && attempt <= 5, `attempts must be bounded to 3–5 (got ${attempt})`);
+    assert.strictEqual(sleeps.length, attempt - 1, 'a backoff sleep precedes each retry except the first');
+    assert.ok(fs.existsSync(log), 'exhaustion emits a Class-4 release-retry-exhausted audit event');
+    assert.strictEqual(fs.existsSync(k13.markerPathFor(dir)), true,
+      'on exhaustion the marker persists for age-reap (correctness over liveness)');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('INV-K13-ReleaseRetry: the default sleep seam is injectable (no env-var trigger — F23)', () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, '..', '..', '..', '..', 'packages', 'kernel', 'enforcement', 'k13-serial-enforcer.js'),
+    'utf8'
+  );
+  // The retry budget/backoff must not be driven by an env var (F23 discipline).
+  assert.ok(!/process\.env\.[A-Z_]*RETRY/.test(src) && !/process\.env\.[A-Z_]*BACKOFF/.test(src),
+    'no env-var-triggered retry/backoff (F23 — sleep is an injectable argument seam)');
+});
+
 process.stdout.write(`\nk13-serial.test.js: ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
