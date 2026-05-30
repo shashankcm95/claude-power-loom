@@ -198,60 +198,19 @@ function storePattern(enrichment) {
   }
 }
 
-// H.4.1 — auto self-improve loop hook. Resolves via the same candidate-paths
-// pattern as STORE_SCRIPT above so it works from either the canonical repo
-// path or the installed ~/.claude/scripts location.
-function resolveSelfImproveScript() {
-  const candidates = [
-    path.join(__dirname, '..', '..', 'spawn-state', 'self-improve-store.js'),
-    path.join(__dirname, '..', 'spawn-state', 'self-improve-store.js'),
-    path.join(require('os').homedir(), '.claude', 'packages', 'kernel', 'spawn-state', 'self-improve-store.js'),
-  ];
-  for (const c of candidates) {
-    try { fs.accessSync(c, fs.constants.F_OK); return c; } catch { /* next */ }
-  }
-  return null;
-}
-const SELF_IMPROVE_SCRIPT = resolveSelfImproveScript();
-
-// H.5.4 (CS-3 code-reviewer.blair H-4): file-path regex extracted to a shared
-// `_lib/file-path-pattern.js` module so the regex shape is single-sourced (was
-// duplicated in pre-compact-save.js). New extractor handles Unix paths,
-// Windows paths (drive-letter + backslash), and quoted paths-with-spaces.
-const { extractFilePaths } = require('../_lib/file-path-pattern');
-
-function extractSignals(text) {
-  const signals = [];
-  // File paths via shared extractor (Unix + Windows + quoted-with-spaces)
-  for (const p of extractFilePaths(text)) signals.push('filePath:' + p);
-  // Slash-command invocations the user is running
-  const cmdPattern = /(?<![\w/-])\/([a-z][a-z0-9-]+)(?=\s|$|[.,;:!?])/g;
-  const cmds = new Set();
-  let m;
-  while ((m = cmdPattern.exec(text)) !== null) cmds.add(m[1]);
-  for (const c of cmds) signals.push('command:/' + c);
-  return signals;
-}
-
-function bumpSelfImproveCounters(signals) {
-  if (!SELF_IMPROVE_SCRIPT) return null;
-  // HT.1.14: batched in-process call. Was 3 static spawnSync sites worst-case
-  // 22 calls × ~50-100ms = 1.1-2.2 sec latency in user-perceptible Stop window.
-  // Now: single Node module load (cached after first call) + single in-process
-  // call with all signals batched. ~50ms once + ~1ms per subsequent Stop.
-  //
-  // ADR-0001 fail-soft invariant 2 preserved: try/catch + log on error +
-  // return null on failure (caller treats null as "skip self-improve this turn"
-  // and continues; hook input pass-through happens at line 272 unconditionally).
-  try {
-    const store = require(SELF_IMPROVE_SCRIPT);
-    const result = store.bumpBatch(signals);
-    return { shouldScan: result.shouldScan, signalsBumped: result.signalsBumped };
-  } catch (err) {
-    log('self_improve_failed', { error: err.message });
-    return null;
-  }
-}
+// ── Self-improve FREQUENCY capture RETIRED (2026-05-30) ──────────────────────
+// The Stop-hook bump of filePath:/command: counters into self-improve-store was
+// a frequency-of-touch signal. The 2026-05-26 postmortem
+// (packages/specs/research/2026-05-26-self-improve-loop-empirically-broken.md)
+// proved it a category error: 91.5% dismissal, 0 actionable signal across 47
+// candidates. The 2026-05-30 audit confirmed it was STILL firing — the original
+// "disable" was a downstream hotfix that never reached source and was re-tuned
+// by #166 — so it is retired here AT SOURCE. The value-bearing `drift:` layer
+// (manual CLI bumps + scan-stale-artifacts.js) is unaffected; the outcome-centric
+// redesign is routed to the v3.3 Evolution Lab.
+//
+// NOTE: this hook ALSO captures prompt-enrichment patterns (extractEnrichments /
+// storePattern, above) — that capability is load-bearing and is NOT retired.
 
 let input = '';
 process.stdin.setEncoding('utf8');
@@ -272,20 +231,5 @@ process.stdin.on('end', () => {
     }
   } catch (err) {
     log('error', { error: err.message });
-  }
-
-  // H.4.1: bump self-improve counters + maybe trigger scan. Best-effort —
-  // failures here never affect the response pipeline.
-  try {
-    const signals = extractSignals(input);
-    const result = bumpSelfImproveCounters(signals);
-    if (result) {
-      log('self_improve_bumped', {
-        signalsBumped: result.signalsBumped,
-        shouldScan: result.shouldScan,
-      });
-    }
-  } catch (err) {
-    log('self_improve_error', { error: err.message });
   }
 });
