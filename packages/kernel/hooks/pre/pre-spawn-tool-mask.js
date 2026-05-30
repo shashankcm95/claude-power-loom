@@ -78,6 +78,7 @@ const MCP_PREFIX = 'mcp__';
  * the v3.0-alpha network-prohibition gate.
  */
 const NETWORK_BASH_PATTERNS = [
+  // --- original v3.0-alpha set ---
   /\bcurl\b/,
   /\bwget\b/,
   /\bgh\b/,
@@ -86,10 +87,50 @@ const NETWORK_BASH_PATTERNS = [
   /\bssh\b/,
   /\bscp\b/,
   /\bhttp(?:ie)?\b/,
-  /\bnpm\s+(install|publish|i\b)/,  // npm install can fetch packages
+  /\bnpm\s+(install|publish|i\b)/, // npm install can fetch packages
   /\bpnpm\s+(install|publish|add)/,
   /\byarn\s+(install|add|publish)/,
   /\bpip\s+install/,
+  // --- F4 (eli-C2 + vlad/nova round-2): 14→22+ additional network-capable
+  // patterns. Word-boundary anchored per jade MEDIUM #4. Conservative: false
+  // positives are preferred over false negatives at the v3.0-alpha gate. ---
+  /\bgit\s+(push|fetch|clone|pull|remote)\b/, // remote git operations
+  /\bsocat\b/,
+  /\bncat\b/,
+  /\btelnet\b/,
+  /\bftp\b/,
+  /\bsftp\b/,
+  /\brsync\b[^\n]*(@|::)/, // remote rsync (host:path or host::module)
+  /\bdig\b/,
+  /\bnslookup\b/,
+  /\bgetent\s+hosts\b/,
+  /\bhost\s/, // `host <name>` DNS lookup (\bhost\b alone over-matches localhost-style tokens)
+  /\bbun\s+(add|install|x|create)\b/,
+  /\bdeno\s+(install|run|add|cache)\b/,
+  /\bpnpm\s+dlx\b/,
+  /\bnpx\b/,
+  /\bcat\s+<</, // heredoc-pipe-exec class (e.g. `cat <<EOF | python`)
+  /\bbase64\b[^\n]*\|\s*(sh|bash|zsh|python|python3|node|perl|ruby)\b/, // base64-piped exec
+  // Inline-interpreter exec. Hardened (review rec, 2026-05-30) to close real
+  // flag-stuffing bypasses the prior `(\s+-[A-Za-z])*\s+-c` form missed:
+  //   - combined short-flag groups ending in the exec flag: `python -Bc`,
+  //     `python -OBc` (the interpreter consumes the rest of the group as code,
+  //     so `-[A-Za-z]*c` is the right shape);
+  //   - flag-stuffing with VALUES: `python -W ignore -c`, `python -X dev -c`;
+  //   - python2; node long-form `--eval` and combined `-pe`.
+  // `[^|;&\n]*?` tolerates intervening flags/args but stops at a
+  // pipe/semicolon/ampersand boundary (won't span into an unrelated command).
+  //
+  // HONEST LIMIT (not a bug — verified in the test fixtures): a regex cannot
+  // fully parse a shell. `python deploy.py` or arbitrary `-m <module>` can also
+  // reach the network and are NOT all caught here. This gate is a best-effort
+  // tripwire for the OBVIOUS inline cases; the real network-prohibition
+  // enforcement is v3.1 K8 (deny the tool outright) + v3.5 container egress.
+  /\bpython[23]?\b[^|;&\n]*?\s-[A-Za-z]*c\b/, // python -c / -Bc / -W x -c / -OBc
+  /\bpython[23]?\b[^|;&\n]*\s-m\s+(http\.server|SimpleHTTPServer|socketserver|smtpd|ftplib)\b/, // python -m <net module>
+  /\bnode\b[^|;&\n]*?\s(-[A-Za-z]*e\b|--eval\b)/, // node -e / -pe / --eval
+  /\bperl\b[^|;&\n]*?\s-[A-Za-z]*e\b/, // perl -e / -ne / -Mfoo -e
+  /\bruby\b[^|;&\n]*?\s-[A-Za-z]*e\b/, // ruby -e / -ne
 ];
 
 function isNetworkBashCommand(command) {
@@ -138,9 +179,14 @@ function logAuditEvent(event) {
  *   { masked: <new array>, stripped: <array of dropped entries> }
  */
 function applyMask(tools) {
-  if (!Array.isArray(tools)) return { masked: tools, stripped: [] };
+  if (!Array.isArray(tools)) return { masked: tools, stripped: [], flagged: [] };
   const masked = [];
   const stripped = [];
+  // vlad round-2 note: a bare-string 'Bash' grant carries no inspectable
+  // `.command`, so a network command smuggled through it can't be detected
+  // here. We FLAG such entries for the v3.1 K8 arrival point (capability
+  // injection) rather than over-stripping legitimate non-network Bash use.
+  const flagged = [];
 
   for (const tool of tools) {
     let toolName;
@@ -182,13 +228,39 @@ function applyMask(tools) {
         stripped.push({ reason: 'bash-network-pattern', tool: toolDetail });
         continue;
       }
+      // vlad round-2: bare-string 'Bash' (no inspectable command) — flag for
+      // v3.1 K8, then pass through (do not over-strip legitimate Bash).
+      if (typeof tool === 'string') {
+        flagged.push({ reason: 'bash-string-uninspectable-v31-gap', tool: toolDetail });
+      }
     }
 
     // Pass through.
     masked.push(tool);
   }
 
-  return { masked, stripped };
+  return { masked, stripped, flagged };
+}
+
+/**
+ * Pure decision function (F2 testability). Given a tool name + input, decide
+ * what the mask should do — without performing any I/O. Keeps main() thin and
+ * lets tests assert the audit-vs-mask-vs-pass branch without spawning a
+ * subprocess or writing to the audit log.
+ *
+ * @param {string} toolName
+ * @param {*} toolInput
+ * @returns {'mask'|'audit-absent'|'pass'}
+ */
+function decideAction(toolName, toolInput) {
+  if (toolName !== 'Agent' && toolName !== 'Task') return 'pass';
+  if (toolInput && Array.isArray(toolInput.tools)) return 'mask';
+  // F2 (user decision 2026-05-30, "audit, don't block"): the tools[] array is
+  // absent, so the mask cannot be enforced. We do NOT block — blocking would
+  // cancel every normal subagent spawn (none carry tools[]), bricking the
+  // substrate. Instead we AUDIT the unenforced spawn so the Pillar-2 gap is
+  // observable. Real enforcement arrives in v3.1 K8 (capability injection).
+  return 'audit-absent';
 }
 
 function main() {
@@ -209,33 +281,50 @@ function main() {
   const toolName = hookInput.tool_name;
   const toolInput = hookInput.tool_input;
 
-  // Only act on Agent or Task tool calls. Other tools (Read/Edit/Write/Grep/etc.)
-  // are not delegating to a sub-agent; this hook has no business modifying them.
-  if (toolName !== 'Agent' && toolName !== 'Task') {
+  const action = decideAction(toolName, toolInput);
+
+  // Non-spawn tools (Read/Edit/Write/Grep/etc.) are not delegating to a
+  // sub-agent; this hook has no business modifying them.
+  if (action === 'pass') {
     process.exit(0);
     return;
   }
 
-  // The Agent/Task tool's input may carry an explicit `tools` array; if present,
-  // mask it. Some Anthropic plugin sub-agent forms don't expose tools as a
-  // first-class array — in that case, mask is a no-op (the sub-agent inherits
-  // parent capabilities and Pillar-2 enforcement must move to K8 in v3.1).
-  let updatedToolInput = toolInput;
-  let stripped = [];
-
-  if (toolInput && Array.isArray(toolInput.tools)) {
-    const result = applyMask(toolInput.tools);
-    if (result.stripped.length > 0) {
-      updatedToolInput = { ...toolInput, tools: result.masked };
-      stripped = result.stripped;
-    }
-  }
-
-  if (stripped.length > 0) {
+  // F2 (audit, don't block): tools[] absent on a spawn. Emit a Class-4 audit
+  // event so the unenforced (Pillar-2) spawn is observable, then EXIT 0 with no
+  // block decision — blocking here would cancel every normal subagent spawn.
+  if (action === 'audit-absent') {
     logAuditEvent({
       tool_name: toolName,
-      stripped_count: stripped.length,
-      stripped_reasons: stripped.map((s) => s.reason),
+      kind: 'tools-array-absent-pillar-2-gap',
+      enforced: false,
+      subagent_type: toolInput && toolInput.subagent_type ? toolInput.subagent_type : null,
+      note: 'tools[] absent; mask not enforceable at v3.0-alpha; v3.1 K8 closes this',
+    });
+    process.exit(0);
+    return;
+  }
+
+  // action === 'mask': tools[] is present — strip network-side-effecting tools.
+  const result = applyMask(toolInput.tools);
+
+  // vlad round-2: surface bare-string 'Bash' grants (uninspectable) as an audit
+  // event; they pass through but are tracked for the v3.1 K8 close.
+  if (result.flagged && result.flagged.length > 0) {
+    logAuditEvent({
+      tool_name: toolName,
+      kind: 'bash-string-uninspectable-v31-gap',
+      enforced: false,
+      flagged_count: result.flagged.length,
+      subagent_type: toolInput && toolInput.subagent_type ? toolInput.subagent_type : null,
+    });
+  }
+
+  if (result.stripped.length > 0) {
+    logAuditEvent({
+      tool_name: toolName,
+      stripped_count: result.stripped.length,
+      stripped_reasons: result.stripped.map((s) => s.reason),
       subagent_type: toolInput && toolInput.subagent_type ? toolInput.subagent_type : null,
     });
 
@@ -243,7 +332,7 @@ function main() {
     process.stdout.write(
       JSON.stringify({
         decision: 'allow',
-        updatedInput: updatedToolInput,
+        updatedInput: { ...toolInput, tools: result.masked },
       })
     );
   }
@@ -263,6 +352,7 @@ if (require.main === module) {
 
 module.exports = {
   applyMask,
+  decideAction,
   isNetworkBashCommand,
   STRIP_TOOL_NAMES,
   MCP_PREFIX,

@@ -12,6 +12,10 @@ const logger = log('fact-force-gate');
 // catch + log('atomic_write_failed') preserved) from inline atomic-write
 // pattern to shared helper. Cross-tree require precedent per HT.2.3 Part B.
 const { writeAtomic } = require('../../_lib/atomic-write');
+// F14 (PR 2): consume the shared K7 path canonicalizer instead of a local
+// realpath helper (DRY). K7 additionally resolves symlinked ancestors of a
+// not-yet-existing leaf, which only strengthens the read-tracker keying.
+const { canonicalize } = require('../../_lib/path-canonicalize');
 
 // Session-scoped tracker. PPID is the key: child hook processes spawned
 // from the same Claude Code parent share the parent's PPID, so reads
@@ -67,9 +71,10 @@ function saveTracker(tracker) {
  * @returns {string} Canonical absolute path, or empty string if input was falsy
  */
 function normalizePath(filePath) {
-  if (!filePath) return '';
-  const resolved = path.resolve(filePath);
-  try { return fs.realpathSync(resolved); } catch { return resolved; }
+  // F14: delegate to the shared K7 canonicalizer (packages/kernel/_lib/
+  // path-canonicalize.js). Behavior is a strict superset of the prior local
+  // helper — symlinked ancestors of non-existent leaves now resolve too.
+  return canonicalize(filePath);
 }
 
 let input = '';

@@ -12,6 +12,7 @@ const { spawnSync } = require('child_process');
 const path = require('path');
 const {
   applyMask,
+  decideAction,
   isNetworkBashCommand,
   STRIP_TOOL_NAMES,
   MCP_PREFIX,
@@ -184,6 +185,114 @@ test('STRIP_TOOL_NAMES includes WebFetch + WebSearch', () => {
 
 test('MCP_PREFIX equals mcp__', () => {
   assert.strictEqual(MCP_PREFIX, 'mcp__');
+});
+
+// --- F2: audit, don't block (user decision 2026-05-30) ---
+
+test('F2: decideAction returns audit-absent for a spawn with no tools[]', () => {
+  assert.strictEqual(decideAction('Agent', { subagent_type: 'architect', prompt: 'x' }), 'audit-absent');
+  assert.strictEqual(decideAction('Task', { subagent_type: 'x' }), 'audit-absent');
+});
+
+test('F2: decideAction returns pass for non-spawn tools', () => {
+  assert.strictEqual(decideAction('Read', { file_path: '/x' }), 'pass');
+  assert.strictEqual(decideAction('Bash', { command: 'ls' }), 'pass');
+});
+
+test('F2: decideAction returns mask when tools[] is present', () => {
+  assert.strictEqual(decideAction('Agent', { tools: ['Read', 'WebFetch'] }), 'mask');
+});
+
+test('F2: hook does NOT block a spawn with absent tools[] (non-bricking)', () => {
+  const r = runHook({ tool_name: 'Agent', tool_input: { subagent_type: 'architect', prompt: 'hi' } });
+  assert.strictEqual(r.exitCode, 0);
+  assert.strictEqual(r.stdout.trim(), ''); // audit-only; NO block decision emitted
+});
+
+// --- F4: expanded denylist (22+ patterns), with matches + no-false-positive fixtures ---
+
+test('F4: each new network pattern matches its representative command', () => {
+  const shouldMatch = [
+    'git push origin main', 'git clone https://x', 'git fetch origin',
+    'socat TCP4:host:80 -', 'ncat host 80', 'telnet host 23', 'ftp host', 'sftp user@host',
+    'rsync -av f user@host:/x', 'rsync f host::mod',
+    'dig example.com', 'nslookup example.com', 'getent hosts example.com', 'host example.com',
+    'bun add left-pad', 'deno run https://x.ts', 'pnpm dlx cowsay', 'npx cowsay',
+    'cat <<EOF | python', 'base64 -d payload | bash',
+    'python3 -c "import urllib"', 'python -B -c "x"', 'node -e "require(http)"',
+    'perl -e "use LWP"', 'ruby -e "require nethttp"',
+  ];
+  for (const cmd of shouldMatch) {
+    assert.strictEqual(isNetworkBashCommand(cmd), true, 'should match: ' + cmd);
+  }
+});
+
+test('F4: no false positives on safe commands (doesn\'t-match fixtures)', () => {
+  const shouldNotMatch = [
+    'git status', 'git commit -m x', 'git log', 'git diff',
+    'cat file.txt', 'cat README.md', 'host_name=foo', 'localhost test',
+    'python script.py', 'node server.js', 'echo hello', 'ls -la',
+  ];
+  for (const cmd of shouldNotMatch) {
+    assert.strictEqual(isNetworkBashCommand(cmd), false, 'should NOT match: ' + cmd);
+  }
+});
+
+// --- flag-stuffing hardening (review rec, 2026-05-30) ---
+
+test('flag-stuffing: hardened inline-exec patterns close the real bypasses', () => {
+  const shouldMatch = [
+    'python -Bc "import urllib"', // combined short-flag group ending in c
+    'python -W ignore -c "x"', // flag-with-VALUE before -c
+    'python3 -OBc "x"', // multi-combined ending in c
+    'python2 -c "x"', // python2
+    'node -pe "require(net)"', // combined node print+eval
+    'node --eval "x"', // node long-form
+    'perl -ne "..."', // combined perl
+    'python -m http.server', // python network module
+    'python3 -m SimpleHTTPServer', // legacy python network module
+  ];
+  for (const cmd of shouldMatch) {
+    assert.strictEqual(isNetworkBashCommand(cmd), true, 'flag-stuffing should match: ' + cmd);
+  }
+});
+
+test('flag-stuffing: no false positives on safe interpreter invocations', () => {
+  const shouldNotMatch = [
+    'python manage.py migrate',
+    'python -m pytest -v',
+    'node --version',
+    'node server.js',
+    'perl -v',
+    'ruby script.rb',
+    'ls node_modules', // \bnode\b must NOT match inside node_modules
+  ];
+  for (const cmd of shouldNotMatch) {
+    assert.strictEqual(isNetworkBashCommand(cmd), false, 'should NOT match: ' + cmd);
+  }
+});
+
+test('flag-stuffing: DOCUMENTED LIMIT — a script body can network but is not regex-catchable', () => {
+  // These CAN reach the network (the script/module decides), but a regex gate
+  // cannot detect that without parsing the program. Asserting the current
+  // (uncaught) behavior makes the limit EXPLICIT, not a silent gap. The real
+  // network-prohibition enforcement is v3.1 K8 (deny the tool) + v3.5 egress.
+  assert.strictEqual(isNetworkBashCommand('python deploy_and_push.py'), false);
+  assert.strictEqual(isNetworkBashCommand('node ./scripts/upload.js'), false);
+});
+
+test('F4: denylist has 22+ patterns', () => {
+  // imported lazily to avoid touching the top-of-file import block
+  const { NETWORK_BASH_PATTERNS } = require('../../../../packages/kernel/hooks/pre/pre-spawn-tool-mask');
+  assert.ok(NETWORK_BASH_PATTERNS.length >= 22, 'expected >=22 patterns, got ' + NETWORK_BASH_PATTERNS.length);
+});
+
+test('vlad: bare-string Bash is flagged (not stripped) for the v3.1 K8 close', () => {
+  const result = applyMask(['Read', 'Bash']);
+  assert.deepStrictEqual(result.masked, ['Read', 'Bash']); // passes through
+  assert.deepStrictEqual(result.stripped, []);
+  assert.strictEqual(result.flagged.length, 1);
+  assert.strictEqual(result.flagged[0].reason, 'bash-string-uninspectable-v31-gap');
 });
 
 process.stdout.write(`\npre-spawn-tool-mask.test.js: ${passed} passed, ${failed} failed\n`);

@@ -235,22 +235,15 @@ test('F5: 3 .tmp + renameSync sites migrated (no bare writeFileSync→renameSync
 
 // --- FL-1 INV-SpawnRecord-AtomicWrite: interrupted-write + concurrent-writer ---
 
-const CRASH_HARNESS_PATH = path.join(
-  __dirname,
-  '..',
-  '..',
-  '..',
-  '..',
-  'packages',
-  'kernel',
-  '_lib',
-  '_crash-harness.js',
-);
+// PR 2: the crash harness now lives in the tests/ layer (full version), not in
+// packages/kernel/_lib/ (the PR-1 stub location, removed). F23 discipline:
+// test infrastructure lives physically outside packages/kernel/.
+const CRASH_HARNESS_PATH = path.join(__dirname, '..', '_lib', '_crash-harness.js');
 
-test('INV-SpawnRecord-AtomicWrite: _crash-harness.js stub exists (minimal in PR 1)', () => {
+test('INV-SpawnRecord-AtomicWrite: _crash-harness.js full harness exists (PR 2, tests/ layer)', () => {
   assert.ok(
     fs.existsSync(CRASH_HARNESS_PATH),
-    'expected minimal _crash-harness.js stub in PR 1 (full version in PR 2)',
+    'expected full _crash-harness.js in tests/unit/kernel/_lib/ (PR 2 supersedes the PR-1 production stub)',
   );
 });
 

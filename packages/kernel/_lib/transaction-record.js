@@ -204,6 +204,19 @@ function validateTransactionRecord(record, options) {
     return { valid: false, errors: ['record must be a non-null object'] };
   }
 
+  // F23 (eli-M5 + jade MEDIUM #7): a record carrying the test-chain marker is
+  // NEVER admissible in production. The marker is REJECTED (never stripped) so
+  // that synthetic test chains cannot leak into a production WAL and pass
+  // validation. This is the runtime half of F23's defense-in-depth; the
+  // physical-separation half is `tests/.../_test-validate.js` living outside
+  // packages/kernel/ (see ADR-0011 WAL-append-path enumeration).
+  if (Object.prototype.hasOwnProperty.call(record, '_test_chain_marker')) {
+    return {
+      valid: false,
+      errors: ['test-marker-not-admissible-in-production'],
+    };
+  }
+
   const schema = loadSchema();
   const required = schema.required || [];
   for (const field of required) {
