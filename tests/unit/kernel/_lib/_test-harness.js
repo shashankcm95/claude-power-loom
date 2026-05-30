@@ -26,7 +26,11 @@ const {
   canonicalJsonSerialize,
   computeTransactionId,
   computeGenesisHash,
+  computeIdempotencyKey,
 } = require('../../../../packages/kernel/_lib/transaction-record');
+// F15 (blair-MED-2): writeWAL must be atomic (tmp+fsync+rename), not a bare
+// fs.writeFileSync. Reuse the production atomic-write primitive.
+const { writeAtomicString } = require('../../../../packages/kernel/_lib/atomic-write');
 
 /**
  * Create an InjectableClock for deterministic time-mocking.
@@ -118,6 +122,16 @@ function synthesizeChain(opts = {}) {
     // Pre-compute a content hash for evidence_refs.
     const evidenceRef = crypto.createHash('sha256').update('evidence-' + i).digest('hex');
 
+    // F6 (blair-HIGH-2): the idempotency_key MUST be computed via the real
+    // production `computeIdempotencyKey`, not a synthetic 'idem-'+i string.
+    // Otherwise INV-22 property tests are vacuous — a broken production
+    // derivation would still let synthesized chains "pass". The content hash
+    // is per-record-unique (post_state_hash differs each iteration).
+    const contentHash = crypto
+      .createHash('sha256')
+      .update(canonicalJsonSerialize({ affected_records: ['test-record-' + i], post_state_hash: postStateHash }))
+      .digest('hex');
+
     const recordWithoutId = {
       prev_state_hash: prevStateHash,
       post_state_hash: postStateHash,
@@ -133,9 +147,19 @@ function synthesizeChain(opts = {}) {
       committed_at: commitOutcome === 'COMMITTED' ? recordTimestamp : null,
       commit_outcome: commitOutcome,
       abort_reason: null,
-      idempotency_key: crypto.createHash('sha256').update('idem-' + i).digest('hex'),
+      idempotency_key: computeIdempotencyKey({
+        writerPersonaId,
+        operationClass: 'APPEND',
+        contentHash,
+        prevStateHash,
+      }),
       references_transaction_id: null,
       abort_detail: null,
+      // F23 (eli-M5): synthesized chains carry the non-admissible test marker so
+      // production `validateTransactionRecord` REJECTS them if they ever leak
+      // into a real WAL. Tests that need to validate synthetic records use
+      // `validateTestRecord` (tests/.../_test-validate.js), which strips it.
+      _test_chain_marker: true,
     };
 
     const transactionId = computeTransactionId(recordWithoutId);
@@ -151,16 +175,28 @@ function synthesizeChain(opts = {}) {
  * Each record on its own line (per §5.1 WAL format).
  */
 function writeWAL(walPath, records) {
-  fs.mkdirSync(path.dirname(walPath), { recursive: true });
+  // F15: atomic tmp+fsync+rename (writeAtomicString auto-creates the parent
+  // dir), so a reader never observes a half-written WAL and a crash mid-write
+  // leaves the prior file intact — matches the §5a.2 atomic-write discipline.
   const lines = records.map((r) => JSON.stringify(r)).join('\n') + (records.length > 0 ? '\n' : '');
-  fs.writeFileSync(walPath, lines);
+  writeAtomicString(walPath, lines);
 }
 
 /**
  * Append a single record to an existing JSONL WAL (per §5.1 append-only).
+ * F15: fsync after the append so the record is durable before the harness
+ * proceeds (recovery-sweep tests depend on the written record surviving a
+ * simulated crash).
  */
 function appendWAL(walPath, record) {
+  fs.mkdirSync(path.dirname(walPath), { recursive: true });
   fs.appendFileSync(walPath, JSON.stringify(record) + '\n');
+  const fd = fs.openSync(walPath, 'r+');
+  try {
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
 }
 
 /**
