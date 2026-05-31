@@ -1,57 +1,55 @@
-# power-loom — Documentation
+# Power Loom — Documentation
 
-Deep-dive documentation organized by topic. Start at the [main README](../README.md) for the overview.
+Start at the [main README](../README.md) for the overview and install. This index organizes the deep-dive docs.
 
-## Architecture
+## Substrate (the current vision)
 
-Substrate-level design and load-bearing decisions.
+- [**Architecture**](ARCHITECTURE.md) — the substrate model: the three layers (kernel/runtime/lab), the Ten Axioms, the transaction loop, and every kernel primitive K1–K14 with its live/dormant/advisory status.
+- [**Roadmap**](ROADMAP.md) — how the substrate got here (Phase 0 ✓ → Phase 1-alpha ✓) and where it goes next (v3.1+). Appended each phase.
 
-- [Substrate philosophy](architecture/substrate-philosophy.md) — Hooks before, persistence around, verification after
-- [Two layers in one plugin](architecture/two-layers.md) — Substrate + HETS
-- [HETS — Hierarchical Engineering Team Simulation](architecture/hets.md) — Multi-agent orchestration with persistent identity
-- [Component invocation](architecture/component-invocation.md) — How hooks/agents/skills/commands wire together
+The authoritative design record is [`packages/specs/`](../packages/specs/): the v6 synthesis RFC, the ADRs (0008–0011), and the per-phase plans.
 
 ## Hooks
 
-The deterministic enforcement layer (18 hook scripts: 11 top-level + 7 validators in `hooks/scripts/validators/`; registered as 17 hook entries across 6 lifecycle events per `hooks/hooks.json`).
+The deterministic enforcement layer — pure logic, no LLM interpretation. Scripts live under `packages/kernel/hooks/{pre,post,lifecycle}/` + `packages/kernel/validators/`, registered via `packages/kernel/hooks.json`.
 
 - [Hooks overview + per-hook deep-dives](hooks/overview.md)
 
 ## Agents
 
-The specialist layer (5 generic engineering personas, 16 HETS personas + 2 templates = 18 persona contracts in `swarm/personas-contracts/`).
+The specialist layer (generic engineering personas + the HETS runtime personas; persona contracts under `packages/runtime/`).
 
 - [Agents overview](agents/overview.md)
 
 ## Skills
 
-The workflow layer (17 skills covering domain workflows).
+The workflow layer (domain workflows under `packages/skills/`).
 
 - [Skills overview](skills/overview.md)
 
 ## Install
 
+- [Install overview](install/) — plugin marketplace (canonical) + legacy installer
 - [Legacy installer reference](install/legacy-installer.md) — `./install.sh --all` for environments without `/plugin` support
 
 ## Reference
 
-- [Stability commitment (v2.x)](reference/stability-commitment.md) — Stable / evolving / experimental classification (post-v2.0.0)
-- [Project structure](reference/project-structure.md) — Repository layout walkthrough
-- [Commands reference](reference/commands.md) — Slash commands shipped with the plugin
-- [Rules reference](reference/rules.md) — Always-on guidance rules
-- [Diagnostics](reference/diagnostics.md) — Verifying install health, debugging hooks, checking trust state
-- [Library memory organizer](library.md) — Section/Stack/Catalog/Volume substrate (v2.1.0+)
+- [Stability commitment](reference/stability-commitment.md) — Stable / evolving / experimental classification
+- [Project structure](reference/project-structure.md) — repository layout walkthrough
+- [Commands reference](reference/commands.md) — slash commands shipped with the plugin
+- [Rules reference](reference/rules.md) — always-on guidance rules
+- [Diagnostics](reference/diagnostics.md) — verifying install health, debugging hooks, checking trust state
+- [Library memory organizer](library.md) — Section/Stack/Catalog/Volume memory substrate
+- [Library vs MemPalace](concepts/library-vs-mempalace.md) — design-deltas + attribution for the library
 
 ## Development
 
-- [Extending power-loom](development/extending.md) — How to add new hooks, agents, or skills
-- [Attribution](development/attribution.md) — References to community plugins that inspired this work
+- [Extending Power Loom](development/extending.md) — how to add a hook, agent, or skill
+- [Attribution](development/attribution.md) — community plugins that inspired this work
 
-## Other repo-root docs
+## Repo-root docs
 
-- [Main README](../README.md) — Overview, install, positioning
-- [CHANGELOG.md](../CHANGELOG.md) — Version history (Keep-a-Changelog format)
-- [CONTRIBUTING.md](../CONTRIBUTING.md) — Git workflow + phase-tag conventions
-- [ATTRIBUTION.md](../ATTRIBUTION.md) — Full attribution + license disclosures
-- [skills/agent-team/USING.md](../skills/agent-team/USING.md) — End-user walkthrough using HETS on real projects
-- [skills/agent-team/BACKLOG.md](../skills/agent-team/BACKLOG.md) — Deferred work and SHIPPED phase records
+- [Main README](../README.md) — overview, install, positioning
+- [CHANGELOG.md](../CHANGELOG.md) — version history
+- [CONTRIBUTING.md](../CONTRIBUTING.md) — git workflow + conventions
+- [ATTRIBUTION.md](../ATTRIBUTION.md) — full attribution + license disclosures
