@@ -375,7 +375,17 @@ run_smoke_tests() {
 
   echo ""
   echo "  Results: $passed passed, $failed failed"
-  [ "$failed" -gt 0 ] && echo "  Some tests failed — check hook scripts and paths"
+  # Honest exit status: 0 when all smoke tests pass, non-zero when any fail.
+  # The prior `[ "$failed" -gt 0 ] && echo ...` was this function's LAST command,
+  # so under `set -euo pipefail` it returned 1 whenever $failed == 0 (the all-pass
+  # case) and `set -e` aborted install.sh before the final "Done!" echo — an
+  # inverted exit code (1 on success). CI greps the "Results:" line so it stayed
+  # green; humans / scripts checking $? saw a false failure on success.
+  if [ "$failed" -gt 0 ]; then
+    echo "  Some tests failed — check hook scripts and paths"
+    return 1
+  fi
+  return 0
 }
 
 if [ $# -eq 0 ]; then
