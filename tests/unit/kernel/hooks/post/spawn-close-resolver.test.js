@@ -21,6 +21,7 @@
 //         spawn_id = agentId, is_genesis_position: true.
 //   2. k14_ctx 9-key whitelist: extra keys (incl. __proto__) dropped;
 //      path keys canonicalized via checkWithinRoot, out-of-root paths dropped
+//      — absolute, `..`-traversal, AND symlink-escape (realpath-resolved)
 //      (prototype-pollution + CWE-22 guard).
 //   3. NO git mutation in shadow: run the hook against a REAL temp git repo
 //      worktree; HEAD/refs/worktree-list unchanged after (dry-run promote seam
@@ -262,6 +263,56 @@ test('buildK14Ctx: a targetPath with a `..` traversal segment is DROPPED (hasTra
     assert.strictEqual(ctx.tailWindowMs, 5000, 'a non-path whitelisted key survives');
   } finally {
     fs.rmSync(worktreeRoot, { recursive: true, force: true });
+  }
+});
+
+test('buildK14Ctx: a targetPath that SYMLINK-resolves outside the worktree is DROPPED (CWE-22 symlink-escape; realpath in checkWithinRoot)', () => {
+  // PR #185 review item: an absolute-path escape MASKED by a symlink. A target
+  // that is LEXICALLY inside the worktree but traverses a symlinked dir to land
+  // OUTSIDE must be dropped. checkWithinRoot -> isWithinRoot -> canonicalize
+  // REALPATHs both sides (path-canonicalize.js:49), so the resolved target lands
+  // outside root and is discriminated as 'escapes-root'. This pins that behavior
+  // at the buildK14Ctx layer (the primitive covers it; this proves the hook's
+  // populator inherits it) with a REAL on-disk symlink, not a lexical fixture.
+  const worktreeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pr3b-k14-symlink-'));
+  const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pr3b-k14-outside-'));
+  try {
+    fs.writeFileSync(path.join(outsideDir, 'secret.txt'), 'secret\n');
+    // A symlink INSIDE the worktree pointing OUT to the sibling dir.
+    const linkInsideWt = path.join(worktreeRoot, 'escape-link');
+    try {
+      fs.symlinkSync(outsideDir, linkInsideWt, 'dir');
+    } catch (err) {
+      // Symlink creation unsupported (e.g. a restricted FS) -> skip cleanly, not a failure.
+      process.stdout.write(`    (skipped: symlinks unavailable: ${err.code})\n`);
+      return;
+    }
+    // Lexically inside the worktree, but realpath-resolves to outsideDir/secret.txt.
+    const symlinkEscapeTarget = path.join(worktreeRoot, 'escape-link', 'secret.txt');
+
+    // Precondition: the K7 primitive flags it as a SYMLINK escape specifically
+    // ('escapes-root' = lexically inside but realpath-resolves outside) — NOT
+    // 'traversal-markers' or 'absolute-outside-root'. This proves realpath ran
+    // BEFORE the boundary comparison (the reviewer's exact ask).
+    const verdict = checkWithinRoot(symlinkEscapeTarget, worktreeRoot);
+    assert.strictEqual(verdict.ok, false, 'precondition: a symlink-escape target must be rejected');
+    assert.strictEqual(verdict.reason, 'escapes-root',
+      'the symlink escape must be discriminated as escapes-root (realpath resolved it outside root)');
+
+    // buildK14Ctx drops the symlink-escape targetPath before it can reach resolve().
+    const ctx = hook.buildK14Ctx({
+      worktreeRoot,
+      targetPath: symlinkEscapeTarget,
+      spawnCloseWallMs: 1700000000000,
+    }, worktreeRoot);
+
+    assert.ok(!('targetPath' in ctx), 'a symlink-escape targetPath must be dropped before resolve()');
+    assert.strictEqual(ctx.spawnCloseWallMs, 1700000000000, 'a non-path whitelisted key is unaffected');
+  } finally {
+    // rmSync unlinks the `escape-link` symlink itself (does not follow it), so
+    // outsideDir survives for its own cleanup.
+    fs.rmSync(worktreeRoot, { recursive: true, force: true });
+    fs.rmSync(outsideDir, { recursive: true, force: true });
   }
 });
 
