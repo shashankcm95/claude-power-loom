@@ -239,10 +239,17 @@ function dispatchPromote(opts, hasViolations, allowOverride, runGit) {
   const outcome = promoteResult && promoteResult.outcome;
   const row = RESOLVER_TABLE[outcome];
 
-  // No row → the table is incomplete for this outcome. Surfacing this explicitly
-  // (rather than silently) is what the no-unhandled-default test guards.
+  // No row → an unknown K9 outcome at this security-significant decision point.
+  // FAIL-CLOSED (kb:architecture/discipline/error-handling-discipline): return the
+  // terminal ABORTED action (a guaranteed no-promote) rather than an action string
+  // a caller might not recognize as blocking, and raise a Class-4 audit. The six
+  // known outcomes all map (the no-unhandled-default test guards that); this guards
+  // the impossible-but-fatal case where K9 returns an out-of-table outcome — a
+  // future caller pattern-matching only the known actions can never silently
+  // no-op (= promote an unverified delta) on it.
   if (!row) {
-    return { action: 'UNHANDLED_DEFAULT', audit: 'unhandled-k9-outcome', outcome, k9: promoteResult };
+    emitAudit(auditFn, { class: 4, kind: 'unhandled-k9-outcome', spawn_id: envelope.spawn_id, k9_outcome: outcome });
+    return { action: 'ABORTED', audit: 'unhandled-k9-outcome', outcome, k9: promoteResult };
   }
 
   // Override path: violations were allowed, K9 promoted → PROMOTE_WITH_AUDIT

@@ -203,6 +203,18 @@ test('(b) every one of K9 six outcome codes maps to a resolver path with NO unha
   }
 });
 
+test('(b) an UNKNOWN K9 outcome (not in the table) FAILS CLOSED to ABORTED — never a silent no-promote', () => {
+  // The six known outcomes all map (test above). This guards the impossible-but-
+  // fatal case: a future/regressed K9 returning an out-of-table outcome must BLOCK,
+  // not return an action a caller might not recognize as blocking (the QA fail-open
+  // finding from the v3.0-alpha-hardening re-review).
+  const res = resolver.resolve(baseOpts({
+    promoteDeltaFn: makePromoteStub({ promoted: true, outcome: 'BOGUS_OUTCOME_NOT_IN_TABLE', reason: 'x' }),
+  }));
+  assert.strictEqual(res.action, 'ABORTED', 'an unknown K9 outcome must fail closed to ABORTED');
+  assert.strictEqual(res.audit, 'unhandled-k9-outcome', 'the diagnostic audit names the unhandled outcome');
+});
+
 test('(b) PROMOTED → PROMOTE (promote-ok)', () => {
   const res = resolver.resolve(baseOpts({
     promoteDeltaFn: makePromoteStub({ promoted: true, outcome: 'PROMOTED', reason: 'cherry-pick-clean' }),
