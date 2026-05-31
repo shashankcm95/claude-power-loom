@@ -2,162 +2,104 @@
 
 // tests/unit/kernel/_lib/k13-k14-interlock.test.js
 //
-// Property test for INV-28-K13K14SerialClosure per v6 §6.13.
-// Round-3d Patch GP1 + Round-3d C4 (clock-injection-from-day-1 discipline).
+// INV-28-K13K14SerialClosure — HONEST v3.0-alpha status + a REAL-code test.
 //
-// Property: K13 MUST NOT unblock next-spawn dispatch until prior spawn's K14
-// tail window has closed (now() >= prior_spawn.committed_at + LOOM_K14_TAIL_WINDOW_MS).
+// PRIOR STATE (fixed here, per the MVP-review QA finding): this file modeled K13
+// admission with a LOCAL `k13Admits` mock implementing a K14-TAIL-WINDOW interlock
+// (don't admit S2 until S1's K14 tail window closes). That mock tested an invariant
+// the shipped K13 does NOT implement, and would have PASSED even if the real
+// enforcer were deleted — a test that can't fail manufactures false confidence.
 //
-// This test uses the InjectableClock harness rather than real wallclock to
-// avoid CI flakiness (per persona-Tess T2). The test exercises the LOGICAL
-// invariant on the interlock; the actual K13/K14 implementation lives in
-// v3.0-alpha (this PR is the schema-additive reservation).
+// REALITY: v3.0-alpha K13 is SERIAL-MARKER + AGE-REAP, not tail-window. The real
+// `decideAdmission(currentMarker, nowMs, maxSpawnAgeMs)` admits when there is no
+// live marker (or reaps a stale one past maxSpawnAgeMs) and blocks when a live
+// marker exists. INV-28's tail-window CLOSURE (gating S2 on S1's K14 window) is a
+// v3.1 property — it arrives when K13 + K14 compose with the tail window in the
+// live spawn path. The end-to-end composition is now covered by
+// tests/unit/kernel/integration/transaction-loop.test.js.
+//
+// This test now exercises the REAL k13.decideAdmission (it FAILS if that function
+// is deleted or its serial-only semantics regress). The injectable clock keeps the
+// age math deterministic (no wallclock flake).
 
 'use strict';
 
 const assert = require('assert');
 const { createInjectableClock } = require('./_test-harness');
+const k13 = require('../../../../packages/kernel/enforcement/k13-serial-enforcer');
 
 let passed = 0;
 let failed = 0;
-
 function test(name, fn) {
-  try {
-    fn();
-    process.stdout.write(`  PASS ${name}\n`);
-    passed++;
-  } catch (err) {
-    process.stdout.write(`  FAIL ${name}: ${err.message}\n`);
-    failed++;
-  }
+  try { fn(); process.stdout.write(`  PASS ${name}\n`); passed++; }
+  catch (err) { process.stdout.write(`  FAIL ${name}: ${err.message}\n`); failed++; }
 }
 
-// --- Mock K13 admission gate using the injectable clock ---
-//
-// The real K13 lives in `_lib/lock.js` + spawn-state directory scanning.
-// For this property test, we model the K13 admission decision as a pure
-// function over (priorSpawn.committedAtMs, tailWindowMs, now()).
+const MAX_AGE = 30000; // serial-marker age-reap horizon (ms)
 
-const LOOM_K14_TAIL_WINDOW_MS_DEFAULT = 3000;
-
-function k13Admits({ priorSpawnCommittedAtMs, tailWindowMs, nowMs }) {
-  if (priorSpawnCommittedAtMs === null) return { admitted: true, reason: 'no-prior-spawn' };
-  const closesAt = priorSpawnCommittedAtMs + tailWindowMs;
-  if (nowMs < closesAt) {
-    return { admitted: false, reason: 'tail-window-pending', waitMs: closesAt - nowMs };
-  }
-  return { admitted: true, reason: 'tail-window-closed' };
-}
-
-// --- Tests ---
-
-test('INV-28: spawn S2 within tail window is rejected (reason: tail-window-pending)', () => {
-  const clock = createInjectableClock();
-  const s1Committed = clock.nowMs();
-  clock.advance(1000); // 1s after S1 commit, attempt S2
-
-  const result = k13Admits({
-    priorSpawnCommittedAtMs: s1Committed,
-    tailWindowMs: LOOM_K14_TAIL_WINDOW_MS_DEFAULT,
-    nowMs: clock.nowMs(),
-  });
-  assert.strictEqual(result.admitted, false);
-  assert.strictEqual(result.reason, 'tail-window-pending');
-  assert.strictEqual(result.waitMs, 2000);
+test('decideAdmission: no active marker -> admit (no-active-spawn)', () => {
+  const d = k13.decideAdmission(null, 1000, MAX_AGE);
+  assert.strictEqual(d.admit, true);
+  assert.strictEqual(d.reason, 'no-active-spawn');
+  assert.strictEqual(d.reaped, false);
 });
 
-test('INV-28: spawn S3 past tail window is admitted (reason: tail-window-closed)', () => {
+test('decideAdmission: a LIVE marker (age < maxSpawnAgeMs) -> BLOCK (serial-only-spawn-active)', () => {
   const clock = createInjectableClock();
-  const s1Committed = clock.nowMs();
-  clock.advance(4000); // 4s after S1 commit, attempt S3
-
-  const result = k13Admits({
-    priorSpawnCommittedAtMs: s1Committed,
-    tailWindowMs: LOOM_K14_TAIL_WINDOW_MS_DEFAULT,
-    nowMs: clock.nowMs(),
-  });
-  assert.strictEqual(result.admitted, true);
-  assert.strictEqual(result.reason, 'tail-window-closed');
+  const created = clock.nowMs();
+  clock.advance(1000); // 1s later, still inside the 30s horizon
+  const d = k13.decideAdmission({ created_at_ms: created }, clock.nowMs(), MAX_AGE);
+  assert.strictEqual(d.admit, false, 'a live serial marker must block a concurrent spawn');
+  assert.strictEqual(d.reason, 'serial-only-spawn-active');
+  assert.strictEqual(d.reaped, false);
 });
 
-test('INV-28: spawn exactly at window-close boundary is admitted', () => {
+test('decideAdmission: a STALE marker (age >= maxSpawnAgeMs) -> admit + reaped', () => {
   const clock = createInjectableClock();
-  const s1Committed = clock.nowMs();
-  clock.advance(LOOM_K14_TAIL_WINDOW_MS_DEFAULT); // exactly at the boundary
-
-  const result = k13Admits({
-    priorSpawnCommittedAtMs: s1Committed,
-    tailWindowMs: LOOM_K14_TAIL_WINDOW_MS_DEFAULT,
-    nowMs: clock.nowMs(),
-  });
-  assert.strictEqual(result.admitted, true, 'boundary case: closesAt == nowMs should admit');
+  const created = clock.nowMs();
+  clock.advance(MAX_AGE + 1);
+  const d = k13.decideAdmission({ created_at_ms: created }, clock.nowMs(), MAX_AGE);
+  assert.strictEqual(d.admit, true);
+  assert.strictEqual(d.reason, 'reaped-stale-marker');
+  assert.strictEqual(d.reaped, true);
 });
 
-test('INV-28: spawn 1ms before boundary is rejected', () => {
+test('decideAdmission: age EXACTLY at maxSpawnAgeMs reaps (>= boundary)', () => {
   const clock = createInjectableClock();
-  const s1Committed = clock.nowMs();
-  clock.advance(LOOM_K14_TAIL_WINDOW_MS_DEFAULT - 1);
-
-  const result = k13Admits({
-    priorSpawnCommittedAtMs: s1Committed,
-    tailWindowMs: LOOM_K14_TAIL_WINDOW_MS_DEFAULT,
-    nowMs: clock.nowMs(),
-  });
-  assert.strictEqual(result.admitted, false);
-  assert.strictEqual(result.waitMs, 1);
+  const created = clock.nowMs();
+  clock.advance(MAX_AGE);
+  const d = k13.decideAdmission({ created_at_ms: created }, clock.nowMs(), MAX_AGE);
+  assert.strictEqual(d.admit, true, 'boundary age == maxSpawnAgeMs is reaped (>=)');
+  assert.strictEqual(d.reaped, true);
 });
 
-test('INV-28: no prior spawn → unconditional admit', () => {
-  const clock = createInjectableClock();
-  const result = k13Admits({
-    priorSpawnCommittedAtMs: null,
-    tailWindowMs: LOOM_K14_TAIL_WINDOW_MS_DEFAULT,
-    nowMs: clock.nowMs(),
-  });
-  assert.strictEqual(result.admitted, true);
-  assert.strictEqual(result.reason, 'no-prior-spawn');
+test('decideAdmission: a marker missing created_at_ms is treated as no-active-spawn', () => {
+  const d = k13.decideAdmission({ spawn_id: 'x' }, 1000, MAX_AGE);
+  assert.strictEqual(d.admit, true);
+  assert.strictEqual(d.reason, 'no-active-spawn');
 });
 
-test('INV-28: clock-injection makes this test deterministic + flake-free', () => {
-  // The whole point of Round-3d C4: this test does NOT touch wallclock.
-  // Running it 100x in a tight loop should produce zero variance.
+test('decideAdmission: deterministic — 100 evaluations of a live marker are identical (no flake)', () => {
   const clock = createInjectableClock();
-  const s1Committed = clock.nowMs();
+  const created = clock.nowMs();
   clock.advance(1500);
-
   const outcomes = new Set();
   for (let i = 0; i < 100; i++) {
-    const r = k13Admits({
-      priorSpawnCommittedAtMs: s1Committed,
-      tailWindowMs: LOOM_K14_TAIL_WINDOW_MS_DEFAULT,
-      nowMs: clock.nowMs(),
-    });
-    outcomes.add(r.admitted + ':' + r.reason);
+    const d = k13.decideAdmission({ created_at_ms: created }, clock.nowMs(), MAX_AGE);
+    outcomes.add(d.admit + ':' + d.reason);
   }
-  assert.strictEqual(outcomes.size, 1, 'all 100 invocations must produce identical outcome (no flake)');
+  assert.strictEqual(outcomes.size, 1, 'all 100 evaluations must be identical (no flake)');
 });
 
-test('INV-28: custom tail-window respected', () => {
-  const clock = createInjectableClock();
-  const s1Committed = clock.nowMs();
-  clock.advance(500);
-
-  // Custom 10s tail window — 500ms after commit should be rejected.
-  const r1 = k13Admits({
-    priorSpawnCommittedAtMs: s1Committed,
-    tailWindowMs: 10000,
-    nowMs: clock.nowMs(),
-  });
-  assert.strictEqual(r1.admitted, false);
-  assert.strictEqual(r1.waitMs, 9500);
-
-  // Same 500ms after commit but with 200ms tail window — admitted.
-  const r2 = k13Admits({
-    priorSpawnCommittedAtMs: s1Committed,
-    tailWindowMs: 200,
-    nowMs: clock.nowMs(),
-  });
-  assert.strictEqual(r2.admitted, true);
+test('INV-28 tail-window closure is NOT a v3.0-alpha K13 property (documented deferral guard)', () => {
+  // Guard against a future reader mistaking serial-only for the tail-window
+  // interlock: decideAdmission has NO tailWindowMs parameter in v3.0-alpha. The
+  // K14-tail-window gating of next-spawn dispatch is v3.1 (K13+K14 compose in the
+  // live spawn path); the composition itself is proven by the integration test.
+  assert.strictEqual(
+    k13.decideAdmission.length, 3,
+    'decideAdmission(currentMarker, nowMs, maxSpawnAgeMs) — no tail-window arg in v3.0-alpha',
+  );
 });
 
 process.stdout.write(`\nk13-k14-interlock.test.js: ${passed} passed, ${failed} failed\n`);

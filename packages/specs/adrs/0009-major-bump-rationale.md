@@ -25,7 +25,7 @@ related_kb:
 
 ## Context
 
-Phase 1-alpha lands the v3.0-alpha PURE KERNEL TRANSACTION LOOP — 11 new substrate primitives (K1, K2, K3, K3.b, K4, K7, K9, K10, K12, K13, K14) per `packages/specs/rfcs/v6-substrate-synthesis.md`. Three of these (K3, K3.b, K9, K14) introduce schema-additive contracts that callers in v2.x cannot consume without code changes. The K9 production-callability boundary moves between PR 3 (K9 ships dormant) and PR 4 (post-spawn-resolver is the first production importer).
+Phase 1-alpha lands the v3.0-alpha PURE KERNEL TRANSACTION LOOP — 11 new substrate primitives (K1, K2, K3, K3.b, K4, K7, K9, K10, K12, K13, K14) per `packages/specs/rfcs/v6-substrate-synthesis.md`. Four of these (K3, K3.b, K9, K14) introduce schema-additive contracts that callers in v2.x cannot consume without code changes. The K9 production-callability boundary moves between PR 3 (K9 ships dormant) and PR 4 (post-spawn-resolver is the first production importer).
 
 Prior version state:
 - v2.9.0 — last MINOR release (per ADR-0007 rationale)
@@ -75,5 +75,13 @@ This ADR is itself stable post-PR-1-merge — it documents the version-bump rati
 
 ## Verification
 
-- `grep -E '"version":\s*"3\.0\.0' package.json` returns the alpha-suffixed version post-PR-1-merge
+- (DEFERRED — see Amendment below) The `package.json` version-string bump was NOT executed during the Phase 1-alpha train; `grep -E '"version":\s*"3\.0\.0' package.json` does NOT match (the manifest remains `0.0.0`). This probe applies at the actual v3.0 release/distribution event, not during alpha-train development.
 - `pnpm-workspace.yaml` lists the 5 packages (kernel, runtime, lab, skills, specs) unchanged from Phase 0
+
+## Amendment (2026-05-31, v3.0-alpha-hardening) — version-mechanics DEFERRED
+
+The §Mechanics version-bump (`package.json` → `3.0.0-alpha.N` at each sub-PR merge) was **specified but NOT executed** during the Phase 1-alpha train. As of all five sub-PRs merging, the manifests still read `package.json` = `0.0.0` and the published plugin manifest `.claude-plugin/plugin.json` = `2.9.x`.
+
+**Decision**: the `3.0.0-alpha.N` (and eventual `3.0.0`) manifest bump is **deferred to the actual v3.0 release/distribution event**, not the alpha-train development. The v3.0-alpha kernel is the DEVELOPMENT substrate, not a published release — bumping the live marketplace plugin to an alpha version would mis-signal the distributed artifact. The MAJOR-bump **rationale** in this ADR stands (the kernel surface IS incompatible with v2.9 readers); only the manifest-write **timing** moved.
+
+Surfaced by the MVP-review honesty audit: the original §Verification probe (`grep '"version": "3.0.0"' package.json`) FAILED against the repo — a governance-doc credibility leak. Recording the deferral honestly closes it. The probe above is reworded to reflect the deferral.
