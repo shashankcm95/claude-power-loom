@@ -32,8 +32,8 @@ The substrate-fundament implementation: **11 kernel primitives + a property-test
 
 See [ARCHITECTURE §5](ARCHITECTURE.md#kernel-primitives) for what each primitive does. The honest accounting:
 
-- **Live:** K1 (worktree), K2 (spawn-record envelope + K2.b), K3 (lineage), K4 (recall), K7 (path-canonicalize), K9 (promote-deltas), K10 (escape hatch), K13 (serial enforcer), K14 (write-scope enforcer) — atop the pre-existing K5 validators.
-- **Dormant** (ships with no production importer; a CI gate enforces it): **K3.b** context envelope — first consumer is v3.1 personas.
+- **Live:** K2 (spawn-record envelope + K2.b), K3 (lineage), K4 (recall), K7 (path-canonicalize), K9 (promote-deltas), K10 (escape hatch), K13 (serial enforcer), K14 (write-scope enforcer) — atop the pre-existing K5 validators.
+- **Dormant** (ships with no production importer; a CI gate enforces it): **K3.b** context envelope — first consumer is v3.1 personas; **K1** worktree-allocator — *superseded — the harness owns worktree creation; the kernel observes via `tool_response.worktreePath` at the v3.1 PR-3b spawn-close hook rather than allocating, so K1 gains no importer and `dormancy-assertion-k1` stays (the K3.b dormant-twin precedent, not "first-import flips the gate").*
 - **Advisory** (warns, never blocks): **K12** layer-boundary lint.
 - **Deferred** to later phases: K6, K8 (→ v3.1), K11 (→ v3.2), K2.c (→ v3.1).
 
