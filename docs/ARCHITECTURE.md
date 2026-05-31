@@ -1,0 +1,123 @@
+# Architecture
+
+Power Loom is a **deterministic state-management substrate for stochastic (LLM) agents** — an *agent runtime* that wraps non-deterministic agent execution in transaction boundaries and pure-function verification gates. This document is the canonical architecture reference. The full design record lives in [`packages/specs/`](../packages/specs/) (the v6 substrate synthesis RFC + ADRs 0008–0011).
+
+> **Reading note.** The v6 synthesis RFC is marked *LIVE-DRAFTING* (positioning, pillars, and axioms are at v6 quality; later sections carry earlier provenance). The **shipped code + ADRs 0008–0011** are the firm ground truth for what exists today. Where this doc states a primitive is "live", "dormant", "advisory", or "deferred", that reflects the merged tree as of Phase 1-alpha.
+
+---
+
+## 1. The core idea
+
+Every agent spawn is treated as a **transaction**:
+
+```
+   spawn ──▶ isolated worktree ──▶ filesystem delta ──▶ verify (pure gates) ──▶ promote │ reject ──▶ spawn-record
+                                                              │
+                                              (out-of-scope writes detected,
+                                               treated as policy violations)
+```
+
+The **unit of truth is the validated, in-scope filesystem delta** — not the LLM's prose, and not any file's current bytes. An LLM trajectory is non-deterministic and recoverable by re-sampling; what must be durable and trustworthy is the *effect* a spawn had on the filesystem, captured deterministically and either committed atomically or rolled back.
+
+This is, structurally, a database transaction loop — which is why the v6 consistency model (axioms A8–A10) specifies memory the way a transactional store does: an append-only chain of commits, replayable to any point, never mutated in place.
+
+---
+
+## 2. The layers
+
+A microkernel split in three layers (a fourth, `adapters`, is a reserved v3.5+ convention path that does not yet exist on disk):
+
+| Layer | Path | Responsibility | Verification surface |
+|---|---|---|---|
+| **1 — Loom Kernel** | `packages/kernel/**` | Minimal, deterministic, portable-by-design; MAJOR-version-protected. Hooks, validators, recall-CLI, spawn-state machinery, and the transaction primitives. | **Pure-function gates only — no LLM in the trust/blocking path.** |
+| **2 — Loom Runtime** | `packages/runtime/**` | HETS: the agent team — personas, decomposition disciplines, capability traits, per-persona contracts. | Kernel gates (blocking) + advisory checks (non-blocking, audit-logged). |
+| **3 — Loom Evolution Lab** | `packages/lab/**` | Adaptive cognition: measures the substrate's own quality, derives policy, feeds reputation. Phase 3+ (v3.3+). | Advisory only; outputs reach the kernel **only** via an explicit reputation snapshot (A6). |
+
+### The dependency rule
+
+Dependencies point **inward**. The kernel imports nothing from outer layers; the runtime may import the kernel; the lab may import both. An inner layer importing an outer one is a violation. The kernel keeps its own shared helpers in `packages/kernel/_lib/` precisely so it never reaches into `packages/runtime/**` — this resolved a real `kernel → runtime` back-edge surfaced during Phase 0.
+
+Enforcement is **convention + advisory**, not a hard gate: per-file `// @loom-layer: kernel|runtime|lab|adapter` markers plus the **K12 layer-boundary lint**, which *warns* on cross-layer imports but does not block. This was a deliberate v5.1 downgrade from mandatory enforcement — six months on the verification-spike branch produced **zero observed cross-layer drift** (the `_lib/` extraction pattern yields acyclic-by-construction). The upgrade trigger back to mandatory is ≥3 observed drift events across v3.1–v3.3 (OQ-19).
+
+---
+
+## 3. The Ten Axioms
+
+A1–A7 specify the kernel transaction loop; A8–A10 (added in v6) specify the memory-consistency model under which agent writes commit. The two groups are co-equal — neither is contingent on the other.
+
+| # | Axiom | One line |
+|---|---|---|
+| **A1** | Transactional Determinism | Validated *in-scope* filesystem deltas (or contract-conformant text) are the unit of truth; LLM trajectories are non-deterministic and recoverable-by-resampling. |
+| **A2** | Kernel / User-Space / Interface Boundary | Kernel = pure deterministic functions; user-space = spawns; interface = filesystem deltas + text outputs. Forbids LLMs writing kernel paths, kernel code calling LLMs to verify, agents bypassing the interface. |
+| **A3a** | Gating Verification is Pure *and* Adequate | Gates that BLOCK promotion are pure functions semantically adequate to the property; surface-keyword checks are forbidden in the blocking path. |
+| **A3b** | Advisory Verification May Be LLM-Mediated | LLM judgment is allowed for *advisory* checks only — it cannot block, must emit audit records, and may inform reputation. |
+| **A4** | Algorithmic Discipline is Kernel Work | Deterministic operations live in unit-tested kernel code, not prose for the LLM to execute. *(Binding from v3.2, when K11 ships.)* |
+| **A5** | Substrate Evolution is First-Class | The substrate is designed to measure its own quality and evolve. *(Design intent; the Lab realizes it at v3.3+.)* |
+| **A6** | Reputation as a Snapshotted Axiom | Lab signals (reputation, policy axioms) enter a spawn only by being snapshotted into its `axioms` block at spawn-init — the single deterministic bridge from Lab to Kernel. |
+| **A7** | Write-Scope Detection | The kernel detects out-of-scope writes (via K14) and treats any violation as rejected/rolled-back — never silently incorporated. |
+| **A8** | Memory as a Content-Addressed State Machine | Authoritative memory = deterministic replay of the transaction chain to time *T*; the chain, not any file's current bytes, is the source of truth; in-place mutation of canonical state is forbidden. |
+| **A9** | Memory-Transaction Atomicity | State commits at spawn boundaries via two-phase commit (`intent_recorded_at` / `committed_at` + a WAL recovery sweep for crash-mid-spawn); K9 + K14 compose to implement it. |
+| **A10** | Evidence-Linked Admission | Every memory transaction carries non-empty `evidence_refs` to kernel-emitted records present in the chain; the K9 pre-commit gate rejects forged refs — a syntactic-layer false-memory defense. |
+
+---
+
+## 4. The kernel transaction loop in detail
+
+1. **Allocate** an isolated git worktree for the spawn (K1), under serial-only admission (K13 — one spawn at a time, with crash-orphan lock recovery).
+2. The spawn runs; the substrate records a **spawn-record envelope** (K2) capturing its lineage (`parent_state_id`), settings resolution (K2.b), and — at close — its write-scope snapshot.
+3. **K14** snapshots the filesystem after the spawn and records any out-of-scope writes in `write_scope_violations[]` (detected post-hoc — A7 is *detection*, not write-time prevention).
+4. The **post-spawn resolver** maps the spawn's terminal state through a canonical transition table to one outcome (promote / reject-conflict / hard-reset / etc.).
+5. **K9 promote-deltas** cherry-picks the in-scope delta forward, gated on a non-empty `evidence_refs` admission check (A10) and a clean write-scope set; it writes an append-only **reverse-cherry-pick journal** so any promotion can be rolled back.
+6. On crash-mid-spawn, a **recovery sweep** (holding the K13 lock, fail-closed on hash failure) reconciles orphaned spawns rather than forging an outcome.
+
+Path canonicalization (K7) guards every filesystem path against `..`, absolute-escape, and symlink-escape; an operator escape hatch (K10) can disable worktree isolation in local-trust mode, with the combined bypass denied in CI.
+
+---
+
+## 5. Kernel primitives {#kernel-primitives}
+
+The "K1–K14" numbering spans the **whole kernel roadmap**. Phase 1-alpha (v3.0-alpha) shipped **11 of them** atop the pre-existing `K5` validators. Honest status flags:
+
+- **Live** — has a production code path today.
+- **Dormant** — code + tests ship, but **no production importer yet** (a merge-blocking CI gate enforces it); first consumer arrives in a later phase.
+- **Advisory** — runs, but **warns, never blocks**.
+- **Deferred** — not shipped in v3.0-alpha.
+
+| K# | What it does | Status | Where |
+|---|---|---|---|
+| **K1** | Worktree allocation for `isolation:"worktree"` spawns (retry + cleanup, no-shell git runner). | Live | `worktree/worktree-allocator.js` |
+| **K2** | Spawn-record envelope (v2 schema) — `PostToolUse:Agent\|Task` capture with `parent_state_id` + forward-compat tolerance. **K2.b** settings-resolution shipped; **K2.c** per-tool-call observability deferred. | Live | `spawn-state/spawn-record.js` |
+| **K3** | Lineage — pure-function `parent_state_id` chain DAG / acyclicity check. | Live | `_lib/lineage.js` |
+| **K3.b** | Context envelope — schema + validator for cross-spawn context propagation (`schemaVersion: 1.0.0-provisional`). | **Dormant** (first consumer = v3.1 personas) | `_lib/context-envelope.js` |
+| **K4** | Recall-CLI deterministic tri-signal ranker (`0.5·kw + 0.3·tag + 0.2·surface`) over a snapshot, not a live store. | Live | `recall/loom-recall.js` |
+| **K5** | Schema validators — YAML frontmatter, bare-secrets, config-guard, contract-verifier. | Live (pre-existing, hardened) | `validators/*` |
+| **K6** | Capability subset check (deterministic set-subset). | **Deferred → v3.1** (needs persona contracts) | — |
+| **K7** | Path canonicalization — rejects `..`, absolute, and symlink-escape. | Live | `_lib/path-canonicalize.js` |
+| **K8** | Capability injection at spawn-init (`PreToolUse(Agent).updatedInput`). | **Deferred → v3.1** | — |
+| **K9** | Promote-deltas — cherry-pick + path-rewrite + atomicity + reverse-cherry-pick journal for rollback. Went live in 4b via the resolver. | Live | `_lib/k9-promote-deltas.js`, `k9-path-guard.js`, `k9-journal.js` |
+| **K10** | `LOOM_DISABLE_WORKTREE` operator escape hatch. | Live | `enforcement/k10-escape-hatch.js` |
+| **K11** | Kernel algorithm library (makes A4 binding). | **Deferred → v3.2** | — |
+| **K12** | Layer-boundary lint — `// @loom-layer:` markers + cross-layer / production→tests import detection. | **Advisory** (non-blocking CI) | `_lib/layer-boundary-lint.js` |
+| **K13** | Serial-only spawn enforcer — one spawn at a time via a lock marker + age-reaping + crash-orphan recovery. | Live | `enforcement/k13-serial-enforcer.js` |
+| **K14** | Write-scope enforcer — post-hoc filesystem detection of out-of-scope writes; the write-scope *producer* that K9 consumes. | Live | `_lib/k14-write-scope.js` + leaves (`k14-snapshot`, `k14-tail-window`, `k14-symlink-guard`) |
+
+The two-phase-commit + recovery machinery K9/K14 produce and consume lives in `packages/kernel/spawn-state/` (`post-spawn-resolver.js`, `recovery-sweep.js`).
+
+---
+
+## 6. What is enforced, and where
+
+- **Blocking (kernel, deterministic):** path canonicalization (K7), serial-spawn admission (K13), the K9 pre-commit evidence + write-scope gate, the K5 validators (secrets, frontmatter, config-guard). Plus the always-on Claude Code hooks: read-before-edit, config-guard, pre-compact checkpoint.
+- **Detect-then-resolve (kernel):** K14 records out-of-scope writes; the resolver + recovery sweep decide the outcome. Writes are *detected*, not prevented at write time — the snapshot is the source of truth (ADR-0010, `INV-K14-PostDetectionEnforcement`).
+- **Advisory (non-blocking):** the K12 layer-boundary lint; any LLM-mediated runtime check (A3b) — emits an audit record, can inform reputation, cannot block.
+
+For the per-hook deep-dives see [`docs/hooks/`](hooks/); for the cross-PR sequencing contract (K9 ↔ K14, the canonical resolver table, the combined-bypass policy) see [`packages/specs/adrs/0011-k9-k14-sequencing-and-phase-1-alpha-spec-deltas.md`](../packages/specs/adrs/0011-k9-k14-sequencing-and-phase-1-alpha-spec-deltas.md).
+
+---
+
+## See also
+
+- [ROADMAP](ROADMAP.md) — how the substrate got here and where it goes next.
+- [Stability commitment](reference/stability-commitment.md) — what is frozen vs evolving vs experimental.
+- [v6 substrate synthesis](../packages/specs/rfcs/v6-substrate-synthesis.md) — the full design rationale (live-drafting).
+- ADRs [0008](../packages/specs/adrs/0008-phase-0-workspace-restructure.md) (restructure) · [0009](../packages/specs/adrs/0009-major-bump-rationale.md) (major bump) · [0010](../packages/specs/adrs/0010-write-scope-enforcement.md) (write-scope) · [0011](../packages/specs/adrs/0011-k9-k14-sequencing-and-phase-1-alpha-spec-deltas.md) (K9↔K14 sequencing).

@@ -1,183 +1,151 @@
-# power-loom
+# Power Loom
 
-> **Power loom for multi-agent Claude Code orchestration.**
+> **A deterministic state-management substrate for stochastic (LLM) agents.**
 >
-> The Industrial Revolution mechanized weaving in 1784 by replacing skilled hand-craft with deterministic, scalable production. **power-loom** does the same for multi-agent coordination on Claude Code — turning ad-hoc prompt orchestration into hook-enforced substrate with persistent identity reputation, contract verification, and chaos-tested patterns.
+> A loom imposes deterministic structure on stochastic threads. **Power Loom** does the same for agentic coding: it wraps non-deterministic agent execution in **transaction boundaries** and **pure-function verification gates**, so an agent's file edits become **atomic, replayable, and reversible** — the way a database transaction manager wraps unreliable writes, or a CI gate wraps an unreliable release.
 >
-> **Hooks before, persistence around, verification after** — compensates for LLM non-determinism at the seams without trying to replace the LLM.
+> **It makes long-horizon agent failures cheap, observable, and reversible. It does _not_ make the underlying LLM smarter.** That honesty is the project's design anchor.
 
-[![CI](https://github.com/shashankcm95/claude-power-loom/actions/workflows/ci.yml/badge.svg)](https://github.com/shashankcm95/claude-power-loom/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-2.9.1-green.svg)](CHANGELOG.md) [![Plugin](https://img.shields.io/badge/Claude_Code-plugin-orange.svg)](.claude-plugin/plugin.json)
+[![CI](https://github.com/shashankcm95/claude-power-loom/actions/workflows/ci.yml/badge.svg)](https://github.com/shashankcm95/claude-power-loom/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Phase](https://img.shields.io/badge/substrate-v3.0--alpha%20(kernel)-orange.svg)](docs/ROADMAP.md) [![Plugin](https://img.shields.io/badge/Claude_Code-plugin-orange.svg)](.claude-plugin/plugin.json)
+
+---
+
+## What it is
+
+Power Loom is an **agent runtime**: the layer that *executes* and *constrains* a coding agent's effects, separate from the layer that generates them. Concretely, it treats every agent spawn as a **transaction**:
+
+```
+spawn → isolated worktree → filesystem delta → verify (pure gates) → promote or reject → record
+```
+
+The unit of truth is the **validated, in-scope filesystem delta** — not the LLM's prose, and not the file's current bytes. LLM trajectories are non-deterministic by construction and recoverable by re-sampling; the substrate's job is to make sure that whatever a spawn *did* is captured, checked against external ground truth, and either committed atomically or rolled back cleanly.
+
+### The problem it solves
+
+Claude Code's native `isolation: "worktree"` is a **git mechanism**, not a filesystem sandbox: a sub-agent can write anywhere the user account can reach (the parent project, sibling repos, `/tmp`), and a `Bash` call bypasses tool-layer hooks entirely. Power Loom's kernel **detects out-of-scope writes post-hoc**, treats them as policy violations, captures every spawn's effects in a **replayable envelope**, and can **roll a promotion back** via a reverse-cherry-pick journal.
+
+### What it is *not*
+
+Honest positioning matters here, so the boundaries are explicit:
+
+- **Not durable execution.** Workflow continuity through process death (Temporal, LangGraph) is a different layer. Power Loom contains the *effects* of non-deterministic edits; it does not resume workflows.
+- **Not an output-scoring reliability vendor.** It does not grade LLM outputs after the fact (the Cleanlab category). Its gates are pure functions over filesystem state, in the *blocking* path.
+- **Not a fix for long-horizon coding.** The long-horizon-coding gap is model-capability-bound. Power Loom makes those failures *recoverable and cheap*, not *less frequent*. The thesis that "as models improve, the bottleneck shifts from generation to governance/containment" is a **wager the project is built on — not a claim it has proven.**
+
+### The four pillars
+
+Every primitive and axiom must serve at least one:
+
+1. **Filesystem-delta-as-truth** — the in-scope delta is the unit of state; out-of-scope writes are violations; transactions are verifiable by replaying inputs.
+2. **Byzantine treatment of the LLM** — both its *outputs* and its *inputs* (web content, retrieved docs, tool results) are untrustworthy by construction and verified against external ground truth.
+3. **Deterministic, auditable execution** — spawns are replayable from a recorded envelope; reputation enters a spawn only via an explicit snapshot.
+4. **Role-separation by capability, not discipline** — roles are enforced by *injecting a capability subset* into a spawn, not by asking a persona to behave.
+
+For the full rationale see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). For the design record itself, see [`packages/specs/rfcs/v6-substrate-synthesis.md`](packages/specs/rfcs/v6-substrate-synthesis.md) and the ADRs under [`packages/specs/adrs/`](packages/specs/adrs/).
+
+---
+
+## Status
+
+The substrate is mid-build. It is distributed as a **Claude Code plugin**; the last published plugin release is **v2.9.x**, and the kernel that defines the new vision is the **v3.0-alpha** train.
+
+**Phase 1-alpha — the pure kernel transaction loop — is complete.** It shipped **11 kernel primitives** (atop the pre-existing `K5` validators) across sub-PRs `#167`, `#169`, `#172`, `#173`, `#174` (all merged) plus `#175` (the `K12` advisory lint — draft, green CI, pending merge):
+
+| Live | Dormant | Advisory | Deferred |
+|---|---|---|---|
+| K1 K2 K3 K4 K7 K9 K10 K13 K14 | **K3.b** (context envelope) | **K12** (layer-boundary lint) | K6 · K8 · K11 · K2.c → v3.1/v3.2 |
+
+"Dormant" = the code ships with **no production importer yet** (a CI gate enforces it); its first consumer arrives in a later phase. "Advisory" = it **warns, never blocks**. See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the phase-by-phase plan and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#kernel-primitives) for what each primitive does.
+
+> ⚠️ This is alpha. The kernel surface changes incompatibly with v2.9 readers (that is *why* it is a v3.0 major bump — see [ADR-0009](packages/specs/adrs/0009-major-bump-rationale.md)). Don't depend on the v3.0-alpha kernel schema staying fixed until stable `v3.0.0` ships.
+
+---
 
 ## Install
 
-**Canonical path — Claude Code plugin marketplace** (recommended for all users):
+**Canonical — Claude Code plugin marketplace:**
 
 ```bash
 /plugin marketplace add shashankcm95/claude-power-loom
 /plugin install power-loom@power-loom-marketplace
 ```
 
-After install, restart Claude Code (or run `/reload-plugins`). Verify: hook scripts now resolve via `${CLAUDE_PLUGIN_ROOT}`, and `~/.claude/logs/session-reset.log` should show `pluginRoot` set + `looksLikePluginInstall: true`.
+Restart Claude Code (or `/reload-plugins`) afterward. Hook scripts then resolve via `${CLAUDE_PLUGIN_ROOT}`.
 
-**Legacy path — `install.sh`** (fallback for shell-only setup, CI provisioning, or environments without `/plugin` support):
+**Legacy — `install.sh`** (shell-only setup, CI provisioning, or environments without `/plugin`):
 
 ```bash
 git clone https://github.com/shashankcm95/claude-power-loom.git ~/Documents/claude-toolkit
 cd ~/Documents/claude-toolkit && ./install.sh --all
 ```
 
-The legacy path wires hooks directly into `~/.claude/settings.json`. It works but doesn't get `/plugin update` integration and requires manual re-runs to pick up new releases.
+The legacy path wires hooks directly into `~/.claude/settings.json`; it works but doesn't get `/plugin update` integration. Full reference: [`docs/install/`](docs/install/). Migrating legacy → plugin: `bash bin/migrate-to-plugin.sh`.
 
-**Migrating from legacy → plugin** (H.7.22):
+> **Repo vs plugin name**: the GitHub repo is `claude-power-loom` (the `claude-` prefix aids ecosystem discovery); the plugin is `power-loom` (Anthropic marketplace convention). The repo was formerly `claude-skills-consolidated`; GitHub auto-redirects old URLs.
 
-If you ran `install.sh` previously and want to switch to the plugin path, the substrate detects the legacy state and emits `[PLUGIN-NOT-LOADED]` at session start asking Claude to perform the migration. To migrate manually (outside Claude):
+---
 
-```bash
-bash ~/Documents/claude-toolkit/bin/migrate-to-plugin.sh
-# follow prompts; backs up settings.json, clears legacy hooks block
-/plugin install power-loom@power-loom-marketplace
-# then restart your Claude Code session
-```
+## How the substrate is layered
 
-> **Why repo and plugin names differ**: GitHub repo is `claude-power-loom` (Claude-ecosystem discovery via `claude-` prefix) while the plugin is `power-loom` (matches Anthropic marketplace convention — external plugins don't use `claude-`). Deliberate split: GitHub-level discoverability + marketplace-convention compliance.
->
-> **Note on prior phase tags**: this repo was previously named `claude-skills-consolidated`. GitHub auto-redirects old URLs; existing bookmarks + phase-tag references continue to resolve. v1.0.0 is the first stable release; v1.1.0 (H.7.22) added plugin distribution validation + R/A/FT primitives; **v2.0.0 (H.9.17; 2026-05-12)** is the first SemVer-committed major after the H.9.x substrate-hardening track — 99/99 install.sh smoke + 0 OPEN drift-notes + all 20 chaos findings closed + soak gate counter 8/5+ STRENGTHENED ×3.
+Power Loom is a microkernel architecture in three layers (a fourth, `adapters`, is a v3.5+ convention path):
 
-**Using HETS on your real project?** See **[skills/agent-team/USING.md](skills/agent-team/USING.md)** — 7-step end-user walkthrough with a worked example. For toolkit-internals, continue reading.
+| Layer | Path | Responsibility | Trust |
+|---|---|---|---|
+| **Kernel** | `packages/kernel/**` | Deterministic, portable, minimal. Hooks + validators + recall-CLI + spawn-state + the transaction primitives. | **Pure-function gates only — no LLM in the blocking path.** |
+| **Runtime** | `packages/runtime/**` | The agent team (HETS): personas, decomposition disciplines, capability traits, contracts. | Kernel gates (blocking) + advisory checks (non-blocking, audit-logged). |
+| **Evolution Lab** | `packages/lab/**` | Adaptive cognition — measures the substrate's own quality and feeds reputation. Phase 3+ (v3.3+). | Advisory only; outputs reach the kernel **only** through an explicit reputation snapshot. |
 
-## What separates this from typical Claude plugins
+The **dependency rule** points inward: an inner layer may never import an outer one (`kernel` imports nothing outward; `runtime` may import `kernel`). This is enforced by convention + per-file `// @loom-layer:` markers + the **`K12` advisory lint** — downgraded from mandatory in v5.1 after six months on the spike branch produced zero observed cross-layer drift (the `_lib/` extraction pattern keeps the tree acyclic by construction).
 
-Most public Claude Code plugins are SKILL.md prompt templates wrapped in a manifest. This one isn't. Differentiation is concrete + verifiable:
+The kernel boundary is **Axiom 2**: *kernel = pure deterministic functions; user-space = agent spawns; interface = filesystem deltas + contract-conformant text.* It forbids LLMs writing to kernel paths, kernel code calling LLMs in a verification gate, and agents bypassing the interface. The Ten Axioms (A1–A10) are stated in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#the-ten-axioms).
 
-| Capability | Most plugins | This plugin |
-|------------|--------------|-------------|
-| **Hook-layer enforcement** | 0–2 hooks (or just logging) | **17 hook registrations** across 6 lifecycle events (18 hook scripts: 11 top-level + 7 validators) |
-| **Multi-agent coordination** | Single-agent prompt | **HETS substrate**: 13 personas with persistent named identities, spawn-tree tracking, per-spawn budget enforcement, asymmetric/symmetric challenger pairing, trust-tiered verification depth |
-| **Output verification** | None | **Triple contract** (functional + anti-pattern + structural checks) runs against every actor output |
-| **Persistence across sessions** | Stateless prompts | `~/.claude/agent-identities.json` accumulates trust scores, skill-invocation history. Pass-rate trust formula is **explicitly documented**, not a black-box weighting |
-| **Self-improvement** | Static skills | **4-trigger auto-loop** with threshold-based auto-graduation for low-risk promotions |
-| **Meta-validation** | None | **Chaos-test** runs the audit infrastructure against itself |
-| **Architectural patterns** | Implicit | **13 documented patterns** in [`skills/agent-team/patterns/`](skills/agent-team/patterns/) |
-| **Pre-ship auditability** | Reads vibes | `node scripts/agent-team/contracts-validate.js` cross-checks 4 sources of truth (0 violations today) |
+---
 
-If you want a single-file SKILL.md prompt template, this isn't it. If you want a substrate that wraps Claude Code's stateless LLM with deterministic gates + persistence + multi-agent verification, you're in the right place.
+## Enforced vs. best-effort — the honesty line
 
-## How power-loom differs from comparable official marketplace plugins
+The substrate has a hard floor and a soft ceiling, and the docs never blur them:
 
-The [official Anthropic marketplace](https://github.com/anthropics/claude-plugins-official) has 35 first-party + 16 external plugins. power-loom occupies a different category — **substrate, not single-feature workflow**.
+- **🔒 Enforced (deterministic).** Hooks and validators are pure logic — they fire every time, no LLM interpretation. Read-before-edit, secret-literal blocking, config-guard, path canonicalization, write-scope detection, serial-spawn enforcement, the pre-commit promote gate. If a behavior *must* always happen, it is a hook.
+- **📜 Best-effort (instruction-following).** Rules, skills, and agent prompts shape Claude's reasoning but **can be skipped** by the LLM under context pressure. They are ideals, not guarantees.
 
-| Plugin | Their approach | power-loom approach |
-|--------|----------------|---------------------|
-| [`code-review`](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/code-review) | Single-shot PR review; no persistent identity | **Persistent identity reputation** across sessions; trust formula derived from observed pass-rate |
-| [`hookify`](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/hookify) | Meta-tool to author NEW hooks | Curated set of **18 production-ready hook scripts** (11 top-level + 7 validators) |
-| [`feature-dev`](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/feature-dev) | Workflow for feature development | Substrate that ANY task runs on |
-| [`claude-md-management`](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/claude-md-management) | Single-file maintenance | **Substrate-level**: hooks enforce read-before-edit; auto self-improve loop with risk taxonomy |
-| [`claude-code-setup`](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/claude-code-setup) | Recommends what to install | Provides the actual substrate to install |
+The value is concentrated in the enforced layer. The runtime adds *verifiable* multi-agent coordination on top: even when an individual agent skips an instruction, its output is checked against a per-persona contract, so the **team-level verdict is deterministic**. See [Honest disclosures](#honest-disclosures).
 
-The **cohesive deterministic-substrate framing** — combining persistent identity + per-spawn budget + triple-contract + kb_scope + trust-tiered verification + empirical refit + breeding mechanics — does not exist elsewhere in the marketplace. power-loom is the substrate other plugins could run on top of, not a replacement for them.
-
-## Stability commitment (v2.x)
-
-power-loom shipped **v2.0.0 on 2026-05-12** after the H.9.x substrate-hardening track (chaos findings closure + drift-notes resolution + release-ceremony). Within v2.x:
-
-- **Stable (frozen)**: plugin manifest schema, hook contracts, install paths, public CLI surface, the `tierOf` formula at `agent-identity.js:98-105` (byte-frozen per H.4.2 audit-transparency commitment), ADR-0001 fail-soft hook invariants, ADR-0002 substrate-fundament `_lib/*` carve-out, ADR-0006 fix-don't-suppress invariant 5 (0 `eslint-disable` directives across substrate), drift-note 80 vigilance (HT-state.md surgical cutover pattern)
-- **Evolving (under explicit version fields)**: trust formula weights (`WEIGHT_PROFILE_VERSION`), persona contracts (schema-additive only), route-decide thresholds (`weights_version`), validator extensions (additive HARD-block + SOFT-advisory checks)
-- **Experimental**: breeding mechanics (`agent-identity breed`), drift triggers, new trust axes (`recency_decay_factor`, `qualityTrend`), forward-deferred drift-notes with activation criteria (CONFIG_GUARD_BOOTSTRAP env-var; ESLint v10 globals re-validation)
-
-Schema migrations are additive within v2.x. Breaking changes require v3. Full details in [docs/reference/stability-commitment.md](docs/reference/stability-commitment.md).
-
-## What's inside
-
-The toolkit has two distinct layers: **enforced** (hooks fire deterministically; behavior is guaranteed) and **best-effort guidance** (rules/skills/agents rely on Claude's instruction-following; Claude may skip them under context pressure).
-
-### 🔒 Enforced Layer (deterministic scripts)
-
-18 hook scripts (11 top-level + 7 validators) registered as 17 hook entries across 6 lifecycle events — pure logic, no LLM interpretation.
-
-| Hook | Event | Guarantees |
-|------|-------|------------|
-| `fact-force-gate.js` | PreToolUse | Blocks Edit/Write on files not Read in this session |
-| `prompt-enrich-trigger.js` | UserPromptSubmit | Injects forcing instruction for vague prompts |
-| `config-guard.js` | PreToolUse | Blocks edits to linter/formatter configs |
-| `validate-no-bare-secrets.js` | PreToolUse | Blocks writes containing secret-shaped literals |
-| `validate-frontmatter-on-skills.js` | PreToolUse | Blocks skill/pattern .md files lacking YAML frontmatter |
-| `error-critic.js` | PostToolUse | Critic→Refiner: emits `[FAILURE-REPEATED]` on 2nd same-command Bash failure (H.7.7) |
-| `pre-compact-save.js` | PreCompact | Writes checkpoint + workflow-state-aware injection (H.7.7) |
-| `console-log-check.js` | Stop | Warns about console.log in changed files |
-| `session-reset.js` | SessionStart | Resets fact-gate tracker, cleans stale state |
-| `session-end-nudge.js` | Stop | Injects pending-approval reminder at session end |
-| `session-self-improve-prompt.js` | UserPromptSubmit | Surfaces self-improve queue on first prompt of session |
-| `auto-store-enrichment.js` | Stop | Stores prompt enrichments + bumps self-improve counters |
-| `validate-yaml-frontmatter.js` | PreToolUse:Edit\|Write | Blocks duplicate top-level YAML keys in HT-state.md (H.9.11; drift-note 80 closure) |
-| `validate-kb-doc.js` | PreToolUse:Edit\|Write | HARD-block frontmatter quality (kb_id + version + tags ≥3 + sources_consulted ≥2) + SOFT-advisory section presence (H.8.8 + H.9.12) |
-| `validate-adr-drift.js` | PreToolUse:Edit\|Write | Enforces per-phase pre-approval gate for substrate-fundament changes |
-| `validate-plan-schema.js` | PostToolUse:Edit\|Write | Validates plan schema after Edit/Write; forcing-instruction on schema violation (HT.1.4) |
-| `verify-plan-gate.js` | PreToolUse:ExitPlanMode | Ensures plan-mode approval ceremony before substantive code changes |
-
-(16 hooks live in `packages/kernel/hooks/{pre,post,lifecycle}/`; 7 validators live in `packages/kernel/validators/`; spawn-record.js in `packages/kernel/spawn-state/`. Registration count is 24 across 6 events per `packages/kernel/hooks.json`.)
-
-[Per-hook deep-dives → docs/hooks/](docs/hooks/)
-
-### 📜 Best-Effort Guidance Layer (instruction-following)
-
-These shape Claude's reasoning but **can be skipped** by the LLM under pressure. Treat as ideals, not guarantees.
-
-| Layer | Count | Invocation | Compliance |
-|-------|-------|------------|------------|
-| **Rules** (always-on text) | 6 | Injected into every session | LLM may skip |
-| **Skills** (workflow guides) | 17 | Claude matches to tasks | LLM may skip |
-| **Agents** (scoped specialists) | 5 | Claude delegates when needed | LLM may skip |
-| **Commands** (manual shortcuts) | 13 | User types `/command-name` | User-driven |
-| **HETS personas** (specialist team) | 16 (5 auditors + 8 builders + 3 codebase-investigators) + challenger + engineering-task templates = 18 contracts | Spawn via `agent-team` skill; identity assigned per spawn | Contract-verified post-hoc, trust-tiered |
-
-**The honest takeaway**: the value of the substrate is concentrated in the 17 hook registrations (18 scripts). Rules/skills/agents add useful context but rely on instruction-following. If a behavior must always happen, build a hook for it. **HETS adds verifiable multi-agent coordination on top** — outputs are checked against per-persona contracts (functional + anti-pattern checks), so even though individual agents may skip instructions, the team-level verdict is deterministic.
-
-[Agents overview](docs/agents/overview.md) · [Skills overview](docs/skills/overview.md) · [Commands reference](docs/reference/commands.md) · [Rules reference](docs/reference/rules.md)
+---
 
 ## Documentation
 
-Deep-dive documentation is organized in **[docs/](docs/)**:
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — the substrate model: layers, the Ten Axioms, the transaction loop, and every kernel primitive K1–K14.
+- **[docs/ROADMAP.md](docs/ROADMAP.md)** — Phase 0 ✓ → Phase 1-alpha ✓ → v3.1+ (appended as each phase lands).
+- **[docs/README.md](docs/README.md)** — the full documentation index.
 
-- **[Architecture](docs/architecture/)** — substrate philosophy, two-layer design, HETS, component invocation
-- **[Hooks](docs/hooks/)** — per-hook deep-dives with inner logic + design rationale
-- **[Agents](docs/agents/)** — specialist persona overview
-- **[Skills](docs/skills/)** — workflow layer overview
-- **[Install](docs/install/)** — legacy installer reference + troubleshooting
-- **[Reference](docs/reference/)** — project structure, diagnostics, commands, stability commitment, library memory organizer
-- **[Development](docs/development/)** — extending power-loom, attribution
+Machinery references (still accurate, preserved): **[Hooks](docs/hooks/)** · **[Library memory organizer](docs/library.md)** · **[Install](docs/install/)** · **[Commands](docs/reference/commands.md)** · **[Rules](docs/reference/rules.md)** · **[Project structure](docs/reference/project-structure.md)** · **[Stability commitment](docs/reference/stability-commitment.md)**.
 
-Or jump to: **[docs/README.md](docs/README.md)** for the full index.
+---
 
 ## Honest disclosures
 
-What this plugin does NOT do:
+What this substrate does **not** do:
 
-- ❌ **Does not guarantee Claude follows the markdown rules in `rules/`.** Those are advisory text injected into every session. Claude may skip them under context pressure (verified empirically). **Specific rules ARE hook-enforced and deterministic** — Read-before-Edit (`fact-force-gate.js`), vague-prompt detection (`prompt-enrich-trigger.js`), settings.json guard (`config-guard.js`), pre-compact checkpoint (`pre-compact-save.js`), and enrichment auto-store (`auto-store-enrichment.js`). The advisory rules ride on best-effort instruction following; hooks ride on hard guarantees.
+- ❌ **Does not make the LLM better at long-horizon coding.** It makes failures cheap, observable, and reversible. That is the whole pitch; anything more would be an overclaim.
+- ❌ **Does not guarantee Claude follows the markdown rules in `rules/`.** Those are advisory text. *Specific* behaviors are hook-enforced and deterministic (read-before-edit, vague-prompt detection, config-guard, pre-compact checkpoint); the rest ride on best-effort instruction-following.
+- ❌ **Does not give agents continuous LLM memory across sessions.** Each spawn is a fresh call. The substrate maintains *per-identity reputation* on disk (trust scores, history) — that is persistence of a record, not of the model's memory.
+- ⚠️ **Is local-trust-anchored.** v3.0-alpha does **not** defend against host-level filesystem tampering; hash-chained tamper-evidence and network-egress policy are deferred (see ROADMAP).
+- ⚠️ **`K3.b` and `K9`-style dormant code, and the `K12` advisory lint, are not yet load-bearing.** They ship early so the design can settle; the docs label them as such rather than implying an active system.
 
-- ❌ **Does not give agents continuous LLM memory across sessions.** Each spawn is a fresh LLM call with its `.md` system prompt — the model doesn't remember prior spawns. **However**, the toolkit maintains per-identity persistence at `~/.claude/agent-identities.json` (trust scores, skill-invocation history, task-type frequency, totalSpawns) and pattern history at `~/.claude/agent-patterns.json`. Identities like `04-architect.mira` accumulate reputation across runs. See [skills/agent-team/patterns/agent-identity-reputation.md](skills/agent-team/patterns/agent-identity-reputation.md).
+These are intentional architecture decisions, not gaps to fix.
 
-- ⚠️ **Auto-promotion is partial — load-bearing promotions still need explicit `/self-improve`.** As of H.4.1, the self-improve loop runs automatically: low-risk graduations (observation-log, memory-consolidation) auto-execute at the 10+-occurrence threshold; medium/high-risk promotions (skill-candidate, rule-candidate, agent-evolution) **always queue for approval**. Memory→Rule writes are load-bearing and require explicit `/self-improve` invocation.
-
-- ⚠️ **Library writes ride on best-effort instruction-following.** As of v2.1.0, `pre-compact-save.js` injects a `SAVE_PROMPT` telling Claude to write a session snapshot to `~/.claude/library/sections/toolkit/stacks/session-snapshots/`. Whether Claude does it well is best-effort — the deterministic guarantee is just the prompt being injected (and the substrate being initialized; the hook fails-closed if `library.json` is missing). See [docs/library.md](docs/library.md).
-
-These limitations are intentional architecture decisions, not gaps to fix.
-
-## Philosophy
-
-**Hooks before, persistence around, verification after** — compensates for LLM non-determinism at the seams without trying to replace the LLM. See [docs/architecture/substrate-philosophy.md](docs/architecture/substrate-philosophy.md) for the full design rationale.
+---
 
 ## Project layout
 
-- `.claude-plugin/plugin.json` + `marketplace.json` — plugin manifests
-- `packages/kernel/hooks/` + `packages/kernel/validators/` + `packages/kernel/spawn-state/` — 24 deterministic hook scripts (16 hooks split pre/post/lifecycle + 7 validators + spawn-record.js; 24 registrations across 6 lifecycle events per `packages/kernel/hooks.json`)
-- `agents/` — 5 specialist agent definitions
-- `skills/` — 17 skill workflows (including `agent-team/` for HETS)
-- `commands/` — 13 slash commands
-- `rules/` — 8 always-on guidance rules (6 core + 1 typescript + 1 web stack-specific)
-- `scripts/agent-team/` — HETS substrate (~6K LoC: trust formula, contract verifier, route-decide, breeding mechanics)
-- `swarm/` — personas, contracts, and findings docs
+- `packages/kernel/` — the Loom Kernel: `hooks/` + `validators/` + `recall/` + `spawn-state/` + `_lib/` (transaction primitives), `hooks.json`, `schema/`.
+- `packages/runtime/` — the Loom Runtime: HETS orchestration, persona contracts, identity registry.
+- `packages/lab/` — the Evolution Lab (Phase 3+).
+- `packages/specs/` — the design record: `rfcs/`, `adrs/`, `plans/`, `research/`.
+- `packages/skills/` — cross-cutting skills (including `agent-team/` for HETS).
+- `agents/` · `commands/` · `rules/` — agent definitions, slash commands, always-on guidance.
 
-Full walkthrough: [docs/reference/project-structure.md](docs/reference/project-structure.md)
+Full walkthrough: [`docs/reference/project-structure.md`](docs/reference/project-structure.md).
 
 ## License
 
@@ -185,7 +153,7 @@ MIT — see [LICENSE](LICENSE).
 
 ## Attribution
 
-This work builds on community plugins and patterns that came before it. See [ATTRIBUTION.md](ATTRIBUTION.md) for full attribution + license disclosures, and [docs/development/attribution.md](docs/development/attribution.md) for per-component influence mapping.
+Builds on community plugins and patterns that came before it. See [ATTRIBUTION.md](ATTRIBUTION.md) and [`docs/development/attribution.md`](docs/development/attribution.md).
 
 ---
 
