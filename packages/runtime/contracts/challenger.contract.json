@@ -120,5 +120,51 @@
     "Implementer's output cited exhaustively-correct work AND no substantive disagreement found → state explicitly with reasoning + which claims were independently verified (per-claim, not aggregated)",
     "Cannot resolve a referenced KB doc → note the gap; do not infer challenge from missing context"
   ],
-  "_format": "Findings format + frontmatter contract: see packages/runtime/schema/_format-spec.md (v2.9.0 Phase B.1)"
+  "_format": "Findings format + frontmatter contract: see packages/runtime/schema/_format-spec.md (v2.9.0 Phase B.1)",
+  "interface": {
+    "traits": [
+      "read_repo",
+      "recall_global"
+    ],
+    "declared_capabilities": {
+      "read": [
+        "repo://**"
+      ],
+      "read_recall": [
+        "@library/*",
+        "@thoughts/*"
+      ]
+    },
+    "declared_scope": [
+      "challenge-duty critique of implementer output",
+      "surfaces >=1 substantive disagreement",
+      "does not redo the implementer task",
+      "evidence-backed dissent"
+    ],
+    "output_schema": {
+      "type": "challenge_findings",
+      "required": [
+        "challenges",
+        "evidence",
+        "challenges_implementer"
+      ]
+    },
+    "decomposition_discipline": {
+      "primary": "spec-driven",
+      "fallback_when_code_producing": "tdd"
+    }
+  },
+  "defaults": {
+    "timeout": 1800,
+    "retention": {
+      "pre_snapshot_lifetime_hours": 24,
+      "delta_lifetime_days": 30
+    },
+    "budget": {
+      "tokens": 10000,
+      "extensible": true,
+      "maxExtensions": 1,
+      "extensionAmount": 5000
+    }
+  }
 }

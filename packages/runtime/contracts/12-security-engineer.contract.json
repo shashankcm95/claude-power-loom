@@ -39,6 +39,65 @@
     "maxExtensions": 1,
     "extensionAmount": 15000
   },
+  "interface": {
+    "traits": [
+      "read_repo",
+      "worktree_writable",
+      "bash_test_runner",
+      "recall_global"
+    ],
+    "declared_capabilities": {
+      "read": [
+        "repo://**"
+      ],
+      "isolation": "worktree",
+      "write": [
+        "sandbox://**"
+      ],
+      "subprocess": [
+        "npm test",
+        "vitest",
+        "pytest",
+        "tsc --noEmit"
+      ],
+      "read_recall": [
+        "@library/*",
+        "@thoughts/*"
+      ]
+    },
+    "declared_scope": [
+      "security vulnerability detection",
+      "remediation + secure-default fixes",
+      "auth/authz + crypto + IAM review",
+      "threat modeling + principle audit"
+    ],
+    "output_schema": {
+      "type": "security_findings",
+      "required": [
+        "severity_sections",
+        "evidence",
+        "file_citations",
+        "principle_audit"
+      ]
+    },
+    "decomposition_discipline": {
+      "primary": "spec-driven",
+      "fallback_when_code_producing": "tdd"
+    }
+  },
+  "defaults": {
+    "timeout": 1800,
+    "retention": {
+      "pre_snapshot_lifetime_hours": 24,
+      "delta_lifetime_days": 30
+    },
+    "budget": {
+      "tokens": 35000,
+      "extensible": true,
+      "maxExtensions": 1,
+      "extensionAmount": 15000
+    }
+  },
   "functional": [
     {
       "id": "F1",

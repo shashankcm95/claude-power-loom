@@ -43,6 +43,11 @@ const TOOLKIT = findToolkitRoot();
 // Phase 0: paths anticipate Step 6 (contracts) + Step 8 (skills) target locations.
 const PATTERNS_DIR = path.join(TOOLKIT, 'packages', 'skills', 'library', 'agent-team', 'patterns');
 const CONTRACTS_DIR = path.join(TOOLKIT, 'packages', 'runtime', 'contracts');
+// v3.1 PR-1: capability-trait registry (CONTRACTS_DIR sibling). Consumed by
+// the two-tier-contract validators (traits-resolve-clean et al.) added below.
+// The trait-resolve primitive itself ships in packages/runtime/contracts/_lib/.
+const TRAITS_REGISTRY = path.join(CONTRACTS_DIR, 'traits', '_registry.json');
+const { resolveTraits } = require('../contracts/_lib/trait-resolve');
 const SKILL_MD = path.join(TOOLKIT, 'packages', 'skills', 'library', 'agent-team', 'SKILL.md');
 const PATTERNS_README = path.join(PATTERNS_DIR, 'README.md');
 const KB_MANIFEST = path.join(TOOLKIT, 'packages', 'skills', 'library', 'agent-team', 'kb', 'manifest.json');
@@ -831,6 +836,213 @@ validators['contract-marketplace-schema'] = function () {
     process.stderr.write(`ℹ contract-marketplace-schema: schemas: ${schemasValidated} validated\n`);
   }
 
+  return violations;
+};
+
+// ---------- v3.1 PR-1: two-tier-contract validators ----------
+//
+// Five validators wired into the existing `validators` dictionary (no new CI
+// job — `Object.keys(validators)` at the main loop enumerates them and the
+// non-empty-result → process.exit(1) wiring is inherited). They validate the
+// v3.1 two-tier contract shape (`interface` + `defaults`) + the capability
+// trait composition (declared_capabilities == resolveTraits(interface.traits)).
+//
+// The 18 real contracts were migrated to the two-tier shape in THIS PR (PR-1),
+// so these validators report ZERO violations against them — the regression
+// guard (tests/unit/runtime/contracts/contracts-validate.test.js test 10)
+// asserts totalViolations === 0 over listContractFiles(). The synthetic-fixture
+// unit tests in that file exercise the NEGATIVE paths (each validator FAILs on
+// malformed input) against a tmp toolkit root.
+
+// Canonical comparison: stable-key JSON. Sufficient for the value shapes here
+// (budgets, capability arrays) — no functions/undefined/Date to worry about.
+function deepEqual(a, b) {
+  return canonicalJson(a) === canonicalJson(b);
+}
+
+function canonicalJson(value) {
+  if (Array.isArray(value)) {
+    return '[' + value.map(canonicalJson).join(',') + ']';
+  }
+  if (value && typeof value === 'object') {
+    const keys = Object.keys(value).sort();
+    return '{' + keys.map((k) => JSON.stringify(k) + ':' + canonicalJson(value[k])).join(',') + '}';
+  }
+  return JSON.stringify(value);
+}
+
+validators['two-tier-shape-present'] = function () {
+  // Every contract must declare BOTH `interface` and `defaults` top-level keys.
+  const violations = [];
+  for (const { name, path: fp } of listContractFiles()) {
+    const c = loadJson(fp);
+    if (!c) {
+      violations.push({ kind: 'unparseable-contract', contract: name, file: fp });
+      continue;
+    }
+    if (!c.interface || typeof c.interface !== 'object') {
+      violations.push({
+        kind: 'missing-interface',
+        contract: name,
+        fix: `Add an "interface" block (traits[] + declared_capabilities) to ${name}.contract.json`,
+      });
+    }
+    if (!c.defaults || typeof c.defaults !== 'object') {
+      violations.push({
+        kind: 'missing-defaults',
+        contract: name,
+        fix: `Add a "defaults" block (mirroring legacy top-level fields) to ${name}.contract.json`,
+      });
+    }
+  }
+  return violations;
+};
+
+validators['defaults-mirror-legacy'] = function () {
+  // When a legacy top-level `budget` is present, defaults.budget must deep-equal
+  // it (the two-tier shape mirrors legacy fields to stay backward compatible).
+  const violations = [];
+  for (const { name, path: fp } of listContractFiles()) {
+    const c = loadJson(fp);
+    if (!c) continue;
+    if (c.budget === undefined) continue; // nothing to mirror
+    const mirrored = c.defaults && c.defaults.budget;
+    if (mirrored === undefined) {
+      violations.push({
+        kind: 'defaults-budget-missing',
+        contract: name,
+        fix: `Add defaults.budget mirroring the legacy top-level budget in ${name}.contract.json`,
+      });
+      continue;
+    }
+    if (!deepEqual(mirrored, c.budget)) {
+      violations.push({
+        kind: 'defaults-budget-drift',
+        contract: name,
+        legacy: c.budget,
+        defaults: mirrored,
+        fix: `defaults.budget must deep-equal the legacy top-level budget in ${name}.contract.json`,
+      });
+    }
+  }
+  return violations;
+};
+
+validators['traits-resolve-clean'] = function () {
+  // interface.traits[] must all be known registry traits AND
+  // interface.declared_capabilities must deep-equal resolveTraits(traits).
+  const violations = [];
+  const reg = loadJson(TRAITS_REGISTRY);
+  if (!reg) {
+    return [{
+      kind: 'missing-traits-registry',
+      file: TRAITS_REGISTRY,
+      fix: 'create packages/runtime/contracts/traits/_registry.json',
+    }];
+  }
+  for (const { name, path: fp } of listContractFiles()) {
+    const c = loadJson(fp);
+    if (!c || !c.interface) continue;
+    const traits = Array.isArray(c.interface.traits) ? c.interface.traits : [];
+    let resolved;
+    try {
+      resolved = resolveTraits(traits, reg);
+    } catch (err) {
+      violations.push({
+        kind: 'trait-resolution-error',
+        contract: name,
+        error: err.message,
+        fix: `Fix interface.traits in ${name}.contract.json (unknown trait or narrowing-axis conflict)`,
+      });
+      continue;
+    }
+    const declared = c.interface.declared_capabilities || {};
+    if (!deepEqual(declared, resolved)) {
+      violations.push({
+        kind: 'declared-capabilities-drift',
+        contract: name,
+        declared,
+        resolved,
+        fix: `Set interface.declared_capabilities to resolveTraits(traits) in ${name}.contract.json`,
+      });
+    }
+  }
+  return violations;
+};
+
+validators['decomposition-discipline-valid'] = function () {
+  // decomposition_discipline (when present) must declare a non-empty `primary`.
+  // Canonical home is interface.decomposition_discipline (RFC v3.3 §3.3; all 18
+  // migrated contracts + the architect persona nest it there — it is part of the
+  // capability/output interface). A legacy top-level placement is tolerated for
+  // backward compatibility, but interface is read first.
+  const violations = [];
+  for (const { name, path: fp } of listContractFiles()) {
+    const c = loadJson(fp);
+    if (!c) continue;
+    const dd = (c.interface && c.interface.decomposition_discipline) !== undefined
+      ? c.interface.decomposition_discipline
+      : c.decomposition_discipline;
+    if (dd === undefined) {
+      violations.push({
+        kind: 'decomposition-discipline-missing',
+        contract: name,
+        fix: `Add a decomposition_discipline block with a "primary" concern to ${name}.contract.json`,
+      });
+      continue;
+    }
+    if (!dd.primary || typeof dd.primary !== 'string') {
+      violations.push({
+        kind: 'decomposition-discipline-no-primary',
+        contract: name,
+        fix: `decomposition_discipline must declare a non-empty string "primary" in ${name}.contract.json`,
+      });
+    }
+  }
+  return violations;
+};
+
+validators['registry-schema-valid'] = function () {
+  // The traits registry must parse, declare schemaVersion 1.0.0, carry the
+  // canonical _axis_direction map, and every trait axis must be a known axis.
+  const violations = [];
+  const reg = loadJson(TRAITS_REGISTRY);
+  if (!reg) {
+    return [{
+      kind: 'missing-traits-registry',
+      file: TRAITS_REGISTRY,
+      fix: 'create packages/runtime/contracts/traits/_registry.json',
+    }];
+  }
+  if (reg.schemaVersion !== '1.0.0') {
+    violations.push({
+      kind: 'registry-schema-version',
+      actual: reg.schemaVersion,
+      expected: '1.0.0',
+      fix: 'Set traits/_registry.json schemaVersion to "1.0.0"',
+    });
+  }
+  const directions = reg._axis_direction || {};
+  if (Object.keys(directions).length === 0) {
+    violations.push({
+      kind: 'registry-axis-direction-missing',
+      fix: 'traits/_registry.json must declare _axis_direction (narrowing/broadening per axis)',
+    });
+  }
+  const knownAxes = new Set(Object.keys(directions));
+  for (const [traitName, trait] of Object.entries(reg.traits || {})) {
+    for (const axis of Object.keys(trait)) {
+      if (axis.startsWith('_')) continue;
+      if (!knownAxes.has(axis)) {
+        violations.push({
+          kind: 'registry-unknown-axis',
+          trait: traitName,
+          axis,
+          fix: `Declare axis '${axis}' in traits/_registry.json _axis_direction or remove it from trait '${traitName}'`,
+        });
+      }
+    }
+  }
   return violations;
 };
 

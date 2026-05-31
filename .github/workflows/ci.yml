@@ -153,6 +153,59 @@ jobs:
           fi
           exit $failed
 
+  runtime-contracts-tests:
+    # v3.1 PR-1 (runtime persona contracts + capability-trait registry). Closes
+    # the same silent-false-green gap the kernel-property-tests job closed for
+    # tests/unit/kernel: the three PR-1 test files at
+    # tests/unit/runtime/contracts/*.test.js (trait-resolve, contracts-validate,
+    # traits-registry) are written but otherwise unexecuted — `pnpm -r test`
+    # echoes "deferred" per-package and these live under top-level tests/, not a
+    # workspace package. Without this job the TDD-treatment failing-tests-first
+    # artifacts would never run in CI.
+    #
+    # Same hardening as kernel-property-tests (jade round-1 / nova round-2):
+    # per-file script-runner with explicit working dir, null-delimited
+    # find -print0 + read -d '' for whitespace safety, and a `count -eq 0`
+    # vacuous-pass guard that fails fast if the find root renames/moves.
+    #
+    # NOT dormancy-gated: unlike the kernel K* primitives, all three PR-1 test
+    # files are GREEN in PR-1 — the 18-contract two-tier migration landed in THIS
+    # PR (test 10 is the GREEN-on-migrated regression gate, not an expected-RED
+    # placeholder). No --scope subset, no expected-failure carve-out.
+    name: Runtime contracts tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run runtime persona-contract tests
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        run: |
+          set +e  # explicit; the loop manages exit code via $failed accumulator
+          failed=0
+          count=0
+          while IFS= read -r -d '' f; do
+            count=$((count+1))
+            echo "::group::$f"
+            node "$f"
+            rc=$?
+            echo "::endgroup::"
+            [ $rc -ne 0 ] && failed=1
+          done < <(find "$GITHUB_WORKSPACE/tests/unit/runtime/contracts" -name '*.test.js' -type f -print0)
+          echo "Ran $count test files; failures: $failed"
+          # Vacuous-pass guard: if find matched zero files (cwd mismatch, path
+          # rename, or globbing failure), fail the job rather than pass vacuously.
+          if [ "$count" -eq 0 ]; then
+            echo "::error::Zero test files matched at $GITHUB_WORKSPACE/tests/unit/runtime/contracts — vacuous-pass guard failing the job."
+            exit 2
+          fi
+          exit $failed
+
   dormancy-assertion-k3b:
     # Phase 1-alpha K3.b context-envelope ships DORMANT — the validator module +
     # its JSON schema land in PR 1, but NO production code imports the module
