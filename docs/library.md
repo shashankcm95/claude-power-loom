@@ -157,7 +157,7 @@ Verified by smoke Test 109 (J5): injecting `schema_version: 99` makes `library r
 
 ## Hook integration (Component G — CRITICAL #2)
 
-`hooks/scripts/pre-compact-save.js` includes a fail-closed guard:
+`packages/kernel/hooks/lifecycle/pre-compact-save.js` includes a fail-closed guard:
 - If `library.json` exists AND `.migrate-complete` is absent → **migration in progress**; refuse to write (avoid race with `library migrate`)
 - If `library.json` is absent → pre-library state; write to legacy paths normally
 - If both present → write through symlinks transparently
