@@ -40,7 +40,7 @@
       ]
     },
     "network_anthropic": {
-      "_doc": "Explicit network allowlist for Anthropic inference API (RFC v3.3 §3.2 L162). Narrowing axis (allowlists intersect). Advisory enforcement only (audited post-hoc at promote-deltas; NOT blockable mid-spawn). Granted only when the persona's agent.md description implies inference-API consumption (e.g. 08-ml-engineer Claude/OpenAI integration).",
+      "_doc": "Explicit network allowlist for Anthropic inference API (RFC v3.3 §3.2 L162). Narrowing axis (allowlists intersect). Advisory enforcement only: tool-mediated egress (WebFetch/WebSearch/MCP) is harness-enforced via agents/<name>.md `tools:`; Bash-subprocess egress is audited post-hoc (advisory) by packages/kernel/observability/network-egress-audit.js on PostToolUse:Bash. NOT blockable mid-spawn; real prevention is ContainerAdapter-tier. Granted only when the persona's agent.md description implies inference-API consumption (e.g. 08-ml-engineer Claude/OpenAI integration).",
       "network": [
         "api.anthropic.com"
       ]

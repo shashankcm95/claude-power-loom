@@ -62,10 +62,11 @@ The first phase to build on the kernel. **Shipped so far:**
 
 - ✅ **R1–R4** — two-tier persona contracts + capability traits + 18-contract migration (PR #179).
 - ✅ **K6** (capability subset-check) + **K3.b `buildEnvelope`** + the **agent.md↔contract reconciliation validator** — the static capability layer (PR-2a).
+- ✅ **Network axis** — decomposes into tool-mediated egress (`WebFetch`/`WebSearch`/MCP — enforced via agents/`<name>.md` `tools:`) + Bash-subprocess egress (now **audited**, advisory, by `network-egress-audit.js` on `PostToolUse:Bash`). Static reconciliation of a `network` axis is *not viable* (no `tools:` referent); egress *prevention* is ContainerAdapter-tier (see below).
 
 **Re-scoped (ADR-0012):** empirical probes proved a PreToolUse hook's `updatedInput` is **inert for Agent/Task spawns** (the Agent input has no `tools` field; tool/prompt rewrites are not honored). So **K8 — capability injection at spawn-init — is DROPPED** (its mechanism does not exist), and the inert `pre-spawn-tool-mask` is unregistered. **Capability enforcement is STATIC**: the agent.md frontmatter `tools:` (which the harness honors) + the reconciliation validator (build-time). K3.b's per-spawn context delivery is deferred (no injection channel exists).
 
-- ⬜ Still planned: R13 idempotency-key enforcer; K2.c per-tool-call observability; extend the reconciliation validator to the **network axis** (closes the restriction `pre-spawn-tool-mask` falsely claimed to enforce).
+- ⬜ Still planned: R13 idempotency-key enforcer; K2.c per-tool-call observability.
 
 ---
 
