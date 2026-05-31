@@ -2,6 +2,16 @@
 
 // packages/kernel/hooks/pre/pre-spawn-tool-mask.js
 //
+// !! INERT / UNREGISTERED (ADR-0012, 2026-05-31) !!
+//   Empirical probes proved a PreToolUse hook's `updatedInput` is NOT honored for
+//   Agent/Task spawns (the Agent tool_input has no `tools` field; tool/prompt
+//   rewrites do not reach the sub-agent). This hook's network-strip never took
+//   effect. It is REMOVED from hooks.json; the file is retained pending a
+//   follow-up deletion. Capability enforcement is STATIC: the agent.md frontmatter
+//   `tools:` definition (which the harness honors) + the agent.md<->contract
+//   reconciliation validator (contracts-validate.js). The pure helpers below
+//   (applyMask, NETWORK_BASH_PATTERNS, ...) are kept for reference only.
+//
 // **THE ONE THING** — per v6 §6.5 Round-3d additions (5-persona pair-review C2).
 //
 // v6 spec anchors:

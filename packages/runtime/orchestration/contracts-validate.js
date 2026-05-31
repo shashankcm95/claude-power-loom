@@ -48,6 +48,10 @@ const CONTRACTS_DIR = path.join(TOOLKIT, 'packages', 'runtime', 'contracts');
 // The trait-resolve primitive itself ships in packages/runtime/contracts/_lib/.
 const TRAITS_REGISTRY = path.join(CONTRACTS_DIR, 'traits', '_registry.json');
 const { resolveTraits } = require('../contracts/_lib/trait-resolve');
+// v3.1 PR-2a: agents/<name>.md is the AUTHORITATIVE capability source (per the
+// traits registry _doc). The reconciliation validator below binds each numbered
+// contract's traits back to its agent.md `tools:` frontmatter floor.
+const AGENTS_DIR = path.join(TOOLKIT, 'agents');
 const SKILL_MD = path.join(TOOLKIT, 'packages', 'skills', 'library', 'agent-team', 'SKILL.md');
 const PATTERNS_README = path.join(PATTERNS_DIR, 'README.md');
 const KB_MANIFEST = path.join(TOOLKIT, 'packages', 'skills', 'library', 'agent-team', 'kb', 'manifest.json');
@@ -1041,6 +1045,124 @@ validators['registry-schema-valid'] = function () {
           fix: `Declare axis '${axis}' in traits/_registry.json _axis_direction or remove it from trait '${traitName}'`,
         });
       }
+    }
+  }
+  return violations;
+};
+
+// ---------- v3.1 PR-2a: agent.md <-> contract reconciliation ----------
+//
+// Closes the PR-1 board's source-of-truth carry-forward: the traits registry
+// _doc NAMES `agents/<name>.md tools:` as the AUTHORITATIVE capability source
+// ([Read,Grep,Glob]=read-only; +Bash=subprocess; +Edit/Write=writes), but until
+// now NOTHING bound a contract's declared traits back to that floor. This
+// validator does — for each numbered persona contract with a corresponding
+// agents/<name>.md (NN- prefix stripped):
+//   - tools: contains Edit|Write  => contract MUST carry worktree_writable
+//                                    (else write-floor-missing).
+//   - tools: WITHOUT Edit/Write   => contract MUST NOT carry worktree_writable
+//                                    (read-only over-grant => write-overgrant).
+//   - tools: WITHOUT Bash but the contract HAS bash_test_runner
+//                                  => subprocess over-grant (subprocess-overgrant).
+//   (Bash present + bash_test_runner present is PERMITTED, not required — a
+//   Bash-capable persona may legitimately omit the test-runner subprocess trait.)
+//
+// SKIP rule: contracts with no single agents/<name>.md are skipped (they have
+// no single frontmatter floor to bind):
+//   - challenger / engineering-task   — persona '<set-at-spawn>' templates.
+//   - 12-security-engineer            — maps to agents/security-AUDITOR.md, not
+//                                       security-engineer.md, so the strict
+//                                       strip-rule finds no single floor. Noted,
+//                                       not bound (parallels the templates).
+//
+// Numbered-only: the NN- prefix is the contract's persona-slot marker. A
+// contract WITHOUT a leading NN- (challenger, engineering-task) is a template
+// and is skipped by this gate regardless of agent.md existence.
+//
+// AXES BOUND vs INTENTIONALLY UN-RECONCILED (coverage boundary — not an omission):
+//   - write  (Edit|Write -> worktree_writable) : bound BOTH directions
+//     (floor-missing AND over-grant).
+//   - subprocess (Bash -> bash_test_runner)    : bound the over-grant direction
+//     only (Bash present + runner absent is a legitimate narrower grant).
+//   - network (network_anthropic)              : DELIBERATELY un-reconciled.
+//     `network` is NOT a Claude Code tool, so agents/<name>.md `tools:` carries
+//     no network referent to bind it to; the traits-registry _doc maps `tools:`
+//     to read/subprocess/write only, and network_anthropic is advisory-audit
+//     (NOT blockable mid-spawn, per ADR-0011 §3.2). There is therefore no
+//     tools: floor to reconcile against — the absence here is correct-by-design,
+//     not a missing edge. (Resolves PR-2a review FLAG: network-axis coverage.)
+//   - security-engineer: 12-security-engineer is the ONE write-capable persona
+//     whose strict-stripped name (security-engineer) has no agents/<name>.md
+//     (the floor lives in agents/security-AUDITOR.md). It is SKIPPED today (see
+//     SKIP rule). A future {'security-engineer':'security-auditor'} alias map
+//     would floor-bind it — deferred to PR-2b polish, tracked, not a PR-2a gap.
+
+const NUMBERED_CONTRACT_RE = /^(\d+)-(.+)$/;
+
+// Read agent.md tools[] frontmatter. Small fixed set (~16 numbered contracts);
+// no memoization needed at this scale (each validator run reads from disk once
+// per numbered contract; the three axis checks below reuse the returned Set).
+function readAgentTools(agentName) {
+  const fp = path.join(AGENTS_DIR, `${agentName}.md`);
+  if (!fs.existsSync(fp)) return null;
+  try {
+    const { frontmatter: fm } = parseFrontmatter(fs.readFileSync(fp, 'utf8'));
+    const tools = Array.isArray(fm.tools) ? fm.tools : [];
+    return new Set(tools.map((t) => String(t)));
+  } catch {
+    return null; // unreadable frontmatter — treat as no-floor (skip)
+  }
+}
+
+function contractHasTrait(contract, traitName) {
+  const traits = (contract.interface && Array.isArray(contract.interface.traits))
+    ? contract.interface.traits
+    : [];
+  return traits.includes(traitName);
+}
+
+validators['agent-contract-capability-reconcile'] = function () {
+  const violations = [];
+  for (const { name, path: fp } of listContractFiles()) {
+    const m = name.match(NUMBERED_CONTRACT_RE);
+    if (!m) continue; // un-numbered template (challenger / engineering-task) — skip
+    const agentName = m[2];
+    const tools = readAgentTools(agentName);
+    if (tools === null) {
+      // No single agents/<name>.md floor (e.g. 12-security-engineer ->
+      // security-auditor.md). Cannot bind; skip silently per the SKIP rule.
+      continue;
+    }
+    const c = loadJson(fp);
+    if (!c) continue;
+    const toolsWrite = tools.has('Edit') || tools.has('Write');
+    const toolsBash = tools.has('Bash');
+    const hasWritable = contractHasTrait(c, 'worktree_writable');
+    const hasBashRunner = contractHasTrait(c, 'bash_test_runner');
+
+    if (toolsWrite && !hasWritable) {
+      violations.push({
+        kind: 'write-floor-missing',
+        contract: name,
+        agent: `agents/${agentName}.md`,
+        fix: `agents/${agentName}.md tools include Edit/Write but ${name}.contract.json lacks the worktree_writable trait — add it to interface.traits.`,
+      });
+    }
+    if (!toolsWrite && hasWritable) {
+      violations.push({
+        kind: 'write-overgrant',
+        contract: name,
+        agent: `agents/${agentName}.md`,
+        fix: `${name}.contract.json declares worktree_writable but agents/${agentName}.md tools are read-only (no Edit/Write) — remove the over-granted write trait.`,
+      });
+    }
+    if (!toolsBash && hasBashRunner) {
+      violations.push({
+        kind: 'subprocess-overgrant',
+        contract: name,
+        agent: `agents/${agentName}.md`,
+        fix: `${name}.contract.json declares bash_test_runner but agents/${agentName}.md tools omit Bash — remove the over-granted subprocess trait.`,
+      });
     }
   }
   return violations;

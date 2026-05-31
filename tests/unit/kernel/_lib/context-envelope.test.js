@@ -134,6 +134,69 @@ test('K3.b.module: validateEnvelope rejects malformed envelope (random object)',
   assert.strictEqual(result.valid, false);
 });
 
+// --- K3.b buildEnvelope + version handshake (v3.1 PR-2a additions) ---
+//
+// PR-2a ADDS buildEnvelope({contextItems}) + SCHEMA_VERSION + acceptsSchemaVersion
+// to the module. buildEnvelope's ONLY importer in PR-2a is THIS test file (the
+// K8 production consumer that flips dormancy lands in PR-2b) — so the dormancy
+// assertion below MUST stay GREEN after these additions.
+
+test('K3.b.buildEnvelope: exports buildEnvelope function', () => {
+  const mod = require(MODULE_PATH);
+  assert.strictEqual(typeof mod.buildEnvelope, 'function');
+});
+
+test('K3.b.buildEnvelope: round-trips through validateEnvelope (valid===true)', () => {
+  const { buildEnvelope, validateEnvelope } = require(MODULE_PATH);
+  const env = buildEnvelope({
+    contextItems: [
+      { source: 'parent-spawn', scope: 'task', content: 'do X', precedence: 1 },
+      { source: 'kb', scope: 'global', content: 'ref', precedence: 2 },
+    ],
+  });
+  const result = validateEnvelope(env);
+  assert.strictEqual(result.valid, true, 'errors: ' + JSON.stringify(result.errors || []));
+});
+
+test('K3.b.buildEnvelope: stamps the exported SCHEMA_VERSION', () => {
+  const { buildEnvelope, SCHEMA_VERSION } = require(MODULE_PATH);
+  assert.strictEqual(typeof SCHEMA_VERSION, 'string');
+  const env = buildEnvelope({ contextItems: [] });
+  assert.strictEqual(env.schemaVersion, SCHEMA_VERSION);
+});
+
+test('K3.b.buildEnvelope: SCHEMA_VERSION equals the schema const (1.0.0-provisional)', () => {
+  const { SCHEMA_VERSION } = require(MODULE_PATH);
+  const schema = JSON.parse(fs.readFileSync(SCHEMA_PATH, 'utf8'));
+  assert.strictEqual(SCHEMA_VERSION, schema.properties.schemaVersion.const);
+});
+
+test('K3.b.buildEnvelope: does not mutate the input contextItems array', () => {
+  const { buildEnvelope } = require(MODULE_PATH);
+  const items = [{ source: 's', scope: 'task', content: 'c', precedence: 1 }];
+  const frozen = Object.freeze(items.slice());
+  assert.doesNotThrow(() => buildEnvelope({ contextItems: frozen }));
+});
+
+test('K3.b.buildEnvelope: tolerates missing contextItems (defaults to empty array)', () => {
+  const { buildEnvelope, validateEnvelope } = require(MODULE_PATH);
+  const env = buildEnvelope({});
+  assert.ok(Array.isArray(env.contextItems));
+  assert.strictEqual(validateEnvelope(env).valid, true);
+});
+
+test('K3.b.acceptsSchemaVersion: 1.x accepted, 2.x rejected (MAJOR handshake)', () => {
+  const { acceptsSchemaVersion } = require(MODULE_PATH);
+  assert.strictEqual(acceptsSchemaVersion('1.0.0-provisional'), true);
+  assert.strictEqual(acceptsSchemaVersion('1.4.2'), true);
+  assert.strictEqual(acceptsSchemaVersion('2.0.0'), false);
+  assert.strictEqual(acceptsSchemaVersion('0.9.0'), false);
+  // Non-string inputs must be rejected without throwing.
+  assert.strictEqual(acceptsSchemaVersion(undefined), false);
+  assert.strictEqual(acceptsSchemaVersion(1), false);
+  assert.strictEqual(acceptsSchemaVersion(null), false);
+});
+
 // --- FL-5 dormancy assertion (PR 1 ships module dormant) ---
 
 test('K3.b.dormancy: zero production importers in packages/ outside tests/', () => {
