@@ -2,7 +2,7 @@
 
 > Returns to README: [README.md](README.md) | Up: [docs/](..)
 
-23 hook registrations across 6 lifecycle events (1 `SessionStart` + 1 `UserPromptSubmit` + 12 `PreToolUse` + 4 `PostToolUse` + 1 `PreCompact` + 4 `Stop`). The full registration table is in [README.md](README.md); the authoritative per-hook rationale is the `_comment` field on each entry in [`packages/kernel/hooks.json`](../../packages/kernel/hooks.json). This page explains the **categories** and deep-dives a few representative hooks — it deliberately does not restate every hook (the manifest does, and stays in sync).
+24 hook registrations across 6 lifecycle events (1 `SessionStart` + 1 `UserPromptSubmit` + 12 `PreToolUse` + 5 `PostToolUse` + 1 `PreCompact` + 4 `Stop`). The full registration table is in [README.md](README.md); the authoritative per-hook rationale is the `_comment` field on each entry in [`packages/kernel/hooks.json`](../../packages/kernel/hooks.json). This page explains the **categories** and deep-dives a few representative hooks — it deliberately does not restate every hook (the manifest does, and stays in sync).
 
 Hook scripts run as external Node.js processes triggered by Claude Code's lifecycle events. They are the only layer with hard guarantees — pure logic, no LLM interpretation. Every hook is **fail-soft**: a crash is caught and the session proceeds (a hook must never brick the tool call it observes).
 
@@ -12,7 +12,7 @@ Hook scripts run as external Node.js processes triggered by Claude Code's lifecy
 - **Spawn gates** (`packages/kernel/hooks/pre/` on `Agent|Task`) — fire when the orchestrator spawns a sub-agent: route-decide advisory + persona-contract reminder.
 - **Anti-hallucination / config gates** (`packages/kernel/hooks/pre/` on `Read|Edit|Write`) — `fact-force-gate` (read-before-edit) and `config-guard` (don't weaken linter config).
 - **Content validators** (`packages/kernel/validators/` on `Edit|Write` / `Bash`) — schema + safety gates on what gets written (secrets, YAML, skill / KB / ADR / plan frontmatter, config redirects).
-- **Post-observability** (`packages/kernel/hooks/post/` + `packages/kernel/spawn-state/` on `Bash` / `Agent|Task`) — `error-critic` (repeated-failure escalation), `kb-citation-gate`, and `spawn-record` (the `L_spawn` close-record envelope).
+- **Post-observability** (`packages/kernel/hooks/post/`, `packages/kernel/observability/`, `packages/kernel/spawn-state/` on `Bash` / `Agent|Task`) — `error-critic` (repeated-failure escalation), `network-egress-audit` (advisory Bash-egress detection), `kb-citation-gate`, and `spawn-record` (the `L_spawn` close-record envelope).
 
 ## Why forcing instructions, not subprocess LLMs
 

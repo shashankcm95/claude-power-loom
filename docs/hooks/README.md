@@ -1,6 +1,6 @@
 # Hooks — Deterministic Layer
 
-23 hook registrations across 6 lifecycle events. Hooks are external Node.js processes Claude Code invokes at lifecycle events — the only layer with hard guarantees (pure logic, no LLM interpretation). The authoritative per-hook rationale lives in the `_comment` fields of the manifest; this page is the inventory.
+24 hook registrations across 6 lifecycle events. Hooks are external Node.js processes Claude Code invokes at lifecycle events — the only layer with hard guarantees (pure logic, no LLM interpretation). The authoritative per-hook rationale lives in the `_comment` fields of the manifest; this page is the inventory.
 
 - [Per-hook deep-dives + lifecycle event mapping](overview.md)
 - [`error-critic.js`](error-critic.md) — repeated-failure consolidation (Critic→Refiner)
@@ -13,7 +13,7 @@
 - Spawn-state hooks: [`packages/kernel/spawn-state/`](../../packages/kernel/spawn-state/)
 - Plugin manifest: [`.claude-plugin/plugin.json`](../../.claude-plugin/plugin.json)
 
-## Registrations (23; matches `packages/kernel/hooks.json`)
+## Registrations (24; matches `packages/kernel/hooks.json`)
 
 Paths are relative to `packages/kernel/`.
 
@@ -34,14 +34,15 @@ Paths are relative to `packages/kernel/`.
 | 13 | `validators/validate-kb-doc.js` | PreToolUse | `Edit\|Write` | Enforce KB-doc schema + `_PRINCIPLES.md` caps |
 | 14 | `validators/validate-config-redirect.js` | PreToolUse | `Bash` | WARN on Bash redirects (`>`, `tee`) targeting protected configs |
 | 15 | `hooks/post/error-critic.js` | PostToolUse | `Bash` | Repeated-failure escalation → `[FAILURE-REPEATED]` |
-| 16 | `hooks/post/kb-citation-gate.js` | PostToolUse | `Agent\|Task` | Check a spawned actor's output cites its KB scope |
-| 17 | `spawn-state/spawn-record.js` | PostToolUse | `Agent\|Task` | Capture an `L_spawn` record envelope per spawn close |
-| 18 | `validators/validate-plan-schema.js` | PostToolUse | `Edit\|Write` | Enforce plan-file schema (HETS spawn-plan / principle-audit gate) |
-| 19 | `hooks/lifecycle/pre-compact-save.js` | PreCompact | `*` | Deterministic checkpoint + `SAVE_PROMPT` for MEMORY / library |
-| 20 | `hooks/lifecycle/console-log-check.js` | Stop | `*` | Warn on `console.log` left in edited TS / JS files |
-| 21 | `hooks/lifecycle/auto-store-enrichment.js` | Stop | `*` | Persist approved enrichment patterns (self-improve loop) |
-| 22 | `hooks/lifecycle/session-end-nudge.js` | Stop | `*` | Nudge a session-end self-improve review |
-| 23 | `hooks/lifecycle/context-size-warn-stop.js` | Stop | `*` | Deterministic context-size warning (transcript-bytes signal) |
+| 16 | `observability/network-egress-audit.js` | PostToolUse | `Bash` | ADVISORY: flag Bash egress to hosts not in any persona's `network_*` trait |
+| 17 | `hooks/post/kb-citation-gate.js` | PostToolUse | `Agent\|Task` | Check a spawned actor's output cites its KB scope |
+| 18 | `spawn-state/spawn-record.js` | PostToolUse | `Agent\|Task` | Capture an `L_spawn` record envelope per spawn close |
+| 19 | `validators/validate-plan-schema.js` | PostToolUse | `Edit\|Write` | Enforce plan-file schema (HETS spawn-plan / principle-audit gate) |
+| 20 | `hooks/lifecycle/pre-compact-save.js` | PreCompact | `*` | Deterministic checkpoint + `SAVE_PROMPT` for MEMORY / library |
+| 21 | `hooks/lifecycle/console-log-check.js` | Stop | `*` | Warn on `console.log` left in edited TS / JS files |
+| 22 | `hooks/lifecycle/auto-store-enrichment.js` | Stop | `*` | Persist approved enrichment patterns (self-improve loop) |
+| 23 | `hooks/lifecycle/session-end-nudge.js` | Stop | `*` | Nudge a session-end self-improve review |
+| 24 | `hooks/lifecycle/context-size-warn-stop.js` | Stop | `*` | Deterministic context-size warning (transcript-bytes signal) |
 
 > The validators live under `packages/kernel/validators/`; the spawn-close `spawn-record.js` lives under `packages/kernel/spawn-state/`; all other hooks under `packages/kernel/hooks/{lifecycle,pre,post}/`. When this table and `packages/kernel/hooks.json` disagree, the manifest wins — regenerate this inventory from it.
 
