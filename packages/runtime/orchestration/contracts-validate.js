@@ -1091,6 +1091,12 @@ validators['registry-schema-valid'] = function () {
 //     (NOT blockable mid-spawn, per ADR-0011 §3.2). There is therefore no
 //     tools: floor to reconcile against — the absence here is correct-by-design,
 //     not a missing edge. (Resolves PR-2a review FLAG: network-axis coverage.)
+//     RUNTIME COMPANION (2026-05-31): Bash-subprocess egress to undeclared hosts
+//     IS audited post-hoc (advisory) by
+//     packages/kernel/observability/network-egress-audit.js (PostToolUse:Bash);
+//     tool-mediated egress (WebFetch/WebSearch/MCP) is enforced by the harness
+//     via `tools:`. Real egress PREVENTION is ContainerAdapter-tier. So "network
+//     un-reconciled here" is correct AND complete — not an unhandled gap.
 //   - security-engineer: 12-security-engineer is the ONE write-capable persona
 //     whose strict-stripped name (security-engineer) has no agents/<name>.md
 //     (the floor lives in agents/security-AUDITOR.md). It is SKIPPED today (see
