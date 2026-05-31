@@ -29,6 +29,60 @@
     "maxExtensions": 1,
     "extensionAmount": 15000
   },
+  "interface": {
+    "traits": [
+      "read_repo",
+      "bash_test_runner",
+      "recall_global"
+    ],
+    "declared_capabilities": {
+      "read": [
+        "repo://**"
+      ],
+      "subprocess": [
+        "npm test",
+        "vitest",
+        "pytest",
+        "tsc --noEmit"
+      ],
+      "read_recall": [
+        "@library/*",
+        "@thoughts/*"
+      ]
+    },
+    "declared_scope": [
+      "code review for correctness",
+      "security + quality + performance regressions",
+      "principle audit (SOLID/DRY/KISS/YAGNI)",
+      "pre-ship defect catch"
+    ],
+    "output_schema": {
+      "type": "review_findings",
+      "required": [
+        "severity_sections",
+        "evidence",
+        "file_citations",
+        "principle_audit"
+      ]
+    },
+    "decomposition_discipline": {
+      "primary": "spec-driven",
+      "fallback_when_code_producing": "tdd"
+    }
+  },
+  "defaults": {
+    "timeout": 1800,
+    "retention": {
+      "pre_snapshot_lifetime_hours": 24,
+      "delta_lifetime_days": 30
+    },
+    "budget": {
+      "tokens": 30000,
+      "extensible": true,
+      "maxExtensions": 1,
+      "extensionAmount": 15000
+    }
+  },
   "functional": [
     {
       "id": "F1",

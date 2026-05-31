@@ -27,6 +27,51 @@
     "maxExtensions": 1,
     "extensionAmount": 10000
   },
+  "interface": {
+    "traits": [
+      "read_repo",
+      "recall_global"
+    ],
+    "declared_capabilities": {
+      "read": [
+        "repo://**"
+      ],
+      "read_recall": [
+        "@library/*",
+        "@thoughts/*"
+      ]
+    },
+    "declared_scope": [
+      "claim-vs-evidence rating",
+      "scorecard + debrief re-rating against artifacts",
+      "transcript compliance audit",
+      "optimistic-self-assessment detection"
+    ],
+    "output_schema": {
+      "type": "honesty_audit",
+      "required": [
+        "compliance_assessment",
+        "transcript_evidence"
+      ]
+    },
+    "decomposition_discipline": {
+      "primary": "spec-driven",
+      "fallback_when_code_producing": "tdd"
+    }
+  },
+  "defaults": {
+    "timeout": 1800,
+    "retention": {
+      "pre_snapshot_lifetime_hours": 24,
+      "delta_lifetime_days": 30
+    },
+    "budget": {
+      "tokens": 25000,
+      "extensible": true,
+      "maxExtensions": 1,
+      "extensionAmount": 10000
+    }
+  },
   "functional": [
     {
       "id": "F1",

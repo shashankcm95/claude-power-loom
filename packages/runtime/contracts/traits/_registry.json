@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "1.0.0",
+  "_doc": "Capability traits as composable mixins. Each persona declares traits[]; contract-load resolves the union/intersection per _axis_direction. Authoritative capability source = the persona's agents/<name>.md `tools:` frontmatter ([Read,Grep,Glob]=read-only; +Bash=subprocess; +Edit/Write=writes). Traits are atomic: one capability axis concern each (single-responsibility). Composition conflict rules per RFC v3.3 §3.2 L169-172: narrowing axes intersect (tightest wins), broadening axes union (widest wins), same-direction same-axis hard-conflict = contract-load-time error.",
+  "_axis_direction": {
+    "write": "narrowing",
+    "subprocess": "narrowing",
+    "isolation": "narrowing",
+    "network": "narrowing",
+    "read": "broadening",
+    "read_recall": "broadening"
+  },
+  "traits": {
+    "read_repo": {
+      "_doc": "Baseline read capability for every actor — maps to the [Read,Grep,Glob] tool floor present in ALL 18 personas. Broadening axis. Every persona composes this.",
+      "read": [
+        "repo://**"
+      ]
+    },
+    "recall_global": {
+      "_doc": "Cross-run recall of library + thoughts artifacts (RFC v3.3 §3.2 L163). Broadening axis. Granted to personas whose work spans prior-run context (builders, challenger, honesty-auditor).",
+      "read_recall": [
+        "@library/*",
+        "@thoughts/*"
+      ]
+    },
+    "worktree_writable": {
+      "_doc": "Sandbox-scoped write + worktree isolation (RFC v3.3 §3.2 L161). The ONLY runtime-enforced capability (Anthropic worktree filesystem scope). Narrowing axes (write paths intersect, isolation intersects). Granted ONLY to personas whose agent.md tools include Edit/Write. The isolation+write coupling is INTENTIONAL cohesion (one reason-to-change = the Anthropic worktree filesystem scope): sandbox-write is only meaningful within worktree isolation and no persona wants either axis without the other, so do NOT split into isolation_worktree + write_sandbox.",
+      "isolation": "worktree",
+      "write": [
+        "sandbox://**"
+      ]
+    },
+    "bash_test_runner": {
+      "_doc": "Scoped subprocess whitelist for test/build commands (RFC v3.3 §3.2 L162). Narrowing axis (subprocess whitelists intersect). Granted to personas whose agent.md tools include Bash.",
+      "subprocess": [
+        "npm test",
+        "vitest",
+        "pytest",
+        "tsc --noEmit"
+      ]
+    },
+    "network_anthropic": {
+      "_doc": "Explicit network allowlist for Anthropic inference API (RFC v3.3 §3.2 L162). Narrowing axis (allowlists intersect). Advisory enforcement only (audited post-hoc at promote-deltas; NOT blockable mid-spawn). Granted only when the persona's agent.md description implies inference-API consumption (e.g. 08-ml-engineer Claude/OpenAI integration).",
+      "network": [
+        "api.anthropic.com"
+      ]
+    }
+  }
+}
