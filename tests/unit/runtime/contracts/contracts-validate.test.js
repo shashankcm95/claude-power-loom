@@ -197,6 +197,13 @@ test('(8) declared_capabilities not matching resolveTraits(traits) => violation'
 test('(8b) unknown trait in interface.traits => violation', () => {
   const c = wellFormedContract();
   c.interface.traits = ['read_repo', 'no_such_trait'];
+  // Match declared_capabilities to what the KNOWN trait (read_repo) alone
+  // resolves to, so the ONLY discrepancy is the unknown trait. Leaving the
+  // well-formed recall_global capability here fired the violation as
+  // declared-capabilities-drift (an orphan read_recall) instead of the intended
+  // trait-resolution-error — so the test passed for the wrong reason and would
+  // not catch a regression that removed the unknown-trait throw. [board cond. 2]
+  c.interface.declared_capabilities = { read: ['repo://**'] };
   const root = makeSyntheticRoot('fixture', c);
   const report = runValidator('traits-resolve-clean', root);
   assert.ok(report.totalViolations >= 1, 'unknown trait must be a violation');

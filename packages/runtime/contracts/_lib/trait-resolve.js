@@ -33,7 +33,13 @@ const BROADENING = 'broadening';
  * @param {string[]} traitNames Trait names declared by a contract's interface.
  * @param {object} registry The parsed traits/_registry.json (loaded by caller).
  * @returns {object} Resolved capability object keyed by axis. Empty object
- *                   when traitNames is empty.
+ *                   when traitNames is empty. NOTE — per-axis value shape is
+ *                   HETEROGENEOUS: a scalar narrowing axis stays scalar
+ *                   (e.g. isolation: 'worktree'), while list-valued axes are
+ *                   arrays (subprocess/write/network/read/read_recall: [...]).
+ *                   A consumer doing set-subset math (K6 `used ⊆ declared`,
+ *                   PR-2) MUST handle the scalar case per-axis — do not assume
+ *                   uniform array-valued axes.
  * @throws {Error} On unknown trait name, or empty-intersection conflict on a
  *                 narrowing axis.
  */
@@ -61,6 +67,10 @@ function resolveTraits(traitNames, registry) {
 function mergeTrait(acc, traitName, trait, directions) {
   for (const axis of Object.keys(trait)) {
     if (axis.startsWith('_')) continue; // _doc and friends are metadata
+    // Fail-open default (BROADENING = widest) is SAFE here only because
+    // registry-schema-valid gates unknown axes upstream at validate time. A
+    // PR-2 caller resolving against an UN-validated registry could silently
+    // widen — validate the registry first.
     const direction = directions[axis] || BROADENING;
     const incoming = trait[axis];
     if (!acc[axis]) {

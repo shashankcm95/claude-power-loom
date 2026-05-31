@@ -847,11 +847,12 @@ validators['contract-marketplace-schema'] = function () {
 // v3.1 two-tier contract shape (`interface` + `defaults`) + the capability
 // trait composition (declared_capabilities == resolveTraits(interface.traits)).
 //
-// At PR-1-author time the 18 real contracts are FLAT (no interface/defaults),
-// so these validators report violations against them — that is expected; the
-// contracts are migrated in a later stage. The synthetic-fixture unit tests
-// (tests/unit/runtime/contracts/contracts-validate.test.js) exercise the
-// positive paths against a tmp toolkit root.
+// The 18 real contracts were migrated to the two-tier shape in THIS PR (PR-1),
+// so these validators report ZERO violations against them — the regression
+// guard (tests/unit/runtime/contracts/contracts-validate.test.js test 10)
+// asserts totalViolations === 0 over listContractFiles(). The synthetic-fixture
+// unit tests in that file exercise the NEGATIVE paths (each validator FAILs on
+// malformed input) against a tmp toolkit root.
 
 // Canonical comparison: stable-key JSON. Sufficient for the value shapes here
 // (budgets, capability arrays) — no functions/undefined/Date to worry about.
