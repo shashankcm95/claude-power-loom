@@ -54,15 +54,18 @@ The discipline chain is part of the achievement: each PR ran route-decide → `/
 
 ---
 
-## ⬜ v3.1 — Runtime Foundation
+## 🟡 v3.1 — Runtime Foundation (in progress)
 
-*~24–36h, ~2,550–3,150 LoC (spec estimate).*
+*Original est. ~24–36h; **re-scoped 2026-05-31** — see [ADR-0012](../packages/specs/adrs/0012-capability-enforcement-is-static-not-runtime-injected.md).*
 
-The first phase to build on the kernel — and the first **consumer of the dormant primitives**:
+The first phase to build on the kernel. **Shipped so far:**
 
-- Two-tier persona contracts (R1–R4) + migration of the 16 personas + capability traits.
-- **K6** (capability subset check) + **K8** (capability injection at spawn-init) — K8 is where K3.b's context envelope gets its first reader.
-- R13 idempotency-key enforcer for external side effects; K2.c per-tool-call observability.
+- ✅ **R1–R4** — two-tier persona contracts + capability traits + 18-contract migration (PR #179).
+- ✅ **K6** (capability subset-check) + **K3.b `buildEnvelope`** + the **agent.md↔contract reconciliation validator** — the static capability layer (PR-2a).
+
+**Re-scoped (ADR-0012):** empirical probes proved a PreToolUse hook's `updatedInput` is **inert for Agent/Task spawns** (the Agent input has no `tools` field; tool/prompt rewrites are not honored). So **K8 — capability injection at spawn-init — is DROPPED** (its mechanism does not exist), and the inert `pre-spawn-tool-mask` is unregistered. **Capability enforcement is STATIC**: the agent.md frontmatter `tools:` (which the harness honors) + the reconciliation validator (build-time). K3.b's per-spawn context delivery is deferred (no injection channel exists).
+
+- ⬜ Still planned: R13 idempotency-key enforcer; K2.c per-tool-call observability; extend the reconciliation validator to the **network axis** (closes the restriction `pre-spawn-tool-mask` falsely claimed to enforce).
 
 ---
 

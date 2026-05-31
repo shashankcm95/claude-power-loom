@@ -48,17 +48,7 @@
         ]
       },
       {
-        "_comment": "v6 K2 reservation PR (Round-3d C2 — THE ONE THING per persona-Sam S4): strips network-side-effecting tools (WebFetch / WebSearch / mcp__* / curl|wget|gh|aws|nc|ssh|http Bash patterns) from spawned-agent tool list at K1/spawn-init, regardless of persona contract. Kernel-layer Pillar-2 Byzantine-treatment-of-LLM enforcement for v3.0-alpha before K6/K8 ship in v3.1. Replaces honor-system persona-contract discipline that was the §2.4 'enforce, not document' anti-pattern. Composes with K8 v3.1 capability-injection. Per v6 §6.5 Round-3d additions.",
-        "matcher": "Agent|Task",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/packages/kernel/hooks/pre/pre-spawn-tool-mask.js",
-            "timeout": 3
-          }
-        ]
-      },
-      {
+        "_comment": "pre-spawn-tool-mask UNREGISTERED per ADR-0012: empirical probes proved a PreToolUse hook's updatedInput is INERT for Agent/Task spawns (the Agent tool_input has no `tools` field; updatedInput tool/prompt rewrites are not honored). Its network-strip never took effect. Capability enforcement is STATIC — the agent.md frontmatter tools: definition (harness-honored) + the agent.md<->contract reconciliation validator (contracts-validate.js). Network-axis binding in that validator is the follow-up.",
         "matcher": "Agent|Task",
         "hooks": [
           {
