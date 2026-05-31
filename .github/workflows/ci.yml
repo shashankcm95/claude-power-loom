@@ -274,6 +274,42 @@ jobs:
           fi
           echo "K1 dormancy verified: zero production importers."
 
+  dormancy-assertion-k6:
+    # v3.1 PR-2a K6 capability-subset-check ships DORMANT — the pure
+    # checkSubset/isSubset module + its TDD-treatment test land in PR-2a, but NO
+    # production code imports it yet (K6's FIRST runtime consumer is K8, the
+    # tool-mask gate, in PR-2b). Added for symmetry with the substrate convention
+    # the K1 job comment states explicitly: "unlike K9/K3.b, K1 had zero importers
+    # AND no tripwire, so it could silently rot or drift from its eventual caller."
+    # Every dormant kernel primitive gets a merge-blocking tripwire; K6 is one.
+    # K6 is a SINGLE module, so a single-token match suffices (vs K9's split-aware
+    # disjunction). PR-2b's K8 consumer DELETES this job in the SAME commit that
+    # adds the import — self-removes at dormancy end (a forcing tripwire, not a race).
+    name: K6 dormancy assertion
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assert zero production importers of k6-subset-check
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        run: |
+          # Must return zero hits. Any hit means production code (under packages/,
+          # outside tests/, excluding the k6-subset-check.js module itself)
+          # imports K6 — violating the ship-dormant contract.
+          hits=$(grep -rE \
+            "require\(['\"][^'\"]*k6-subset-check['\"]\)|from[[:space:]]+['\"][^'\"]*k6-subset-check['\"]" \
+            packages/ \
+            | grep -v "/tests/" \
+            | grep -vE "packages/kernel/enforcement/k6-subset-check\.js" \
+            || true)
+          if [ -n "$hits" ]; then
+            echo "::error::K6 dormancy violation — production import detected:"
+            echo "$hits"
+            exit 1
+          fi
+          echo "K6 dormancy verified: zero production importers."
+
   layer-boundary-advisory:
     # Phase 1-alpha PR 5 (FINAL sub-PR) — K12 layer-boundary ADVISORY lint
     # (packages/specs/rfcs/v6-substrate-synthesis.md §329-353; v5.1 DOWNGRADE from

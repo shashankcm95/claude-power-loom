@@ -29,6 +29,11 @@ const path = require('path');
 const SCHEMA_PATH = path.join(__dirname, '..', 'schema', 'context-envelope.schema.json');
 const _SCHEMA = JSON.parse(fs.readFileSync(SCHEMA_PATH, 'utf8'));
 
+// The version this build of the module stamps + accepts — sourced from the
+// schema's `const` so the two can never drift (the round-trip test asserts
+// validateEnvelope(buildEnvelope(x)).valid === true). v3.0-alpha = 1.0.0-provisional.
+const SCHEMA_VERSION = _SCHEMA.properties.schemaVersion.const;
+
 /**
  * Validate a context envelope against the K3.b schema.
  *
@@ -78,6 +83,50 @@ function validateEnvelope(envelope) {
   return errors.length === 0 ? { valid: true } : { valid: false, errors };
 }
 
+/**
+ * Construct a schema-valid context envelope. The PRODUCER side of the K3.b
+ * handshake — stamps the current SCHEMA_VERSION so that, by construction,
+ * `validateEnvelope(buildEnvelope(x)).valid === true` (the round-trip contract).
+ *
+ * Immutable: the input is never mutated. `contextItems` is shallow-copied into
+ * a fresh array; a missing/omitted `contextItems` defaults to an empty array
+ * (an envelope carrying no context is still well-formed).
+ *
+ * NOTE — ships DORMANT in PR-2a. buildEnvelope's ONLY importer in PR-2a is its
+ * own test file; the production consumer (K8, which flips the
+ * `dormancy-assertion-k3b` CI gate) lands in PR-2b. Do NOT wire this into a
+ * hook here.
+ *
+ * @param {Object} args
+ * @param {Array<{source:string, scope:string, content:*, precedence:number}>} [args.contextItems]
+ *        Ordered context items. v3.0-alpha imposes no per-item shape constraint
+ *        (the schema's items are `{type:'object'}`); the JSDoc shape is the
+ *        v3.1 consumer convention, not a validation gate.
+ * @returns {{schemaVersion: string, contextItems: Array<Object>}}
+ */
+function buildEnvelope({ contextItems } = {}) {
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    contextItems: Array.isArray(contextItems) ? contextItems.slice() : [],
+  };
+}
+
+/**
+ * Consumer-side MAJOR-version handshake (ADR-0011 §K3.b / schema description):
+ * a v3.1 consumer MUST reject any envelope whose schemaVersion does not start
+ * with the accepted MAJOR ('1.'). Total + never-throws: non-string input is a
+ * clean `false`.
+ *
+ * @param {*} v
+ * @returns {boolean}
+ */
+function acceptsSchemaVersion(v) {
+  return typeof v === 'string' && v.startsWith('1.');
+}
+
 module.exports = {
   validateEnvelope,
+  buildEnvelope,
+  acceptsSchemaVersion,
+  SCHEMA_VERSION,
 };
