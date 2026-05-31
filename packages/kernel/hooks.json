@@ -195,6 +195,17 @@
         ]
       },
       {
+        "_comment": "v3.1 PR-3b spawn-close-resolver: the 3rd PostToolUse:Agent|Task hook (after kb-citation-gate, spawn-record) and the FIRST production importer of post-spawn-resolver.resolve(). OBSERVE, DON'T ALLOCATE (OQ-21 #181, ADR-0012): the harness already CREATES the isolation:worktree and returns tool_response.worktreePath/worktreeBranch/agentId/toolStats here, live + git-diffable; the kernel cannot inject its own worktree (ADR-0012), so this hook only OBSERVES the harness worktree at close — no pre-spawn allocator, so dormancy-assertion-k1 stays green. SHADOW-ONLY: resolve() runs with a dry-run promoteDeltaFn ({outcome:'PROMOTED',dryRun:true}) + a guarded read-only runGitFn (status/diff/rev-parse only; mutating args refused) — the real INV-20 closure + real K14 scope-detection + RESOLVER_TABLE dispatch run, the verdict is JOURNALED to ~/.claude/spawn-state/<run_id>/resolver-journal-<agentId>.jsonl, but NO git mutation occurs. The K13 serial-marker release is ALSO skipped in shadow (no-op readMarkerFn/releaseSerialMarkerFn seams) so the hook does ZERO spawn-state filesystem mutation, not just zero git — observe-only is honored for K13 state too (journaled k13_skipped:true). A worktree is NOT a security sandbox (Wave-1 p-writescope: absolute-path writes escape the contained delta). The enforcing path (real cherry-pick promote + worktree cleanup + LOOM_RESOLVER_ENFORCE flag) is PR-3c. Fail-soft per ADR-0001: every path exits 0; a crash never bricks a spawn.",
+        "matcher": "Agent|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/packages/kernel/hooks/post/spawn-close-resolver.js",
+            "timeout": 10
+          }
+        ]
+      },
+      {
         "matcher": "Edit|Write",
         "hooks": [
           {

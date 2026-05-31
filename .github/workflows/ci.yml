@@ -242,13 +242,15 @@ jobs:
 
   dormancy-assertion-k1:
     # Phase 1-alpha K1 worktree-allocator ships DORMANT — the module + tests landed
-    # in PR 2, but NO production code allocates a worktree yet (the resolver does
-    # NOT call K1; the live spawn-init path that allocates the worktree is v3.1).
-    # Added in the v3.0-alpha-hardening pass per the MVP-review QA finding: unlike
-    # K9/K3.b, K1 had zero importers AND no tripwire, so it could silently rot or
-    # drift from its eventual caller. MERGE-BLOCKING, mirroring dormancy-assertion-k3b.
-    # v3.1's first consumer (the spawn-init hook) DELETES this job in the same commit
-    # that adds the import — self-removes at dormancy end.
+    # in PR 2, but NO production code allocates a worktree (the resolver does NOT
+    # call K1). Added in the v3.0-alpha-hardening pass per the MVP-review QA finding:
+    # unlike K9/K3.b, K1 had zero importers AND no tripwire, so it could silently rot
+    # or drift from its eventual caller. MERGE-BLOCKING, mirroring dormancy-assertion-k3b.
+    # KEPT PERMANENTLY (v3.1 PR-3b, OQ-21 + verify-plan): K1's consumer is SUPERSEDED
+    # by the harness. Under observe-don't-allocate (ADR-0012) the harness OWNS worktree
+    # creation and exposes it via tool_response.worktreePath at the PostToolUse:Agent
+    # spawn-close hook, which OBSERVES rather than allocates — so K1 gains no importer
+    # and this job does NOT self-delete. Same dormant-twin treatment as K3.b.
     name: K1 dormancy assertion
     runs-on: ubuntu-latest
     steps:

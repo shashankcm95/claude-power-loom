@@ -261,5 +261,95 @@ test('two-phase: a PENDING (un-closed) envelope -> resolve() ABORTED, K9 never e
   }
 });
 
+// ── Case E (PR-3b carry-forward #3): NON-genesis chained PROMOTE through real K9 ──
+//
+// Every other PROMOTE case here is is_genesis_position:true (the chain head, which
+// terminates the evidence walk without a resolveParent seam). This case proves the
+// OTHER branch of K9's checkEvidenceLinkPreCommit (k9-promote-deltas.js:160-188): a
+// non-genesis record (prev_state_hash = a 64-char hex, NOT "GENESIS") is REJECTED
+// fail-closed unless a resolveParentFn walks its provenance to a genesis position.
+// We build a synthetic 2-record chain (genesis -> child) in a real temp git repo,
+// inject a resolveParentFn that returns the genesis record for the child's
+// prev_state_hash, and assert resolve() PROMOTES the child's delta through REAL K9
+// (real cherry-pick). This is the offline seam proof (D3); the live close hook
+// ships genesis-position (no prev_state_hash source in the harness payload).
+
+test('[real git] non-genesis chained promote: an injected resolveParentFn walks the child to genesis -> resolve() PROMOTES through real K9', () => {
+  if (!gitAvailable()) { process.stdout.write('    (skipped: git unavailable)\n'); return; }
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'loom-e2e-nongenesis-'));
+  const repo = path.join(baseDir, 'parent');
+  const stateDir = path.join(baseDir, 'spawn-state');
+  try {
+    initRepo(repo);
+
+    // K1: allocate the spawn's worktree; produce a NEW-file delta so it
+    // cherry-picks cleanly onto the parent HEAD (same shape as Case A).
+    const wtPath = path.join(baseDir, 'spawn-wt');
+    const alloc = k1.allocateWorktree({ repoRoot: repo, worktreePath: wtPath });
+    assert.strictEqual(alloc.allocated, true, `K1 must allocate a worktree, got ${JSON.stringify(alloc)}`);
+    const wg = (args) => execFileSync('git', args, { cwd: wtPath, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' });
+    fs.writeFileSync(path.join(wtPath, 'chained.txt'), 'chained feature\n');
+    wg(['add', 'chained.txt']); wg(['commit', '-q', '-m', 'chained spawn delta']);
+    const deltaSha = wg(['rev-parse', 'HEAD']).trim();
+
+    admit(stateDir, 'admit-nongenesis-e2e');
+
+    // The 2-record chain. The GENESIS record sits at the chain head
+    // (prev_state_hash: "GENESIS"); its transaction_id is the hash the CHILD
+    // points back to. The CHILD is at a NON-genesis position: its
+    // prev_state_hash is the genesis record's (64-char hex) transaction_id, so it
+    // requires a resolveParent walk to verify provenance.
+    const genesis = genesisRecord(); // transaction_id 'a'*64, prev_state_hash 'GENESIS'
+    const child = genesisRecord({
+      transaction_id: 'b'.repeat(64),
+      prev_state_hash: genesis.transaction_id, // 'a'*64 — a real 64-char hex, NOT "GENESIS"
+      operation_class: 'APPEND', // a valid state-changing class (CREATE/APPEND/SUPERSEDE/TOMBSTONE)
+      writer_spawn_id: 'sp-2026-01-01T00:00:01.000Z-arch-0002',
+      evidence_refs: ['USER_INTENT_AXIOM:' + 'd'.repeat(64)],
+    });
+
+    // The injected chain-walk seam: resolveParent(prevHash) -> the genesis record
+    // when asked for the child's prev_state_hash; null otherwise. This is the
+    // exact seam v3.1's record store will provide for a live non-genesis spawn.
+    const chain = { [genesis.transaction_id]: genesis };
+    const resolveParentFn = (prevHash) => chain[prevHash] || null;
+
+    // resolve() — NO K9 stub. is_genesis_position:false routes the record through
+    // the chain-walk; resolveParentFn is threaded to promoteDelta (resolver :236).
+    const res = resolver.resolve({
+      stateDir,
+      resolveParentFn,
+      envelope: {
+        spawn_id: 'kf-nongenesis-0000',
+        commit_outcome: 'COMMITTED',
+        is_genesis_position: false, // the load-bearing difference vs Case A
+        worktree_root: repo,
+        candidate_path: path.join(repo, 'chained.txt'),
+        delta_sha: deltaSha,
+        transaction_record: child,
+        journal_path: path.join(repo, '.loom-journal.jsonl'),
+      },
+    });
+
+    assert.strictEqual(res.action, 'PROMOTE', `expected PROMOTE, got ${res.action} (outcome=${res.outcome}, k9=${JSON.stringify(res.k9)})`);
+    assert.strictEqual(res.outcome, 'PROMOTED', `expected K9 PROMOTED, got ${res.outcome}`);
+    assert.ok(res.k9 && res.k9.promoted === true, 'real K9 must report promoted:true for the chained child');
+    // The chain WAS walked (depth > 0) — proving the non-genesis branch ran, not
+    // a silent genesis short-circuit. `depthWalked` is a real field on K9's
+    // promote result, surfaced by the evidence-chain walk
+    // (k9-promote-deltas.js:135 @returns, :170-190 increments it per hop and
+    // threads it through every rejected*/promote* return), so this asserts the
+    // genuine walk depth, not an undefined>=1 false-negative.
+    assert.ok(res.k9 && res.k9.depthWalked >= 1, `the evidence chain must be walked (depthWalked>=1), got ${res.k9 && res.k9.depthWalked}`);
+    assert.strictEqual(res.markerReleased, true, 'K13 marker released after a chained promote');
+    // The delta was ACTUALLY applied to the parent.
+    assert.ok(fs.existsSync(path.join(repo, 'chained.txt')), 'the promoted chained delta must exist in the parent worktree');
+
+    k1.cleanupWorktree({ repoRoot: repo, worktreePath: wtPath });
+  } finally {
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  }
+});
+
 process.stdout.write(`\ntransaction-loop.test: ${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);
