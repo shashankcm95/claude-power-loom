@@ -187,6 +187,40 @@ jobs:
           fi
           echo "K3.b dormancy verified: zero production importers."
 
+  dormancy-assertion-k1:
+    # Phase 1-alpha K1 worktree-allocator ships DORMANT — the module + tests landed
+    # in PR 2, but NO production code allocates a worktree yet (the resolver does
+    # NOT call K1; the live spawn-init path that allocates the worktree is v3.1).
+    # Added in the v3.0-alpha-hardening pass per the MVP-review QA finding: unlike
+    # K9/K3.b, K1 had zero importers AND no tripwire, so it could silently rot or
+    # drift from its eventual caller. MERGE-BLOCKING, mirroring dormancy-assertion-k3b.
+    # v3.1's first consumer (the spawn-init hook) DELETES this job in the same commit
+    # that adds the import — self-removes at dormancy end.
+    name: K1 dormancy assertion
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assert zero production importers of worktree-allocator
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        run: |
+          # Must return zero hits. Any hit means production code (under packages/,
+          # outside tests/, excluding the worktree-allocator.js module itself)
+          # imports K1 — violating the ship-dormant contract.
+          hits=$(grep -rE \
+            "require\(['\"][^'\"]*worktree-allocator['\"]\)|from[[:space:]]+['\"][^'\"]*worktree-allocator['\"]" \
+            packages/ \
+            | grep -v "/tests/" \
+            | grep -vE "packages/kernel/worktree/worktree-allocator\.js" \
+            || true)
+          if [ -n "$hits" ]; then
+            echo "::error::K1 dormancy violation — production import detected:"
+            echo "$hits"
+            exit 1
+          fi
+          echo "K1 dormancy verified: zero production importers."
+
   layer-boundary-advisory:
     # Phase 1-alpha PR 5 (FINAL sub-PR) — K12 layer-boundary ADVISORY lint
     # (packages/specs/rfcs/v6-substrate-synthesis.md §329-353; v5.1 DOWNGRADE from

@@ -225,14 +225,31 @@ function dispatchPromote(opts, hasViolations, allowOverride, runGit) {
     record: envelope.transaction_record,
     journalPath: envelope.journal_path,
     runGitFn: runGit,
+    // Thread the K9 evidence-gate inputs from the envelope/opts. Without them the
+    // resolver under-specified promoteDelta: checkEvidenceLinkPreCommit rejected a
+    // genesis record (forged-genesis at the default isGenesisPosition:false) AND a
+    // non-genesis record (missing resolveParent), so EVERY real promote returned
+    // REJECTED_* — the PROMOTE path was unreachable through the real composition
+    // (the e2e discovery). A genesis-position spawn now promotes; a chained spawn
+    // threads its resolveParent chain-walk seam (v3.1 wires it to the record store).
+    isGenesisPosition: envelope.is_genesis_position === true,
+    resolveParent: typeof opts.resolveParentFn === 'function' ? opts.resolveParentFn : undefined,
+    is_recovery_sweep: envelope.is_recovery_sweep === true,
   });
   const outcome = promoteResult && promoteResult.outcome;
   const row = RESOLVER_TABLE[outcome];
 
-  // No row → the table is incomplete for this outcome. Surfacing this explicitly
-  // (rather than silently) is what the no-unhandled-default test guards.
+  // No row → an unknown K9 outcome at this security-significant decision point.
+  // FAIL-CLOSED (kb:architecture/discipline/error-handling-discipline): return the
+  // terminal ABORTED action (a guaranteed no-promote) rather than an action string
+  // a caller might not recognize as blocking, and raise a Class-4 audit. The six
+  // known outcomes all map (the no-unhandled-default test guards that); this guards
+  // the impossible-but-fatal case where K9 returns an out-of-table outcome — a
+  // future caller pattern-matching only the known actions can never silently
+  // no-op (= promote an unverified delta) on it.
   if (!row) {
-    return { action: 'UNHANDLED_DEFAULT', audit: 'unhandled-k9-outcome', outcome, k9: promoteResult };
+    emitAudit(auditFn, { class: 4, kind: 'unhandled-k9-outcome', spawn_id: envelope.spawn_id, k9_outcome: outcome });
+    return { action: 'ABORTED', audit: 'unhandled-k9-outcome', outcome, k9: promoteResult };
   }
 
   // Override path: violations were allowed, K9 promoted → PROMOTE_WITH_AUDIT
@@ -265,9 +282,16 @@ function dispatchPromote(opts, hasViolations, allowOverride, runGit) {
  * @param {function} [opts.runGitFn]                    whole-tree status/reset git seam
  * @param {function} [opts.releaseSerialMarkerFn]       K13 release seam
  * @param {function} [opts.readMarkerFn]                K13 readMarker seam (provenance)
+ * @param {function} [opts.resolveParentFn]             K9 evidence chain-walk seam (hash)=>parentRecord|null; threaded to promoteDelta for a non-genesis spawn (v3.1 wires it to the record store; a genesis spawn needs none)
  * @param {function} [opts.auditFn]                     audit-collector seam
  * @param {boolean} [opts.allowOutOfScopeWrites=false]  LOOM_ALLOW_OUT_OF_SCOPE_WRITES (explicit, F23)
  * @param {string} [opts.walPath]                       WAL to append an ABORTED record on the INV-20 path
+ *
+ * Envelope detection/promote inputs threaded to the real K14/K9 (absent in a
+ * v3.0-alpha observational envelope → safe no-ops; v3.1's spawn hook populates them):
+ *   envelope.k14_ctx            K14 detection ctx ({ targetPath, preSnapshot, ... })
+ *   envelope.is_genesis_position  K9 evidence gate: genesis spawn promotes without a chain-walk
+ *   envelope.is_recovery_sweep    K9 F20 sentinel: skip the evidence walk for a sweep-promoted delta
  * @returns {{action: string, audit: string, markerReleased: boolean, k13: object, outcome: string|null}}
  */
 function resolve(opts) {
@@ -297,7 +321,16 @@ function resolve(opts) {
     : k14.detectWriteScopeViolations;
   let violations;
   try {
-    violations = detect({ worktreeRoot: envelope.worktree_root, envelope });
+    // Thread the K14 snapshot signals from the envelope. classifyTarget needs
+    // ctx.targetPath (+ preSnapshot) to detect anything, so a bare {worktreeRoot}
+    // made the scope-reject path INERT through the real composition (the e2e
+    // discovery). The envelope carries the detection inputs under `k14_ctx`
+    // (populated by v3.1's spawn-close detection hook; absent in a v3.0-alpha
+    // observational envelope → detect() safely returns [] = clean).
+    violations = detect({
+      ...(envelope.k14_ctx && typeof envelope.k14_ctx === 'object' ? envelope.k14_ctx : {}),
+      worktreeRoot: envelope.worktree_root,
+    });
   } catch {
     // A K14 detection failure means scope is UNVERIFIED — never promote on an
     // unverified scope (fail-closed). No K9 call, no git.
