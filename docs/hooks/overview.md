@@ -1,90 +1,59 @@
 # Hooks — Deterministic Layer Deep-Dive
 
-> Returns to README: [../../README.md](../../README.md) | Up: [docs/](..)
+> Returns to README: [README.md](README.md) | Up: [docs/](..)
 
-### Hooks (17 registrations) — The Deterministic Layer
+24 hook registrations across 6 lifecycle events (1 `SessionStart` + 1 `UserPromptSubmit` + 12 `PreToolUse` + 5 `PostToolUse` + 1 `PreCompact` + 4 `Stop`). The full registration table is in [README.md](README.md); the authoritative per-hook rationale is the `_comment` field on each entry in [`packages/kernel/hooks.json`](../../packages/kernel/hooks.json). This page explains the **categories** and deep-dives a few representative hooks — it deliberately does not restate every hook (the manifest does, and stays in sync).
 
-17 hook entries across 6 lifecycle events (1 SessionStart + 2 UserPromptSubmit + 8 PreToolUse + 2 PostToolUse + 1 PreCompact + 3 Stop). The 6 below are the original H.1 substrate; H.4.1 added `session-self-improve-prompt.js` (UserPromptSubmit) + augmented `auto-store-enrichment.js` and `pre-compact-save.js` with self-improve loop logic; H.4.2 added 2 validators under `hooks/scripts/validators/`; H.7.x + H.8.x + H.9.x added 5 more validators (`validate-plan-schema.js` H.7.12; `verify-plan-gate.js` H.7.12 + H.7.17; `validate-kb-doc.js` H.8.8 + H.9.12; `validate-yaml-frontmatter.js` H.9.11 closing drift-note 80; `validate-adr-drift.js` for per-phase pre-approval gate). All 17 wire via `hooks/hooks.json` (plugin install) or `~/.claude/settings.json` (legacy install). Full registration table: [docs/hooks/README.md](README.md).
+Hook scripts run as external Node.js processes triggered by Claude Code's lifecycle events. They are the only layer with hard guarantees — pure logic, no LLM interpretation. Every hook is **fail-soft**: a crash is caught and the session proceeds (a hook must never brick the tool call it observes).
 
-Hook scripts run as external Node.js processes triggered by Claude Code's lifecycle events. They're the only layer with hard guarantees — pure logic, no LLM interpretation.
+## Categories
 
-#### 1. `fact-force-gate.js` — Anti-Hallucination Read Tracker
-**Event**: `PreToolUse` on `Read|Edit|Write`
+- **Lifecycle** (`packages/kernel/hooks/lifecycle/`) — `SessionStart` / `UserPromptSubmit` / `PreCompact` / `Stop` hooks that bracket the session: tracker reset, prompt enrichment, compaction save, and the end-of-turn checks.
+- **Spawn gates** (`packages/kernel/hooks/pre/` on `Agent|Task`) — fire when the orchestrator spawns a sub-agent: route-decide advisory + persona-contract reminder.
+- **Anti-hallucination / config gates** (`packages/kernel/hooks/pre/` on `Read|Edit|Write`) — `fact-force-gate` (read-before-edit) and `config-guard` (don't weaken linter config).
+- **Content validators** (`packages/kernel/validators/` on `Edit|Write` / `Bash`) — schema + safety gates on what gets written (secrets, YAML, skill / KB / ADR / plan frontmatter, config redirects).
+- **Post-observability** (`packages/kernel/hooks/post/`, `packages/kernel/observability/`, `packages/kernel/spawn-state/` on `Bash` / `Agent|Task`) — `error-critic` (repeated-failure escalation), `network-egress-audit` (advisory Bash-egress detection), `kb-citation-gate`, and `spawn-record` (the `L_spawn` close-record envelope).
 
-Maintains a per-session JSON tracker of every file Claude has Read. When Claude attempts an Edit or Write, the hook checks the tracker:
-- File was Read this session → approve
-- File doesn't exist yet (new Write) → approve
-- File exists but wasn't Read → **block** with: *"FACT-FORCING GATE: You must Read X before editing it."*
+## Why forcing instructions, not subprocess LLMs
 
-**Inner logic**: Tracker file is session-scoped via `CLAUDE_SESSION_ID` env var (or PPID fallback) at `os.tmpdir()/claude-read-tracker-{id}.json`. Writes use atomic rename (`writeFileSync` to `.tmp`, then `renameSync`) to prevent corruption from concurrent agents. Symlinks are resolved via `fs.realpathSync` for consistent tracking.
+Several hooks emit a bracketed **forcing instruction** to stdout rather than calling a model: `[PROMPT-ENRICHMENT-GATE]`, `[ROUTE-DECISION-UNCERTAIN]`, `[FAILURE-REPEATED]`, `[PLAN-SCHEMA-DRIFT]`, `[SELF-IMPROVE QUEUE]`. The common shape: the deterministic substrate detects a pattern; Claude (already running) does the semantic step. **No subprocess LLM is invoked** — that is a load-bearing toolkit convention.
 
-#### 2. `session-reset.js` — Tracker Hygiene
-**Event**: `SessionStart`
+## Representative deep-dives
 
-Wipes the current session's tracker for a clean slate, and garbage-collects tracker files older than 24 hours from `tmpdir`.
+### `fact-force-gate.js` — anti-hallucination read tracker
 
-#### 3. `config-guard.js` — Linter/Formatter Protection
-**Event**: `PreToolUse` on `Edit|Write`
+**Event**: `PreToolUse` on `Read|Edit|Write`. Maintains a per-session tracker of every file Claude has Read. On an Edit / Write: file was read → approve; new file → approve; file exists but was not read → **block** ("you must Read X before editing it"). The tracker is session-scoped (session-id or PPID fallback) under the OS temp dir; symlinks resolve to a canonical path. This is the substrate enforcement behind the "never describe a file from memory" rule.
 
-Blocks edits to files matching anchored regex patterns: `.eslintrc*`, `eslint.config.*`, `.prettierrc*`, `prettier.config.*`, `biome.json[c]`, `tsconfig*.json`, `.editorconfig`, `.stylelintrc*`. The patterns use `(?:^|\/)` anchors to match only true config files (not `not-a-tsconfig.json`).
+### `config-guard.js` — linter / formatter protection
 
-**Why**: Forces Claude to fix code to satisfy the existing config, not weaken the config to permit broken code.
+**Event**: `PreToolUse` on `Edit|Write`. Blocks edits to anchored config files (`eslint.config.*`, `.prettierrc*`, `tsconfig*.json`, `.editorconfig`, `biome.json[c]`, `.stylelintrc*`, …) so Claude fixes code to satisfy the config rather than weakening the config to permit broken code. Its `Bash` companion `validate-config-redirect.js` WARNs when a shell redirect (`>`, `>>`, `tee`) targets the same protected files (the tool-bypass path).
 
-#### 4. `console-log-check.js` — Pre-Commit Lint
-**Event**: `Stop`
+### `prompt-enrich-trigger.js` — vagueness forcing gate
 
-Runs `git diff --name-only HEAD` and `git ls-files --others --exclude-standard` to find both modified and brand-new TS/JS files, then scans them for `console.log(` calls. Skips lines with `// eslint-disable`, `/* eslint-disable */`, or `eslint-disable-next-line` on the previous line.
+**Event**: `UserPromptSubmit`. A fast (~ms, regex, no I/O) two-stage classifier runs on every prompt. **Skip patterns** (slash commands, confirmations, wh-/aux-questions, verb-first commands, anything with a file path / entity / backtick) pass silently. **Vague signals** (generic-verb + generic-noun, very short with no entity, "make it better/faster", "do the thing") inject `[PROMPT-ENRICHMENT-GATE]`, forcing a pattern lookup + the 4-part enriched prompt before acting.
 
-If any are found, appends a warning to the response: *"⚠ console.log detected in edited files: ... Remove before committing."*
+### `pre-compact-save.js` — hybrid deterministic memory
 
-Uses `git rev-parse --show-toplevel` to resolve absolute paths — works correctly in monorepos and from non-root cwd.
+**Event**: `PreCompact`. Two phases: a **deterministic** phase that extracts recent file paths and writes a checkpoint to `~/.claude/checkpoints/last-compact.json` (always succeeds), and an **LLM** phase that appends a `SAVE_PROMPT` telling Claude to update project `MEMORY.md` and write a library session-snapshot (see [`docs/library.md`](../library.md)). The deterministic phase holds even if the prompt is ignored.
 
-#### 5. `pre-compact-save.js` — Hybrid Deterministic Memory
-**Event**: `PreCompact`
+### `error-critic.js` — repeated-failure consolidation
 
-Two-phase save before context compression:
-- **Deterministic phase**: Extracts file paths from the conversation (regex-based, deduplicated, capped at 20), writes a JSON checkpoint to `~/.claude/checkpoints/last-compact.json` and appends to `compact-history.jsonl` (rolling 50 entries).
-- **LLM phase**: Appends a `SAVE_PROMPT` instruction telling Claude to update project `MEMORY.md`, write a session snapshot to the library at `~/.claude/library/sections/toolkit/stacks/session-snapshots/volumes/<YYYY-MM-DD>-<slug>.md`, and capture self-improvement candidates. See `docs/library.md`.
+**Event**: `PostToolUse` on `Bash`. Detects repeated failures of the **same** command in a session and, from the second failure, emits `[FAILURE-REPEATED]` (read the source, re-check args, or surface to the user) instead of looping. Full write-up: [error-critic.md](error-critic.md).
 
-The deterministic phase always succeeds, even if the LLM ignores the prompt. Instructions go *after* the input to avoid polluting the compacted summary.
+### `console-log-check.js` — pre-commit lint
 
-#### 6. `prompt-enrich-trigger.js` — Vagueness Forcing Gate
-**Event**: `UserPromptSubmit`
+**Event**: `Stop`. Scans modified + newly-created TS / JS files (via `git diff` + `git ls-files --others`) for `console.log(`, skipping `eslint-disable` lines, and appends a warning to remove them before committing.
 
-Heuristic vagueness detection runs on every user prompt before Claude processes it (~5ms, regex-based, no I/O). Two-stage classification:
+## v3.x spawn + validator hooks
 
-**Skip patterns** (silent pass-through):
-- Slash commands (`/review`, `/plan`)
-- Confirmations (`yes`, `no`, `approve`, `cancel`)
-- Wh-questions (`what`, `how`, `where`, `why`, `when`)
-- Aux-verb questions (`is the file ready`, `does the test pass`)
-- `do + pronoun` questions (`do you have time`) — but NOT `do + article` imperatives (`do the cleanup`)
-- Verb-first commands (`run tests`, `commit this`)
-- Tool-prefixed (`git push`, `npm install`, `cargo build`)
-- Show/explain requests
-- Anything with file paths or specific entities (PascalCase, URLs, backticks, quoted strings)
+The kernel adds hooks the original substrate didn't have — see each entry's `_comment` in [`packages/kernel/hooks.json`](../../packages/kernel/hooks.json) for the full rationale:
 
-**Vague signals** (inject forcing instruction):
-- Generic action verb + generic noun: `fix the X`, `improve the Y`, `clean it up`, `refactor it`
-- Length < 15 chars without file path or entity
-- `make it better/faster/cleaner` patterns
-- `do something/the thing/stuff` patterns
+- **`route-decide-on-agent-spawn.js`** / **`contract-reminder-on-agent-spawn.js`** (`PreToolUse:Agent|Task`) — advisory routing decomposition + the spawned persona's contract obligations.
+- **`redirect-plan-mode-in-headless.js`** (`PreToolUse:EnterPlanMode`) / **`verify-plan-gate.js`** (`PreToolUse:ExitPlanMode`) — the plan-mode discipline gates (headless redirect; HETS `/verify-plan` requirement).
+- **`kb-citation-gate.js`** (`PostToolUse:Agent|Task`) — a spawned actor's output must cite its KB scope.
+- **`spawn-record.js`** (`PostToolUse:Agent|Task`, under `packages/kernel/spawn-state/`) — captures an `L_spawn` record envelope (axioms + bounded attestations) per spawn close; the empirical anchor for the parent-records design.
+- **Content validators** (`validators/`) — `validate-no-bare-secrets`, `validate-yaml-frontmatter`, `validate-frontmatter-on-skills`, `validate-adr-drift`, `validate-kb-doc`, `validate-plan-schema`: schema + safety gates on `Edit|Write`.
 
-When vague, injects `[PROMPT-ENRICHMENT-GATE]` text that forces Claude to: look up similar past prompts via `~/.claude/scripts/prompt-pattern-store.js lookup`, build the 4-part enriched prompt (Instructions / Context / Input Data / Output Indicator), show it to the user for approval, store the pattern on approval.
+## Notifications — handled natively, not by the toolkit
 
-**Detection accuracy**: 24/24 on test corpus.
-
-#### Notifications — handled natively, not by the toolkit
-
-Earlier versions of the toolkit included custom desktop notifications for permission prompts, idle states, and task completion. **Those have been removed** — Claude Desktop has a built-in setting that does this better:
-
-> **Settings → Draw attention on notifications**: "Bounce the dock icon or flash the taskbar when Claude needs your attention and the app is not focused."
-
-Enable that setting and you'll get focus-aware attention drawing without any of the toolkit's custom code. The toolkit focuses on what Claude doesn't already provide natively (anti-hallucination gates, prompt enrichment, memory persistence, etc.).
-
----
-
-### Rules (8) — The Always-On Guidance Layer
-
-Rules are markdown files injected into every session's context. They shape Claude's reasoning but rely on instruction-following — no enforcement mechanism beyond the model.
-
+Earlier versions shipped custom desktop notifications; those were removed in favor of Claude's built-in **Settings → Draw attention on notifications**. The toolkit focuses on what Claude doesn't already provide (anti-hallucination gates, prompt enrichment, memory persistence, spawn observability).

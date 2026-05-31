@@ -94,11 +94,11 @@ State is wiped between tests via `rm -rf ${TMPDIR}/.claude-toolkit-failures` to 
 
 ## Source
 
-- Script: [`hooks/scripts/error-critic.js`](../../hooks/scripts/error-critic.js)
-- Manifest entry: [`hooks/hooks.json`](../../hooks/hooks.json) — `PostToolUse` on `Bash` matcher, 5s timeout
+- Script: [`packages/kernel/hooks/post/error-critic.js`](../../packages/kernel/hooks/post/error-critic.js)
+- Manifest entry: [`packages/kernel/hooks.json`](../../packages/kernel/hooks.json) — `PostToolUse` on `Bash` matcher, 5s timeout
 - Hook log: `~/.claude/logs/error-critic.log`
 
 ## Related
 
-- [`pre-compact-save.js`](../../hooks/scripts/pre-compact-save.js) — H.7.7 also added workflow-state-aware injection; both hooks are part of the H.7.7 substrate-primitives bundle
+- [`pre-compact-save.js`](../../packages/kernel/hooks/lifecycle/pre-compact-save.js) — H.7.7 also added workflow-state-aware injection; both hooks are part of the H.7.7 substrate-primitives bundle
 - [Hook overview](overview.md) — full lifecycle event mapping
