@@ -58,6 +58,12 @@ const { appendWalRecord } = require('../../_lib/wal-append.js');
 // PR-3c-b — the ENFORCING staging-promote, dispatched below ONLY behind the
 // strict LOOM_RESOLVER_ENFORCE === '1' flag (default OFF; shadow is the default).
 const { stagePromote } = require('../../spawn-state/stage-promote.js');
+// PR-P3c-a — the close-path CANDIDATE PRODUCER, dispatched below ONLY behind the
+// strict LOOM_STAGE_CANDIDATES === '1' flag (default OFF; shadow is the default;
+// LOOM_RESOLVER_ENFORCE takes precedence if both are set). It materializes the
+// spawn delta, records provenance, and pins it under refs/loom/candidates/* for the
+// P3c-b integrator — NO merge; never touches HEAD/the working tree.
+const { stageCandidate } = require('../../spawn-state/stage-candidate.js');
 // PR-P2b — the LIVE shadow provenance producer's collaborators. buildSpawnRecord
 // assembles a genesis transaction-record carrying post_state_hash + head_anchor;
 // computePostStateHash is the canonical (M1 forward-coupling) hash; GIT_SHA_RE
@@ -712,6 +718,23 @@ function main() {
       });
       logger('enforce-resolved', {
         agentId, run_id: runId, action: result.action, outcome: result.outcome,
+      });
+    } else if (process.env.LOOM_STAGE_CANDIDATES === '1') {
+      // PR-P3c-a — the candidate-staging arm (checked AFTER enforce so enforce wins
+      // if both flags are set). stageCandidate is fail-soft (every throw journaled +
+      // swallowed), so the hook still approves + exits 0. It materializes the delta,
+      // records provenance, and pins refs/loom/candidates/<safeId> — NO merge.
+      const result = stageCandidate({
+        harnessWorktreePath: envelope.worktree_root,
+        agentId,
+        toolResponse,
+        runId,
+        stateDir: SPAWN_STATE_DIR,
+        personaId: resolvePersonaId(input),
+        schemaVersion: SCHEMA_VERSION,
+      });
+      logger('candidate-resolved', {
+        agentId, run_id: runId, staged: result.staged, reason: result.reason || null,
       });
     } else {
       const result = resolveAndJournal({

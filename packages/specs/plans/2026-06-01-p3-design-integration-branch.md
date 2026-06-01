@@ -84,17 +84,17 @@ recordSpawnProvenance (P2b, live)               integrator(orderedIds[]):
   + stageCandidate (P3c):                         acquireLock(integration.lock, maxWaitMs=calibrated)
     {delta_sha, tree, parentHead}                  refuse if loom/integration == current HEAD symref
        = materializeDelta  [UNGUARDED runner]      base, oldtip = tip OR 40-zero (create form, first run)
-    record.head_anchor = parentHead  ← P3 fills    for id in orderedIds:               [EXPLICIT ORDER]
+    record.head_anchor = null  (P3c-a finding)     for id in orderedIds:               [EXPLICIT ORDER]
     update-ref refs/loom/candidates/<safeId>          cand = readCandidate(id) + record(by post_state_hash)
             -> delta_sha                                merged = merge-tree --write-tree \
-    (idempotent: overwrite by sanitized id)                       --merge-base=cand.head_anchor base cand.tree
+    (idempotent: overwrite by sanitized id)                       --merge-base=(cand.delta_sha^1) base cand.tree
                                                       if conflict: quarantine(id) -> loom-promote/<safeId>; continue
                                                       base = commit-tree(merged, -p base, -p cand.delta_sha)
                                                     update-ref refs/heads/loom/integration <base> <oldtip>   [CAS]
                                                   releaseLock
 ```
 
-- **The 3-way merge-base is each candidate's OWN `head_anchor` (= `materializeDelta.parentHead`), NOT the growing tip** (architect Ch4 / code-reviewer F1, the load-bearing correctness fix). A candidate forked from its own fork-point; merging it against the tip would compute a wrong three-way diff (false-conflict or silent-miss). So `stageCandidate` **populates `head_anchor`** — the exact field P2a/P2b defined as "the forked-from HEAD, the P3 re-check anchor" and deferred (left null) — and the integrator reads it per candidate **at integrate-time, when the spawn worktree is already GC'd** (so `parentHead` MUST be persisted in the candidate record, not re-derived). `ours = base` (the running tip), `theirs = cand.tree`, `--merge-base = cand.head_anchor`.
+- **The 3-way merge-base is each candidate's OWN fork-point, NOT the growing tip** (architect Ch4 / code-reviewer F1, the load-bearing correctness fix). A candidate forked from its own fork-point; merging it against the tip would compute a wrong three-way diff (false-conflict or silent-miss). **CORRECTED by the P3c-a board (2026-06-01, see [`2026-06-01-p3c-a-stage-candidate.md`](2026-06-01-p3c-a-stage-candidate.md)):** the fork point is **`cand.delta_sha^1`** (the synthesized squash commit's single parent = `merge-base(parentHead, worktreeHEAD)`), NOT `materializeDelta.parentHead` (which is the parent's *current* HEAD — wrong whenever main moved between fork and close). It is **derived at integrate-time from the candidate ref** (which pins `delta_sha`), so `stageCandidate` records `head_anchor: null` and does NOT persist it — the merge-base is intrinsically tied to the exact delta being merged (strictly more robust than a persisted field, which could diverge under an F-01 re-fire). `ours = base` (the running tip), `theirs = cand.tree`, `--merge-base = cand.delta_sha^1`.
 - **Close path** stays read-mostly + merge-free, but is **not** zero-cost: it runs `materializeDelta` (= `write-tree` + `commit-tree`, one object-write) + one `update-ref` per completed close, synchronously, **via an UNGUARDED runner** (the P2b guarded read-only runner refuses `commit-tree` — cf. 3c stage-promote's harness-unguarded runner). The **merge** is moved off the close path to the explicit integrator; the residual synchronous squash-commit is **contained** (timeout-capped), not eliminated — the #191 background-materializer decoupling stays a deferred design obligation (Out of Scope).
 - **Integrator** is **explicitly invoked** (not auto-on-close) and **takes the order as input** — it stacks candidates by a declared sequence, never by close time. The lock serializes (via `acquireLock`/`releaseLock` with a **calibrated `maxWaitMs`**, NOT `withLock`'s default-3000ms `process.exit(2)` — an N-candidate integrate can exceed 3s); the `update-ref` CAS (zero-oid create form on the first run) is the cross-process backstop; a conflicting candidate is routed to the existing 3c `loom-promote/<safeId>` quarantine **in order** rather than corrupting the stack. On a final CAS loss the whole run is discarded atomically (no intermediate ref writes) and re-runnable with the same ordered list.
 - **F-01 contained at the ref layer (not dissolved):** candidate refs keyed by sanitized spawn id → a re-fired close is an **idempotent overwrite**; record-store dups share `post_state_hash` (read-tolerant, record-store.js:286). The **residual obligation** is the integrator's dedup-by-id (unbuilt, P3c) + the still-accumulating dup records (the producer's wall-clock `intent_recorded_at` time-salts each `transaction_id`). No unique-constraint plumbing needed; the dedup is a P3c design obligation, not a closed problem.
@@ -202,7 +202,7 @@ The stack-merge merge-base was wrong: my pseudocode merged each candidate agains
 
 | # | Check | Verdict | Resolution |
 |---|---|---|---|
-| 1 | Stack-merge merge-base | FAIL | **Fixed** (headline). `parentHead` persistence designed in via `head_anchor`. |
+| 1 | Stack-merge merge-base | FAIL | **Fixed** (headline). `parentHead` persistence designed in via `head_anchor` — *later SUPERSEDED by the P3c-a board (2026-06-01): the integrator derives `delta_sha^1`; head_anchor is NOT persisted. See obligation #1.* |
 | 2 | CAS first-integrate | FLAG | **Folded**: the integrator uses the 40-zero-oid create form when `loom/integration` is absent (branch on ref presence). |
 | 3 | Candidate ref names | FLAG | **Folded**: ref component is `sanitizeAgentId(agentId)`, never the raw id (git ref-name constraints). |
 | 4 | `commit-tree` blocked by guarded runner | FLAG | **Folded**: `stageCandidate` uses an UNGUARDED runner (the P2b read-only runner refuses `commit-tree`) — same pattern as 3c stage-promote's harness-unguarded runner. Noted in Architecture. |
@@ -221,7 +221,7 @@ No CRITICAL/BLOCKED. The two FAIL/headline gaps (merge-base + OQ-2-safe-option) 
 
 ### Design obligations carried into the sub-PR plans (not re-litigated)
 
-1. **head_anchor persistence per candidate** (the merge-base source at integrate-time) — P3c staging + the candidate record.
+1. ~~**head_anchor persistence per candidate**~~ **SUPERSEDED by the P3c-a board (2026-06-01):** do NOT persist `head_anchor`; the integrator derives the merge-base as **`cand.delta_sha^1`** from the candidate ref (intrinsically tied to the merged delta, more robust than a persisted field). `stageCandidate` records `head_anchor: null`. See [`2026-06-01-p3c-a-stage-candidate.md`](2026-06-01-p3c-a-stage-candidate.md) Open Sub-Decision 1.
 2. **OQ-2 — RESOLVED in P3a** (`isGenesisPosition` recognizes `computeGenesisHash(schema, both-scopes)`, additive). NOTE the build refined this away from the originally-planned "evidence_refs sentinel" approach — TDD-RED found that would reclassify the many records carrying a bootstrap evidence-ref at a non-genesis position (`validRecord()`'s own default). The exact-hash form is the architect's Ch5 alternative.
 3. **CAS create-form (40-zero oid)** on first integrate; **`sanitizeAgentId` in ref names**; **UNGUARDED runner for `commit-tree`**; **`acquireLock` with calibrated `maxWaitMs`** — P3c.
 4. **`integrator.js` SRP decomposition** + **extract `stageCandidate` to its own module** — P3c.
