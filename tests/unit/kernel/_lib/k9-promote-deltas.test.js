@@ -46,6 +46,7 @@ const { execFileSync } = require('child_process');
 
 const k9 = require('../../../../packages/kernel/_lib/k9-promote-deltas');
 const { createTmpDir } = require('./_test-harness');
+const { computeGenesisHash } = require('../../../../packages/kernel/_lib/transaction-record');
 
 let passed = 0;
 let failed = 0;
@@ -789,6 +790,45 @@ test('F20: promoteDelta honors is_recovery_sweep — a sweep record that would f
     assert.ok(runGit.calls.some((c) => c.includes('cherry-pick')),
       'the git transaction runs for a recovery-sweep record (gate skipped)');
   } finally { tmp.cleanup(); }
+});
+
+// ── OQ-2 (P3a): isGenesisPosition must recognize a PRODUCER genesis record ───
+// The genesis producers (quarantine-promote.buildGenesisRecord/buildSpawnRecord)
+// set prev_state_hash = computeGenesisHash(schema_version, scope) — a 64-hex hash
+// the literal-'GENESIS' / isBootstrapSentinel(prev) checks do NOT match. Before
+// the P3a fix, the LIVE chain-walk (line 184) failed to terminate at such a parent
+// and REJECTed the chain as 'chain-bottomed-out-non-genesis'. The fix recognizes
+// the prev EXACTLY (computeGenesisHash for either scope) — NOT "any 64-hex" (would
+// match every non-genesis prev) and NOT "evidence_refs[0] is a sentinel" (would
+// reclassify the many records carrying a USER_INTENT_AXIOM/GENESIS_EVIDENCE ref at
+// a NON-genesis position — including validRecord()'s own default evidence).
+
+test('OQ-2: a record whose prev_state_hash == computeGenesisHash(schema, per-project) is genesis-position', () => {
+  const rec = validRecord({ prev_state_hash: computeGenesisHash('v3', 'per-project') });
+  assert.strictEqual(k9.isGenesisPosition(rec), true, 'producer genesis (per-project) recognized');
+});
+
+test('OQ-2: a record whose prev_state_hash == computeGenesisHash(schema, per-user) is also genesis-position', () => {
+  const rec = validRecord({ prev_state_hash: computeGenesisHash('v3', 'per-user') });
+  assert.strictEqual(k9.isGenesisPosition(rec), true, 'producer genesis (per-user) recognized');
+});
+
+test('OQ-2 precision: a sentinel evidence_ref at a REAL (non-genesis-hash) hex prev is NOT genesis (no blast radius)', () => {
+  // validRecord()'s DEFAULT evidence_refs[0] is a USER_INTENT_AXIOM sentinel; this
+  // record sits at a real non-genesis prev. The fix must NOT reclassify it as
+  // genesis (the evidence_refs-sentinel approach would have — the rejected option).
+  const rec = validRecord({ prev_state_hash: 'b'.repeat(64) });
+  assert.strictEqual(k9.isGenesisPosition(rec), false, 'a non-genesis-hash prev stays non-genesis despite sentinel evidence');
+});
+
+test('OQ-2 symptom: a non-genesis head whose chain resolves to a producer genesis record TERMINATES (not chain-bottomed-out)', () => {
+  const producerPrev = computeGenesisHash('v3', 'per-project');
+  const producer = validRecord({ prev_state_hash: producerPrev, evidence_refs: ['ROOT_TASK_RECORD:g'] });
+  const head = validRecord({ prev_state_hash: 'd'.repeat(64) });
+  const resolveParent = (h) => (h === 'd'.repeat(64) ? producer : null);
+  const res = k9.checkEvidenceLinkPreCommit({ record: head, isGenesisPosition: false, resolveParent });
+  assert.strictEqual(res.ok, true, 'OQ-2: the live walk terminates at the producer genesis record');
+  assert.strictEqual(res.depthWalked, 1, 'walked exactly one hop to the genesis producer');
 });
 
 // `os` is used by the F11 real-git test (mkdtemp); this void keeps the lint

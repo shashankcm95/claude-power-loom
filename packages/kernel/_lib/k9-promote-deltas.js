@@ -51,7 +51,7 @@
 const pathGuard = require('./k9-path-guard');
 const journal = require('./k9-journal');
 const { runGitDefault } = require('./invoke-git');
-const { validateTransactionRecord, isBootstrapSentinel } = require('./transaction-record');
+const { validateTransactionRecord, isBootstrapSentinel, computeGenesisHash } = require('./transaction-record');
 
 // F12 (eli-H3, CWE-400): bound on the pre-commit evidence chain-walk. Replaced
 // by v3.1 R10 (full chain-integrity verifier). ADR-0011 §F12 records the
@@ -78,9 +78,39 @@ const ALREADY_PRESENT_MARKERS = [
 ];
 
 /**
- * True iff a record sits at a genesis chain position: prev_state_hash is the
- * literal "GENESIS" marker or a bootstrap sentinel. Used to terminate the
- * bounded chain-walk and to drive the isGenesisPosition validator branch (F9).
+ * True iff a record sits at a genesis chain position. Used to terminate the
+ * bounded chain-walk (line ~184) and to drive the isGenesisPosition validator
+ * branch (F9). Recognizes THREE genesis prev_state_hash forms:
+ *   1. the literal "GENESIS" marker,
+ *   2. a bootstrap sentinel carried in prev_state_hash, and
+ *   3. (OQ-2, P3a) prev_state_hash === computeGenesisHash(schema_version, scope) —
+ *      the form the genesis PRODUCERS actually emit (quarantine-promote's
+ *      buildGenesisRecord/buildSpawnRecord set prev = computeGenesisHash(schema,
+ *      'per-project'), a 64-hex hash that forms 1+2 do NOT match).
+ *
+ * OQ-2 (the bug this closes): before P3a, the live chain-walk resolved a producer
+ * genesis record as a parent, isGenesisPosition returned false (its 64-hex prev is
+ * neither "GENESIS" nor a sentinel), the walk kept going, resolveParent(that hash)
+ * returned null, and the chain was REJECTED as 'chain-bottomed-out-non-genesis'.
+ *
+ * Why EXACT computeGenesisHash equality, not the two rejected alternatives
+ * (verify-plan architect Ch5 + the P3a TDD-RED blast-radius probe):
+ *   - NOT "any 64-hex prev = genesis": every NON-genesis record's prev is a 64-hex
+ *     state hash, so that would make the entire chain look like genesis.
+ *   - NOT "evidence_refs[0] is a bootstrap sentinel": records legitimately carry a
+ *     USER_INTENT_AXIOM / GENESIS_EVIDENCE evidence_ref at a NON-genesis position
+ *     (validRecord()'s own default evidence is USER_INTENT_AXIOM), so keying on the
+ *     evidence ref would reclassify them and break the walk.
+ * computeGenesisHash is keyed to (schema_version, scope) with scope a 2-element
+ * domain {per-project, per-user}; schema_version is carried in the record, so we
+ * recompute both and compare exactly. This is purely ADDITIVE (Open/Closed) — forms
+ * 1+2 are unchanged, and no record with a real state-hash prev is reclassified.
+ *
+ * NOTE this does NOT weaken the forged-genesis gate: checkEvidenceLinkPreCommit
+ * step 1 still validates the HEAD record via validateTransactionRecord with the
+ * CALLER's isGenesisPosition flag (a separate function, untouched), which rejects a
+ * sentinel/"GENESIS" prev claimed at a non-genesis position. Genesis stays a
+ * STRUCTURAL position-recognizer; provenance is gated elsewhere (human review).
  *
  * @param {object} record
  * @returns {boolean}
@@ -88,7 +118,14 @@ const ALREADY_PRESENT_MARKERS = [
 function isGenesisPosition(record) {
   if (!record || typeof record !== 'object') return false;
   const prev = record.prev_state_hash;
-  return prev === 'GENESIS' || isBootstrapSentinel(prev);
+  if (prev === 'GENESIS' || isBootstrapSentinel(prev)) return true;
+  // OQ-2: recognize the producer's prev = computeGenesisHash(schema_version, scope).
+  const schema = record.schema_version;
+  if (typeof prev === 'string' && typeof schema === 'string' && schema.length > 0) {
+    if (prev === computeGenesisHash(schema, 'per-project')) return true;
+    if (prev === computeGenesisHash(schema, 'per-user')) return true;
+  }
+  return false;
 }
 
 /**
