@@ -80,6 +80,15 @@ const SPAWN_STATE_DIR =
 const DIR_MODE = 0o700; // hygienic, matches spawn-record.js / k13-serial-enforcer
 const MAX_STDIN_BYTES = 10 * 1024 * 1024; // 10MB defensive cap (mirror spawn-record)
 const MAX_GIT_BUFFER = 1024 * 1024; // 1MB bounded diff (D8 / S5 / code-reviewer HIGH-2)
+// PR-P2b.1 — the per-git-call read timeout (ms). PostToolUse is synchronous, so a
+// slow guarded read (status/diff on a massive worktree) blocks the harness on the
+// hook's exit. A timed-out read THROWS -> the existing catch returns {ok:false} ->
+// okStdout null -> dirty -> post_state_hash null (correct-or-null; a false-timeout
+// is harmless). Worst-case ADDED hook latency on a completed shadow close ~= 2x
+// this (TWO tree-walks: the K14 diff + the producer status; rev-parse is O(1));
+// 3000ms keeps that ~6s while giving a large repo's single walk ~3s of headroom.
+// LOOM_GIT_TIMEOUT_MS tunes it (validated positive safe integer, else this default).
+const DEFAULT_GIT_TIMEOUT_MS = 3000;
 
 // D6 — the EXACT 9 keys K14.detectWriteScopeViolations(ctx) reads
 // (k14-write-scope.js:254 + plan Runtime-Probes). Object.fromEntries over this
@@ -291,6 +300,20 @@ function dryRunPromote() {
 }
 
 /**
+ * PR-P2b.1 — resolve the guarded git-read timeout (ms) from LOOM_GIT_TIMEOUT_MS,
+ * fail-SAFE: ONLY a positive finite integer <= Number.MAX_SAFE_INTEGER is honored,
+ * else DEFAULT_GIT_TIMEOUT_MS. Rejects 0/negative (Node reads timeout:0 as "no
+ * timeout" — defeating the bound) and absurd values like 1e100 (Number.isInteger(
+ * 1e100) is true → an effectively-infinite timeout — verify V2).
+ *
+ * @returns {number} a positive integer millisecond timeout.
+ */
+function gitTimeoutMs() {
+  const n = Number(process.env.LOOM_GIT_TIMEOUT_MS);
+  return Number.isInteger(n) && n > 0 && n <= Number.MAX_SAFE_INTEGER ? n : DEFAULT_GIT_TIMEOUT_MS;
+}
+
+/**
  * The GUARDED read-only git seam (D2/S3). Allows only status/diff/rev-parse/
  * show-ref; REFUSES every mutating arg (commit/cherry-pick/merge/reset/
  * checkout/worktree...) by returning an empty-stdout result instead of running
@@ -319,6 +342,10 @@ function makeGuardedRunGit(cwd) {
   if (typeof cwd !== 'string' || cwd.length === 0) {
     return () => ({ ok: false, code: 1, stdout: '', stderr: '' });
   }
+  // PR-P2b.1 (verify V5) — resolve the timeout ONCE per runner (one per
+  // resolveAndJournal close), so the K14 diff + the producer's status/rev-parse
+  // share a single consistent value rather than re-reading the env per git call.
+  const timeoutMs = gitTimeoutMs();
   return (args) => {
     const argv = Array.isArray(args) ? args : [];
     const subcommand = argv.find((a) => typeof a === 'string' && !a.startsWith('-'));
@@ -332,13 +359,16 @@ function makeGuardedRunGit(cwd) {
         cwd,
         encoding: 'utf8',
         maxBuffer: MAX_GIT_BUFFER,
+        timeout: timeoutMs, // PR-P2b.1 — bound the synchronous close hook; expiry THROWS -> catch -> ok:false
         stdio: ['ignore', 'pipe', 'pipe'],
       });
       return { ok: true, code: 0, stdout: stdout || '', stderr: '' };
     } catch (err) {
       // A bounded-buffer overflow or a git error -> safe degraded path (empty
       // stdout), never a partial-path verdict (S5). Fail-soft.
-      logger('git-read-failed', { subcommand, error: err.message });
+      // PR-P2b.1 (verify V1) — a timeout-kill sets err.code==='ETIMEDOUT' (NOT
+      // err.killed, which is undefined on execFileSync's synchronous SpawnSyncError).
+      logger('git-read-failed', { subcommand, error: err.message, timed_out: err.code === 'ETIMEDOUT' });
       return {
         ok: false,
         code: typeof err.status === 'number' ? err.status : 1,
@@ -448,6 +478,10 @@ function recordSpawnProvenance({ envelope, runGit, stateDir, runId, agentId, per
       return;
     }
 
+    // PR-P2b.1 — measure the producer's git wall-time (status + rev-parse) for the
+    // producer_git_ms telemetry. The K14 diff is timed separately (k14_git_ms on the
+    // verdict entry); together they cover the completed-close git latency.
+    const gitStart = Date.now();
     // Dirty-gate via status --porcelain (untracked-aware — Probe #7). okStdout
     // fails CLOSED: a failed read -> null -> (null !== '') -> DIRTY (AD-4).
     const dirty = okStdout(runGit(['status', '--porcelain'])) !== '';
@@ -460,6 +494,7 @@ function recordSpawnProvenance({ envelope, runGit, stateDir, runId, agentId, per
       const treeSha = okStdout(runGit(['rev-parse', 'HEAD^{tree}']));
       if (treeSha && GIT_SHA_RE.test(treeSha)) postStateHash = computePostStateHash(treeSha);
     }
+    const producerGitMs = Date.now() - gitStart;
 
     // head_anchor=null in P2b (AD-2): the forked-from parentHead is not read-only-
     // derivable here; P3 computes it via materializeDelta under licensed mutation.
@@ -482,6 +517,7 @@ function recordSpawnProvenance({ envelope, runGit, stateDir, runId, agentId, per
       record_appended: appended.ok,
       record_reason: appended.ok ? null : appended.reason,
       uncommitted: dirty,
+      producer_git_ms: producerGitMs, // PR-P2b.1 — the producer's status+rev-parse wall-time
       observed_status: envelope.observed_status,
       mode: 'shadow',
       note: 'SHADOW provenance: read-only post_state_hash (committed HEAD tree, null if dirty); head_anchor deferred to P3; record-store live-fed.',
@@ -526,7 +562,11 @@ function resolveAndJournal({ envelope, stateDir, runId, agentId, personaId }) {
   try {
     const worktreeRoot = envelope && envelope.worktree_root;
     const runGit = makeGuardedRunGit(worktreeRoot);
+    // PR-P2b.1 — time the K14 diff (the first, equally-slow tree-walk on the close
+    // path) for the k14_git_ms verdict telemetry. ~0 when there's no worktreeRoot.
+    const k14Start = Date.now();
     const k14Ctx = worktreeRoot ? buildK14CtxFromWorktree(worktreeRoot, runGit) : {};
+    const k14GitMs = Date.now() - k14Start;
     const decisionEnvelope = envelope
       ? { ...envelope, k14_ctx: k14Ctx }
       : envelope; // null/undefined preserved so resolve() throws (fault test path)
@@ -571,6 +611,7 @@ function resolveAndJournal({ envelope, stateDir, runId, agentId, personaId }) {
       outcome: verdict.outcome,
       observed_status: envelope ? envelope.observed_status : null,
       marker_released: verdict.markerReleased,
+      k14_git_ms: k14GitMs, // PR-P2b.1 — the K14 diff wall-time (the first close-path tree-walk)
       k13_skipped: true,
       would_be: true,
       dry_run: true,
@@ -713,4 +754,8 @@ module.exports = {
   // becomes load-bearing in PR-3c enforcing, so lock it behind an executed test now.
   makeGuardedRunGit,
   READ_ONLY_GIT_SUBCOMMANDS,
+  // PR-P2b.1 — the git-read timeout resolver. Exported so the spec can pin the
+  // fail-SAFE validation (default / valid override / 0-negative-1e100 rejection)
+  // directly, independently of a real-git timeout.
+  gitTimeoutMs,
 };

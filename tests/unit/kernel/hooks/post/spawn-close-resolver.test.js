@@ -1287,5 +1287,106 @@ test('[real git] P2b #12: the existing shadow-resolver-verdict journaling is int
   }
 });
 
+// ── PR-P2b.1: git-read timeout (bounds the synchronous close hook) + producer/K14
+// latency telemetry. The timeout degrades via the EXISTING fail-closed path
+// (timeout -> the catch -> ok:false -> okStdout null -> dirty -> null hash); the
+// telemetry is additive (producer_git_ms on the provenance entry, k14_git_ms on
+// the always-journaled verdict entry). ─────────────────────────────────────────
+
+// Save/restore LOOM_GIT_TIMEOUT_MS around an env-mutating assertion.
+function withGitTimeoutEnv(value, fn) {
+  const saved = process.env.LOOM_GIT_TIMEOUT_MS;
+  try {
+    if (value === undefined) delete process.env.LOOM_GIT_TIMEOUT_MS;
+    else process.env.LOOM_GIT_TIMEOUT_MS = value;
+    fn();
+  } finally {
+    if (saved === undefined) delete process.env.LOOM_GIT_TIMEOUT_MS;
+    else process.env.LOOM_GIT_TIMEOUT_MS = saved;
+  }
+}
+
+test('P2b.1 #1: gitTimeoutMs() returns the 3000ms default when LOOM_GIT_TIMEOUT_MS is unset', () => {
+  assert.strictEqual(typeof hook.gitTimeoutMs, 'function', 'hook must export gitTimeoutMs');
+  withGitTimeoutEnv(undefined, () => {
+    assert.strictEqual(hook.gitTimeoutMs(), 3000, 'unset LOOM_GIT_TIMEOUT_MS must yield the 3000ms default');
+  });
+});
+
+test('P2b.1 #2: gitTimeoutMs() honors a valid positive-integer LOOM_GIT_TIMEOUT_MS override', () => {
+  withGitTimeoutEnv('250', () => assert.strictEqual(hook.gitTimeoutMs(), 250, "'250' must parse to 250"));
+  withGitTimeoutEnv('60000', () => assert.strictEqual(hook.gitTimeoutMs(), 60000, "'60000' must parse to 60000"));
+});
+
+test('P2b.1 #3: gitTimeoutMs() falls back to 3000 for every invalid/unsafe override (fail-SAFE)', () => {
+  // 0/negative: Node treats timeout:0 as "no timeout" — must NOT pass. 1e100/5e308:
+  // Number.isInteger(1e100)===true but it is an effectively-infinite timeout beyond
+  // MAX_SAFE_INTEGER — must NOT pass (verify V2). Fractional/non-numeric/blank: reject.
+  for (const bad of ['', '  ', 'abc', '-5', '0', '1.5', 'NaN', 'Infinity', '1e100', '5e308']) {
+    withGitTimeoutEnv(bad, () => {
+      assert.strictEqual(hook.gitTimeoutMs(), 3000, `${JSON.stringify(bad)} must fall back to the 3000ms default`);
+    });
+  }
+});
+
+test('P2b.1 #4: a 1ms LOOM_GIT_TIMEOUT_MS makes a real guarded git read time out -> ok:false (the timeout physically fires; no partial read)', () => {
+  if (!gitAvailable()) { process.stdout.write('    (skipped: git unavailable)\n'); return; }
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'p2b1-timeout-'));
+  const repo = path.join(baseDir, 'parent');
+  try {
+    initRepo(repo);
+    withGitTimeoutEnv('1', () => {
+      // V5: makeGuardedRunGit reads gitTimeoutMs() ONCE at construction, so set the env FIRST.
+      // 1ms is below git process startup (~14ms observed) -> the child is reliably SIGTERM'd.
+      const runGit = hook.makeGuardedRunGit(repo);
+      const res = runGit(['status', '--porcelain']);
+      assert.strictEqual(res.ok, false, 'a 1ms-timeout status must be killed -> ok:false');
+      assert.strictEqual(res.stdout, '', 'a timed-out read must yield empty stdout, never a partial/clean tree (S5)');
+    });
+  } finally {
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  }
+});
+
+test('P2b.1 #5: a clean completed spawn journals a numeric producer_git_ms on the shadow-provenance-record entry', () => {
+  if (!gitAvailable()) { process.stdout.write('    (skipped: git unavailable)\n'); return; }
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'p2b1-prodms-'));
+  const repo = path.join(baseDir, 'parent');
+  const stateDir = path.join(baseDir, 'spawn-state');
+  try {
+    const { g } = initRepo(repo);
+    const { wtPath } = addWorktreeWithCommit(repo, g, 'prodms01');
+    const out = runHook(makeInput({ sessionId: 'sess-p2b1-prodms', toolResponse: syntheticWorktreeResponse({ worktreePath: wtPath, agentId: 'prodms01' }) }), stateDir);
+    assert.strictEqual(out.status, 0, `clean spawn must exit 0 (stderr=${out.stderr})`);
+    const provEntry = readJournalRecords(findJournalFiles(stateDir, 'prodms01')[0]).find((r) => r.kind === 'shadow-provenance-record');
+    assert.ok(provEntry, 'a shadow-provenance-record entry must exist');
+    assert.strictEqual(typeof provEntry.producer_git_ms, 'number', 'producer_git_ms must be a number (the producer status+rev-parse wall-time)');
+    assert.ok(Number.isFinite(provEntry.producer_git_ms) && provEntry.producer_git_ms >= 0, 'producer_git_ms must be finite and >= 0');
+    g(['worktree', 'remove', '--force', wtPath]);
+  } finally {
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  }
+});
+
+test('P2b.1 #6: a shadow close journals a numeric k14_git_ms on the shadow-resolver-verdict entry (the K14 diff latency, the first/equal spike)', () => {
+  if (!gitAvailable()) { process.stdout.write('    (skipped: git unavailable)\n'); return; }
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'p2b1-k14ms-'));
+  const repo = path.join(baseDir, 'parent');
+  const stateDir = path.join(baseDir, 'spawn-state');
+  try {
+    const { g } = initRepo(repo);
+    const { wtPath } = addWorktreeWithCommit(repo, g, 'k14ms01');
+    const out = runHook(makeInput({ sessionId: 'sess-p2b1-k14ms', toolResponse: syntheticWorktreeResponse({ worktreePath: wtPath, agentId: 'k14ms01' }) }), stateDir);
+    assert.strictEqual(out.status, 0, `shadow close must exit 0 (stderr=${out.stderr})`);
+    const verdictEntry = readJournalRecords(findJournalFiles(stateDir, 'k14ms01')[0]).find((r) => r.kind === 'shadow-resolver-verdict');
+    assert.ok(verdictEntry, 'a shadow-resolver-verdict entry must exist');
+    assert.strictEqual(typeof verdictEntry.k14_git_ms, 'number', 'k14_git_ms must be a number (the K14 diff wall-time)');
+    assert.ok(Number.isFinite(verdictEntry.k14_git_ms) && verdictEntry.k14_git_ms >= 0, 'k14_git_ms must be finite and >= 0');
+    g(['worktree', 'remove', '--force', wtPath]);
+  } finally {
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  }
+});
+
 process.stdout.write(`\nspawn-close-resolver.test: ${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);
