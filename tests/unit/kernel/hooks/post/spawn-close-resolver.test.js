@@ -61,6 +61,23 @@ const hook = require('../../../../../packages/kernel/hooks/post/spawn-close-reso
 
 const { checkWithinRoot } = require('../../../../../packages/kernel/_lib/path-canonicalize');
 
+// PR-P2b — the live shadow PROVENANCE producer wires these into the hook. The
+// spec imports the same canonical primitives the producer calls so the cross-
+// phase / store-level joins are asserted against the SAME functions the runtime
+// uses (the M1 forward-coupling invariant: one computePostStateHash, one
+// GIT_SHA_RE — not a re-derivation).
+const {
+  computePostStateHash,
+  GIT_SHA_RE,
+} = require('../../../../../packages/kernel/_lib/transaction-record');
+const {
+  readById,
+  readByPostStateHash,
+  listByRun,
+} = require('../../../../../packages/kernel/_lib/record-store');
+const { materializeDelta } = require('../../../../../packages/kernel/_lib/quarantine-promote');
+const { runGitDefault } = require('../../../../../packages/kernel/_lib/invoke-git');
+
 let passed = 0;
 let failed = 0;
 function test(name, fn) {
@@ -158,6 +175,24 @@ function readJournalRecords(file) {
     .split('\n')
     .filter((l) => l.trim().length > 0)
     .map((l) => JSON.parse(l));
+}
+
+// PR-P2b — the hook derives runId = sha256(session_id).slice(0,16) (mirrors
+// resolveRunId / spawn-record.js). The store-level reads (readById /
+// readByPostStateHash / listByRun) must target the SAME run dir, so the spec
+// recomputes that id the same way for a given session_id.
+function runIdForSession(sessionId) {
+  return require('crypto').createHash('sha256').update(String(sessionId), 'utf8').digest('hex').slice(0, 16);
+}
+
+// Worktree-bound git seams for materializeDelta (test #8 cross-phase equality).
+// Mirrors the quarantine-promote suite's makeRepo helper (:81-82): runGit +
+// runGitWithEnv bound to a worktree via the shared invoke-git runner.
+function worktreeSeams(wtPath) {
+  return {
+    runGit: (args) => runGitDefault(wtPath, args),
+    runGitWithEnv: (args, extraEnv) => runGitDefault(wtPath, args, extraEnv),
+  };
 }
 
 // ── 1. Shadow envelope build ────────────────────────────────────────────────
@@ -459,8 +494,11 @@ test('fail-soft: a worktree payload that makes resolve() throw is swallowed -> e
   const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pr3b-throw-'));
   try {
     // A null envelope forces resolve() to throw; the wrapper must NOT propagate.
+    // PR-P2b: resolveAndJournal gained a personaId param — pass it for signature
+    // correctness (the envelope:null path throws in resolve() before the producer
+    // runs, so the value is irrelevant here, but the call shape must match).
     assert.doesNotThrow(() => {
-      hook.resolveAndJournal({ envelope: null, stateDir, runId: 'r-throw', agentId: 'throw01' });
+      hook.resolveAndJournal({ envelope: null, stateDir, runId: 'r-throw', agentId: 'throw01', personaId: 'general-purpose' });
     }, 'resolveAndJournal must swallow a resolve() throw (fail-soft)');
   } finally {
     fs.rmSync(stateDir, { recursive: true, force: true });
@@ -774,6 +812,474 @@ test('[real git] flag dispatch: LOOM_RESOLVER_ENFORCE=0 -> SHADOW (strict === \'
     assert.strictEqual(journals.length, 1, 'flag=0 dispatch must journal one per-spawn file');
     const records = readJournalRecords(journals[0]);
     assert.ok(records.some((r) => r.dry_run === true), 'flag=0 must run the SHADOW path (dry_run:true)');
+
+    g(['worktree', 'remove', '--force', wtPath]);
+  } finally {
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  }
+});
+
+// ── PR-P2b: the live shadow PROVENANCE producer (recordSpawnProvenance) ──────
+//
+// P2b wires the P2a producer primitives into the SHADOW path so record-store
+// becomes LIVE-FED — the FIRST production importer of appendRecord. The producer
+// is read-only (status + rev-parse, no new git verb), fail-soft (its OWN
+// try/catch), completed-gated (records only commit_outcome:COMMITTED), and
+// records `post_state_hash` correct-or-null (the committed HEAD tree when clean,
+// null when dirty) with `head_anchor:null` (the forked-from parentHead is not
+// read-only-derivable at close — P3 computes it). The plan
+// (2026-06-01-pr-p2b-live-shadow-producer.md) is the build contract; these are
+// its RED-first behavioral spec (the 12-test inventory + the GIT_SHA_RE export).
+
+// F4 / AD-8 — GIT_SHA_RE is now exported from transaction-record (the hook
+// imports the canonical const instead of authoring a 6th copy).
+test('transaction-record exports GIT_SHA_RE (the canonical 40/64-hex git-sha matcher; no 6th copy)', () => {
+  assert.ok(GIT_SHA_RE instanceof RegExp, 'GIT_SHA_RE must be exported as a RegExp');
+  assert.strictEqual(GIT_SHA_RE.test('a'.repeat(40)), true, 'a 40-hex sha matches');
+  assert.strictEqual(GIT_SHA_RE.test('a'.repeat(64)), true, 'a 64-hex sha matches');
+  assert.strictEqual(GIT_SHA_RE.test('a'.repeat(50)), false, 'a 50-hex string (41–63 garbage) must NOT match');
+  assert.strictEqual(GIT_SHA_RE.test('XYZ'), false, 'a non-hex string must NOT match');
+});
+
+// Helper: build + add a worktree carrying a COMMITTED in-scope delta, returning
+// {wtPath, wg}. Mirrors the existing real-git tests (:333-338).
+function addWorktreeWithCommit(repo, g, id, fileName = 'feature.txt') {
+  const wtPath = path.join(repo, '.claude', 'worktrees', 'agent-' + id);
+  g(['worktree', 'add', '-q', '-b', 'worktree-agent-' + id, wtPath, 'HEAD']);
+  const wg = (args) => execFileSync('git', args, { cwd: wtPath, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' });
+  fs.writeFileSync(path.join(wtPath, fileName), 'new feature\n');
+  wg(['add', fileName]); wg(['commit', '-q', '-m', 'spawn delta']);
+  return { wtPath, wg };
+}
+
+// #1 — CLEAN completed worktree (committed delta), store-level round-trip.
+test('[real git] P2b #1: clean committed worktree -> record appended; post_state_hash === computePostStateHash(rev-parse HEAD^{tree}); head_anchor null; readByPostStateHash round-trips', () => {
+  if (!gitAvailable()) { process.stdout.write('    (skipped: git unavailable)\n'); return; }
+  assert.strictEqual(typeof hook.recordSpawnProvenance, 'function',
+    'hook must export recordSpawnProvenance (P2b producer)');
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'p2b-clean-'));
+  const repo = path.join(baseDir, 'parent');
+  const stateDir = path.join(baseDir, 'spawn-state');
+  try {
+    const { g } = initRepo(repo);
+    const { wtPath, wg } = addWorktreeWithCommit(repo, g, 'clean01');
+    // The committed post-state tree, computed independently via the worktree's HEAD.
+    const treeSha = wg(['rev-parse', 'HEAD^{tree}']).trim();
+    const expectedHash = computePostStateHash(treeSha);
+
+    const sessionId = 'sess-p2b-clean';
+    const out = runHook(makeInput({ sessionId, toolResponse: syntheticWorktreeResponse({ worktreePath: wtPath, agentId: 'clean01' }) }), stateDir);
+    assert.strictEqual(out.status, 0, `clean spawn must exit 0 (stderr=${out.stderr})`);
+
+    const runId = runIdForSession(sessionId);
+    const records = listByRun({ runId, stateDir });
+    assert.strictEqual(records.length, 1, `exactly one record must be appended (found ${records.length})`);
+    const rec = records[0];
+    assert.strictEqual(rec.post_state_hash, expectedHash, 'post_state_hash must equal computePostStateHash(HEAD^{tree})');
+    assert.strictEqual(rec.head_anchor, null, 'head_anchor must be null in P2b (forked-from parentHead deferred to P3)');
+    assert.strictEqual(rec.writer_spawn_id, 'clean01', 'writer_spawn_id carries the raw agentId');
+    // THE store-level M1 join (NOT the live K9 seam — unwired in P2b): the producer's
+    // hash is exactly what readByPostStateHash reads, so P3's resolveParent wiring resolves.
+    const fetched = readByPostStateHash(expectedHash, { runId, stateDir });
+    assert.ok(fetched && fetched.transaction_id === rec.transaction_id,
+      'readByPostStateHash must return the SAME record the producer wrote (the M1 store-level join holds)');
+
+    // The store-write SUCCESS flag is journaled honestly (harden P2B-H-MED-2): the
+    // shadow-provenance-record entry must carry record_appended:true + record_reason:null,
+    // pinning the appended.ok/appended.reason plumbing (spawn-close-resolver.js:482-483). A
+    // future regression that makes appendRecord silently reject (record_appended:false) is
+    // caught HERE rather than only transitively via listByRun length.
+    const provRecords = readJournalRecords(findJournalFiles(stateDir, 'clean01')[0]);
+    const provEntry = provRecords.find((r) => r.kind === 'shadow-provenance-record');
+    assert.ok(provEntry, 'a shadow-provenance-record journal entry must exist for the clean spawn');
+    assert.strictEqual(provEntry.record_appended, true, 'record_appended must be true on a successful store write');
+    assert.strictEqual(provEntry.record_reason, null, 'record_reason must be null when the append succeeded');
+
+    g(['worktree', 'remove', '--force', wtPath]);
+  } finally {
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  }
+});
+
+// #2 — DIRTY completed worktree (tracked modification) -> post_state_hash null.
+test('[real git] P2b #2: dirty completed worktree (tracked mod) -> post_state_hash null; head_anchor null; readById finds it; readByPostStateHash(null-key) never matches', () => {
+  if (!gitAvailable()) { process.stdout.write('    (skipped: git unavailable)\n'); return; }
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'p2b-dirty-'));
+  const repo = path.join(baseDir, 'parent');
+  const stateDir = path.join(baseDir, 'spawn-state');
+  try {
+    const { g } = initRepo(repo);
+    const { wtPath } = addWorktreeWithCommit(repo, g, 'dirty01');
+    // Leave an UNCOMMITTED tracked modification -> status --porcelain reports dirty.
+    fs.writeFileSync(path.join(wtPath, 'feature.txt'), 'edited but not committed\n');
+
+    const sessionId = 'sess-p2b-dirty';
+    const out = runHook(makeInput({ sessionId, toolResponse: syntheticWorktreeResponse({ worktreePath: wtPath, agentId: 'dirty01' }) }), stateDir);
+    assert.strictEqual(out.status, 0, `dirty spawn must exit 0 (stderr=${out.stderr})`);
+
+    const runId = runIdForSession(sessionId);
+    const records = listByRun({ runId, stateDir });
+    assert.strictEqual(records.length, 1, 'a completed-but-dirty spawn still records (COMMITTED record state)');
+    const rec = records[0];
+    assert.strictEqual(rec.post_state_hash, null, 'post_state_hash must be null for a dirty worktree (correct-or-null)');
+    assert.strictEqual(rec.head_anchor, null, 'head_anchor must be null');
+    // readById (by transaction_id primary key) still finds the record.
+    assert.ok(readById(rec.transaction_id, { runId, stateDir }), 'readById must find the dirty-spawn record');
+    // The NULL-EXCLUSION guarantee (harden P2B-H-MED-1): a null post_state_hash is
+    // structurally unmatchable by readByPostStateHash. Bind the test to the real
+    // store-level fact, not the weaker "an unstored key misses":
+    //   1. The dirty record is THE ONLY record in this run, and its post_state_hash IS null.
+    assert.strictEqual(records.length, 1, 'precondition: the dirty record is the only one in the run');
+    assert.strictEqual(rec.post_state_hash, null, 'precondition: the only record carries a null post_state_hash');
+    //   2. readByPostStateHash hex-gates the key (record-store.js:295) AND value-strict-
+    //      equals (`record.post_state_hash === key`, :311) — a 64-hex key can never strictly
+    //      equal null, so NO 64-hex probe can ever resolve this null-keyed record. Probe a
+    //      hash DERIVED FROM the record's own committed-tree position (what a chain walk
+    //      would compute) and confirm it misses — proving null-exclusion, not key-absence.
+    const wouldBeHash = computePostStateHash('c'.repeat(40));
+    assert.strictEqual(readByPostStateHash(wouldBeHash, { runId, stateDir }), null,
+      'a valid 64-hex key cannot resolve the run\'s ONLY record (its post_state_hash is null) -> null records are structurally unmatchable');
+    // And the producer never coerces the null into a falsy-but-truthy key the gate could match.
+    assert.strictEqual(readByPostStateHash('b'.repeat(64), { runId, stateDir }), null,
+      'a second distinct 64-hex probe also misses (the null record matches no hex key)');
+
+    g(['worktree', 'remove', '--force', wtPath]);
+  } finally {
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  }
+});
+
+// #3 — UNTRACKED-only completed worktree (clean per `diff HEAD`, dirty per
+// `status --porcelain`) -> post_state_hash null. Proves the status-porcelain gate.
+test('[real git] P2b #3: untracked-only completed worktree -> post_state_hash null (status --porcelain catches what diff HEAD misses)', () => {
+  if (!gitAvailable()) { process.stdout.write('    (skipped: git unavailable)\n'); return; }
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'p2b-untracked-'));
+  const repo = path.join(baseDir, 'parent');
+  const stateDir = path.join(baseDir, 'spawn-state');
+  try {
+    const { g } = initRepo(repo);
+    const wtPath = path.join(repo, '.claude', 'worktrees', 'agent-untr01');
+    g(['worktree', 'add', '-q', '-b', 'worktree-agent-untr01', wtPath, 'HEAD']);
+    const wg = (args) => execFileSync('git', args, { cwd: wtPath, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' });
+    // A brand-new UNTRACKED file — clean per `diff --name-only HEAD`, dirty per status.
+    fs.writeFileSync(path.join(wtPath, 'new-untracked.txt'), 'untracked\n');
+    assert.strictEqual(wg(['diff', '--name-only', 'HEAD']).trim(), '',
+      'precondition: diff --name-only HEAD MISSES the untracked file (empty)');
+    assert.ok(wg(['status', '--porcelain']).trim().length > 0,
+      'precondition: status --porcelain SEES the untracked file (dirty)');
+
+    const sessionId = 'sess-p2b-untracked';
+    const out = runHook(makeInput({ sessionId, toolResponse: syntheticWorktreeResponse({ worktreePath: wtPath, agentId: 'untr01' }) }), stateDir);
+    assert.strictEqual(out.status, 0, `untracked spawn must exit 0 (stderr=${out.stderr})`);
+
+    const runId = runIdForSession(sessionId);
+    const records = listByRun({ runId, stateDir });
+    assert.strictEqual(records.length, 1, 'the untracked-only spawn records one entry');
+    assert.strictEqual(records[0].post_state_hash, null,
+      'an untracked-file worktree is DIRTY per status --porcelain -> post_state_hash null (the gate works)');
+
+    g(['worktree', 'remove', '--force', wtPath]);
+  } finally {
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  }
+});
+
+// #4 — ZERO-mutation, multi-signal (the producer adds NO git mutation).
+test('[real git] P2b #4: the producer mutates NOTHING (HEAD + show-ref + .git/objects file-set + no new branch byte-identical)', () => {
+  if (!gitAvailable()) { process.stdout.write('    (skipped: git unavailable)\n'); return; }
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'p2b-nomutate-'));
+  const repo = path.join(baseDir, 'parent');
+  const stateDir = path.join(baseDir, 'spawn-state');
+  try {
+    const { g } = initRepo(repo);
+    const { wtPath } = addWorktreeWithCommit(repo, g, 'nomut01');
+    const wg = (args) => execFileSync('git', args, { cwd: wtPath, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' });
+
+    // Recursively enumerate .git/objects (the file-set oracle is packing-robust,
+    // unlike `git count-objects` — verify F7).
+    const objectsDir = path.join(wtPath, '.git', 'objects');
+    const listObjects = () => {
+      const out = [];
+      const walk = (dir) => {
+        let entries = [];
+        try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+        for (const e of entries) {
+          const full = path.join(dir, e.name);
+          if (e.isDirectory()) walk(full); else out.push(path.relative(objectsDir, full));
+        }
+      };
+      walk(objectsDir);
+      return out.sort();
+    };
+
+    const headBefore = wg(['rev-parse', 'HEAD']).trim();
+    const refsBefore = wg(['show-ref']).trim();
+    const objectsBefore = listObjects();
+
+    const sessionId = 'sess-p2b-nomut';
+    const out = runHook(makeInput({ sessionId, toolResponse: syntheticWorktreeResponse({ worktreePath: wtPath, agentId: 'nomut01' }) }), stateDir);
+    assert.strictEqual(out.status, 0, `no-mutation spawn must exit 0 (stderr=${out.stderr})`);
+
+    assert.strictEqual(wg(['rev-parse', 'HEAD']).trim(), headBefore, 'worktree HEAD must be byte-identical (no commit/reset)');
+    assert.strictEqual(wg(['show-ref']).trim(), refsBefore, 'refs must be byte-identical (NO write-tree/commit-tree/branch)');
+    assert.deepStrictEqual(listObjects(), objectsBefore,
+      'the .git/objects file-set must be byte-identical (the producer wrote NO object — rev-parse + status are pure reads)');
+    // And a record WAS produced (read-only != silent — the producer ran).
+    const runId = runIdForSession(sessionId);
+    assert.strictEqual(listByRun({ runId, stateDir }).length, 1, 'the producer still recorded a provenance entry');
+
+    g(['worktree', 'remove', '--force', wtPath]);
+  } finally {
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  }
+});
+
+// #5 — fail-soft isolation: a producer throw (forced via personaId:'') NEVER
+// disturbs the verdict return + STILL journals the verdict + journals the error.
+test('[real git] P2b #5: a producer throw (personaId:"") is isolated -> resolveAndJournal still returns {ok:true}, the shadow-resolver-verdict entry survives, a shadow-provenance-error is journaled', () => {
+  if (!gitAvailable()) { process.stdout.write('    (skipped: git unavailable)\n'); return; }
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'p2b-failsoft-'));
+  const repo = path.join(baseDir, 'parent');
+  const stateDir = path.join(baseDir, 'spawn-state');
+  try {
+    const { g } = initRepo(repo);
+    const { wtPath } = addWorktreeWithCommit(repo, g, 'failsoft01');
+    const envelope = hook.buildEnvelopeFromToolResponse(syntheticWorktreeResponse({ worktreePath: wtPath, agentId: 'failsoft01' }));
+    assert.strictEqual(envelope.commit_outcome, 'COMMITTED', 'precondition: a completed envelope (the producer runs)');
+
+    // personaId:'' -> buildSpawnRecord throws inside the producer. The verdict path
+    // is upstream + independent, so it must complete with {ok:true} regardless.
+    let result;
+    assert.doesNotThrow(() => {
+      result = hook.resolveAndJournal({ envelope, stateDir, runId: 'r-failsoft', agentId: 'failsoft01', personaId: '' });
+    }, 'a producer throw must NOT propagate out of resolveAndJournal (fail-soft isolation)');
+    assert.ok(result && result.ok === true, 'the verdict return must stay {ok:true} despite the producer throw');
+
+    const journalFile = path.join(stateDir, 'r-failsoft', 'resolver-journal-failsoft01.jsonl');
+    const records = readJournalRecords(journalFile);
+    const kinds = records.map((r) => r.kind);
+    assert.ok(kinds.includes('shadow-resolver-verdict'), 'the shadow-resolver-verdict entry must STILL be present');
+    assert.ok(kinds.includes('shadow-provenance-error'), 'a shadow-provenance-error entry must be journaled for the producer throw');
+    // No record reached the store (the throw happened before appendRecord).
+    assert.strictEqual(listByRun({ runId: 'r-failsoft', stateDir }).length, 0,
+      'no provenance record is stored when buildSpawnRecord throws');
+  } finally {
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  }
+});
+
+// #6 — completed-spawn gate: a non-completed (status:'error') close records NO
+// provenance + journals a shadow-provenance-skipped entry.
+test('[real git] P2b #6: a non-completed (status:error) close plants NO provenance record + journals shadow-provenance-skipped', () => {
+  if (!gitAvailable()) { process.stdout.write('    (skipped: git unavailable)\n'); return; }
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'p2b-gate-'));
+  const repo = path.join(baseDir, 'parent');
+  const stateDir = path.join(baseDir, 'spawn-state');
+  try {
+    const { g } = initRepo(repo);
+    const { wtPath } = addWorktreeWithCommit(repo, g, 'errgate01');
+
+    const sessionId = 'sess-p2b-gate';
+    const out = runHook(makeInput({ sessionId, toolResponse: syntheticWorktreeResponse({ worktreePath: wtPath, agentId: 'errgate01', status: 'error' }) }), stateDir);
+    assert.strictEqual(out.status, 0, `error-status spawn must exit 0 (stderr=${out.stderr})`);
+
+    const runId = runIdForSession(sessionId);
+    assert.strictEqual(listByRun({ runId, stateDir }).length, 0,
+      'a non-completed spawn must NOT store a provenance record (the COMMITTED gate; avoids a COMMITTED-vs-ABORTED contradiction)');
+    const journals = findJournalFiles(stateDir, 'errgate01');
+    assert.strictEqual(journals.length, 1, 'the spawn still journals a per-spawn file');
+    const kinds = readJournalRecords(journals[0]).map((r) => r.kind);
+    assert.ok(kinds.includes('shadow-provenance-skipped'),
+      'a shadow-provenance-skipped entry must record the gate decision');
+
+    g(['worktree', 'remove', '--force', wtPath]);
+  } finally {
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  }
+});
+
+// #7 — mutual exclusion: flag unset -> the shadow producer records AND the
+// enforcing stagePromote does NOT run (no loom-promote ref). Pins the dispatch.
+test('[real git] P2b #7: LOOM_RESOLVER_ENFORCE unset -> the SHADOW producer records (record-*.json exists) AND enforcing does NOT run (no loom-promote ref)', () => {
+  if (!gitAvailable()) { process.stdout.write('    (skipped: git unavailable)\n'); return; }
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'p2b-mutex-'));
+  const repo = path.join(baseDir, 'parent');
+  const stateDir = path.join(baseDir, 'spawn-state');
+  try {
+    const { g } = initRepo(repo);
+    const { wtPath } = addWorktreeWithCommit(repo, g, 'mutex01');
+
+    const sessionId = 'sess-p2b-mutex';
+    const out = runHook(makeInput({ sessionId, toolResponse: syntheticWorktreeResponse({ worktreePath: wtPath, agentId: 'mutex01' }) }), stateDir);
+    assert.strictEqual(out.status, 0, `mutex spawn must exit 0 (stderr=${out.stderr})`);
+
+    // The shadow producer fed the store.
+    const runId = runIdForSession(sessionId);
+    assert.strictEqual(listByRun({ runId, stateDir }).length, 1, 'the shadow producer must have appended a record');
+    // The enforcing path did NOT run (mutually exclusive dispatch).
+    assert.ok(!g(['show-ref']).split('\n').some((l) => l.includes('loom-promote')),
+      'no loom-promote ref may exist on the shadow path (enforcing did not run)');
+
+    g(['worktree', 'remove', '--force', wtPath]);
+  } finally {
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  }
+});
+
+// #8 — M1 cross-phase hash equality (the linchpin): for a clean committed delta,
+// computePostStateHash(rev-parse HEAD^{tree}) === computePostStateHash(materializeDelta(...).tree).
+test('[real git] P2b #8: M1 cross-phase equality -> computePostStateHash(HEAD^{tree}) === computePostStateHash(materializeDelta.tree) for a clean committed worktree', () => {
+  if (!gitAvailable()) { process.stdout.write('    (skipped: git unavailable)\n'); return; }
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'p2b-m1-'));
+  const repo = path.join(baseDir, 'parent');
+  try {
+    const { g } = initRepo(repo);
+    const { wtPath, wg } = addWorktreeWithCommit(repo, g, 'm1eq01');
+
+    // P2b's read-only hash: from the committed HEAD tree.
+    const headTree = wg(['rev-parse', 'HEAD^{tree}']).trim();
+    assert.strictEqual(GIT_SHA_RE.test(headTree), true, 'HEAD^{tree} must be a valid git sha');
+    const p2bHash = computePostStateHash(headTree);
+
+    // P3's authoritative hash: from materializeDelta's write-tree (the same tree
+    // for a CLEAN committed worktree — uncommitted=∅).
+    const { runGit, runGitWithEnv } = worktreeSeams(wtPath);
+    const mat = materializeDelta({ worktreePath: wtPath, agentId: 'm1eq01', runGit, runGitWithEnv });
+    assert.strictEqual(GIT_SHA_RE.test(mat.tree), true, 'materializeDelta.tree must be a valid git sha');
+    const p3Hash = computePostStateHash(mat.tree);
+
+    assert.strictEqual(p2bHash, p3Hash,
+      'the P2b read-only hash and the P3 materializeDelta hash must be IDENTICAL for a clean committed delta (M1 — deferring the always-correct hash is safe)');
+
+    g(['worktree', 'remove', '--force', wtPath]);
+  } finally {
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  }
+});
+
+// #9 — empty-repo worktree (git init, no commits) -> post_state_hash null, no throw.
+test('[real git] P2b #9: empty-repo worktree (no commits) -> post_state_hash null, head_anchor null, no throw (clean status -> rev-parse HEAD^{tree} fails -> GIT_SHA_RE gate -> null)', () => {
+  if (!gitAvailable()) { process.stdout.write('    (skipped: git unavailable)\n'); return; }
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'p2b-empty-'));
+  const wtPath = path.join(baseDir, 'empty-repo');
+  const stateDir = path.join(baseDir, 'spawn-state');
+  try {
+    // A bare git init with NO commits — rev-parse HEAD^{tree} fails (no HEAD).
+    fs.mkdirSync(wtPath, { recursive: true });
+    const eg = (args) => execFileSync('git', args, { cwd: wtPath, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' });
+    eg(['init', '-q']);
+    eg(['config', 'user.email', 'p2b@example.invalid']);
+    eg(['config', 'user.name', 'p2b']);
+
+    const sessionId = 'sess-p2b-empty';
+    const out = runHook(makeInput({ sessionId, toolResponse: syntheticWorktreeResponse({ worktreePath: wtPath, agentId: 'empty01' }) }), stateDir);
+    assert.strictEqual(out.status, 0, `empty-repo spawn must exit 0, not throw (stderr=${out.stderr})`);
+
+    const runId = runIdForSession(sessionId);
+    const records = listByRun({ runId, stateDir });
+    assert.strictEqual(records.length, 1, 'an empty-repo completed spawn still records (degrades to null, not skip/throw)');
+    assert.strictEqual(records[0].post_state_hash, null, 'an empty repo -> post_state_hash null (rev-parse HEAD^{tree} failed -> gated to null)');
+    assert.strictEqual(records[0].head_anchor, null, 'head_anchor null');
+    // And NO error was journaled (degradation is graceful, not a throw).
+    const kinds = readJournalRecords(findJournalFiles(stateDir, 'empty01')[0]).map((r) => r.kind);
+    assert.ok(!kinds.includes('shadow-provenance-error'), 'empty-repo degradation must NOT journal an error (no throw path)');
+  } finally {
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  }
+});
+
+// #10 — end-to-end live-feed through the real hook: a completed worktree payload
+// + a hermetic LOOM_SPAWN_STATE_DIR -> a record-<id>.json appears under <runId>/records/.
+test('[real git] P2b #10: end-to-end live-feed -> spawnSync the hook on a completed worktree -> a record-<id>.json lands under <runId>/records/', () => {
+  if (!gitAvailable()) { process.stdout.write('    (skipped: git unavailable)\n'); return; }
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'p2b-e2e-'));
+  const repo = path.join(baseDir, 'parent');
+  const stateDir = path.join(baseDir, 'spawn-state');
+  try {
+    const { g } = initRepo(repo);
+    const { wtPath } = addWorktreeWithCommit(repo, g, 'e2e01');
+
+    const sessionId = 'sess-p2b-e2e';
+    const out = runHook(makeInput({ sessionId, toolResponse: syntheticWorktreeResponse({ worktreePath: wtPath, agentId: 'e2e01' }) }), stateDir);
+    assert.strictEqual(out.status, 0, `e2e spawn must exit 0 (stderr=${out.stderr})`);
+    assert.ok(out.json && out.json.decision === 'approve', 'the hook must still approve');
+
+    // A record-<64hex>.json physically exists under <runId>/records/ (the store is LIVE-FED).
+    const runId = runIdForSession(sessionId);
+    const recordsDir = path.join(stateDir, runId, 'records');
+    const files = fs.readdirSync(recordsDir).filter((n) => /^record-[a-f0-9]{64}\.json$/.test(n));
+    assert.strictEqual(files.length, 1, `exactly one record-*.json must land under <runId>/records/ (found ${files.length})`);
+    const stored = JSON.parse(fs.readFileSync(path.join(recordsDir, files[0]), 'utf8'));
+    assert.strictEqual(stored.writer_spawn_id, 'e2e01', 'the stored record carries the spawn agentId');
+
+    g(['worktree', 'remove', '--force', wtPath]);
+  } finally {
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  }
+});
+
+// #11 — okStdout fail-closed contract: a non-ok git result -> okStdout returns
+// null -> the dirty-gate reads dirty (null !== '') -> post_state_hash null.
+// Drive recordSpawnProvenance directly with an INJECTED runGit that fails status.
+test('[real git] P2b #11: okStdout fails CLOSED -> a non-ok status read -> dirty-gate reads dirty -> post_state_hash null (never a hash on an unverified tree)', () => {
+  if (!gitAvailable()) { process.stdout.write('    (skipped: git unavailable)\n'); return; }
+  assert.strictEqual(typeof hook.recordSpawnProvenance, 'function', 'hook must export recordSpawnProvenance');
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'p2b-failclosed-'));
+  const stateDir = path.join(baseDir, 'spawn-state');
+  try {
+    const journalFile = path.join(stateDir, 'r-fc', 'resolver-journal-fc01.jsonl');
+    // An injected runner that REPORTS A FAILED status read (ok:false). A correct
+    // fail-closed okStdout returns null -> dirty -> NEVER calls rev-parse / records null.
+    let revParseCalled = false;
+    const failingRunGit = (args) => {
+      const sub = (args || []).find((a) => typeof a === 'string' && !a.startsWith('-'));
+      if (sub === 'rev-parse') { revParseCalled = true; return { ok: true, code: 0, stdout: 'a'.repeat(40), stderr: '' }; }
+      // status (and anything else) FAILS — the unverified-cleanliness case.
+      return { ok: false, code: 1, stdout: '', stderr: 'simulated git failure' };
+    };
+    const envelope = { spawn_id: 'fc01', commit_outcome: 'COMMITTED', worktree_root: '/tmp/whatever', is_genesis_position: true, observed_status: 'completed', mode: 'shadow', shadow: true };
+
+    hook.recordSpawnProvenance({ envelope, runGit: failingRunGit, stateDir, runId: 'r-fc', agentId: 'fc01', personaId: 'general-purpose', journalFile });
+
+    assert.strictEqual(revParseCalled, false,
+      'a fail-closed dirty-gate must NOT proceed to rev-parse when status could not be verified');
+    const records = listByRun({ runId: 'r-fc', stateDir });
+    assert.strictEqual(records.length, 1, 'a record is still appended (completed gate passed)');
+    assert.strictEqual(records[0].post_state_hash, null,
+      'an unverifiable status -> okStdout null -> dirty -> post_state_hash null (fail CLOSED, never coerced to clean)');
+  } finally {
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  }
+});
+
+// #12 — regression: the existing shadow-resolver-verdict journaling is unchanged
+// + present ALONGSIDE the new shadow-provenance-record entry (additive).
+test('[real git] P2b #12: the existing shadow-resolver-verdict journaling is intact + coexists with the new shadow-provenance-record (additive)', () => {
+  if (!gitAvailable()) { process.stdout.write('    (skipped: git unavailable)\n'); return; }
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'p2b-regress-'));
+  const repo = path.join(baseDir, 'parent');
+  const stateDir = path.join(baseDir, 'spawn-state');
+  try {
+    const { g } = initRepo(repo);
+    const { wtPath } = addWorktreeWithCommit(repo, g, 'regress01');
+
+    const sessionId = 'sess-p2b-regress';
+    const out = runHook(makeInput({ sessionId, toolResponse: syntheticWorktreeResponse({ worktreePath: wtPath, agentId: 'regress01' }) }), stateDir);
+    assert.strictEqual(out.status, 0, `regression spawn must exit 0 (stderr=${out.stderr})`);
+
+    const journals = findJournalFiles(stateDir, 'regress01');
+    assert.strictEqual(journals.length, 1, 'one per-spawn journal file');
+    const records = readJournalRecords(journals[0]);
+    // The PRE-EXISTING shadow verdict contract is byte-for-byte intact (dry_run +
+    // k13_skipped + a PROMOTED would-be outcome — the same content-filtered asserts
+    // the original :373-379 made).
+    assert.ok(records.some((r) => r.kind === 'shadow-resolver-verdict'), 'the shadow-resolver-verdict entry must remain');
+    assert.ok(records.some((r) => r.dry_run === true), 'the dry-run shadow seam still fires (regression)');
+    assert.ok(records.some((r) => r.k13_skipped === true), 'k13_skipped:true still recorded (regression)');
+    assert.ok(records.some((r) => r.outcome === 'PROMOTED'), 'the would-be PROMOTED outcome still journaled (regression)');
+    // The NEW provenance entry coexists (additive — it breaks no existing assertion).
+    assert.ok(records.some((r) => r.kind === 'shadow-provenance-record'),
+      'the new shadow-provenance-record entry coexists alongside the verdict (additive, no displacement)');
 
     g(['worktree', 'remove', '--force', wtPath]);
   } finally {

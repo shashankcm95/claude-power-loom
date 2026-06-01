@@ -58,6 +58,15 @@ const { appendWalRecord } = require('../../_lib/wal-append.js');
 // PR-3c-b — the ENFORCING staging-promote, dispatched below ONLY behind the
 // strict LOOM_RESOLVER_ENFORCE === '1' flag (default OFF; shadow is the default).
 const { stagePromote } = require('../../spawn-state/stage-promote.js');
+// PR-P2b — the LIVE shadow provenance producer's collaborators. buildSpawnRecord
+// assembles a genesis transaction-record carrying post_state_hash + head_anchor;
+// computePostStateHash is the canonical (M1 forward-coupling) hash; GIT_SHA_RE
+// pre-gates a rev-parse result so a non-hex/empty output records null instead of
+// throwing; appendRecord is the content-addressed store write — THIS import makes
+// the hook record-store's FIRST production importer (ends its dormancy, Probe #6).
+const { buildSpawnRecord } = require('../../_lib/quarantine-promote.js');
+const { computePostStateHash, GIT_SHA_RE } = require('../../_lib/transaction-record.js');
+const { appendRecord } = require('../../_lib/record-store.js');
 
 const logger = log('spawn-close-resolver');
 
@@ -376,6 +385,125 @@ function buildK14CtxFromWorktree(worktreeRoot, runGit) {
 }
 
 /**
+ * Fail-CLOSED stdout extractor (PR-P2b — verify F2/H1/AD-4). A non-ok git result
+ * (or a non-string stdout) returns null, so the dirty-gate (`null !== ''`) reads
+ * DIRTY and the sha-gate (`GIT_SHA_RE.test(null)`) reads false. An UNKNOWN git
+ * state is NEVER coerced to "clean"/"valid" — "I couldn't verify cleanliness"
+ * must never become "clean". The single safe-direction choke point for both gates.
+ *
+ * @param {{ok?: boolean, stdout?: string}|null|undefined} r a guarded-runGit result.
+ * @returns {string|null} the trimmed stdout on an ok string result, else null.
+ */
+function okStdout(r) {
+  return r && r.ok && typeof r.stdout === 'string' ? r.stdout.trim() : null;
+}
+
+/**
+ * PR-P2b — the LIVE shadow PROVENANCE producer. Records ONE genesis
+ * transaction-record per OBSERVED completed worktree-spawn close into the
+ * content-addressed store, making record-store LIVE-FED (its first production
+ * importer). READ-ONLY (status + rev-parse, via the SAME guarded runGit — no new
+ * git verb, no allow-list change, ZERO mutation — Probe #2/AD-7), FAIL-SOFT (its
+ * OWN try/catch so a throw NEVER reaches resolveAndJournal's verdict return —
+ * AD-6), and COMPLETED-GATED (records only when commit_outcome === 'COMMITTED',
+ * else journals shadow-provenance-skipped — AD-3, so the store never holds a
+ * COMMITTED record contradicting an ABORTED journal verdict).
+ *
+ * post_state_hash is CORRECT-OR-NULL (Option B, AD-1): the committed HEAD tree
+ * (`rev-parse HEAD^{tree}`) when the worktree is CLEAN per `status --porcelain`
+ * (untracked-aware — Probe #7/DN-2; `diff HEAD` would MISS new files and compute a
+ * WRONG hash), else null (an uncommitted delta has no *committed* post-state — the
+ * authoritative always-correct hash is P3's, under licensed mutation; both phases
+ * call computePostStateHash verbatim — the M1 invariant). head_anchor is null in
+ * P2b (AD-2): the forked-from parentHead is not read-only-derivable at close, so
+ * recording the worktree HEAD would store a value contradicting the field's
+ * declared meaning — null mirrors the post_state_hash discipline; P3 computes it.
+ *
+ * @param {Object} args
+ * @param {Object} args.envelope   the shadow decision envelope (carries commit_outcome).
+ * @param {function} args.runGit    the SAME guarded read-only runner resolveAndJournal built.
+ * @param {string} args.stateDir   the spawn-state base (LOOM_SPAWN_STATE_DIR).
+ * @param {string} args.runId      the per-run subdir id (store key).
+ * @param {string} args.agentId    the harness agentId (writer_spawn_id + journal key).
+ * @param {string} args.personaId  the authoring persona (buildSpawnRecord requires non-empty).
+ * @param {string} args.journalFile the per-spawn journal path (shared with the verdict).
+ * @returns {void}
+ */
+function recordSpawnProvenance({ envelope, runGit, stateDir, runId, agentId, personaId, journalFile }) {
+  try {
+    // Completed-only gate (AD-3 — resolves OQ-P2b-2): a non-completed close plants
+    // no record (else the store would hold a COMMITTED record contradicting the
+    // journal's ABORTED verdict). The skip is journaled, not silent.
+    if (!envelope || envelope.commit_outcome !== 'COMMITTED') {
+      appendJournal(journalFile, {
+        kind: 'shadow-provenance-skipped',
+        event: 'spawn-close-shadow',
+        spawn_id: agentId,
+        reason: 'not-completed',
+        observed_status: envelope ? envelope.observed_status : null,
+        commit_outcome: envelope ? envelope.commit_outcome : null,
+        mode: 'shadow',
+        resolved_at: new Date().toISOString(),
+      });
+      return;
+    }
+
+    // Dirty-gate via status --porcelain (untracked-aware — Probe #7). okStdout
+    // fails CLOSED: a failed read -> null -> (null !== '') -> DIRTY (AD-4).
+    const dirty = okStdout(runGit(['status', '--porcelain'])) !== '';
+    let postStateHash = null;
+    if (!dirty) {
+      // The committed post-state tree. GIT_SHA_RE gates a failed rev-parse (e.g.
+      // an empty repo with no HEAD) + any non-hex output -> null, never a throw
+      // (computePostStateHash itself throws on non-hex; the gate keeps the producer
+      // recording null instead of skipping the whole record — AD-8).
+      const treeSha = okStdout(runGit(['rev-parse', 'HEAD^{tree}']));
+      if (treeSha && GIT_SHA_RE.test(treeSha)) postStateHash = computePostStateHash(treeSha);
+    }
+
+    // head_anchor=null in P2b (AD-2): the forked-from parentHead is not read-only-
+    // derivable here; P3 computes it via materializeDelta under licensed mutation.
+    const record = buildSpawnRecord({
+      agentId,
+      personaId,
+      schemaVersion: SCHEMA_VERSION,
+      postStateHash,
+      headAnchor: null,
+    });
+    const appended = appendRecord(record, { runId, stateDir });
+
+    appendJournal(journalFile, {
+      kind: 'shadow-provenance-record',
+      event: 'spawn-close-shadow',
+      spawn_id: agentId,
+      transaction_id: record.transaction_id,
+      post_state_hash: postStateHash,
+      head_anchor: null,
+      record_appended: appended.ok,
+      record_reason: appended.ok ? null : appended.reason,
+      uncommitted: dirty,
+      observed_status: envelope.observed_status,
+      mode: 'shadow',
+      note: 'SHADOW provenance: read-only post_state_hash (committed HEAD tree, null if dirty); head_anchor deferred to P3; record-store live-fed.',
+      resolved_at: new Date().toISOString(),
+    });
+  } catch (err) {
+    // Fail-soft isolation (AD-6/S3): a producer throw (e.g. buildSpawnRecord on an
+    // un-sanitizable agentId / empty personaId) is journaled + swallowed — it must
+    // NEVER reach resolveAndJournal's outer catch or disturb the verdict return.
+    logger('provenance-record-failed', { error: err.message, agentId });
+    appendJournal(journalFile, {
+      kind: 'shadow-provenance-error',
+      event: 'provenance-record-threw',
+      spawn_id: agentId,
+      error: err.message,
+      mode: 'shadow',
+      resolved_at: new Date().toISOString(),
+    });
+  }
+}
+
+/**
  * SRP #3 (D2/D8) — run resolve() in SHADOW and journal the would-be verdict.
  * Wraps resolve() in try/catch so a thrown resolve() (e.g. a null envelope at
  * post-spawn-resolver.js:298-300) is SWALLOWED — a resolver throw must never
@@ -387,9 +515,13 @@ function buildK14CtxFromWorktree(worktreeRoot, runGit) {
  * @param {string}  args.stateDir  the spawn-state base (LOOM_SPAWN_STATE_DIR)
  * @param {string}  args.runId     the per-run subdir id
  * @param {string}  args.agentId   the harness agentId (journal key)
+ * @param {string}  [args.personaId] the authoring persona, threaded to the PR-P2b
+ *   provenance producer (recordSpawnProvenance). main() sources it from
+ *   resolvePersonaId(input) (ALWAYS non-empty); a fault test may pass '' to force
+ *   the producer's fail-soft path WITHOUT disturbing the verdict return.
  * @returns {{ok: boolean, action: string|null, outcome: string|null}}
  */
-function resolveAndJournal({ envelope, stateDir, runId, agentId }) {
+function resolveAndJournal({ envelope, stateDir, runId, agentId, personaId }) {
   const journalFile = journalPathFor(stateDir, runId, agentId);
   try {
     const worktreeRoot = envelope && envelope.worktree_root;
@@ -447,6 +579,16 @@ function resolveAndJournal({ envelope, stateDir, runId, agentId }) {
       note: 'SHADOW observe-only; no git mutation; K13 marker untouched; worktree is not a sandbox (PR-3c enforces).',
       resolved_at: new Date().toISOString(),
     });
+
+    // PR-P2b — record provenance into the content-addressed store (record-store
+    // goes LIVE-FED here). Runs AFTER the verdict journaling, reusing the SAME
+    // guarded read-only runGit + stateDir + runId + agentId + journalFile. The
+    // producer has its OWN internal try/catch (fail-soft isolation, AD-6): a throw
+    // is journaled (shadow-provenance-error) and NEVER reaches this outer catch or
+    // changes the {ok:true} verdict return below. Additive — the shadow-resolver-
+    // verdict journaling above is unchanged.
+    recordSpawnProvenance({ envelope, runGit, stateDir, runId, agentId, personaId, journalFile });
+
     return { ok: true, action: verdict.action, outcome: verdict.outcome };
   } catch (err) {
     // Fail-soft (D8): swallow a resolve() throw; record it, never propagate.
@@ -531,7 +673,17 @@ function main() {
         agentId, run_id: runId, action: result.action, outcome: result.outcome,
       });
     } else {
-      const result = resolveAndJournal({ envelope, stateDir: SPAWN_STATE_DIR, runId, agentId });
+      const result = resolveAndJournal({
+        envelope,
+        stateDir: SPAWN_STATE_DIR,
+        runId,
+        agentId,
+        // PR-P2b — thread the authoring persona into the provenance producer.
+        // resolvePersonaId is ALWAYS non-empty (subagent_type ∥ 'kernel-enforce'),
+        // so the common path records cleanly; it is the SAME source the enforcing
+        // branch uses (:528), keeping the two dispatch arms consistent.
+        personaId: resolvePersonaId(input),
+      });
       logger('shadow-resolved', {
         agentId, run_id: runId, action: result.action, outcome: result.outcome,
       });
@@ -550,6 +702,10 @@ module.exports = {
   buildEnvelopeFromToolResponse,
   buildK14Ctx,
   resolveAndJournal,
+  // PR-P2b — the live shadow provenance producer. Exported so the spec can drive
+  // its read-only/fail-closed/completed-gate branches directly (tests #1/#11),
+  // independently of the full resolveAndJournal path.
+  recordSpawnProvenance,
   // exported for inspection / the smoke harness (not on the runtime path)
   ALLOWED_K14_KEYS,
   // exported so the spec can pin the mutation-refusal branch INDEPENDENTLY of the
