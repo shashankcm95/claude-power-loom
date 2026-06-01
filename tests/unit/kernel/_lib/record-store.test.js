@@ -43,9 +43,10 @@
 // computed OVER the marker (_test-harness.js:165), so a post-hoc strip makes
 // record.transaction_id !== computeTransactionId(strippedRecord), and
 // appendRecord's integrity check silently rejects it (a write-reject
-// masquerading as a read-miss). The genesis record's prev_state_hash is the
-// literal 'GENESIS' sentinel K9 recognizes (k9-promote-deltas.js:88-92), NOT
-// computeGenesisHash (which isGenesisPosition does not recognize — OQ-2).
+// masquerading as a read-miss). Tests 1-9 build genesis with the literal 'GENESIS'
+// sentinel. Test 8b (PR-P3b) ADDS the producer-form genesis (prev_state_hash =
+// computeGenesisHash) and proves K9's isGenesisPosition now recognizes it after
+// P3a's OQ-2 fix — before P3a that walk REJECTed chain-bottomed-out-non-genesis.
 
 'use strict';
 
@@ -59,7 +60,13 @@ const store = require('../../../../packages/kernel/_lib/record-store');
 const k9 = require('../../../../packages/kernel/_lib/k9-promote-deltas');
 const {
   computeTransactionId,
+  computeGenesisHash,
 } = require('../../../../packages/kernel/_lib/transaction-record');
+// PR-P3b — the REAL producer, to prove a producer-form genesis record (prev =
+// computeGenesisHash, NOT the literal 'GENESIS') walk-terminates via the real
+// store after P3a's OQ-2 fix (test 8b). buildSpawnRecord is the actual emitter the
+// live close hook uses, so the proof exercises the genuine record shape.
+const { buildSpawnRecord } = require('../../../../packages/kernel/_lib/quarantine-promote');
 
 let passed = 0;
 let failed = 0;
@@ -82,6 +89,9 @@ function buildRecord(opts = {}) {
     isGenesis = false,
     postStateHash, // explicit override; otherwise derived from hashSeed
     seq = 0,
+    // PR-P3b: vary the wall-clock to mint a DIFFERENT transaction_id for the SAME
+    // post_state_hash (the F-01 dup repro — a re-fired close time-salts the id).
+    intentRecordedAt = '2026-01-01T00:00:00.000Z',
   } = opts;
   const post = postStateHash !== undefined
     ? postStateHash
@@ -94,7 +104,7 @@ function buildRecord(opts = {}) {
     evidence_refs: isGenesis
       ? ['ROOT_TASK_RECORD:task-' + hashSeed]
       : ['USER_INTENT_AXIOM:' + 'c'.repeat(64)],
-    intent_recorded_at: '2026-01-01T00:00:00.000Z',
+    intent_recorded_at: intentRecordedAt,
     commit_outcome: 'COMMITTED',
     schema_version: 'v3',
   };
@@ -313,6 +323,75 @@ test('8. K9 integration: resolveParent=readByPostStateHash PASSES (depthWalked>=
     assert.strictEqual(badRes.ok, false, 'transaction_id keying must FAIL the real K9 gate');
     assert.strictEqual(badRes.reason, 'chain-bottomed-out-non-genesis',
       `the failure must be the bottomed-out-non-genesis reason; got ${badRes.reason}`);
+  } finally { cleanup(stateDir); }
+});
+
+// ── 8b. OQ-2 (P3b): a PRODUCER-form genesis walk-terminates via the real store ──
+
+test('8b. OQ-2 e2e: a real producer genesis (buildSpawnRecord, prev=computeGenesisHash) resolves via readByPostStateHash through real K9 — PASS depthWalked>=1', () => {
+  const stateDir = tmpStateDir();
+  try {
+    // The REAL producer emits prev_state_hash = computeGenesisHash(schema,'per-project')
+    // + a post_state_hash. Before P3a's OQ-2 fix, K9's isGenesisPosition did NOT
+    // recognize that prev form, so this exact walk REJECTed chain-bottomed-out-non-genesis.
+    const genesisPost = 'a'.repeat(64);
+    const genesis = buildSpawnRecord({
+      agentId: 'oq2-genesis', personaId: '04-architect.theo', schemaVersion: 'v3',
+      postStateHash: genesisPost, headAnchor: null,
+    });
+    assert.strictEqual(genesis.prev_state_hash, computeGenesisHash('v3', 'per-project'),
+      'the producer genesis prev IS computeGenesisHash (the OQ-2 form, not the literal GENESIS sentinel)');
+    assert.strictEqual(genesis.post_state_hash, genesisPost, 'producer genesis carries the post_state_hash the child chains to');
+
+    // A non-genesis child chaining via the canonical state edge (prev = parent post_state_hash).
+    const child = buildRecord({ hashSeed: 'oq2-child', prevStateHash: genesisPost, seq: 1 });
+
+    assert.strictEqual(store.appendRecord(genesis, { runId: RUN_ID, stateDir }).ok, true, 'producer genesis appends');
+    assert.strictEqual(store.appendRecord(child, { runId: RUN_ID, stateDir }).ok, true, 'child appends');
+
+    const res = k9.checkEvidenceLinkPreCommit({
+      record: child,
+      isGenesisPosition: false,
+      resolveParent: (h) => store.readByPostStateHash(h, { runId: RUN_ID, stateDir }),
+    });
+    assert.strictEqual(res.ok, true, `the producer-genesis walk must PASS post-OQ-2-fix; got ${JSON.stringify(res)}`);
+    assert.ok(res.depthWalked >= 1, `walk took >=1 step to the producer genesis; got ${res.depthWalked}`);
+  } finally { cleanup(stateDir); }
+});
+
+// ── 8c. F-01 (P3b): the walk tolerates a sibling DUPLICATE post_state_hash ──
+
+test('8c. F-01: two records sharing a post_state_hash (re-fired close) — readByPostStateHash resolves and the walk still PASSES (tolerate-on-read)', () => {
+  const stateDir = tmpStateDir();
+  try {
+    // A re-fired close mints a SECOND record: identical content + post_state_hash,
+    // but a different intent_recorded_at -> a distinct transaction_id (the F-01
+    // time-salt). Both append (one file per id); they SHARE the post_state_hash.
+    const sharedPost = 'a'.repeat(64);
+    const genesisA = buildSpawnRecord({ agentId: 'f01-dup', personaId: 'p', schemaVersion: 'v3', postStateHash: sharedPost, headAnchor: null });
+    const genesisBBody = { ...genesisA, intent_recorded_at: '2030-12-31T23:59:59.000Z' };
+    delete genesisBBody.transaction_id;
+    const genesisB = { transaction_id: computeTransactionId(genesisBBody), ...genesisBBody };
+    assert.notStrictEqual(genesisB.transaction_id, genesisA.transaction_id, 'the re-fire mints a DISTINCT transaction_id');
+    assert.strictEqual(genesisB.post_state_hash, genesisA.post_state_hash, 'but they SHARE the post_state_hash (F-01)');
+
+    assert.strictEqual(store.appendRecord(genesisA, { runId: RUN_ID, stateDir }).ok, true);
+    assert.strictEqual(store.appendRecord(genesisB, { runId: RUN_ID, stateDir }).ok, true);
+    assert.strictEqual(store.listByRun({ runId: RUN_ID, stateDir }).length, 2, 'both dup records are stored (one file per id, no clobber)');
+
+    // readByPostStateHash resolves to ONE of them (arbitrary; both are valid genesis).
+    const hit = store.readByPostStateHash(sharedPost, { runId: RUN_ID, stateDir });
+    assert.ok(hit && hit.post_state_hash === sharedPost, 'a duplicated post_state_hash still resolves');
+
+    // The walk tolerates the sibling dup: a child chaining to the shared post_state_hash
+    // terminates at whichever genesis is returned (both are genesis -> equivalent resolution).
+    const child = buildRecord({ hashSeed: 'f01-child', prevStateHash: sharedPost, seq: 9 });
+    const res = k9.checkEvidenceLinkPreCommit({
+      record: child,
+      isGenesisPosition: false,
+      resolveParent: (h) => store.readByPostStateHash(h, { runId: RUN_ID, stateDir }),
+    });
+    assert.strictEqual(res.ok, true, 'the walk tolerates a sibling dup post_state_hash — F-01 needs no write-policy change');
   } finally { cleanup(stateDir); }
 });
 

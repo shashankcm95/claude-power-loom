@@ -40,6 +40,12 @@ const { execFileSync } = require('child_process');
 const k1 = require('../../../../packages/kernel/worktree/worktree-allocator');
 const k13 = require('../../../../packages/kernel/enforcement/k13-serial-enforcer');
 const resolver = require('../../../../packages/kernel/spawn-state/post-spawn-resolver');
+// PR-P3b — the live chain-walk seam (record-store) + the REAL genesis producer
+// (buildSpawnRecord) + the canonical post_state_hash. The corrected Case E (below)
+// walks via the real store keyed by post_state_hash, NOT a transaction_id stub.
+const store = require('../../../../packages/kernel/_lib/record-store');
+const { buildSpawnRecord } = require('../../../../packages/kernel/_lib/quarantine-promote');
+const { computePostStateHash } = require('../../../../packages/kernel/_lib/transaction-record');
 
 let passed = 0;
 let failed = 0;
@@ -268,13 +274,19 @@ test('two-phase: a PENDING (un-closed) envelope -> resolve() ABORTED, K9 never e
 // OTHER branch of K9's checkEvidenceLinkPreCommit (k9-promote-deltas.js:160-188): a
 // non-genesis record (prev_state_hash = a 64-char hex, NOT "GENESIS") is REJECTED
 // fail-closed unless a resolveParentFn walks its provenance to a genesis position.
-// We build a synthetic 2-record chain (genesis -> child) in a real temp git repo,
-// inject a resolveParentFn that returns the genesis record for the child's
-// prev_state_hash, and assert resolve() PROMOTES the child's delta through REAL K9
-// (real cherry-pick). This is the offline seam proof (D3); the live close hook
-// ships genesis-position (no prev_state_hash source in the harness payload).
+//
+// PR-P3b CORRECTION: this test previously keyed the chain stub by transaction_id
+// (child.prev_state_hash = genesis.transaction_id) and passed ONLY because the stub
+// mirrored that fallacy — the canonical state edge is prev_state_hash -> the
+// predecessor's POST_STATE_HASH (record-store.js:18-22). It now (a) builds the
+// genesis via the REAL producer buildSpawnRecord (prev_state_hash = computeGenesisHash,
+// the form K9 recognizes only after P3a's OQ-2 fix), (b) appends it to the REAL
+// record-store, and (c) wires resolveParentFn = readByPostStateHash — the exact live
+// seam P3c will use. Full-stack proof: producer record -> store -> post_state_hash
+// walk -> resolve() -> real K9 -> real cherry-pick. The live close hook still ships
+// genesis-position (no prev_state_hash source in the harness payload).
 
-test('[real git] non-genesis chained promote: an injected resolveParentFn walks the child to genesis -> resolve() PROMOTES through real K9', () => {
+test('[real git] non-genesis chained promote: the REAL record-store readByPostStateHash walks the child to a producer genesis -> resolve() PROMOTES through real K9', () => {
   if (!gitAvailable()) { process.stdout.write('    (skipped: git unavailable)\n'); return; }
   const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'loom-e2e-nongenesis-'));
   const repo = path.join(baseDir, 'parent');
@@ -294,25 +306,30 @@ test('[real git] non-genesis chained promote: an injected resolveParentFn walks 
 
     admit(stateDir, 'admit-nongenesis-e2e');
 
-    // The 2-record chain. The GENESIS record sits at the chain head
-    // (prev_state_hash: "GENESIS"); its transaction_id is the hash the CHILD
-    // points back to. The CHILD is at a NON-genesis position: its
-    // prev_state_hash is the genesis record's (64-char hex) transaction_id, so it
-    // requires a resolveParent walk to verify provenance.
-    const genesis = genesisRecord(); // transaction_id 'a'*64, prev_state_hash 'GENESIS'
+    // The 2-record STATE chain, keyed by POST_STATE_HASH (the canonical edge).
+    // GENESIS: the REAL producer (buildSpawnRecord) — prev_state_hash =
+    // computeGenesisHash (the OQ-2 form) + a post_state_hash the CHILD chains to —
+    // appended to the REAL record-store. CHILD: a NON-genesis record whose
+    // prev_state_hash IS the genesis post_state_hash (NOT its transaction_id).
+    const runId = 'run-e2e-nongenesis';
+    const genesisPost = computePostStateHash('a'.repeat(40));
+    const genesis = buildSpawnRecord({
+      agentId: 'e2e-genesis', personaId: '04-architect.theo', schemaVersion: 'v3',
+      postStateHash: genesisPost, headAnchor: null,
+    });
+    assert.strictEqual(store.appendRecord(genesis, { runId, stateDir }).ok, true,
+      'the producer genesis parent must append to the real record-store');
     const child = genesisRecord({
       transaction_id: 'b'.repeat(64),
-      prev_state_hash: genesis.transaction_id, // 'a'*64 — a real 64-char hex, NOT "GENESIS"
+      prev_state_hash: genesis.post_state_hash, // STATE edge -> parent post_state_hash (NOT transaction_id)
       operation_class: 'APPEND', // a valid state-changing class (CREATE/APPEND/SUPERSEDE/TOMBSTONE)
       writer_spawn_id: 'sp-2026-01-01T00:00:01.000Z-arch-0002',
       evidence_refs: ['USER_INTENT_AXIOM:' + 'd'.repeat(64)],
     });
 
-    // The injected chain-walk seam: resolveParent(prevHash) -> the genesis record
-    // when asked for the child's prev_state_hash; null otherwise. This is the
-    // exact seam v3.1's record store will provide for a live non-genesis spawn.
-    const chain = { [genesis.transaction_id]: genesis };
-    const resolveParentFn = (prevHash) => chain[prevHash] || null;
+    // The LIVE chain-walk seam: the REAL record-store reader, keyed by
+    // post_state_hash — the exact seam P3c wires for a non-genesis spawn.
+    const resolveParentFn = (prevHash) => store.readByPostStateHash(prevHash, { runId, stateDir });
 
     // resolve() — NO K9 stub. is_genesis_position:false routes the record through
     // the chain-walk; resolveParentFn is threaded to promoteDelta (resolver :236).

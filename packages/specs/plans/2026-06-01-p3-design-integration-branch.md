@@ -118,7 +118,7 @@ recordSpawnProvenance (P2b, live)               integrator(orderedIds[]):
 | P3a | `packages/kernel/_lib/integrate-merge.js` (NEW) | create | medium | DORMANT merge primitives: `mergeTreeWriteTree`, `commitMergedTree`, `casAdvanceRef`; reuse `lock.js` |
 | P3a | OQ-2: `packages/kernel/_lib/k9-promote-deltas.js` | modify | medium | **BUILT** — `isGenesisPosition` now recognizes `prev_state_hash === computeGenesisHash(schema_version, 'per-project'\|'per-user')` (the form the producers actually emit), additive to the existing literal-`GENESIS`/sentinel checks. **REFINED from the doc's original "evidence_refs[0] sentinel" plan** (build divergence, surfaced honestly): TDD-RED found `validRecord()`'s own default `evidence_refs[0]` is a `USER_INTENT_AXIOM` sentinel, so keying genesis on the evidence-ref would reclassify every non-genesis fixture/record carrying a bootstrap evidence-ref → blast radius. The exact-`computeGenesisHash` form (the architect's Ch5 alternative) is precise (scope is a 2-element domain; schema_version is in the record), purely additive (zero existing-fixture reclassification, proven by the precision test), and is NOT the rejected "any-64-hex" reading. |
 | P3b | `packages/kernel/spawn-state/post-spawn-resolver.js` consumers | modify | high | wire `readByPostStateHash` into `resolveParentFn` LIVE (NOT `resolve()` itself — inject the seam) |
-| P3b | F-01 write-policy | modify | low | confirm candidate-ref idempotency + record-dup read-tolerance under the live walk |
+| P3b | F-01 write-policy | **RESOLVED** | low | **tolerate-on-read** — record-store dups share `post_state_hash`, so the walk resolves equivalently (record-store.js:286); proven by test 8c (two same-`post_state_hash` records → walk PASSES). NO write-policy change. The integrator's dedup-by-id stays a P3c concern. |
 | P3c | `packages/kernel/spawn-state/integrator.js` (NEW) | create | high | the ordered integrator; explicit-order input; quarantine fallback; CAS+lock |
 | P3c | candidate-staging in the close path | modify | medium | `stageCandidate` (materializeDelta + `update-ref refs/loom/candidates/<id>`); flag-gated |
 | P3c | invocation surface (CLI/command) | create | medium | the explicit `integrate <ordered ids>` entry point |
@@ -134,9 +134,11 @@ recordSpawnProvenance (P2b, live)               integrator(orderedIds[]):
 - `integrate-merge.js`: `mergeTreeWriteTree(base, ours, theirs)→{tree|conflict}`, `commitMergedTree`, `casAdvanceRef(ref,new,old)`; reuse `lock.js`. OQ-2 fix in `isGenesisPosition`.
 - Verification probe: unit tests with real git in temp repos (clean stack, conflict, CAS-loser-retry); OQ-2 regression (a genesis-hash record is recognized as genesis); ships dormant (only tests import); smoke 118/0.
 
-#### P3b — wire `readByPostStateHash` LIVE + F-01 (Risk: high)
-- Inject `resolveParentFn = (h) => readByPostStateHash(h, {runId, stateDir})` at the chosen call site; the non-genesis walk goes live; reconcile OQ-2 end-to-end; confirm F-01 idempotency under the live walk.
-- Verification probe: the offline transaction-loop Case E goes live (a real chained PROMOTE resolves); fail-closed on a read-miss; dup candidate → one chain resolution; smoke 118/0.
+#### P3b — prove + correct the live chain-walk; settle F-01 (Risk: low — test+doc, REFRAMED from "wire live, high-risk")
+- **Recon reframe (USER-approved):** the live walk is only EXERCISED by P3c — the shadow path bypasses it (dry-run replaces `k9.promoteDelta`), the enforcing path is genesis-only (short-circuits at step 2), and NO current producer creates a non-genesis record. So "wire `readByPostStateHash` live" is a P3c one-liner against the records P3c creates. P3b instead PROVES the walk correctly + corrects the offline proof's fallacy, de-risking P3c.
+- Fix the transaction-loop **Case E** — it keyed the stub by `transaction_id` (the exact fallacy P1's anti-fallacy test guards): now walks via the REAL record-store keyed by `post_state_hash`, with a producer-form genesis (`prev = computeGenesisHash`) — the full-stack e2e proof that ALSO exercises P3a's OQ-2 fix. Add `record-store.test.js` 8b (producer-genesis OQ-2 walk) + 8c (F-01 dup-tolerance).
+- **F-01 RESOLVED: tolerate-on-read** (no write-policy change) — dups share `post_state_hash` → equivalent walk resolution; proven by 8c.
+- Verification probe: corrected Case E PROMOTES via the real store (depthWalked≥1); 8b PASSES; 8c PASSES; full kernel suite + smoke green. **DONE (P3b).**
 
 #### P3c — the ordered integrator + `loom/integration` lifecycle (Risk: high — the big one)
 - `stageCandidate` in the close path (flag-gated); `integrator.js` (explicit-order input, lock+CAS, quarantine fallback); the invocation surface.
