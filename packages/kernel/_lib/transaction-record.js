@@ -351,6 +351,11 @@ module.exports = {
   isBootstrapSentinel,
   validateTransactionRecord,
   clearSchemaCache,
+  // PR-P2b — the canonical 40/64-hex git-sha matcher. Exported so the shadow
+  // spawn-close producer can pre-gate a `rev-parse HEAD^{tree}` result with the
+  // SAME const computePostStateHash validates against (verify F4 / AD-8: import
+  // the one canonical RegExp instead of authoring a 6th copy). Value unchanged.
+  GIT_SHA_RE,
   // Exposed for testing only:
   _BOOTSTRAP_SENTINEL_PATTERNS: BOOTSTRAP_SENTINEL_PATTERNS,
 };
