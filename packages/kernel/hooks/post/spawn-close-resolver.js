@@ -55,8 +55,16 @@ const { log } = require('../_lib/_log.js');
 const { resolve } = require('../../spawn-state/post-spawn-resolver.js');
 const { checkWithinRoot } = require('../../_lib/path-canonicalize.js');
 const { appendWalRecord } = require('../../_lib/wal-append.js');
+// PR-3c-b — the ENFORCING staging-promote, dispatched below ONLY behind the
+// strict LOOM_RESOLVER_ENFORCE === '1' flag (default OFF; shadow is the default).
+const { stagePromote } = require('../../spawn-state/stage-promote.js');
 
 const logger = log('spawn-close-resolver');
+
+// The kernel transaction-record schema version threaded into the enforcing genesis
+// record (buildGenesisRecord). The harness payload carries no schema field, so the
+// kernel pins it here (matches the genesisRecord fixtures' schema_version:'v3').
+const SCHEMA_VERSION = 'v3';
 
 const SPAWN_STATE_DIR =
   process.env.LOOM_SPAWN_STATE_DIR || path.join(os.homedir(), '.claude', 'spawn-state');
@@ -139,6 +147,21 @@ function resolveRunId(input) {
     return sha256(sessionId).slice(0, 16);
   }
   return crypto.randomUUID().slice(0, 16);
+}
+
+/**
+ * PR-3c-b — resolve the authoring persona id threaded into the enforcing genesis
+ * record. The harness payload has no first-class persona field, so we source it
+ * from `tool_input.subagent_type` (the spawn's agent type) and fall back to a
+ * non-empty sentinel — buildGenesisRecord REQUIRES a non-empty personaId string
+ * (it throws otherwise), and that throw is fail-soft-journaled, but a sentinel
+ * keeps the common path promoting. Only consumed on the enforcing branch.
+ */
+function resolvePersonaId(input) {
+  const ti = input && (input.tool_input || input.toolInput);
+  const subagent = ti && ti.subagent_type;
+  if (typeof subagent === 'string' && subagent.length > 0) return subagent;
+  return 'kernel-enforce';
 }
 
 /**
@@ -487,10 +510,32 @@ function main() {
       return;
     }
 
-    const result = resolveAndJournal({ envelope, stateDir: SPAWN_STATE_DIR, runId, agentId });
-    logger('shadow-resolved', {
-      agentId, run_id: runId, action: result.action, outcome: result.outcome,
-    });
+    // B-D1 — flag dispatch (AFTER the worktree-gone guard). The strict
+    // LOOM_RESOLVER_ENFORCE === '1' (exact string; '0'/unset stay shadow) routes
+    // to the ENFORCING staging-promote: the real k9.promoteDelta onto a
+    // loom-promote/<safeId> branch in a THROWAWAY out-of-repo staging worktree
+    // (the user's working tree + HEAD are never written). Else the SHADOW path
+    // (resolveAndJournal) runs BYTE-UNCHANGED. stagePromote is fail-soft (every
+    // throw is journaled + swallowed), so the hook still approves + exits 0.
+    if (process.env.LOOM_RESOLVER_ENFORCE === '1') {
+      const result = stagePromote({
+        harnessWorktreePath: envelope.worktree_root,
+        agentId,
+        toolResponse,
+        runId,
+        stateDir: SPAWN_STATE_DIR,
+        personaId: resolvePersonaId(input),
+        schemaVersion: SCHEMA_VERSION,
+      });
+      logger('enforce-resolved', {
+        agentId, run_id: runId, action: result.action, outcome: result.outcome,
+      });
+    } else {
+      const result = resolveAndJournal({ envelope, stateDir: SPAWN_STATE_DIR, runId, agentId });
+      logger('shadow-resolved', {
+        agentId, run_id: runId, action: result.action, outcome: result.outcome,
+      });
+    }
   } catch (err) {
     // Fail-soft top-level: a crash must never brick a spawn (D8).
     logger('spawn-close-resolver-failed', { error: err.message, stack: err.stack });

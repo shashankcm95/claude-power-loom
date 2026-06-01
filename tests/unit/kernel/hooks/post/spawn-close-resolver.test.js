@@ -117,11 +117,15 @@ function syntheticWorktreeResponse({ worktreePath, agentId = 'a5a0e9fe0135ccbc2'
 // Run the hook as a SUBPROCESS over a hermetic state dir, feeding `input` on
 // stdin. Mirrors how pre-spawn-tool-mask.test.js drives the hook CLI. Returns
 // { status, stdout, stderr, json } (json = parsed stdout decision, or null).
-function runHook(input, stateDir) {
+//
+// `extraEnv` (PR-3c-b) overlays the subprocess env so a dispatch test can set
+// LOOM_RESOLVER_ENFORCE=1 for ONE call without disturbing the shadow-default
+// calls (which pass no extraEnv -> the flag is unset -> the shadow path runs).
+function runHook(input, stateDir, extraEnv = {}) {
   const res = spawnSync(process.execPath, [HOOK_PATH], {
     input: typeof input === 'string' ? input : JSON.stringify(input),
     encoding: 'utf8',
-    env: { ...process.env, LOOM_SPAWN_STATE_DIR: stateDir },
+    env: { ...process.env, LOOM_SPAWN_STATE_DIR: stateDir, ...extraEnv },
   });
   let json = null;
   try { json = JSON.parse((res.stdout || '').trim().split('\n').pop()); } catch { /* non-JSON ok for fail-soft */ }
@@ -632,6 +636,146 @@ test('[real git] concurrency: two payloads with different agentId -> two separat
 
     g(['worktree', 'remove', '--force', wtA]);
     g(['worktree', 'remove', '--force', wtB]);
+  } finally {
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  }
+});
+
+// ── 9. PR-3c-b flag dispatch: LOOM_RESOLVER_ENFORCE gates enforcing vs shadow ─
+//
+// B-D1: in main(), AFTER the worktree-gone guard, the hook branches on
+// process.env.LOOM_RESOLVER_ENFORCE === '1' (exact string) -> stagePromote(...)
+// (enforcing-quarantine: real cherry-pick onto loom-promote/<id> in a throwaway
+// staging worktree); else -> resolveAndJournal(...) (the SHADOW path, byte-
+// unchanged). These tests pin both arms of the branch + the regression that the
+// shadow default is untouched.
+
+test('[real git] flag dispatch: LOOM_RESOLVER_ENFORCE=1 -> the ENFORCING path runs (loom-promote/<id> branch is created; parent HEAD unchanged)', () => {
+  if (!gitAvailable()) { process.stdout.write('    (skipped: git unavailable)\n'); return; }
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pr3cb-dispatch-on-'));
+  const repo = path.join(baseDir, 'parent');
+  const stateDir = path.join(baseDir, 'spawn-state');
+  try {
+    const { g } = initRepo(repo);
+    const wtPath = path.join(repo, '.claude', 'worktrees', 'agent-enforce01');
+    g(['worktree', 'add', '-q', '-b', 'worktree-agent-enforce01', wtPath, 'HEAD']);
+    const wg = (args) => execFileSync('git', args, { cwd: wtPath, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' });
+    fs.writeFileSync(path.join(wtPath, 'feature.txt'), 'new feature\n');
+    wg(['add', 'feature.txt']); wg(['commit', '-q', '-m', 'spawn delta']);
+
+    const headBefore = g(['rev-parse', 'HEAD']).trim();
+
+    // ENFORCING: set the flag for THIS call only.
+    const out = runHook(
+      makeInput({ toolResponse: syntheticWorktreeResponse({ worktreePath: wtPath, agentId: 'enforce01' }) }),
+      stateDir,
+      { LOOM_RESOLVER_ENFORCE: '1' },
+    );
+
+    // Fail-soft contract holds in enforcing too: always approve + exit 0.
+    assert.strictEqual(out.status, 0, `enforcing hook must exit 0 (got ${out.status}; stderr=${out.stderr})`);
+    assert.ok(out.json && out.json.decision === 'approve', 'enforcing hook must emit {decision:"approve"}');
+
+    // The enforcing path created a loom-promote/<safeId> branch (the real K9 ran
+    // in the staging worktree). safeId === 'enforce01' (already sentinel-safe).
+    const refs = g(['show-ref']);
+    assert.ok(refs.split('\n').some((l) => l.endsWith('refs/heads/loom-promote/enforce01')),
+      'enforcing dispatch must create a loom-promote/enforce01 branch (the real promote ran in staging)');
+
+    // The user's HEAD was NOT written (S1) — mutation is confined to staging + the
+    // loom-promote ref. feature.txt must NOT be in the parent working tree.
+    assert.strictEqual(g(['rev-parse', 'HEAD']).trim(), headBefore, 'enforcing must NOT advance the parent HEAD (S1)');
+    assert.ok(!fs.existsSync(path.join(repo, 'feature.txt')), 'enforcing must NOT promote the delta into the parent working tree');
+
+    // The journal records the ENFORCE mode honestly (B-D8), not shadow/dry-run.
+    const journals = findJournalFiles(stateDir, 'enforce01');
+    assert.strictEqual(journals.length, 1, `enforcing dispatch must journal one per-spawn file (found ${journals.length})`);
+    const records = readJournalRecords(journals[0]);
+    assert.ok(records.some((r) => r.enforced === true || r.mode === 'enforce-quarantine'),
+      'an enforce-mode journal record must be present (enforced:true / mode:enforce-quarantine), NOT a shadow dry-run');
+    assert.ok(!records.some((r) => r.dry_run === true),
+      'the enforcing path must NOT journal a dry_run:true record (that is the shadow seam)');
+
+    g(['worktree', 'remove', '--force', wtPath]);
+  } finally {
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  }
+});
+
+test('[real git] flag dispatch: LOOM_RESOLVER_ENFORCE UNSET -> the SHADOW path runs UNCHANGED (dry-run journal; NO loom-promote branch) [regression]', () => {
+  if (!gitAvailable()) { process.stdout.write('    (skipped: git unavailable)\n'); return; }
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pr3cb-dispatch-off-'));
+  const repo = path.join(baseDir, 'parent');
+  const stateDir = path.join(baseDir, 'spawn-state');
+  try {
+    const { g } = initRepo(repo);
+    const wtPath = path.join(repo, '.claude', 'worktrees', 'agent-shadow01');
+    g(['worktree', 'add', '-q', '-b', 'worktree-agent-shadow01', wtPath, 'HEAD']);
+    const wg = (args) => execFileSync('git', args, { cwd: wtPath, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' });
+    fs.writeFileSync(path.join(wtPath, 'feature.txt'), 'new feature\n');
+    wg(['add', 'feature.txt']); wg(['commit', '-q', '-m', 'spawn delta']);
+
+    const refsBefore = g(['show-ref']).trim();
+
+    // Flag UNSET -> the existing shadow path must run, byte-unchanged.
+    const out = runHook(
+      makeInput({ toolResponse: syntheticWorktreeResponse({ worktreePath: wtPath, agentId: 'shadow01' }) }),
+      stateDir,
+      // no extraEnv -> LOOM_RESOLVER_ENFORCE is absent.
+    );
+
+    assert.strictEqual(out.status, 0, 'shadow (flag-unset) hook must exit 0');
+    assert.ok(out.json && out.json.decision === 'approve', 'shadow hook must approve');
+
+    // NO loom-promote branch was created (shadow is journal-only — refs unchanged).
+    assert.strictEqual(g(['show-ref']).trim(), refsBefore, 'shadow must NOT create any new ref (no loom-promote branch)');
+    assert.ok(!g(['show-ref']).split('\n').some((l) => l.includes('loom-promote')),
+      'no loom-promote/* ref may exist after a shadow (flag-unset) close');
+
+    // The journal is the SHADOW one (dry_run:true), not enforce-quarantine.
+    const journals = findJournalFiles(stateDir, 'shadow01');
+    assert.strictEqual(journals.length, 1, 'shadow dispatch must journal one per-spawn file');
+    const records = readJournalRecords(journals[0]);
+    assert.ok(records.some((r) => r.dry_run === true),
+      'flag-unset must run the SHADOW path (a dry_run:true record), proving the dispatch defaulted to shadow');
+    assert.ok(!records.some((r) => r.enforced === true || r.mode === 'enforce-quarantine'),
+      'flag-unset must NOT run the enforcing path (no enforce-quarantine record)');
+
+    g(['worktree', 'remove', '--force', wtPath]);
+  } finally {
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  }
+});
+
+test('[real git] flag dispatch: LOOM_RESOLVER_ENFORCE=0 -> SHADOW (strict === \'1\' gate; "0" is not "1") [regression]', () => {
+  if (!gitAvailable()) { process.stdout.write('    (skipped: git unavailable)\n'); return; }
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pr3cb-dispatch-zero-'));
+  const repo = path.join(baseDir, 'parent');
+  const stateDir = path.join(baseDir, 'spawn-state');
+  try {
+    const { g } = initRepo(repo);
+    const wtPath = path.join(repo, '.claude', 'worktrees', 'agent-zero01');
+    g(['worktree', 'add', '-q', '-b', 'worktree-agent-zero01', wtPath, 'HEAD']);
+    const wg = (args) => execFileSync('git', args, { cwd: wtPath, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' });
+    fs.writeFileSync(path.join(wtPath, 'feature.txt'), 'new feature\n');
+    wg(['add', 'feature.txt']); wg(['commit', '-q', '-m', 'spawn delta']);
+
+    // The exact-string gate: '0' must NOT enable enforcing.
+    const out = runHook(
+      makeInput({ toolResponse: syntheticWorktreeResponse({ worktreePath: wtPath, agentId: 'zero01' }) }),
+      stateDir,
+      { LOOM_RESOLVER_ENFORCE: '0' },
+    );
+
+    assert.strictEqual(out.status, 0, 'flag=0 hook must exit 0');
+    assert.ok(!g(['show-ref']).split('\n').some((l) => l.includes('loom-promote')),
+      'LOOM_RESOLVER_ENFORCE=0 must NOT enable enforcing (no loom-promote ref)');
+    const journals = findJournalFiles(stateDir, 'zero01');
+    assert.strictEqual(journals.length, 1, 'flag=0 dispatch must journal one per-spawn file');
+    const records = readJournalRecords(journals[0]);
+    assert.ok(records.some((r) => r.dry_run === true), 'flag=0 must run the SHADOW path (dry_run:true)');
+
+    g(['worktree', 'remove', '--force', wtPath]);
   } finally {
     fs.rmSync(baseDir, { recursive: true, force: true });
   }
