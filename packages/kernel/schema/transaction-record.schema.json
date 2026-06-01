@@ -33,6 +33,13 @@
         { "type": "null" }
       ]
     },
+    "head_anchor": {
+      "description": "The parent HEAD sha the spawn's worktree forked from (materializeDelta parentHead). The auto-merge re-check anchor (P3). git sha — 40-hex (sha1) or 64-hex (sha256); null when unknown. Schema-additive; INV-K2-SchemaForwardCompat. Pattern is the anchored alternation ^[a-f0-9]{40}$|^[a-f0-9]{64}$ (NOT {40,64}, which would admit 41-63-hex garbage).",
+      "oneOf": [
+        { "type": "string", "pattern": "^[a-f0-9]{40}$|^[a-f0-9]{64}$" },
+        { "type": "null" }
+      ]
+    },
     "writer_persona_id": {
       "description": "The persona that authored this transaction. Matches a persona contract in packages/runtime/personas/.",
       "type": "string",

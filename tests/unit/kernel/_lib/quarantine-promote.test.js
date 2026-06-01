@@ -32,12 +32,16 @@ const { execFileSync } = require('child_process');
 const { runGitDefault } = require('../../../../packages/kernel/_lib/invoke-git');
 const {
   computeTransactionId,
+  computePostStateHash,
   validateTransactionRecord,
   isBootstrapSentinel,
 } = require('../../../../packages/kernel/_lib/transaction-record');
 const { canonicalize } = require('../../../../packages/kernel/_lib/path-canonicalize');
+const recordStore = require('../../../../packages/kernel/_lib/record-store');
 
-// The module under test ships DORMANT — only THIS test imports it (PR-3c-a A-D1).
+// The module under test ships DORMANT — only THIS test imports it (PR-3c-a A-D1;
+// PR-P2a extends it with buildSpawnRecord + materializeDelta tree/parentHead, both
+// still dormant — P2b is the first live caller).
 const qp = require('../../../../packages/kernel/_lib/quarantine-promote');
 
 let passed = 0;
@@ -122,6 +126,68 @@ test('[real git] materializeDelta: 2+ commits + an uncommitted change -> ONE del
     assert.ok(typeof res.candidateRel === 'string' && res.candidateRel.length > 0, 'candidateRel must be a non-empty string');
     assert.ok(!path.isAbsolute(res.candidateRel), `candidateRel must be repo-relative, got ${res.candidateRel}`);
     assert.ok(files.includes(res.candidateRel), `candidateRel must be one of the changed files; got ${res.candidateRel}`);
+  } finally {
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  }
+});
+
+// ── PR-P2a #4: materializeDelta additively returns tree + parentHead ──────────
+//
+// The auto-merge prerequisite: materializeDelta already computes the resulting
+// `tree` (write-tree) + the forked-from `parentHead` (rev-parse HEAD) but returned
+// neither. P2a returns both ADDITIVELY (the existing {delta_sha, candidateRel,
+// isEmpty} are unchanged — stage-promote.js:297 destructures only those three).
+// `tree` feeds computePostStateHash (P2b producer); `parentHead` is the head_anchor.
+
+test('[real git] PR-P2a #4: materializeDelta returns tree (40/64-hex) + parentHead (== parent HEAD); existing 3 fields unchanged', () => {
+  const ctx = setupSpawnWorktree();
+  if (!ctx) { process.stdout.write('    (skipped: git unavailable)\n'); return; }
+  const { baseDir, wt, g, wg, runGit, runGitWithEnv } = ctx;
+  try {
+    // A committed change so the squashed tree differs from base (isEmpty:false).
+    fs.writeFileSync(path.join(wt, 'feat.txt'), 'feature\n');
+    wg(['add', 'feat.txt']); wg(['commit', '-q', '-m', 'spawn feat']);
+
+    const res = qp.materializeDelta({ worktreePath: wt, agentId: 'arch-p2a-4', runGit, runGitWithEnv });
+
+    // --- the additive fields ---
+    assert.ok(typeof res.tree === 'string' && /^[a-f0-9]{40}$|^[a-f0-9]{64}$/.test(res.tree),
+      `tree must be a 40-or-64-hex git tree sha, got ${JSON.stringify(res.tree)}`);
+    assert.ok(typeof res.parentHead === 'string' && /^[a-f0-9]{40}$|^[a-f0-9]{64}$/.test(res.parentHead),
+      `parentHead must be a 40-or-64-hex commit sha, got ${JSON.stringify(res.parentHead)}`);
+
+    // parentHead must equal the PARENT repo's HEAD (the fork point), via real git.
+    const parentHeadActual = g(['rev-parse', 'HEAD']).trim();
+    assert.strictEqual(res.parentHead, parentHeadActual,
+      `parentHead must equal the parent repo HEAD ${parentHeadActual}, got ${res.parentHead}`);
+
+    // tree must equal the squashed delta commit's tree (the post-state tree).
+    const deltaTree = execFileSync('git', ['rev-parse', `${res.delta_sha}^{tree}`],
+      { cwd: wt, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' }).trim();
+    assert.strictEqual(res.tree, deltaTree,
+      `tree must equal the delta commit's tree ${deltaTree}, got ${res.tree}`);
+
+    // --- regression: the existing three fields are unchanged ---
+    assert.ok(/^[a-f0-9]{40}$|^[a-f0-9]{64}$/.test(res.delta_sha), 'delta_sha must still be a git object hash');
+    assert.strictEqual(res.isEmpty, false, 'a committed change must still report isEmpty:false');
+    assert.ok(typeof res.candidateRel === 'string' && res.candidateRel.length > 0, 'candidateRel must still be present');
+    assert.ok(changedFiles(wt, res.delta_sha).includes(res.candidateRel), 'candidateRel must still be a changed file');
+  } finally {
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  }
+});
+
+test('[real git] PR-P2a #4b: a clean worktree -> tree === base tree (isEmpty), parentHead still the fork HEAD', () => {
+  const ctx = setupSpawnWorktree();
+  if (!ctx) { process.stdout.write('    (skipped: git unavailable)\n'); return; }
+  const { baseDir, wt, g, runGit, runGitWithEnv } = ctx;
+  try {
+    const res = qp.materializeDelta({ worktreePath: wt, agentId: 'arch-p2a-4b', runGit, runGitWithEnv });
+    assert.strictEqual(res.isEmpty, true, 'a zero-change worktree must report isEmpty:true');
+    // On an empty delta, tree equals the base (== parent HEAD) tree.
+    const baseTree = g(['rev-parse', 'HEAD^{tree}']).trim();
+    assert.strictEqual(res.tree, baseTree, 'an empty delta tree must equal the base tree');
+    assert.strictEqual(res.parentHead, g(['rev-parse', 'HEAD']).trim(), 'parentHead must be the fork HEAD even when empty');
   } finally {
     fs.rmSync(baseDir, { recursive: true, force: true });
   }
@@ -262,6 +328,144 @@ test('buildGenesisRecord happy path: a valid agentId -> a genesis-valid record w
   // The record validates at the genesis position (REUSE validateTransactionRecord).
   const v = validateTransactionRecord(record, { isGenesisPosition: true });
   assert.strictEqual(v.valid, true, `the genesis record must validate, errors: ${JSON.stringify(v.errors)}`);
+});
+
+// ── PR-P2a regression: buildGenesisRecord output FIELD-SET is unchanged ────────
+//
+// buildSpawnRecord is extracted alongside buildGenesisRecord via a shared internal
+// genesisRecordFields(opts) helper. The refactor MUST NOT change buildGenesisRecord's
+// output FIELD-SET — same keys, same content-hash body as before P2a. NOTE (honesty
+// FLAG): "byte-identical" would be an overstatement — intent_recorded_at is a per-call
+// wall-clock timestamp, so two literal outputs differ (and their transaction_ids
+// differ). What this guard ACTUALLY pins (the load-bearing property) is: the exact key
+// SET (no post_state_hash/head_anchor leak), transaction_id===computeTransactionId
+// integrity, and field-equality MODULO intent_recorded_at + transaction_id.
+// This is the regression guard (verify-plan F1 — buildGenesisRecord's contract frozen).
+
+test('PR-P2a regression: buildGenesisRecord field-set unchanged (no post_state_hash/head_anchor leak from the shared helper)', () => {
+  const record = qp.buildGenesisRecord({
+    agentId: 'arch-reg-1',
+    personaId: '04-architect.theo',
+    schemaVersion: 'v3',
+  });
+  // The EXACT key set buildGenesisRecord produced before P2a (no post_state_hash,
+  // no head_anchor — those are buildSpawnRecord-only additions).
+  const expectedKeys = [
+    'prev_state_hash', 'writer_persona_id', 'writer_spawn_id', 'operation_class',
+    'evidence_refs', 'intent_recorded_at', 'commit_outcome', 'schema_version', 'transaction_id',
+  ].sort();
+  assert.deepStrictEqual(Object.keys(record).sort(), expectedKeys,
+    `buildGenesisRecord key set must be unchanged (no new fields); got ${JSON.stringify(Object.keys(record).sort())}`);
+  assert.ok(!('post_state_hash' in record), 'buildGenesisRecord must NOT add post_state_hash');
+  assert.ok(!('head_anchor' in record), 'buildGenesisRecord must NOT add head_anchor');
+  // The content hash still verifies (the shared helper produced the same body).
+  assert.strictEqual(record.transaction_id, computeTransactionId(record),
+    'buildGenesisRecord transaction_id must still equal computeTransactionId(record)');
+  // Determinism check: two records (modulo the wall-clock timestamp) are field-equal.
+  const r2 = qp.buildGenesisRecord({ agentId: 'arch-reg-1', personaId: '04-architect.theo', schemaVersion: 'v3' });
+  const { intent_recorded_at: _t1, transaction_id: _id1, ...rest1 } = record;
+  const { intent_recorded_at: _t2, transaction_id: _id2, ...rest2 } = r2;
+  assert.deepStrictEqual(rest1, rest2, 'buildGenesisRecord fields (minus timestamp/id) must be deterministic');
+});
+
+// ── PR-P2a #5: buildSpawnRecord — a NEW export carrying post_state_hash + head_anchor ──
+
+test('PR-P2a #5: buildSpawnRecord -> a genesis-valid record with post_state_hash + head_anchor + integrity', () => {
+  const postStateHash = computePostStateHash('a'.repeat(40));
+  const headAnchor = 'b'.repeat(40);
+  const record = qp.buildSpawnRecord({
+    agentId: 'arch-p2a-5',
+    personaId: '04-architect.theo',
+    schemaVersion: 'v3',
+    postStateHash,
+    headAnchor,
+  });
+  assert.strictEqual(record.post_state_hash, postStateHash, 'post_state_hash must round-trip the input');
+  assert.strictEqual(record.head_anchor, headAnchor, 'head_anchor must round-trip the input');
+  // It REUSES the genesis base — same shape as buildGenesisRecord plus the two fields.
+  assert.strictEqual(record.operation_class, 'CREATE', 'a spawn record is a genesis CREATE');
+  assert.strictEqual(record.commit_outcome, 'COMMITTED', 'commit_outcome must be COMMITTED');
+  assert.strictEqual(record.writer_spawn_id, 'arch-p2a-5', 'writer_spawn_id must be the raw agentId');
+  assert.ok(isBootstrapSentinel(record.evidence_refs[0]), 'evidence_refs[0] must be a bootstrap sentinel');
+  // Integrity: transaction_id is the content hash OVER the post_state_hash + head_anchor too.
+  assert.strictEqual(record.transaction_id, computeTransactionId(record),
+    'transaction_id must equal computeTransactionId(record) — hashed over the full body incl. the new fields');
+  // Genesis-valid (REUSE validateTransactionRecord with the genesis flag).
+  const v = validateTransactionRecord(record, { isGenesisPosition: true });
+  assert.strictEqual(v.valid, true, `buildSpawnRecord must be genesis-valid, errors: ${JSON.stringify(v.errors)}`);
+});
+
+test('PR-P2a #5b: buildSpawnRecord transaction_id binds the post_state_hash (changing it changes the id)', () => {
+  const base = { agentId: 'arch-p2a-5b', personaId: '04-architect.theo', schemaVersion: 'v3', headAnchor: 'b'.repeat(40) };
+  const a = qp.buildSpawnRecord({ ...base, postStateHash: computePostStateHash('a'.repeat(40)) });
+  const b = qp.buildSpawnRecord({ ...base, postStateHash: computePostStateHash('c'.repeat(40)) });
+  assert.notStrictEqual(a.transaction_id, b.transaction_id,
+    'a different post_state_hash must yield a different transaction_id (the field is in the hashed body)');
+});
+
+// ── PR-P2a #6: buildSpawnRecord null/omitted headAnchor -> head_anchor:null, still valid ──
+
+test('PR-P2a #6: buildSpawnRecord omitting headAnchor -> head_anchor:null, still genesis-valid (null-tolerant)', () => {
+  const postStateHash = computePostStateHash('a'.repeat(40));
+  const recOmitted = qp.buildSpawnRecord({
+    agentId: 'arch-p2a-6', personaId: '04-architect.theo', schemaVersion: 'v3', postStateHash,
+  });
+  assert.strictEqual(recOmitted.head_anchor, null, 'an omitted headAnchor must record head_anchor:null');
+  const vO = validateTransactionRecord(recOmitted, { isGenesisPosition: true });
+  assert.strictEqual(vO.valid, true, `null head_anchor must stay genesis-valid, errors: ${JSON.stringify(vO.errors)}`);
+  assert.strictEqual(recOmitted.transaction_id, computeTransactionId(recOmitted), 'integrity holds with null head_anchor');
+
+  // Explicit null is equivalent to omitted.
+  const recNull = qp.buildSpawnRecord({
+    agentId: 'arch-p2a-6', personaId: '04-architect.theo', schemaVersion: 'v3', postStateHash, headAnchor: null,
+  });
+  assert.strictEqual(recNull.head_anchor, null, 'an explicit null headAnchor must record head_anchor:null');
+});
+
+test('PR-P2a #6b: buildSpawnRecord reuses the persona/sentinel fail-fast guards', () => {
+  const postStateHash = computePostStateHash('a'.repeat(40));
+  // Missing personaId -> the same concrete throw buildGenesisRecord raises (shared helper).
+  assert.throws(
+    () => qp.buildSpawnRecord({ agentId: 'arch-p2a-6c', schemaVersion: 'v3', postStateHash }),
+    /persona/i,
+    'an omitted personaId must throw a concrete persona-mentioning Error (reused guard)'
+  );
+});
+
+// ── PR-P2a #7: chain-consistency — the producer's post_state_hash IS what P1 reads ──
+//
+// THE load-bearing test (verify-plan / Probe #4 / M1 forward-coupling invariant).
+// A record built with post_state_hash = computePostStateHash(tree) must round-trip
+// through record-store.appendRecord + readByPostStateHash(computePostStateHash(tree))
+// — proving the producer's value EXACTLY matches the value K9's resolveParent seam
+// reads (record-store.js:311 strict ===). If computePostStateHash ever diverges from
+// what a future P3 producer uses, this join breaks silently — hence the invariant.
+
+test('PR-P2a #7: buildSpawnRecord round-trips through record-store.readByPostStateHash (chain-consistency)', () => {
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'loom-p2a-store-'));
+  try {
+    const tree = 'a'.repeat(40);
+    const postStateHash = computePostStateHash(tree);
+    const record = qp.buildSpawnRecord({
+      agentId: 'arch-p2a-7',
+      personaId: '04-architect.theo',
+      schemaVersion: 'v3',
+      postStateHash,
+      headAnchor: 'd'.repeat(40),
+    });
+    const opts = { runId: 'run-p2a-7', stateDir: baseDir };
+    const appended = recordStore.appendRecord(record, opts);
+    assert.strictEqual(appended.ok, true, `appendRecord must accept the spawn record, got ${JSON.stringify(appended)}`);
+
+    // Read it back by EXACTLY computePostStateHash(tree) — the same fn the producer used.
+    const got = recordStore.readByPostStateHash(computePostStateHash(tree), opts);
+    assert.ok(got, 'readByPostStateHash(computePostStateHash(tree)) must find the record');
+    assert.strictEqual(got.transaction_id, record.transaction_id, 'the round-tripped record must be the one we appended');
+    assert.strictEqual(got.post_state_hash, postStateHash, 'the stored post_state_hash must equal the producer value');
+    assert.strictEqual(got.head_anchor, 'd'.repeat(40), 'head_anchor must survive the round-trip');
+  } finally {
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  }
 });
 
 // ── T-H': a missing / empty personaId -> a concrete fail-fast (not a silent ──

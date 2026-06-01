@@ -10,11 +10,26 @@
 // throwaway staging worktree. The seam is a clean data handoff (plan §"The split
 // (architect rec) — 3c-a then 3c-b"); this half does ZERO worktree mutation.
 //
-// THREE exports:
+// EXPORTS:
 //   deriveParentRoot(worktreePath, runGit)        -> canonicalized parent repo root
 //   materializeDelta({worktreePath, agentId, runGit, runGitWithEnv})
-//                                                  -> {delta_sha, candidateRel, isEmpty}
+//                                  -> {delta_sha, candidateRel, isEmpty, tree, parentHead}
 //   buildGenesisRecord({agentId, personaId, schemaVersion}) -> a genesis-valid record
+//   buildSpawnRecord({agentId, personaId, schemaVersion, postStateHash, headAnchor})
+//                                  -> a genesis-valid record + post_state_hash + head_anchor
+//
+// ── PR-P2a additions (DORMANT — P2b is the first live caller) ──
+// `materializeDelta` now ALSO returns `tree` (the post-state write-tree) + `parentHead`
+// (the forked-from HEAD) — both already computed; the auto-merge producer (P2b) needs
+// them. `buildSpawnRecord` is a NEW export (NOT an extension of buildGenesisRecord —
+// Open/Closed + ISP; buildGenesisRecord's signature is frozen + its OUTPUT field-set +
+// content-hash body are unchanged — NOT literally byte-identical, since the wall-clock
+// intent_recorded_at differs per call; the regression test pins exactly that property):
+// it shares the genesis field-assembly via the internal genesisRecordFields(opts) helper,
+// then adds post_state_hash + head_anchor before re-hashing + re-validating. post_state_hash MUST
+// be produced via transaction-record.computePostStateHash (the forward-coupling invariant
+// — see that fn's doc); buildSpawnRecord takes the already-computed value so this module
+// stays agnostic about the tree source.
 //
 // ── materializeDelta — the squash (Agent-C silent-drop fix) ──
 // A spawn worktree may carry MULTIPLE commits PLUS uncommitted working-tree
@@ -208,7 +223,14 @@ function materializeDelta(opts) {
       'diff-tree'
     );
     const changed = namesOut.split('\n').map((s) => s.trim()).filter(Boolean);
-    return { delta_sha: deltaSha, candidateRel: changed[0] || '', isEmpty };
+    // CONSCIOUS WIDENING of the single-return contract (PR-P2a, verify-plan F2):
+    // additionally return `tree` (the write-tree post-state tree, :193) + `parentHead`
+    // (the forked-from HEAD, :187) — both already computed here. This SUPERSEDES the
+    // "clean single-return SRP" note at stage-promote.js:400-403 (a future reader must
+    // not read these as contradictory). The new keys are OPT-IN: stage-promote.js:297
+    // destructures only {delta_sha, candidateRel, isEmpty} and is unaffected. P2b's
+    // producer consumes `tree` (-> computePostStateHash) + `parentHead` (-> head_anchor).
+    return { delta_sha: deltaSha, candidateRel: changed[0] || '', isEmpty, tree, parentHead };
   } finally {
     fs.rmSync(tempIndexPath, { force: true });
   }
@@ -235,11 +257,88 @@ function sanitizeAgentId(agentId) {
 }
 
 /**
+ * Assemble the SHARED genesis transaction-record base fields (every field EXCEPT
+ * transaction_id, which the caller computes after adding its own specifics). The
+ * single source of truth for the genesis field-assembly + the two fail-fast guards
+ * (sentinel-charset agentId + non-empty personaId), so buildGenesisRecord and
+ * buildSpawnRecord cannot DIVERGE (verify-plan F1/R-2: a NEW buildSpawnRecord, not an
+ * extension, but sharing this helper avoids the duplication honesty flagged). The
+ * record is a CREATE at the genesis position; human review (PR-3c-b quarantine) is the
+ * only provenance gate (the structural A10 check it later passes is NOT provenance).
+ *
+ * @param {Object} opts
+ * @param {string} opts.agentId the spawn id (sanitized into the ROOT_TASK_RECORD sentinel).
+ * @param {string} opts.personaId the authoring persona.
+ * @param {string} opts.schemaVersion e.g. 'v3' — drives the genesis hash.
+ * @returns {Object} the base record fields (NO transaction_id; caller adds it).
+ * @throws {Error} on an agentId that doesn't sanitize to a sentinel, or a missing personaId.
+ */
+function genesisRecordFields({ agentId, personaId, schemaVersion }) {
+  const safeId = sanitizeAgentId(agentId);
+  if (safeId.length === 0) {
+    throw new Error(`quarantine-promote: agentId did not sanitize to a valid ROOT_TASK_RECORD sentinel: ${JSON.stringify(agentId)}`);
+  }
+  // Fail FAST on a missing/empty personaId. validateTransactionRecord's
+  // required-field loop uses `field in record`, which is TRUE for
+  // writer_persona_id:undefined — so a record built without a personaId would
+  // pass genesis validation and only blow up far downstream (the schema declares
+  // writer_persona_id type:string,minLength:1, but the lightweight validator
+  // spot-checks presence, not type). Guard it so A-D4 "fail fast with a concrete
+  // message" holds. Shared so buildSpawnRecord inherits the SAME guard (test #6b).
+  if (typeof personaId !== 'string' || personaId.length === 0) {
+    throw new Error(`quarantine-promote: a non-empty personaId string is required, got ${JSON.stringify(personaId)}`);
+  }
+  return {
+    prev_state_hash: computeGenesisHash(schemaVersion, 'per-project'),
+    writer_persona_id: personaId,
+    writer_spawn_id: agentId,
+    operation_class: 'CREATE',
+    evidence_refs: [`ROOT_TASK_RECORD:${safeId}`],
+    intent_recorded_at: new Date().toISOString(),
+    commit_outcome: 'COMMITTED',
+    schema_version: schemaVersion,
+  };
+}
+
+/**
+ * Finalize a genesis-position record: assert the bootstrap sentinel, compute the
+ * content-addressed transaction_id, and validate at the genesis position. Throws a
+ * concrete Error on any failure (fail-fast, not a cryptic K9 reject downstream).
+ *
+ * IMMUTABLE (fundamentals: never mutate; create new objects): returns a NEW object
+ * (`{ ...record, transaction_id }`), never mutating the caller's record. computeTransactionId
+ * strips transaction_id before hashing and canonical-JSON sorts keys, so the id is identical
+ * regardless of spread order — the genesis output stays content-stable.
+ *
+ * @param {Object} record a genesis base record (+ any builder-specific fields), sans transaction_id.
+ * @returns {Object} a NEW record = the input fields + the computed transaction_id.
+ */
+function finalizeGenesisRecord(record) {
+  // Fail FAST + concretely here, not as a cryptic K9 REJECTED_EVIDENCE later.
+  if (!isBootstrapSentinel(record.evidence_refs[0])) {
+    throw new Error(`quarantine-promote: built evidence_ref is not a valid bootstrap sentinel: ${JSON.stringify(record.evidence_refs[0])}`);
+  }
+  const finalized = { ...record, transaction_id: computeTransactionId(record) };
+  const v = validateTransactionRecord(finalized, { isGenesisPosition: true });
+  if (!v.valid) {
+    throw new Error(`quarantine-promote: genesis record failed validation: ${(v.errors || []).join('; ')}`);
+  }
+  return finalized;
+}
+
+/**
  * Build a genesis transaction-record for a spawn's quarantine-staged delta.
  * REUSES the transaction-record builders for the hash + genesis prev_state_hash +
- * sentinel + validation — nothing here is hand-rolled. The record is a CREATE at
- * the genesis position; human review (PR-3c-b quarantine) is the only provenance
- * gate (the structural A10 check this passes is NOT a provenance check).
+ * sentinel + validation — nothing here is hand-rolled.
+ *
+ * NOTE (PR-P2a): the field-assembly + fail-fast guards moved to the shared
+ * genesisRecordFields helper. This function's OUTPUT is behavior-preserving — the
+ * SAME field-set + the SAME content-hash body as before (honesty FLAG: NOT literally
+ * byte-identical across two calls, since intent_recorded_at is a per-call wall-clock
+ * timestamp so transaction_id differs; the regression test
+ * (quarantine-promote.test.js) pins the field-set + content-hash integrity MODULO that
+ * timestamp+id, which is the load-bearing no-new-keys-leak property). It does NOT set
+ * post_state_hash / head_anchor (those are buildSpawnRecord-only).
  *
  * @param {Object} opts
  * @param {string} opts.agentId the spawn id (sanitized into the sentinel).
@@ -248,49 +347,52 @@ function sanitizeAgentId(agentId) {
  * @returns {Object} a genesis-valid transaction-record (transaction_id set).
  */
 function buildGenesisRecord(opts) {
-  const { agentId, personaId, schemaVersion } = opts || {};
-  const safeId = sanitizeAgentId(agentId);
-  if (safeId.length === 0) {
-    throw new Error(`quarantine-promote: agentId did not sanitize to a valid ROOT_TASK_RECORD sentinel: ${JSON.stringify(agentId)}`);
-  }
-  // Fail FAST on a missing/empty personaId. validateTransactionRecord's
-  // required-field loop uses `field in record`, which is TRUE for
-  // writer_persona_id:undefined — so a record built without a personaId would
-  // pass genesis validation here and only blow up far downstream (the schema
-  // declares writer_persona_id as type:string,minLength:1, but the lightweight
-  // validator spot-checks presence, not type). Guard it explicitly so the
-  // A-D4 "fail fast with a concrete message" contract holds for this case too.
-  if (typeof personaId !== 'string' || personaId.length === 0) {
-    throw new Error(`quarantine-promote: buildGenesisRecord requires a non-empty personaId string, got ${JSON.stringify(personaId)}`);
-  }
-  const evidenceRef = `ROOT_TASK_RECORD:${safeId}`;
-  const record = {
-    prev_state_hash: computeGenesisHash(schemaVersion, 'per-project'),
-    writer_persona_id: personaId,
-    writer_spawn_id: agentId,
-    operation_class: 'CREATE',
-    evidence_refs: [evidenceRef],
-    intent_recorded_at: new Date().toISOString(),
-    commit_outcome: 'COMMITTED',
-    schema_version: schemaVersion,
-  };
-  record.transaction_id = computeTransactionId(record);
+  return finalizeGenesisRecord(genesisRecordFields(opts || {}));
+}
 
-  // Fail FAST + concretely here, not as a cryptic K9 REJECTED_EVIDENCE later.
-  if (!isBootstrapSentinel(record.evidence_refs[0])) {
-    throw new Error(`quarantine-promote: built evidence_ref is not a valid bootstrap sentinel: ${evidenceRef}`);
-  }
-  const v = validateTransactionRecord(record, { isGenesisPosition: true });
-  if (!v.valid) {
-    throw new Error(`quarantine-promote: genesis record failed validation: ${(v.errors || []).join('; ')}`);
-  }
-  return record;
+/**
+ * Build a genesis SPAWN transaction-record carrying the provenance producer fields:
+ * post_state_hash (the forked state's content-addressed hash) + head_anchor (the
+ * forked-from HEAD — the auto-merge re-check anchor, P3). A NEW export — NOT an
+ * extension of buildGenesisRecord (Open/Closed + ISP; buildGenesisRecord's signature
+ * + output stay frozen) — but it SHARES the genesis base via genesisRecordFields so the
+ * two builders cannot diverge.
+ *
+ * DORMANT in P2a: only the unit test calls this; P2b's live producer is the first
+ * real caller. Genesis in the all-genesis world (every spawn forks from main — no
+ * nesting); post_state_hash is recorded for P1's value-equality join + future chaining.
+ *
+ * INVARIANT (verify-plan M1): `postStateHash` MUST be produced by
+ * transaction-record.computePostStateHash (the caller's responsibility — this builder
+ * stays tree-source-agnostic). Any other derivation silently breaks
+ * record-store.readByPostStateHash's join.
+ *
+ * @param {Object} opts
+ * @param {string} opts.agentId the spawn id (sanitized into the sentinel).
+ * @param {string} opts.personaId the authoring persona.
+ * @param {string} opts.schemaVersion e.g. 'v3' — drives the genesis hash.
+ * @param {string} opts.postStateHash 64-hex post_state_hash (computePostStateHash output).
+ * @param {string|null} [opts.headAnchor] the forked-from HEAD sha (40/64-hex), or null.
+ * @returns {Object} a genesis-valid transaction-record with post_state_hash + head_anchor.
+ */
+function buildSpawnRecord(opts) {
+  const { agentId, personaId, schemaVersion, postStateHash, headAnchor } = opts || {};
+  // Immutable construction: the genesis base + the two producer fields. Normalize an
+  // omitted headAnchor to an explicit null (the schema is null-tolerant; recording the
+  // key keeps the record shape stable for the P2b/P3 consumers).
+  const record = {
+    ...genesisRecordFields({ agentId, personaId, schemaVersion }),
+    post_state_hash: postStateHash,
+    head_anchor: headAnchor === undefined ? null : headAnchor,
+  };
+  return finalizeGenesisRecord(record);
 }
 
 module.exports = {
   deriveParentRoot,
   materializeDelta,
   buildGenesisRecord,
+  buildSpawnRecord,
   // Exposed for testing / PR-3c-b reuse:
   sanitizeAgentId,
 };
