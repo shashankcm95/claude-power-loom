@@ -7,11 +7,13 @@
 'use strict';
 
 const assert = require('assert');
+const crypto = require('crypto');
 const {
   canonicalJsonSerialize,
   computeTransactionId,
   computeGenesisHash,
   computeIdempotencyKey,
+  computePostStateHash,
   isStateChanging,
   isBootstrapSentinel,
   validateTransactionRecord,
@@ -101,6 +103,60 @@ test('computeGenesisHash disambiguates schema_versions', () => {
 
 test('computeGenesisHash rejects invalid scope', () => {
   assert.throws(() => computeGenesisHash('v6.0', 'invalid-scope'));
+});
+
+// --- computePostStateHash (PR-P2a — fork-consistent post_state_hash) ---
+//
+// Probe #4 / Architectural Decision 1: post_state_hash = sha256('POST_STATE|' + treeSha),
+// NOT sha256(canonical{prev,tree}) and NOT the synthesizeChain fixture's
+// sha256('post-'+i+prev). A spawn chains by the state it FORKED FROM and only ever
+// sees that tree; fork-consistency lets a future child set prev = parent.post without
+// knowing the parent's lineage. M1 forward-coupling invariant: EVERY future
+// post_state_hash producer (P3) MUST reuse this fn verbatim or P1's value-equality
+// join in record-store.readByPostStateHash silently breaks.
+
+test('PR-P2a #1 computePostStateHash returns a deterministic 64-hex sha256', () => {
+  const tree = 'a'.repeat(40);
+  const h1 = computePostStateHash(tree);
+  const h2 = computePostStateHash(tree);
+  assert.strictEqual(h1, h2, 'same tree must produce the same hash (deterministic)');
+  assert.match(h1, /^[a-f0-9]{64}$/, 'post_state_hash must be a 64-char lowercase hex sha256');
+});
+
+test('PR-P2a #1b computePostStateHash matches the locked POST_STATE|<tree> formula', () => {
+  const tree = 'a'.repeat(64); // a 64-hex (sha256) tree sha
+  const expected = crypto.createHash('sha256').update('POST_STATE|' + tree).digest('hex');
+  assert.strictEqual(computePostStateHash(tree), expected,
+    'the formula is locked to sha256(\'POST_STATE|\' + treeSha) — fork-consistent');
+});
+
+test('PR-P2a #2 computePostStateHash is domain-prefixed + per-tree distinct', () => {
+  const treeA = 'a'.repeat(40);
+  const treeB = 'b'.repeat(40);
+  assert.notStrictEqual(computePostStateHash(treeA), computePostStateHash(treeB),
+    'two different trees must yield different post_state_hashes');
+  // Domain-prefixed: NOT a bare sha256(tree).
+  const bare = crypto.createHash('sha256').update(treeA).digest('hex');
+  assert.notStrictEqual(computePostStateHash(treeA), bare,
+    'post_state_hash must be domain-prefixed (POST_STATE|), not a bare sha256(tree)');
+  // The prefix is specifically 'POST_STATE|' — a different prefix over the same tree
+  // yields a different hash (proves the domain separator is load-bearing, not cosmetic).
+  const otherDomain = crypto.createHash('sha256').update('GENESIS|' + treeA).digest('hex');
+  assert.notStrictEqual(computePostStateHash(treeA), otherDomain,
+    'the POST_STATE| domain prefix must separate this hash from other domains over the same tree');
+});
+
+test('PR-P2a #3 computePostStateHash rejects non-hex / wrong-length tree (fail-fast)', () => {
+  // The {40,64}-range-vs-{40}|{64}-alternation guard: 39/41/63/65 are all invalid;
+  // only exactly-40 (sha1) or exactly-64 (sha256) hex is a real tree sha.
+  assert.throws(() => computePostStateHash('a'.repeat(39)), /tree|hex|sha/i, '39-char must throw');
+  assert.throws(() => computePostStateHash('a'.repeat(41)), /tree|hex|sha/i, '41-char must throw');
+  assert.throws(() => computePostStateHash('a'.repeat(63)), /tree|hex|sha/i, '63-char must throw');
+  assert.throws(() => computePostStateHash('a'.repeat(65)), /tree|hex|sha/i, '65-char must throw');
+  assert.throws(() => computePostStateHash('z'.repeat(40)), /tree|hex|sha/i, 'non-hex chars must throw');
+  assert.throws(() => computePostStateHash('A'.repeat(40)), /tree|hex|sha/i, 'uppercase hex must throw (lowercase contract)');
+  assert.throws(() => computePostStateHash(null), /tree|hex|sha|string/i, 'null must throw');
+  assert.throws(() => computePostStateHash(12345), /tree|hex|sha|string/i, 'a non-string must throw');
 });
 
 // --- computeIdempotencyKey (§5a.6) ---

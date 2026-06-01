@@ -92,6 +92,48 @@ function computeGenesisHash(schemaVersion, scope) {
   return crypto.createHash('sha256').update(input).digest('hex');
 }
 
+// A git tree/commit sha is EITHER 40-hex (sha1) OR 64-hex (sha256) — the anchored
+// alternation, NOT a {40,64} range quantifier (which would wrongly admit 41–63-hex
+// garbage). Mirrors quarantine-promote.js's write-tree guard + the schema's
+// head_anchor pattern. Lowercase only (git emits lowercase hex).
+const GIT_SHA_RE = /^[a-f0-9]{40}$|^[a-f0-9]{64}$/;
+
+/**
+ * Compute the post_state_hash for a transaction from the resulting git tree sha.
+ *
+ * LOCKED FORMULA (PR-P2a, Probe #4 / Architectural Decision 1):
+ *   post_state_hash = sha256('POST_STATE|' + treeSha)
+ *
+ * Fork-consistent, NOT bound to prev_state_hash. A spawn chains by the state it
+ * FORKED FROM and only ever sees that tree (never the parent's lineage); keying
+ * `post` to the tree alone lets a future child set `prev = parent.post` without
+ * knowing the parent's history. Binding `post` to `prev` would break fork-based
+ * chaining. The domain prefix 'POST_STATE|' prevents cross-purpose collision with
+ * computeTransactionId / computeGenesisHash / computeIdempotencyKey.
+ *
+ * FORWARD-COUPLING INVARIANT (verify-plan M1 — load-bearing): EVERY future
+ * post_state_hash producer (P3 non-genesis chaining) MUST reuse THIS function
+ * verbatim. P1's record-store.readByPostStateHash performs a raw value-equality
+ * join (`record.post_state_hash === key`, record-store.js:311); any producer that
+ * computes the hash a different way (e.g. the synthesizeChain fixture's
+ * sha256('post-'+i+prev) top-down convenience) would SILENTLY break that join —
+ * a read miss → K9 fail-closed REJECT/quarantine, with no error to point at the
+ * divergence. Do not re-derive this formula inline anywhere.
+ *
+ * @param {string} treeSha a git tree sha — 40-hex (sha1) or 64-hex (sha256).
+ * @returns {string} 64-char hex sha256.
+ * @throws {TypeError} if treeSha is not a 40-or-64-char lowercase-hex string.
+ */
+function computePostStateHash(treeSha) {
+  if (typeof treeSha !== 'string' || !GIT_SHA_RE.test(treeSha)) {
+    throw new TypeError(
+      'computePostStateHash: treeSha must be a 40- or 64-char lowercase-hex git sha, got ' +
+        JSON.stringify(typeof treeSha === 'string' ? treeSha.slice(0, 80) : treeSha)
+    );
+  }
+  return crypto.createHash('sha256').update('POST_STATE|' + treeSha).digest('hex');
+}
+
 /**
  * Compute the idempotency_key per §5a.6.
  *
@@ -304,6 +346,7 @@ module.exports = {
   computeTransactionId,
   computeGenesisHash,
   computeIdempotencyKey,
+  computePostStateHash,
   isStateChanging,
   isBootstrapSentinel,
   validateTransactionRecord,
