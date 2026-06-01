@@ -47,12 +47,19 @@ const { appendWalRecord } = require('../_lib/wal-append.js');
 const { checkWithinRoot } = require('../_lib/path-canonicalize.js');
 const { runGitDefault } = require('../_lib/invoke-git.js');
 const {
-  materializeDelta,
   buildGenesisRecord,
   sanitizeAgentId,
   deriveParentRoot,
 } = require('../_lib/quarantine-promote.js');
 const { resolve } = require('./post-spawn-resolver.js');
+// Shared close-path staging helpers (extracted from this file + stage-candidate.js;
+// DRY). The local journal() is NOT shared — it stamps mode:'enforce-quarantine'.
+const {
+  journalPathFor,
+  hasValidStateArgs,
+  makeHarnessRunners,
+  materialize,
+} = require('./_stage-helpers.js');
 
 // NO hook-layer logger import (the journal IS the observability surface here,
 // matching the sibling kernel libs post-spawn-resolver.js / recovery-sweep.js —
@@ -100,31 +107,6 @@ const DISPOSITION_KIND = Object.freeze({
 });
 
 /**
- * The per-spawn enforce journal path: <stateDir>/<runId>/resolver-journal-
- * <safeId>.jsonl. Keyed off the SANITIZED id (the path/branch component — HIGH-5),
- * mirroring the shadow hook's per-spawn-file basename so a fan-out never contends
- * on a shared WAL.
- */
-function journalPathFor(stateDir, runId, safeId) {
-  return path.join(stateDir, runId, `resolver-journal-${safeId}.jsonl`);
-}
-
-/**
- * Fail-soft boundary guard (3-lens MED). journalPathFor -> path.join(stateDir,
- * runId, ...) THROWS a TypeError if stateDir/runId are not non-empty strings, and
- * that throw happens BEFORE stagePromote's try/catch — so it would escape the
- * "NEVER throws" contract (the journal would be unavailable to even record it). In
- * production the hook always threads non-empty strings, so this is a contract-
- * honoring guard for a malformed caller, not a live defect. Clamp the inputs at the
- * edge (kb:architecture/discipline/error-handling-discipline — "define errors out
- * of existence"; kb:backend-dev/node-runtime-basics — validate at the boundary).
- */
-function hasValidStateArgs(stateDir, runId) {
-  return typeof stateDir === 'string' && stateDir.length > 0
-    && typeof runId === 'string' && runId.length > 0;
-}
-
-/**
  * Append one record to the per-spawn enforce journal (fail-soft — a journal write
  * failure must never change the caller's approve verdict). Lazily creates the run
  * dir 0o700. Every record is stamped enforce-quarantine / enforced (B-D8).
@@ -138,18 +120,6 @@ function journal(journalFile, record) {
     { mode: 'enforce-quarantine', enforced: true, resolved_at: new Date().toISOString(), ...record },
     { failSoft: true }
   );
-}
-
-/**
- * Build the three harness-bound, UNGUARDED git runners materializeDelta needs
- * (CRITICAL-1). Both bind runGitDefault to the harness worktree; runGitWithEnv
- * carries the per-call extraEnv (GIT_INDEX_FILE) for the temp-index squash.
- */
-function makeHarnessRunners(harnessWorktreePath) {
-  return {
-    runGit: (a) => runGitDefault(harnessWorktreePath, a),
-    runGitWithEnv: (a, env) => runGitDefault(harnessWorktreePath, a, env),
-  };
 }
 
 /**
@@ -265,22 +235,6 @@ function cleanupStaging({ stagingPath, safeId, keep, runGitParent, journalFile }
   } catch (err) {
     journal(journalFile, { kind: 'staging-cleanup-failed', error: err.message, staged_branch: `loom-promote/${safeId}` });
   }
-}
-
-/**
- * Materialize the spawn's delta — via the injected materializeDeltaFn seam (P16
- * shape injection) when present, else the merged harness-bound materializeDelta.
- */
-function materialize(args, harnessRunners) {
-  if (typeof args.materializeDeltaFn === 'function') {
-    return args.materializeDeltaFn({ ...args, ...harnessRunners });
-  }
-  return materializeDelta({
-    worktreePath: args.harnessWorktreePath,
-    agentId: args.agentId,
-    runGit: harnessRunners.runGit,
-    runGitWithEnv: harnessRunners.runGitWithEnv,
-  });
 }
 
 /**

@@ -48,13 +48,20 @@ const path = require('path');
 const { appendWalRecord } = require('../_lib/wal-append.js');
 const { runGitDefault } = require('../_lib/invoke-git.js');
 const {
-  materializeDelta,
   buildSpawnRecord,
   sanitizeAgentId,
   deriveParentRoot,
 } = require('../_lib/quarantine-promote.js');
 const { computePostStateHash } = require('../_lib/transaction-record.js');
 const { appendRecord } = require('../_lib/record-store.js');
+// Shared close-path staging helpers (extracted from stage-promote.js + this file;
+// DRY). The local journal() is NOT shared — it stamps mode:'candidate-stage'.
+const {
+  journalPathFor,
+  hasValidStateArgs,
+  makeHarnessRunners,
+  materialize,
+} = require('./_stage-helpers.js');
 
 // NO hook-layer logger import (the journal IS the observability surface here,
 // matching the sibling kernel libs stage-promote.js / post-spawn-resolver.js —
@@ -65,26 +72,6 @@ const DIR_MODE = 0o700; // hygienic, matches stage-promote.js / spawn-record.js
 // The hidden ref namespace for staged candidates. NOT under refs/heads/ — so a
 // candidate never shows in `git branch` and can never be a checked-out branch.
 const CANDIDATE_REF_PREFIX = 'refs/loom/candidates/';
-
-/**
- * The per-spawn candidate journal path: <stateDir>/<runId>/resolver-journal-
- * <safeId>.jsonl — the same per-spawn-file basename convention as the shadow +
- * enforce paths, so a fan-out never contends on a shared WAL.
- */
-function journalPathFor(stateDir, runId, safeId) {
-  return path.join(stateDir, runId, `resolver-journal-${safeId}.jsonl`);
-}
-
-/**
- * Fail-soft boundary guard: journalPathFor -> path.join THROWS a TypeError if
- * stateDir/runId are not non-empty strings, BEFORE stageCandidate's try/catch — so
- * it would escape the "NEVER throws" contract. Clamp the inputs at the edge
- * (mirrors stage-promote.js:hasValidStateArgs).
- */
-function hasValidStateArgs(stateDir, runId) {
-  return typeof stateDir === 'string' && stateDir.length > 0
-    && typeof runId === 'string' && runId.length > 0;
-}
 
 /**
  * Append one record to the per-spawn candidate journal (fail-soft — a journal
@@ -100,37 +87,6 @@ function journal(journalFile, record) {
     { mode: 'candidate-stage', resolved_at: new Date().toISOString(), ...record },
     { failSoft: true }
   );
-}
-
-/**
- * Build the two harness-bound, UNGUARDED git runners materializeDelta needs
- * (add / write-tree / commit-tree / diff-tree / merge-base / rev-parse /
- * worktree-list are all refused by the shadow guarded read-only runner). Both bind
- * runGitDefault to the harness worktree; runGitWithEnv carries the per-call
- * extraEnv (GIT_INDEX_FILE) for the temp-index squash.
- */
-function makeHarnessRunners(harnessWorktreePath) {
-  return {
-    runGit: (a) => runGitDefault(harnessWorktreePath, a),
-    runGitWithEnv: (a, env) => runGitDefault(harnessWorktreePath, a, env),
-  };
-}
-
-/**
- * Materialize the spawn's delta — via the injected materializeDeltaFn seam (test
- * shape injection) when present, else the merged harness-bound materializeDelta.
- * Returns {delta_sha, candidateRel, isEmpty, tree, parentHead}.
- */
-function materialize(args, harnessRunners) {
-  if (typeof args.materializeDeltaFn === 'function') {
-    return args.materializeDeltaFn({ ...args, ...harnessRunners });
-  }
-  return materializeDelta({
-    worktreePath: args.harnessWorktreePath,
-    agentId: args.agentId,
-    runGit: harnessRunners.runGit,
-    runGitWithEnv: harnessRunners.runGitWithEnv,
-  });
 }
 
 /**
