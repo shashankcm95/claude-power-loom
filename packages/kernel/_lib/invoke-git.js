@@ -36,11 +36,19 @@ const { execFileSync } = require('child_process');
  * non-zero exit, stderr (or the error message) is captured and bounded to 500
  * chars so a hostile/huge stderr cannot bloat the result.
  *
+ * The optional `extraEnv` (PR-3c-a, additive + backward-compatible) is merged
+ * AFTER the locale pins so a caller can inject per-call git env vars — notably
+ * GIT_INDEX_FILE, which K-quarantine's temp-index squash uses to stage into a
+ * throwaway index without touching the worktree's real .git/index — WITHOUT
+ * disturbing LANG/LC_ALL. Existing 2-arg callers (K1, K9) are unaffected:
+ * `{ ...undefined }` spreads to nothing.
+ *
  * @param {string} repoRoot - cwd for the git invocation.
  * @param {string[]} args - argv array (e.g. ['-c','core.hooksPath=/dev/null','cherry-pick',sha]).
+ * @param {Object<string,string>} [extraEnv] - per-call env overlay (e.g. {GIT_INDEX_FILE}).
  * @returns {{ok: boolean, code: number, stdout: string, stderr: string}}
  */
-function runGitDefault(repoRoot, args) {
+function runGitDefault(repoRoot, args, extraEnv) {
   try {
     const stdout = execFileSync('git', args, {
       cwd: repoRoot,
@@ -49,8 +57,11 @@ function runGitDefault(repoRoot, args) {
       // Pin the locale to C so git's human-readable messages are stable English
       // (K9 classifies the "cherry-pick is now empty" / "nothing to commit"
       // signal by substring; a localized runner could break that match). Harmless
-      // for K1, which never parses git prose. Inherit the rest of the env.
-      env: { ...process.env, LANG: 'C', LC_ALL: 'C' },
+      // for K1, which never parses git prose. Inherit the rest of the env, then
+      // overlay any caller-supplied per-call vars (extraEnv) LAST so an explicit
+      // GIT_INDEX_FILE wins (but the locale pins above cannot be silently
+      // clobbered by an inherited LANG — extraEnv is opt-in per call).
+      env: { ...process.env, LANG: 'C', LC_ALL: 'C', ...extraEnv },
     });
     return { ok: true, code: 0, stdout: stdout || '', stderr: '' };
   } catch (err) {

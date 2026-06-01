@@ -92,5 +92,68 @@ test('DAG: invoke-git is a leaf (no kernel imports — only child_process)', () 
   assert.deepStrictEqual(requires, ["require('child_process')"], `unexpected imports: ${JSON.stringify(requires)}`);
 });
 
+// ── PR-3c-a: the optional extraEnv 3rd param (additive, backward-compatible) ──
+//
+// quarantine-promote.materializeDelta squashes a spawn's delta into a TEMP index
+// (so the worktree's real .git/index is never touched). The temp index is
+// selected via GIT_INDEX_FILE — which the runner must forward into the child
+// git's env. PR-3c-a adds `runGitDefault(repoRoot, args, extraEnv)`: extraEnv is
+// merged AFTER the locale pins, so a caller can inject GIT_INDEX_FILE without
+// disturbing LANG/LC_ALL. The two assertions below pin (a) the round-trip — a
+// staged add against a temp index leaves the worktree's REAL index clean — and
+// (b) backward-compat: the existing 2-arg call shape is unaffected.
+
+// A throwaway one-commit git repo for the env round-trip; returns {repo, g} or
+// null when git is unavailable. Mirrors the transaction-loop initRepo pattern.
+function initTinyRepo() {
+  if (!gitAvailable()) return null;
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'loom-invokegit-env-'));
+  const g = (args) => execFileSync('git', args, { cwd: repo, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' });
+  g(['init', '-q']);
+  g(['config', 'user.email', 'loom-invokegit@example.invalid']);
+  g(['config', 'user.name', 'loom-invokegit']);
+  g(['config', 'commit.gpgsign', 'false']);
+  fs.writeFileSync(path.join(repo, 'base.txt'), 'base\n');
+  g(['add', 'base.txt']); g(['commit', '-q', '-m', 'base']);
+  return { repo, g };
+}
+
+test('runGitDefault [real git]: extraEnv GIT_INDEX_FILE round-trips — staging to a temp index leaves the real index clean', () => {
+  const ctx = initTinyRepo();
+  if (!ctx) { process.stdout.write('    (skipped: git unavailable)\n'); return; }
+  const { repo, g } = ctx;
+  const tmpIndex = path.join(os.tmpdir(), `loom-idx-${process.pid}-${Date.now()}`);
+  try {
+    // A new uncommitted file...
+    fs.writeFileSync(path.join(repo, 'staged-into-temp.txt'), 'temp\n');
+    // ...added via a TEMP index selected by the injected GIT_INDEX_FILE.
+    const add = runGitDefault(repo, ['add', '-A'], { GIT_INDEX_FILE: tmpIndex });
+    assert.strictEqual(add.ok, true, `add against temp index must succeed, got ${JSON.stringify(add)}`);
+
+    // The injected env routed staging to the temp index: it was created on disk.
+    assert.ok(fs.existsSync(tmpIndex), 'GIT_INDEX_FILE must have been honored (temp index created)');
+    // The temp index actually carries the staged file.
+    const lsTmp = runGitDefault(repo, ['ls-files'], { GIT_INDEX_FILE: tmpIndex });
+    assert.ok(/staged-into-temp\.txt/.test(lsTmp.stdout), 'temp index must list the staged file');
+
+    // The worktree's REAL index is untouched: a plain (2-arg) status shows the
+    // file still untracked because the real index never saw the `add`.
+    const status = runGitDefault(repo, ['status', '--porcelain']);
+    assert.ok(/\?\?\s+staged-into-temp\.txt/.test(status.stdout),
+      `real index must be clean (file still untracked); got status: ${JSON.stringify(status.stdout)}`);
+    void g;
+  } finally {
+    fs.rmSync(tmpIndex, { force: true });
+    fs.rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test('runGitDefault [real git]: a 2-arg call still works (extraEnv is optional — backward-compat)', () => {
+  if (!gitAvailable()) { process.stdout.write('    (skipped: git unavailable)\n'); return; }
+  const res = runGitDefault(os.tmpdir(), ['--version']);
+  assert.strictEqual(res.ok, true, 'the existing 2-arg call shape must remain valid');
+  assert.ok(/git version/.test(res.stdout), 'a 2-arg call must still capture stdout');
+});
+
 process.stdout.write(`\ninvoke-git.test.js: ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
