@@ -1,0 +1,350 @@
+// packages/kernel/_lib/record-store.js
+//
+// PR-P1 — the provenance state-chain store (ships DORMANT; only its test imports
+// it). A content-addressed on-disk store of transaction-records that backs K9's
+// `resolveParent` chain-walk seam (`k9-promote-deltas.js:137-191`). Today that
+// seam is `undefined` at every live call site; this module supplies the store +
+// reader so a later PR (P2) can wire `resolveParent = readByPostStateHash` into
+// the live shadow walk. No production importer is added here (Probe #8 — trips
+// no CI dormancy gate).
+//
+// v6 spec anchors:
+//   §4.2 — transaction-record shape (the stored value); §4.3 — Genesis Sentinel.
+//   §4.2/§5.4 (synthesis §554, :753-754) — the STATE chain edge: a record's
+//     `prev_state_hash` equals the *predecessor's `post_state_hash`* (NOT the
+//     predecessor's `transaction_id`). This is the load-bearing keying contract
+//     (Runtime Probe #1) that the prior design got WRONG.
+//
+// TWO substrate chains exist — do NOT conflate (Probe #7):
+//   * STATE chain   — `prev_state_hash` → predecessor's `post_state_hash`. This
+//                     is what K9 walks; THIS store serves it (readByPostStateHash).
+//   * LINEAGE chain — `parent_state_id` → `writer_spawn_id` (`lineage.js`). A
+//                     separate concern (mostly moot post-no-nesting); out of scope.
+//
+// Durability posture (verify-plan F6): this is a content-addressed CACHE keyed by
+// `transaction_id`, NOT the canonical attestation WAL. It does not `fsync` per
+// record (it reuses `writeAtomicString`, which is tmp+rename atomic but not
+// fsync-durable per entry). Durability is the WAL's responsibility; a lost cache
+// entry degrades SAFELY — K9's chain-walk is fail-CLOSED, so a read miss becomes
+// a REJECT/quarantine (the safe direction), never a silent admit. That
+// fail-soft-reader / fail-closed-consumer composition is the load-bearing
+// property (Security S4) — preserve it.
+//
+// Security (all five reviewed in the plan §Security review):
+//   S1 CWE-22  — readById/readByPostStateHash derive a filename from a
+//                caller-supplied key. A strict /^[a-f0-9]{64}$/ hex-gate fires
+//                BEFORE any path.join; defense-in-depth checkWithinRoot anchored
+//                to the STATE ROOT (stateDir), not the derived dir. A non-hex key
+//                returns null with zero filesystem reach.
+//   S1b CWE-22 — runId is interpolated into the on-disk path, so a traversing
+//                runId ('../../tmp/x') would RELOCATE the store outside stateDir
+//                while the per-record checkWithinRoot(file, derivedDir) still
+//                passes (the file IS within the *escaped* dir). isSafeRunId
+//                rejects separator/`..`/null-byte runIds on EVERY path (append +
+//                all readers) BEFORE any fs reach; the scope check above is
+//                anchored to `base` so a relocated store is also caught there
+//                (code-reviewer MEDIUM, confirmed empirically). Both apply.
+//   S2 content — stored records are attacker-influenceable (writer_spawn_id
+//                carries a raw agentId). validateTransactionRecord on EVERY load;
+//                an invalid record is skipped, never returned to the walk.
+//   S3 proto   — no hash-keyed object is built (per-call linear scan); there is no
+//                prototype-pollution surface in PR-P1. A future P2 in-memory index
+//                must use Map / Object.create(null) (the buildK14Ctx precedent).
+//   S4 fail-soft != fail-open — readers fail soft (null/[]); the K9 consumer is
+//                fail-closed. See the durability note above.
+//   S5 integrity — appendRecord refuses a record whose transaction_id !=
+//                computeTransactionId(record); a record cannot be stored under a
+//                forged/mismatched id.
+
+'use strict';
+
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
+const { writeAtomicString } = require('./atomic-write');
+const {
+  computeTransactionId,
+  validateTransactionRecord,
+  isBootstrapSentinel,
+} = require('./transaction-record');
+const { checkWithinRoot } = require('./path-canonicalize');
+
+// The default state root, mirroring spawn-record.js:77. Callers (and every test)
+// pass an explicit `stateDir` to stay hermetic; this default is only the
+// production-shape fallback for a future live wiring.
+const DEFAULT_STATE_DIR = path.join(os.homedir(), '.claude', 'spawn-state');
+
+// Hygienic dir mode, mirroring spawn-record.js:89 (DIR_MODE 0o700) — records can
+// carry agent identifiers; not world-readable on shared hosts.
+const DIR_MODE = 0o700;
+
+// A transaction_id / post_state_hash is a 64-char lowercase-hex sha256. The
+// hex-gate (S1) is the SOLE filename-derivation guard: a key failing it never
+// reaches path.join.
+const HEX64 = /^[a-f0-9]{64}$/;
+
+/**
+ * Reject a runId that could escape `stateDir` (S1b CWE-22, code-reviewer MEDIUM).
+ * `recordStoreDir` interpolates runId straight into the on-disk path, so a runId
+ * like '../../tmp/injected' would relocate the store OUTSIDE stateDir — and the
+ * per-record `checkWithinRoot(file, dir)` would still pass (the file IS within
+ * the *escaped* derived dir). The scope anchor fix below (checkWithinRoot vs the
+ * `base` state root, not the derived dir) closes that on the write path; this
+ * guard is the complementary boundary check that also keeps the READERS from
+ * ever reaching readdirSync on a hostile runId. Defense-in-depth: BOTH apply.
+ *
+ * In production runId is always sha256(session_id).slice(0,16) (16 hex), so no
+ * real traversal is reachable from the live wiring — this hardens the API
+ * boundary for a future P2 caller regardless of how runId is sourced.
+ *
+ * @param {*} runId
+ * @returns {boolean} true iff runId is a safe, separator-free, non-traversing token
+ */
+function isSafeRunId(runId) {
+  if (typeof runId !== 'string' || runId.length === 0) return false;
+  if (runId.indexOf('\0') !== -1) return false;            // null byte (CWE-158)
+  if (runId.indexOf('/') !== -1 || runId.indexOf(path.sep) !== -1) return false; // no path separators
+  // `..` as a discrete segment (covers '..', 'a/..' caught above, and bare '..').
+  if (runId === '.' || runId === '..' || runId.split(/[\\/]+/).indexOf('..') !== -1) return false;
+  return true;
+}
+
+// Stored filenames are exactly `record-<64-hex>.json`. listByRun matches this so
+// an unrelated file dropped in the dir (or spawn-record's spawn-*.json, were the
+// dirs ever shared) is ignored.
+const RECORD_FILE_RE = /^record-[a-f0-9]{64}\.json$/;
+
+/**
+ * The on-disk directory for a run's records. A `records/` subdir keeps this store
+ * disjoint from spawn-record's `spawn-*.json` under the same run dir.
+ *
+ * @param {{runId: string, stateDir?: string}} opts
+ * @returns {string} absolute dir path (not guaranteed to exist yet)
+ */
+function recordStoreDir({ runId, stateDir } = {}) {
+  const base = stateDir || DEFAULT_STATE_DIR;
+  return path.join(base, String(runId), 'records');
+}
+
+/**
+ * The on-disk filename for a record id. Caller MUST have hex-validated the id
+ * (this is an internal helper; the public readers gate first).
+ */
+function recordFilePath(transactionId, opts) {
+  return path.join(recordStoreDir(opts), 'record-' + transactionId + '.json');
+}
+
+/**
+ * True iff this record sits at a genesis chain position — its `prev_state_hash`
+ * is the literal 'GENESIS' marker or a bootstrap sentinel. Mirrors
+ * `k9-promote-deltas.js:88-92` + `quarantine-promote.buildGenesisRecord`, which
+ * validate genesis records via `validateTransactionRecord(rec, {isGenesisPosition:true})`.
+ * Without this, a genesis record (prev_state_hash:'GENESIS') would fail the
+ * default 64-hex contract and appendRecord would wrongly reject it.
+ */
+function isGenesisPositionRecord(record) {
+  if (!record || typeof record !== 'object') return false;
+  const prev = record.prev_state_hash;
+  return prev === 'GENESIS' || isBootstrapSentinel(prev);
+}
+
+/**
+ * Append a transaction-record to the run's store (one file per record).
+ *
+ * Validation ORDER is LOAD-BEARING (verify-plan F3): (1) validateTransactionRecord
+ * runs FIRST — the LENIENT runtime validator (rejects `_test_chain_marker` via its
+ * dedicated :213 branch + missing-required; deliberately NOT the schema file's
+ * additionalProperties:false, preserving INV-K2-SchemaForwardCompat so an unknown
+ * forward-compat field is accepted). Only if `.valid`, (2) the integrity check
+ * `record.transaction_id === computeTransactionId(record)` (S5 — no storage under
+ * a forged id). Never throws; returns {ok:false, reason} on any reject.
+ *
+ * @param {object} record a transaction-record (must carry its transaction_id)
+ * @param {{runId: string, stateDir?: string}} opts
+ * @returns {{ok: boolean, file?: string, transaction_id?: string, reason?: string}}
+ */
+function appendRecord(record, opts = {}) {
+  if (!record || typeof record !== 'object') {
+    return { ok: false, reason: 'record-not-an-object' };
+  }
+  if (!opts || typeof opts.runId !== 'string' || opts.runId.length === 0) {
+    return { ok: false, reason: 'missing-run-id' };
+  }
+  // S1b (code-reviewer MEDIUM): a traversing runId must not relocate the store
+  // outside stateDir. Reject BEFORE any path derivation.
+  if (!isSafeRunId(opts.runId)) {
+    return { ok: false, reason: 'invalid-run-id' };
+  }
+
+  // (1) Validate FIRST (F3). Auto-detect genesis position so a literal 'GENESIS'
+  //     / bootstrap-sentinel prev_state_hash validates (mirrors the producers);
+  //     a non-genesis record still gets the strict 64-hex contract.
+  const validation = validateTransactionRecord(record, {
+    isGenesisPosition: isGenesisPositionRecord(record),
+  });
+  if (!validation.valid) {
+    return { ok: false, reason: 'invalid-record: ' + (validation.errors || []).join('; ') };
+  }
+
+  // (2) Integrity check (S5). The stored id must be the content hash of the body.
+  const id = record.transaction_id;
+  if (typeof id !== 'string' || !HEX64.test(id)) {
+    return { ok: false, reason: 'transaction-id-not-hex' };
+  }
+  const computed = computeTransactionId(record);
+  if (id !== computed) {
+    return { ok: false, reason: 'transaction-id-mismatch' };
+  }
+
+  // Defense-in-depth (S1): confirm the derived path stays within the STATE ROOT
+  // before writing. Anchoring to `base` (stateDir), NOT the derived `records/`
+  // dir, is load-bearing: checkWithinRoot(file, derivedDir) is tautological (the
+  // file is always within its own dir even when runId escaped). Anchored to the
+  // base, a relocated store is caught here too (code-reviewer MEDIUM).
+  const base = opts.stateDir || DEFAULT_STATE_DIR;
+  const dir = recordStoreDir(opts);
+  const file = recordFilePath(id, opts);
+  const scope = checkWithinRoot(file, base);
+  if (!scope.ok) {
+    return { ok: false, reason: 'record-path-out-of-scope: ' + scope.reason };
+  }
+
+  try {
+    // writeAtomicString auto-creates the parent dir (recursive) + is tmp+rename
+    // atomic, so a concurrent reader never observes a half-written record and two
+    // appends for distinct ids never clobber (one file per id). It does NOT set
+    // DIR_MODE on the created dir, so pre-create the dir hardened first (idempotent).
+    fs.mkdirSync(dir, { recursive: true, mode: DIR_MODE });
+    writeAtomicString(file, JSON.stringify(record, null, 2));
+  } catch (err) {
+    return { ok: false, reason: 'write-failed: ' + (err && err.message ? err.message : String(err)) };
+  }
+  return { ok: true, file, transaction_id: id };
+}
+
+/**
+ * Parse + validate a single record file. Returns the record, or null on a parse
+ * error / invalid record (fail-soft; S2 — an invalid record is never returned to
+ * the walk). Genesis-position records are validated with the genesis flag so a
+ * stored literal-'GENESIS' record loads.
+ */
+function loadRecordFile(file) {
+  let raw;
+  try {
+    raw = fs.readFileSync(file, 'utf8');
+  } catch {
+    return null; // ENOENT / read error → fail-soft
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null; // corrupt JSON → skip
+  }
+  const validation = validateTransactionRecord(parsed, {
+    isGenesisPosition: isGenesisPositionRecord(parsed),
+  });
+  if (!validation.valid) return null; // invalid record → skip
+  return parsed;
+}
+
+/**
+ * Read a record by its content-addressed primary key (transaction_id).
+ *
+ * S1 CWE-22: the key is hex-gated BEFORE any path.join — a non-hex key returns
+ * null with ZERO filesystem reach (no readdir, no readFile). Defense-in-depth
+ * checkWithinRoot on the derived path. The loaded record is validated; an
+ * invalid/corrupt file → null (fail-soft).
+ *
+ * @param {string} transactionId 64-hex content hash
+ * @param {{runId: string, stateDir?: string}} opts
+ * @returns {object|null} the record, or null (miss / non-hex / invalid)
+ */
+function readById(transactionId, opts = {}) {
+  if (typeof transactionId !== 'string' || !HEX64.test(transactionId)) {
+    return null; // S1 hex-gate — return BEFORE any path derivation / fs access
+  }
+  if (!opts || !isSafeRunId(opts.runId)) return null; // S1b — hostile runId never reaches fs
+  const base = opts.stateDir || DEFAULT_STATE_DIR;
+  const file = recordFilePath(transactionId, opts);
+  if (!checkWithinRoot(file, base).ok) return null; // defense-in-depth (anchored to base, not derived dir)
+  return loadRecordFile(file);
+}
+
+/**
+ * Read the record whose `post_state_hash === postStateHash` — THE K9
+ * resolveParent seam (Probe #1: the STATE chain is keyed by post_state_hash, NOT
+ * transaction_id).
+ *
+ * S1: the key is hex-gated first (a non-hex key → null, and — load-bearing for
+ * test #6 — a 64-hex key can never equal a `null`/absent post_state_hash, so a
+ * PENDING record never matches). The run dir is scanned per call (wrapped
+ * readdirSync; ENOENT → null), each candidate parsed + validated; the first
+ * record whose post_state_hash strictly equals the key is returned. A duplicate
+ * post_state_hash within one run (data corruption) yields an arbitrary match —
+ * K9's fail-closed walk is the correctness gate, not this reader. The per-call
+ * scan is bounded by the run; an in-memory index is a deferred P2 optimization
+ * (YAGNI). No hash-keyed object is built → no prototype-pollution surface (S3).
+ *
+ * @param {string} postStateHash 64-hex state hash
+ * @param {{runId: string, stateDir?: string}} opts
+ * @returns {object|null} the matching record, or null
+ */
+function readByPostStateHash(postStateHash, opts = {}) {
+  if (typeof postStateHash !== 'string' || !HEX64.test(postStateHash)) {
+    return null; // S1 hex-gate (also precludes any null/absent post_state_hash match)
+  }
+  if (!opts || !isSafeRunId(opts.runId)) return null; // S1b — hostile runId never reaches readdirSync
+  const dir = recordStoreDir(opts);
+  let names;
+  try {
+    names = fs.readdirSync(dir);
+  } catch {
+    return null; // absent run dir (ENOENT) / read error → fail-soft, no existsSync pre-check
+  }
+  for (const name of names) {
+    if (!RECORD_FILE_RE.test(name)) continue;
+    const record = loadRecordFile(path.join(dir, name));
+    // Value-strict: only a record carrying a post_state_hash EQUAL to the (already
+    // 64-hex) key matches; a null/absent post_state_hash never does.
+    if (record && record.post_state_hash === postStateHash) return record;
+  }
+  return null;
+}
+
+/**
+ * List every valid record in a run (the sibling set; run/session grouping).
+ *
+ * Wrapped readdirSync (ENOENT → []); each `record-*.json` parsed + validated;
+ * invalid/corrupt files are skipped (S2 fail-soft). No existsSync pre-check
+ * (TOCTOU — F9).
+ *
+ * @param {{runId: string, stateDir?: string}} opts
+ * @returns {object[]} the valid records (possibly empty)
+ */
+function listByRun(opts = {}) {
+  if (!opts || !isSafeRunId(opts.runId)) return []; // S1b — hostile runId never reaches readdirSync
+  const dir = recordStoreDir(opts);
+  let names;
+  try {
+    names = fs.readdirSync(dir);
+  } catch {
+    return []; // absent run dir / read error → fail-soft
+  }
+  const out = [];
+  for (const name of names) {
+    if (!RECORD_FILE_RE.test(name)) continue;
+    const record = loadRecordFile(path.join(dir, name));
+    if (record) out.push(record);
+  }
+  return out;
+}
+
+module.exports = {
+  appendRecord,
+  readById,
+  readByPostStateHash,
+  listByRun,
+  recordStoreDir,
+};
