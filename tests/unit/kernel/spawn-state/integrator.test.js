@@ -71,7 +71,11 @@ const integratorModule = require('../../../../packages/kernel/spawn-state/integr
 const { integrateCandidates, deriveMergeBase } = integratorModule;
 
 // The REAL ref-name sanitizer the producer keys candidate refs by.
-const { sanitizeAgentId } = require('../../../../packages/kernel/_lib/quarantine-promote');
+const { sanitizeAgentId, buildSpawnRecord } = require('../../../../packages/kernel/_lib/quarantine-promote');
+// PR-P3c-c minting collaborators (the REAL ones — the minting tests M2-M9 assert against them).
+const { computePostStateHash } = require('../../../../packages/kernel/_lib/transaction-record');
+const { appendRecord, readByPostStateHash } = require('../../../../packages/kernel/_lib/record-store');
+const { checkEvidenceLinkPreCommit } = require('../../../../packages/kernel/_lib/k9-promote-deltas');
 
 let passed = 0;
 let failed = 0;
@@ -836,6 +840,230 @@ test('[real git] T22 the terminal CAS is enforced by REAL git against a STALE ol
   } finally {
     fs.rmSync(baseDir, { recursive: true, force: true });
   }
+});
+
+// ════════════════════ PR-P3c-c — minting (M2-M9) ════════════════════
+// The integrator MINTS a non-genesis chained record per clean merge + walks it to
+// genesis BEFORE advancing the tip. Minting is ON iff runId+stateDir are supplied.
+
+// Seed a candidate's GENESIS record (the producer's shape: post = computePostStateHash
+// (delta_sha^{tree})) into the store. Returns the post (the chain-edge value).
+function seedGenesis(g, stateDir, runId, cand) {
+  const tree = g(['rev-parse', `${cand.sha}^{tree}`]);
+  const post = computePostStateHash(tree);
+  const rec = buildSpawnRecord({ agentId: cand.safeId, personaId: '13-node-backend.tester', schemaVersion: 'v3', postStateHash: post, headAnchor: null });
+  const a = appendRecord(rec, { runId, stateDir });
+  if (!a.ok) throw new Error(`seedGenesis append failed: ${a.reason}`);
+  return post;
+}
+
+// The integration (APPEND) records minted into the store this run.
+function integrationRecords(stateDir, runId) {
+  const dir = path.join(stateDir, runId, 'records');
+  let names = [];
+  try { names = fs.readdirSync(dir); } catch { return []; }
+  const recs = [];
+  for (const n of names) {
+    if (!/^record-[a-f0-9]{64}\.json$/.test(n)) continue;
+    const r = JSON.parse(fs.readFileSync(path.join(dir, n), 'utf8'));
+    if (r.operation_class === 'APPEND') recs.push(r);
+  }
+  return recs;
+}
+
+function mint(repo, orderedIds, stateDir, runId, extra) {
+  return integrateCandidates({
+    orderedIds, parentRoot: repo, lockPath: path.join(repo, '.git', 'loom-integration.lock'),
+    maxWaitMs: 1000, runId, stateDir, ...(extra || {}),
+  });
+}
+
+// ── M2 — the headline: minted records walk to genesis (depthWalked 1 and 2) ──
+
+test('[real git+store] M2 minting: 2 clean candidates -> the integrator mints chained records that walk to genesis (depthWalked 1 and 2 — NON-vacuous against integrator output)', () => {
+  if (!gitAvailable()) { process.stdout.write('    (skipped: git unavailable)\n'); return; }
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'p3cc-m2-'));
+  const repo = path.join(baseDir, 'parent');
+  const stateDir = path.join(baseDir, 'state');
+  const runId = 'run-m2';
+  try {
+    const { g, base: A } = initRepo(repo);
+    const seed = makeCandidate(repo, 'agent-seed', A, { 'seed.txt': 'seed\n' });
+    const c1 = makeCandidate(repo, 'agent-c1', A, { 'c1.txt': 'c1\n' });
+    const c2 = makeCandidate(repo, 'agent-c2', A, { 'c2.txt': 'c2\n' });
+    seedGenesis(g, stateDir, runId, seed); seedGenesis(g, stateDir, runId, c1); seedGenesis(g, stateDir, runId, c2);
+
+    const res = mint(repo, [seed.rawId, c1.rawId, c2.rawId], stateDir, runId);
+    assert.ok(res.integrated, `must integrate; got ${JSON.stringify(res)}`);
+    assert.deepStrictEqual(res.integratedIds, [seed.rawId, c1.rawId, c2.rawId], 'all clean candidates integrated');
+    assert.deepStrictEqual(res.provenanceRejectedIds, [], 'none provenance-rejected (all genesis seeded)');
+
+    const recs = integrationRecords(stateDir, runId);
+    assert.strictEqual(recs.length, 2, 'two integration (APPEND) records minted (one per non-seed candidate)');
+    const resolveParent = (h) => readByPostStateHash(h, { runId, stateDir });
+    const depths = recs.map((r) => {
+      const w = checkEvidenceLinkPreCommit({ record: r, isGenesisPosition: false, resolveParent });
+      assert.ok(w.ok, `each integration record must walk to genesis; got ${JSON.stringify(w)}`);
+      return w.depthWalked;
+    }).sort();
+    assert.deepStrictEqual(depths, [1, 2], 'the chain walks depthWalked 1 (record_1 -> seed genesis) and 2 (record_2 -> record_1 -> seed)');
+  } finally { fs.rmSync(baseDir, { recursive: true, force: true }); }
+});
+
+// ── M3 — per-candidate provenance required ───────────────────────────────────
+
+test('[real git+store] M3 per-candidate provenance: a clean candidate whose OWN genesis is absent -> provenanceRejectedIds (NOT integrated, NOT a conflict quarantine)', () => {
+  if (!gitAvailable()) { process.stdout.write('    (skipped: git unavailable)\n'); return; }
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'p3cc-m3-'));
+  const repo = path.join(baseDir, 'parent');
+  const stateDir = path.join(baseDir, 'state');
+  const runId = 'run-m3';
+  try {
+    const { g, base: A } = initRepo(repo);
+    const seed = makeCandidate(repo, 'agent-seed', A, { 'seed.txt': 'seed\n' });
+    const c1 = makeCandidate(repo, 'agent-c1', A, { 'c1.txt': 'c1\n' });
+    const c2 = makeCandidate(repo, 'agent-c2', A, { 'c2.txt': 'c2\n' });
+    seedGenesis(g, stateDir, runId, seed); seedGenesis(g, stateDir, runId, c1); // c2 genesis ABSENT
+
+    const res = mint(repo, [seed.rawId, c1.rawId, c2.rawId], stateDir, runId);
+    assert.ok(res.integrated, 'the run still integrates (seed + c1)');
+    assert.deepStrictEqual(res.integratedIds, [seed.rawId, c1.rawId], 'the provenanced candidates integrate');
+    assert.deepStrictEqual(res.provenanceRejectedIds, [c2.rawId], 'the unprovenanced candidate is provenance-rejected');
+    assert.strictEqual(res.quarantinedIds.indexOf(c2.rawId), -1, 'a provenance-reject is NOT a conflict quarantine (distinct disposition)');
+  } finally { fs.rmSync(baseDir, { recursive: true, force: true }); }
+});
+
+// ── M4 — the chain edge is the STORED post ───────────────────────────────────
+
+test('[real git+store] M4 the chain edge is the STORED post: record_2.prev_state_hash === record_1.post_state_hash (NOT a recompute)', () => {
+  if (!gitAvailable()) { process.stdout.write('    (skipped: git unavailable)\n'); return; }
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'p3cc-m4-'));
+  const repo = path.join(baseDir, 'parent');
+  const stateDir = path.join(baseDir, 'state');
+  const runId = 'run-m4';
+  try {
+    const { g, base: A } = initRepo(repo);
+    const seed = makeCandidate(repo, 'agent-seed', A, { 'seed.txt': 'seed\n' });
+    const c1 = makeCandidate(repo, 'agent-c1', A, { 'c1.txt': 'c1\n' });
+    const c2 = makeCandidate(repo, 'agent-c2', A, { 'c2.txt': 'c2\n' });
+    const seedPost = seedGenesis(g, stateDir, runId, seed); seedGenesis(g, stateDir, runId, c1); seedGenesis(g, stateDir, runId, c2);
+
+    mint(repo, [seed.rawId, c1.rawId, c2.rawId], stateDir, runId);
+    const recs = integrationRecords(stateDir, runId);
+    const r1 = recs.find((r) => r.prev_state_hash === seedPost);
+    assert.ok(r1, 'record_1 chains from the seed genesis post');
+    const r2 = recs.find((r) => r.prev_state_hash === r1.post_state_hash);
+    assert.ok(r2, 'record_2 chains from record_1 STORED post (the M1 seam)');
+    assert.strictEqual(r2.prev_state_hash, r1.post_state_hash, 'the chain edge is the stored post, not a recompute');
+  } finally { fs.rmSync(baseDir, { recursive: true, force: true }); }
+});
+
+// ── M5 — minting OFF when runId/stateDir absent (P3c-b regression) ───────────
+
+test('[real git+store] M5 minting OFF: integrate with a stateDir but NO runId -> no records minted (identical to P3c-b)', () => {
+  if (!gitAvailable()) { process.stdout.write('    (skipped: git unavailable)\n'); return; }
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'p3cc-m5-'));
+  const repo = path.join(baseDir, 'parent');
+  const stateDir = path.join(baseDir, 'state');
+  try {
+    const { base: A } = initRepo(repo);
+    const seed = makeCandidate(repo, 'agent-seed', A, { 'seed.txt': 'seed\n' });
+    const c1 = makeCandidate(repo, 'agent-c1', A, { 'c1.txt': 'c1\n' });
+    // stateDir supplied but runId omitted -> minting = !!(runId && stateDir) = false.
+    const res = integrateCandidates({ orderedIds: [seed.rawId, c1.rawId], parentRoot: repo, lockPath: path.join(repo, '.git', 'x.lock'), maxWaitMs: 1000, stateDir });
+    assert.ok(res.integrated, 'integrates as a pure stacker');
+    assert.deepStrictEqual(res.integratedIds, [seed.rawId, c1.rawId]);
+    assert.deepStrictEqual(res.provenanceRejectedIds, [], 'provenanceRejectedIds defaults to [] (report-shape regression)');
+    assert.strictEqual(fs.existsSync(path.join(stateDir, 'undefined')), false, 'no records dir created (minting OFF)');
+  } finally { fs.rmSync(baseDir, { recursive: true, force: true }); }
+});
+
+// ── M6 — a mint appendRecord failure -> provenance-rejected ──────────────────
+
+test('[real git+store] M6 a mint appendRecord failure (injected) -> provenanceRejectedIds, the candidate not integrated', () => {
+  if (!gitAvailable()) { process.stdout.write('    (skipped: git unavailable)\n'); return; }
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'p3cc-m6-'));
+  const repo = path.join(baseDir, 'parent');
+  const stateDir = path.join(baseDir, 'state');
+  const runId = 'run-m6';
+  try {
+    const { g, base: A } = initRepo(repo);
+    const seed = makeCandidate(repo, 'agent-seed', A, { 'seed.txt': 'seed\n' });
+    const c1 = makeCandidate(repo, 'agent-c1', A, { 'c1.txt': 'c1\n' });
+    seedGenesis(g, stateDir, runId, seed); seedGenesis(g, stateDir, runId, c1);
+    const res = mint(repo, [seed.rawId, c1.rawId], stateDir, runId, { appendRecordFn: () => ({ ok: false, reason: 'forced-test-failure' }) });
+    assert.ok(res.integrated, 'the seed (no mint) still integrates');
+    assert.deepStrictEqual(res.integratedIds, [seed.rawId], 'the append-failing candidate is not integrated');
+    assert.deepStrictEqual(res.provenanceRejectedIds, [c1.rawId], 'an append failure -> provenance-rejected');
+  } finally { fs.rmSync(baseDir, { recursive: true, force: true }); }
+});
+
+// ── M7 — a mint throw is fail-soft -> provenance-rejected, never escapes ─────
+
+test('[real git+store] M7 a mint throw (chainRecordFn throws) -> provenanceRejectedIds, never escapes the outer boundary', () => {
+  if (!gitAvailable()) { process.stdout.write('    (skipped: git unavailable)\n'); return; }
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'p3cc-m7-'));
+  const repo = path.join(baseDir, 'parent');
+  const stateDir = path.join(baseDir, 'state');
+  const runId = 'run-m7';
+  try {
+    const { g, base: A } = initRepo(repo);
+    const seed = makeCandidate(repo, 'agent-seed', A, { 'seed.txt': 'seed\n' });
+    const c1 = makeCandidate(repo, 'agent-c1', A, { 'c1.txt': 'c1\n' });
+    seedGenesis(g, stateDir, runId, seed); seedGenesis(g, stateDir, runId, c1);
+    let res;
+    assert.doesNotThrow(() => {
+      res = mint(repo, [seed.rawId, c1.rawId], stateDir, runId, { chainRecordFn: () => { throw new Error('boom from the minter'); } });
+    }, 'a mint throw must be swallowed (fail-soft)');
+    assert.ok(res.integrated, 'the seed still integrates');
+    assert.deepStrictEqual(res.provenanceRejectedIds, [c1.rawId], 'a mint throw -> provenance-rejected');
+  } finally { fs.rmSync(baseDir, { recursive: true, force: true }); }
+});
+
+// ── M8 — N>=5 clean candidates chain to depth ────────────────────────────────
+
+test('[real git+store] M8 N=6 clean candidates -> all chained; the deepest integration record walks depthWalked:5', () => {
+  if (!gitAvailable()) { process.stdout.write('    (skipped: git unavailable)\n'); return; }
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'p3cc-m8-'));
+  const repo = path.join(baseDir, 'parent');
+  const stateDir = path.join(baseDir, 'state');
+  const runId = 'run-m8';
+  try {
+    const { g, base: A } = initRepo(repo);
+    const cands = [];
+    for (let i = 0; i < 6; i++) cands.push(makeCandidate(repo, `agent-${i}`, A, { [`f${i}.txt`]: `${i}\n` }));
+    cands.forEach((c) => seedGenesis(g, stateDir, runId, c));
+
+    const res = mint(repo, cands.map((c) => c.rawId), stateDir, runId);
+    assert.ok(res.integrated, `must integrate; got ${JSON.stringify(res)}`);
+    assert.strictEqual(res.integratedIds.length, 6, 'all 6 candidates integrated');
+    const recs = integrationRecords(stateDir, runId);
+    assert.strictEqual(recs.length, 5, 'five integration records (one per non-seed candidate)');
+    const resolveParent = (h) => readByPostStateHash(h, { runId, stateDir });
+    const maxDepth = Math.max(...recs.map((r) => checkEvidenceLinkPreCommit({ record: r, isGenesisPosition: false, resolveParent }).depthWalked));
+    assert.strictEqual(maxDepth, 5, 'the deepest chain walks depthWalked:5 (terminates at the genesis seed)');
+  } finally { fs.rmSync(baseDir, { recursive: true, force: true }); }
+});
+
+// ── M9 — the SEED genesis absent -> seed-unprovenanced (the re-board HIGH) ───
+
+test('[real git+store] M9 the SEED genesis ABSENT -> reason:seed-unprovenanced (NO tip; the seed is surfaced upfront, NOT misattributed to candidate-1)', () => {
+  if (!gitAvailable()) { process.stdout.write('    (skipped: git unavailable)\n'); return; }
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'p3cc-m9-'));
+  const repo = path.join(baseDir, 'parent');
+  const stateDir = path.join(baseDir, 'state');
+  const runId = 'run-m9';
+  try {
+    const { g, base: A } = initRepo(repo);
+    const seed = makeCandidate(repo, 'agent-seed', A, { 'seed.txt': 'seed\n' });
+    const c1 = makeCandidate(repo, 'agent-c1', A, { 'c1.txt': 'c1\n' });
+    seedGenesis(g, stateDir, runId, c1); // the SEED's genesis is deliberately NOT seeded
+
+    const res = mint(repo, [seed.rawId, c1.rawId], stateDir, runId);
+    assert.strictEqual(res.integrated, false, 'a missing seed genesis aborts the minting run');
+    assert.strictEqual(res.reason, 'seed-unprovenanced', 'the SEED is surfaced upfront, not candidate-1');
+    assert.strictEqual(realRunGit(repo)(['rev-parse', '--verify', '--quiet', 'refs/heads/loom/integration']).ok, false, 'no tip advanced');
+  } finally { fs.rmSync(baseDir, { recursive: true, force: true }); }
 });
 
 process.stdout.write(`\nintegrator.test: ${passed} passed, ${failed} failed\n`);

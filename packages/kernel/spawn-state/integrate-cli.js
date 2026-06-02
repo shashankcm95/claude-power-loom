@@ -19,9 +19,14 @@
 //
 // Usage:
 //   node integrate-cli.js <id1> <id2> ...   stack the candidates in declared order
-//     --ref <ref>     integration branch ref (default refs/heads/loom/integration)
-//     --root <path>   repo root (default: `git rev-parse --show-toplevel` from cwd)
+//     --ref <ref>        integration branch ref (default refs/heads/loom/integration)
+//     --root <path>      repo root (default: `git rev-parse --show-toplevel` from cwd)
+//     --run-id <id>      ON: mint provenance records under this run (the PRODUCER's runId —
+//                        a standalone CLI cannot derive it from a hook payload). Absent ->
+//                        a pure git-merge stacker, no minting (P3c-c).
+//     --state-dir <path> the spawn-state root (default LOOM_SPAWN_STATE_DIR || ~/.claude/spawn-state)
 
+const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { integrateCandidates } = require('./integrator.js');
@@ -35,14 +40,20 @@ const { integrateCandidates } = require('./integrator.js');
  */
 function parseArgs(argv) {
   const ids = [];
-  let ref;
-  let root;
+  const FLAG_KEYS = { '--ref': 'ref', '--root': 'root', '--run-id': 'runId', '--state-dir': 'stateDir' };
+  const opt = {};
   for (let i = 0; i < argv.length; i++) {
-    if (argv[i] === '--ref') { i += 1; ref = argv[i]; }
-    else if (argv[i] === '--root') { i += 1; root = argv[i]; }
-    else ids.push(argv[i]);
+    const key = FLAG_KEYS[argv[i]];
+    if (key) {
+      const val = argv[i + 1];
+      // Reject a missing value or the next flag eaten as a value (a mistyped --run-id
+      // must NOT silently mint against the wrong store — review-on-diff CR LOW).
+      if (val == null || val.startsWith('--')) return { error: `${argv[i]} requires a value` };
+      opt[key] = val;
+      i += 1;
+    } else ids.push(argv[i]);
   }
-  return { ids, ref, root };
+  return { ids, ref: opt.ref, root: opt.root, runId: opt.runId, stateDir: opt.stateDir };
 }
 
 /**
@@ -61,19 +72,38 @@ function resolveRoot(root) {
   }
 }
 
+/**
+ * The spawn-state root the producer wrote candidate genesis records under. An explicit
+ * --state-dir wins; else LOOM_SPAWN_STATE_DIR; else the producer's default.
+ *
+ * @param {string|undefined} stateDir the explicit --state-dir, if any.
+ * @returns {string} the spawn-state root.
+ */
+function resolveStateDir(stateDir) {
+  return stateDir || process.env.LOOM_SPAWN_STATE_DIR || path.join(os.homedir(), '.claude', 'spawn-state');
+}
+
 function main() {
-  const { ids, ref, root } = parseArgs(process.argv.slice(2));
+  const parsed = parseArgs(process.argv.slice(2));
+  if (parsed.error) {
+    process.stderr.write(`error: ${parsed.error}\n`);
+    process.exit(2);
+  }
+  const { ids, ref, root, runId, stateDir } = parsed;
   if (ids.length === 0) {
-    process.stderr.write('usage: integrate-cli <id1> <id2> ... [--ref <ref>] [--root <path>]\n');
+    process.stderr.write('usage: integrate-cli <id1> <id2> ... [--ref <ref>] [--root <path>] [--run-id <id>] [--state-dir <path>]\n');
     process.exit(2);
   }
   const parentRoot = resolveRoot(root);
   const lockPath = path.join(parentRoot, '.git', 'loom-integration.lock');
-  const result = integrateCandidates({ orderedIds: ids, parentRoot, lockPath, integrationRef: ref });
+  // Minting is ON iff --run-id is passed (the producer's runId). Absent -> a pure stacker.
+  const opts = { orderedIds: ids, parentRoot, lockPath, integrationRef: ref };
+  if (runId) { opts.runId = runId; opts.stateDir = resolveStateDir(stateDir); }
+  const result = integrateCandidates(opts);
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   process.exit(result.integrated ? 0 : 1);
 }
 
 if (require.main === module) main();
 
-module.exports = { parseArgs, resolveRoot };
+module.exports = { parseArgs, resolveRoot, resolveStateDir };

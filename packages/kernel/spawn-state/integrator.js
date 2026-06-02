@@ -34,10 +34,16 @@ const { runGitDefault } = require('../_lib/invoke-git.js');
 const { acquireLock, releaseLock } = require('../_lib/lock.js');
 const { mergeTreeWriteTree, commitMergedTree, casAdvanceRef, GIT_SHA_RE } = require('../_lib/integrate-merge.js');
 const { sanitizeAgentId } = require('../_lib/quarantine-promote.js');
+// PR-P3c-c — the OPTIONAL minting arm's collaborators (used only when minting is ON).
+const { computePostStateHash } = require('../_lib/transaction-record.js');
+const { buildChainedRecord } = require('../_lib/integration-record.js');
+const { appendRecord, readByPostStateHash } = require('../_lib/record-store.js');
+const { checkEvidenceLinkPreCommit } = require('../_lib/k9-promote-deltas.js');
 
 const DEFAULT_INTEGRATION_REF = 'refs/heads/loom/integration';
 const CANDIDATE_PREFIX = 'refs/loom/candidates/';
 const QUARANTINE_PREFIX = 'refs/heads/loom-promote/';
+const DEFAULT_SCHEMA_VERSION = 'v3'; // for minted integration records (overridable via opts.schemaVersion)
 // Provisional default (verify-plan Sub-Decision 2): sized to a small N-candidate
 // fold's O(N) git ops with generous headroom; overridable; pending a measured
 // N-sibling concurrency test. Explicit here, NOT inherited from lock.js's 3000ms.
@@ -59,6 +65,7 @@ function report(fields) {
     quarantinedIds: [], // DURABLE — the loom-promote/* refs were written (survive an abort)
     skippedIds: [],
     quarantineOverwrites: [], // quarantined ids whose loom-promote/* branch pre-existed with a different sha
+    provenanceRejectedIds: [], // clean merges whose provenance did NOT link to genesis (minting; NOT integrated, NOT a conflict)
     casOutcome: null,
     reRunnable: false,
     reason: null,
@@ -178,19 +185,76 @@ function stackOneCandidate(tip, cand, runGit) {
 }
 
 /**
- * Commit a clean merge: commit-tree with ORDERED parents [integrationTip,
- * candidateDelta]. commitMergedTree THROWS on bad input (defensive try/catch) and
- * RETURNS {ok:false} on a git-exec failure — both fold to {ok:false} here.
+ * MINTING ARM (P3c-c) — bootstrap the chain head from the SEED, upfront. record_1's
+ * walk resolves to the seed's genesis record, so the seed's provenance is REQUIRED
+ * (a whole-run condition, NOT a per-candidate skip — re-board HIGH). Fail-soft.
  *
- * @returns {{ok:true, tip:string}|{ok:false}}
+ * @returns {{ok:true, post:string}|{ok:false, reason:string}}
  */
-function integrateOneClean(tip, cand, tree, runGit) {
+function bootstrapSeedChain(seedDelta, ctx) {
   try {
-    const c = commitMergedTree({ tree, parents: [tip, cand.delta_sha], runGit });
-    return c.ok ? { ok: true, tip: c.commit } : { ok: false };
+    const res = ctx.runGit(['rev-parse', `${seedDelta}^{tree}`]);
+    const tree = res && res.ok ? String(res.stdout).trim() : '';
+    if (!GIT_SHA_RE.test(tree)) return { ok: false, reason: 'seed-rev-parse-failed' };
+    const seedPost = computePostStateHash(tree);
+    // PRESENCE GATE only: record_1's walk resolves the seed's genesis here, so it MUST
+    // exist. (The seed genesis txid is NOT record_1's evidence — that is the candidate's
+    // OWN genesis txid, read separately per-candidate in mintIntegrationRecord.)
+    if (!ctx.resolveParentFn(seedPost)) return { ok: false, reason: 'seed-unprovenanced' };
+    return { ok: true, post: seedPost };
   } catch {
-    return { ok: false };
+    return { ok: false, reason: 'seed-rev-parse-failed' };
   }
+}
+
+/**
+ * MINTING ARM (P3c-c) — mint a non-genesis chained record for one clean merge, walk it
+ * to genesis, append it. NEVER throws → {ok:false} on ANY failure (read-miss / walk-fail
+ * / append-fail / throw), which the fold routes to provenance-reject. The per-candidate
+ * provenance GATE is the read: `resolveParentFn(candPost)` must resolve the candidate's
+ * OWN genesis record; its txid is recorded in evidence_refs (an A10-satisfying,
+ * R10-unverified back-reference — NOT walked). `prev = prevPost` is the STORED chain head.
+ *
+ * @returns {{ok:true, post:string}|{ok:false}}
+ */
+function mintIntegrationRecord(prevPost, cand, mergedTree, ctx) {
+  try {
+    const res = ctx.runGit(['rev-parse', `${cand.delta_sha}^{tree}`]);
+    const candTree = res && res.ok ? String(res.stdout).trim() : '';
+    if (!GIT_SHA_RE.test(candTree)) return { ok: false };
+    const candGenesis = ctx.resolveParentFn(computePostStateHash(candTree));
+    if (!candGenesis) return { ok: false }; // no per-candidate provenance -> reject
+    const post = computePostStateHash(mergedTree); // M1 verbatim
+    const record = ctx.chainRecordFn({ prevPost, post, evidenceTxid: candGenesis.transaction_id, safeId: cand.safeId, schemaVersion: ctx.schemaVersion });
+    const walk = checkEvidenceLinkPreCommit({ record, isGenesisPosition: false, resolveParent: ctx.resolveParentFn });
+    if (!walk.ok) return { ok: false }; // fail-CLOSED — never advance an unprovenanced merge
+    if (!ctx.appendRecordFn(record).ok) return { ok: false };
+    return { ok: true, post };
+  } catch {
+    return { ok: false }; // computePostStateHash / chainRecordFn validate throw -> provenance-reject
+  }
+}
+
+/**
+ * Commit a clean merge (COMMIT-FIRST: build the object, then — when minting — mint+walk+
+ * append; advance ONLY if both succeed). A `commit` failure aborts the run; a
+ * `provenance` failure (walk/append/throw) is a per-candidate skip. commitMergedTree
+ * THROWS on bad input (local try/catch) + RETURNS {ok:false} on a git-exec failure.
+ *
+ * @returns {{ok:true, tip:string, chainHeadPost:(string|null)}|{ok:false, kind:'provenance'|'commit'}}
+ */
+function integrateOneClean(tip, chainHeadPost, cand, tree, runGit, ctx) {
+  let commit;
+  try {
+    commit = commitMergedTree({ tree, parents: [tip, cand.delta_sha], runGit });
+  } catch {
+    return { ok: false, kind: 'commit' };
+  }
+  if (!commit.ok) return { ok: false, kind: 'commit' };
+  if (!ctx.minting) return { ok: true, tip: commit.commit, chainHeadPost: null };
+  const m = mintIntegrationRecord(chainHeadPost, cand, tree, ctx);
+  if (!m.ok) return { ok: false, kind: 'provenance' };
+  return { ok: true, tip: commit.commit, chainHeadPost: m.post };
 }
 
 /**
@@ -216,36 +280,45 @@ function quarantineCandidate(cand, runGit) {
 /**
  * Fold the resolved candidates onto one out-of-tree tip, IN DECLARED ORDER, writing
  * NO ref (the terminal CAS is the composer's job). SEED = resolved[0].delta_sha
- * (candidate-0 adopted WHOLE — never merged, never quarantined). Threads an
- * IMMUTABLE accumulator (a new array per step). A clean step advances the tip; a
- * conflict quarantines and continues; an ERROR aborts the whole run fail-closed.
+ * (candidate-0 adopted WHOLE — never merged/quarantined). When MINTING, the seed's
+ * chain is bootstrapped upfront (its genesis is required) + each clean merge mints a
+ * chained record (advance only on mint success). Threads an IMMUTABLE accumulator. A
+ * clean step advances; a conflict quarantines + continues; a provenance-fail skips +
+ * continues; a commit/merge ERROR aborts the whole run fail-closed.
  *
- * @returns {{finalTip:string, integratedIds:string[], quarantinedIds:string[], aborted:boolean}}
+ * @returns {{finalTip, integratedIds, quarantinedIds, quarantineOverwrites, provenanceRejectedIds, aborted, reason?}}
  */
-function foldCandidatesOntoTip(resolved, runGit) {
+function foldCandidatesOntoTip(resolved, runGit, ctx) {
+  let chainHeadPost = null;
+  if (ctx.minting) {
+    const boot = bootstrapSeedChain(resolved[0].delta_sha, ctx);
+    if (!boot.ok) return { finalTip: resolved[0].delta_sha, integratedIds: [], quarantinedIds: [], quarantineOverwrites: [], provenanceRejectedIds: [], aborted: true, reason: boot.reason };
+    chainHeadPost = boot.post;
+  }
   let tip = resolved[0].delta_sha;
   let integratedIds = [resolved[0].rawId];
   let quarantinedIds = [];
   let quarantineOverwrites = [];
+  let provenanceRejectedIds = [];
   for (let i = 1; i < resolved.length; i++) {
     const cand = resolved[i];
-    const acc = { finalTip: tip, integratedIds, quarantinedIds, quarantineOverwrites };
+    const acc = { finalTip: tip, integratedIds, quarantinedIds, quarantineOverwrites, provenanceRejectedIds };
     const s = stackOneCandidate(tip, cand, runGit);
     if (s.outcome === 'clean') {
-      const c = integrateOneClean(tip, cand, s.tree, runGit);
-      if (!c.ok) return { ...acc, aborted: true };
-      tip = c.tip;
-      integratedIds = [...integratedIds, cand.rawId];
+      const c = integrateOneClean(tip, chainHeadPost, cand, s.tree, runGit, ctx);
+      if (c.ok) { tip = c.tip; chainHeadPost = c.chainHeadPost; integratedIds = [...integratedIds, cand.rawId]; }
+      else if (c.kind === 'provenance') { provenanceRejectedIds = [...provenanceRejectedIds, cand.rawId]; }
+      else return { ...acc, aborted: true, reason: 'merge-error' }; // kind:'commit' — shared-substrate health
     } else if (s.outcome === 'conflict') {
       const q = quarantineCandidate(cand, runGit);
-      if (!q.ok) return { ...acc, aborted: true };
+      if (!q.ok) return { ...acc, aborted: true, reason: 'merge-error' };
       quarantinedIds = [...quarantinedIds, cand.rawId];
       if (q.overwrote) quarantineOverwrites = [...quarantineOverwrites, cand.rawId];
     } else {
-      return { ...acc, aborted: true };
+      return { ...acc, aborted: true, reason: 'merge-error' };
     }
   }
-  return { finalTip: tip, integratedIds, quarantinedIds, quarantineOverwrites, aborted: false };
+  return { finalTip: tip, integratedIds, quarantinedIds, quarantineOverwrites, provenanceRejectedIds, aborted: false };
 }
 
 /**
@@ -287,18 +360,19 @@ function commitNewTip(finalTip, oldTip, exists, integrationRef, runGit) {
  *
  * @returns {Object} the run-report.
  */
-function runIntegration(ids, integrationRef, runGit) {
+function runIntegration(ids, integrationRef, runGit, ctx) {
   const { resolved, skipped } = resolveOrderedCandidates(ids, runGit);
   if (resolved.length === 0) return report({ skippedIds: skipped, reason: 'no-candidates' });
   const observed = observeIntegrationTip(integrationRef, runGit);
-  const fold = foldCandidatesOntoTip(resolved, runGit);
+  const fold = foldCandidatesOntoTip(resolved, runGit, ctx);
   const common = {
     integratedIds: fold.integratedIds,
     quarantinedIds: fold.quarantinedIds,
     skippedIds: skipped,
     quarantineOverwrites: fold.quarantineOverwrites,
+    provenanceRejectedIds: fold.provenanceRejectedIds,
   };
-  if (fold.aborted) return report({ ...common, reason: 'merge-error' });
+  if (fold.aborted) return report({ ...common, reason: fold.reason || 'merge-error' }); // seed-unprovenanced / seed-rev-parse-failed / merge-error
   const cas = commitNewTip(fold.finalTip, observed.oldTip, observed.exists, integrationRef, runGit);
   if (!cas.ok) return report({ ...common, casOutcome: cas.casOutcome, reRunnable: cas.reRunnable, reason: 'cas-lost' });
   return report({ ...common, integrated: true, tip: fold.finalTip, casOutcome: cas.casOutcome });
@@ -318,6 +392,12 @@ function runIntegration(ids, integrationRef, runGit) {
  * @param {function} [opts.runGitFn] git seam override (default runGitDefault-bound).
  * @param {function} [opts.acquireLockFn] lock-acquire override (default acquireLock).
  * @param {function} [opts.releaseLockFn] lock-release override (default releaseLock).
+ * @param {string} [opts.runId] enables MINTING (with stateDir): the provenance run id.
+ * @param {string} [opts.stateDir] the record-store root (with runId enables minting).
+ * @param {string} [opts.schemaVersion] minted-record schema_version (default 'v3').
+ * @param {function} [opts.chainRecordFn] non-genesis builder override (default buildChainedRecord).
+ * @param {function} [opts.resolveParentFn] chain-walk seam override (default readByPostStateHash).
+ * @param {function} [opts.appendRecordFn] record-append override (default appendRecord).
  * @returns {Object} the run-report.
  */
 function integrateCandidates(opts) {
@@ -331,6 +411,16 @@ function integrateCandidates(opts) {
   const runGit = typeof o.runGitFn === 'function' ? o.runGitFn : (args) => runGitDefault(o.parentRoot, args);
   const acquire = typeof o.acquireLockFn === 'function' ? o.acquireLockFn : acquireLock;
   const release = typeof o.releaseLockFn === 'function' ? o.releaseLockFn : releaseLock;
+  // The minting arm (P3c-c): ON iff runId+stateDir are supplied (the CLI binds them from
+  // --run-id). Absent -> ctx.minting=false -> the integrator is a pure stacker (P3c-b).
+  const ctx = {
+    minting: !!(o.runId && o.stateDir),
+    runGit,
+    schemaVersion: typeof o.schemaVersion === 'string' && o.schemaVersion ? o.schemaVersion : DEFAULT_SCHEMA_VERSION,
+    chainRecordFn: typeof o.chainRecordFn === 'function' ? o.chainRecordFn : buildChainedRecord,
+    resolveParentFn: typeof o.resolveParentFn === 'function' ? o.resolveParentFn : (h) => readByPostStateHash(h, { runId: o.runId, stateDir: o.stateDir }),
+    appendRecordFn: typeof o.appendRecordFn === 'function' ? o.appendRecordFn : (r) => appendRecord(r, { runId: o.runId, stateDir: o.stateDir }),
+  };
 
   const valid = validateOrderedIds(o.orderedIds);
   if (!valid.ok) return report({ reason: valid.reason });
@@ -348,7 +438,7 @@ function integrateCandidates(opts) {
     }
     if (!locked) return report({ reason: 'lock-unavailable' });
     try {
-      return runIntegration(valid.ids, integrationRef, runGit);
+      return runIntegration(valid.ids, integrationRef, runGit, ctx);
     } finally {
       if (locked) release(o.lockPath); // ONLY because acquire returned true (no lock theft)
     }
