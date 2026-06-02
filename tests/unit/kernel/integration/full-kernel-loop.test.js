@@ -105,8 +105,16 @@ function runHook(input, stateDir, extraEnv = {}) {
   const res = spawnSync(process.execPath, [HOOK_PATH], {
     input: JSON.stringify(input),
     encoding: 'utf8',
-    env: { ...process.env, LOOM_SPAWN_STATE_DIR: stateDir, ...extraEnv },
+    timeout: 30000,               // a hung hook is KILLED + fails fast, never blocks the suite
+    killSignal: 'SIGKILL',
+    maxBuffer: 16 * 1024 * 1024,  // generous; the hook's stdout is a one-line approve decision
+    env: { ...process.env, LOOM_SPAWN_STATE_DIR: stateDir, ...extraEnv }, // per-subprocess; never mutates process.env
   });
+  // A spawn/timeout failure (res.error set, status null) surfaces as a HARD error with
+  // context — not a cryptic null-status the downstream assertions would decode obscurely.
+  if (res.error) {
+    throw new Error(`hook subprocess failed: ${res.error.code || res.error.message} (signal=${res.signal}); stderr=${(res.stderr || '').slice(0, 300)}`);
+  }
   let json = null;
   try { json = JSON.parse((res.stdout || '').trim().split('\n').pop()); } catch { /* fail-soft */ }
   return { status: res.status, stdout: res.stdout || '', stderr: res.stderr || '', json };
@@ -117,6 +125,14 @@ function runHook(input, stateDir, extraEnv = {}) {
 function runIdForSession(sessionId) {
   return require('crypto').createHash('sha256').update(String(sessionId), 'utf8').digest('hex').slice(0, 16);
 }
+
+// ISOLATION + TEARDOWN CONTRACT (so a future reader / parallel runner can rely on it):
+// every scenario allocates a UNIQUE mkdtempSync baseDir holding its own repo (+ .git +
+// worktrees) and state dir, and the per-test `finally { fs.rmSync(baseDir) }` is the
+// SINGLE teardown — it runs even when an assertion throws mid-flight, and removing baseDir
+// removes the repo + every worktree (no `git worktree remove` needed; no global git/env
+// state is touched — runHook scopes LOOM_SPAWN_STATE_DIR per-subprocess). So the file is
+// safe under a parallelizing runner; today the kernel runner is sequential (xargs -n1).
 
 // ════════════════════ C2-1 — SHADOW arm composes Phase 1 + INV-22 ════════════════════
 
@@ -160,7 +176,6 @@ test('[real git] C2-1 shadow: the live hook fires -> Phase-1 dry-run verdict + a
     const after2 = store.listByRun({ runId, stateDir });
     assert.strictEqual(after2.length, 1, `the re-fire DEDUPS (still one record, not two) — INV-22 (got ${after2.length})`);
 
-    execFileSync('git', ['worktree', 'remove', '--force', wtPath], { cwd: repo, stdio: ['ignore', 'pipe', 'pipe'] });
   } finally { fs.rmSync(baseDir, { recursive: true, force: true }); }
 });
 
@@ -254,7 +269,6 @@ test('[real git] C2-3 enforce: the live hook fires the real K9 stage-promote arm
     assert.deepStrictEqual(fs.readdirSync(repo).sort(), parentDirBefore, 'parent working-tree listing unchanged (feature.txt NOT promoted into HEAD)');
     assert.ok(!fs.existsSync(path.join(repo, 'feature.txt')), 'the delta was NOT written into the user working tree');
 
-    execFileSync('git', ['worktree', 'remove', '--force', wtPath], { cwd: repo, stdio: ['ignore', 'pipe', 'pipe'] });
   } finally { fs.rmSync(baseDir, { recursive: true, force: true }); }
 });
 
