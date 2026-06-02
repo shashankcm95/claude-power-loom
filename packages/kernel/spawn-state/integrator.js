@@ -228,6 +228,12 @@ function mintIntegrationRecord(prevPost, cand, mergedTree, ctx) {
     const record = ctx.chainRecordFn({ prevPost, post, evidenceTxid: candGenesis.transaction_id, safeId: cand.safeId, schemaVersion: ctx.schemaVersion });
     const walk = checkEvidenceLinkPreCommit({ record, isGenesisPosition: false, resolveParent: ctx.resolveParentFn });
     if (!walk.ok) return { ok: false }; // fail-CLOSED — never advance an unprovenanced merge
+    // PR-4 INV-22 positive idempotency: appendRecord returns {ok:true, deduped:true} when
+    // this chained record's idempotency_key already exists (re-folding the SAME merge — the
+    // integrator-side F-01). That is SUCCESS, not a failure: .ok is true (a deduped append's
+    // .file points at the EXISTING record, but the integrator returns rawIds, not provenance
+    // paths, so it is unused here). We advance the chain to `post` either way — the prior fold
+    // already stored the equivalent record.
     if (!ctx.appendRecordFn(record).ok) return { ok: false };
     return { ok: true, post };
   } catch {

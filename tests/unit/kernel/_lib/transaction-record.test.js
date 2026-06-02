@@ -13,6 +13,7 @@ const {
   computeTransactionId,
   computeGenesisHash,
   computeIdempotencyKey,
+  computeContentHash,
   computePostStateHash,
   isStateChanging,
   isBootstrapSentinel,
@@ -184,6 +185,58 @@ test('computeIdempotencyKey differs when any input differs', () => {
   const k0 = computeIdempotencyKey(base);
   assert.notStrictEqual(k0, computeIdempotencyKey({ ...base, writerPersonaId: 'b' }));
   assert.notStrictEqual(k0, computeIdempotencyKey({ ...base, operationClass: 'APPEND' }));
+});
+
+// --- computeContentHash (PR-4 INV-22 — the content_hash that BINDS spawn identity) ---
+//
+// CRITICAL-1 (board): content_hash is NOT the bare post_state_hash. post_state_hash is
+// fork-consistent / tree-only — deliberately identity-erasing (that is its chain-edge
+// job). Using it as content_hash would false-merge two DISTINCT spawns that landed on
+// an identical tree (op_class='CREATE' + genesis-prev are constant, so the key would
+// collapse to f(persona, tree)). computeContentHash binds writer_spawn_id (+ head_anchor)
+// so distinct spawns never collide on a shared tree. It is null-SAFE: a dirty worktree
+// has postStateHash=null and must yield a valid hash (canonicalJsonSerialize handles
+// null), NOT throw — else computeIdempotencyKey throws downstream and the record is
+// silently dropped (CR CRITICAL-1, the provenance-blackout regression).
+
+test('PR-4 computeContentHash is deterministic + 64-hex over its 3 inputs', () => {
+  const opts = { postStateHash: 'a'.repeat(64), writerSpawnId: 'agent-1', headAnchor: 'b'.repeat(40) };
+  const h1 = computeContentHash(opts);
+  const h2 = computeContentHash(opts);
+  assert.strictEqual(h1, h2, 'same inputs -> same content_hash (deterministic)');
+  assert.match(h1, /^[a-f0-9]{64}$/, 'content_hash is a 64-char lowercase hex sha256');
+});
+
+test('PR-4 computeContentHash BINDS writer_spawn_id: same tree, DIFFERENT spawn -> DIFFERENT content_hash (CRITICAL-1 guard)', () => {
+  const sharedTree = computePostStateHash('a'.repeat(40));
+  const a = computeContentHash({ postStateHash: sharedTree, writerSpawnId: 'agent-A', headAnchor: null });
+  const b = computeContentHash({ postStateHash: sharedTree, writerSpawnId: 'agent-B', headAnchor: null });
+  assert.notStrictEqual(a, b,
+    'two distinct spawns landing on an IDENTICAL tree must produce DIFFERENT content_hashes (no identity-erasure)');
+  // And it is NOT the bare post_state_hash (the identity-erasing reuse the board rejected).
+  assert.notStrictEqual(a, sharedTree, 'content_hash must NOT be the bare post_state_hash');
+});
+
+test('PR-4 computeContentHash is timestamp-INDEPENDENT (re-fire stable): the SAME spawn/tree re-fires to the SAME hash', () => {
+  // The F-01 axis: a re-fired close re-runs with the same spawn id + tree (only the
+  // wall-clock intent_recorded_at differs, and that is NOT an input here) -> stable.
+  const opts = { postStateHash: computePostStateHash('f'.repeat(64)), writerSpawnId: 'agent-refire', headAnchor: null };
+  assert.strictEqual(computeContentHash(opts), computeContentHash({ ...opts }),
+    'content_hash carries no wall-clock -> the re-fire is stable (the dedup axis)');
+});
+
+test('PR-4 computeContentHash is null-SAFE on a dirty worktree (postStateHash=null) -> valid 64-hex, NO throw (CR CRITICAL-1 guard)', () => {
+  let h;
+  assert.doesNotThrow(() => {
+    h = computeContentHash({ postStateHash: null, writerSpawnId: 'agent-dirty', headAnchor: null });
+  }, 'a null postStateHash must NOT throw (canonicalJsonSerialize handles null)');
+  assert.match(h, /^[a-f0-9]{64}$/, 'a dirty-null content_hash is still a valid 64-hex (so the key derives + the record writes)');
+  // An omitted headAnchor is normalized to null (same hash as an explicit null).
+  const omitted = computeContentHash({ postStateHash: null, writerSpawnId: 'agent-dirty' });
+  assert.strictEqual(omitted, h, 'omitted headAnchor === explicit null headAnchor');
+  // Distinct dirty spawns still differ (identity binding holds even at null post).
+  const other = computeContentHash({ postStateHash: null, writerSpawnId: 'agent-dirty-2', headAnchor: null });
+  assert.notStrictEqual(h, other, 'two dirty spawns still bind distinct identities');
 });
 
 // --- isStateChanging (Round-3e GP4) ---

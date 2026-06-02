@@ -27,7 +27,7 @@ const path = require('path');
 // The module under test (NOT YET WRITTEN — this require is why the suite is RED).
 const { buildChainedRecord, KERNEL_INTEGRATOR_PERSONA } = require('../../../../packages/kernel/_lib/integration-record');
 
-const { computePostStateHash, computeTransactionId, validateTransactionRecord } = require('../../../../packages/kernel/_lib/transaction-record');
+const { computePostStateHash, computeTransactionId, computeIdempotencyKey, computeContentHash, validateTransactionRecord } = require('../../../../packages/kernel/_lib/transaction-record');
 const { buildSpawnRecord } = require('../../../../packages/kernel/_lib/quarantine-promote');
 const { appendRecord, readByPostStateHash } = require('../../../../packages/kernel/_lib/record-store');
 const { checkEvidenceLinkPreCommit } = require('../../../../packages/kernel/_lib/k9-promote-deltas');
@@ -70,6 +70,41 @@ test('M1b transaction_id === computeTransactionId(body); validates at isGenesisP
   assert.ok(/^[a-f0-9]{64}$/.test(transaction_id), 'transaction_id is 64-hex');
   const v = validateTransactionRecord(r, { isGenesisPosition: false });
   assert.ok(v.valid, `must validate at the NON-genesis position; got ${JSON.stringify(v.errors)}`);
+});
+
+// ── M1b2 — PR-4: the chained record carries a valid idempotency_key (INV-22 producer) ──
+
+test('M1b2 PR-4: buildChainedRecord carries a valid idempotency_key matching the §5a.6 derivation (APPEND op, integrator spawn id, prev=prevPost)', () => {
+  const r = buildChainedRecord({ prevPost, post, evidenceTxid, safeId: 'agent_c1', schemaVersion: SV });
+  assert.match(r.idempotency_key, /^[a-f0-9]{64}$/, 'idempotency_key is a 64-hex sha256');
+  // content_hash binds the integrator writer_spawn_id ('loom-integrate-<safeId>'); head_anchor null.
+  const contentHash = computeContentHash({ postStateHash: post, writerSpawnId: 'loom-integrate-agent_c1', headAnchor: null });
+  const expectedKey = computeIdempotencyKey({
+    writerPersonaId: KERNEL_INTEGRATOR_PERSONA,
+    operationClass: 'APPEND',
+    contentHash,
+    prevStateHash: prevPost,
+  });
+  assert.strictEqual(r.idempotency_key, expectedKey, 'idempotency_key matches computeIdempotencyKey over the bound content_hash + prevPost');
+  // The key is in the hashed body (transaction_id integrity holds WITH the key present).
+  const { transaction_id, ...body } = r;
+  assert.strictEqual(transaction_id, computeTransactionId(body), 'transaction_id hashes the idempotency_key in');
+});
+
+test('M1b3 PR-4: buildChainedRecord idempotency_key is STABLE across re-fire, DISTINCT across post (the integrator F-01 axis)', () => {
+  const a = buildChainedRecord({ prevPost, post, evidenceTxid, safeId: 'agent_c1', schemaVersion: SV });
+  // Re-salt the timestamp EXPLICITLY (deterministic, not sub-ms-dependent) to model a
+  // re-folded merge: a DIFFERENT intent_recorded_at -> a DIFFERENT transaction_id, but the
+  // SAME idempotency_key. This is the integrator-side F-01 dedup axis.
+  const refiredBody = { ...a, intent_recorded_at: '2031-12-31T23:59:59.000Z' };
+  delete refiredBody.transaction_id;
+  const b = { transaction_id: computeTransactionId(refiredBody), ...refiredBody };
+  assert.notStrictEqual(a.transaction_id, b.transaction_id, 'the re-salted timestamp yields a DIFFERENT transaction_id');
+  assert.strictEqual(a.idempotency_key, b.idempotency_key, 'but the idempotency_key is STABLE (re-folding the same merge dedups)');
+  // A different merged tree (post) -> a different key (a genuinely different integration step).
+  const post2 = computePostStateHash('d'.repeat(40));
+  const c = buildChainedRecord({ prevPost, post: post2, evidenceTxid, safeId: 'agent_c1', schemaVersion: SV });
+  assert.notStrictEqual(a.idempotency_key, c.idempotency_key, 'a different post -> a different key');
 });
 
 // ── M1c — the full appendRecord round-trip (the join, not just validation) ───

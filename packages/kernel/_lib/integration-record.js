@@ -17,7 +17,12 @@
 // NON-genesis position (fail-fast: a malformed prev throws HERE, not as a cryptic K9
 // reject downstream).
 
-const { computeTransactionId, validateTransactionRecord } = require('./transaction-record.js');
+const {
+  computeTransactionId,
+  computeContentHash,
+  computeIdempotencyKey,
+  validateTransactionRecord,
+} = require('./transaction-record.js');
 
 // The fixed authoring identity for a kernel-emitted integration record. The integration
 // is a kernel assembly op (a user-invoked CLI), NOT a persona spawn — so it carries a
@@ -40,6 +45,26 @@ const KERNEL_INTEGRATOR_PERSONA = 'kernel-loom-integrator';
  */
 function buildChainedRecord(opts) {
   const { prevPost, post, evidenceTxid, safeId, schemaVersion } = opts || {};
+  // Fail FAST + LOCALLY on a missing prevPost (review LOW): without this, a falsy prevPost
+  // surfaces as a cryptic TypeError from inside computeIdempotencyKey rather than at this
+  // builder's boundary. prevPost (the stored chain head) is the key's prev_state_hash input.
+  if (!prevPost) {
+    throw new Error('buildChainedRecord: prevPost (the stored chain head) is required');
+  }
+  const writerSpawnId = `loom-integrate-${safeId}`;
+  // PR-4 INV-22: derive the idempotency_key BEFORE computeTransactionId so transaction_id
+  // hashes it in (else appendRecord's id===computeTransactionId integrity check fails).
+  // content_hash BINDS the integration step's identity (writer_spawn_id + post=merged tree;
+  // head_anchor null), so re-folding the SAME merge dedups while a genuinely-different
+  // merge does not (the integrator-side F-01 positive-idempotency axis). prevPost (the
+  // STORED chain head) is the key's prev input.
+  const contentHash = computeContentHash({ postStateHash: post, writerSpawnId, headAnchor: null });
+  const idempotencyKey = computeIdempotencyKey({
+    writerPersonaId: KERNEL_INTEGRATOR_PERSONA,
+    operationClass: 'APPEND',
+    contentHash,
+    prevStateHash: prevPost,
+  });
   // Immutable construction; intent_recorded_at = commit time (single-phase — the merge
   // is synchronous + atomic via the integrator's terminal CAS, so there is no separate
   // PENDING intent record).
@@ -48,12 +73,13 @@ function buildChainedRecord(opts) {
     post_state_hash: post,
     head_anchor: null,
     writer_persona_id: KERNEL_INTEGRATOR_PERSONA,
-    writer_spawn_id: `loom-integrate-${safeId}`,
+    writer_spawn_id: writerSpawnId,
     operation_class: 'APPEND',
     evidence_refs: [evidenceTxid],
     intent_recorded_at: new Date().toISOString(),
     commit_outcome: 'COMMITTED',
     schema_version: schemaVersion,
+    idempotency_key: idempotencyKey,
   };
   const finalized = { ...record, transaction_id: computeTransactionId(record) };
   const v = validateTransactionRecord(finalized, { isGenesisPosition: false });
