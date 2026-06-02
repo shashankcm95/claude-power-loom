@@ -8,6 +8,17 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [Unreleased] — v3.x kernel train (pre-release)
+
+The v3.x kernel + runtime substrate is under active development and **not yet published as a plugin release** — the marketplace plugin (`.claude-plugin/plugin.json`) remains at `2.9.1`. Completed phases (full accounting in [`docs/ROADMAP.md`](docs/ROADMAP.md)):
+
+- **Phase 1-alpha (v3.0-alpha)** — the pure kernel transaction loop: 11 kernel primitives atop the pre-existing `K5` validators + a property-test harness (ADRs 0009–0011).
+- **v3.1 (Runtime Foundation)** — the persona/capability runtime (R1–R4 two-tier contracts + the agent.md↔contract reconciliation validator), the live shadow-default spawn-close transaction loop, and INV-22 in-substrate idempotency. K8 dropped (ADR-0012: `updatedInput` inert on Agent/Task spawns).
+
+These phases roll into the changelog proper at the next published plugin release.
+
+---
+
 ## [2.9.1] — 2026-05-24 — test3 substrate blockers (3 doc-only fixes)
 
 **Patch release.** Closes 3 substrate findings surfaced by test3 (PDF→Tutorial app, value-delivery sub-run of v2.9.0 dogfood) Phase-5 UAT on 2026-05-23/24. Each fix has a WORKAROUND-SHIPPED status in the test3 app code; this release codifies the canonical pattern into the substrate so the next consumer doesn't burn the same hour.

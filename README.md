@@ -6,7 +6,7 @@
 >
 > **It makes long-horizon agent failures cheap, observable, and reversible. It does _not_ make the underlying LLM smarter.** That honesty is the project's design anchor.
 
-[![CI](https://github.com/shashankcm95/claude-power-loom/actions/workflows/ci.yml/badge.svg)](https://github.com/shashankcm95/claude-power-loom/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Phase](https://img.shields.io/badge/substrate-v3.0--alpha%20(kernel)-orange.svg)](docs/ROADMAP.md) [![Plugin](https://img.shields.io/badge/Claude_Code-plugin-orange.svg)](.claude-plugin/plugin.json)
+[![CI](https://github.com/shashankcm95/claude-power-loom/actions/workflows/ci.yml/badge.svg)](https://github.com/shashankcm95/claude-power-loom/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Phase](https://img.shields.io/badge/substrate-v3.1%20(runtime%20foundation)-orange.svg)](docs/ROADMAP.md) [![Plugin](https://img.shields.io/badge/Claude_Code-plugin-orange.svg)](.claude-plugin/plugin.json)
 
 ---
 
@@ -47,15 +47,15 @@ For the full rationale see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). For t
 
 ## Status
 
-The substrate is mid-build. It is distributed as a **Claude Code plugin**; the last published plugin release is **v2.9.x**, and the kernel that defines the new vision is the **v3.0-alpha** train.
+The substrate is mid-build. It is distributed as a **Claude Code plugin**; the last published plugin release is **v2.9.x**, and the **v3.x kernel train** that defines the new vision is in development (unreleased).
 
-**Phase 1-alpha — the pure kernel transaction loop — is complete.** It shipped **11 kernel primitives** (atop the pre-existing `K5` validators) across sub-PRs `#167`, `#169`, `#172`, `#173`, `#174` (all merged) plus `#175` (the `K12` advisory lint — draft, green CI, pending merge):
+**Two phases are complete: Phase 1-alpha (the pure kernel transaction loop) and v3.1 (Runtime Foundation).** Phase 1-alpha shipped **11 kernel primitives** (atop the pre-existing `K5` validators; sub-PRs `#167`–`#175`, all merged). **v3.1** then built the first runtime layer on top: the persona/capability runtime (**R1–R4** two-tier contracts + the agent.md↔contract reconciliation validator), the live shadow-default **spawn-close transaction loop**, and **INV-22** in-substrate idempotency (`#179`–`#200`). Kernel-primitive status:
 
-| Live | Dormant | Advisory | Deferred |
+| Live | Dormant | Advisory | Dropped / Deferred |
 |---|---|---|---|
-| K1 K2 K3 K4 K7 K9 K10 K13 K14 | **K3.b** (context envelope) | **K12** (layer-boundary lint) | K6 · K8 · K11 · K2.c → v3.1/v3.2 |
+| K1 K2 K3 K4 K7 K9 K10 K13 K14 | **K3.b** · **K6** (shipped v3.1) | **K12** (layer-boundary lint) | **K8** (dropped — [ADR-0012](packages/specs/adrs/0012-capability-enforcement-is-static-not-runtime-injected.md)) · K11 → v3.2 · K2.c → v3.3 |
 
-"Dormant" = the code ships with **no production importer yet** (a CI gate enforces it); its first consumer arrives in a later phase. "Advisory" = it **warns, never blocks**. See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the phase-by-phase plan and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#kernel-primitives) for what each primitive does.
+"Dormant" = the code ships with **no production importer yet** (a CI gate enforces it) — for K6, the reconciliation validator does its own containment check, so K6 awaits a v3.2+ runtime consumer. "Advisory" = it **warns, never blocks**. See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the phase-by-phase plan and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#kernel-primitives) for what each primitive does.
 
 > ⚠️ This is alpha. The kernel surface changes incompatibly with v2.9 readers (that is *why* it is a v3.0 major bump — see [ADR-0009](packages/specs/adrs/0009-major-bump-rationale.md)). Don't depend on the v3.0-alpha kernel schema staying fixed until stable `v3.0.0` ships.
 
@@ -115,7 +115,7 @@ The value is concentrated in the enforced layer. The runtime adds *verifiable* m
 ## Documentation
 
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — the substrate model: layers, the Ten Axioms, the transaction loop, and every kernel primitive K1–K14.
-- **[docs/ROADMAP.md](docs/ROADMAP.md)** — Phase 0 ✓ → Phase 1-alpha ✓ → v3.1+ (appended as each phase lands).
+- **[docs/ROADMAP.md](docs/ROADMAP.md)** — Phase 0 ✓ → Phase 1-alpha ✓ → v3.1 ✓ → v3.2+ (appended as each phase lands).
 - **[docs/README.md](docs/README.md)** — the full documentation index.
 
 Machinery references (still accurate, preserved): **[Hooks](docs/hooks/)** · **[Library memory organizer](docs/library.md)** · **[Install](docs/install/)** · **[Commands](docs/reference/commands.md)** · **[Rules](docs/reference/rules.md)** · **[Project structure](docs/reference/project-structure.md)** · **[Stability commitment](docs/reference/stability-commitment.md)**.
