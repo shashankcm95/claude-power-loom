@@ -124,7 +124,19 @@
     "decomposition_discipline": {
       "primary": "spec-driven",
       "fallback_when_code_producing": "tdd"
-    }
+    },
+    "instincts": [
+      "current-location-not-ideal",
+      "exhaustive-naming-variants",
+      "where-not-just-what",
+      "trace-every-reference",
+      "no-false-negatives",
+      "breadth-before-depth",
+      "empirical-naming-convention",
+      "entrypoint-finding",
+      "report-paths-not-prose",
+      "critique-is-not-mine"
+    ]
   },
   "defaults": {
     "timeout": 1800,

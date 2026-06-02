@@ -81,7 +81,19 @@
     "decomposition_discipline": {
       "primary": "spec-driven",
       "fallback_when_code_producing": "tdd"
-    }
+    },
+    "instincts": [
+      "value-semantics-first",
+      "force-unwrap-paranoia",
+      "retain-cycle-suspicion",
+      "main-thread-ui-discipline",
+      "structured-concurrency-over-legacy",
+      "state-lifetime-correctness",
+      "apple-convention-fidelity",
+      "secret-handling-location",
+      "accessibility-as-baseline",
+      "app-store-survivability"
+    ]
   },
   "defaults": {
     "timeout": 1800,

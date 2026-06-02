@@ -85,7 +85,19 @@
     "decomposition_discipline": {
       "primary": "spec-driven",
       "fallback_when_code_producing": "tdd"
-    }
+    },
+    "instincts": [
+      "event-loop-protection",
+      "boundary-validation",
+      "async-error-propagation",
+      "race-window-awareness",
+      "backpressure-and-streaming",
+      "resource-leak-paranoia",
+      "idempotent-handlers",
+      "dependency-surface-minimalism",
+      "type-safety-at-the-edge",
+      "observability-by-default"
+    ]
   },
   "defaults": {
     "timeout": 1800,

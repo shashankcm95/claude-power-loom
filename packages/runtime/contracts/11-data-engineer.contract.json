@@ -87,7 +87,19 @@
     "decomposition_discipline": {
       "primary": "spec-driven",
       "fallback_when_code_producing": "tdd"
-    }
+    },
+    "instincts": [
+      "idempotency-first",
+      "schema-evolution-safety",
+      "quality-at-ingest",
+      "late-and-duplicate-tolerance",
+      "lineage-traceability",
+      "backfill-safety",
+      "partition-and-cost-discipline",
+      "sla-and-freshness",
+      "declarative-over-imperative",
+      "source-of-truth-singularity"
+    ]
   },
   "defaults": {
     "timeout": 1800,

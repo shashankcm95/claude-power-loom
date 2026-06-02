@@ -68,7 +68,18 @@
     "decomposition_discipline": {
       "primary": "spec-driven",
       "fallback_when_code_producing": "tdd"
-    }
+    },
+    "instincts": [
+      "fail-path-first",
+      "edge-case-hunting",
+      "swallowed-error-detection",
+      "race-window-naming",
+      "injection-untrusted-input",
+      "cite-or-it-didnt-happen",
+      "confidence-floor",
+      "consolidate-not-repeat",
+      "principle-audit"
+    ]
   },
   "defaults": {
     "timeout": 1800,
