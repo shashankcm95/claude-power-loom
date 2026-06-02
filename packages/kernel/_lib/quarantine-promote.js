@@ -68,6 +68,8 @@ const { canonicalize } = require('./path-canonicalize');
 const {
   computeTransactionId,
   computeGenesisHash,
+  computeContentHash,
+  computeIdempotencyKey,
   isBootstrapSentinel,
   validateTransactionRecord,
 } = require('./transaction-record');
@@ -380,10 +382,26 @@ function buildSpawnRecord(opts) {
   // Immutable construction: the genesis base + the two producer fields. Normalize an
   // omitted headAnchor to an explicit null (the schema is null-tolerant; recording the
   // key keeps the record shape stable for the P2b/P3 consumers).
+  const base = genesisRecordFields({ agentId, personaId, schemaVersion });
+  const normalizedHeadAnchor = headAnchor === undefined ? null : headAnchor;
+  // PR-4 INV-22: derive the idempotency_key BEFORE finalizeGenesisRecord so transaction_id
+  // hashes it in (else appendRecord's id===computeTransactionId integrity check fails).
+  // content_hash BINDS spawn identity (writer_spawn_id = the raw agentId + head_anchor) so
+  // two distinct same-tree spawns never false-merge (CRITICAL-1); it is null-safe so a
+  // dirty (postStateHash=null) close still gets a key + writes (CR CRITICAL-1). The genesis
+  // prev_state_hash (base.prev_state_hash = computeGenesisHash) is the key's prev input.
+  const contentHash = computeContentHash({ postStateHash, writerSpawnId: agentId, headAnchor: normalizedHeadAnchor });
+  const idempotencyKey = computeIdempotencyKey({
+    writerPersonaId: personaId,
+    operationClass: 'CREATE',
+    contentHash,
+    prevStateHash: base.prev_state_hash,
+  });
   const record = {
-    ...genesisRecordFields({ agentId, personaId, schemaVersion }),
+    ...base,
     post_state_hash: postStateHash,
-    head_anchor: headAnchor === undefined ? null : headAnchor,
+    head_anchor: normalizedHeadAnchor,
+    idempotency_key: idempotencyKey,
   };
   return finalizeGenesisRecord(record);
 }

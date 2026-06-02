@@ -74,7 +74,7 @@ const { integrateCandidates, deriveMergeBase } = integratorModule;
 const { sanitizeAgentId, buildSpawnRecord } = require('../../../../packages/kernel/_lib/quarantine-promote');
 // PR-P3c-c minting collaborators (the REAL ones — the minting tests M2-M9 assert against them).
 const { computePostStateHash } = require('../../../../packages/kernel/_lib/transaction-record');
-const { appendRecord, readByPostStateHash } = require('../../../../packages/kernel/_lib/record-store');
+const { appendRecord, readByPostStateHash, listByRun } = require('../../../../packages/kernel/_lib/record-store');
 const { checkEvidenceLinkPreCommit } = require('../../../../packages/kernel/_lib/k9-promote-deltas');
 
 let passed = 0;
@@ -857,18 +857,12 @@ function seedGenesis(g, stateDir, runId, cand) {
   return post;
 }
 
-// The integration (APPEND) records minted into the store this run.
+// The integration (APPEND) records minted into the store this run. Counted via the
+// production reader (listByRun) so the count goes through the SAME validation gate as
+// the store's own readers — an invalid/corrupt record is skipped, not counted (review
+// LOW: the prior raw JSON.parse would have counted a malformed APPEND file).
 function integrationRecords(stateDir, runId) {
-  const dir = path.join(stateDir, runId, 'records');
-  let names = [];
-  try { names = fs.readdirSync(dir); } catch { return []; }
-  const recs = [];
-  for (const n of names) {
-    if (!/^record-[a-f0-9]{64}\.json$/.test(n)) continue;
-    const r = JSON.parse(fs.readFileSync(path.join(dir, n), 'utf8'));
-    if (r.operation_class === 'APPEND') recs.push(r);
-  }
-  return recs;
+  return listByRun({ runId, stateDir }).filter((r) => r.operation_class === 'APPEND');
 }
 
 function mint(repo, orderedIds, stateDir, runId, extra) {
@@ -907,6 +901,44 @@ test('[real git+store] M2 minting: 2 clean candidates -> the integrator mints ch
       return w.depthWalked;
     }).sort();
     assert.deepStrictEqual(depths, [1, 2], 'the chain walks depthWalked 1 (record_1 -> seed genesis) and 2 (record_2 -> record_1 -> seed)');
+  } finally { fs.rmSync(baseDir, { recursive: true, force: true }); }
+});
+
+// ── M2b — PR-4 integrator-side F-01: a re-run over already-folded candidates is idempotent ──
+
+test('[real git+store] M2b PR-4 integrator-side F-01: re-running integrateCandidates over an already-folded set -> the chained records DEDUP (APPEND count unchanged), same finalTip tree, same chain head', () => {
+  if (!gitAvailable()) { process.stdout.write('    (skipped: git unavailable)\n'); return; }
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'p3cc-m2b-'));
+  const repo = path.join(baseDir, 'parent');
+  const stateDir = path.join(baseDir, 'state');
+  const runId = 'run-m2b';
+  try {
+    const { g, base: A } = initRepo(repo);
+    const seed = makeCandidate(repo, 'agent-seed', A, { 'seed.txt': 'seed\n' });
+    const c1 = makeCandidate(repo, 'agent-c1', A, { 'c1.txt': 'c1\n' });
+    const c2 = makeCandidate(repo, 'agent-c2', A, { 'c2.txt': 'c2\n' });
+    seedGenesis(g, stateDir, runId, seed); seedGenesis(g, stateDir, runId, c1); seedGenesis(g, stateDir, runId, c2);
+
+    const res1 = mint(repo, [seed.rawId, c1.rawId, c2.rawId], stateDir, runId);
+    assert.ok(res1.integrated, `the first run must integrate; got ${JSON.stringify(res1)}`);
+    const tree1 = g(['rev-parse', 'refs/heads/loom/integration^{tree}']);
+    const recsAfter1 = integrationRecords(stateDir, runId);
+    assert.strictEqual(recsAfter1.length, 2, 'two APPEND records after the first run');
+
+    // The SECOND run re-folds the SAME candidates. The merge is deterministic (T6 tree-
+    // idempotency) -> the same post per candidate -> the SAME idempotency_key -> the
+    // dedup-on-append collapses the re-mint. INV-22: no duplicate integration records.
+    const res2 = mint(repo, [seed.rawId, c1.rawId, c2.rawId], stateDir, runId);
+    assert.ok(res2.integrated, `the re-run must still integrate (positive idempotency); got ${JSON.stringify(res2)}`);
+    assert.deepStrictEqual(res2.integratedIds, [seed.rawId, c1.rawId, c2.rawId], 'the re-run integrates the same set (deduped records still count as success)');
+
+    const tree2 = g(['rev-parse', 'refs/heads/loom/integration^{tree}']);
+    assert.strictEqual(tree2, tree1, 'the re-run produces the IDENTICAL integration tree (tree-level idempotency)');
+    const recsAfter2 = integrationRecords(stateDir, runId);
+    assert.strictEqual(recsAfter2.length, 2, 'STILL two APPEND records after the re-run — the re-mint deduped (no duplicate provenance)');
+    const ids1 = recsAfter1.map((r) => r.transaction_id).sort();
+    const ids2 = recsAfter2.map((r) => r.transaction_id).sort();
+    assert.deepStrictEqual(ids2, ids1, 'the same two integration-record ids persist (the deduped re-fire stored nothing new)');
   } finally { fs.rmSync(baseDir, { recursive: true, force: true }); }
 });
 

@@ -61,6 +61,8 @@ const k9 = require('../../../../packages/kernel/_lib/k9-promote-deltas');
 const {
   computeTransactionId,
   computeGenesisHash,
+  validateTransactionRecord,
+  deriveIdempotencyKey,
 } = require('../../../../packages/kernel/_lib/transaction-record');
 // PR-P3b — the REAL producer, to prove a producer-form genesis record (prev =
 // computeGenesisHash, NOT the literal 'GENESIS') walk-terminates via the real
@@ -359,25 +361,34 @@ test('8b. OQ-2 e2e: a real producer genesis (buildSpawnRecord, prev=computeGenes
   } finally { cleanup(stateDir); }
 });
 
-// ── 8c. F-01 (P3b): the walk tolerates a sibling DUPLICATE post_state_hash ──
+// ── 8c. F-01 LEGACY/KEYLESS path: the walk tolerates a sibling DUPLICATE post_state_hash ──
+//
+// PR-4 REVISION (tolerate-on-read layering): dedup-on-append now keys on
+// idempotency_key (timestamp-EXCLUDED), so a KEYED re-fire collapses BEFORE the 2nd
+// write (tests 15-16). This 8c case is the KEYLESS/pre-PR-4 record path that
+// tolerate-on-read still uniquely guards: two records sharing a post_state_hash but
+// carrying NO idempotency_key BOTH store (no dedup), and the chain-walk tolerates the
+// sibling. Built via the LOCAL keyless buildRecord helper (NOT buildSpawnRecord, which
+// now emits a key — using it here would dedup, collapsing this legacy-path coverage).
 
-test('8c. F-01: two records sharing a post_state_hash (re-fired close) — readByPostStateHash resolves and the walk still PASSES (tolerate-on-read)', () => {
+test('8c. F-01 (keyless legacy path): two no-key records sharing a post_state_hash — BOTH stored, readByPostStateHash resolves, the walk still PASSES (tolerate-on-read)', () => {
   const stateDir = tmpStateDir();
   try {
     // A re-fired close mints a SECOND record: identical content + post_state_hash,
     // but a different intent_recorded_at -> a distinct transaction_id (the F-01
-    // time-salt). Both append (one file per id); they SHARE the post_state_hash.
+    // time-salt). NO idempotency_key on either (the keyless legacy shape), so both
+    // append (one file per id); they SHARE the post_state_hash.
     const sharedPost = 'a'.repeat(64);
-    const genesisA = buildSpawnRecord({ agentId: 'f01-dup', personaId: 'p', schemaVersion: 'v3', postStateHash: sharedPost, headAnchor: null });
-    const genesisBBody = { ...genesisA, intent_recorded_at: '2030-12-31T23:59:59.000Z' };
-    delete genesisBBody.transaction_id;
-    const genesisB = { transaction_id: computeTransactionId(genesisBBody), ...genesisBBody };
+    const genesisA = buildRecord({ hashSeed: 'f01-A', isGenesis: true, postStateHash: sharedPost, intentRecordedAt: '2026-01-01T00:00:00.000Z' });
+    const genesisB = buildRecord({ hashSeed: 'f01-A', isGenesis: true, postStateHash: sharedPost, intentRecordedAt: '2030-12-31T23:59:59.000Z' });
+    assert.ok(!('idempotency_key' in genesisA), 'the legacy record carries NO idempotency_key (the keyless path)');
     assert.notStrictEqual(genesisB.transaction_id, genesisA.transaction_id, 'the re-fire mints a DISTINCT transaction_id');
     assert.strictEqual(genesisB.post_state_hash, genesisA.post_state_hash, 'but they SHARE the post_state_hash (F-01)');
 
     assert.strictEqual(store.appendRecord(genesisA, { runId: RUN_ID, stateDir }).ok, true);
     assert.strictEqual(store.appendRecord(genesisB, { runId: RUN_ID, stateDir }).ok, true);
-    assert.strictEqual(store.listByRun({ runId: RUN_ID, stateDir }).length, 2, 'both dup records are stored (one file per id, no clobber)');
+    assert.strictEqual(store.listByRun({ runId: RUN_ID, stateDir }).length, 2,
+      'both KEYLESS dup records are stored (one file per id, no clobber) — dedup only fires on idempotency_key');
 
     // readByPostStateHash resolves to ONE of them (arbitrary; both are valid genesis).
     const hit = store.readByPostStateHash(sharedPost, { runId: RUN_ID, stateDir });
@@ -391,7 +402,7 @@ test('8c. F-01: two records sharing a post_state_hash (re-fired close) — readB
       isGenesisPosition: false,
       resolveParent: (h) => store.readByPostStateHash(h, { runId: RUN_ID, stateDir }),
     });
-    assert.strictEqual(res.ok, true, 'the walk tolerates a sibling dup post_state_hash — F-01 needs no write-policy change');
+    assert.strictEqual(res.ok, true, 'the walk tolerates a sibling dup post_state_hash — the keyless legacy path');
   } finally { cleanup(stateDir); }
 });
 
@@ -543,6 +554,309 @@ test('14. recordStoreDir returns <stateDir>/<runId>/records', () => {
     assert.strictEqual(dir, path.join(stateDir, RUN_ID, 'records'),
       'recordStoreDir composes <stateDir>/<runId>/records');
     assert.ok(dir.endsWith(path.join(RUN_ID, 'records')), 'dir ends with <runId>/records');
+  } finally { cleanup(stateDir); }
+});
+
+// ════════════════════ PR-4 — INV-22 in-substrate idempotency-key enforcement ════════════════════
+//
+// computeIdempotencyKey existed (transaction-record.js) but was UNENFORCED — no
+// producer set idempotency_key + appendRecord did not dedup on it. PR-4 wires the key
+// into the producers (buildSpawnRecord here) + dedups on append. These tests are the
+// behavioral contract: a keyed re-fire (same persona/spawn/tree, different timestamp)
+// collapses to ONE record at the WRITE step (superseding P3's tolerate-on-read);
+// two DISTINCT spawns on an identical tree do NOT (the CRITICAL-1 false-merge guard);
+// a dirty-null spawn still gets a key + writes; a keyless record keeps current behavior.
+
+// A keyed genesis record via the REAL producer (buildSpawnRecord now emits idempotency_key).
+function keyedSpawn(opts = {}) {
+  const { agentId = 'pr4-agent', postStateHash = 'a'.repeat(64), schemaVersion = 'v3' } = opts;
+  return buildSpawnRecord({ agentId, personaId: '13-node-backend.tester', schemaVersion, postStateHash, headAnchor: null });
+}
+
+// Re-mint the SAME record body with a different intent_recorded_at (the F-01 time-salt):
+// a DISTINCT transaction_id but — since idempotency_key excludes the timestamp — the
+// SAME idempotency_key. Mirrors a re-fired close.
+function refire(record, isoTs) {
+  const body = { ...record, intent_recorded_at: isoTs };
+  delete body.transaction_id;
+  return { transaction_id: computeTransactionId(body), ...body };
+}
+
+// ── 15. INV-22: a keyed replay (re-fire) dedups -> the FIRST stored id, count unchanged ──
+
+test('15. INV-22: a keyed re-fire (same key, different timestamp) dedups -> deduped:true + the FIRST transaction_id + count UNCHANGED + readById(first) resolves', () => {
+  const stateDir = tmpStateDir();
+  try {
+    const first = keyedSpawn({ agentId: 'inv22', postStateHash: 'a'.repeat(64) });
+    assert.match(first.idempotency_key, /^[a-f0-9]{64}$/, 'the producer sets a 64-hex idempotency_key');
+    const r1 = store.appendRecord(first, { runId: RUN_ID, stateDir });
+    assert.strictEqual(r1.ok, true, `the first append must succeed; got ${JSON.stringify(r1)}`);
+    assert.ok(!r1.deduped, 'the first append is not a dedup');
+
+    const second = refire(first, '2031-01-01T00:00:00.000Z');
+    assert.strictEqual(second.idempotency_key, first.idempotency_key, 'the re-fire carries the SAME idempotency_key (timestamp excluded)');
+    assert.notStrictEqual(second.transaction_id, first.transaction_id, 'but a DISTINCT transaction_id (timestamp salts the id)');
+
+    const r2 = store.appendRecord(second, { runId: RUN_ID, stateDir });
+    assert.strictEqual(r2.ok, true, 'the replay returns ok:true (a no-op, not an error)');
+    assert.strictEqual(r2.deduped, true, 'the replay is flagged deduped:true');
+    assert.strictEqual(r2.transaction_id, first.transaction_id,
+      'the replay returns the FIRST/stored transaction_id, NOT the second record fresh id (caller-honesty contract)');
+
+    assert.strictEqual(store.listByRun({ runId: RUN_ID, stateDir }).length, 1, 'the run record-count is UNCHANGED (one record for the transaction)');
+    assert.ok(store.readById(first.transaction_id, { runId: RUN_ID, stateDir }), 'readById(first id) resolves the stored record');
+    assert.strictEqual(store.readById(second.transaction_id, { runId: RUN_ID, stateDir }), null, 'the second (deduped) id was never stored');
+  } finally { cleanup(stateDir); }
+});
+
+// ── 16. dedup short-circuits BEFORE any fs mutation (no records dir for a pure replay-miss-dir) ──
+
+test('16. dedup short-circuits BEFORE mkdirSync: a replay creates NO new file (one file total) and writes nothing on the 2nd call', () => {
+  const stateDir = tmpStateDir();
+  try {
+    const first = keyedSpawn({ agentId: 'dedup-sc', postStateHash: 'b'.repeat(64) });
+    store.appendRecord(first, { runId: RUN_ID, stateDir });
+    const dir = store.recordStoreDir({ runId: RUN_ID, stateDir });
+    const before = fs.readdirSync(dir).filter((n) => /^record-[a-f0-9]{64}\.json$/.test(n));
+    assert.strictEqual(before.length, 1, 'exactly one record after the first append');
+
+    const r2 = store.appendRecord(refire(first, '2032-02-02T00:00:00.000Z'), { runId: RUN_ID, stateDir });
+    assert.strictEqual(r2.deduped, true, 'the replay deduped');
+    const after = fs.readdirSync(dir).filter((n) => /^record-[a-f0-9]{64}\.json$/.test(n));
+    assert.deepStrictEqual(after, before, 'no new file is written for a pure replay (short-circuit before mkdirSync/write)');
+  } finally { cleanup(stateDir); }
+});
+
+// ── 17. false-merge prevention (CRITICAL-1 guard): same tree, DISTINCT spawn -> BOTH written ──
+
+test('17. false-merge prevention: two records with DISTINCT writer_spawn_id but an IDENTICAL tree -> DIFFERENT content_hash -> DIFFERENT key -> BOTH written (no false-merge)', () => {
+  const stateDir = tmpStateDir();
+  try {
+    // The SAME post_state_hash (identical tree) but two distinct spawns. content_hash
+    // binds writer_spawn_id, so the keys differ and BOTH records must persist — the
+    // dedup must NOT collapse two genuinely-distinct transactions.
+    const sharedPost = 'c'.repeat(64);
+    const spawnA = keyedSpawn({ agentId: 'agent-A', postStateHash: sharedPost });
+    const spawnB = keyedSpawn({ agentId: 'agent-B', postStateHash: sharedPost });
+    assert.strictEqual(spawnA.post_state_hash, spawnB.post_state_hash, 'both spawns landed on the IDENTICAL tree');
+    assert.notStrictEqual(spawnA.idempotency_key, spawnB.idempotency_key,
+      'distinct writer_spawn_id -> distinct content_hash -> distinct idempotency_key (the CRITICAL-1 fix)');
+
+    assert.strictEqual(store.appendRecord(spawnA, { runId: RUN_ID, stateDir }).ok, true);
+    const rB = store.appendRecord(spawnB, { runId: RUN_ID, stateDir });
+    assert.strictEqual(rB.ok, true, 'the second distinct spawn appends');
+    assert.ok(!rB.deduped, 'the second distinct spawn is NOT deduped (it is a different transaction)');
+    assert.strictEqual(store.listByRun({ runId: RUN_ID, stateDir }).length, 2,
+      'BOTH distinct-spawn records persist — same tree must not false-merge');
+  } finally { cleanup(stateDir); }
+});
+
+// ── 18. dirty-null-post (CR CRITICAL-1 guard): postStateHash=null -> keyed + written; re-fire dedups ──
+
+test('18. dirty-null-post: a buildSpawnRecord with postStateHash=null gets a VALID idempotency_key + writes (no throw); a re-fire dedups', () => {
+  const stateDir = tmpStateDir();
+  try {
+    // The dirty-worktree shape: the live producer passes postStateHash=null. The record
+    // must still get a key (computeContentHash is null-safe) and store; the re-fire dedups.
+    let dirty;
+    assert.doesNotThrow(() => {
+      dirty = buildSpawnRecord({ agentId: 'dirty-spawn', personaId: '13-node-backend.tester', schemaVersion: 'v3', postStateHash: null, headAnchor: null });
+    }, 'a null postStateHash must NOT throw in the producer (the provenance-blackout regression guard)');
+    assert.match(dirty.idempotency_key, /^[a-f0-9]{64}$/, 'a dirty-null spawn still carries a valid 64-hex idempotency_key');
+    assert.strictEqual(dirty.post_state_hash, null, 'a dirty spawn records post_state_hash:null (schema null-tolerant); the dedup axis is the key, not the post');
+
+    assert.strictEqual(store.appendRecord(dirty, { runId: RUN_ID, stateDir }).ok, true, 'the dirty-null record writes');
+    const r2 = store.appendRecord(refire(dirty, '2033-03-03T00:00:00.000Z'), { runId: RUN_ID, stateDir });
+    assert.strictEqual(r2.deduped, true, 'a dirty-null re-fire dedups on the key (post_state_hash is not the dedup axis)');
+    assert.strictEqual(store.listByRun({ runId: RUN_ID, stateDir }).length, 1, 'one record for the dirty transaction');
+  } finally { cleanup(stateDir); }
+});
+
+// ── 19. no-key forward-compat: a record WITHOUT idempotency_key still writes (no dedup) ──
+
+test('19. forward-compat: a record carrying NO idempotency_key still writes; a second no-key record (different id) also writes — dedup only fires on the key', () => {
+  const stateDir = tmpStateDir();
+  try {
+    const a = buildRecord({ hashSeed: 'nokey-a', postStateHash: 'a'.repeat(64), seq: 1 });
+    const b = buildRecord({ hashSeed: 'nokey-b', postStateHash: 'a'.repeat(64), seq: 2 }); // same tree, distinct id, no key
+    assert.ok(!('idempotency_key' in a) && !('idempotency_key' in b), 'neither record carries an idempotency_key');
+    assert.notStrictEqual(a.transaction_id, b.transaction_id, 'the two keyless records are genuinely distinct (different writer_spawn_id)');
+    assert.strictEqual(store.appendRecord(a, { runId: RUN_ID, stateDir }).ok, true);
+    const rb = store.appendRecord(b, { runId: RUN_ID, stateDir });
+    assert.strictEqual(rb.ok, true, 'a keyless record always writes (Open/Closed — current behavior preserved)');
+    assert.ok(!rb.deduped, 'a keyless append is never flagged deduped');
+    assert.strictEqual(store.listByRun({ runId: RUN_ID, stateDir }).length, 2, 'both keyless records persist (no dedup without a key)');
+  } finally { cleanup(stateDir); }
+});
+
+// ── 20. readByIdempotencyKey unit (mirrors readByPostStateHash: hex-gate / hostile runId / miss / hit) ──
+
+test('20. readByIdempotencyKey: non-hex -> null (no fs); hostile runId -> null; miss -> null; hit -> the record', () => {
+  const stateDir = tmpStateDir();
+  try {
+    const rec = keyedSpawn({ agentId: 'rbik', postStateHash: 'd'.repeat(64) });
+    store.appendRecord(rec, { runId: RUN_ID, stateDir });
+
+    // hex-gate: a non-hex key returns null BEFORE any readdir (mirror test 9's spy approach).
+    const realReaddirSync = fs.readdirSync;
+    let readdirCalls = 0;
+    fs.readdirSync = function spy(...args) { readdirCalls++; return realReaddirSync.apply(this, args); };
+    try {
+      assert.strictEqual(store.readByIdempotencyKey('../../etc/passwd', { runId: RUN_ID, stateDir }), null, 'a path-traversal key returns null at the hex-gate');
+      assert.strictEqual(store.readByIdempotencyKey('NOT_A_HEX', { runId: RUN_ID, stateDir }), null, 'a non-hex key returns null');
+      assert.strictEqual(readdirCalls, 0, 'fs.readdirSync NEVER runs for a non-hex key (hex-gate before readdir)');
+    } finally { fs.readdirSync = realReaddirSync; }
+
+    // hostile runId -> null (S1b), before any fs reach.
+    assert.strictEqual(store.readByIdempotencyKey(rec.idempotency_key, { runId: '../escape', stateDir }), null, 'a traversing runId returns null');
+    // miss: a valid 64-hex key no record carries -> null.
+    assert.strictEqual(store.readByIdempotencyKey('e'.repeat(64), { runId: RUN_ID, stateDir }), null, 'an unmatched 64-hex key returns null');
+    // hit: the stored record resolves by its idempotency_key.
+    const hit = store.readByIdempotencyKey(rec.idempotency_key, { runId: RUN_ID, stateDir });
+    assert.ok(hit, 'the stored record resolves by its idempotency_key');
+    assert.strictEqual(hit.transaction_id, rec.transaction_id, 'the resolved record is the one stored');
+  } finally { cleanup(stateDir); }
+});
+
+// ════════ PR-4 HARDENING — content-address verification (3-lens hacker HIGH) ════════
+//
+// The dedup must NOT trust a self-asserted idempotency_key. A record's key is re-derived
+// from its body (deriveIdempotencyKey); a forged/inconsistent key is REJECTED on append
+// (incoming) and SKIPPED as a dedup target on read (stored-side). Closes the record-
+// SUPPRESSION vector: a poison record pre-seeding a victim's key (but with attacker content)
+// must NOT suppress the victim's legitimate provenance write. The store dir is NOT a sandbox
+// (p-writescope), so a poison record can land directly on disk — the read-side check defends.
+
+// Craft a poison record on disk: it carries `forgedKey` in idempotency_key but its BODY
+// (attacker content) derives to a DIFFERENT key. transaction_id is computed over the body so
+// it passes the S5 integrity gate + loads. Written DIRECTLY to the records dir (bypassing
+// appendRecord, which would reject it) — simulating the non-sandbox direct-disk write.
+function writePoisonOnDisk(forgedKey, stateDir) {
+  const body = {
+    prev_state_hash: 'GENESIS',
+    writer_persona_id: 'ATTACKER',
+    writer_spawn_id: 'attacker-spawn',
+    operation_class: 'CREATE',
+    evidence_refs: ['ROOT_TASK_RECORD:attacker'],
+    intent_recorded_at: '2026-01-01T00:00:00.000Z',
+    commit_outcome: 'COMMITTED',
+    schema_version: 'v3',
+    post_state_hash: 'f'.repeat(64),
+    idempotency_key: forgedKey, // FORGED: does not match this body's own derivation
+  };
+  const transaction_id = computeTransactionId(body);
+  const poison = { transaction_id, ...body };
+  const dir = path.join(stateDir, RUN_ID, 'records');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, `record-${transaction_id}.json`), JSON.stringify(poison, null, 2));
+  return poison;
+}
+
+test('21. record-suppression guard (stored-side): a poison record forging a victim key does NOT suppress the victim\'s legitimate append', () => {
+  const stateDir = tmpStateDir();
+  try {
+    const victim = keyedSpawn({ agentId: 'victim', postStateHash: 'a'.repeat(64) });
+    const K = victim.idempotency_key; // the victim's REAL (self-consistent) key
+    const poison = writePoisonOnDisk(K, stateDir); // attacker pre-seeds K with attacker content
+    assert.notStrictEqual(deriveIdempotencyKey(poison), K, 'the poison key is forged (its body derives to a DIFFERENT key)');
+
+    const r = store.appendRecord(victim, { runId: RUN_ID, stateDir });
+    assert.strictEqual(r.ok, true, 'the victim append succeeds');
+    assert.ok(!r.deduped, 'the victim is NOT suppressed by the poison (no false dedup against a forged-key record)');
+    assert.ok(store.readById(victim.transaction_id, { runId: RUN_ID, stateDir }), 'the victim\'s real record IS stored on disk');
+  } finally { cleanup(stateDir); }
+});
+
+test('22. incoming forged-key guard: appendRecord rejects a record whose idempotency_key != its own content-derivation', () => {
+  const stateDir = tmpStateDir();
+  try {
+    const legit = keyedSpawn({ agentId: 'tamper', postStateHash: 'a'.repeat(64) });
+    // Tamper the key to a different valid 64-hex, then recompute transaction_id so the S5
+    // integrity gate still passes — only the content-address (key-vs-body) check catches it.
+    const body = { ...legit, idempotency_key: 'd'.repeat(64) };
+    delete body.transaction_id;
+    const forged = { transaction_id: computeTransactionId(body), ...body };
+    const r = store.appendRecord(forged, { runId: RUN_ID, stateDir });
+    assert.strictEqual(r.ok, false, 'a self-inconsistent idempotency_key is rejected (not stored)');
+    assert.match(r.reason, /idempotency-key-mismatch/, 'the reason names the content-address mismatch');
+    assert.strictEqual(store.listByRun({ runId: RUN_ID, stateDir }).length, 0, 'nothing written');
+  } finally { cleanup(stateDir); }
+});
+
+test('23. validator shape-check: a non-hex idempotency_key is rejected by validateTransactionRecord', () => {
+  const bad = { ...keyedSpawn({ agentId: 'shape' }), idempotency_key: 'NOT-HEX' };
+  const v = validateTransactionRecord(bad, { isGenesisPosition: true });
+  assert.strictEqual(v.valid, false, 'a non-hex idempotency_key fails validation');
+  assert.ok((v.errors || []).some((e) => /idempotency_key/.test(e)), 'the error names idempotency_key');
+});
+
+test('24. deriveIdempotencyKey: a legit producer record is self-consistent (key == its own derivation); a record missing inputs -> null', () => {
+  const legit = keyedSpawn({ agentId: 'derive', postStateHash: 'a'.repeat(64) });
+  assert.strictEqual(deriveIdempotencyKey(legit), legit.idempotency_key, 'a legit record\'s key IS a content-address of its body');
+  assert.strictEqual(deriveIdempotencyKey({ idempotency_key: 'a'.repeat(64) }), null, 'a record missing the 4 key inputs -> null (a verification failure)');
+});
+
+// ── 25-26. crash-suppression guard (3-lens hacker re-verify, NEW HIGH): a poison/record
+// with a pathologically DEEP hashed field must NOT crash an append via unbounded recursion
+// in canonicalJsonSerialize. The deep value is carried in writer_spawn_id — a field the
+// lenient validator does NOT type-check but computeContentHash DOES hash — so the test
+// genuinely exercises the depth bound + the fail-closed catches (head_anchor/post_state_hash
+// are separately rejected on TYPE by the validator; see transaction-record.test.js).
+// Depth 200 is comfortably OVER MAX_CANONICAL_DEPTH=100 (so the bound fires) yet far UNDER
+// the native JSON.stringify/parse stack limit (so the test fixture itself is portable — a
+// 5000-deep fixture overflowed native JSON.stringify on the CI runner; the CODE was fine). ──
+
+const OVER_BOUND_DEPTH = 200; // > MAX_CANONICAL_DEPTH (100); << native JSON stack limit
+
+function deeplyNested(depth) {
+  let v = 'x';
+  for (let i = 0; i < depth; i++) v = { n: v };
+  return v;
+}
+
+test('25. crash-suppression guard (stored-side): a poison with a DEEP writer_spawn_id + a victim key does NOT crash the victim\'s append; the victim is stored', () => {
+  const stateDir = tmpStateDir();
+  try {
+    const victim = keyedSpawn({ agentId: 'crashvictim', postStateHash: 'a'.repeat(64) });
+    const K = victim.idempotency_key;
+    const dir = path.join(stateDir, RUN_ID, 'records');
+    fs.mkdirSync(dir, { recursive: true });
+    // The poison carries K but a deeply-nested writer_spawn_id (passes the lenient validator,
+    // which does not type-check writer_spawn_id). Hand-written to disk (a direct non-sandbox
+    // drop). On the victim's append, readByIdempotencyKey re-derives the poison's key via
+    // computeContentHash(writer_spawn_id) → the depth bound throws → deriveIdempotencyKey
+    // fail-closes to null → the poison is SKIPPED as a dedup target, no RangeError escapes.
+    const poison = {
+      transaction_id: 'e'.repeat(64), prev_state_hash: 'GENESIS', writer_persona_id: 'ATTACKER',
+      writer_spawn_id: deeplyNested(OVER_BOUND_DEPTH), operation_class: 'CREATE', evidence_refs: ['ROOT_TASK_RECORD:atk'],
+      intent_recorded_at: '2026-01-01T00:00:00.000Z', commit_outcome: 'COMMITTED', schema_version: 'v3',
+      post_state_hash: 'f'.repeat(64), head_anchor: null, idempotency_key: K,
+    };
+    fs.writeFileSync(path.join(dir, `record-${'e'.repeat(64)}.json`), JSON.stringify(poison));
+
+    const r = store.appendRecord(victim, { runId: RUN_ID, stateDir });
+    assert.strictEqual(r.ok, true, 'the victim append succeeds — no RangeError escapes the dedup scan');
+    assert.ok(!r.deduped, 'the deep-field poison is NOT honored as a dedup target');
+    assert.ok(store.readById(victim.transaction_id, { runId: RUN_ID, stateDir }), 'the victim\'s record IS stored');
+  } finally { cleanup(stateDir); }
+});
+
+test('26. crash guard (incoming): appendRecord REJECTS a record with a pathologically deep writer_spawn_id (no RangeError; record-uncomputable); nothing written', () => {
+  const stateDir = tmpStateDir();
+  try {
+    // writer_spawn_id is hashed by the S5 computeTransactionId but not type-checked by the
+    // validator, so it reaches canonicalJsonSerialize → the depth bound throws → appendRecord's
+    // S5 try/catch rejects (record-uncomputable) rather than letting the RangeError escape.
+    const bad = {
+      transaction_id: 'e'.repeat(64), prev_state_hash: 'GENESIS', writer_persona_id: 'p',
+      writer_spawn_id: deeplyNested(OVER_BOUND_DEPTH), operation_class: 'CREATE', evidence_refs: ['ROOT_TASK_RECORD:x'],
+      intent_recorded_at: '2026-01-01T00:00:00.000Z', commit_outcome: 'COMMITTED', schema_version: 'v3',
+      post_state_hash: 'f'.repeat(64), head_anchor: null,
+    };
+    const r = store.appendRecord(bad, { runId: RUN_ID, stateDir });
+    assert.strictEqual(r.ok, false, 'a pathologically deep hashed field is rejected, not crashed');
+    assert.match(r.reason, /uncomputable|invalid-record/, 'the reason names the rejection');
+    assert.strictEqual(store.listByRun({ runId: RUN_ID, stateDir }).length, 0, 'nothing written');
   } finally { cleanup(stateDir); }
 });
 

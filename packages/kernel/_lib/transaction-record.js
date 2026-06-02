@@ -40,13 +40,25 @@ function loadSchema() {
  * @param {*} value Any JSON-serializable value
  * @returns {string} Canonical JSON string with sorted keys
  */
-function canonicalJsonSerialize(value) {
+// PR-4 hardening (3-lens hacker re-verify HIGH): bound the recursion. A transaction
+// record is FLAT (scalar fields + an evidence_refs string-array — depth <= 2); legitimate
+// input never approaches this limit. An UNBOUNDED walk let a pathologically deep field
+// (e.g. a poison record's nested head_anchor, which passes the lenient validator) overflow
+// the stack with a RangeError that escaped appendRecord / readByIdempotencyKey — a crash-
+// based record-suppression DoS. Past the limit we throw a CONTROLLED TypeError that callers
+// catch + fail-closed (reject the append / skip the dedup target), never an uncaught RangeError.
+const MAX_CANONICAL_DEPTH = 100;
+
+function canonicalJsonSerialize(value, depth = 0) {
+  if (depth > MAX_CANONICAL_DEPTH) {
+    throw new TypeError('canonicalJsonSerialize: max nesting depth exceeded (' + MAX_CANONICAL_DEPTH + ')');
+  }
   if (value === null || typeof value !== 'object') return JSON.stringify(value);
   if (Array.isArray(value)) {
-    return '[' + value.map(canonicalJsonSerialize).join(',') + ']';
+    return '[' + value.map((v) => canonicalJsonSerialize(v, depth + 1)).join(',') + ']';
   }
   const sortedKeys = Object.keys(value).sort();
-  const parts = sortedKeys.map((k) => JSON.stringify(k) + ':' + canonicalJsonSerialize(value[k]));
+  const parts = sortedKeys.map((k) => JSON.stringify(k) + ':' + canonicalJsonSerialize(value[k], depth + 1));
   return '{' + parts.join(',') + '}';
 }
 
@@ -135,6 +147,53 @@ function computePostStateHash(treeSha) {
 }
 
 /**
+ * Compute the content_hash that BINDS a transaction's spawn identity, for feeding
+ * computeIdempotencyKey per §5a.6 (PR-4 INV-22).
+ *
+ *   content_hash = sha256(canonical_json({post_state_hash, writer_spawn_id, head_anchor}))
+ *
+ * CRITICAL-1 (verify-plan board): content_hash is NOT the bare post_state_hash.
+ * post_state_hash is fork-consistent / tree-only — it is DELIBERATELY identity-erasing
+ * (that is its chain-edge job; see computePostStateHash). Reusing it as content_hash
+ * would false-merge two DISTINCT spawns that landed on an identical tree: the
+ * idempotency_key collapses to f(persona, tree) because operation_class='CREATE' and
+ * the genesis prev_state_hash are constant across spawns. Binding writer_spawn_id (the
+ * raw, unique agentId) — plus head_anchor — makes content_hash spawn-distinct so the
+ * key never collides across genuinely-different transactions. The M1 lesson INVERTED:
+ * reuse the canonical hash verbatim for chain-edges, NOT for a transaction-identity key.
+ *
+ * NULL-SAFE by construction (CR CRITICAL-1): postStateHash is `null` on a dirty
+ * worktree close; canonicalJsonSerialize emits `null` for it (NO throw), so the dirty
+ * record still derives a valid key + writes — instead of computeIdempotencyKey throwing
+ * downstream and the record being silently dropped (the provenance-blackout regression).
+ * An omitted headAnchor is normalized to null so an omitted vs explicit-null head_anchor
+ * hash identically.
+ *
+ * ASSUMPTION (verify-plan hacker-lens LOW; unverified harness property): the false-merge
+ * defense rests on `writerSpawnId` (the harness agentId) being UNIQUE per spawn. Because
+ * head_anchor is null in every live producer and operation_class + the genesis prev are
+ * constant, the live key reduces to f(persona, post_state_hash, writer_spawn_id) — so two
+ * genuinely-distinct same-persona spawns that produce an identical tree stay distinct ONLY
+ * IF their agentIds differ. agentId is the harness correlation id (expected unique per spawn),
+ * but this is not a written guarantee; if it is ever reused, fold a per-spawn entropy source
+ * (e.g. the task/intent hash) into content_hash. Tracked as a deferred Runtime-Claim Probe.
+ *
+ * @param {Object} opts
+ * @param {string|null} opts.postStateHash the record's post_state_hash, or null (dirty).
+ * @param {string} opts.writerSpawnId the raw spawn id (binds transaction identity).
+ * @param {string|null} [opts.headAnchor] the forked-from HEAD sha, or null.
+ * @returns {string} 64-char hex sha256 (never throws on a null postStateHash).
+ */
+function computeContentHash({ postStateHash, writerSpawnId, headAnchor }) {
+  const canonical = canonicalJsonSerialize({
+    post_state_hash: postStateHash ?? null,
+    writer_spawn_id: writerSpawnId,
+    head_anchor: headAnchor ?? null,
+  });
+  return crypto.createHash('sha256').update(canonical).digest('hex');
+}
+
+/**
  * Compute the idempotency_key per §5a.6.
  *
  * key = sha256(canonical_json({writer_persona_id, operation_class, content_hash, prev_state_hash}))
@@ -160,6 +219,56 @@ function computeIdempotencyKey({ writerPersonaId, operationClass, contentHash, p
     prev_state_hash: prevStateHash,
   });
   return crypto.createHash('sha256').update(canonical).digest('hex');
+}
+
+/**
+ * Re-derive a record's idempotency_key FROM ITS OWN BODY — the content-address
+ * verification for INV-22 (PR-4 hardening; verify-plan hacker-lens HIGH).
+ *
+ * The dedup gate MUST NOT trust a self-asserted idempotency_key. The store dir is
+ * NOT a sandbox (p-writescope: a sub-agent writes absolute paths with zero prompts),
+ * so a poison record carrying a VICTIM's key but ATTACKER content could be dropped
+ * directly on disk; trusting the key field would let it SUPPRESS the victim's real
+ * provenance write (the dedup returns the poison's id; the victim's record is never
+ * stored). Re-deriving the key from the body makes it a verifiable content-address
+ * (like transaction_id), not a trusted label: record-store rejects a self-inconsistent
+ * key on append (incoming) and skips a forged-key record as a dedup target (stored-side).
+ *
+ * Returns null if any of the FOUR key inputs is absent — a record carrying an
+ * idempotency_key but missing its derivation inputs is itself malformed, so callers
+ * treat null as a verification FAILURE (null !== the claimed key). post_state_hash MAY
+ * be null (a dirty close); computeContentHash is null-safe, so a dirty record still
+ * derives a stable key.
+ *
+ * @param {object} record a transaction-record (must carry the 4 key inputs).
+ * @returns {string|null} the re-derived 64-hex key, or null if underivable.
+ */
+function deriveIdempotencyKey(record) {
+  if (!record || typeof record !== 'object') return null;
+  const persona = record.writer_persona_id;
+  const op = record.operation_class;
+  const prev = record.prev_state_hash;
+  const spawnId = record.writer_spawn_id;
+  // post_state_hash MAY be null (dirty close); the other four inputs must be present.
+  if (!persona || !op || !prev || !spawnId) return null;
+  // Fail-CLOSED on a hash failure (e.g. the canonicalJsonSerialize depth bound firing on a
+  // pathologically deep field): return null so the caller treats the record as UNDERIVABLE —
+  // skipped as a dedup target / rejected on append — rather than letting a throw escape.
+  try {
+    const contentHash = computeContentHash({
+      postStateHash: record.post_state_hash ?? null,
+      writerSpawnId: spawnId,
+      headAnchor: record.head_anchor ?? null,
+    });
+    return computeIdempotencyKey({
+      writerPersonaId: persona,
+      operationClass: op,
+      contentHash,
+      prevStateHash: prev,
+    });
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -302,6 +411,29 @@ function validateTransactionRecord(record, options) {
     }
   }
 
+  // PR-4 hardening: idempotency_key (when present) MUST be a 64-char lowercase-hex
+  // sha256 — the shape contract the dedup gate keys on. Mirrors the transaction_id /
+  // prev_state_hash spot-checks above (the JSON-schema pattern is never enforced by
+  // this lightweight runtime validator). Without it a non-hex key both bypasses
+  // validation AND silently opts out of dedup (the :record-store truthy-gate vs the
+  // hex-gate diverge) — closed here so a malformed key is a hard reject.
+  if (record.idempotency_key != null &&
+      (typeof record.idempotency_key !== 'string' || !/^[a-f0-9]{64}$/.test(record.idempotency_key))) {
+    errors.push('idempotency_key must be 64-char lowercase hex sha256');
+  }
+
+  // PR-4 hardening (hacker re-verify HIGH): the hash-fed scalar fields MUST be string-or-null
+  // (the schema declares head_anchor + post_state_hash as oneOf [string, null]). The lenient
+  // validator never type-checked them, so a non-scalar (deeply-nested object/array) value
+  // passed validation and only blew up later inside canonicalJsonSerialize. Rejecting it HERE
+  // — the single gate before BOTH the incoming computeTransactionId (S5) and the stored-side
+  // dedup re-derivation — means no deep value ever reaches a hashing function.
+  for (const f of ['head_anchor', 'post_state_hash']) {
+    if (record[f] != null && typeof record[f] !== 'string') {
+      errors.push(f + ' must be a string or null');
+    }
+  }
+
   // A10 / Round-3e GP4: state-changing records MUST carry non-empty evidence_refs
   // OR a bootstrap-sentinel (per §3 A10 Bootstrap exception).
   if (isStateChanging(record.operation_class)) {
@@ -346,6 +478,8 @@ module.exports = {
   computeTransactionId,
   computeGenesisHash,
   computeIdempotencyKey,
+  computeContentHash,
+  deriveIdempotencyKey,
   computePostStateHash,
   isStateChanging,
   isBootstrapSentinel,

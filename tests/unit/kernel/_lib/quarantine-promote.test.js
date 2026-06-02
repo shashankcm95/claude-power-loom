@@ -33,6 +33,9 @@ const { runGitDefault } = require('../../../../packages/kernel/_lib/invoke-git')
 const {
   computeTransactionId,
   computePostStateHash,
+  computeIdempotencyKey,
+  computeContentHash,
+  computeGenesisHash,
   validateTransactionRecord,
   isBootstrapSentinel,
 } = require('../../../../packages/kernel/_lib/transaction-record');
@@ -466,6 +469,70 @@ test('PR-P2a #7: buildSpawnRecord round-trips through record-store.readByPostSta
   } finally {
     fs.rmSync(baseDir, { recursive: true, force: true });
   }
+});
+
+// ── PR-4 #8: buildSpawnRecord carries a valid idempotency_key (the INV-22 producer) ──
+//
+// The producer now derives content_hash = computeContentHash({postStateHash,
+// writerSpawnId: agentId, headAnchor}) and idempotency_key = computeIdempotencyKey(
+// {persona, 'CREATE', contentHash, genesis-prev}), added BEFORE finalizeGenesisRecord
+// so transaction_id hashes it in. The key BINDS spawn identity (writer_spawn_id), is
+// stable across an intent_recorded_at re-fire, and distinct across agentId/tree.
+
+test('PR-4 #8: buildSpawnRecord carries a valid 64-hex idempotency_key matching the §5a.6 derivation; transaction_id hashes it in', () => {
+  const postStateHash = computePostStateHash('a'.repeat(40));
+  const agentId = 'arch-pr4-8';
+  const record = qp.buildSpawnRecord({ agentId, personaId: '04-architect.theo', schemaVersion: 'v3', postStateHash, headAnchor: 'b'.repeat(40) });
+  assert.match(record.idempotency_key, /^[a-f0-9]{64}$/, 'idempotency_key is a 64-hex sha256');
+
+  // It matches the canonical derivation (content_hash BINDS writer_spawn_id + head_anchor).
+  const contentHash = computeContentHash({ postStateHash, writerSpawnId: agentId, headAnchor: 'b'.repeat(40) });
+  const expectedKey = computeIdempotencyKey({
+    writerPersonaId: '04-architect.theo',
+    operationClass: 'CREATE',
+    contentHash,
+    prevStateHash: computeGenesisHash('v3', 'per-project'),
+  });
+  assert.strictEqual(record.idempotency_key, expectedKey, 'idempotency_key matches computeIdempotencyKey over the bound content_hash + genesis prev');
+
+  // The key is in the hashed body (transaction_id integrity holds WITH the key present).
+  assert.strictEqual(record.transaction_id, computeTransactionId(record), 'transaction_id === computeTransactionId(record) with idempotency_key in the body');
+  const v = validateTransactionRecord(record, { isGenesisPosition: true });
+  assert.strictEqual(v.valid, true, `the keyed record stays genesis-valid; errors: ${JSON.stringify(v.errors)}`);
+});
+
+test('PR-4 #8b: buildSpawnRecord idempotency_key is STABLE across an intent_recorded_at re-fire (the F-01 dedup axis)', () => {
+  const postStateHash = computePostStateHash('a'.repeat(40));
+  const base = { agentId: 'arch-pr4-8b', personaId: '04-architect.theo', schemaVersion: 'v3', postStateHash, headAnchor: null };
+  const a = qp.buildSpawnRecord(base);
+  // Re-salt the timestamp EXPLICITLY (deterministic — not reliant on sub-ms wall-clock
+  // granularity) to model a re-fired close: a DIFFERENT intent_recorded_at -> a DIFFERENT
+  // transaction_id, but the SAME idempotency_key (the key excludes the timestamp). This is
+  // exactly what lets dedup-on-append collapse the F-01 re-fire.
+  const refiredBody = { ...a, intent_recorded_at: '2031-12-31T23:59:59.000Z' };
+  delete refiredBody.transaction_id;
+  const b = { transaction_id: computeTransactionId(refiredBody), ...refiredBody };
+  assert.notStrictEqual(a.transaction_id, b.transaction_id, 'the re-salted timestamp yields a DIFFERENT transaction_id');
+  assert.strictEqual(a.idempotency_key, b.idempotency_key, 'but the idempotency_key is STABLE (timestamp excluded — the dedup axis)');
+});
+
+test('PR-4 #8c: buildSpawnRecord idempotency_key is DISTINCT across agentId AND across tree (no false-merge)', () => {
+  const post1 = computePostStateHash('a'.repeat(40));
+  const post2 = computePostStateHash('c'.repeat(40));
+  const k = (agentId, postStateHash) => qp.buildSpawnRecord({ agentId, personaId: '04-architect.theo', schemaVersion: 'v3', postStateHash, headAnchor: null }).idempotency_key;
+  // Same tree, DIFFERENT agentId -> DIFFERENT key (the CRITICAL-1 false-merge guard).
+  assert.notStrictEqual(k('agent-A', post1), k('agent-B', post1), 'distinct agentId on the SAME tree -> distinct key (binds spawn identity)');
+  // Same agentId, DIFFERENT tree -> DIFFERENT key (content moved).
+  assert.notStrictEqual(k('agent-A', post1), k('agent-A', post2), 'distinct tree on the SAME agentId -> distinct key');
+});
+
+test('PR-4 #8d: buildSpawnRecord with postStateHash=null (dirty worktree) -> a valid idempotency_key + writes, NO throw (provenance-blackout guard)', () => {
+  let record;
+  assert.doesNotThrow(() => {
+    record = qp.buildSpawnRecord({ agentId: 'arch-pr4-8d', personaId: '04-architect.theo', schemaVersion: 'v3', postStateHash: null, headAnchor: null });
+  }, 'a dirty (null post_state_hash) spawn must NOT throw — computeContentHash is null-safe');
+  assert.match(record.idempotency_key, /^[a-f0-9]{64}$/, 'a dirty-null spawn still carries a valid 64-hex idempotency_key');
+  assert.strictEqual(record.transaction_id, computeTransactionId(record), 'integrity holds with a null-post + key');
 });
 
 // ── T-H': a missing / empty personaId -> a concrete fail-fast (not a silent ──

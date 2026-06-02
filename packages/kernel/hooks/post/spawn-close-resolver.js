@@ -517,7 +517,11 @@ function recordSpawnProvenance({ envelope, runGit, stateDir, runId, agentId, per
       kind: 'shadow-provenance-record',
       event: 'spawn-close-shadow',
       spawn_id: agentId,
-      transaction_id: record.transaction_id,
+      // PR-4 caller-honesty: journal the STORED id (appended.transaction_id) — on an
+      // INV-22 dedup it is the EXISTING record's id, not this re-fire's fresh local id.
+      // Fall back to the local id only if the append returned no id (a reject path).
+      transaction_id: appended.transaction_id || record.transaction_id,
+      deduped: appended.deduped === true,
       post_state_hash: postStateHash,
       head_anchor: null,
       record_appended: appended.ok,

@@ -94,9 +94,11 @@ function journal(journalFile, record) {
  * SRP — build + append the genesis provenance record (via the appendRecordFn seam
  * when present). post_state_hash = computePostStateHash(tree) (the M1 producer);
  * head_anchor:null (the merge-base is derived, not persisted — see the module
- * header). Returns {ok:true, record} or, on a record-write failure, journals
+ * header). Returns {ok:true, record, appended} or, on a record-write failure, journals
  * 'candidate-record-failed' and returns {ok:false} — the FLAG-2 ref-implies-record
- * invariant (never write the candidate ref without its provenance record).
+ * invariant (never write the candidate ref without its provenance record). The
+ * `appended` result is threaded out so the success journal records the STORED id +
+ * deduped flag (PR-4 caller-honesty), not this re-fire's fresh local id.
  */
 function recordProvenance(args, safeId, postStateHash, journalFile) {
   const record = buildSpawnRecord({
@@ -116,7 +118,7 @@ function recordProvenance(args, safeId, postStateHash, journalFile) {
     });
     return { ok: false };
   }
-  return { ok: true, record };
+  return { ok: true, record, appended };
 }
 
 /**
@@ -178,8 +180,16 @@ function precheck(args) {
  * SRP — emit the success journal + the staged result for a pinned candidate. The
  * `note` is the honest scope contract (hidden idempotent ref; NO merge; derived
  * merge-base; structural-not-provenance; HEAD/working-tree untouched).
+ *
+ * PR-4 caller-honesty: `appended` is the appendRecord result. transaction_id is the
+ * STORED id (appended.transaction_id) — on an INV-22 dedup (a re-fired close re-staging
+ * the same spawn) that is the EXISTING record's id, not this fire's fresh local id —
+ * with `deduped` surfaced. The ref-implies-record invariant still holds: a deduped
+ * record IS in the store (from the prior fire), so pinning the ref is correct.
  */
-function stagedResult(journalFile, safeId, ref, deltaSha, postStateHash, transactionId) {
+function stagedResult(journalFile, safeId, ref, deltaSha, postStateHash, appended) {
+  const transactionId = appended.transaction_id;
+  const deduped = appended.deduped === true;
   journal(journalFile, {
     kind: 'candidate-staged',
     spawn_id: safeId,
@@ -188,11 +198,12 @@ function stagedResult(journalFile, safeId, ref, deltaSha, postStateHash, transac
     post_state_hash: postStateHash,
     transaction_id: transactionId,
     record_appended: true,
+    deduped,
     note: 'P3c-a candidate: delta pinned under refs/loom/candidates/* (hidden ref, idempotent by id); '
       + 'NO merge (integrator P3c-b consumes it); head_anchor null (merge-base derived dynamically by the integrator: git merge-base --all); '
       + 'genesis = STRUCTURAL gate, not provenance-verified; user HEAD/working tree untouched.',
   });
-  return { staged: true, ref, delta_sha: deltaSha, post_state_hash: postStateHash, transaction_id: transactionId };
+  return { staged: true, ref, delta_sha: deltaSha, post_state_hash: postStateHash, transaction_id: transactionId, deduped };
 }
 
 /**
@@ -242,7 +253,7 @@ function stageCandidate(args) {
     const pin = pinCandidateRef(args, harnessRunners, safeId, deltaSha, journalFile);
     if (!pin.ok) return { staged: false, reason: 'ref-write-failed' };
 
-    return stagedResult(journalFile, safeId, pin.ref, deltaSha, postStateHash, prov.record.transaction_id);
+    return stagedResult(journalFile, safeId, pin.ref, deltaSha, postStateHash, prov.appended);
   } catch (err) {
     // Fail-soft: swallow every throw; record it in the journal, never propagate.
     journal(journalFile, { kind: 'candidate-error', spawn_id: safeId, error: err.message });

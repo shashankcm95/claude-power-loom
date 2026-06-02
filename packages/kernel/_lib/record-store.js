@@ -66,6 +66,7 @@ const { writeAtomicString } = require('./atomic-write');
 const {
   computeTransactionId,
   validateTransactionRecord,
+  deriveIdempotencyKey,
   isBootstrapSentinel,
 } = require('./transaction-record');
 const { checkWithinRoot } = require('./path-canonicalize');
@@ -160,9 +161,17 @@ function isGenesisPositionRecord(record) {
  * `record.transaction_id === computeTransactionId(record)` (S5 — no storage under
  * a forged id). Never throws; returns {ok:false, reason} on any reject.
  *
+ * INV-22 (PR-4): when `record.idempotency_key` is set, a content-address check
+ * (S2b) + an O(n) dedup scan of the run dir (readByIdempotencyKey) fire before the
+ * write — a replay returns `{ok:true, deduped:true}` with the EXISTING id and writes
+ * nothing. For large runs an in-memory key index is a deferred optimization (YAGNI —
+ * see readByIdempotencyKey). Keyless records skip both (current behavior).
+ *
  * @param {object} record a transaction-record (must carry its transaction_id)
  * @param {{runId: string, stateDir?: string}} opts
- * @returns {{ok: boolean, file?: string, transaction_id?: string, reason?: string}}
+ * @returns {{ok: boolean, file?: string, transaction_id?: string, deduped?: true, reason?: string}}
+ *   `deduped:true` is set ONLY on an INV-22 replay (the existing record's id is returned);
+ *   the normal-write and reject paths omit it.
  */
 function appendRecord(record, opts = {}) {
   if (!record || typeof record !== 'object') {
@@ -192,9 +201,27 @@ function appendRecord(record, opts = {}) {
   if (typeof id !== 'string' || !HEX64.test(id)) {
     return { ok: false, reason: 'transaction-id-not-hex' };
   }
-  const computed = computeTransactionId(record);
+  // computeTransactionId hashes the whole record; a pathologically deep field trips the
+  // canonicalJsonSerialize depth bound (a controlled TypeError). Catch it → reject (never
+  // let it escape — appendRecord's contract is never-throws). The validator already rejects
+  // a deep head_anchor/post_state_hash above; this is the backstop for any other deep field.
+  let computed;
+  try {
+    computed = computeTransactionId(record);
+  } catch {
+    return { ok: false, reason: 'record-uncomputable' };
+  }
   if (id !== computed) {
     return { ok: false, reason: 'transaction-id-mismatch' };
+  }
+
+  // (2b) Idempotency-key content-address integrity (PR-4 hardening; hacker-lens HIGH).
+  // The dedup gate keys on idempotency_key, so the key MUST be a verifiable content-address
+  // of THIS record's body — never a self-asserted label. Re-derive it; reject a mismatch.
+  // Without this, a record could carry a key unrelated to its content and (via the dedup)
+  // SUPPRESS a different transaction's write. Sibling of the S5 id-integrity check above.
+  if (record.idempotency_key && deriveIdempotencyKey(record) !== record.idempotency_key) {
+    return { ok: false, reason: 'idempotency-key-mismatch' };
   }
 
   // Defense-in-depth (S1): confirm the derived path stays within the STATE ROOT
@@ -208,6 +235,21 @@ function appendRecord(record, opts = {}) {
   const scope = checkWithinRoot(file, base);
   if (!scope.ok) {
     return { ok: false, reason: 'record-path-out-of-scope: ' + scope.reason };
+  }
+
+  // INV-22 dedup-on-append (PR-4): two records sharing an idempotency_key are the SAME
+  // transaction (§6.13); a replay is a no-op. Short-circuit a re-fire BEFORE any fs
+  // mutation (no mkdirSync/write for a pure replay — Finding-4) and return the EXISTING
+  // stored transaction_id so a deduped caller journals the id that is ACTUALLY on disk,
+  // not its fresh local id (caller-honesty). Gated on idempotency_key PRESENCE: keyless
+  // records (genesis-via-buildGenesisRecord, PENDING intent, pre-PR-4) keep current
+  // behavior (Open/Closed; INV-K2-SchemaForwardCompat). This SUBSUMES the F-01 re-fire
+  // that P3 tolerated-on-read; tolerate-on-read now only earns its keep for keyless records.
+  if (record.idempotency_key) {
+    const existing = readByIdempotencyKey(record.idempotency_key, opts);
+    if (existing) {
+      return { ok: true, transaction_id: existing.transaction_id, deduped: true, file: recordFilePath(existing.transaction_id, opts) };
+    }
   }
 
   try {
@@ -314,6 +356,56 @@ function readByPostStateHash(postStateHash, opts = {}) {
 }
 
 /**
+ * Read the record whose `idempotency_key === key` — the INV-22 dedup seam (PR-4).
+ * Two records with the same idempotency_key are the SAME transaction (§6.13); this
+ * reader lets appendRecord short-circuit a replay before any write.
+ *
+ * Mirrors readByPostStateHash EXACTLY (DRY): the key is hex-gated FIRST (a non-hex key
+ * → null with ZERO filesystem reach, so a 64-hex key can never equal a null/absent
+ * idempotency_key — a keyless record never matches); the hostile-runId guard (S1b)
+ * fires before any fs reach; the run dir is scanned per call (wrapped readdirSync;
+ * ENOENT → null); each candidate is parsed + validated; the first record whose
+ * idempotency_key strictly equals the key is returned. A duplicate key within one run
+ * (the very thing dedup-on-append prevents going forward) yields an arbitrary match —
+ * benign, since the records are equivalent-modulo-timestamp. The per-call scan is
+ * bounded by run size; an in-memory index is a deferred optimization (YAGNI). No
+ * hash-keyed object is built → no prototype-pollution surface (S3).
+ *
+ * @param {string} key 64-hex idempotency_key
+ * @param {{runId: string, stateDir?: string}} opts
+ * @returns {object|null} the matching record, or null (miss / non-hex / hostile runId)
+ */
+function readByIdempotencyKey(key, opts = {}) {
+  if (typeof key !== 'string' || !HEX64.test(key)) {
+    return null; // S1 hex-gate (also precludes any null/absent idempotency_key match)
+  }
+  if (!opts || !isSafeRunId(opts.runId)) return null; // S1b — hostile runId never reaches readdirSync
+  const dir = recordStoreDir(opts);
+  let names;
+  try {
+    names = fs.readdirSync(dir);
+  } catch {
+    return null; // absent run dir (ENOENT) / read error → fail-soft, no existsSync pre-check
+  }
+  for (const name of names) {
+    if (!RECORD_FILE_RE.test(name)) continue;
+    const record = loadRecordFile(path.join(dir, name));
+    // Value-strict + content-address VERIFIED (PR-4 hardening; hacker-lens HIGH): a record
+    // matches only if its idempotency_key equals the (already 64-hex) key AND that key is a
+    // genuine content-address of the record's own body (deriveIdempotencyKey === key). A
+    // forged-key poison record (key field === key, but its body derives to a DIFFERENT key)
+    // is SKIPPED, so it can never become a dedup target that suppresses a real write — even
+    // though the store dir is not a sandbox and the poison can land on disk directly. A
+    // keyless record never matches (deriveIdempotencyKey may be non-null but its key !== the
+    // 64-hex search key).
+    if (record && record.idempotency_key === key && deriveIdempotencyKey(record) === key) {
+      return record;
+    }
+  }
+  return null;
+}
+
+/**
  * List every valid record in a run (the sibling set; run/session grouping).
  *
  * Wrapped readdirSync (ENOENT → []); each `record-*.json` parsed + validated;
@@ -345,6 +437,7 @@ module.exports = {
   appendRecord,
   readById,
   readByPostStateHash,
+  readByIdempotencyKey,
   listByRun,
   recordStoreDir,
 };
