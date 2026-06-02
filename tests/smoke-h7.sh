@@ -10,8 +10,15 @@
 # tests 20-21 retired with validate-markdown-emphasis.js at H.7.27;
 # tests 28-29 retired with plugin-loaded-check.js at H.7.26).
 #
-# DO NOT execute directly — depends on parent-scope `local passed`,
-# `local failed`, and `$CLAUDE_DIR` / `$SCRIPT_DIR` set by install.sh.
+# Normally SOURCED by install.sh run_smoke_tests() (which sets SCRIPT_DIR /
+# CLAUDE_DIR / the passed+failed counters). For ad-hoc standalone diagnostics
+# (`bash tests/smoke-h7.sh`) the two path roots fall back to this repo so the
+# `$SCRIPT_DIR/...` / `$CLAUDE_DIR/...` invocations resolve instead of becoming
+# `/...` (MODULE_NOT_FOUND). The `:=` defaults NEVER override values install.sh
+# already set; the passed/failed counters still accumulate from 0, but the final
+# summary line is only printed by install.sh's run_smoke_tests() when sourced.
+: "${SCRIPT_DIR:=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+: "${CLAUDE_DIR:=$SCRIPT_DIR}"
 
   # Test 11 (H.7.7): error-critic Critic→Refiner — first failure stays silent
   # (below escalation threshold). H.7.10 update: use explicit CLAUDE_SESSION_ID
