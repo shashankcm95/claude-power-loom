@@ -8,14 +8,12 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
-## [Unreleased] — v3.x kernel train (pre-release)
+## [3.1.0] — 2026-06-02 — v3.x kernel train (Runtime Foundation)
 
-The v3.x kernel + runtime substrate is under active development and **not yet published as a plugin release** — the marketplace plugin (`.claude-plugin/plugin.json`) remains at `2.9.1`. Completed phases (full accounting in [`docs/ROADMAP.md`](docs/ROADMAP.md)):
+**First published release of the v3.x kernel + runtime substrate** (bumps `.claude-plugin/plugin.json` `2.9.1 → 3.1.0` — a MAJOR jump: the kernel surface changes incompatibly with v2.9 readers, the signal [ADR-0009](packages/specs/adrs/0009-major-bump-rationale.md) reserves for MAJOR). The planned `3.0.0-alpha` train was never cut; per the ADR-0009 amendment it is **consolidated into this `3.1.0` release**. The shadow-default spawn-close transaction loop is **dogfood-proven LIVE in a real session (2026-06-02)** across all three dispatch arms (shadow / enforcing / candidate) — HEAD untouched in every arm. Full phase accounting in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
-- **Phase 1-alpha (v3.0-alpha)** — the pure kernel transaction loop: 11 kernel primitives atop the pre-existing `K5` validators + a property-test harness (ADRs 0009–0011).
-- **v3.1 (Runtime Foundation)** — the persona/capability runtime (R1–R4 two-tier contracts + the agent.md↔contract reconciliation validator), the live shadow-default spawn-close transaction loop, and INV-22 in-substrate idempotency. K8 dropped (ADR-0012: `updatedInput` inert on Agent/Task spawns).
-
-These phases roll into the changelog proper at the next published plugin release.
+- **Phase 1-alpha (v3.0-alpha)** — the pure kernel transaction loop: 11 kernel primitives atop the pre-existing `K5` validators + a property-test harness (ADRs 0009–0011; `#167`–`#177`).
+- **v3.1 (Runtime Foundation)** — the persona/capability runtime (R1–R4 two-tier contracts + the agent.md↔contract reconciliation validator), the live shadow-default spawn-close transaction loop, INV-22 in-substrate idempotency, the P3 enforcing integration-branch arc, and a full-kernel-layer integration harness (`#179`–`#202`). K8 dropped (ADR-0012: `updatedInput` inert on Agent/Task spawns).
 
 ---
 

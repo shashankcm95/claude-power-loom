@@ -85,3 +85,13 @@ The §Mechanics version-bump (`package.json` → `3.0.0-alpha.N` at each sub-PR 
 **Decision**: the `3.0.0-alpha.N` (and eventual `3.0.0`) manifest bump is **deferred to the actual v3.0 release/distribution event**, not the alpha-train development. The v3.0-alpha kernel is the DEVELOPMENT substrate, not a published release — bumping the live marketplace plugin to an alpha version would mis-signal the distributed artifact. The MAJOR-bump **rationale** in this ADR stands (the kernel surface IS incompatible with v2.9 readers); only the manifest-write **timing** moved.
 
 Surfaced by the MVP-review honesty audit: the original §Verification probe (`grep '"version": "3.0.0"' package.json`) FAILED against the repo — a governance-doc credibility leak. Recording the deferral honestly closes it. The probe above is reworded to reflect the deferral.
+
+## Amendment (2026-06-02, v3.1.0 release) — bump EXECUTED + consolidated into v3.1.0
+
+The "actual v3.0 release/distribution event" the 2026-05-31 amendment deferred to **has arrived** — and the work evolved past Phase 1-alpha (the v3.1 Runtime-Foundation layer + the P3 integration arc landed, `#179`–`#202`) before the first publish. So the deferred manifest bump is executed **at the v3.1 milestone, not 3.0.0**:
+
+- `.claude-plugin/plugin.json`: `2.9.1 → 3.1.0` (the marketplace-read version; root `package.json` stays `0.0.0` as the private pnpm monorepo root).
+- The planned `3.0.0-alpha.1…5 → 3.0.0` train was **never cut**, and is **consolidated into this single `3.1.0` first published release** — the version matches the milestone label the docs / roadmap / CHANGELOG all use ("v3.1 Runtime Foundation"), avoiding a release whose semver would contradict its own documentation.
+- **Stable, not alpha**: the shadow-default spawn-close transaction loop was **dogfood-proven live on 2026-06-02** (all three dispatch arms — shadow / enforcing / candidate — fired; HEAD untouched in every arm; an INV-22 record written). The live proof retires the "pre-stable/alpha" caveat the original §Mechanics attached to the first cut.
+
+**Deviation from §Mechanics, owned**: this ADR's original plan (a five-step `3.0.0-alpha` train → stable `3.0.0`) is superseded by a single consolidated `3.1.0` cut. The MAJOR-bump **rationale** (§Decision) still stands — `2.9.1 → 3.1.0` is a MAJOR jump signalling the incompatible kernel surface. Only the train shape changed: development outran the alpha-train cadence, so the first release captures more than Phase 1-alpha.
