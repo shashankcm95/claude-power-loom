@@ -18,13 +18,15 @@
 // tree, no checkout, no cherry-pick (cf. k9.promoteDelta, which DOES cherry-pick
 // into a working tree — correct for 3c's throwaway staging worktree, UNSAFE here).
 //
-// THE MERGE-BASE INVARIANT (verify-plan architect Ch4 / code-reviewer F1 — the
-// load-bearing correctness rule): when stacking candidate N onto an integration
-// tip that already holds 1..N-1, the 3-way merge-base MUST be each candidate's
-// OWN fork point (its head_anchor = materializeDelta.parentHead), NOT the growing
-// tip. A candidate's delta is expressed relative to where it forked; merging it
-// against the tip computes a wrong three-way diff (false-conflict or silent-miss).
-// The caller supplies mergeBase per candidate; these primitives never assume it.
+// THE MERGE-BASE INVARIANT (P3c-b firsthand-probed — SUPERSEDES the earlier
+// delta_sha^1/parentHead rule; load-bearing correctness): when stacking candidate N
+// onto an integration tip that already holds 1..N-1, the 3-way merge-base is the
+// DYNAMIC common ancestor `git merge-base --all (tip, candidate.delta_sha)` — NOT
+// delta_sha^1 (which silently DROPS the main commits that landed between differing
+// fork points) and NOT the parent's HEAD. `--all` so a criss-cross (>1 least-common
+// ancestor) is detected: the integrator QUARANTINES on != 1 base rather than merge
+// against an arbitrary one. The caller supplies mergeBase per candidate; these
+// primitives never assume it.
 //
 // No-shell git (CWE-78): every git run goes through the injected runGit seam
 // (args arrays, never a shell string) — the caller binds it to the repo via the
@@ -106,8 +108,8 @@ function unquoteGitPath(p) {
  * caller routes it to quarantine, in order). Only a real git failure is ok:false.
  *
  * @param {Object} opts
- * @param {string} opts.mergeBase the common ancestor = the candidate's OWN fork
- *   point (head_anchor / materializeDelta.parentHead), NOT the integration tip.
+ * @param {string} opts.mergeBase the DYNAMIC common ancestor of ours+theirs =
+ *   `git merge-base --all (tip, candidate.delta_sha)` (NOT delta_sha^1, NOT parentHead).
  * @param {string} opts.ours      the integration tip (or base on the first stack).
  * @param {string} opts.theirs    the candidate (its squash commit or tree).
  * @param {function} opts.runGit  (args[]) => {ok,code,stdout,stderr}, repo-bound.
