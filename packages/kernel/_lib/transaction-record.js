@@ -40,26 +40,38 @@ function loadSchema() {
  * @param {*} value Any JSON-serializable value
  * @returns {string} Canonical JSON string with sorted keys
  */
-// PR-4 hardening (3-lens hacker re-verify HIGH): bound the recursion. A transaction
-// record is FLAT (scalar fields + an evidence_refs string-array — depth <= 2); legitimate
-// input never approaches this limit. An UNBOUNDED walk let a pathologically deep field
-// (e.g. a poison record's nested head_anchor, which passes the lenient validator) overflow
-// the stack with a RangeError that escaped appendRecord / readByIdempotencyKey — a crash-
-// based record-suppression DoS. Past the limit we throw a CONTROLLED TypeError that callers
-// catch + fail-closed (reject the append / skip the dedup target), never an uncaught RangeError.
+// Hardening (3-lens hacker re-verify HIGH + L1 follow-up): bound the recursion on BOTH axes.
+// A transaction record is FLAT and SMALL (scalar fields + a small evidence_refs string-array —
+// depth <= 2, a few dozen nodes); legitimate input never approaches either limit. An UNBOUNDED
+// walk let a pathological field overflow the stack (DEEP nesting -> RangeError; the PR-4 crash)
+// OR burn O(n) CPU at the S5 hash (WIDE structure, e.g. a 1M-entry evidence_refs; the L1 gap).
+// Both are crash/DoS-flavored record-suppression surfaces (the store is not a sandbox —
+// p-writescope). Past EITHER bound we throw a CONTROLLED TypeError that callers catch +
+// fail-closed (appendRecord S5 -> record-uncomputable; deriveIdempotencyKey -> null), never an
+// uncaught RangeError and never a multi-hundred-ms hash. The node budget is a call-local
+// accumulator (a closed-over counter, NOT shared/persisted state); the public signature stays
+// single-arg so every caller (computeTransactionId/computeContentHash/computeIdempotencyKey) is
+// unaffected and a legit record hashes to the SAME bytes (M1 forward-coupling preserved).
 const MAX_CANONICAL_DEPTH = 100;
+const MAX_CANONICAL_NODES = 10000;
 
-function canonicalJsonSerialize(value, depth = 0) {
-  if (depth > MAX_CANONICAL_DEPTH) {
-    throw new TypeError('canonicalJsonSerialize: max nesting depth exceeded (' + MAX_CANONICAL_DEPTH + ')');
+function canonicalJsonSerialize(value) {
+  let nodeCount = 0;
+  function walk(v, depth) {
+    if (depth > MAX_CANONICAL_DEPTH) {
+      throw new TypeError('canonicalJsonSerialize: max nesting depth exceeded (' + MAX_CANONICAL_DEPTH + ')');
+    }
+    if (++nodeCount > MAX_CANONICAL_NODES) {
+      throw new TypeError('canonicalJsonSerialize: max node budget exceeded (' + MAX_CANONICAL_NODES + ')');
+    }
+    if (v === null || typeof v !== 'object') return JSON.stringify(v);
+    if (Array.isArray(v)) {
+      return '[' + v.map((x) => walk(x, depth + 1)).join(',') + ']';
+    }
+    const sortedKeys = Object.keys(v).sort();
+    return '{' + sortedKeys.map((k) => JSON.stringify(k) + ':' + walk(v[k], depth + 1)).join(',') + '}';
   }
-  if (value === null || typeof value !== 'object') return JSON.stringify(value);
-  if (Array.isArray(value)) {
-    return '[' + value.map((v) => canonicalJsonSerialize(v, depth + 1)).join(',') + ']';
-  }
-  const sortedKeys = Object.keys(value).sort();
-  const parts = sortedKeys.map((k) => JSON.stringify(k) + ':' + canonicalJsonSerialize(value[k], depth + 1));
-  return '{' + parts.join(',') + '}';
+  return walk(value, 0);
 }
 
 /**
@@ -422,16 +434,31 @@ function validateTransactionRecord(record, options) {
     errors.push('idempotency_key must be 64-char lowercase hex sha256');
   }
 
-  // PR-4 hardening (hacker re-verify HIGH): the hash-fed scalar fields MUST be string-or-null
-  // (the schema declares head_anchor + post_state_hash as oneOf [string, null]). The lenient
-  // validator never type-checked them, so a non-scalar (deeply-nested object/array) value
-  // passed validation and only blew up later inside canonicalJsonSerialize. Rejecting it HERE
-  // — the single gate before BOTH the incoming computeTransactionId (S5) and the stored-side
-  // dedup re-derivation — means no deep value ever reaches a hashing function.
-  for (const f of ['head_anchor', 'post_state_hash']) {
+  // Hardening (hacker re-verify HIGH + L2 follow-up): the hash-fed fields MUST conform to the
+  // schema type at the SINGLE validation gate (before BOTH the incoming computeTransactionId S5
+  // and the stored-side dedup re-derivation), so a non-conforming value (e.g. a deeply-nested
+  // poison) is rejected before any hashing rather than relying on the canonicalJsonSerialize
+  // bound as a backstop. The lenient validator historically type-checked NONE of these.
+  // string-or-null (schema oneOf [string, null]):
+  for (const f of ['head_anchor', 'post_state_hash', 'references_transaction_id']) {
     if (record[f] != null && typeof record[f] !== 'string') {
       errors.push(f + ' must be a string or null');
     }
+  }
+  // arrays-of-strings (schema array, items string) — a non-array OR a non-string element
+  // (a nested-array/object poison) is rejected. evidence_refs emptiness for state-changing
+  // ops is gated separately by A10 below; this gates the SHAPE.
+  for (const f of ['evidence_refs', 'affected_records']) {
+    if (record[f] != null &&
+        (!Array.isArray(record[f]) || record[f].some((e) => typeof e !== 'string'))) {
+      errors.push(f + ' must be an array of strings');
+    }
+  }
+  // abort_detail: an object or null (schema oneOf [null, object]). Depth/width WITHIN it is
+  // bounded by the canonicalJsonSerialize node budget at hash time; this gates the top shape.
+  if (record.abort_detail != null &&
+      (typeof record.abort_detail !== 'object' || Array.isArray(record.abort_detail))) {
+    errors.push('abort_detail must be an object or null');
   }
 
   // A10 / Round-3e GP4: state-changing records MUST carry non-empty evidence_refs
