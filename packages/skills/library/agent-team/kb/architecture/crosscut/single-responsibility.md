@@ -24,6 +24,8 @@ related:
   - architecture/discipline/error-handling-discipline
   - architecture/discipline/refusal-patterns
   - architecture/discipline/trade-off-articulation
+  - architecture/discipline/blast-radius-and-reversibility
+  - architecture/discipline/evidence-and-premise-discipline
 status: active+enforced
 ---
 
