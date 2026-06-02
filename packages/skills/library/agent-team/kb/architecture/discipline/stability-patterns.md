@@ -19,6 +19,8 @@ related:
   - architecture/discipline/error-handling-discipline
   - architecture/discipline/reliability-scalability-maintainability
   - architecture/ai-systems/rag-anchoring
+  - architecture/discipline/blast-radius-and-reversibility
+  - architecture/discipline/evidence-and-premise-discipline
 status: active+enforced
 ---
 

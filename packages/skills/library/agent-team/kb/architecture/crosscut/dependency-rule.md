@@ -22,6 +22,7 @@ related:
   - architecture/crosscut/idempotency
   - architecture/ai-systems/rag-anchoring
   - architecture/discipline/trade-off-articulation
+  - architecture/discipline/evidence-and-premise-discipline
 status: active+enforced
 ---
 

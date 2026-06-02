@@ -22,6 +22,7 @@ related:
   - architecture/discipline/reliability-scalability-maintainability
   - architecture/ai-systems/evaluation-under-nondeterminism
   - architecture/ai-systems/inference-cost-management
+  - architecture/discipline/blast-radius-and-reversibility
 status: active+enforced
 ---
 
