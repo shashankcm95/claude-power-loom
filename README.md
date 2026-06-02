@@ -47,7 +47,7 @@ For the full rationale see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). For t
 
 ## Status
 
-The substrate is mid-build. It is distributed as a **Claude Code plugin**; the last published plugin release is **v2.9.x**, and the **v3.x kernel train** that defines the new vision is in development (unreleased).
+It is distributed as a **Claude Code plugin**, now at **v3.1.0** — the first published release of the **v3.x kernel train** (the kernel + runtime substrate; the prior published line was v2.9.x).
 
 **Two phases are complete: Phase 1-alpha (the pure kernel transaction loop) and v3.1 (Runtime Foundation).** Phase 1-alpha shipped **11 kernel primitives** (atop the pre-existing `K5` validators; sub-PRs `#167`–`#175`, all merged). **v3.1** then built the first runtime layer on top: the persona/capability runtime (**R1–R4** two-tier contracts + the agent.md↔contract reconciliation validator), the live shadow-default **spawn-close transaction loop**, and **INV-22** in-substrate idempotency (`#179`–`#200`). Kernel-primitive status:
 
@@ -57,7 +57,7 @@ The substrate is mid-build. It is distributed as a **Claude Code plugin**; the l
 
 "Dormant" = the code ships with **no production importer yet** (a CI gate enforces it) — for K6, the reconciliation validator does its own containment check, so K6 awaits a v3.2+ runtime consumer. "Advisory" = it **warns, never blocks**. See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the phase-by-phase plan and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#kernel-primitives) for what each primitive does.
 
-> ⚠️ This is alpha. The kernel surface changes incompatibly with v2.9 readers (that is *why* it is a v3.0 major bump — see [ADR-0009](packages/specs/adrs/0009-major-bump-rationale.md)). Don't depend on the v3.0-alpha kernel schema staying fixed until stable `v3.0.0` ships.
+> ⚠️ Early major release. **v3.1.0** is the first published cut of the v3.x kernel; its surface changes incompatibly with v2.9 readers (the MAJOR bump — see [ADR-0009](packages/specs/adrs/0009-major-bump-rationale.md)). Expect the kernel schema to keep evolving across v3.x minors as runtime consumers (v3.2+) land — pin a version if you depend on it.
 
 ---
 
