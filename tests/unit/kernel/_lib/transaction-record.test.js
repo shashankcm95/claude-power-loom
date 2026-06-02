@@ -425,6 +425,34 @@ test('F16 clearSchemaCache: re-validation after clear still works (no broken sta
   assert.strictEqual(result.valid, true, 'errors: ' + JSON.stringify(result.errors));
 });
 
+// --- PR-4 hardening (3-lens hacker re-verify HIGH): depth-bounded serialization + scalar fields ---
+
+test('PR-4 canonicalJsonSerialize is depth-BOUNDED: a structure past MAX_CANONICAL_DEPTH throws a controlled TypeError (closes the unbounded-recursion crash); a shallow structure is unaffected', () => {
+  let deep = 'x';
+  for (let i = 0; i < 150; i++) deep = { n: deep }; // > the 100 bound, but tiny for native JS
+  assert.throws(
+    () => canonicalJsonSerialize(deep),
+    /max nesting depth exceeded/,
+    'past the depth bound -> a controlled TypeError, NOT an uncaught RangeError',
+  );
+  // A legit record is flat (depth <= 2); it serializes unchanged — proving the bound does
+  // not perturb normal hashing (M1 forward-coupling: transaction_id stays stable).
+  assert.strictEqual(
+    typeof canonicalJsonSerialize({ a: 1, b: [2, 3], c: { d: 'e' } }),
+    'string',
+    'a shallow (record-shaped) structure still serializes fine',
+  );
+});
+
+test('PR-4 validateTransactionRecord rejects a non-scalar head_anchor / post_state_hash (the hash-fed scalar fields must be string-or-null)', () => {
+  const objAnchor = validateTransactionRecord(validRecord({ head_anchor: { nested: 'object' } }));
+  assert.strictEqual(objAnchor.valid, false, 'a non-scalar head_anchor is rejected at the validation gate');
+  assert.ok((objAnchor.errors || []).some((e) => /head_anchor/.test(e)), 'the error names head_anchor');
+  const arrPost = validateTransactionRecord(validRecord({ post_state_hash: ['not', 'a', 'string'] }));
+  assert.strictEqual(arrPost.valid, false, 'a non-scalar post_state_hash is rejected');
+  assert.ok((arrPost.errors || []).some((e) => /post_state_hash/.test(e)), 'the error names post_state_hash');
+});
+
 // --- summary ---
 
 process.stdout.write(`\ntransaction-record.test.js: ${passed} passed, ${failed} failed\n`);

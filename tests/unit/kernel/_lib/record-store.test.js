@@ -797,9 +797,16 @@ test('24. deriveIdempotencyKey: a legit producer record is self-consistent (key 
 });
 
 // ── 25-26. crash-suppression guard (3-lens hacker re-verify, NEW HIGH): a poison/record
-// with a pathologically DEEP head_anchor must NOT crash an append via unbounded hashing
-// recursion (canonicalJsonSerialize). Stored-side: the poison is skipped, the victim writes.
-// Incoming: the deep record is REJECTED, not crashed. Pre-fix both escaped as RangeError. ──
+// with a pathologically DEEP hashed field must NOT crash an append via unbounded recursion
+// in canonicalJsonSerialize. The deep value is carried in writer_spawn_id — a field the
+// lenient validator does NOT type-check but computeContentHash DOES hash — so the test
+// genuinely exercises the depth bound + the fail-closed catches (head_anchor/post_state_hash
+// are separately rejected on TYPE by the validator; see transaction-record.test.js).
+// Depth 200 is comfortably OVER MAX_CANONICAL_DEPTH=100 (so the bound fires) yet far UNDER
+// the native JSON.stringify/parse stack limit (so the test fixture itself is portable — a
+// 5000-deep fixture overflowed native JSON.stringify on the CI runner; the CODE was fine). ──
+
+const OVER_BOUND_DEPTH = 200; // > MAX_CANONICAL_DEPTH (100); << native JSON stack limit
 
 function deeplyNested(depth) {
   let v = 'x';
@@ -807,43 +814,48 @@ function deeplyNested(depth) {
   return v;
 }
 
-test('25. crash-suppression guard (stored-side): a poison with a DEEP head_anchor + a victim key does NOT crash the victim\'s append; the victim is stored', () => {
+test('25. crash-suppression guard (stored-side): a poison with a DEEP writer_spawn_id + a victim key does NOT crash the victim\'s append; the victim is stored', () => {
   const stateDir = tmpStateDir();
   try {
     const victim = keyedSpawn({ agentId: 'crashvictim', postStateHash: 'a'.repeat(64) });
     const K = victim.idempotency_key;
     const dir = path.join(stateDir, RUN_ID, 'records');
     fs.mkdirSync(dir, { recursive: true });
-    // The poison carries K but a 5000-deep head_anchor (JSON-parsable). Hand-written to disk
-    // (a direct non-sandbox drop); its own transaction_id can be a dummy — it is never read
-    // through the S5 gate, only scanned by readByIdempotencyKey's dedup re-derivation.
+    // The poison carries K but a deeply-nested writer_spawn_id (passes the lenient validator,
+    // which does not type-check writer_spawn_id). Hand-written to disk (a direct non-sandbox
+    // drop). On the victim's append, readByIdempotencyKey re-derives the poison's key via
+    // computeContentHash(writer_spawn_id) → the depth bound throws → deriveIdempotencyKey
+    // fail-closes to null → the poison is SKIPPED as a dedup target, no RangeError escapes.
     const poison = {
       transaction_id: 'e'.repeat(64), prev_state_hash: 'GENESIS', writer_persona_id: 'ATTACKER',
-      writer_spawn_id: 'atk', operation_class: 'CREATE', evidence_refs: ['ROOT_TASK_RECORD:atk'],
+      writer_spawn_id: deeplyNested(OVER_BOUND_DEPTH), operation_class: 'CREATE', evidence_refs: ['ROOT_TASK_RECORD:atk'],
       intent_recorded_at: '2026-01-01T00:00:00.000Z', commit_outcome: 'COMMITTED', schema_version: 'v3',
-      post_state_hash: 'f'.repeat(64), head_anchor: deeplyNested(5000), idempotency_key: K,
+      post_state_hash: 'f'.repeat(64), head_anchor: null, idempotency_key: K,
     };
     fs.writeFileSync(path.join(dir, `record-${'e'.repeat(64)}.json`), JSON.stringify(poison));
 
     const r = store.appendRecord(victim, { runId: RUN_ID, stateDir });
     assert.strictEqual(r.ok, true, 'the victim append succeeds — no RangeError escapes the dedup scan');
-    assert.ok(!r.deduped, 'the deep-head_anchor poison is NOT honored as a dedup target');
+    assert.ok(!r.deduped, 'the deep-field poison is NOT honored as a dedup target');
     assert.ok(store.readById(victim.transaction_id, { runId: RUN_ID, stateDir }), 'the victim\'s record IS stored');
   } finally { cleanup(stateDir); }
 });
 
-test('26. crash guard (incoming): appendRecord REJECTS a record with a pathologically deep head_anchor (no RangeError); nothing written', () => {
+test('26. crash guard (incoming): appendRecord REJECTS a record with a pathologically deep writer_spawn_id (no RangeError; record-uncomputable); nothing written', () => {
   const stateDir = tmpStateDir();
   try {
+    // writer_spawn_id is hashed by the S5 computeTransactionId but not type-checked by the
+    // validator, so it reaches canonicalJsonSerialize → the depth bound throws → appendRecord's
+    // S5 try/catch rejects (record-uncomputable) rather than letting the RangeError escape.
     const bad = {
       transaction_id: 'e'.repeat(64), prev_state_hash: 'GENESIS', writer_persona_id: 'p',
-      writer_spawn_id: 's', operation_class: 'CREATE', evidence_refs: ['ROOT_TASK_RECORD:x'],
+      writer_spawn_id: deeplyNested(OVER_BOUND_DEPTH), operation_class: 'CREATE', evidence_refs: ['ROOT_TASK_RECORD:x'],
       intent_recorded_at: '2026-01-01T00:00:00.000Z', commit_outcome: 'COMMITTED', schema_version: 'v3',
-      post_state_hash: 'f'.repeat(64), head_anchor: deeplyNested(5000),
+      post_state_hash: 'f'.repeat(64), head_anchor: null,
     };
     const r = store.appendRecord(bad, { runId: RUN_ID, stateDir });
-    assert.strictEqual(r.ok, false, 'a pathologically deep head_anchor is rejected, not crashed');
-    assert.match(r.reason, /head_anchor|uncomputable|invalid-record/, 'the reason names the rejection');
+    assert.strictEqual(r.ok, false, 'a pathologically deep hashed field is rejected, not crashed');
+    assert.match(r.reason, /uncomputable|invalid-record/, 'the reason names the rejection');
     assert.strictEqual(store.listByRun({ runId: RUN_ID, stateDir }).length, 0, 'nothing written');
   } finally { cleanup(stateDir); }
 });
