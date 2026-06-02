@@ -61,7 +61,19 @@
     "decomposition_discipline": {
       "primary": "spec-driven",
       "fallback_when_code_producing": "tdd"
-    }
+    },
+    "instincts": [
+      "assume-breach",
+      "trust-boundary-mapping",
+      "every-input-is-hostile",
+      "injection-everywhere",
+      "auth-bypass-idor-hunting",
+      "exfiltration-path-tracing",
+      "toctou-race-window",
+      "abuse-the-protocol-not-the-app",
+      "the-delta-is-byzantine-input",
+      "proof-over-theory"
+    ]
   },
   "defaults": {
     "timeout": 1800,

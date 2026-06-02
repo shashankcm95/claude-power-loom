@@ -85,7 +85,21 @@
     "decomposition_discipline": {
       "primary": "spec-driven",
       "fallback_when_code_producing": "tdd"
-    }
+    },
+    "instincts": [
+      "transaction-boundary",
+      "jpa-n-1-lazy-loading",
+      "thread-safety",
+      "null-safety",
+      "type-as-contract",
+      "di-discipline",
+      "exception-translation",
+      "query-as-contract",
+      "resource-lifecycle",
+      "resilience-under-load",
+      "jvm-cost-awareness",
+      "observability-first"
+    ]
   },
   "defaults": {
     "timeout": 1800,

@@ -79,7 +79,21 @@
     "decomposition_discipline": {
       "primary": "spec-driven",
       "fallback_when_code_producing": "tdd"
-    }
+    },
+    "instincts": [
+      "failure-mode-first",
+      "blast-radius-sizing",
+      "rollback-ready",
+      "observability-before-deploy",
+      "alert-on-symptoms",
+      "idempotent-infra-declarative",
+      "capacity-slo-discipline",
+      "least-surprise-on-call",
+      "runbook-or-it-is-not-done",
+      "single-region-spof-wariness",
+      "automate-the-toil",
+      "graceful-degradation"
+    ]
   },
   "defaults": {
     "timeout": 1800,

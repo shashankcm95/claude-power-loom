@@ -43,6 +43,16 @@ const TOOLKIT = findToolkitRoot();
 // Phase 0: paths anticipate Step 6 (contracts) + Step 8 (skills) target locations.
 const PATTERNS_DIR = path.join(TOOLKIT, 'packages', 'skills', 'library', 'agent-team', 'patterns');
 const CONTRACTS_DIR = path.join(TOOLKIT, 'packages', 'runtime', 'contracts');
+// Persona role-briefs — the AUTHORITATIVE source for an archetype's named
+// instincts. The `persona-instinct-reconcile` validator (below) binds each
+// numbered contract's interface.instincts[] back to the numbered `## Mindset`
+// headings here (NN-name.contract.json <-> NN-name.md, 1:1).
+const PERSONAS_DIR = path.join(TOOLKIT, 'packages', 'runtime', 'personas');
+// Slug computation extracted to _lib (SRP — distinct concern from validation,
+// shared by the contract-population step + slug unit tests). The validator +
+// every consumer derive instinct slugs HERE so they agree exactly; never
+// re-implement the normalization.
+const { mindsetInstinctSlugs, duplicateSlugs } = require('./_lib/instinct-slug');
 // v3.1 PR-1: capability-trait registry (CONTRACTS_DIR sibling). Consumed by
 // the two-tier-contract validators (traits-resolve-clean et al.) added below.
 // The trait-resolve primitive itself ships in packages/runtime/contracts/_lib/.
@@ -1169,6 +1179,126 @@ validators['agent-contract-capability-reconcile'] = function () {
         agent: `agents/${agentName}.md`,
         fix: `${name}.contract.json declares bash_test_runner but agents/${agentName}.md tools omit Bash — remove the over-granted subprocess trait.`,
       });
+    }
+  }
+  return violations;
+};
+
+// ---------- persona-instinct binding: role-brief <-> contract reconciliation ----------
+//
+// PR #205 added a named-instinct `## Mindset` set to all 16 HETS archetype
+// role-briefs (descriptive prose). This validator makes that depth ENFORCED:
+// each numbered persona contract must carry an `interface.instincts[]` array
+// that mirrors the brief's instinct set, so the two cannot drift.
+//
+// SOURCE OF TRUTH = the numbered `## Mindset` headings in the role-brief
+// (packages/runtime/personas/NN-name.md). The canonical slug is a DETERMINISTIC
+// normalization of the heading — the hand-written `Instinct -> KB referral`
+// slugs are NOT machine-parseable (they over-split on `/`/`+` and group slugs;
+// proven by /tmp/extract-instincts.js during design). The validator recomputes
+// the slug set from the brief and compares it to the contract; comparison is by
+// SET (order-independent), since reordering instincts is not a drift worth
+// failing CI over — only add / remove / rename is.
+//
+// Rules (mirrors agent-contract-capability-reconcile's skip semantics):
+//   - brief has >=1 numbered instinct but contract lacks interface.instincts
+//       => instinct-binding-missing.
+//   - slug in brief, absent from contract => instinct-missing-from-contract.
+//   - slug in contract, absent from brief => instinct-not-in-brief.
+//   - contract with no NN-name.md brief (challenger / engineering-task
+//     <set-at-spawn> templates) => SKIPPED (no instinct floor to bind).
+
+// Read the ordered role-brief instinct slugs for a persona contract name (e.g.
+// "04-architect"). Returns null ONLY when the brief is genuinely absent (template
+// contracts) so the caller can skip. A brief that EXISTS but cannot be read is
+// NOT skipped — the read error propagates so the validator surfaces it as a
+// distinct `brief-unreadable` violation (fail-closed, not silent-clean).
+function readBriefInstinctSlugs(contractName) {
+  const fp = path.join(PERSONAS_DIR, `${contractName}.md`);
+  if (!fs.existsSync(fp)) return null;
+  return mindsetInstinctSlugs(fs.readFileSync(fp, 'utf8'));
+}
+
+validators['persona-instinct-reconcile'] = function () {
+  const violations = [];
+  for (const { name, path: fp } of listContractFiles()) {
+    const m = name.match(NUMBERED_CONTRACT_RE);
+    if (!m) continue; // un-numbered template (challenger / engineering-task) — skip
+
+    let briefSlugs;
+    try {
+      briefSlugs = readBriefInstinctSlugs(name);
+    } catch (err) {
+      violations.push({
+        kind: 'brief-unreadable',
+        contract: name,
+        brief: `packages/runtime/personas/${name}.md`,
+        error: err.message,
+        fix: `${name}.md exists but could not be read — restore it so instinct parity can be checked (NOT skipped: a numbered persona must have a readable brief).`,
+      });
+      continue;
+    }
+    if (briefSlugs === null || briefSlugs.length === 0) continue; // no Mindset floor — skip
+
+    // Two distinct `## Mindset` headings that normalize to the same slug cannot
+    // be faithfully mirrored by a contract (which carries a SET) — surface it
+    // rather than let the set-comparison below silently absorb the collision.
+    const dupes = duplicateSlugs(briefSlugs);
+    if (dupes.length) {
+      violations.push({
+        kind: 'instinct-duplicate-slug',
+        contract: name,
+        brief: `packages/runtime/personas/${name}.md`,
+        duplicates: dupes,
+        fix: `Two ## Mindset headings in ${name}.md normalize to the same slug(s) [${dupes.join(', ')}] — rename one so each instinct is distinct.`,
+      });
+    }
+
+    const c = loadJson(fp);
+    if (!c) continue; // unparseable contract surfaced by two-tier-shape-present
+
+    const rawInstincts = c.interface && c.interface.instincts;
+    const briefSet = new Set(briefSlugs);
+    if (rawInstincts === undefined) {
+      violations.push({
+        kind: 'instinct-binding-missing',
+        contract: name,
+        brief: `packages/runtime/personas/${name}.md`,
+        expected: [...briefSet],
+        fix: `Add interface.instincts (${briefSet.size} slugs) to ${name}.contract.json mirroring the role-brief's ## Mindset headings: [${[...briefSet].join(', ')}].`,
+      });
+      continue;
+    }
+    if (!Array.isArray(rawInstincts)) {
+      violations.push({
+        kind: 'instinct-binding-malformed',
+        contract: name,
+        actualType: typeof rawInstincts,
+        fix: `interface.instincts in ${name}.contract.json must be an array of slug strings.`,
+      });
+      continue;
+    }
+
+    const contractSet = new Set(rawInstincts.map(String));
+    for (const slug of briefSet) {
+      if (!contractSet.has(slug)) {
+        violations.push({
+          kind: 'instinct-missing-from-contract',
+          contract: name,
+          instinct: slug,
+          fix: `${name}.md defines the "${slug}" instinct but ${name}.contract.json's interface.instincts omits it — add it.`,
+        });
+      }
+    }
+    for (const slug of contractSet) {
+      if (!briefSet.has(slug)) {
+        violations.push({
+          kind: 'instinct-not-in-brief',
+          contract: name,
+          instinct: slug,
+          fix: `${name}.contract.json declares the "${slug}" instinct but ${name}.md's ## Mindset has no matching heading — remove it or add the heading.`,
+        });
+      }
     }
   }
   return violations;

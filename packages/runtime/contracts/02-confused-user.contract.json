@@ -42,7 +42,20 @@
     "decomposition_discipline": {
       "primary": "spec-driven",
       "fallback_when_code_producing": "tdd"
-    }
+    },
+    "instincts": [
+      "read-as-a-first-timer",
+      "unexplained-jargon",
+      "opaque-error-message",
+      "happy-path-assumption-exposure",
+      "hidden-prerequisite",
+      "first-run-friction",
+      "the-undocumented-step",
+      "friction-smell",
+      "doc-vs-reality",
+      "dead-end-detection",
+      "two-readers"
+    ]
   },
   "defaults": {
     "timeout": 1800,

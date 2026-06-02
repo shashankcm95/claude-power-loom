@@ -126,7 +126,21 @@
     "decomposition_discipline": {
       "primary": "spec-driven",
       "fallback_when_code_producing": "tdd"
-    }
+    },
+    "instincts": [
+      "is-not-ought",
+      "read-the-source-first",
+      "cite-the-line",
+      "trace-the-actual-control-flow",
+      "who-calls-what",
+      "what-it-depends-on",
+      "dependency-direction",
+      "function-purpose-distillation",
+      "data-flow-tracing",
+      "state-mutation-surfacing",
+      "error-path-tracing",
+      "integration-seam-mapping"
+    ]
   },
   "defaults": {
     "timeout": 1800,

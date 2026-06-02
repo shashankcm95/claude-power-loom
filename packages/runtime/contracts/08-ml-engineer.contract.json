@@ -92,7 +92,21 @@
     "decomposition_discipline": {
       "primary": "spec-driven",
       "fallback_when_code_producing": "tdd"
-    }
+    },
+    "instincts": [
+      "data-over-model",
+      "leakage-paranoia",
+      "eval-harness-before-claims",
+      "train-vs-infer-separation",
+      "skew-is-the-default",
+      "reproducibility-as-feature",
+      "eval-as-contract",
+      "drift-under-nondeterminism",
+      "monitoring-over-deployment",
+      "cost-latency-budget",
+      "retrieval-quality",
+      "failure-mode-explicit"
+    ]
   },
   "defaults": {
     "timeout": 1800,

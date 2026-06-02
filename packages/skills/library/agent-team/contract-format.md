@@ -70,6 +70,35 @@ Skill names follow conventions:
 
 The verifier check `invokesRequiredSkills` (planned for H.2.6) will skip enforcement for `not-yet-authored` skills, validate marketplace skills by checking the actor's transcript for `Skill` tool invocations of the namespaced form, and require local skills to appear in invocations directly.
 
+## Instinct binding (`interface.instincts`)
+
+Each numbered persona contract carries an `interface.instincts` array — the archetype's named
+cognitive instincts, made machine-visible so they can be enforced (and, later, cited in output).
+The array MIRRORS the numbered `## Mindset` headings in the persona role-brief
+(`packages/runtime/personas/NN-name.md`). The canonical slug is a **deterministic normalization** of
+the heading: lowercase; strip apostrophes; any run of non-alphanumerics becomes a single hyphen.
+So `6. **Layer-boundary discipline**` binds to the slug `layer-boundary-discipline`.
+
+```json
+"interface": {
+  "traits": ["read_repo", "recall_global"],
+  "instincts": ["missing-component", "trade-off-articulation", "layer-boundary-discipline"]
+}
+```
+
+The `persona-instinct-reconcile` validator (in `contracts-validate.js`) enforces **role-brief ↔
+contract parity** by SET (order-independent — reordering is not a drift):
+
+| Violation | Trigger |
+|-----------|---------|
+| `instinct-binding-missing` | brief has ≥1 `## Mindset` instinct but the contract omits `interface.instincts` |
+| `instinct-missing-from-contract` | a slug in the brief is absent from the contract |
+| `instinct-not-in-brief` | a slug in the contract has no matching brief heading |
+
+The role-brief is the source of truth: regenerate the contract array from the headings when an
+instinct is added, removed, or renamed. Un-numbered template contracts (`challenger`,
+`engineering-task`) have no role-brief and are skipped.
+
 ## Functional checks
 
 | Check | Description | Args |

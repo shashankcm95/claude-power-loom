@@ -83,7 +83,20 @@
     "decomposition_discipline": {
       "primary": "spec-driven",
       "fallback_when_code_producing": "tdd"
-    }
+    },
+    "instincts": [
+      "threat-model-first",
+      "least-privilege",
+      "secret-handling",
+      "input-validation-at-boundary",
+      "transit-and-rest-protection",
+      "defense-in-depth",
+      "secure-by-default",
+      "blast-radius-containment",
+      "auditability",
+      "realistic-severity",
+      "error-handling-non-leakage"
+    ]
   },
   "defaults": {
     "timeout": 1800,

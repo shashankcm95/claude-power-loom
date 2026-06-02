@@ -57,7 +57,18 @@
     "decomposition_discipline": {
       "primary": "spec-driven",
       "fallback_when_code_producing": "tdd"
-    }
+    },
+    "instincts": [
+      "verified-vs-asserted",
+      "overclaim-hunting",
+      "evidence-or-it-did-not-happen",
+      "negative-attestation",
+      "stat-citation-provenance",
+      "scope-of-claim-precision",
+      "change-vs-reframe",
+      "rater-drift",
+      "hedge-honesty-optimism-default"
+    ]
   },
   "defaults": {
     "timeout": 1800,
