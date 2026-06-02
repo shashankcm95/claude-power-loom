@@ -1,8 +1,8 @@
 # Architecture
 
-Power Loom is a **deterministic state-management substrate for stochastic (LLM) agents** — an *agent runtime* that wraps non-deterministic agent execution in transaction boundaries and pure-function verification gates. This document is the canonical architecture reference. The full design record lives in [`packages/specs/`](../packages/specs/) (the v6 substrate synthesis RFC + ADRs 0008–0011).
+Power Loom is a **deterministic state-management substrate for stochastic (LLM) agents** — an *agent runtime* that wraps non-deterministic agent execution in transaction boundaries and pure-function verification gates. This document is the canonical architecture reference. The full design record lives in [`packages/specs/`](../packages/specs/) (the v6 substrate synthesis RFC + ADRs 0008–0012).
 
-> **Reading note.** The v6 synthesis RFC is marked *LIVE-DRAFTING* (positioning, pillars, and axioms are at v6 quality; later sections carry earlier provenance). The **shipped code + ADRs 0008–0011** are the firm ground truth for what exists today. Where this doc states a primitive is "live", "dormant", "advisory", or "deferred", that reflects the merged tree as of Phase 1-alpha.
+> **Reading note.** The v6 synthesis RFC is marked *LIVE-DRAFTING* (positioning, pillars, and axioms are at v6 quality; later sections carry earlier provenance). The **shipped code + ADRs 0008–0012** are the firm ground truth for what exists today. Where this doc states a primitive is "live", "dormant", "advisory", "dropped", or "deferred", that reflects the merged tree as of **v3.1** (Runtime Foundation).
 
 ---
 
@@ -76,24 +76,25 @@ Path canonicalization (K7) guards every filesystem path against `..`, absolute-e
 
 ## 5. Kernel primitives {#kernel-primitives}
 
-The "K1–K14" numbering spans the **whole kernel roadmap**. Phase 1-alpha (v3.0-alpha) shipped **11 of them** atop the pre-existing `K5` validators. Honest status flags:
+The "K1–K14" numbering spans the **whole kernel roadmap**. Phase 1-alpha (v3.0-alpha) shipped **11 of them** atop the pre-existing `K5` validators; **v3.1** (Runtime Foundation) then added **K6** (dormant), **dropped K8** ([ADR-0012](../packages/specs/adrs/0012-capability-enforcement-is-static-not-runtime-injected.md)), and built the runtime layer on top — the **R1–R4** persona/capability contracts + the reconciliation validator, the live shadow-default **spawn-close transaction loop**, and **INV-22** idempotency (see [ROADMAP](ROADMAP.md)). Honest status flags:
 
 - **Live** — has a production code path today.
 - **Dormant** — code + tests ship, but **no production importer yet** (a merge-blocking CI gate enforces it); first consumer arrives in a later phase.
 - **Advisory** — runs, but **warns, never blocks**.
-- **Deferred** — not shipped in v3.0-alpha.
+- **Deferred** — not shipped yet (scheduled for a later phase).
+- **Dropped** — cancelled after an empirical probe proved its mechanism does not exist ([ADR-0012](../packages/specs/adrs/0012-capability-enforcement-is-static-not-runtime-injected.md)).
 
 | K# | What it does | Status | Where |
 |---|---|---|---|
 | **K1** | Worktree allocation for `isolation:"worktree"` spawns (retry + cleanup, no-shell git runner). | Live | `worktree/worktree-allocator.js` |
-| **K2** | Spawn-record envelope (v2 schema) — `PostToolUse:Agent\|Task` capture with `parent_state_id` + forward-compat tolerance. **K2.b** settings-resolution shipped; **K2.c** per-tool-call observability deferred. | Live | `spawn-state/spawn-record.js` |
+| **K2** | Spawn-record envelope (v2 schema) — `PostToolUse:Agent\|Task` capture with `parent_state_id` + forward-compat tolerance. **K2.b** settings-resolution shipped; **K2.c** per-tool-call observability deferred → v3.3. | Live | `spawn-state/spawn-record.js` |
 | **K3** | Lineage — pure-function `parent_state_id` chain DAG / acyclicity check. | Live | `_lib/lineage.js` |
-| **K3.b** | Context envelope — schema + validator for cross-spawn context propagation (`schemaVersion: 1.0.0-provisional`). | **Dormant** (first consumer = v3.1 personas) | `_lib/context-envelope.js` |
+| **K3.b** | Context envelope — schema + validator for cross-spawn context propagation (`schemaVersion: 1.0.0-provisional`). | **Dormant** (its intended consumer K8 was dropped — ADR-0012; awaits a v3.2+ injection channel) | `_lib/context-envelope.js` |
 | **K4** | Recall-CLI deterministic tri-signal ranker (`0.5·kw + 0.3·tag + 0.2·surface`) over a snapshot, not a live store. | Live | `recall/loom-recall.js` |
 | **K5** | Schema validators — YAML frontmatter, bare-secrets, config-guard, contract-verifier. | Live (pre-existing, hardened) | `validators/*` |
-| **K6** | Capability subset check (deterministic set-subset). | **Deferred → v3.1** (needs persona contracts) | — |
+| **K6** | Capability subset check (deterministic set-subset). | **Dormant** (shipped v3.1; no production importer — the reconciliation validator does its own set-math; CI dormancy gate) | `enforcement/k6-subset-check.js` |
 | **K7** | Path canonicalization — rejects `..`, absolute, and symlink-escape. | Live | `_lib/path-canonicalize.js` |
-| **K8** | Capability injection at spawn-init (`PreToolUse(Agent).updatedInput`). | **Deferred → v3.1** | — |
+| **K8** | Capability injection at spawn-init (`PreToolUse(Agent).updatedInput`). | **Dropped** ([ADR-0012](../packages/specs/adrs/0012-capability-enforcement-is-static-not-runtime-injected.md) — `updatedInput` is inert on Agent/Task spawns; enforcement is static: agent.md `tools:` + the reconciliation validator) | — |
 | **K9** | Promote-deltas — cherry-pick + path-rewrite + atomicity + reverse-cherry-pick journal for rollback. Went live in 4b via the resolver. | Live | `_lib/k9-promote-deltas.js`, `k9-path-guard.js`, `k9-journal.js` |
 | **K10** | `LOOM_DISABLE_WORKTREE` operator escape hatch. | Live | `enforcement/k10-escape-hatch.js` |
 | **K11** | Kernel algorithm library (makes A4 binding). | **Deferred → v3.2** | — |
@@ -120,4 +121,4 @@ For the per-hook deep-dives see [`docs/hooks/`](hooks/); for the cross-PR sequen
 - [ROADMAP](ROADMAP.md) — how the substrate got here and where it goes next.
 - [Stability commitment](reference/stability-commitment.md) — what is frozen vs evolving vs experimental.
 - [v6 substrate synthesis](../packages/specs/rfcs/v6-substrate-synthesis.md) — the full design rationale (live-drafting).
-- ADRs [0008](../packages/specs/adrs/0008-phase-0-workspace-restructure.md) (restructure) · [0009](../packages/specs/adrs/0009-major-bump-rationale.md) (major bump) · [0010](../packages/specs/adrs/0010-write-scope-enforcement.md) (write-scope) · [0011](../packages/specs/adrs/0011-k9-k14-sequencing-and-phase-1-alpha-spec-deltas.md) (K9↔K14 sequencing).
+- ADRs [0008](../packages/specs/adrs/0008-phase-0-workspace-restructure.md) (restructure) · [0009](../packages/specs/adrs/0009-major-bump-rationale.md) (major bump) · [0010](../packages/specs/adrs/0010-write-scope-enforcement.md) (write-scope) · [0011](../packages/specs/adrs/0011-k9-k14-sequencing-and-phase-1-alpha-spec-deltas.md) (K9↔K14 sequencing) · [0012](../packages/specs/adrs/0012-capability-enforcement-is-static-not-runtime-injected.md) (capability enforcement is static).

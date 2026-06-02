@@ -5,9 +5,9 @@ Start at the [main README](../README.md) for the overview and install. This inde
 ## Substrate (the current vision)
 
 - [**Architecture**](ARCHITECTURE.md) — the substrate model: the three layers (kernel/runtime/lab), the Ten Axioms, the transaction loop, and every kernel primitive K1–K14 with its live/dormant/advisory status.
-- [**Roadmap**](ROADMAP.md) — how the substrate got here (Phase 0 ✓ → Phase 1-alpha ✓) and where it goes next (v3.1+). Appended each phase.
+- [**Roadmap**](ROADMAP.md) — how the substrate got here (Phase 0 ✓ → Phase 1-alpha ✓ → v3.1 ✓) and where it goes next (v3.2+). Appended each phase.
 
-The authoritative design record is [`packages/specs/`](../packages/specs/): the v6 synthesis RFC, the ADRs (0008–0011), and the per-phase plans.
+The authoritative design record is [`packages/specs/`](../packages/specs/): the v6 synthesis RFC, the ADRs (0008–0012), and the per-phase plans.
 
 ## Hooks
 
