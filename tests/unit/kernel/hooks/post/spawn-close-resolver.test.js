@@ -53,6 +53,12 @@ const os = require('os');
 const path = require('path');
 const { spawnSync, execFileSync } = require('child_process');
 
+// Test hygiene: redirect this file's hook logging — the in-process resolver
+// imports below AND every spawnSync subprocess (which inherits env) — to a
+// hermetic temp dir, so the suite never pollutes the real
+// ~/.claude/logs/spawn-close-resolver.log.
+require('../../_lib/_hermetic-hook-logs');
+
 // The module under test (NOT YET WRITTEN — these requires are why the suite is
 // RED until the hook ships). The hook MUST export its SRP-split pure functions
 // for unit-level assertions AND keep a CLI main() path for the subprocess tests.

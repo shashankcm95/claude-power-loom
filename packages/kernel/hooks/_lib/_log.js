@@ -20,8 +20,22 @@ const path = require('path');
 const os = require('os');
 
 const QUIET = process.env.CLAUDE_HOOKS_QUIET === '1';
-const LOG_DIR = path.join(os.homedir(), '.claude', 'logs');
 const MAX_LOG_BYTES = 5 * 1024 * 1024; // 5MB
+
+// Resolve the log directory live at logger creation (NOT at module load) so a
+// hermetic test subprocess redirects its logs instead of polluting the real
+// developer log (~/.claude/logs/<hook>.log). Resolution order:
+//   1. LOOM_LOG_DIR          — explicit override (tests / operators)
+//   2. LOOM_SPAWN_STATE_DIR  — when set (hermetic test runs set it), logs go
+//      under <dir>/_logs so a test never writes into ~/.claude/logs
+//   3. ~/.claude/logs        — production default (both unset; UNCHANGED)
+function resolveLogDir() {
+  if (process.env.LOOM_LOG_DIR) return process.env.LOOM_LOG_DIR;
+  if (process.env.LOOM_SPAWN_STATE_DIR) {
+    return path.join(process.env.LOOM_SPAWN_STATE_DIR, '_logs');
+  }
+  return path.join(os.homedir(), '.claude', 'logs');
+}
 
 function maybeRotate(logFile) {
   try {
@@ -33,12 +47,15 @@ function maybeRotate(logFile) {
 }
 
 function log(hookName) {
-  const logFile = path.join(LOG_DIR, `${hookName}.log`);
-
   return function (event, details) {
     if (QUIET) return;
+    // Resolve PER-CALL (not at logger creation) so a test that sets the env
+    // AFTER requiring the hook module still redirects — removes any
+    // require-order fragility for in-process callers.
+    const logDir = resolveLogDir();
+    const logFile = path.join(logDir, `${hookName}.log`);
     try {
-      fs.mkdirSync(LOG_DIR, { recursive: true });
+      fs.mkdirSync(logDir, { recursive: true });
       maybeRotate(logFile);
       // Phase-F1.5: defensively strip newlines/control chars from event
       // name to prevent log-injection (today every caller passes a
@@ -51,4 +68,4 @@ function log(hookName) {
   };
 }
 
-module.exports = { log };
+module.exports = { log, resolveLogDir };

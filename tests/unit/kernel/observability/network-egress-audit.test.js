@@ -13,6 +13,11 @@ const assert = require('assert');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
+// Test hygiene: redirect this test's hook logging (the in-process require below
+// + the execFileSync subprocesses, which inherit env) to a hermetic temp dir so
+// it never pollutes the real ~/.claude/logs/network-egress-audit.log.
+require('../_lib/_hermetic-hook-logs');
+
 const REPO_ROOT = path.join(__dirname, '..', '..', '..', '..');
 const HOOK = path.join(REPO_ROOT, 'packages', 'kernel', 'observability', 'network-egress-audit.js');
 const { spawnOrigin, loadAllowlist } = require(HOOK);
