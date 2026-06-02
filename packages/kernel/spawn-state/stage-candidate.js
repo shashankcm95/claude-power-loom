@@ -26,12 +26,13 @@
 // user's repo (the object store grows; the ref is GC-reachable until deleted) —
 // the lock is on HEAD/the working tree, not on a no-write boundary.
 //
-// THE MERGE-BASE IS DERIVED, NOT PERSISTED (P3c-a /verify-plan board). The
-// integrator's 3-way merge-base is each candidate's fork point = `delta_sha^1` (the
-// squash commit's single parent), recoverable from the candidate ref alone — so
-// head_anchor is recorded null. This is STRICTLY more robust than persisting it:
-// the merge-base stays tied to the exact delta being merged and cannot diverge
-// under the idempotent re-fire overwrite below.
+// THE MERGE-BASE IS DERIVED, NOT PERSISTED (P3c-a board; the derivation RULE was
+// later corrected by the P3c-b board — firsthand-probed). The integrator derives the
+// 3-way merge-base DYNAMICALLY as `git merge-base --all (tip, delta_sha)` — NOT
+// `delta_sha^1` (which silently DROPS the main commits between differing fork points).
+// head_anchor is recorded null either way; recording null is STRICTLY more robust than
+// persisting a base: it cannot diverge from the delta under the idempotent re-fire
+// overwrite below, and the dynamic base needs no stored anchor at all.
 //
 // GENESIS = A STRUCTURAL GATE, NOT PROVENANCE. buildSpawnRecord -> finalizeGenesis
 // validates the sentinel + content-hash + schema; it is NOT a provenance check (cf.
@@ -188,7 +189,7 @@ function stagedResult(journalFile, safeId, ref, deltaSha, postStateHash, transac
     transaction_id: transactionId,
     record_appended: true,
     note: 'P3c-a candidate: delta pinned under refs/loom/candidates/* (hidden ref, idempotent by id); '
-      + 'NO merge (integrator P3c-b consumes it); head_anchor null (merge-base derived = delta_sha^1); '
+      + 'NO merge (integrator P3c-b consumes it); head_anchor null (merge-base derived dynamically by the integrator: git merge-base --all); '
       + 'genesis = STRUCTURAL gate, not provenance-verified; user HEAD/working tree untouched.',
   });
   return { staged: true, ref, delta_sha: deltaSha, post_state_hash: postStateHash, transaction_id: transactionId };
