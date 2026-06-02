@@ -860,6 +860,28 @@ test('26. crash guard (incoming): appendRecord REJECTS a record with a pathologi
   } finally { cleanup(stateDir); }
 });
 
+// ── 27. WIDTH guard (hardening L1): a record with a huge (valid-shape) evidence_refs is
+// rejected at the S5 hash via the canonicalJsonSerialize node budget — record-uncomputable,
+// NOT a slow multi-hundred-ms clean hash. The depth bound does not catch a WIDE structure;
+// the total-node budget does. 20000 entries comfortably exceeds MAX_CANONICAL_NODES (10000). ──
+
+test('27. width guard: a record with a huge evidence_refs is rejected at the hash (record-uncomputable via the node budget); nothing written', () => {
+  const stateDir = tmpStateDir();
+  try {
+    const wide = new Array(20000).fill('USER_INTENT_AXIOM:' + 'c'.repeat(64)); // valid-shape (array of strings), but huge
+    const bad = {
+      transaction_id: 'e'.repeat(64), prev_state_hash: 'GENESIS', writer_persona_id: 'p',
+      writer_spawn_id: 's', operation_class: 'CREATE', evidence_refs: wide,
+      intent_recorded_at: '2026-01-01T00:00:00.000Z', commit_outcome: 'COMMITTED', schema_version: 'v3',
+      post_state_hash: 'f'.repeat(64), head_anchor: null,
+    };
+    const r = store.appendRecord(bad, { runId: RUN_ID, stateDir });
+    assert.strictEqual(r.ok, false, 'a huge record is rejected, not hashed slowly to completion');
+    assert.match(r.reason, /uncomputable/, 'the node budget fires at the S5 hash -> record-uncomputable');
+    assert.strictEqual(store.listByRun({ runId: RUN_ID, stateDir }).length, 0, 'nothing written');
+  } finally { cleanup(stateDir); }
+});
+
 // `os` is used by tmpStateDir (mkdtempSync). This void keeps lint quiet without a
 // suppression comment if a future refactor stops using it directly.
 void os;

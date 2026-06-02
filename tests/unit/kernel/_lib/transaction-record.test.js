@@ -453,6 +453,45 @@ test('PR-4 validateTransactionRecord rejects a non-scalar head_anchor / post_sta
   assert.ok((arrPost.errors || []).some((e) => /post_state_hash/.test(e)), 'the error names post_state_hash');
 });
 
+// --- hardening L1 (WIDTH bound) + L2 (validator type-completeness) ---
+
+test('L1 canonicalJsonSerialize is NODE-BOUNDED: a WIDE structure past MAX_CANONICAL_NODES throws a controlled TypeError (the depth bound alone does not catch width)', () => {
+  const wide = { refs: new Array(20000).fill('x') }; // shallow (depth 2) but > the 10000 node budget
+  assert.throws(
+    () => canonicalJsonSerialize(wide),
+    /max node budget exceeded/,
+    'past the node budget -> a controlled TypeError',
+  );
+  // A legit-sized record (a handful of fields + a small array) is well under the budget.
+  assert.strictEqual(
+    typeof canonicalJsonSerialize({ a: 1, refs: ['r1', 'r2', 'r3'], b: { c: 'd' } }),
+    'string',
+    'a legit-sized structure serializes fine (well under the node budget)',
+  );
+});
+
+test('L2 validateTransactionRecord type-completeness: non-array evidence_refs / array-with-non-string / non-string references_transaction_id / non-array affected_records / non-object abort_detail are all rejected', () => {
+  const nonArrayRefs = validateTransactionRecord(validRecord({ evidence_refs: { not: 'an array' } }));
+  assert.strictEqual(nonArrayRefs.valid, false, 'a non-array evidence_refs is rejected');
+  assert.ok((nonArrayRefs.errors || []).some((e) => /evidence_refs/.test(e)), 'the error names evidence_refs');
+
+  const deepRefs = validateTransactionRecord(validRecord({ evidence_refs: [{ nested: 'object' }] }));
+  assert.strictEqual(deepRefs.valid, false, 'an evidence_refs array with a non-string element is rejected (closes the deep-poison gap)');
+
+  const badRef = validateTransactionRecord(validRecord({ references_transaction_id: { not: 'a string' } }));
+  assert.strictEqual(badRef.valid, false, 'a non-string references_transaction_id is rejected');
+  assert.ok((badRef.errors || []).some((e) => /references_transaction_id/.test(e)), 'the error names references_transaction_id');
+
+  const badAffected = validateTransactionRecord(validRecord({ affected_records: 'not-an-array' }));
+  assert.strictEqual(badAffected.valid, false, 'a non-array affected_records is rejected');
+
+  const badAbort = validateTransactionRecord(validRecord({ abort_detail: 'not-an-object' }));
+  assert.strictEqual(badAbort.valid, false, 'a non-object abort_detail is rejected');
+
+  // a legit record (no abort_detail/affected_records; string-array evidence_refs) still validates
+  assert.strictEqual(validateTransactionRecord(validRecord()).valid, true, 'a legit record is unaffected by the new checks');
+});
+
 // --- summary ---
 
 process.stdout.write(`\ntransaction-record.test.js: ${passed} passed, ${failed} failed\n`);
