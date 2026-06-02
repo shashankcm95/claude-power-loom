@@ -20,7 +20,7 @@
     ],
     "skill_status": {
       "ml-pipelines": "not-yet-authored",
-      "claude-api": "marketplace:anthropic-skills/claude-api",
+      "claude-api": "not-yet-authored",
       "data:explore-data": "marketplace:knowledge-work-plugins/data",
       "data:validate-data": "marketplace:knowledge-work-plugins/data",
       "data:statistical-analysis": "marketplace:knowledge-work-plugins/data",

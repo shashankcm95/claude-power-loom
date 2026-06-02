@@ -546,22 +546,10 @@ validators['contract-plugin-hook-deployment'] = function () {
     return [{ kind: 'malformed-hooks-json', file: HOOKS_JSON, fix: 'hooks.json must have top-level `hooks` object' }];
   }
 
-  // Enumerate plugin triples: (event, matcher, command-suffix)
-  // Command-suffix = path after `${CLAUDE_PLUGIN_ROOT}` or after `~/.claude/`
-  // (whichever comes first), to compare regardless of install location.
-  const pluginTriples = [];
-  for (const [event, entries] of Object.entries(pluginHooks)) {
-    if (!Array.isArray(entries)) continue;
-    for (const entry of entries) {
-      const matcher = entry.matcher || '';
-      const hooks = Array.isArray(entry.hooks) ? entry.hooks : [];
-      for (const h of hooks) {
-        if (h.type !== 'command' || !h.command) continue;
-        const suffix = extractCommandSuffix(h.command);
-        pluginTriples.push({ event, matcher, command: h.command, suffix });
-      }
-    }
-  }
+  // Enumerate plugin triples: (event, matcher, command-suffix). Command-suffix
+  // is compared regardless of install location (see extractCommandSuffix). The
+  // same enumerator runs over the INSTALLED cache hooks below for drift compare.
+  const pluginTriples = enumerateTriples(pluginHooks);
 
   // Try the loaded-plugin path first
   const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT || '';
@@ -591,11 +579,45 @@ validators['contract-plugin-hook-deployment'] = function () {
           `ℹ contract-plugin-hook-deployment: enabledPlugins shows ` +
           `power-loom@power-loom-marketplace enabled; CLAUDE_PLUGIN_ROOT unset ` +
           `(running outside plugin-loaded session). Settings-side state suggests ` +
-          `plugin should be active; full verification requires running from inside ` +
-          `a Claude Code session. The deployment check below is conservative.\n`
+          `plugin should be active; verifying the installed plugin cache.\n`
         );
-        // Continue — don't auto-pass. Settings.json verification still runs below
-        // since enabledPlugins alone could mask a corrupted cache or failed install.
+        // H.7.24 completion (NOT reversal): enabledPlugins truthy is a weak
+        // signal alone, so VERIFY the installed cache actually carries the repo
+        // hooks before passing. Compare the installed cache's triples against the
+        // repo triples: full coverage => deployed (pass); a present-but-STALE
+        // cache (missing repo hooks) => flag exactly the missing hooks (the
+        // drift the validator exists to catch); no confirmable install => fall
+        // through to the settings.json check (broken/absent install).
+        const installed = readInstalledPluginHooks('power-loom@power-loom-marketplace');
+        if (installed) {
+          const cachedSuffixes = new Set(enumerateTriples(installed.hooks).map((t) => t.suffix));
+          const missing = pluginTriples.filter((t) => !cachedSuffixes.has(t.suffix));
+          if (missing.length === 0) {
+            process.stderr.write(
+              `ℹ contract-plugin-hook-deployment: verified power-loom installed at ` +
+              `${installed.installPath}; its cache hooks.json covers all ${pluginTriples.length} ` +
+              `repo hooks — the plugin loader deploys them at session start (deployed).\n`
+            );
+            return []; // confirmed install whose cache covers every repo hook
+          }
+          process.stderr.write(
+            `ℹ contract-plugin-hook-deployment: power-loom installed at ${installed.installPath} ` +
+            `but its cache is STALE — ${missing.length}/${pluginTriples.length} repo hooks are ` +
+            `absent from the installed cache. Run /plugin update.\n`
+          );
+          return missing.map((t) => ({
+            kind: 'hook-not-in-installed-cache',
+            event: t.event,
+            matcher: t.matcher,
+            commandSuffix: t.suffix,
+            installPath: installed.installPath,
+            fix: `Hook ${t.suffix} is in the repo hooks.json but NOT in the installed plugin `
+              + `cache at ${installed.installPath}. Run /plugin update power-loom@power-loom-marketplace.`,
+          }));
+        }
+        // else: enabled but NO confirmable install record / cache hooks.json —
+        // fall through to the settings.json check below (the broken/absent-install
+        // case H.7.24 deliberately preserved; now detected, not always-counted).
       }
     }
   } catch {
@@ -677,6 +699,60 @@ validators['contract-plugin-hook-deployment'] = function () {
 function extractCommandSuffix(command) {
   const m = command.match(/hooks\/scripts\/(.+)$/);
   return m ? m[1] : command;
+}
+
+// Enumerate a hooks.json `hooks` object into (event, matcher, command, suffix)
+// triples. Shared by the repo-side enumeration and the installed-cache drift
+// comparison so both triple sets are derived identically.
+function enumerateTriples(hooksObj) {
+  const triples = [];
+  for (const [event, entries] of Object.entries(hooksObj || {})) {
+    if (!Array.isArray(entries)) continue;
+    for (const entry of entries) {
+      const matcher = entry.matcher || '';
+      const hooks = Array.isArray(entry.hooks) ? entry.hooks : [];
+      for (const h of hooks) {
+        if (h.type !== 'command' || !h.command) continue;
+        triples.push({ event, matcher, command: h.command, suffix: extractCommandSuffix(h.command) });
+      }
+    }
+  }
+  return triples;
+}
+
+// Read the INSTALLED plugin's cached hooks (out-of-session, CLAUDE_PLUGIN_ROOT
+// unset). Resolves ~/.claude/plugins/installed_plugins.json -> the plugin's
+// installPath -> the cached packages/kernel/hooks.json the plugin loader uses.
+// Returns { installPath, hooks } (the parsed `hooks` object) when the install
+// record + cache hooks.json are present and parse, else null. Fail-soft: a
+// missing HOME / field / read / parse error returns null, so the caller falls
+// through to the conservative settings.json check (never a false PASS).
+//
+// The CALLER compares these cached triples against the repo triples — a present
+// install whose cache is STALE (missing repo hooks) is flagged per-missing-hook,
+// NOT auto-passed. This COMPLETES H.7.24 (verify the cache actually carries the
+// hooks) instead of reversing its don't-blindly-trust-enabledPlugins intent.
+function readInstalledPluginHooks(pluginId) {
+  if (!process.env.HOME) return null;
+  try {
+    const registry = path.join(process.env.HOME, '.claude', 'plugins', 'installed_plugins.json');
+    if (!fs.existsSync(registry)) return null;
+    const data = JSON.parse(fs.readFileSync(registry, 'utf8'));
+    const entries = data && data.plugins && data.plugins[pluginId];
+    if (!Array.isArray(entries)) return null;
+    for (const entry of entries) {
+      if (!entry || typeof entry.installPath !== 'string') continue;
+      const hooksJson = path.join(entry.installPath, 'packages', 'kernel', 'hooks.json');
+      if (!fs.existsSync(hooksJson)) continue;
+      const parsed = JSON.parse(fs.readFileSync(hooksJson, 'utf8'));
+      if (parsed && parsed.hooks && typeof parsed.hooks === 'object') {
+        return { installPath: entry.installPath, hooks: parsed.hooks };
+      }
+    }
+    return null;
+  } catch {
+    return null; // unreadable / malformed registry -> conservative fall-through
+  }
 }
 
 // H.7.23 — contract-marketplace-schema: validate .claude-plugin/plugin.json
