@@ -19,6 +19,7 @@ const path = require('path');
 
 const { runGitDefault } = require('../_lib/invoke-git.js');
 const { materializeDelta } = require('../_lib/quarantine-promote.js');
+const { isSafePathSegment } = require('../_lib/path-canonicalize.js');
 
 /**
  * The per-spawn journal path: <stateDir>/<runId>/resolver-journal-<safeId>.jsonl.
@@ -30,17 +31,30 @@ function journalPathFor(stateDir, runId, safeId) {
 }
 
 /**
- * Fail-soft boundary guard. journalPathFor -> path.join(stateDir, runId, ...) THROWS
- * a TypeError if stateDir/runId are not non-empty strings, and that throw happens
- * BEFORE a producer's try/catch — so it would escape the "NEVER throws" contract (the
- * journal would be unavailable to even record it). In production the hook always
- * threads non-empty strings, so this is a contract-honoring guard for a malformed
- * caller, not a live defect. Clamp the inputs at the edge (kb:architecture/discipline/
- * error-handling-discipline — "define errors out of existence").
+ * Fail-soft boundary guard for the close-path staging producers (stage-promote +
+ * stage-candidate). Two jobs:
+ *
+ *  (1) TYPE clamp — journalPathFor / createStagingWorktree -> path.join(stateDir,
+ *      runId, ...) THROWS a TypeError on a non-string, BEFORE a producer's try/catch,
+ *      escaping the "NEVER throws" contract. Clamp at the edge (kb:architecture/
+ *      discipline/error-handling-discipline — "define errors out of existence").
+ *
+ *  (2) TRAVERSAL guard (CWE-22) — `runId` is the per-run SUBDIR segment joined under
+ *      the shared `stateDir`. A traversal runId (`a/../b`, `x/..`) path.join-COLLAPSES
+ *      in-base and would land the journal + staging worktree in a SIBLING run's dir
+ *      (or the stateDir root) — and a base-anchored `checkWithinRoot` cannot catch it
+ *      (path.join's normalization removes the `..` before the check sees it). So runId
+ *      MUST be a safe single segment (path-canonicalize.isSafePathSegment), rejected
+ *      BEFORE the join. `stateDir` is the trusted absolute base (legitimately holds
+ *      separators) and stays a plain non-empty-string check.
+ *
+ * Defense-in-depth: the close-path runId is `sha256(session_id).slice(0,16)` /
+ * UUID-derived by resolveRunId today, so no traversal is live-reachable — this matches
+ * record-store.isSafeRunId's posture and guards a future runId source.
  */
 function hasValidStateArgs(stateDir, runId) {
   return typeof stateDir === 'string' && stateDir.length > 0
-    && typeof runId === 'string' && runId.length > 0;
+    && isSafePathSegment(runId);
 }
 
 /**
