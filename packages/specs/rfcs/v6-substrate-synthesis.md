@@ -702,11 +702,24 @@ Future readers consulting "K-primitive count" should understand this expansion �
 | R6 | Pattern A — Persona-internal trampoline | Runtime | v3.2 |
 | R7 | TodoWrite-as-checkpoint primitive | Runtime | v3.2 |
 | R8 | Decomposition disciplines (tdd/spec-driven/exploratory) | Runtime | v3.2 |
-| R9 | Leaf criteria (5 deterministic conditions) | Runtime | v3.2 |
+| R9 | Leaf criteria (**6**: 5 leaf-quality + `discipline-gate`; see the normative set below) | Runtime | v3.2 ✅ BUILT |
 | R10 | Budget envelope (tokens + wallclock + recursion depth) | Runtime | v3.2 |
 | R11 | Spawn-verify dispatcher | Runtime | v3.2 |
 | R12 | Test-runner adapter library | Runtime | v3.2 |
 | R13 | Advisory verification path | Runtime | Phase 1 SHIPPED (extends in v3.2) |
+
+**R9 leaf-criteria — the normative SIX (promoted from the v3.2 scope; BUILT 2026-06-03, `packages/runtime/orchestration/leaf-criteria.js`).** The RFC long asserted "5 deterministic conditions" without defining them; the operational set is now canonical here. It is **6**: five leaf-quality criteria + one R8 precondition gate (`discipline-gate`), set-equal to the ADR-0015 `failed_criterion_id` enum (INV-FS-CriterionEnumMirrorsR9). Honest split: **4 deterministic hard gates + 1 advisory + 1 precondition.** A REQUIRED field absent = the owning criterion's error (no vacuous pass). R9 is a **declaration-conformance** gate (it validates leaf-declared metadata, not measured reality — runtime measurement is R11's job).
+
+| # | Criterion | Operational check (`(leaf)→violations[]`) | Kind |
+|---|---|---|---|
+| 1 | `cost-justified` | `estimated_tokens ≥ 500 OR estimated_wallclock_s ≥ 30` (named tunables) | deterministic |
+| 2 | `semantically-cohesive` | structural proxy (≥1 tag AND one output_schema AND content in a size-band) | **advisory** (never rejects) |
+| 3 | `interface-clean` | a non-empty `output_schema` AND `inputs` count ≤ 8 | deterministic |
+| 4 | `validation-supported` | discipline-routed: `tdd` → a registered R12 runner exists (`getAdapter`); `spec-driven` → pass | deterministic |
+| 5 | `resource-bounded` | `estimated_tokens ≤ 100000` AND `allows_subspawn !== true` (the latter a Pattern-B forward-guard) | deterministic |
+| 6 | `discipline-gate` | `isValidDiscipline(discipline)` (R8 vocabulary) — a precondition, ordered first | deterministic |
+
+`validateLeaf(leaf)` returns a per-criterion-keyed result; **R11** (`spawn-verify.js`) consumes it, runs the `tdd` test-run at verify time, and emits the ADR-0015 `failure_signature` keyed by the failing criterion-id.
 
 ### 6.1.3 Loom Evolution Lab Primitives (13 total — unchanged structure; E2 spec sharpened)
 

@@ -58,7 +58,7 @@ the diagnostic free-form fields.
 |---|---|---|---|---|
 | `failed_criterion_id` | enum (`cost-justified` \| `semantically-cohesive` \| `interface-clean` \| `validation-supported` \| `resource-bounded` \| `discipline-gate`) | yes | **STRUCTURAL** | Which R9 criterion (or the R8 discipline gate) rejected the leaf. E2's primary clustering key; closed enum so E2 switches without parsing prose. |
 | `discipline` | enum (`tdd` \| `spec-driven` \| `exploratory`) | yes | **STRUCTURAL** | The leaf's declared decomposition discipline (R8 vocabulary) that routed the verifier. E2 derives discipline-scoped policies. NB: R8 froze `{spec-driven, tdd}` (Option A, PR #214) — `exploratory` is a reserved member, not yet used. |
-| `verifier_kind` | enum (`schema` \| `test-run` \| `structural` \| `registry-lookup` \| `predicate`) | yes | **STRUCTURAL** | The KIND of gate that ran. Lets E2 distinguish a hard-gate failure from an advisory-predicate failure. **`test-run` + `registry-lookup` CONFIRMED live by R12 (v3.2 Wave 2); full member-set lock deferred to R11, the producer** (see Open questions). |
+| `verifier_kind` | enum (`schema` \| `test-run` \| `structural` \| `registry-lookup` \| `predicate`) | yes | **STRUCTURAL** | The KIND of gate that ran. Lets E2 distinguish a hard-gate failure from an advisory-predicate failure. **✅ LOCKED at R11 (v3.2 Wave 2): `predicate`/`test-run`/`registry-lookup`/`structural` are LIVE; `schema` is RESERVED** (v3.3+ output-schema conformance — see Open questions). |
 | `detection_phase` | enum (`pre-spawn-leaf-check` \| `post-spawn-verify` \| `budget-abort`) | yes | **STRUCTURAL** | Where in R11's lifecycle the failure surfaced (mirrors `abort_detail.detection_phase`). Separates "rejected as a bad leaf before running" from "ran and failed its gate." |
 | `leaf_ref` | string \| null | no | structural (weak) | Stable id of the failing leaf (R7 checkpoint id / folder-path sha). Reserved for v3.4 attribution-graph edges; E2 does NOT branch policy on it. |
 | `expected` | string \| null | no | diagnostic | The threshold/shape the gate wanted (e.g. `"estimated_tokens >= 500"`). E2 IGNORES (free-form); for the human. |
@@ -91,16 +91,16 @@ pure deterministic extraction function rather than smuggling NLP into the policy
 
 **Open questions:**
 
-- **`verifier_kind` value-set — PARTIALLY RESOLVED (v3.2 Wave 2, R12).** R12 (the test-runner adapter
-  library) landed and **CONFIRMS the `test-run` + `registry-lookup` members are live and adequate**: the
-  `node-runner` adapter surfaces `test-run` (it runs a leaf's tests), and the registry's
-  `isVerificationSupported` surfaces `registry-lookup` (R9 #4's availability check). **The full member-set
-  LOCK is deferred to R11** — R11 is the ADR-0015 *producer* (it emits the signature) and is the only
-  component positioned to confirm the set is complete across ALL gate-kinds (`schema`/`structural`/
-  `predicate` are R9/R11 gate-kinds R12 does not surface). Locking the whole set at R12 would assert a
-  completeness only the producer can verify (a false-precision "locked" label — `drift:plan-honesty`
-  class). The enum MECHANISM stays frozen (append-only, tolerate-unknown), so deferring the lock one
-  component costs nothing. **Lock the concrete member-set at R11.**
+- **`verifier_kind` value-set — ✅ LOCKED at R11 (v3.2 Wave 2, the producer).** R11 (`spawn-verify.js`)
+  emits the signature and maps every R9/R11 gate to a member, so the 5-member set is now frozen with each
+  member having a live producer OR a named reservation:
+  - `predicate` — LIVE (R9's `discipline-gate`, `cost-justified`, `resource-bounded` — boolean/threshold reads).
+  - `test-run` — LIVE (R11's post-spawn-verify R12 run).
+  - `registry-lookup` — LIVE (R9 #4's `getAdapter` availability check).
+  - `structural` — LIVE (R9's `interface-clean` — a leaf-SHAPE check; NOT `schema`, which would imply payload schema-validation R9 does not do).
+  - `schema` — **RESERVED** (named v3.3+ producer = the output-schema-conformance gate, deferred with R10 per-leaf attribution). Kept, not removed: append-only means a removed-then-re-added member would break the E2 forward contract; a reserved member costs nothing (E2 tolerates-by-ignoring). Mirrors `discipline:exploratory`.
+
+  **Also reserved: `detection_phase: budget-abort`** — R11 v3.2 produces `pre-spawn-leaf-check` + `post-spawn-verify`; `budget-abort` awaits R10 per-leaf token attribution (R10 currently records spend per-persona, not per-leaf — a leaf-level token check would be inert, so it is deferred-not-faked per ADR-0012). The witness *shape* stays forward-frozen for E2; producers light up as measurements become feasible.
 - **Criterion #2 (`semantically-cohesive`) is advisory, not a hard gate** (v3.2 scope Boundary Decisions,
   open item). If it stays a soft signal, a `failed_criterion_id: semantically-cohesive` record means
   "advisory miss," not "hard reject" — E2 should weight it accordingly. Resolve when R9 builds.

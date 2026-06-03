@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/shashankcm95/claude-power-loom/packages/kernel/schema/failure-signature.schema.json",
+  "title": "failure_signature",
+  "description": "ADR-0015 — the negative-attestation witness R11 (spawn-verify dispatcher) emits when a decomposition leaf is rejected. The FROZEN forward contract the v3.3 E2 derived-policy extractor consumes. Structural/diagnostic firewall (INV-FS-StructuralDiagnosticFirewall): E2 reads ONLY the four closed-enum structural fields (failed_criterion_id, discipline, verifier_kind, detection_phase) deterministically; it MUST NOT parse the diagnostic free-form fields (expected, observed, human_message). verifier_kind LOCKED at R11 (v3.2 Wave 2): `schema` is a RESERVED member (named v3.3+ producer = output-schema conformance), the other four are live. detection_phase `budget-abort` is RESERVED (pending R10 per-leaf attribution); R11 v3.2 produces pre-spawn-leaf-check + post-spawn-verify. Enums are append-only (INV-FS-AppendOnlyEnums); older readers tolerate an unknown member by ignoring the record.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "failed_criterion_id": {
+      "description": "STRUCTURAL — which R9 criterion (or the R8 discipline gate) rejected the leaf. E2's primary clustering key. Mirrors R9 listCriteria() (INV-FS-CriterionEnumMirrorsR9).",
+      "type": "string",
+      "enum": [
+        "cost-justified",
+        "semantically-cohesive",
+        "interface-clean",
+        "validation-supported",
+        "resource-bounded",
+        "discipline-gate"
+      ]
+    },
+    "discipline": {
+      "description": "STRUCTURAL — the leaf's declared decomposition discipline (R8 vocabulary). R8 froze {spec-driven, tdd}; `exploratory` is a reserved member (also the bucket for a leaf whose declared discipline is unrecognized — the raw value goes in `observed`).",
+      "type": "string",
+      "enum": ["tdd", "spec-driven", "exploratory"]
+    },
+    "verifier_kind": {
+      "description": "STRUCTURAL — the KIND of gate that ran. LOCKED at R11. Live: predicate (boolean/threshold reads), test-run (an R12 adapter ran the leaf's tests), registry-lookup (the R9 getAdapter availability check), structural (a leaf-shape check, e.g. interface-clean). RESERVED: schema (v3.3+ output-schema conformance).",
+      "type": "string",
+      "enum": ["schema", "test-run", "structural", "registry-lookup", "predicate"]
+    },
+    "detection_phase": {
+      "description": "STRUCTURAL — where in R11's lifecycle the failure surfaced. Live: pre-spawn-leaf-check (rejected as a bad leaf before running), post-spawn-verify (ran and failed its gate). RESERVED: budget-abort (pending R10 per-leaf token attribution).",
+      "type": "string",
+      "enum": ["pre-spawn-leaf-check", "post-spawn-verify", "budget-abort"]
+    },
+    "leaf_ref": {
+      "description": "structural (weak) — stable id of the failing leaf (R7 checkpoint id). Reserved for v3.4 attribution-graph edges; E2 does NOT branch policy on it.",
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        { "type": "null" }
+      ]
+    },
+    "expected": {
+      "description": "diagnostic — the threshold/shape the gate wanted. E2 IGNORES (free-form); for the human.",
+      "oneOf": [
+        { "type": "string" },
+        { "type": "null" }
+      ]
+    },
+    "observed": {
+      "description": "diagnostic — what was actually seen. E2 IGNORES.",
+      "oneOf": [
+        { "type": "string" },
+        { "type": "null" }
+      ]
+    },
+    "human_message": {
+      "description": "diagnostic — required prose explanation (the persona-Maya M3 debuggability rationale). E2 IGNORES entirely.",
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": ["failed_criterion_id", "discipline", "verifier_kind", "detection_phase", "human_message"]
+}
