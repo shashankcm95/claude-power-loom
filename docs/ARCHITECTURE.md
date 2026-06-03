@@ -76,13 +76,14 @@ Path canonicalization (K7) guards every filesystem path against `..`, absolute-e
 
 ## 5. Kernel primitives {#kernel-primitives}
 
-The "K1–K14" numbering spans the **whole kernel roadmap**. Phase 1-alpha (v3.0-alpha) shipped **11 of them** atop the pre-existing `K5` validators; **v3.1** (Runtime Foundation) then added **K6** (dormant), **dropped K8** ([ADR-0012](../packages/specs/adrs/0012-capability-enforcement-is-static-not-runtime-injected.md)), and built the runtime layer on top — the **R1–R4** persona/capability contracts + the reconciliation validator, the live shadow-default **spawn-close transaction loop**, and **INV-22** idempotency (see [ROADMAP](ROADMAP.md)). Honest status flags:
+The "K1–K14" numbering spans the **whole kernel roadmap**. Phase 1-alpha (v3.0-alpha) shipped **11 of them** atop the pre-existing `K5` validators; **v3.1** (Runtime Foundation) then added **K6** (dormant — since **retired** in v3.2 Wave 2, as its K8 consumer never arrived), **dropped K8** ([ADR-0012](../packages/specs/adrs/0012-capability-enforcement-is-static-not-runtime-injected.md)), and built the runtime layer on top — the **R1–R4** persona/capability contracts + the reconciliation validator, the live shadow-default **spawn-close transaction loop**, and **INV-22** idempotency (see [ROADMAP](ROADMAP.md)). Honest status flags:
 
 - **Live** — has a production code path today.
 - **Dormant** — code + tests ship, but **no production importer yet** (a merge-blocking CI gate enforces it); first consumer arrives in a later phase.
 - **Advisory** — runs, but **warns, never blocks**.
 - **Deferred** — not shipped yet (scheduled for a later phase).
 - **Dropped** — cancelled after an empirical probe proved its mechanism does not exist ([ADR-0012](../packages/specs/adrs/0012-capability-enforcement-is-static-not-runtime-injected.md)).
+- **Retired** — shipped, then **deleted** once its only consumer was cancelled and no replacement emerged (YAGNI). Distinct from *Dropped*: the primitive itself worked; it simply lost its reason to exist.
 
 | K# | What it does | Status | Where |
 |---|---|---|---|
@@ -92,7 +93,7 @@ The "K1–K14" numbering spans the **whole kernel roadmap**. Phase 1-alpha (v3.0
 | **K3.b** | Context envelope — schema + validator for cross-spawn context propagation (`schemaVersion: 1.0.0-provisional`). | **Dormant** (its intended consumer K8 was dropped — ADR-0012; awaits a v3.2+ injection channel) | `_lib/context-envelope.js` |
 | **K4** | Recall-CLI deterministic tri-signal ranker (`0.5·kw + 0.3·tag + 0.2·surface`) over a snapshot, not a live store. | Live | `recall/loom-recall.js` |
 | **K5** | Schema validators — YAML frontmatter, bare-secrets, config-guard, contract-verifier. | Live (pre-existing, hardened) | `validators/*` |
-| **K6** | Capability subset check (deterministic set-subset). | **Dormant** (shipped v3.1; no production importer — the reconciliation validator does its own set-math; CI dormancy gate) | `enforcement/k6-subset-check.js` |
+| **K6** | Capability subset check (deterministic set-subset). | **Retired** (v3.2 Wave 2, [boundary #216](../packages/specs/plans/2026-06-02-v3.2-runtime-decomposition-scope.md) — shipped dormant v3.1; its only intended consumer K8 was dropped per ADR-0012, so it never gained a production importer; the reconciliation validator does its own set-math) | _(removed)_ |
 | **K7** | Path canonicalization — rejects `..`, absolute, and symlink-escape. | Live | `_lib/path-canonicalize.js` |
 | **K8** | Capability injection at spawn-init (`PreToolUse(Agent).updatedInput`). | **Dropped** ([ADR-0012](../packages/specs/adrs/0012-capability-enforcement-is-static-not-runtime-injected.md) — `updatedInput` is inert on Agent/Task spawns; enforcement is static: agent.md `tools:` + the reconciliation validator) | — |
 | **K9** | Promote-deltas — cherry-pick + path-rewrite + atomicity + reverse-cherry-pick journal for rollback. Went live in 4b via the resolver. | Live | `_lib/k9-promote-deltas.js`, `k9-path-guard.js`, `k9-journal.js` |
