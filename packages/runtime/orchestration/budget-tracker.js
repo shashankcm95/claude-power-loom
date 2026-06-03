@@ -339,22 +339,108 @@ function cmdStatus(args) {
   process.exit(1);
 }
 
-const cmd = process.argv[2];
-const args = parseArgs(process.argv.slice(3));
+// ---------- R10 recursion-depth (v3.2 Wave 0) ----------
+//
+// The budget envelope's recursion-depth dimension (tokens + wallclock already
+// tracked above). IMPORT-FRIENDLY (no process.exit) so the Pattern-A trampoline
+// (R6, Wave 1) can bound recursion in-loop. State lives alongside token budgets
+// in budgets.json under a top-level `recursion` key; the two never clobber.
 
-switch (cmd) {
-  case 'init': cmdInit(args); break;
-  case 'record': cmdRecord(args); break;
-  case 'record-from-transcript': cmdRecordFromTranscript(args); break;
-  case 'extend': cmdExtend(args); break;
-  case 'status': cmdStatus(args); break;
-  default:
-    console.error('Usage: budget-tracker.js {init|record|record-from-transcript|extend|status} [args]');
-    console.error('  init <run-id>                                                  — create empty budget file');
-    console.error('  record --run-id X --identity Y --tokens-input N --tokens-output M — manual usage record');
-    console.error('  record-from-transcript --run-id X --identity Y --transcript path  — auto-extract from JSONL');
-    console.error('  extend --run-id X --identity Y --reason "..."                  — request extension');
-    console.error('  status --run-id X [--identity Y]                               — show budgets + usage + extensions');
-    console.error('Env: HETS_RUN_STATE_DIR, HETS_CONTRACTS_DIR override defaults.');
-    process.exit(1);
+const ZERO_RECURSION = { currentDepth: 0, peakDepth: 0, maxDepth: null };
+
+// Import-safe read: null when absent, THROWS on corrupt JSON (vs loadBudgets,
+// which process.exit(2)s — that CLI behavior must NOT kill an importing host).
+function readBudgetsRaw(runId) {
+  const fp = budgetFilePath(runId);
+  if (!fs.existsSync(fp)) return null;
+  return JSON.parse(fs.readFileSync(fp, 'utf8'));
 }
+
+// Enter one recursion level. Sets/updates maxDepth, increments currentDepth +
+// peakDepth, atomically under the run's budget lock. Returns
+// { currentDepth, maxDepth, depthExhausted } — depthExhausted (currentDepth >
+// maxDepth) is the ABORT SIGNAL the trampoline acts on (it emits the
+// commit_outcome: ABORTED record; this function only signals, never aborts).
+function enterDepth(runId, maxDepth) {
+  let result;
+  withBudgetLock(runId, () => {
+    const budgets = readBudgetsRaw(runId)
+      || { runId, createdAt: new Date().toISOString(), spawns: {} };
+    const rec = budgets.recursion || { ...ZERO_RECURSION };
+    if (maxDepth !== undefined && maxDepth !== null) rec.maxDepth = maxDepth;
+    rec.currentDepth += 1;
+    if (rec.currentDepth > rec.peakDepth) rec.peakDepth = rec.currentDepth;
+    budgets.recursion = rec;
+    writeBudgetsAtomic(runId, budgets);
+    result = {
+      currentDepth: rec.currentDepth,
+      maxDepth: rec.maxDepth,
+      depthExhausted: rec.maxDepth !== null && rec.currentDepth > rec.maxDepth,
+    };
+  });
+  return result;
+}
+
+// Exit one recursion level. Decrements currentDepth, floored at 0 so a stray
+// exit (or exit-on-error during unwind) never underflows. Returns { currentDepth }.
+function exitDepth(runId) {
+  let result;
+  withBudgetLock(runId, () => {
+    const budgets = readBudgetsRaw(runId);
+    if (!budgets || !budgets.recursion) { result = { currentDepth: 0 }; return; }
+    budgets.recursion.currentDepth = Math.max(0, budgets.recursion.currentDepth - 1);
+    writeBudgetsAtomic(runId, budgets);
+    result = { currentDepth: budgets.recursion.currentDepth };
+  });
+  return result;
+}
+
+// Read the recursion state (zeroed when the run / recursion block is absent).
+function getRecursion(runId) {
+  const budgets = readBudgetsRaw(runId);
+  return (budgets && budgets.recursion) ? { ...budgets.recursion } : { ...ZERO_RECURSION };
+}
+
+function cmdDepth(args) {
+  const sub = args._[0]; // enter | exit | status
+  const runId = requireRunId(args);
+  if (sub === 'enter') {
+    const max = args.max !== undefined ? parseInt(args.max, 10) : null;
+    console.log(JSON.stringify({ action: 'depth-enter', ...enterDepth(runId, max) }, null, 2));
+  } else if (sub === 'exit') {
+    console.log(JSON.stringify({ action: 'depth-exit', ...exitDepth(runId) }, null, 2));
+  } else if (sub === 'status') {
+    console.log(JSON.stringify({ action: 'depth-status', ...getRecursion(runId) }, null, 2));
+  } else {
+    console.error('Usage: depth {enter --max N|exit|status} --run-id X');
+    process.exit(1);
+  }
+}
+
+// ---------- CLI (runs only when executed directly; importable for R6) ----------
+
+if (require.main === module) {
+  const cmd = process.argv[2];
+  const args = parseArgs(process.argv.slice(3));
+
+  switch (cmd) {
+    case 'init': cmdInit(args); break;
+    case 'record': cmdRecord(args); break;
+    case 'record-from-transcript': cmdRecordFromTranscript(args); break;
+    case 'extend': cmdExtend(args); break;
+    case 'status': cmdStatus(args); break;
+    case 'depth': cmdDepth(args); break;
+    default:
+      console.error('Usage: budget-tracker.js {init|record|record-from-transcript|extend|status|depth} [args]');
+      console.error('  init <run-id>                                                  — create empty budget file');
+      console.error('  record --run-id X --identity Y --tokens-input N --tokens-output M — manual usage record');
+      console.error('  record-from-transcript --run-id X --identity Y --transcript path  — auto-extract from JSONL');
+      console.error('  extend --run-id X --identity Y --reason "..."                  — request extension');
+      console.error('  status --run-id X [--identity Y]                               — show budgets + usage + extensions');
+      console.error('  depth {enter --max N|exit|status} --run-id X                   — recursion-depth envelope (R10)');
+      console.error('Env: HETS_RUN_STATE_DIR, HETS_CONTRACTS_DIR override defaults.');
+      process.exit(1);
+  }
+}
+
+module.exports = { enterDepth, exitDepth, getRecursion };

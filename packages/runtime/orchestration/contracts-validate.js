@@ -1191,6 +1191,15 @@ validators['registry-schema-valid'] = function () {
 
 const NUMBERED_CONTRACT_RE = /^(\d+)-(.+)$/;
 
+// v3.2 Wave 0 — close the 12-security-engineer write-floor gap. The strict
+// strip-rule maps `12-security-engineer` -> `security-engineer`, which has no
+// `agents/security-engineer.md`; the AUTHORITATIVE floor lives in
+// `agents/security-auditor.md`. This alias binds the contract to that floor so
+// the one write-capable persona is reconciled, not silently skipped. Add an
+// entry here for any future contract whose persona-slot name diverges from its
+// agent.md basename.
+const AGENT_NAME_ALIASES = { 'security-engineer': 'security-auditor' };
+
 // Read agent.md tools[] frontmatter. Small fixed set (~16 numbered contracts);
 // no memoization needed at this scale (each validator run reads from disk once
 // per numbered contract; the three axis checks below reuse the returned Set).
@@ -1218,11 +1227,11 @@ validators['agent-contract-capability-reconcile'] = function () {
   for (const { name, path: fp } of listContractFiles()) {
     const m = name.match(NUMBERED_CONTRACT_RE);
     if (!m) continue; // un-numbered template (challenger / engineering-task) — skip
-    const agentName = m[2];
+    const agentName = AGENT_NAME_ALIASES[m[2]] || m[2];
     const tools = readAgentTools(agentName);
     if (tools === null) {
-      // No single agents/<name>.md floor (e.g. 12-security-engineer ->
-      // security-auditor.md). Cannot bind; skip silently per the SKIP rule.
+      // No agents/<name>.md floor even after alias resolution. Cannot bind;
+      // skip silently (genuine template / floor-less persona).
       continue;
     }
     const c = loadJson(fp);
