@@ -172,7 +172,13 @@ jobs:
     # files are GREEN in PR-1 — the 18-contract two-tier migration landed in THIS
     # PR (test 10 is the GREEN-on-migrated regression gate, not an expected-RED
     # placeholder). No --scope subset, no expected-failure carve-out.
-    name: Runtime contracts tests
+    #
+    # WIDENED (v3.2 Wave 2, R12): the find root moved from tests/unit/runtime/contracts
+    # to tests/unit/runtime (recursive) so ALL runtime unit-test dirs are gated —
+    # contracts/ + the new test-runners/ + future R9/R11 dirs — symmetric with the
+    # kernel job's broad tests/unit/kernel root (below). Renamed "Runtime tests".
+    # (main is unprotected — no required-check name to break by the rename.)
+    name: Runtime tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -182,7 +188,7 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Run runtime persona-contract tests
+      - name: Run runtime unit tests (contracts + test-runners + …)
         working-directory: ${{ github.workspace }}
         shell: bash
         run: |
@@ -196,12 +202,12 @@ jobs:
             rc=$?
             echo "::endgroup::"
             [ $rc -ne 0 ] && failed=1
-          done < <(find "$GITHUB_WORKSPACE/tests/unit/runtime/contracts" -name '*.test.js' -type f -print0)
+          done < <(find "$GITHUB_WORKSPACE/tests/unit/runtime" -name '*.test.js' -type f -print0)
           echo "Ran $count test files; failures: $failed"
           # Vacuous-pass guard: if find matched zero files (cwd mismatch, path
           # rename, or globbing failure), fail the job rather than pass vacuously.
           if [ "$count" -eq 0 ]; then
-            echo "::error::Zero test files matched at $GITHUB_WORKSPACE/tests/unit/runtime/contracts — vacuous-pass guard failing the job."
+            echo "::error::Zero test files matched at $GITHUB_WORKSPACE/tests/unit/runtime — vacuous-pass guard failing the job."
             exit 2
           fi
           exit $failed
