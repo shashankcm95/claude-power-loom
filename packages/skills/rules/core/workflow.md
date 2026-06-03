@@ -221,4 +221,16 @@ The named archetypes below — `architect`, `code-reviewer`, `hacker`, `honesty-
 
 See `commands/verify-plan.md` for the slash command, `skills/verify-plan/SKILL.md` for the procedure.
 
+## Phase-close verification gate (2026-06-03 — USER-proposed; the post-phase analog of /verify-plan)
+
+At a **v3.x phase boundary** (a phase declared complete, or a plugin-version bump), run **`/phase-close <phase>`** BEFORE declaring done. It spawns three independent full-context, in-substrate lenses in parallel — **PM** (`honesty-auditor` — exit-criteria delivery + claim-vs-evidence), **Principal-SDE** (`code-reviewer` at phase altitude — cross-PR integration seams + accumulated debt, NOT a per-diff re-review), **Architect** (phase design soundness + forward-contract readiness for the next phase's consumer) — to review the **INTEGRATED phase against its exit criteria**, and writes a `## Phase-close sign-off` record (ROADMAP + a `toolkit/phase-close` library volume).
+
+**Why it's distinct from the per-wave VALIDATE + `/verify-plan`**: those verify a single plan/diff; only the phase gate is positioned to catch **cross-PR drift** (a contract that drifted between PRs), **accumulated debt** (merged-but-dark, deferred pile-up), and **phase-claim honesty** (complete vs exit-criteria-actually-met). Precedent: the v3.1 phase-close sign-off (PM + principal architect, both CLOSEABLE — `docs/ROADMAP.md`). It fires ONCE per phase (coarse) → cheap relative to its catch.
+
+**Ghost-protocol tie-in (advisory monitor, NOT hook-enforcement)**: the gate feeds `improvement-effectiveness:phase-close` when it catches fresh cross-PR drift; a phase boundary crossed WITHOUT a record bumps `drift:phase-close-skipped` (at session-end / pre-compact), surfaced for `/self-improve` triage at convergence (`drift:` convergence is MANUAL per the ghost taxonomy — tracked visibility, not a hard block). Hard enforcement (a kernel hook on the version bump) is a future escalation.
+
+**When it does NOT apply**: a single PR / sub-wave (the per-wave VALIDATE covers that — do NOT re-litigate per-PR diffs at the phase gate).
+
+See `commands/phase-close.md` + `skills/library/phase-close/SKILL.md`.
+
 </important>
