@@ -38,6 +38,7 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 const paths = require('../packages/kernel/_lib/library-paths');
 const catalog = require('../packages/kernel/_lib/library-catalog');
+const reconcile = require('../packages/kernel/_lib/library-reconcile');
 const { writeAtomic, writeAtomicString } = require('../packages/kernel/_lib/atomic-write');
 
 // ===========================================================================
@@ -51,6 +52,7 @@ const SUBCOMMANDS = {
   stacks: cmdStacks,
   read: cmdRead,
   write: cmdWrite,
+  reindex: cmdReindex,
   stats: cmdStats,
   gc: cmdGc,
   daybook: cmdDaybook,
@@ -94,6 +96,8 @@ function printHelp() {
     '  write <section>/<stack>/<volume>    Write volume from stdin',
     '                                        [--form narrative|schematic]',
     '                                        [--topic a,b,c] [--entities X,Y,Z]',
+    '  reindex [<section>/<stack>]         Rebuild _catalog.json from volumes on disk',
+    '                                        (no arg → all stacks; repairs catalog drift)',
     '  migrate [--dry-run] [--run-id X]    Migrate legacy paths to library',
     '  rollback --to <run-id>              Restore symlinks from a backup',
     '  stats [--json] [--section X]        Observability (volume counts, sizes)',
@@ -297,7 +301,7 @@ function cmdWrite(args) {
   writeAtomicString(vp, content);
 
   // Catalog upsert (Component F catalog builder — extract topic+entities)
-  const extracted = extractCatalogMetadata(content, form);
+  const extracted = reconcile.extractCatalogMetadata(content, form);
   const topic = opts.topic ? opts.topic.split(',').map(s => s.trim()).filter(Boolean) : extracted.topic;
   const entities = opts.entities ? opts.entities.split(',').map(s => s.trim()).filter(Boolean) : extracted.entities;
 
@@ -311,6 +315,69 @@ function cmdWrite(args) {
   });
 
   process.stdout.write(`library write: wrote ${vp} (form: ${form})\n`);
+}
+
+// ===========================================================================
+// reindex — rebuild _catalog.json from the volumes on disk (catalog repair)
+// ===========================================================================
+
+/**
+ * Rebuild a stack's `_catalog.json` from the volume files actually on disk.
+ *
+ * Why this exists: the pre-compact SAVE_PROMPT writes session snapshots by
+ * direct file-write into `volumes/` (it does not route through `library write`,
+ * the only path that upserts the catalog). The catalog therefore drifts stale —
+ * `ls`/`read`/`daybook` go blind to every directly-written volume. `reindex`
+ * is the deterministic repair: it discards the stale index and re-derives each
+ * entry (form, topic, entities, content_hash, last_modified) from the files.
+ *
+ * Scope: top-level volume files only. The `_archive/` subdir is intentionally
+ * skipped (archived volumes are not `ls`-visible by design); `inferForm` drops
+ * non-`.md`/`.json` entries; dotfiles + lockfiles are skipped. Symlinked
+ * volumes (e.g. `mempalace-fallback.md`) ARE indexed — `statSync` follows the
+ * link and reports the target's mtime.
+ *
+ * Usage: `library reindex <section>/<stack>` rebuilds one stack;
+ *        `library reindex` (no target) rebuilds every stack in every section.
+ */
+function cmdReindex(args) {
+  const target = args.find(a => !a.startsWith('--'));
+
+  let targets;
+  if (target) {
+    const [sectionId, stackId] = target.split('/');
+    ensureSectionExists(sectionId);
+    if (!stackId) throw new Error(`reindex: target must be <section>/<stack>, got "${target}"`);
+    targets = [{ sectionId, stackId }];
+  } else {
+    const idx = JSON.parse(fs.readFileSync(paths.sectionsIndexPath(), 'utf8'));
+    targets = [];
+    for (const section of idx.sections || []) {
+      const secManifest = readSectionManifestSafe(section.id);
+      for (const stackId of Object.keys((secManifest && secManifest.store_schema_versions) || {})) {
+        targets.push({ sectionId: section.id, stackId });
+      }
+    }
+  }
+
+  let grandTotal = 0;
+  for (const { sectionId, stackId } of targets) {
+    // reconcile.reindexStack is the single source of truth for entry shape +
+    // volume_id derivation (shared with the PostToolUse + SessionStart hooks so
+    // all three mechanisms agree — idempotency invariant). Per-stack guard so
+    // one unreadable stack can't abort the whole repair (this is the tool a user
+    // runs *because* the catalog is broken) — mirrors the SessionStart hook.
+    try {
+      const count = reconcile.reindexStack(sectionId, stackId);
+      grandTotal += count;
+      process.stdout.write(`library reindex: ${sectionId}/${stackId} — ${count} volume(s)\n`);
+    } catch (err) {
+      process.stderr.write(`library reindex: ${sectionId}/${stackId} — SKIPPED (${err.message})\n`);
+    }
+  }
+  if (targets.length > 1) {
+    process.stdout.write(`library reindex: ${grandTotal} volume(s) across ${targets.length} stack(s)\n`);
+  }
 }
 
 // ===========================================================================
@@ -927,81 +994,12 @@ function cmdRollbackDelegate(args) {
 }
 
 // ===========================================================================
-// Component F — catalog builder (topic + entities extraction)
+// Component F — catalog builder: topic/entities extraction + per-stack reindex
+// moved to packages/kernel/_lib/library-reconcile.js (single source of truth
+// shared with the PostToolUse + SessionStart catalog-reconcile hooks).
+// cmdWrite uses reconcile.extractCatalogMetadata; cmdReindex uses
+// reconcile.reindexStack.
 // ===========================================================================
-
-/**
- * Extract topic + entities metadata from content. v2.1.0 scope: minimal
- * extraction; catalog lookup is a v2.2+ feature so deep extraction is YAGNI.
- *
- * Narrative (markdown+YAML): look for `topic:` and `entities:` in YAML
- * frontmatter; if absent return empty arrays. Callers can override via flags.
- *
- * Schematic (JSON): top-level object keys → topic; values that look like
- * identifiers (uppercase/dashed) → entities.
- *
- * @returns {{topic: string[], entities: string[]}}
- */
-function extractCatalogMetadata(content, form) {
-  if (form === paths.FORM_NARRATIVE) {
-    return extractFromFrontmatter(content);
-  }
-  if (form === paths.FORM_SCHEMATIC) {
-    return extractFromJson(content);
-  }
-  return { topic: [], entities: [] };
-}
-
-function extractFromFrontmatter(content) {
-  // Match YAML frontmatter: --- ... --- at file start
-  const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
-  if (!fmMatch) return { topic: [], entities: [] };
-  const fm = fmMatch[1];
-  // Simple line-by-line scan for topic: and entities: arrays (inline or block)
-  const topic = parseYamlList(fm, 'topic') || parseYamlList(fm, 'tags') || [];
-  const entities = parseYamlList(fm, 'entities') || [];
-  return { topic, entities };
-}
-
-function parseYamlList(fm, key) {
-  // Match inline: `topic: [a, b, c]` or `topic: a, b, c`
-  const inlineRe = new RegExp(`^${key}\\s*:\\s*(\\[.*?\\]|[^\\n]+)$`, 'm');
-  const inline = fm.match(inlineRe);
-  if (inline) {
-    const raw = inline[1].trim();
-    if (raw.startsWith('[') && raw.endsWith(']')) {
-      return raw.slice(1, -1).split(',').map(s => s.trim().replace(/^["']|["']$/g, '')).filter(Boolean);
-    }
-    return raw.split(',').map(s => s.trim().replace(/^["']|["']$/g, '')).filter(Boolean);
-  }
-  // Match block:
-  //   topic:
-  //     - a
-  //     - b
-  const blockRe = new RegExp(`^${key}\\s*:\\s*\\n((?:\\s+-\\s+[^\\n]+\\n?)+)`, 'm');
-  const block = fm.match(blockRe);
-  if (block) {
-    return block[1].split('\n')
-      .map(l => l.match(/^\s+-\s+(.+)$/))
-      .filter(Boolean)
-      .map(m => m[1].trim().replace(/^["']|["']$/g, ''));
-  }
-  return null;
-}
-
-function extractFromJson(content) {
-  let parsed;
-  try { parsed = JSON.parse(content); } catch { return { topic: [], entities: [] }; }
-  if (!parsed || typeof parsed !== 'object') return { topic: [], entities: [] };
-  const topic = Object.keys(parsed).slice(0, 10);
-  const entities = [];
-  for (const val of Object.values(parsed)) {
-    if (typeof val === 'string' && /^[A-Z]/.test(val) && val.length < 80) {
-      entities.push(val);
-    }
-  }
-  return { topic, entities: entities.slice(0, 20) };
-}
 
 // ===========================================================================
 // Helpers
@@ -1066,4 +1064,4 @@ function readSectionManifestSafe(sectionId) {
 
 if (require.main === module) main(process.argv);
 
-module.exports = { main, extractCatalogMetadata };
+module.exports = { main };

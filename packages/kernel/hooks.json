@@ -11,6 +11,16 @@
             "timeout": 3
           }
         ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/packages/kernel/hooks/lifecycle/catalog-reconcile-session.js",
+            "timeout": 6
+          }
+        ]
       }
     ],
     "UserPromptSubmit": [
@@ -211,6 +221,16 @@
           {
             "type": "command",
             "command": "node ${CLAUDE_PLUGIN_ROOT}/packages/kernel/validators/validate-plan-schema.js",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/packages/kernel/hooks/post/catalog-reconcile-write.js",
             "timeout": 5
           }
         ]

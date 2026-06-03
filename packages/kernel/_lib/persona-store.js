@@ -40,6 +40,7 @@
 const fs = require('fs');
 const path = require('path');
 const paths = require('./library-paths');
+const catalog = require('./library-catalog');
 const { withLock: sharedWithLock } = require('./lock');
 const { writeAtomic } = require('./atomic-write');
 
@@ -112,6 +113,48 @@ function writePersonaVolume(stackId, persona, data) {
   const p = paths.personaVolumePath(stackId, persona);
   fs.mkdirSync(path.dirname(p), { recursive: true });
   writeAtomic(p, data);
+  _upsertPersonaCatalogEntry(stackId, persona, data);
+}
+
+/**
+ * Keep the agents-section `_catalog.json` current after a persona volume write
+ * (the catalog-rerot root-cause fix — at-source upsert for the hot bulkhead
+ * writers, so `library ls`/`read`/`daybook` don't go stale on persona writes).
+ *
+ * Invariants (load-bearing — do not break):
+ *   - LOCK ORDERING: callers (registry/pattern-recorder) hold the per-persona
+ *     lock when they call writePersonaVolume; `upsertEntry` takes the catalog
+ *     lock. Ordering is persona→catalog EVERYWHERE (no path takes catalog→
+ *     persona), so this nested acquisition cannot deadlock. Preserve that.
+ *   - ACYCLIC: persona-store → library-catalog → library-paths (no cycle).
+ *   - volume_id = persona (MUST match reindex's filename-derived id, else the
+ *     CLI reindex and this upsert would fight over the same volume).
+ *   - content_hash hashes the EXACT bytes writeAtomic emits (JSON 2-space) so it
+ *     agrees with reindex's file-read hash → the drift guard stays quiet.
+ *   - FAIL-SOFT: the volume write is the source of truth; a catalog upsert
+ *     failure must NOT fail the write (the SessionStart drift-reindex backstop
+ *     heals any miss). Swallow + log.
+ *
+ * @param {string} stackId
+ * @param {string} persona
+ * @param {object} data - the just-written volume payload
+ */
+function _upsertPersonaCatalogEntry(stackId, persona, data) {
+  try {
+    const serialized = JSON.stringify(data, null, 2);
+    catalog.upsertEntry(paths.AGENTS_SECTION_ID, stackId, {
+      volume_id: persona,
+      form: paths.FORM_SCHEMATIC,
+      topic: [stackId, persona], // explicit (R3): the persona-id is the meaningful
+      entities: [],              // topic, NOT the literal JSON keys; avoids leak
+      last_modified: new Date().toISOString(),
+      content_hash: paths.hashContent(serialized),
+    });
+  } catch (err) {
+    // Drift, not data loss — the volume is written; Opt-B SessionStart reindex
+    // reconciles. Never throw out of a successful write.
+    process.stderr.write(`persona-store: catalog upsert failed for ${stackId}/${persona}: ${err.message}\n`);
+  }
 }
 
 /**

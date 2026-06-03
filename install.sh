@@ -371,6 +371,9 @@ run_smoke_tests() {
   # H.9.22 v2.2.0 library daybook smoke (T116-T119 — markdown render +
   # --json schema + --brief size budget + empty-library robustness).
   source "$SCRIPT_DIR/tests/smoke-library-daybook.sh"
+  # library reindex smoke (T120 — catalog rebuild from directly-written volumes,
+  # repairs the pre-compact SAVE_PROMPT catalog-drift failure mode).
+  source "$SCRIPT_DIR/tests/smoke-library-reindex.sh"
 
 
   echo ""
