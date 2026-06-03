@@ -47,7 +47,7 @@ instinct with no doc is a *KB-gap* worth authoring): server-vs-client-boundary /
 hydration-correctness / composition-over-inheritance → `kb:web-dev/react-essentials`;
 data-fetching-at-the-right-layer / async-state-completeness → `kb:web-dev/react-essentials` +
 `kb:web-dev/typescript-react-patterns`; type-safety-at-boundaries → `kb:web-dev/typescript-react-patterns`;
-state-location → `kb:web-dev/react-essentials` (hooks + context); accessibility-first → `kb:web-dev/accessibility-essentials`. **KB-gaps (no doc yet — codified in the persona, not the library):** bundle-budget (no perf / Core-Web-Vitals doc in catalog).
+state-location → `kb:web-dev/react-essentials` (hooks + context); accessibility-first → `kb:web-dev/accessibility-essentials`; bundle-budget → `kb:web-dev/performance-budgets`.
 
 ## Focus area: shipping React features for the user's product
 

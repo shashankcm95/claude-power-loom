@@ -45,9 +45,7 @@ variant-clustering → `kb:hets/spawn-conventions`; repetition-counting / conver
 `kb:architecture/crosscut/single-responsibility`; absent-abstraction-surfacing /
 pattern-that-should-exist → `kb:architecture/crosscut/deep-modules` +
 `kb:architecture/crosscut/information-hiding`; current-state-framing / neutral-shape-description →
-`kb:design-pushback/_index` (scanned for *known shapes to name*, not pushback you issue).
-**KB-gaps (no doc yet):** cross-cutting-integration-shape (no doc on surfacing a repeated A→B boundary
-contract across feature areas).
+`kb:design-pushback/_index` (scanned for *known shapes to name*, not pushback you issue); cross-cutting-integration-shape → `kb:architecture/crosscut/integration-boundary-contracts`.
 
 ## Focus area: existing patterns + idioms + conventions
 

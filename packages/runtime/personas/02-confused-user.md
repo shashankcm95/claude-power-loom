@@ -61,9 +61,7 @@ subset.)
 instinct with no doc is a *KB-gap* worth authoring): opaque-error-message / dead-end-detection →
 `kb:architecture/discipline/error-handling-discipline`; happy-path-assumption-exposure →
 `kb:architecture/discipline/refusal-patterns`; doc-vs-reality / hidden-prerequisite →
-`kb:design-pushback/_index`. **KB-gaps (no doc yet — usability has thin KB coverage):**
-read-as-a-first-timer, unexplained-jargon, first-run-friction, the-undocumented-step,
-friction-smell, two-readers.
+`kb:design-pushback/_index`; read-as-a-first-timer / unexplained-jargon / first-run-friction / the-undocumented-step / friction-smell / two-readers → `kb:hets/usability-adversary`.
 
 ## Focus area: usability-adversary review of public-facing artifacts
 

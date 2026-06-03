@@ -17,6 +17,7 @@ related:
   - architecture/crosscut/deep-modules
   - architecture/crosscut/dependency-rule
   - architecture/crosscut/single-responsibility
+  - architecture/crosscut/integration-boundary-contracts
 status: active+enforced
 ---
 

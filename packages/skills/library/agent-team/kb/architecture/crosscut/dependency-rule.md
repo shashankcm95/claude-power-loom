@@ -23,6 +23,8 @@ related:
   - architecture/ai-systems/rag-anchoring
   - architecture/discipline/trade-off-articulation
   - architecture/discipline/evidence-and-premise-discipline
+  - architecture/crosscut/control-and-data-flow
+  - architecture/crosscut/integration-boundary-contracts
 status: active+enforced
 ---
 

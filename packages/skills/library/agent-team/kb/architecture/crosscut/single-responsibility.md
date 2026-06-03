@@ -26,6 +26,8 @@ related:
   - architecture/discipline/trade-off-articulation
   - architecture/discipline/blast-radius-and-reversibility
   - architecture/discipline/evidence-and-premise-discipline
+  - architecture/crosscut/control-and-data-flow
+  - architecture/crosscut/integration-boundary-contracts
 status: active+enforced
 ---
 

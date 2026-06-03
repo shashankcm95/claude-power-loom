@@ -51,10 +51,7 @@ resource-leak-paranoia → `kb:architecture/discipline/stability-patterns`
 (+ `kb:backend-dev/node-runtime-basics` for stream/async-I/O internals); idempotent-handlers →
 `kb:architecture/crosscut/idempotency`; dependency-surface-minimalism →
 `kb:architecture/crosscut/information-hiding`; observability-by-default →
-`kb:infra-dev/observability-basics`.
-**KB-gaps (no doc yet — codified in instinct prose, not the library):** race-window-awareness
-(async concurrency reasoning), type-safety-at-the-edge (backend-TS / parse-don't-validate; the
-existing `kb:web-dev/typescript-react-patterns` is React-flavored, not a backend fit).
+`kb:infra-dev/observability-basics`; type-safety-at-the-edge / race-window-awareness → `kb:backend-dev/type-safety-at-the-boundary`.
 
 ## Focus area: shipping Node backend features for the user's product
 
