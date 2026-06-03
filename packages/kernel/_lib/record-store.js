@@ -69,7 +69,7 @@ const {
   deriveIdempotencyKey,
   isBootstrapSentinel,
 } = require('./transaction-record');
-const { checkWithinRoot } = require('./path-canonicalize');
+const { checkWithinRoot, isSafePathSegment } = require('./path-canonicalize');
 
 // The default state root, mirroring spawn-record.js:77. Callers (and every test)
 // pass an explicit `stateDir` to stay hermetic; this default is only the
@@ -103,12 +103,9 @@ const HEX64 = /^[a-f0-9]{64}$/;
  * @returns {boolean} true iff runId is a safe, separator-free, non-traversing token
  */
 function isSafeRunId(runId) {
-  if (typeof runId !== 'string' || runId.length === 0) return false;
-  if (runId.indexOf('\0') !== -1) return false;            // null byte (CWE-158)
-  if (runId.indexOf('/') !== -1 || runId.indexOf(path.sep) !== -1) return false; // no path separators
-  // `..` as a discrete segment (covers '..', 'a/..' caught above, and bare '..').
-  if (runId === '.' || runId === '..' || runId.split(/[\\/]+/).indexOf('..') !== -1) return false;
-  return true;
+  // DRY: the canonical raw-segment check lives in path-canonicalize (the kernel
+  // path-safety module); isSafeRunId is the runId-named alias. Logic unchanged.
+  return isSafePathSegment(runId);
 }
 
 // Stored filenames are exactly `record-<64-hex>.json`. listByRun matches this so

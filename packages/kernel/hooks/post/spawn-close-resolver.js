@@ -53,7 +53,7 @@ const crypto = require('crypto');
 const { execFileSync } = require('child_process');
 const { log } = require('../_lib/_log.js');
 const { resolve } = require('../../spawn-state/post-spawn-resolver.js');
-const { checkWithinRoot } = require('../../_lib/path-canonicalize.js');
+const { checkWithinRoot, isSafePathSegment } = require('../../_lib/path-canonicalize.js');
 const { appendWalRecord } = require('../../_lib/wal-append.js');
 // PR-3c-b — the ENFORCING staging-promote, dispatched below ONLY behind the
 // strict LOOM_RESOLVER_ENFORCE === '1' flag (default OFF; shadow is the default).
@@ -167,10 +167,16 @@ function sha256(input) {
  */
 function resolveRunId(input) {
   const sessionId = input && (input.session_id || input.sessionId);
-  if (sessionId && typeof sessionId === 'string') {
-    return sha256(sessionId).slice(0, 16);
-  }
-  return crypto.randomUUID().slice(0, 16);
+  const derived = (sessionId && typeof sessionId === 'string')
+    ? sha256(sessionId).slice(0, 16)
+    : crypto.randomUUID().slice(0, 16);
+  // Boundary guarantee (CWE-22): runId keys per-run path subdirs downstream
+  // (journalPathFor, stagePromote -> path.join(stateDir, runId, ...)). sha256/UUID
+  // output is always a safe single segment, but ENFORCE it so a future derivation
+  // change can never thread a traversal runId into a path.join (which normalizes
+  // `..` away, blinding the downstream checkWithinRoot). Fall back to a fresh,
+  // always-safe UUID rather than ever returning a separator/`..`-bearing token.
+  return isSafePathSegment(derived) ? derived : crypto.randomUUID().slice(0, 16);
 }
 
 /**

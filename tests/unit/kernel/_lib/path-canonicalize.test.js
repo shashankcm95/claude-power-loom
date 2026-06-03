@@ -22,6 +22,7 @@ const {
   hasTraversalMarkers,
   isWithinRoot,
   checkWithinRoot,
+  isSafePathSegment,
 } = require('../../../../packages/kernel/_lib/path-canonicalize');
 
 let passed = 0;
@@ -135,6 +136,32 @@ test('checkWithinRoot returns structured reasons', () => {
   const f = path.join(root, 'x.js');
   fs.writeFileSync(f, 'x');
   assert.deepStrictEqual(checkWithinRoot(f, root), { ok: true, reason: null });
+});
+
+// --- isSafePathSegment (raw-token guard BEFORE a path.join — the canonical fix
+//     for the pre-normalization trap: path.join collapses `..` away, so a
+//     downstream checkWithinRoot is blinded to an in-base traversal) ---
+
+test('isSafePathSegment accepts a clean single segment', () => {
+  assert.strictEqual(isSafePathSegment('run-abc123'), true);
+  assert.strictEqual(isSafePathSegment('a1b2c3d4e5f6a1b2'), true); // sha256-slice shape
+  assert.strictEqual(isSafePathSegment('safe_id-9'), true);
+});
+
+test('isSafePathSegment rejects separators (the path.join pre-normalization bypass)', () => {
+  assert.strictEqual(isSafePathSegment('a/../b'), false); // in-base traversal → collapses to base/b
+  assert.strictEqual(isSafePathSegment('x/..'), false);   // collapses to the base root
+  assert.strictEqual(isSafePathSegment('a/b'), false);    // any separator
+  assert.strictEqual(isSafePathSegment('/abs'), false);
+});
+
+test('isSafePathSegment rejects .. / . / empty / NUL / non-string', () => {
+  assert.strictEqual(isSafePathSegment('..'), false);
+  assert.strictEqual(isSafePathSegment('.'), false);
+  assert.strictEqual(isSafePathSegment(''), false);
+  assert.strictEqual(isSafePathSegment('a\0b'), false);
+  assert.strictEqual(isSafePathSegment(null), false);
+  assert.strictEqual(isSafePathSegment(42), false);
 });
 
 process.stdout.write(`\npath-canonicalize.test.js: ${passed} passed, ${failed} failed\n`);

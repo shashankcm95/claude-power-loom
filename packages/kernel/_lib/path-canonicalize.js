@@ -177,6 +177,34 @@ function checkWithinRoot(candidatePath, rootPath) {
   return { ok: true, reason: null };
 }
 
+/**
+ * True iff `seg` is a safe SINGLE path segment: a non-empty string with no path
+ * separators, no `.`/`..` traversal, and no NUL byte. The canonical RAW-TOKEN guard
+ * for an UNTRUSTED path component (runId, leaf-id, …) that will be `path.join`'d
+ * into a shared base.
+ *
+ * MUST run BEFORE the join: `path.join` runs `path.normalize`, which COLLAPSES `..`
+ * away, so a downstream `checkWithinRoot(path.join(base, seg), base)` is BLINDED to
+ * an in-base traversal — `'a/../b'` → `base/b` (still within base) passes, landing in
+ * a sibling; `'x/..'` → `base` writes at the root. `hasTraversalMarkers` only catches
+ * a LITERAL `..` in the raw string, which the join has already removed. So
+ * `checkWithinRoot` is a useful SECOND layer (absolute/symlink escape) but NEVER the
+ * primary gate for a joined path; this raw-segment check is the FIRST.
+ *
+ * @param {string} seg
+ * @returns {boolean}
+ */
+function isSafePathSegment(seg) {
+  if (typeof seg !== 'string' || seg.length === 0) return false;
+  if (seg.indexOf('\0') !== -1) return false;                                 // NUL byte (CWE-158)
+  if (seg.indexOf('/') !== -1 || seg.indexOf(path.sep) !== -1) return false;  // no separators
+  // `.`/`..` as a discrete segment (the `/`-bearing traversal forms are already
+  // rejected above; the split is belt-and-suspenders for a bare `..`).
+  if (seg === '.' || seg === '..' || seg.split(/[\\/]+/).indexOf('..') !== -1) return false;
+  return true;
+}
+
 module.exports = {
   canonicalize, hasTraversalMarkers, isWithinRoot, isLexicallyWithin, checkWithinRoot,
+  isSafePathSegment,
 };

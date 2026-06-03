@@ -746,6 +746,39 @@ test('stagePromote with a non-string stateDir/runId returns invalid-args WITHOUT
   }
 });
 
+// ── HARDEN: traversal runId — the path.join pre-normalization trap ─────────────
+
+test('stagePromote with a TRAVERSAL runId returns invalid-args (no cross-run staging/journal escape)', () => {
+  // runId is path.join'd under stateDir into the journal + staging-worktree paths.
+  // A traversal runId (`a/../b`, `x/..`) path.join-COLLAPSES in-base and would land
+  // the journal / staging worktree in a SIBLING run's dir (or the stateDir root) —
+  // a base-anchored checkWithinRoot is BLINDED by the normalization (it only sees
+  // the collapsed path, still within base). hasValidStateArgs must reject the raw
+  // segment up front. (Defense-in-depth: the close-path runId is sha256/UUID-derived
+  // by resolveRunId today, so this is LATENT, not a live exploit — but it matches
+  // record-store's isSafeRunId posture and guards a future runId source.)
+  const os = require('os');
+  const fs = require('fs');
+  const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'stage-trav-'));
+  try {
+    for (const runId of ['run-a/../run-b', 'x/..', '..', 'a/b']) {
+      let res;
+      assert.doesNotThrow(() => {
+        res = stagePromote({
+          harnessWorktreePath: '/nonexistent', agentId: 'a', toolResponse: { status: 'completed' },
+          stateDir, runId,
+        });
+      }, `traversal runId ${JSON.stringify(runId)} must be fail-soft`);
+      assert.strictEqual(res.reason, 'invalid-args', `traversal runId ${JSON.stringify(runId)} must return invalid-args`);
+      assert.strictEqual(res.enforced, false);
+    }
+    // and nothing was created at a sibling run / the stateDir root via the traversal
+    assert.ok(!fs.existsSync(path.join(stateDir, 'run-b')), 'no sibling-run dir created');
+  } finally {
+    fs.rmSync(stateDir, { recursive: true, force: true });
+  }
+});
+
 // ── HARDEN: dispositionKind data-map (3-lens HIGH — journal honesty) ──────────
 
 test('dispositionKind maps each verdict family to an HONEST journal kind (ACCEPT=noop, conflict/abort distinct, reject distinct) — no mislabel', () => {
