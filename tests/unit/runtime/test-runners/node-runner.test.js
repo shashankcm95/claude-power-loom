@@ -196,6 +196,19 @@ test('M2: the child gets least-privilege env (parent SECRET scrubbed; ctx.env pa
   }
 });
 
+test('C2: a pipe-pressured child that hangs is bounded by the timeout (no deadlock)', () => {
+  // The child fills the OS pipe (1 MiB > 64 KiB) then hangs forever. spawnSync drains
+  // the pipe concurrently AND the wall-clock timeout SIGKILLs it — so run() returns
+  // within ~timeout, never deadlocking on an un-drained pipe (user residual-risk C2).
+  const startedAt = Date.now();
+  const r = node.run({ testFile: fx('pipeblock.fixture.js'), cwd: FIXTURES, timeoutMs: 600 });
+  const elapsed = Date.now() - startedAt;
+  assert.strictEqual(r.passed, false);
+  assert.strictEqual(r.timedOut, true, 'a pipe-blocked hang must be killed by the timeout');
+  assert.strictEqual(r.reason, 'timeout');
+  assert.ok(elapsed < 5000, `must return promptly near the timeout, not hang (elapsed ${elapsed}ms)`);
+});
+
 test('L6: run throws when testFile is a directory (not a regular file)', () => {
   assert.throws(
     () => node.run({ testFile: FIXTURES, cwd: path.dirname(FIXTURES) }),
