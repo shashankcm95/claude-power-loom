@@ -52,7 +52,7 @@ Multi-file work must produce a **plan artifact** BEFORE the first Edit/Write/Mul
 - **Interactive sessions**: prefer the `EnterPlanMode` tool. It triggers the user-approval dialog and is the canonical signal.
 - **Headless `claude -p` sessions**: the `EnterPlanMode` tool is **deterministically denied** by the v2.5.1 `redirect-plan-mode-in-headless.js` hook (PreToolUse:EnterPlanMode). The approval dialog after ExitPlanMode hangs in headless mode (no user to approve), causing the session to terminate with `stop_reason=end_turn` before any Edits execute — discovered as GAP-G in the v2.5.0 bench scenario 04 (11 turns + architect spawn + plan-file written but target file unchanged). The hook redirects to:
   - A `TodoWrite` invocation with ≥2 todos covering the phases of the planned work, OR
-  - A plan-file at `.claude/plans/<slug>.md` matching `swarm/plan-template.md` schema, OR
+  - A plan-file at `.claude/plans/<slug>.md` matching `packages/specs/research/plan-template.md` schema, OR
   - Direct execution (for single-file or trivial tasks where the route-decide gate returns `root`)
 
 **Rules of thumb**:
@@ -65,7 +65,7 @@ Multi-file work must produce a **plan artifact** BEFORE the first Edit/Write/Mul
 ### `/plan` vs `/build-plan` decision tree (H.7.9)
 
 - `/plan` — single-architect planner agent delegate; trivial-to-medium scope; thin 13-line command body
-- `/build-plan` — HETS-aware variant; runs `route-decide.js` as Step 0; recommends architect spawn when `convergence_value ≥ 0.10` (post-context-mult); writes plans matching `swarm/plan-template.md` schema. Use for multi-file substantive work with non-obvious tradeoffs.
+- `/build-plan` — HETS-aware variant; runs `route-decide.js` as Step 0; recommends architect spawn when `convergence_value ≥ 0.10` (post-context-mult); writes plans matching `packages/specs/research/plan-template.md` schema. Use for multi-file substantive work with non-obvious tradeoffs.
 - Both coexist (additive, not replacement). Step 0's `root` recommendation in `/build-plan` redirects cleanly to `/plan`.
 
 ### Drift-note convention (H.7.9)
@@ -97,6 +97,8 @@ When a plan contains a **claim about current substrate state** — "file X exist
 **Form**: inline `Probe: <command> → <observed result>` next to the claim, or a dedicated `## Runtime Probes` section listing each (claim, probe, result) tuple.
 
 **Why**: plan prose absorbs premises from recon, prior PRs, or architect/reviewer reasoning. Premises decay (repo state moves) and abstract reasoning skips empirical verification. The failure mode is: a reviewer blesses a runtime claim abstractly → impl discovers it is wrong → mid-flight design change OR a substrate-bricking near-miss. **Multi-reviewer blessing is NOT runtime verification.**
+
+**Harness-capability extension (ADR-0012 codification — 2026-06-03)**: the probe requirement extends from "claims about *substrate* state" to "claims about *harness* behavior" — "a PreToolUse hook's `updatedInput` mutates the Agent spawn", "`WorktreeCreate` can be passively observed", "the close payload carries a `parent_tool_use_id`", "`cp -r dir/*` drops nested subdirs". These are the most dangerous claim-class: **building enforcement on an assumed harness mechanism that does not exist bricks the substrate** (a past control, `pre-spawn-tool-mask`, shipped INERT because a PreToolUse hook's `updatedInput` is inert on Agent/Task spawns — see ADR-0012 at `packages/specs/adrs/0012-*.md`). The probe is a throwaway `claude -p` spike, a `/tmp` git experiment, or a one-line harness invocation that exercises the actual mechanism — **and you must test the PATH that exercises it**, not an adjacent path (the "probe-the-path" discipline). **Multi-reviewer blessing verifies internal logic against the CODE, never the harness** — an architect+reviewer board can bless a design whose load-bearing premise is a harness capability that was never empirically confirmed.
 
 **Skip the probe** for: FUTURE-state claims ("PR 3 will introduce K9"); claims already backed by a same-session probe logged in the plan; pure-design claims with no runtime referent ("the simplest factoring is X").
 
@@ -177,7 +179,7 @@ The H.7.18 `validate-markdown-emphasis.js` PostToolUse hook detects this pattern
 
 ## Route-Decision for Non-Trivial Tasks
 
-- Before invoking `/build-team` or spawning sub-agents for a user task, run `node ~/Documents/claude-toolkit/scripts/agent-team/route-decide.js --task "<task>"` to get a routing recommendation
+- Before invoking `/build-team` or spawning sub-agents for a user task, run `node ~/Documents/claude-toolkit/packages/kernel/algorithms/route-decide.js --task "<task>"` to get a routing recommendation
 - Recommendation `route` → spawn the team / use HETS orchestration
 - Recommendation `root` → answer directly; do not spawn sub-agents (over-routing wastes ~30× tokens for ~3× failure-mode coverage on trivial tasks)
 - Recommendation `borderline` → surface the score decomposition to the user and let them pick; do not silently default
@@ -188,6 +190,16 @@ The H.7.18 `validate-markdown-emphasis.js` PostToolUse hook detects this pattern
 - **H.7.5 — Prompt design tip**: when crafting the gate's task string, embed the routing signal explicitly (e.g., "implement weighted-formula refit per H.7.4 plan via orchestration" beats bare "empirical refit"). Surface keywords help the deterministic layer; don't rely on the forcing-instruction fallback for cases where you already know the answer.
 - **H.7.16 — When output emits `[ROUTE-META-UNCERTAIN]`**: the task references substrate-meta tokens (`route-decide`, `weights_version`, `dict expansion`, `keyword set`, `forcing instruction`, etc.). The score may be biased low by the **substrate-meta routing catch-22** — when the proposed change modifies the routing scorer itself, the score above was computed using the CURRENT dictionary, which may not yet contain the tokens the proposed change would add. Apply judgment: if task is genuinely architect-shaped, escalate via `--force-route` or architect spawn (per `route-decide.js:11-13` load-bearing comment); if mechanical implementation of an already-decided design, current recommendation likely correct. The forcing instruction is advisory and does NOT alter the score or recommendation — score-additive guarantee preserved.
 - **H.7.16 — Co-firing**: `[ROUTE-META-UNCERTAIN]` can fire alongside `[ROUTE-DECISION-UNCERTAIN]` (zero signals AND substrate-meta detected) and alongside any recommendation tier. The two are independent; both can appear in the same JSON output.
+
+### Persona-selection discipline (2026-06-03)
+
+The named archetypes below — `architect`, `code-reviewer`, `hacker`, `honesty-auditor`, `security-auditor`, `node-backend`, … — are **`agentType` values the Agent tool accepts** (one definition per file under `agents/<name>.md`; "persona", "archetype", and "agentType" all mean the same thing here). Each one's Write/Edit capability is declared in its `agents/<name>.md` frontmatter `tools:` — **check there**, don't rely on a memorized list.
+
+**Rule 1 — prefer a named archetype over `general-purpose` for any substantive substrate spawn.** Route by the LENS the task needs, *not* the tech domain (don't pick `react-frontend` just because the file is React). The constrained lens catches failure modes a generic pass misses, and `agentType` + schema is StructuredOutput-reliable where `general-purpose` + schema occasionally isn't. Lens-by-task-shape: correctness/quality → `code-reviewer`; design/trade-offs → `architect`; adversarial-security → `hacker`; claim-vs-evidence → `honesty-auditor`; build → `node-backend` (or the domain builder).
+
+**Rule 2 — review/verify of kernel / security / auth / data-mutation diffs MUST fan out the full 3-lens tier in parallel:** `code-reviewer` (correctness) + `hacker` (adversarial-security) + `honesty-auditor` (claim-vs-evidence). This is REQUIRED only for that high-stakes class — for lower-stakes review, **one** archetype lens is enough (don't over-spawn). (Validated across 5 substrate arcs; see MEMORY topics `multi-reviewer-discipline` / `hets-persona-lens-over-domain`.)
+
+**Rule 3 — review/verify passes use read-only personas, never Write-capable ones.** `architect` / `code-reviewer` / `honesty-auditor` / `hacker` are read-only (per their `tools:`); wiring a Write-capable persona (`security-auditor` / `node-backend`, which have `Write`/`Edit` in `tools:`) into a *review* pass invites scope leak — the reviewer "fixes" mid-review, conflating audit with mutation. If a review surfaces a change, the orchestrator applies it; the reviewer only reports. (2 clean lifecycles.)
 
 </important>
 

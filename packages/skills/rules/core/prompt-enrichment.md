@@ -17,4 +17,4 @@ If the deterministic UserPromptSubmit hook (`prompt-enrich-trigger.js`) injects 
 
 </important>
 
-For substrate-internal architecture (vagueness detection criteria + skip-pattern catalog + hook wiring), see `swarm/architecture-substrate/prompt-enrichment-architecture.md`. Per ADR-0005 slopfiles authoring discipline, the substrate-meta description was migrated out of always-on rules to reduce session context tax.
+For substrate-internal architecture (vagueness detection criteria + skip-pattern catalog + hook wiring), see `packages/specs/architecture-substrate/prompt-enrichment-architecture.md`. Per ADR-0005 slopfiles authoring discipline, the substrate-meta description was migrated out of always-on rules to reduce session context tax.
