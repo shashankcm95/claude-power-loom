@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "enforcement": "warn",
+  "enforcement": "error",
   "algorithms": [
     {
       "id": "route-decide",
@@ -11,18 +11,5 @@
       "summary": "Deterministic 7-dimension task-routing scorer (H.7.3). Pure: task string -> { recommendation, confidence, score_total }."
     }
   ],
-  "planned": [
-    {
-      "id": "leaf-criteria",
-      "owner": "R9",
-      "wave": 2,
-      "note": "5 deterministic leaf-completion predicates. MUST land as a tested kernel algorithm, not contract prose (A4)."
-    },
-    {
-      "id": "spawn-verify-route",
-      "owner": "R11",
-      "wave": 2,
-      "note": "Discipline -> verification routing. MUST land as a tested kernel algorithm, not dispatcher prose (A4)."
-    }
-  ]
+  "planned": []
 }

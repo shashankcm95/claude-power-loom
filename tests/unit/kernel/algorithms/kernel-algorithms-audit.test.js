@@ -11,19 +11,21 @@
 // (packages/kernel/algorithms/manifest.json) + structural integrity — NO prose
 // scanning (the false-positive trap, rejected at design time).
 //
-// Test design (per plan 2026-06-03-v3.2-wave0-k11-a4-gate.md, Phase 1):
+// Test design (Wave 0 origin; UPDATED Wave 3 for the enforcement flip):
 //   (a) INTEGRATION mode — REAL fs deps against the REAL manifest + algorithms/
 //       dir. The ONLY case that exercises the real readdirSync + the *.js filter
-//       in CI (code-reviewer F2). Asserts the live gate is clean (0 errors, 1
-//       consolidated watchlist warning).
+//       in CI (code-reviewer F2). Post-Wave-3 the live manifest is drained +
+//       enforcing, so it asserts the gate is fully GREEN (0 errors, 0 warnings).
 //   (b) SYNTHETIC cases — injected fake deps + in-test manifests exercise every
 //       error kind without on-disk fixtures (F6 — real-vs-injected is explicit
-//       per case).
+//       per case). The shared-shape check feeds SYNTHETIC findings (the live
+//       manifest now yields none — avoids a vacuous green, architect L-1).
 //   (c) FLIP proof (synthetic) — enforcement:"error" + a planned[] entry routes
-//       the watchlist into errors.
-//   (d) FLIP future-proof — the REAL manifest with enforcement:"error" + empty
-//       planned[] yields 0 errors (guarantees the Wave-3 data-flip lands clean —
-//       code-reviewer F3).
+//       the watchlist into errors; + empty planned[] → 0 errors.
+//   (d) DRAINED-ENFORCING pin (architect C-1) — the REAL manifest, NO override:
+//       asserts it IS enforcement:"error" + planned:[] on disk (so reverting the
+//       flip or re-adding a watchlist entry fails here, not silently masked by a
+//       synthetic override).
 //
 // House idiom: imperative assert + hand-rolled runner + exit code (F7).
 
@@ -74,6 +76,12 @@ function makeDeps({ contents = {}, present = [], unreadable = [], dirEntries = {
 
 const ROUTE_TEST_REL = 'tests/unit/kernel/algorithms/route-decide.test.js';
 
+// NOTE (architect M-3, Wave 3): this fixture deliberately models the PRE-FLIP shape —
+// enforcement:'warn' + a 2-entry planned[] — to exercise warn-mode watchlist
+// consolidation + the integrity checks generically (those are enforcement-independent).
+// The LIVE manifest is now enforcement:'error' + planned:[] (drained); tests that assert
+// the real end-state read manifest.json directly (see the drained-enforcing pin (d)). It
+// is "clean" in the INTEGRITY sense (every entry resolves), NOT "the current manifest".
 function cleanManifest() {
   return {
     version: 1,
@@ -105,21 +113,29 @@ const kinds = (findings) => findings.map((f) => f.kind);
 // (a) INTEGRATION — real deps, real manifest, real algorithms/ dir
 // ============================================================================
 
-test('(integration) the LIVE manifest + algorithms/ dir is clean: 0 errors, 1 watchlist warning', () => {
+test('(integration) the LIVE manifest is drained + ENFORCING: 0 errors, 0 warnings', () => {
   // No rootDir/manifest/deps overrides → findToolkitRoot + real fs + real manifest.json.
   // This exercises the REAL readdirSync + the *.js-vs-non-.js split on disk
   // (route-decide.js registered; manifest.json + README.md skipped by extension).
-  // NOTE: the live dir has no dotfile, so the .DS_Store/dotfile-skip path is
-  // covered by the SYNTHETIC `non-.js siblings` case above, not here.
+  // Post-Wave-3 (Option B): enforcement:"error" + planned:[] — route-decide is the
+  // only realized algorithm and is integrity-clean, so the gate is fully GREEN with
+  // NO watchlist warning (the watchlist is drained; R9/R11 were reclassified as
+  // runtime per the Wave-1 boundary rule, not kernelized).
   const { errors, warnings } = auditAlgorithmLibrary({});
   assert.deepStrictEqual(errors, [], `live gate must be GREEN; got errors: ${JSON.stringify(errors)}`);
-  assert.strictEqual(warnings.length, 1, 'exactly one consolidated A4-watchlist warning');
-  assert.strictEqual(warnings[0].kind, 'planned-not-realized', 'the warning is the watchlist');
-  assert.ok(/watchlist/i.test(warnings[0].message), 'watchlist message is human-readable');
+  assert.deepStrictEqual(warnings, [], `drained watchlist → no warnings; got: ${JSON.stringify(warnings)}`);
 });
 
-test('(integration) every finding carries the shared {kind, message} shape', () => {
-  const { errors, warnings } = auditAlgorithmLibrary({});
+test('every finding carries the shared {kind, message} shape (synthetic — both an error and a warning)', () => {
+  // architect L-1: post-flip the LIVE manifest yields NO findings, so shape-checking it
+  // would be a vacuous green. Feed SYNTHETIC findings instead: a warn-mode manifest whose
+  // realized file is absent → one error (algorithm-file-missing) + one watchlist warning.
+  const deps = makeDeps({
+    present: [repoPath(ROOT, ROUTE_TEST_REL)],
+    dirEntries: { [algoDirPath(ROOT)]: [] },
+  }); // route-decide.js absent on disk → algorithm-file-missing
+  const { errors, warnings } = audit(cleanManifest(), deps); // warn mode → 1 watchlist warning
+  assert.ok(errors.length > 0 && warnings.length > 0, 'fixture must yield BOTH an error and a warning (non-vacuous)');
   for (const f of [...errors, ...warnings]) {
     assert.ok(typeof f.kind === 'string' && f.kind.length > 0, 'finding has a string kind');
     assert.ok(typeof f.message === 'string' && f.message.length > 0, 'finding has a string message');
@@ -277,19 +293,26 @@ test('(flip) enforcement:"error" + EMPTY planned[] → 0 errors (the drained-wat
 });
 
 // ============================================================================
-// (d) FLIP future-proof — REAL manifest, enforcement flipped, planned drained
+// (d) DRAINED-ENFORCING pin — REAL manifest, NO synthetic override (architect C-1)
 // ============================================================================
 
-test('(flip future-proof) the REAL manifest with enforcement:"error" + planned:[] → 0 errors', () => {
-  // Guarantees the Wave-3 data-flip lands clean once the watchlist is drained,
-  // using the REAL route-decide.js integrity (real fs deps, real rootDir).
+test('(drained-enforcing pin, C-1) the REAL manifest IS enforcement:"error" + planned:[] on disk — NO override', () => {
+  // C-1: the prior (flip future-proof) test synthetically forced {enforcement:'error',
+  // planned:[]}. Now that the real manifest IS that state, an override would MASK a
+  // regression — a re-added planned[] entry (or a reverted flip) would be stripped
+  // before asserting. This reads the real manifest with NO overrides, so reverting the
+  // flip or re-adding a watchlist entry FAILS here. Pairs with (c)'s synthetic cases,
+  // which still prove the generic enforce-mode semantics.
   const root = findToolkitRoot();
   const real = JSON.parse(
     require('fs').readFileSync(path.join(root, ALGO_DIR_REL, 'manifest.json'), 'utf8'),
   );
-  const flipped = { ...real, enforcement: 'error', planned: [] };
-  const { errors } = auditAlgorithmLibrary({ rootDir: root, manifest: flipped });
-  assert.deepStrictEqual(errors, [], `real library must pass when enforcing+drained; got ${JSON.stringify(errors)}`);
+  assert.strictEqual(real.enforcement, 'error', 'the live manifest must be ENFORCING post-Wave-3');
+  assert.deepStrictEqual(real.planned, [], 'the live watchlist must be DRAINED post-Wave-3');
+  // …and it audits clean with real fs deps (the gate is actually green, not just the data).
+  const { errors, warnings } = auditAlgorithmLibrary({});
+  assert.deepStrictEqual(errors, [], `real library must be clean when enforcing+drained; got ${JSON.stringify(errors)}`);
+  assert.deepStrictEqual(warnings, [], `drained → no warnings; got ${JSON.stringify(warnings)}`);
 });
 
 // --- summary ---

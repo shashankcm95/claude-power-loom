@@ -1,17 +1,18 @@
 'use strict';
 
-// kernel-algorithms-audit.js — the A4-binding gate (v3.2 Wave 0 / K11).
+// kernel-algorithms-audit.js — the A4-binding gate (v3.2 K11; ENFORCING since Wave 3).
 //
 // A4 (v6-substrate-synthesis.md:387): "kernel scope SHALL include algorithmic
 // logic. Deterministic operations live in kernel code WITH UNIT TESTS — NOT
 // prose discipline or embedded pseudocode for LLM execution." A4 becomes binding
 // in v3.2 where the K11 algorithm library ships.
 //
-// SCOPE (v3.2 Wave 0): this is the A4-binding SCAFFOLD, not full A4 enforcement.
-// It enforces structural integrity of DECLARED algorithms now (hard errors) and
-// WARNs on a tracked planned[] watchlist; it does NOT detect deterministic logic
-// an author never declares. Full enforcement (the watchlist flipping to errors)
-// is Wave 3.
+// SCOPE: this gate enforces structural integrity of DECLARED algorithms (hard
+// errors), an unregistered-*.js scan, and — since the Wave-3 flip
+// (manifest.enforcement="error") — the planned[] watchlist as HARD errors
+// (no-park-and-forget). It does NOT detect deterministic logic an author never
+// declares (prose-scanning was rejected as a false-positive trap). The Wave-0→2
+// WARN-first phase is historical; the live manifest is enforcing + drained.
 //
 // It binds on an explicit, author-maintained LEDGER
 // (packages/kernel/algorithms/manifest.json) + structural integrity. It does NOT
@@ -20,11 +21,11 @@
 // design time (plan 2026-06-03-v3.2-wave0-k11-a4-gate.md). The detection rule is
 // precise and deterministic: a manifest entry either resolves or it doesn't.
 //
-// WARN-FIRST (manifest.enforcement="warn"): the A4 "teeth" — planned[] subjects
-// not yet kernelized — are stderr warnings at Wave 0. The Wave-3 flip is a DATA
-// change (enforcement="error"), routing the watchlist into hard errors. Structural
-// integrity is ERROR from day one (false-positive-free; the manifest is authored
-// clean).
+// ENFORCEMENT (manifest.enforcement): "warn" (Wave 0–2, historical) routed planned[]
+// subjects to stderr warnings; "error" (the Wave-3 flip, CURRENT) routes them to
+// hard errors. The flip was a DATA change, not a code edit — both modes are
+// implemented below. Structural integrity is ERROR in both modes (false-positive-
+// free; the manifest is authored clean).
 //
 // Export checks use STATIC SOURCE ANALYSIS — the gate never require()s an
 // algorithm module (closes module-scope side-effect / require-cache / DoS surface
@@ -271,7 +272,7 @@ function auditAlgorithmLibrary(opts) {
   } else if (manifest.planned.length > 0) {
     const summary = manifest.planned.map((p) => `${p.id}/${p.owner}`).join(', ');
     warnings.push(finding('planned-not-realized',
-      `A4 watchlist: ${manifest.planned.length} pending — ${summary} (kernelize in Wave 2; flip to enforcing in Wave 3)`,
+      `A4 watchlist: ${manifest.planned.length} pending — ${summary} (warn mode; set enforcement:"error" to make these hard errors)`,
       { count: manifest.planned.length }));
   }
 

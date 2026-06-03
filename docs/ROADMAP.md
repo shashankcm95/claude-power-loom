@@ -98,6 +98,8 @@ Closed following the cadence: a **PM lens** (honesty-auditor — claim-vs-eviden
 
 HETS decomposition disciplines (trampolines, leaf criteria, budget envelope, spawn-verify dispatcher, test-runner adapters) + **K11** kernel algorithm library — the point at which Axiom A4 (algorithmic discipline is kernel work) becomes binding.
 
+**Wave-3 progress (2026-06-03 — not yet phase-closed):** exit-criterion #3 (A4 binding) **MET** — the A4 gate flipped to `enforcement:"error"` ([`manifest.json`](../packages/kernel/algorithms/manifest.json)); R9/R11 were **reclassified as runtime** per the Wave-1 boundary rule (not kernelized), so the watchlist is drained and the gate hard-enforces structural integrity + the unregistered-`.js` scan + no-park-and-forget. The full ✅ phase write-up lands at **v3.2-close** (`/phase-close v3.2`, after the deferred R10-per-leaf-attribution follow-up). Plan: [`2026-06-03-v3.2-wave3-a4-enforcing-flip.md`](../packages/specs/plans/2026-06-03-v3.2-wave3-a4-enforcing-flip.md).
+
 ---
 
 ## ⬜ v3.3 / v3.4 — Evolution Lab
