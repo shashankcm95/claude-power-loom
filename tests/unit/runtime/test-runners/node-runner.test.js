@@ -7,6 +7,18 @@
 // outcomes, and the SECURITY guard (path-escape incl. the join-collapse case,
 // no-shell argv, absolute-only contract). Fixtures are *.fixture.js (run via the
 // adapter, never discovered as suites).
+//
+// ── UNSATISFIED v3.5 ACCEPTANCE CRITERIA (ContainerAdapter-tier) — tracked HERE so a
+//    future runner-test author sees what R12 does NOT yet contain (anti-drift). The
+//    R12 layer is best-effort; full closure needs a real sandbox (ADR-0012: the kernel
+//    cannot wrap a subprocess). Canonical record: the plan's "Residual risks TRACKED to
+//    the ContainerAdapter-tier" section + MEMORY's R12-residuals line. C2 (pipe-block
+//    deadlock) is SATISFIED below; STILL OPEN — `grep "TODO(ARCH-" packages tests`:
+//      TODO(ARCH-H1): true fs-sandbox so neither the residual sub-microsecond TOCTOU
+//                     symlink race NOR an absolute-path write reaches host paths (cwd
+//                     is not a chroot — the standing p-writescope reality).
+//      TODO(ARCH-C1): hard output-DoS bound (a flood faster than the pipe drain) +
+//                     process-GROUP reaping of detached grandchildren outliving SIGKILL.
 
 'use strict';
 
@@ -194,6 +206,19 @@ test('M2: the child gets least-privilege env (parent SECRET scrubbed; ctx.env pa
   } finally {
     if (prev === undefined) delete process.env.LOOM_SECRET; else process.env.LOOM_SECRET = prev;
   }
+});
+
+test('C2: a pipe-pressured child that hangs is bounded by the timeout (no deadlock)', () => {
+  // The child fills the OS pipe (1 MiB > 64 KiB) then hangs forever. spawnSync drains
+  // the pipe concurrently AND the wall-clock timeout SIGKILLs it — so run() returns
+  // within ~timeout, never deadlocking on an un-drained pipe (user residual-risk C2).
+  const startedAt = Date.now();
+  const r = node.run({ testFile: fx('pipeblock.fixture.js'), cwd: FIXTURES, timeoutMs: 600 });
+  const elapsed = Date.now() - startedAt;
+  assert.strictEqual(r.passed, false);
+  assert.strictEqual(r.timedOut, true, 'a pipe-blocked hang must be killed by the timeout');
+  assert.strictEqual(r.reason, 'timeout');
+  assert.ok(elapsed < 5000, `must return promptly near the timeout, not hang (elapsed ${elapsed}ms)`);
 });
 
 test('L6: run throws when testFile is a directory (not a regular file)', () => {
