@@ -44,10 +44,7 @@ may foreground a subset.)
 **Instinct → KB referral** (each instinct draws on the archetype's shared reference library; an
 instinct with no doc is a *KB-gap* worth authoring): report-paths-not-prose / critique-is-not-mine →
 `kb:hets/spawn-conventions` (the output-format + frontmatter + documentary-discipline contract for
-HETS spawns).
-**KB-gaps (no doc yet — search heuristics have thin KB; codified here, not in the library):**
-current-location-not-ideal, exhaustive-naming-variants, where-not-just-what, trace-every-reference,
-no-false-negatives, breadth-before-depth, empirical-naming-convention, entrypoint-finding.
+HETS spawns); current-location-not-ideal / exhaustive-naming-variants / where-not-just-what / trace-every-reference / no-false-negatives / breadth-before-depth / empirical-naming-convention / entrypoint-finding → `kb:hets/code-search-heuristics`.
 
 ## Focus area: file location + directory structure mapping
 

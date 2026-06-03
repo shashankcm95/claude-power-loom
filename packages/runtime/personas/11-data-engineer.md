@@ -46,11 +46,7 @@ with no doc is a *KB-gap* worth authoring): idempotency-first / late-and-duplica
 `kb:data-dev/data-modeling-basics`; declarative-over-imperative / backfill-safety →
 `kb:data-dev/orchestration-essentials`; quality-at-ingest →
 `kb:architecture/discipline/error-handling-discipline`; SLA-and-freshness →
-`kb:architecture/discipline/reliability-scalability-maintainability`.
-**KB-gaps (no doc fits precisely — codified in instinct prose, not the library):** lineage-traceability
-(nearest analogue is `kb:ml-dev/pipeline-essentials`, but a warehouse column-level-lineage doc is missing);
-partition-and-cost-discipline (cost/partition-tuning has no `kb:data-dev/*` doc — the
-reliability-scalability-maintainability discipline doc is adjacent, not specific).
+`kb:architecture/discipline/reliability-scalability-maintainability`; lineage-traceability / partition-and-cost-discipline → `kb:data-dev/lineage-and-cost`.
 
 ## Focus area: shipping data pipelines for the user's product
 

@@ -19,6 +19,7 @@ related:
   - architecture/crosscut/information-hiding
   - architecture/crosscut/acyclic-dependencies
   - architecture/ai-systems/agent-design
+  - architecture/crosscut/integration-boundary-contracts
 status: active+enforced
 ---
 

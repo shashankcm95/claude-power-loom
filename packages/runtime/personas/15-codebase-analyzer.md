@@ -46,7 +46,7 @@ instinct with no doc is a *KB-gap* worth authoring): dependency-direction →
 function-purpose-distillation → `kb:architecture/crosscut/single-responsibility`;
 what-it-depends-on / integration-seam-mapping → `kb:architecture/crosscut/information-hiding`;
 the spawn-time output + handoff conventions for the whole lens →
-`kb:hets/spawn-conventions` (per `kb_scope.default`); is-not-ought / read-the-source-first / cite-the-line / trace-the-actual-control-flow → `kb:architecture/discipline/evidence-and-premise-discipline`. **KB-gaps (no doc yet — these documentary instincts are codified in the persona/contract, not the library):** who-calls-what, data-flow-tracing, state-mutation-surfacing, error-path-tracing.
+`kb:hets/spawn-conventions` (per `kb_scope.default`); is-not-ought / read-the-source-first / cite-the-line / trace-the-actual-control-flow → `kb:architecture/discipline/evidence-and-premise-discipline`; who-calls-what / data-flow-tracing / state-mutation-surfacing / error-path-tracing → `kb:architecture/crosscut/control-and-data-flow`.
 
 ## Focus area: data flow + function purposes + component interactions
 

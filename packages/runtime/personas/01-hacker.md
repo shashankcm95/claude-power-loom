@@ -59,7 +59,7 @@ instinct with no doc is a *KB-gap* worth authoring): assume-breach / trust-bound
 every-input-is-hostile → `kb:security-dev/threat-modeling-essentials`; injection-everywhere →
 `kb:design-pushback/string-concat-sql` + `kb:design-pushback/syntactic-gate-extension-for-tool-bypass`;
 auth-bypass-+-IDOR-hunting → `kb:security-dev/auth-patterns`; exfiltration-path-tracing →
-`kb:design-pushback/plain-http-for-sensitive-data`; proof-over-theory → `kb:architecture/discipline/evidence-and-premise-discipline`. **KB-gaps (no doc yet — codified in contract / rules, not the library):** TOCTOU / race-window, abuse-the-protocol-not-the-app, the-delta-is-byzantine-input.
+`kb:design-pushback/plain-http-for-sensitive-data`; proof-over-theory → `kb:architecture/discipline/evidence-and-premise-discipline`; toctou-race-window / abuse-the-protocol-not-the-app / the-delta-is-byzantine-input → `kb:security-dev/protocol-and-state-abuse`.
 
 ## Focus area: offensive-security probing of a supplied target
 

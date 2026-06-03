@@ -23,6 +23,7 @@ related:
   - architecture/ai-systems/evaluation-under-nondeterminism
   - architecture/discipline/blast-radius-and-reversibility
   - architecture/discipline/evidence-and-premise-discipline
+  - architecture/crosscut/control-and-data-flow
 status: active+enforced
 ---
 

@@ -23,6 +23,7 @@ related:
   - architecture/crosscut/dependency-rule
   - security-dev/threat-modeling-essentials
   - infra-dev/observability-basics
+  - architecture/crosscut/control-and-data-flow
 status: active+enforced
 ---
 

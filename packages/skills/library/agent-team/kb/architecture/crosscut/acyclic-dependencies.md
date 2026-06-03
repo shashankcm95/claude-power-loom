@@ -19,6 +19,7 @@ related:
   - architecture/crosscut/single-responsibility
   - architecture/crosscut/deep-modules
   - architecture/discipline/trade-off-articulation
+  - architecture/crosscut/integration-boundary-contracts
 status: active+enforced
 ---
 
