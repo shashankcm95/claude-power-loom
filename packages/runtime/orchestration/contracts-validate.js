@@ -41,6 +41,9 @@ const { parseFrontmatter } = require('../../kernel/_lib/frontmatter');
 // v3.2 Wave 0 (K11) — the A4-binding gate's pure audit fn lives in the kernel;
 // this runtime validator is a thin adapter over it (runtime→kernel = legal).
 const { auditAlgorithmLibrary } = require('../../kernel/_lib/kernel-algorithms-audit');
+// v3.2 Wave 1 (R8) — the FROZEN decomposition-discipline vocabulary + the pure
+// per-block check; `decomposition-discipline-valid` is a thin adapter over it.
+const { DECOMPOSITION_DISCIPLINES, disciplineBlockViolations } = require('./_lib/decomposition-disciplines');
 
 const TOOLKIT = findToolkitRoot();
 // Phase 0: paths anticipate Step 6 (contracts) + Step 8 (skills) target locations.
@@ -1064,31 +1067,41 @@ validators['traits-resolve-clean'] = function () {
 };
 
 validators['decomposition-discipline-valid'] = function () {
-  // decomposition_discipline (when present) must declare a non-empty `primary`.
-  // Canonical home is interface.decomposition_discipline (RFC v3.3 §3.3; all 18
-  // migrated contracts + the architect persona nest it there — it is part of the
-  // capability/output interface). A legacy top-level placement is tolerated for
-  // backward compatibility, but interface is read first.
+  // decomposition_discipline must (a) be present, (b) declare a non-empty `primary`,
+  // and (c) — v3.2 Wave 1 R8 — every present discipline value (`primary` and
+  // `fallback_when_code_producing`) must be in the FROZEN vocabulary
+  // (`_lib/decomposition-disciplines.js`; USER-ratified Option A = {spec-driven, tdd}).
+  // Canonical home is interface.decomposition_discipline (RFC v3.3 §3.3); a legacy
+  // top-level placement is tolerated for backward compatibility, interface first.
+  // Thin adapter over the pure `disciplineBlockViolations` (unit-tested separately).
+  const fixes = {
+    missing: (name) =>
+      `Add a decomposition_discipline block with a "primary" concern to ${name}.contract.json`,
+    'no-primary': (name) =>
+      `decomposition_discipline must declare a non-empty string "primary" in ${name}.contract.json`,
+    unknown: (name, v) =>
+      `decomposition_discipline.${v.field} "${v.value}" is not in the frozen vocabulary ` +
+      `[${DECOMPOSITION_DISCIPLINES.join(', ')}] — see _lib/decomposition-disciplines.js ` +
+      `(${name}.contract.json)`,
+  };
   const violations = [];
   for (const { name, path: fp } of listContractFiles()) {
     const c = loadJson(fp);
     if (!c) continue;
-    const dd = (c.interface && c.interface.decomposition_discipline) !== undefined
+    // Optional-chaining so a malformed contract with `interface: null` falls back to
+    // the legacy top-level placement instead of throwing (code-review MEDIUM) — the
+    // ternary's true branch is reachable only when interface is a non-null object.
+    const dd = c.interface?.decomposition_discipline !== undefined
       ? c.interface.decomposition_discipline
       : c.decomposition_discipline;
-    if (dd === undefined) {
+    for (const v of disciplineBlockViolations(dd)) {
+      // Default the fix-builder so a FUTURE disciplineBlockViolations kind can't crash
+      // the validator with "fixes[kind] is not a function" (code-review LOW).
+      const buildFix = fixes[v.kind] || (() => `decomposition_discipline issue (${v.kind}) in ${name}.contract.json`);
       violations.push({
-        kind: 'decomposition-discipline-missing',
+        kind: `decomposition-discipline-${v.kind}`,
         contract: name,
-        fix: `Add a decomposition_discipline block with a "primary" concern to ${name}.contract.json`,
-      });
-      continue;
-    }
-    if (!dd.primary || typeof dd.primary !== 'string') {
-      violations.push({
-        kind: 'decomposition-discipline-no-primary',
-        contract: name,
-        fix: `decomposition_discipline must declare a non-empty string "primary" in ${name}.contract.json`,
+        fix: buildFix(name, v),
       });
     }
   }

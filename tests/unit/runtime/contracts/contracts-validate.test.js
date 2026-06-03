@@ -130,9 +130,10 @@ function wellFormedContract() {
         read: ['repo://**'],
         read_recall: ['@library/*', '@thoughts/*'],
       },
-      // Canonical nested home (RFC v3.3 §3.3) — matches the real 18 contracts so
-      // the positive-path validators exercise the same shape the validator reads.
-      decomposition_discipline: { primary: 'fixture-primary-concern' },
+      // Canonical nested home (RFC v3.3 §3.3). Uses a FROZEN R8 discipline value
+      // (v3.2 Wave 1, Option A {spec-driven, tdd}) so it genuinely matches the real
+      // 18 contracts and passes decomposition-discipline-valid's membership check.
+      decomposition_discipline: { primary: 'spec-driven' },
     },
     defaults: {
       budget: { tokens: 30000, extensible: true, maxExtensions: 1, extensionAmount: 15000 },
@@ -225,10 +226,18 @@ test('(9) decomposition_discipline missing primary => violation', () => {
   assert.ok(report.totalViolations >= 1, 'missing primary must be a violation');
 });
 
-test('(9b) decomposition_discipline with primary present => zero violations', () => {
+test('(9b) decomposition_discipline with a FROZEN primary present => zero violations', () => {
   const root = makeSyntheticRoot('fixture', wellFormedContract());
   const report = runValidator('decomposition-discipline-valid', root);
-  assert.strictEqual(report.totalViolations, 0, 'primary present passes');
+  assert.strictEqual(report.totalViolations, 0, 'a frozen primary (spec-driven) passes');
+});
+
+test('(9c) decomposition_discipline.primary outside the frozen R8 vocabulary => violation', () => {
+  const c = wellFormedContract();
+  c.interface.decomposition_discipline = { primary: 'exploratory' }; // not in Option A {spec-driven, tdd}
+  const root = makeSyntheticRoot('fixture', c);
+  const report = runValidator('decomposition-discipline-valid', root);
+  assert.ok(report.totalViolations >= 1, 'an unfrozen discipline must flag decomposition-discipline-unknown');
 });
 
 // --- registry-schema-valid: registry parses + schemaVersion + axis map ---
