@@ -248,6 +248,26 @@ test('contract with NO matching agent.md is skipped (no false violation)', () =>
   assert.strictEqual(report.totalViolations, 0, 'no agent.md => skip, not violate');
 });
 
+// --- alias map (v3.2 Wave 0): 12-security-engineer binds to security-auditor.md ---
+
+test('12-security-engineer aliases to security-auditor.md (write-floor now BOUND, not skipped)', () => {
+  // Before the alias map, "12-security-engineer" strips to "security-engineer",
+  // which has no agents/<name>.md -> the validator SKIPPED it (silent no-floor).
+  // The alias binds it to agents/security-auditor.md. Proof the alias resolved:
+  // a write-capable agent floor + a contract LACKING worktree_writable now FLAGS
+  // (a skip would have produced 0 violations).
+  const root = makeSyntheticRoot({
+    contractName: '12-security-engineer',
+    agentName: 'security-auditor', // the alias target
+    tools: ['Read', 'Grep', 'Glob', 'Bash', 'Edit', 'Write'], // write-capable floor
+    traits: ['read_repo'], // LACKS worktree_writable
+  });
+  const report = runValidator(root);
+  const v = report.violations[VALIDATOR_NAME].violations
+    .find((x) => x.kind === 'write-floor-missing' && x.contract === '12-security-engineer');
+  assert.ok(v, 'alias must bind 12-security-engineer to security-auditor.md (else it is silently skipped)');
+});
+
 // --- regression gate: ALL 18 REAL contracts => 0 reconciliation violations ---
 
 test('(real) all 18 real contracts reconcile cleanly with their agent.md floors (0 violations)', () => {
