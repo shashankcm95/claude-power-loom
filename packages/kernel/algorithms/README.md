@@ -8,11 +8,13 @@ This directory holds the substrate's **registered kernel algorithms**. The `mani
 the **A4-binding gate** (`packages/kernel/_lib/kernel-algorithms-audit.js`, run via the
 `kernel-algorithm-a4-binding` validator in `contracts-validate.js`) keep the library honest.
 
-**Scope (honest, as of v3.2 Wave 0):** this is a **scaffold + WARN-first gate**, not full A4 enforcement.
-It enforces *structural integrity* of declared algorithms today (hard errors) and *tracks* known-future
-determinism as a `planned[]` watchlist (WARN only). It does **not** detect deterministic logic an author
-never declares. Real enforcement — the watchlist flipping to hard errors — arrives in **Wave 3** once
-R9/R11's deterministic cores land as tested kernel algorithms.
+**Scope (honest, as of v3.2 Wave 3 — ENFORCING):** the gate enforces *structural integrity* of declared
+algorithms (hard errors), an *unregistered-`.js` scan*, and — since the Wave-3 flip
+(`enforcement: "error"`) — a **no-park-and-forget** rule: any `planned[]` entry is now a hard CI error,
+not a stderr warning. It does **not** detect deterministic logic an author never declares (prose-scanning
+was rejected as a false-positive trap). The watchlist is **drained**: R9/R11 were **reclassified as
+runtime** (see Members), not kernelized — so the gate binds on the registered library, with R9/R11's
+determinism satisfied in tested *runtime* functions per the boundary rule recorded under Members.
 
 ## What counts as a kernel algorithm
 
@@ -47,23 +49,36 @@ Two arrays with **different** required-field sets:
 
 Top-level: `version` (number), `enforcement` (`"warn"` | `"error"`).
 
-## Enforcement (WARN-first, then flip)
+## Enforcement (flipped to ENFORCING in Wave 3)
 
-- **`enforcement: "warn"` (Wave 0–2):** `planned[]` entries emit one consolidated stderr `⚠` watchlist
-  line — they do **not** fail CI. Structural-integrity violations on `algorithms[]` entries **are** hard
-  errors from day one (false-positive-free; the ledger is authored clean).
-- **`enforcement: "error"` (Wave 3 flip):** any remaining `planned[]` entry becomes a hard error. The
-  flip is a **one-line data change**, not a code edit.
+- **`enforcement: "warn"` (Wave 0–2, historical):** `planned[]` entries emitted one consolidated stderr
+  `⚠` watchlist line — they did **not** fail CI. Structural-integrity violations on `algorithms[]`
+  entries were hard errors from day one (false-positive-free; the ledger is authored clean).
+- **`enforcement: "error"` (Wave 3 flip — CURRENT):** any `planned[]` entry is a hard error (CI exit 1).
+  The flip was a **one-line data change**, not a code edit — the gate implemented both modes from Wave 0.
+  The watchlist is currently empty (drained), so the live effect is: structural integrity +
+  unregistered-scan are enforced, and any *future* parked subject fails CI rather than nagging forever.
 
-**Wave-2 forcing-function:** the PR that moves an entry from `planned[]` to `algorithms[]` **MUST land
-its test file in the same PR** — the integrity check hard-errors on a realized entry whose declared
-`test` does not exist. That is the designed teeth (A4: deterministic kernel code is unit-tested), not a
-surprise.
+**Forcing-function (still live for any FUTURE kernel algorithm):** the PR that moves an entry from
+`planned[]` to `algorithms[]` **MUST land its test file in the same PR** — the integrity check
+hard-errors on a realized entry whose declared `test` does not exist. That is the designed teeth (A4:
+deterministic kernel code is unit-tested). *(This never fired for R9/R11 — they were reclassified as
+runtime, not moved to `algorithms[]`; the forcing-function applies to genuine future kernel algorithms.)*
 
 ## Members
 
 | id | file | status |
 |---|---|---|
-| `route-decide` | `route-decide.js` | realized — H.7.3 task-routing scorer |
-| `leaf-criteria` | _(planned, R9, Wave 2)_ | watchlist |
-| `spawn-verify-route` | _(planned, R11, Wave 2)_ | watchlist |
+| `route-decide` | `route-decide.js` | realized — H.7.3 task-routing scorer (a 7-dimension weighted scorer = genuine derivation logic) |
+
+**Reclassified as runtime (NOT kernel algorithms) — Wave 3:** `leaf-criteria` (R9 —
+`packages/runtime/orchestration/leaf-criteria.js`) and `spawn-verify-route` (R11 —
+`packages/runtime/verify/spawn-verify.js`) were on the Wave-0/1 watchlist but were **removed** at the
+Wave-3 flip rather than kernelized. Rationale (the Wave-1 A4 boundary rule): *"A4/K11 binds branching /
+derivation logic with a non-trivial spec (route scoring, subset math, path canonicalization); a
+static-set membership lookup or single-field presence check is a runtime constant, NOT a kernel
+algorithm."* R9's six criteria are threshold/presence/membership checks (a declaration-conformance gate),
+and R11 **runs subprocesses** (disqualified by "side-effect-free at module scope" above). Both are tested
+*runtime* functions (`tests/unit/runtime/…`) — satisfying A4's spirit ("tested code, not LLM-re-derived
+prose") without being registered kernel algorithms. Full adjudication:
+`packages/specs/plans/2026-06-03-v3.2-wave3-a4-enforcing-flip.md`.
