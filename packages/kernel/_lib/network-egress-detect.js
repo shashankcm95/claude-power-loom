@@ -5,9 +5,10 @@
 // Pure network-egress detection helpers for the PostToolUse:Bash audit
 // (packages/kernel/observability/network-egress-audit.js). NO I/O — every
 // function is a pure transform, unit-testable in isolation, so the live audit
-// hook depends on THIS module rather than on the dead/unregistered
-// pre-spawn-tool-mask (DIP; the tool-mask's NETWORK_BASH_PATTERNS are
-// reference-only since ADR-0012 unregistered it).
+// hook depends on THIS module's own patterns rather than re-deriving from the
+// now-removed pre-spawn-tool-mask (retired v3.2 Wave 2 with K6; it had been
+// inert + unregistered since it shipped, per ADR-0012 — its NETWORK_BASH_PATTERNS
+// never gated anything).
 //
 // HONEST SCOPE (mirrors spawn-record.scrubSecrets' "coarse net, not a primary
 // control"): regex host-extraction is defense-in-depth, NOT airtight — it is
