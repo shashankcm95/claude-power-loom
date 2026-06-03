@@ -38,6 +38,9 @@ const { findToolkitRoot } = require('../../kernel/_lib/toolkit-root');
 // `const { frontmatter: fm } = ...` to keep downstream `fm` usages stable.
 // HT.0.9-verify code-reviewer enumerated the 4 sites.
 const { parseFrontmatter } = require('../../kernel/_lib/frontmatter');
+// v3.2 Wave 0 (K11) — the A4-binding gate's pure audit fn lives in the kernel;
+// this runtime validator is a thin adapter over it (runtime→kernel = legal).
+const { auditAlgorithmLibrary } = require('../../kernel/_lib/kernel-algorithms-audit');
 
 const TOOLKIT = findToolkitRoot();
 // Phase 0: paths anticipate Step 6 (contracts) + Step 8 (skills) target locations.
@@ -1387,6 +1390,28 @@ validators['persona-instinct-reconcile'] = function () {
     }
   }
   return violations;
+};
+
+// v3.2 Wave 0 (K11) — A4-binding SCAFFOLD (not full enforcement yet; structural
+// integrity is a hard error now, the planned[] watchlist is WARN-only until the
+// Wave-3 flip). Thin adapter over the kernel audit fn
+// (packages/kernel/_lib/kernel-algorithms-audit.js). A4 (v6:387): "deterministic
+// logic = a tested kernel algorithm, NOT prose/pseudocode for LLM execution." The
+// gate binds on the packages/kernel/algorithms/manifest.json ledger +
+// structural integrity (file/export/test resolve; no unregistered *.js) — NOT
+// prose-scanning (the false-positive trap, rejected at design time). WARN-FIRST
+// (manifest.enforcement="warn"): planned[] watchlist entries print one consolidated
+// stderr ⚠ line and do NOT fail CI; structural-integrity violations on realized
+// algorithms[] ARE hard errors from day one (false-positive-free; ledger authored
+// clean). The Wave-3 flip is a one-line manifest data change (enforcement="error"),
+// routing the watchlist into hard errors. Warnings go to stderr (not the returned
+// array) so --json stdout stays clean and they never count toward totalViolations.
+validators['kernel-algorithm-a4-binding'] = function () {
+  const { errors, warnings } = auditAlgorithmLibrary({ rootDir: TOOLKIT });
+  for (const w of warnings) {
+    process.stderr.write(`  ⚠ kernel-algorithm-a4-binding: ${w.message}\n`);
+  }
+  return errors;
 };
 
 // ---------- main ----------
