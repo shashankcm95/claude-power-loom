@@ -117,6 +117,45 @@ test('empty / whitespace task does not throw and yields a valid root verdict', (
   }
 });
 
+// ---------- drift:dictionary-gap (2026-06-03) — substrate-architecture vocab ----------
+// Hybrid fix: the detection SENTINEL gets broad substrate vocab ([ROUTE-META-UNCERTAIN]
+// fires reliably on substrate-component work), and a HIGH-PRECISION multi-word subset
+// ALSO scores via compound_strong. Ambiguous single words (gate/dispatcher) stay
+// DETECTION-ONLY — never scored — so general tasks aren't over-routed.
+
+test('substrate-meta detection: an A4-gate task trips the sentinel', () => {
+  const out = scoreTask('flip the A4 gate from warn to enforcing');
+  assert.strictEqual(out.substrate_meta_detected, true, 'A4-gate task must trip the sentinel');
+  assert.ok(out.substrate_meta_tokens.includes('a4 gate'),
+    `expected 'a4 gate' token; got ${JSON.stringify(out.substrate_meta_tokens)}`);
+  assert.ok(out.meta_forcing_instruction && /ROUTE-META-UNCERTAIN/.test(out.meta_forcing_instruction),
+    'emits the [ROUTE-META-UNCERTAIN] forcing instruction');
+});
+
+test('substrate-meta detection: a spawn-verify dispatcher task trips the sentinel', () => {
+  const out = scoreTask('build the spawn-verify dispatcher and the verification tier');
+  assert.strictEqual(out.substrate_meta_detected, true);
+  assert.ok(out.substrate_meta_tokens.includes('spawn-verify'), 'detects spawn-verify');
+});
+
+test('high-precision substrate phrases ALSO score (compound_strong), per the hybrid', () => {
+  const out = scoreTask('implement the spawn-verify dispatcher and the verification tier with leaf-criteria');
+  const cs = out.scores_by_dim.compound_strong;
+  assert.ok(cs.matched.includes('spawn-verify') && cs.matched.includes('verification tier'),
+    `expected high-precision phrases scored; got ${JSON.stringify(cs.matched)}`);
+  assert.ok(cs.contribution > 0, 'compound_strong contributes a nonzero amount');
+});
+
+test('FP-guard: ambiguous single words (gate/dispatcher) are DETECTION-ONLY, never scored', () => {
+  const out = scoreTask('add a rate-limit gate and an event dispatcher to the API service');
+  for (const dim of Object.keys(out.scores_by_dim)) {
+    const m = out.scores_by_dim[dim].matched || [];
+    assert.ok(!m.includes('gate'), `'gate' must not be a SCORED token (found in ${dim})`);
+    assert.ok(!m.includes('dispatcher'), `'dispatcher' must not be a SCORED token (found in ${dim})`);
+  }
+  // (they MAY be sentinel-detected — a harmless advisory, not a scoring boost)
+});
+
 // --- summary ---
 
 process.stdout.write(`\nroute-decide.test.js: ${passed} passed, ${failed} failed\n`);
