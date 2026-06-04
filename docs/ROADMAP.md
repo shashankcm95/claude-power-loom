@@ -92,13 +92,46 @@ Closed following the cadence: a **PM lens** (honesty-auditor — claim-vs-eviden
 
 ---
 
-## ⬜ v3.2 — Runtime Decomposition
+## ✅ v3.2 — Runtime Decomposition
 
-*~16–22h.*
+*Plan: [`2026-06-02-v3.2-runtime-decomposition-scope.md`](../packages/specs/plans/2026-06-02-v3.2-runtime-decomposition-scope.md) · [ADR-0015](../packages/specs/adrs/0015-failure-signature-schema-freeze.md) · PRs #214–227 + #231/#232/#233. Est. ~16–22h.*
 
 HETS decomposition disciplines (trampolines, leaf criteria, budget envelope, spawn-verify dispatcher, test-runner adapters) + **K11** kernel algorithm library — the point at which Axiom A4 (algorithmic discipline is kernel work) becomes binding.
 
-**Wave-3 progress (2026-06-03 — not yet phase-closed):** exit-criterion #3 (A4 binding) **MET** — the A4 gate flipped to `enforcement:"error"` ([`manifest.json`](../packages/kernel/algorithms/manifest.json)); R9/R11 were **reclassified as runtime** per the Wave-1 boundary rule (not kernelized), so the watchlist is drained and the gate hard-enforces structural integrity + the unregistered-`.js` scan + no-park-and-forget. The full ✅ phase write-up lands at **v3.2-close** (`/phase-close v3.2`, after the deferred R10-per-leaf-attribution follow-up). Plan: [`2026-06-03-v3.2-wave3-a4-enforcing-flip.md`](../packages/specs/plans/2026-06-03-v3.2-wave3-a4-enforcing-flip.md).
+**What shipped** (the HETS decomposition + verification tier, across three waves):
+
+- **Wave 1 — primitives** (#214–219): R6 (Pattern-A serial trampoline) + R7 (todo-checkpoints) + R8 (disciplines vocabulary) + R10 (budget/recursion envelope), plus the `checkWithinRoot` pre-normalization trap-class fix (#215) and the `isSafePathSegment` single-source refactor (#217).
+- **Wave 2 — verification tier** (#220–224): K6 retired (its K8 consumer never arrived); R12 test-runner adapters; R9 six-criteria leaf gate; R11 spawn-verify dispatcher → the ADR-0015 `failure_signature` frozen 8-field witness. The 5-fixture exit demo is met.
+- **Wave 3 — A4 binding** (#227): the K11 A4-binding gate flipped `enforcement` from `warn` to `error`. Per the Option-B reclassification (architect-VERIFY + user-ratified), R9/R11 are **runtime** constants, not kernel algorithms (the Wave-1 boundary rule: derivation logic is kernel; a membership/threshold check or a subprocess-spawning routine is a runtime constant) — so `planned[]` is drained and the gate hard-enforces structural integrity + the unregistered-`.js` scan + no-park-and-forget.
+- **Post-Wave-3 fixes:** the route-decide substrate-meta dictionary hybrid (#231); the A4-gate insider-bypass hardening (#232); the kb-resolver `kb:`-prefix tolerance (#233).
+
+**Exit criteria — all MET:**
+
+| # | Criterion | Evidence |
+|---|---|---|
+| 1 | A Pattern-A trampoline completes a 3-leaf task within budget (R6+R7+R10) | `trampoline.test.js` "EXIT DEMO"; CI Runtime-tests job |
+| 2 | 5 failing fixtures rejected by spawn-verify (R9+R11+R12, incl. a node-runner fixture) | `spawn-verify.test.js` — 5 fixtures, EXIT #5 = the node-runner failing fixture |
+| 3 | A4 is binding | `manifest.json` `enforcement:"error"` + drained `planned[]`; the gate is CI-wired (`contracts-validate.js`) + runtime-probed (exits 1 on a `planned-not-realized` error) |
+
+The **deferred R10-per-leaf-attribution follow-up** (the reserved `budget-abort` + `schema` `failure_signature` producers) was firsthand-probed at close and **correctly deferred to v3.3+** — Pattern A has no per-leaf measurement boundary (one serial spawn processes a whole leaf-subtree; measurement is at spawn-close, not per-leaf), so lighting those producers now would ship an inert check (ADR-0012). Tracked: [#234](https://github.com/shashankcm95/claude-power-loom/issues/234). The unblock is Pattern B (per-leaf sub-spawn, v3.5+/E12) or a within-spawn per-leaf meter.
+
+### Phase-close sign-off (2026-06-04)
+
+Run per `/phase-close v3.2` (the first dogfood of the gate built in #226) — three independent full-context in-substrate lenses reviewed the **integrated** phase against its exit criteria. All three returned **CLOSEABLE**:
+
+- **PM** (honesty-auditor) — Grade A / no-overclaim. All three exit criteria CONFIRMED; the A4 gate is genuinely CI-wired + runtime-probed (NOT merged-dark — it rides `contracts-validate.js`, source-executed in CI); the Option-B reframe is explicitly disclosed, not a goalpost-move.
+- **Principal-SDE** (code-reviewer at phase altitude) — all four cross-PR seams clean (the ADR-0015 3-way enum set-equality fitness test is live + non-vacuous; R9→R12→R11 result-shape consistent; the K11 manifest ↔ route-decide ↔ A4-gate triangle green; the path-canonicalize single-source refactor complete).
+- **Architect** — the architecture held across waves; the Option-B boundary rule is sound + consistent; the ADR-0015 `failure_signature` forward contract is genuinely ready for the v3.3 E2 consumer (the structural/diagnostic firewall holds across the two-source design; the reserved members are correct append-only forward-compat).
+
+**Honest deployment posture (recorded per the architect's MEDIUM):** v3.2's "done" is **done-DARK** — all code is CI/unit-validated and the within-runtime 5-fixture demo exercises R9→R11→R12 end-to-end, but the **harness-integration** path (the trampoline under a real Agent spawn; spawn-verify firing from a live hook) has not yet run at runtime (the active plugin is the 3.1.0 cache; no `hooks.json` wiring). The version-bump + whole-substrate dogfood at the v3.2→v3.3 boundary is that first harness probe; v3.3 must not build on an assumed-live integration. Durable record: the `toolkit/phase-close/v3.2-close` library volume.
+
+### v3.2 carry-list for v3.3 (none blocking)
+
+- Honor serial-consistency of the new v3.3 E3/E4 shared-state writers (carry-forward #4 / K13) — graduates to a blocker only at Pattern-B/E12 concurrency (v3.5+).
+- K2.c + A6 reputation (chartered v3.3 scope, not inherited debt).
+- The R10-per-leaf-attribution producers — deferred v3.3+/v3.5 ([#234](https://github.com/shashankcm95/claude-power-loom/issues/234)).
+- Low-severity gate findings (non-blocking): `manifest.exports[]` under-declaration, a stale barrel comment, an untested env kill-switch — remediated separately or carried.
+- Canonical forward design: [`v3.3-substrate-synthesis-v3.md`](../packages/specs/rfcs/v3.3-substrate-synthesis-v3.md) (v2 superseded).
 
 ---
 
