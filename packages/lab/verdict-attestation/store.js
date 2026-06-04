@@ -38,11 +38,11 @@
 
 const os = require('os');
 const path = require('path');
-const fs = require('fs');
 const crypto = require('crypto');
 const { writeAtomicString } = require('../../kernel/_lib/atomic-write');
 const { acquireLock, releaseLock } = require('../../kernel/_lib/lock');
 const { canonicalJsonSerialize } = require('../../kernel/_lib/canonical-json');
+const { readJsonlBounded } = require('../../kernel/_lib/jsonl-read');
 
 // Resolved ONCE at module-load (the ENV-BEFORE-REQUIRE discipline; tests set LOOM_LAB_STATE_DIR first).
 const LAB_STATE_BASE = process.env.LOOM_LAB_STATE_DIR || path.join(os.homedir(), '.claude', 'lab-state');
@@ -57,6 +57,12 @@ const DEFAULT_EXPIRES_AFTER_DAYS = 30;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const LOCK_WAIT_MS = 2000;        // bounded; the advisory store never blocks longer than this
 const MAX_LEDGER_RECORDS = 10000; // a count cap (time-expiry alone is unbounded under a flood)
+// VALIDATE hacker H1 (deep fix) — a ledger SIZE (byte) bound for the READ path, distinct from the
+// record-count cap above. Past it, readJsonlBounded TAIL-reads the newest records (never the whole
+// file as one >512MB string → V8's single-string ceiling can't throw → the view can't silently blank).
+// Env-overridable (ENV-BEFORE-REQUIRE) so tests can exercise the oversize path without a 64MB fixture.
+const MAX_LEDGER_BYTES = Number(process.env.LOOM_LAB_MAX_LEDGER_BYTES) > 0
+  ? Number(process.env.LOOM_LAB_MAX_LEDGER_BYTES) : 64 * 1024 * 1024;
 // VALIDATE hacker M2 — per-field byte cap. nonEmptyString alone admitted multi-MB fields, which
 // accumulate (distinct content → no dedup) and re-serialize the WHOLE ledger on every write
 // (60MB ledger → 648MB RSS/write, proven). All legit values are short (agentId ~17 hex, an identity
@@ -80,29 +86,17 @@ function withLabLock(fn, onContended) {
   try { return fn(); } finally { releaseLock(LOCK_PATH); }
 }
 
-// Read the JSONL ledger → array of records. Missing file → []. A corrupt line is skipped (fail-soft).
+// Read the JSONL ledger → array of records via the shared bounded reader (H1 deep fix): missing → [];
+// oversized (> MAX_LEDGER_BYTES) → the newest tail (NOT [] — the write-path RMW keeps newest, no data
+// loss); corrupt line → skipped; > MAX_LEDGER_RECORDS → newest cap. Never throws (advisory).
+// "Newest" = by FILE POSITION (== by time for this append-only single-writer ledger; for an
+// out-of-order/hand-written file the tail is positional, not recorded_at-sorted — honesty F2).
 function readLedger() {
-  let raw;
-  try {
-    raw = fs.readFileSync(LEDGER_PATH, 'utf8');
-  } catch (err) {
-    // ENOENT (no ledger yet) → quietly empty. Any OTHER read error (e.g. the file grew past V8's
-    // ~512MB string ceiling, or a permission error) is a REAL failure — warn, don't vanish silently
-    // (VALIDATE hacker H1: a silent [] makes the reputation view blank with no signal). Advisory:
-    // still return [] (never crash the caller), but LOUDLY.
-    if (!err || err.code !== 'ENOENT') {
-      try { process.stderr.write(`verdict-attestation: ledger unreadable (${(err && (err.code || err.message)) || 'unknown'}) — treating as empty (advisory)\n`); } catch { /* ignore */ }
-    }
-    return [];
-  }
-  let lines = raw.split('\n').filter((line) => line.length > 0);
-  // VALIDATE hacker M3 — bound the PARSE cost: a hand-written ledger can exceed the write-path cap;
-  // keep only the newest MAX_LEDGER_RECORDS lines (append-only → newest last), symmetric with the
-  // writeLedger cap (so a normally-written ledger is unaffected; a flooded one can't drive O(n) parse).
-  if (lines.length > MAX_LEDGER_RECORDS) lines = lines.slice(-MAX_LEDGER_RECORDS);
-  return lines
-    .map((line) => { try { return JSON.parse(line); } catch { return null; } })
-    .filter(Boolean);
+  return readJsonlBounded(LEDGER_PATH, {
+    maxRecords: MAX_LEDGER_RECORDS,
+    maxBytes: MAX_LEDGER_BYTES,
+    name: 'verdict-attestation',
+  });
 }
 
 // Atomic whole-ledger write (never a raw append). writeAtomicString creates STORE_DIR as needed.

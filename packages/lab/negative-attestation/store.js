@@ -34,11 +34,11 @@
 
 const os = require('os');
 const path = require('path');
-const fs = require('fs');
 const crypto = require('crypto');
 const { writeAtomicString } = require('../../kernel/_lib/atomic-write');
 const { acquireLock, releaseLock } = require('../../kernel/_lib/lock');
 const { canonicalJsonSerialize } = require('../../kernel/_lib/canonical-json');
+const { readJsonlBounded } = require('../../kernel/_lib/jsonl-read');
 
 // Resolved ONCE at module-load (mirrors runState.js's RUN_STATE_BASE). Tests set
 // LOOM_LAB_STATE_DIR BEFORE requiring this module (the ENV-BEFORE-REQUIRE discipline).
@@ -52,6 +52,11 @@ const DEFAULT_EXPIRES_AFTER_DAYS = 30; // matches the existing reputation RECENC
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const LOCK_WAIT_MS = 2000;        // bounded; the advisory store never blocks longer than this
 const MAX_LEDGER_RECORDS = 10000; // M3: a count cap (time-expiry alone is unbounded under a run_id flood)
+// H1 (deep fix) — a ledger SIZE (byte) bound for the READ path, distinct from the count cap. Past it,
+// readJsonlBounded TAIL-reads the newest records (never the whole file as one >512MB string → V8's
+// single-string ceiling can't throw → the witness ledger can't silently blank). Env-overridable for tests.
+const MAX_LEDGER_BYTES = Number(process.env.LOOM_LAB_MAX_LEDGER_BYTES) > 0
+  ? Number(process.env.LOOM_LAB_MAX_LEDGER_BYTES) : 64 * 1024 * 1024;
 
 function sha256(s) {
   return crypto.createHash('sha256').update(s).digest('hex');
@@ -89,20 +94,18 @@ function withLabLock(fn, onContended) {
   try { return fn(); } finally { releaseLock(LOCK_PATH); }
 }
 
-// Read the JSONL ledger → array of records. Missing file → []. A corrupt line is skipped
-// (fail-soft: one bad line must not blind the whole witness ledger).
+// Read the JSONL ledger → array of records via the shared bounded reader (H1 deep fix): missing → [];
+// oversized (> MAX_LEDGER_BYTES) → the newest tail (NOT [] — the write-path RMW keeps newest, so a
+// flooded ledger self-heals on the next write without losing the recent witnesses); corrupt line →
+// skipped (one bad line must not blind the whole ledger); > MAX_LEDGER_RECORDS → newest cap. Never throws.
+// "Newest" = by FILE POSITION (== by time for this append-only single-writer ledger; positional, not
+// recorded_at-sorted, for an out-of-order/hand-written file — honesty F2).
 function readLedger() {
-  let raw;
-  try {
-    raw = fs.readFileSync(LEDGER_PATH, 'utf8');
-  } catch {
-    return []; // ENOENT (no ledger yet) or unreadable → empty
-  }
-  return raw
-    .split('\n')
-    .filter((line) => line.length > 0)
-    .map((line) => { try { return JSON.parse(line); } catch { return null; } })
-    .filter(Boolean);
+  return readJsonlBounded(LEDGER_PATH, {
+    maxRecords: MAX_LEDGER_RECORDS,
+    maxBytes: MAX_LEDGER_BYTES,
+    name: 'negative-attestation',
+  });
 }
 
 // Atomic whole-ledger write (never a raw append — F9 PIPE_BUF). Empty → empty file.
