@@ -16,11 +16,14 @@
 
 'use strict';
 
+// v3.4 Wave 2 — computeRecencyDecay + RECENCY_HALF_LIFE_DAYS were EXTRACTED to the pure kernel/_lib
+// leaf so the Lab's E4 reputation view can consume the decay rule without importing this runtime
+// identity module (the K12 boundary; the Wave-0 canonical-json precedent). Re-exported below
+// VERBATIM — same function object, observable behavior unchanged (existing consumers + _h70-test).
+const { computeRecencyDecay, RECENCY_HALF_LIFE_DAYS } = require('../../../kernel/_lib/recency-decay');
+
 // H.7.0 — bounded growth on quality_factors_history.
 const QUALITY_FACTORS_HISTORY_CAP = 50;
-
-// H.7.0 — recency decay half-life.
-const RECENCY_HALF_LIFE_DAYS = 30;
 
 // H.7.0 — quality trend windowing.
 const QUALITY_TREND_WINDOW = 3;
@@ -142,21 +145,8 @@ function computeTaskComplexityWeightedPass(history) {
   return weightedPasses / weightedTotal;
 }
 
-// H.7.0 — recency decay factor. OBSERVABLE-ONLY at this phase.
-function computeRecencyDecay(history) {
-  if (!Array.isArray(history) || history.length === 0) return null;
-  const now = Date.now();
-  const factors = [];
-  for (const entry of history) {
-    if (!entry || typeof entry.ts !== 'string') continue;
-    const t = Date.parse(entry.ts);
-    if (!Number.isFinite(t)) continue;
-    const dDays = Math.max(0, (now - t) / (1000 * 60 * 60 * 24));
-    factors.push(Math.exp(-dDays / RECENCY_HALF_LIFE_DAYS));
-  }
-  if (factors.length === 0) return null;
-  return factors.reduce((a, b) => a + b, 0) / factors.length;
-}
+// computeRecencyDecay — moved to packages/kernel/_lib/recency-decay.js (v3.4 Wave 2); imported +
+// re-exported above. The Lab's E4 uses the injectable computeRecencyDecayAt(history, nowMs) sibling.
 
 // H.7.0 — windowed-average helper for quality trend.
 function _windowedAvg(history, axis, startIdx, count) {
