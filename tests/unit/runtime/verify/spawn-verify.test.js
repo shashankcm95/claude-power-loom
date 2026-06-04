@@ -138,6 +138,23 @@ test('HONESTY (H1): a tdd leaf with runTests:false → accepted:true BUT verifie
   assert.ok(r.advisories.some((a) => a.kind === 'tests-not-run'), 'must flag that the test did not run');
 });
 
+test('HONESTY (H1b): the LOOM_VERIFY_RUN_TESTS=0 kill-switch → same skip path (accepted:true, verified:FALSE, tests-not-run advisory)', () => {
+  // The env kill-switch is a SECOND path into testsEnabled() (alongside ctx.runTests:false);
+  // it must yield the same honest structural-only accept, NOT a verified pass. Restore the env
+  // in a finally so a failure here cannot leak '0' into later tests (and skip the live subprocess).
+  const prev = process.env.LOOM_VERIFY_RUN_TESTS;
+  process.env.LOOM_VERIFY_RUN_TESTS = '0';
+  try {
+    const r = verifySpawn(tddLeaf()); // no ctx.runTests override — the env var alone disables the run
+    assert.strictEqual(r.accepted, true);
+    assert.strictEqual(r.verified, false, 'the env kill-switch must also yield verified:false, not a verified pass');
+    assert.ok(r.advisories.some((a) => a.kind === 'tests-not-run'), 'must flag that the test did not run');
+  } finally {
+    if (prev === undefined) delete process.env.LOOM_VERIFY_RUN_TESTS;
+    else process.env.LOOM_VERIFY_RUN_TESTS = prev;
+  }
+});
+
 test('the accepted ⇔ non-null-signature biconditional holds', () => {
   const rejected = verifySpawn(specLeaf({ estimated_tokens: 1 }));
   const accepted = verifySpawn(specLeaf());
