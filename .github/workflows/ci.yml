@@ -43,14 +43,25 @@ jobs:
           # tests already-installed hooks, not source" warning + exit 1.
           # H.7.8's CI never validated against a fresh checkout because
           # H.7.8 merged direct to main without going through CI itself.
+          set -o pipefail
           bash install.sh --hooks --test 2>&1 | tee /tmp/smoke.log
-          # Verify the "Results: N passed, 0 failed" line is present
-          grep -qE 'Results: [0-9]+ passed, 0 failed' /tmp/smoke.log
+          # GH Actions' default shell already runs `-eo pipefail`, so install.sh's non-zero
+          # exit (install.sh:391) is the PRIMARY gate; this explicit `set -o pipefail` is
+          # insurance against a future `shell:` override that would drop it. The ANCHORED
+          # ^…$ grep is defense-in-depth — it hardens the (otherwise redundant) content
+          # check so a crafted substring in a longer line can't false-green. (GH #228)
+          grep -qE '^[[:space:]]*Results: [0-9]+ passed, 0 failed$' /tmp/smoke.log
 
       - name: Run contracts-validate
         run: |
+          set -o pipefail
           node packages/runtime/orchestration/contracts-validate.js 2>&1 | tee /tmp/contracts.log
-          grep -qE 'Total violations: 0' /tmp/contracts.log
+          # GH Actions' default shell already runs `-eo pipefail`, so the validator's
+          # non-zero exit (contracts-validate.js:1501) is the PRIMARY gate; this explicit
+          # `set -o pipefail` is insurance against a future `shell:` override. The ANCHORED
+          # ^…$ grep is defense-in-depth — it hardens the (otherwise redundant) content
+          # check so a crafted filename can't inject the success substring. (GH #228)
+          grep -qE '^Total violations: 0$' /tmp/contracts.log
 
   markdown-lint:
     name: Markdown lint
