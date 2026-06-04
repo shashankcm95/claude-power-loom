@@ -33,9 +33,11 @@ function seedEnriched(persona, agentId, txid) {
   store.enrichRecord(rec.attestation_id, { runId: 'run1', transactionId: txid, recordStatus: 'appended' });
 }
 
+const SNAP_PATH = path.join(TMP, 'reputation-snapshot.json');
 let passed = 0; let failed = 0;
 function test(name, fn) {
   try { fs.rmSync(store.LEDGER_PATH, { force: true }); } catch { /* */ }
+  try { fs.rmSync(SNAP_PATH, { force: true }); } catch { /* */ }
   try { fn(); process.stdout.write(`  PASS ${name}\n`); passed++; }
   catch (err) { process.stdout.write(`  FAIL ${name}: ${err.message}\n`); failed++; }
 }
@@ -65,6 +67,22 @@ test('no command → exit 1, usage', () => {
   const r = run([]);
   assert.strictEqual(r.code, 1);
   assert.ok(/Usage:/.test(r.err), 'usage printed');
+});
+
+test('materialize → exit 0 with hash + count; then snapshot reads it back present:true', () => {
+  seedEnriched('node-backend', 'aCliM1', 'txCliM1');
+  const m = run(['materialize']);
+  assert.strictEqual(m.code, 0, `materialize exit 0 (stderr=${m.err})`);
+  assert.ok(/"content_hash":/.test(m.out) && /"persona_count": 1/.test(m.out), 'prints hash + persona_count');
+  const s = run(['snapshot']);
+  assert.strictEqual(s.code, 0);
+  assert.ok(/"present": true/.test(s.out) && /node-backend/.test(s.out), 'the advisory read sees the persona');
+});
+
+test('snapshot with no materialized file → present:false, exit 0 (reputation-blind, not an error)', () => {
+  const s = run(['snapshot']);
+  assert.strictEqual(s.code, 0, 'absent snapshot is not an error');
+  assert.ok(/"present": false/.test(s.out), 'absent → present:false');
 });
 
 process.stdout.write(`\ncli.test.js (E4 reputation): ${passed} passed, ${failed} failed\n`);

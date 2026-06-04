@@ -72,6 +72,10 @@ const { log } = require('../hooks/_lib/_log.js');
 // best-effort cleanup-on-error per H.9.8) — closes torn-read race + simplifies
 // audit trail.
 const { writeAtomicString } = require('../_lib/atomic-write.js');
+// v3.4 Wave 3 (A6): the kernel reads the lab-materialized reputation snapshot AS A FILE (K12-clean —
+// no lab import; the §3.6 Lab→Kernel mediation). The reader is bounded + fail-open + self-verifying;
+// it NEVER throws and NEVER reads the ledger (O(1)) — fits the <50ms p99 close-hook budget.
+const { readEvolutionSnapshot } = require('../_lib/evolution-snapshot-read.js');
 const logger = log('spawn-record');
 
 const SPAWN_STATE_DIR = path.join(os.homedir(), '.claude', 'spawn-state');
@@ -87,6 +91,11 @@ const EXCERPT_HEAD = 512;
 const EXCERPT_TAIL = 256;
 const MAX_STDIN_BYTES = 10 * 1024 * 1024;  // 10MB defensive cap (code-reviewer MED-3)
 const DIR_MODE = 0o700;                    // hygienic mode for spawn-state (code-reviewer HIGH-2)
+// v3.4 Wave 3 (A6): byte-cap the INLINE reputation snapshot value in the envelope. The snapshot is
+// small (~18 personas) so this rarely fires; past the cap we drop the inline `value` but keep the
+// content_hash pin (replay can still verify WHICH snapshot) + watermark. Measured in UTF-8 BYTES
+// (verify-plan CR-HIGH-1) to match on-disk encoding, NOT String.length (UTF-16 code-units).
+const MAX_INLINE_SNAPSHOT_BYTES = 64 * 1024;
 
 // Secret-pattern scrub (code-reviewer HIGH-1). Applied to completion text
 // BEFORE bounded-excerpt capture. The sha256 is computed on the unscrubbed
@@ -256,12 +265,31 @@ function safeExcerpt(text, head, tail) {
 }
 
 /**
+ * v3.4 Wave 3 (A6): bound the snapshot for INLINE storage in the envelope. Defaults a missing read to
+ * {present:false}. Drops an oversized inline `value` (UTF-8 bytes > cap, or an unstringifiable value)
+ * but keeps the content_hash pin + watermark, flagging truncated:true. PURE (no I/O).
+ */
+function boundSnapshot(snap) {
+  const s = (snap && typeof snap === 'object' && !Array.isArray(snap)) ? snap : { present: false, reason: 'not-read' };
+  if (s.present && s.value != null) {
+    let bytes = Infinity;
+    try { bytes = Buffer.byteLength(JSON.stringify(s.value), 'utf8'); } catch { /* unstringifiable → truncate */ }
+    if (bytes > MAX_INLINE_SNAPSHOT_BYTES) return { ...s, value: null, truncated: true };
+  }
+  return s;
+}
+
+/**
  * Pure envelope construction — no clock side effects, no I/O. The diagnostics
  * block sets `hook_duration_ms: null` here; main() backfills it AFTER
  * writeEnvelope so the metric reflects the full I/O cost (code-reviewer
  * HIGH-3 + PRINCIPLE).
+ *
+ * `evolutionSnapshot` is read by main() (the I/O stays out of this pure fn) and recorded under
+ * axioms.evolution_snapshot.reputation (A6 records-not-injects; ADR-0012). Namespaced under
+ * `.reputation` so the INV-23 MVCC `prev_state_hash` pin can later be a sibling sub-field.
  */
-function buildEnvelope({ input, toolName, toolInput, toolResponse }) {
+function buildEnvelope({ input, toolName, toolInput, toolResponse, evolutionSnapshot }) {
   const rawSubagentType =
     toolInput.subagent_type || toolInput.subagent || toolInput.type || '';
   const subagentBase = normalizeSubagentType(rawSubagentType);
@@ -299,6 +327,11 @@ function buildEnvelope({ input, toolName, toolInput, toolResponse }) {
       input_description: description,
       session_id: input.session_id || input.sessionId || null,
       cwd: input.cwd || input.workspace || null,
+      // A6 (v3.4 Wave 3): the reputation derived-view promoted to an axiom-class attestation (v6:179
+      // carve-out). Namespaced under .reputation; INV-23's prev_state_hash MVCC pin is a deferred
+      // sibling. The kernel RECORDS this (it cannot inject it into the spawn — ADR-0012); the snapshot
+      // is read O(1) from the lab-materialized file in main() and bounded here for inline storage.
+      evolution_snapshot: { reputation: boundSnapshot(evolutionSnapshot) },
     },
     // Architect M2: bounded excerpts are ATTESTATIONS (claims about what the
     // spawn produced), NOT stochastic samples in the RFC §"Pivot 3" sense.
@@ -363,7 +396,10 @@ function main() {
 
   try {
     const { run_id, source } = resolveRunId(input);
-    const envelope = buildEnvelope({ input, toolName, toolInput, toolResponse });
+    // A6 (v3.4 Wave 3): read the reputation snapshot O(1), fail-open (never throws). INSIDE this try
+    // (verify-plan CR-MED-3) so any defensive edge stays under the fail-soft catch below.
+    const evolutionSnapshot = readEvolutionSnapshot();
+    const envelope = buildEnvelope({ input, toolName, toolInput, toolResponse, evolutionSnapshot });
     envelope.diagnostics.run_id_source = source;
     const file = writeEnvelope(envelope, run_id);
     // Backfill duration AFTER all I/O so the stored metric matches the
