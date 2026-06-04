@@ -165,10 +165,12 @@ test('a malformed leaf id → throws at the boundary (not an unhandled R6 throw 
 
 // ── 8. CLI boundary (code-reviewer LOW): missing flags + an unreadable --leaves file both exit 1
 //       with a clear message (the CLI never stack-dumps — it converts boundary throws cleanly).
-test('CLI: missing required flags → exit 1 + a clear message', () => {
+test('CLI: missing required flags → exit 1 + a clear message + the usability guidance', () => {
   const r = spawnSync(process.execPath, [CLI], { encoding: 'utf8' });
   assert.strictEqual(r.status, 1, 'CLI exits 1 on missing flags');
   assert.match(r.stderr, /missing required flag/);
+  assert.match(r.stderr, /DISTINCT --run-id/, 'usage surfaces the one-runId-per-run guidance (spawn-dogfood papercut)');
+  assert.match(r.stderr, /State roots/, 'usage surfaces the two state-root locations (spawn-dogfood papercut)');
 });
 
 test('CLI: an unreadable --leaves file → exit 1 + a clear message', () => {
