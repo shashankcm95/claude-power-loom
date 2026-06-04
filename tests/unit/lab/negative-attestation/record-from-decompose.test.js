@@ -143,5 +143,31 @@ test('a malformed rejected entry is skipped (fail-soft), valid siblings still re
   assert.strictEqual(summary.skipped, 2, 'two malformed entries skipped');
 });
 
+// ── 5b. ★ DoS guard (hacker VALIDATE — the HIGH): a non-flat failure_signature (a nested object/array
+//        value — a hand-crafted-outbox depth/width bomb) is skipped at the ingest boundary, BEFORE the
+//        recursive serializers (canonicalJsonSerialize + the verbatim writeLedger) ever see it. One
+//        hostile leaf must never fail the whole run's ingest — the flat siblings still record (never-drop
+//        for the good leaves). Shape-based rejection → deterministic, no reliance on actually overflowing.
+test('★ a non-flat (nested) failure_signature is skipped at the ingest boundary; flat siblings still record', () => {
+  let deep = {}; let cur = deep;
+  for (let i = 0; i < 200; i++) { cur.n = {}; cur = cur.n; } // a nested-object value
+  writeOutbox('run-dos', {
+    run_id: 'run-dos', persona: 'code-reviewer', task: 't',
+    admitted: [],
+    rejected: [
+      { id: 'good-1', failure_signature: sig('cost-justified') },
+      { id: 'deep-bomb', failure_signature: { ...sig('interface-clean'), nested: deep } },        // non-flat → skipped
+      { id: 'wide-bomb', failure_signature: { ...sig('resource-bounded'), arr: new Array(50000).fill(1) } }, // non-flat → skipped
+      { id: 'good-2', failure_signature: sig('discipline-gate') },
+    ],
+    all_rejected: true,
+  });
+  let summary;
+  assert.doesNotThrow(() => { summary = recordFromDecompose({ runId: 'run-dos' }); }, 'one hostile leaf must not abort the whole batch');
+  assert.strictEqual(summary.recorded, 2, 'both FLAT siblings recorded (good-1, good-2)');
+  assert.strictEqual(summary.skipped, 2, 'the deep + wide non-flat signatures skipped');
+  assert.strictEqual(listAttestations().length, 2, 'only the well-formed witnesses landed');
+});
+
 process.stdout.write(`\nrecord-from-decompose.test.js: ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);

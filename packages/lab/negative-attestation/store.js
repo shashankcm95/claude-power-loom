@@ -38,6 +38,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const { writeAtomicString } = require('../../kernel/_lib/atomic-write');
 const { acquireLock, releaseLock } = require('../../kernel/_lib/lock');
+const { canonicalJsonSerialize } = require('../../kernel/_lib/canonical-json');
 
 // Resolved ONCE at module-load (mirrors runState.js's RUN_STATE_BASE). Tests set
 // LOOM_LAB_STATE_DIR BEFORE requiring this module (the ENV-BEFORE-REQUIRE discipline).
@@ -54,6 +55,27 @@ const MAX_LEDGER_RECORDS = 10000; // M3: a count cap (time-expiry alone is unbou
 
 function sha256(s) {
   return crypto.createHash('sha256').update(s).digest('hex');
+}
+
+// canonical-basis (v3.4 Wave 0, design-input b): hash the failure_signature with SORTED keys so the
+// attestation_id is reproducible across independent runtime nodes — NOT dependent on the producer's
+// incidental key-insertion order. Every live caller passes the producer's flat 8-scalar block (the
+// C1 ingest additionally rejects non-flat signatures up front — see record-from-decompose), so the
+// catch is unreachable in practice; it exists as defense-in-depth.
+//
+// On the bound firing (a pathological non-producer signature) we DO NOT fall back to
+// JSON.stringify(sig): JSON.stringify is itself NON-total — it throws RangeError on deep nesting
+// (it recurses, like canonical) and on cycles, and on a wide blob it re-serializes the very
+// megabytes canonicalJsonSerialize's node bound just refused (hacker VALIDATE — the HIGH). Instead
+// we emit a unique non-content sentinel: the witness still records (the Lab is ADVISORY — never drop
+// a failure), with a non-dedupable id (exactly like the null-leafRef path). This is total by
+// construction (randomBytes + concat cannot throw) and never re-touches the attacker-controlled blob.
+function canonicalSigBasis(sig) {
+  try {
+    return canonicalJsonSerialize(sig);
+  } catch {
+    return 'uncomputable-sig:' + crypto.randomBytes(16).toString('hex');
+  }
 }
 
 // M2 (hacker VALIDATE) — advisory soft-lock. The kernel store's `withLock` does `process.exit(2)`
@@ -143,8 +165,11 @@ function recordAttestation(input) {
   // a true replay (identical signature) dedups; a DIFFERENT failure at the same leaf is a distinct
   // event → accumulates (the frequency the future E4 reads stays honest). The id is a re-derived
   // content-address, not a coincidental tuple (the INV-22 discipline). JSON-array = unambiguous
-  // separator (["a","bc"] ≠ ["ab","c"]; no raw control char).
-  const sigHash = sha256(JSON.stringify(o.failureSignature));
+  // separator (["a","bc"] ≠ ["ab","c"]; no raw control char). The SIGNATURE component is
+  // canonical-serialized (sorted keys — canonicalSigBasis) so the id is reproducible across nodes
+  // regardless of the producer's key-insertion order (design-input b); the string-array wrap stays
+  // JSON.stringify (already canonical for a fixed-order string array — no key-ordering to vary).
+  const sigHash = sha256(canonicalSigBasis(o.failureSignature));
   const attestationId = dedupable
     ? sha256(JSON.stringify([o.runId, leafRef, sigHash]))
     : sha256(JSON.stringify([o.runId, sigHash, crypto.randomBytes(8).toString('hex')]));
@@ -219,6 +244,7 @@ module.exports = {
   recordAttestation,
   listAttestations,
   pruneExpired,
+  canonicalSigBasis, // exported for the totality test (deterministic, no stack-fragile deep inputs)
   STORE_DIR,
   LEDGER_PATH,
   DEFAULT_EXPIRES_AFTER_DAYS,

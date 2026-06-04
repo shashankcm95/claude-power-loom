@@ -22,6 +22,18 @@ const { runStateDir } = require('../../kernel/_lib/runState');
 const { isSafePathSegment } = require('../../kernel/_lib/path-canonicalize'); // C1 — runId path-guard
 const { recordAttestation } = require('./store');
 
+// A well-formed failure_signature is the frozen ADR-0015 block: 8 FLAT scalar fields (string-or-null),
+// depth-1 (the schema is additionalProperties:false, all-scalar). The C1 ingest is untrusted (a
+// hand-crafted outbox), so reject any signature carrying a nested object/array value BEFORE recording.
+// This closes a deep/wide-nesting DoS at the boundary (hacker VALIDATE — the HIGH): a deeply-nested
+// signature would otherwise overflow the RECURSIVE serializers downstream (canonicalJsonSerialize AND
+// the verbatim JSONL writeLedger), throwing out of the un-try/caught loop and failing the WHOLE run's
+// ingest — denying every GOOD leaf its witness. Forward-tolerant: a future NEW scalar field still
+// passes (we reject nesting, not unknown keys).
+function isFlatScalarSignature(sig) {
+  return Object.values(sig).every((v) => v === null || typeof v !== 'object');
+}
+
 /**
  * Read + parse the decompose-run outbox for a run. Throws (bad runId / ENOENT / parse error) — the
  * CLI converts those into a clean exit, callers decide.
@@ -68,8 +80,9 @@ function recordFromDecompose(opts) {
   let deduped = 0;
   let skipped = 0;
   for (const r of rejected) {
-    if (!r || typeof r !== 'object' || !r.failure_signature || typeof r.failure_signature !== 'object') {
-      skipped += 1; // a malformed rejected entry is skipped, not fatal (fail-soft ingest)
+    if (!r || typeof r !== 'object' || !r.failure_signature || typeof r.failure_signature !== 'object'
+        || !isFlatScalarSignature(r.failure_signature)) {
+      skipped += 1; // malformed OR non-flat (untrusted-ingest DoS guard) — skipped, not fatal (fail-soft)
       continue;
     }
     const res = recordAttestation({
