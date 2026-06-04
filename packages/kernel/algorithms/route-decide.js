@@ -98,6 +98,13 @@ const KEYWORDS = {
     // H.7.11 — complex-systems cluster
     'distributed', 'replication', 'transaction', 'atomic',
     'idempotent', 'idempotency',
+    // drift:dictionary-gap (2026-06-03) — HIGH-PRECISION v3.2 substrate-component
+    // phrases (multi-word / hyphenated → zero general-task FP risk; no general SWE
+    // task says "spawn-verify" or "leaf-criteria"). The ambiguous single words
+    // (gate/dispatcher/validator) are DETECTION-ONLY (SUBSTRATE_META_TOKENS), NOT
+    // scored here, to avoid over-routing general tasks.
+    'spawn-verify', 'leaf-criteria', 'verification tier', 'failure-signature',
+    'test-runner adapter', 'kernel algorithm',
   ],
   // H.7.11 (ari): + `architectural` (synonym of `architecture`), + `refactor`/`refactoring`/`restructure`.
   // `refactor` is genuinely ambiguous; mitigated by compound_weak suppression-by-stakes.
@@ -165,8 +172,12 @@ const KEYWORDS = {
 };
 
 // H.7.16 (drift-note 9, mira architect pass) — substrate-meta token sentinel.
-// SEPARATE from KEYWORDS — these tokens do NOT contribute to scoring; they
-// only feed the [ROUTE-META-UNCERTAIN] forcing instruction.
+// These tokens feed the [ROUTE-META-UNCERTAIN] forcing instruction. The sentinel
+// itself does NOT score — BUT per the drift:dictionary-gap hybrid (2026-06-03), a
+// HIGH-PRECISION subset of the Tier-2b substrate-architecture phrases is ALSO listed
+// in KEYWORDS.compound_strong (those DO score). The two lists overlap intentionally:
+// detection is BROAD (advisory; FP cost = a harmless extra advisory), scoring is
+// NARROW (zero-FP multi-word phrases only).
 //
 // The catch-22: when route-decide is invoked on a task that proposes modifying
 // route-decide itself (dictionary expansion, weight refit, threshold change),
@@ -201,6 +212,14 @@ const SUBSTRATE_META_TOKENS = [
   'scoring axis', 'routing axis',
   'forcing instruction', 'forcing-instruction',
   'signal token', 'sentinel keyword',
+  // Tier 2b (drift:dictionary-gap, 2026-06-03) — v3.2 Runtime-Decomposition
+  // substrate-architecture vocabulary. DETECTION-ONLY here (advisory); the
+  // high-precision multi-word subset ALSO scores in KEYWORDS.compound_strong.
+  // General-task FP cost is nil — a stray match only prints an extra advisory.
+  'verification tier', 'spawn-verify', 'leaf-criteria', 'leaf criteria',
+  'failure-signature', 'failure signature', 'test-runner', 'kernel algorithm',
+  'algorithm library', 'dispatcher', 'enforcement flip', 'a4 gate', 'a4-binding',
+  'trampoline', 'budget envelope',
 ];
 
 /**
@@ -241,20 +260,23 @@ function detectSubstrateMeta(lowerText) {
  */
 function buildMetaForcingInstruction(tokens, score, recommendation) {
   return `[ROUTE-META-UNCERTAIN]
-This task references substrate-meta tokens (route-decide, weights, dict
-expansion, etc.). When the proposed change modifies the routing scorer
-itself, the score above was computed using the CURRENT dictionary — which
-may not yet contain the tokens the proposed change would add. This is the
-substrate-meta routing catch-22 (drift-note 9, fixed by H.7.16 detection).
+This task references substrate-meta vocabulary — two cases the general routing
+dictionary under-scores:
+(a) CATCH-22 — if the change MODIFIES the routing scorer itself (route-decide,
+    weights, dict expansion), the score above used the CURRENT dictionary, which
+    may not yet contain the tokens the change would add.
+(b) SUBSTRATE-COMPONENT — building/modifying substrate machinery (dispatchers,
+    gates, validators, verification tiers, kernel algorithms) is usually
+    architect-shaped, but the general dictionary tends to under-score it.
 
 Detected substrate-meta tokens: ${tokens.join(', ')}
 Score: ${score} (recommendation: ${recommendation})
 
 Before trusting the recommendation:
-- If the proposed change would add tokens that this task already mentions,
-  the post-change score would be HIGHER than what's reported above
-- The recommendation may be one tier low (root → borderline, or
-  borderline → route)
+- The recommendation may be one tier low (root → borderline, or borderline → route)
+- A high-precision subset of substrate phrases now DOES score (compound_strong), so
+  part of (b) is already reflected — but ambiguous terms (gate/dispatcher) are
+  detection-only and add no score
 
 Recommended actions:
 - If task is genuinely architect-shaped, supply --force-route or spawn
