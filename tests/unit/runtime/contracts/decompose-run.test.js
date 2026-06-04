@@ -183,5 +183,45 @@ test('CLI: an unreadable --leaves file → exit 1 + a clear message', () => {
   assert.match(r.stderr, /cannot read\/parse/);
 });
 
+// ── 9. Wave-0 OUTBOX (v3.3 un-darkening): the CLI persists {run_id, persona, task, rejected[]} to
+//       <run-state>/<run-id>/decompose-result.json so the Lab E1 ingest can read it as a DATA file
+//       (no runtime→lab import). The rejected[] carries the VERBATIM failure_signature.
+test('CLI writes the decompose-result.json outbox with provenance + the rejected failure_signature', () => {
+  const leavesFile = path.join(TMP, 'outbox-leaves.json');
+  fs.writeFileSync(leavesFile, JSON.stringify([leafA(), leafD()])); // A admitted; D (no output_schema) rejected
+  const runId = 'outbox-test';
+  const r = spawnSync(
+    process.execPath,
+    [CLI, '--leaves', leavesFile, '--run-id', runId, '--persona', 'code-reviewer', '--task', 'pr-review', '--cwd', REPO_ROOT],
+    { encoding: 'utf8' },
+  );
+  assert.strictEqual(r.status, 0, 'CLI exits 0 (rejected leaf is a reported outcome, not a failure)');
+  const outboxPath = path.join(TMP, runId, 'decompose-result.json'); // TMP = HETS_RUN_STATE_DIR (inherited by the subprocess)
+  assert.ok(fs.existsSync(outboxPath), 'the outbox file was written to run-state');
+  const outbox = JSON.parse(fs.readFileSync(outboxPath, 'utf8'));
+  assert.strictEqual(outbox.run_id, runId, 'outbox carries run_id provenance');
+  assert.strictEqual(outbox.persona, 'code-reviewer', 'outbox carries persona provenance (E1 ingest attributes from this)');
+  assert.strictEqual(outbox.task, 'pr-review', 'outbox carries task provenance');
+  assert.strictEqual(outbox.rejected.length, 1, 'leaf-d rejected (no output_schema)');
+  assert.strictEqual(outbox.rejected[0].id, 'leaf-d');
+  assert.strictEqual(outbox.rejected[0].failure_signature.failed_criterion_id, 'interface-clean', 'verbatim signature in the outbox');
+});
+
+// ── 10. C1 (hacker VALIDATE — CRITICAL): a path-traversal --run-id is rejected BEFORE the outbox write.
+//        runDecomposition guards runId as a safe path segment up-front (the all-rejected path skips the
+//        trampoline's own guard), so a `../`-runId cannot make the outbox write escape run-state.
+test('CLI: a path-traversal --run-id is rejected (exit 1) — the outbox write cannot escape run-state', () => {
+  const leavesFile = path.join(TMP, 'trav-leaves.json');
+  fs.writeFileSync(leavesFile, JSON.stringify([leafD()])); // all-rejected (no schema) → skips the trampoline guard
+  const r = spawnSync(
+    process.execPath,
+    [CLI, '--leaves', leavesFile, '--run-id', '../../../../tmp/evil-escape', '--persona', 'p', '--task', 't', '--cwd', REPO_ROOT],
+    { encoding: 'utf8' },
+  );
+  assert.strictEqual(r.status, 1, 'CLI exits 1 on a traversal run-id');
+  assert.match(r.stderr, /safe path segment/i, 'rejected as an unsafe path segment');
+  assert.ok(!fs.existsSync('/tmp/evil-escape/decompose-result.json'), 'no outbox escaped run-state');
+});
+
 process.stdout.write(`\ndecompose-run.test.js: ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
