@@ -202,6 +202,7 @@ test('CLI writes the decompose-result.json outbox with provenance + the rejected
   assert.strictEqual(outbox.run_id, runId, 'outbox carries run_id provenance');
   assert.strictEqual(outbox.persona, 'code-reviewer', 'outbox carries persona provenance (E1 ingest attributes from this)');
   assert.strictEqual(outbox.task, 'pr-review', 'outbox carries task provenance');
+  assert.deepStrictEqual(outbox.admitted, ['leaf-a'], 'outbox carries the admitted set (forward contract for a v3.4 admit-rate consumer)');
   assert.strictEqual(outbox.rejected.length, 1, 'leaf-d rejected (no output_schema)');
   assert.strictEqual(outbox.rejected[0].id, 'leaf-d');
   assert.strictEqual(outbox.rejected[0].failure_signature.failed_criterion_id, 'interface-clean', 'verbatim signature in the outbox');

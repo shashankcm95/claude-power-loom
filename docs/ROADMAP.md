@@ -135,11 +135,51 @@ Run per `/phase-close v3.2` (the first dogfood of the gate built in #226) — th
 
 ---
 
-## ⬜ v3.3 / v3.4 — Evolution Lab
+## ✅ v3.3 — Evolution Lab Foundation (Wave 0 + E1)
 
-*~14–20h / ~35–55h + substantial human-authored seed content.*
+*Plan: [`2026-06-04-v3.3-evolution-lab-foundation-scope.md`](../packages/specs/plans/2026-06-04-v3.3-evolution-lab-foundation-scope.md) + the Wave-1 E1 plan + the [orchestration design-spike](../packages/specs/spikes/2026-06-04-v3.3-orchestration-design-spike.md) · [ADR-0015](../packages/specs/adrs/0015-failure-signature-schema-freeze.md) · PR #240. **RESHAPED** by a cumulative substrate-coherence pass to Wave 0 + E1; E2/E3/E4 → v3.4.*
 
-The Lab layer comes online: negative attestations (E1), derived-policy extraction (E2), a policy-axiom store fed through the A6 reputation snapshot (E3), reputation extension (E4) — then attribution graphs, convergence metrics, evolve/forge triggers, and reference test suites. This is where Axiom A5 (the substrate measures and evolves itself) is realized.
+The first **Layer-3 (Evolution Lab)** code. A cumulative-coherence pass (the discipline: *v6 is a blueprint, not the build — test that the WHOLE substrate up to the built point coheres, not just the phase; earlier-layer reality reshapes later design*) reshaped the chartered E1–E4 to **Wave 0 (un-darken) + E1 only** — E2/E3/E4 are volume-amplifiers (Jaccard clustering / recall ranking / EWMA) over a near-empty producer, deferred to v3.4 to be designed against real attestation distributions rather than 5 fixtures.
+
+**What shipped:**
+
+- **Wave 0 — the un-darkening:** `decompose-run` writes a result OUTBOX (`<run-state>/<run-id>/decompose-result.json`); the Lab **E1 ingest** reads it as a **data file** (no `runtime→lab` import — K12-clean; the Lab *pulls*, nothing pushes in) → records the rejected leaf's `failure_signature`. Live-dogfood-verified end-to-end: a real `code-reviewer` Agent spawn drove decompose-run → outbox → an E1 attestation on disk.
+- **E1 — negative-attestation store** (`packages/lab/negative-attestation/`): the advisory Layer-3 witness — wraps the [ADR-0015](../packages/specs/adrs/0015-failure-signature-schema-freeze.md) `failure_signature` **verbatim** into a durable, wall-clock-expiring record; **accumulate-not-dedup** (the signature is content-hashed into the event id, so distinct failures at one leaf accumulate); `verifier_kind` preserved (**R1**: the future E4 weighs measured `test-run` ≠ declared `structural`). Lab-owned append ledger; advisory-only; zero kernel-state writes.
+
+**Exit criteria — all MET:**
+
+| # | Criterion | Evidence |
+|---|---|---|
+| 1 | A real spawn drives `decompose-run` → ≥1 `failure_signature` reaches E1 | MUST-PROBE + the live dogfood (the spawn-half, a one-time empirical probe); the outbox→ingest→E1 **machine-half is durably tested** (the decompose-run + ingest suites) |
+| 2 | 5 deliberately-failing fixtures → structured, verbatim, `verifier_kind`-stratified records | `store.test.js` — the 5-criterion exit + the verbatim (8-field) check + the H1 accumulate-vs-replay lock |
+| 3 | 0 CRITICAL pair-review findings | the 3-lens VALIDATE found AND fixed C1 (CRITICAL — `runId` path-traversal) + H1 (HIGH — dedup-collision); honesty-auditor Grade-A |
+
+**Honest deployment posture:** v3.3 ships E1 **INERT** — there is no *new* production trigger (the decompose tier remains hook-unwired; the persona instinct-binding was deferred because a shipped general persona can't carry a substrate-internal path). v3.3 proves **module-composition-driven-by-a-real-spawn**, NOT Pattern-B (depth-1: a plugin-spawned persona has no Agent/Task tool, only Bash — it cannot sub-spawn), and the Lab can only learn *mechanical leaf-declaration* failures (the 4 structural enums; `semantically-cohesive` quality is advisory and never attested). The production decomposition trigger is v3.4 work.
+
+### Phase-close sign-off (2026-06-04)
+
+Run per `/phase-close v3.3` — three independent full-context lenses (PM = honesty-auditor; Principal-SDE = code-reviewer at phase altitude; Architect) reviewed the **integrated** phase against its exit criteria. **All three CLOSEABLE; 0 engineering must-fix.**
+
+- **PM** — Grade A / no-overclaim. The phase prose systematically *rounds down* (the reshape itself cut three primitives and said so). All three exit criteria met against durable artifacts (EC1's spawn-half honestly marked a one-time MUST-PROBE, not a continuously-verified capability).
+- **Principal-SDE** — all cross-layer seams clean (the runtime↔lab outbox data-contract is consistent end-to-end; the C1 `runId` guard is symmetric on both the outbox-write and the ingest-read; K12 = 0 findings).
+- **Architect** — phase design sound; E1's frozen record is a forward-complete contract for the deferred v3.4 E2/E4 consumers.
+
+The gate **earned its keep**: it caught this ROADMAP section's pre-reshape staleness (now corrected) + the `attestation_id` doc-decay (the as-built 3-component content-address `(run_id, leaf_ref, sig_hash)` vs the frozen 2-component §3c sketch — a strengthening from the H1 fix, now status-noted in the Wave-1 plan). Durable record: the `toolkit/phase-close/v3.3-close` library volume.
+
+---
+
+## ⬜ v3.4 — Evolution Lab Full
+
+*Est. ~30–55h + human-authored seed content. The deferred amplifiers + the production trigger.*
+
+The Lab layer comes to volume. **In scope:**
+
+- **E2 / E3 / E4** — derived-policy extraction (deterministic; the 4 structural enums + tag-Jaccard scope), the policy-axiom store + K4 recall, and the reputation extension (per-persona × per-task-type × per-quality-axis EWMA). Deferred from v3.3 as volume-amplifiers; design against real attestation distributions (trigger ≈ "≥N attestations across ≥M personas in normal use").
+- **The production decomposition trigger** — the open "how/when does a persona decompose its task in production" question (depth-1 + the general-persona-path constraint mean it can't simply bake into `agents/*.md`).
+- **R10-per-leaf** ([#234](https://github.com/shashankcm95/claude-power-loom/issues/234)) + **K2.c** per-tool-call observability.
+- **Earlier-layer decisions** (v3.3 scope §4.5): kernel shadow-permanence (does the resolver ever leave shadow before a Lab learns *from* the substrate at volume?); the dormant `computeRecencyDecay` (E4 must activate-or-supersede it, never run two half-live decay systems); and reconsider whether the kernel's high-volume **per-spawn resolver-journal** is a richer Lab input than decompose-run's low-volume per-leaf rejects.
+
+Then: attribution graphs, convergence metrics, evolve/forge triggers, reference test suites — where Axiom A5 (the substrate measures and evolves itself) is realized.
 
 ---
 
