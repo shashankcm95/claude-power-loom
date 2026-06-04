@@ -73,7 +73,13 @@ function finding(kind, message, extra) {
 // If a future algorithm genuinely needs nested export values, upgrade this to a
 // depth-counting brace scan AND relax the convention together.
 function exportBlock(src) {
-  const m = /module\.exports\s*=\s*\{([\s\S]*?)\}/.exec(src);
+  // Strip comments BEFORE matching (GH #229): a declared name appearing ONLY inside
+  // a comment in the export block (e.g. `// fooFn exported below`) must NOT count as
+  // exported — the bare regex would otherwise false-pass on it.
+  const noComments = String(src)
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')  // block comments
+    .replace(/\/\/[^\n]*/g, ' ');       // line comments
+  const m = /module\.exports\s*=\s*\{([\s\S]*?)\}/.exec(noComments);
   return m ? m[1] : null;
 }
 
@@ -157,6 +163,18 @@ function checkAlgorithmIntegrity(algo, rootDir, deps) {
     }
     if (src !== null) {
       const block = exportBlock(src);
+      // The export block MUST be a FLAT identifier list (the README convention):
+      // whitespace, commas, and identifier chars only. ANYTHING else — a nested `{`,
+      // a `key: value`, a string/template value — means the non-greedy exportBlock
+      // can't be trusted to have parsed the real top-level exports (it truncates at the
+      // first `}`, hiding or mis-reading names = false-pass). Reject non-flat blocks
+      // outright rather than mis-parse them (GH #229; closes the nested-literal AND the
+      // string/template-value false-positive the bare comment-strip would mishandle).
+      if (block !== null && !/^[\s,A-Za-z0-9_$]*$/.test(block)) {
+        errs.push(finding('algorithm-export-nonflat',
+          `algorithm "${algo.id}" module.exports is not a FLAT identifier list (nested object, key:value, or string/template value detected) — the convention requires \`module.exports = { a, b, c }\``,
+          { id: algo.id, fix: 'Flatten the export object to a comma-separated identifier list; move computed/nested values out of the export literal (or upgrade exportBlock to a real parse and relax the convention together).' }));
+      }
       const missing = (Array.isArray(algo.exports) ? algo.exports : [])
         .filter((name) => !(block && blockHasName(block, name)));
       if (missing.length > 0) {
@@ -176,7 +194,10 @@ function checkAlgorithmIntegrity(algo, rootDir, deps) {
   return errs;
 }
 
-// ---------- unregistered-file scan (*.js allowlist) ----------
+// ---------- unregistered-file scan (flag-unless-allowlisted) ----------
+
+// Non-algorithm files legitimately allowed alongside the registered *.js algorithms.
+const NON_ALGORITHM_ALLOWLIST = new Set(['manifest.json', 'README.md']);
 
 function checkUnregistered(manifest, rootDir, deps) {
   const errs = [];
@@ -194,13 +215,34 @@ function checkUnregistered(manifest, rootDir, deps) {
     return errs;
   }
   const registered = new Set(manifest.algorithms.map((a) => a.file));
+  // FLAG-UNLESS-ALLOWLISTED + TYPE-CHECK (GH #229): the prior `!name.endsWith('.js') →
+  // skip` silently allowed .mjs/.cjs, subdirectory names, and symlinks to evade the
+  // "no unregistered code" gate. Now: skip dotfiles + the known non-algorithm files;
+  // reject by TYPE any symlink or subdirectory (the lstat is what closes a `.js`-NAMED
+  // symlink — a name-only check would treat it as the registered algorithm and read its
+  // target); then require a registered, regular-file *.js. NOTE: a symlink's *target*
+  // escape (where it points) still needs the ContainerAdapter fs-sandbox — out of scope.
   for (const name of entries) {
-    if (!name.endsWith('.js')) continue; // allowlist: skips manifest.json / README.md / dotfiles (F4)
-    if (!registered.has(name)) {
+    if (name.startsWith('.')) continue;              // dotfiles (.DS_Store, .gitkeep, …)
+    if (NON_ALGORITHM_ALLOWLIST.has(name)) continue; // manifest.json / README.md
+    let st = null;
+    try { st = deps.lstatSync(path.join(dir, name)); } catch { st = null; }
+    if (st && typeof st.isSymbolicLink === 'function' && st.isSymbolicLink()) {
       errs.push(finding('algorithm-unregistered',
-        `unregistered algorithm file: ${ALGORITHMS_DIR_REL}/${name} (not in manifest.algorithms)`,
-        { file: name, fix: `Register ${name} in manifest.json (with a unit test), or move it to kernel/_lib if it is not an algorithm.` }));
+        `symlink not allowed in ${ALGORITHMS_DIR_REL}: ${name} (algorithms must be real, flat .js files — a symlink target is unverifiable here)`,
+        { file: name, fix: `Replace ${name} with the real .js file, or remove it.` }));
+      continue;
     }
+    if (st && typeof st.isDirectory === 'function' && st.isDirectory()) {
+      errs.push(finding('algorithm-unregistered',
+        `unexpected subdirectory in ${ALGORITHMS_DIR_REL}: ${name} (algorithms must be flat .js files — no subdirectories)`,
+        { file: name, fix: `Flatten ${name} into registered .js algorithms, or move it out of the algorithms dir.` }));
+      continue;
+    }
+    if (registered.has(name)) continue;              // a registered, regular-file algorithm
+    errs.push(finding('algorithm-unregistered',
+      `unregistered entry in ${ALGORITHMS_DIR_REL}: ${name} — only registered .js algorithms (+ manifest.json/README.md) are allowed; algorithms must be flat .js files (no subdirectories, .mjs/.cjs, or symlinks)`,
+      { file: name, fix: `Register ${name} in manifest.json (with a unit test), move it to kernel/_lib if it is not an algorithm, or remove it.` }));
   }
   return errs;
 }
@@ -222,6 +264,7 @@ function auditAlgorithmLibrary(opts) {
     existsSync: fs.existsSync,
     readFileSync: fs.readFileSync,
     readdirSync: fs.readdirSync,
+    lstatSync: fs.lstatSync,  // GH #229: type-detection (symlink/dir) in checkUnregistered
     ...(o.deps || {}),
   };
   const errors = [];

@@ -57,9 +57,11 @@ const algoDirPath = (root) => path.join(root, ALGO_DIR_REL);
 // Build a fake deps object. `contents` = readable files (path→source); `present`
 // = paths that exist but aren't read (test files); `unreadable` = exist but
 // readFileSync throws; `dirEntries` = readdirSync map.
-function makeDeps({ contents = {}, present = [], unreadable = [], dirEntries = {} } = {}) {
+function makeDeps({ contents = {}, present = [], unreadable = [], dirEntries = {}, dirs = [], symlinks = [] } = {}) {
   const presentSet = new Set([...present, ...unreadable, ...Object.keys(contents)]);
   const unreadableSet = new Set(unreadable);
+  const dirsSet = new Set(dirs);          // full paths that lstat as directories
+  const symlinksSet = new Set(symlinks);  // full paths that lstat as symlinks
   return {
     existsSync: (p) => presentSet.has(p),
     readFileSync: (p) => {
@@ -71,6 +73,12 @@ function makeDeps({ contents = {}, present = [], unreadable = [], dirEntries = {
       if (Object.prototype.hasOwnProperty.call(dirEntries, p)) return dirEntries[p];
       throw new Error('ENOTDIR: ' + p);
     },
+    // GH #229: type-detection for checkUnregistered. Default for any path: regular file.
+    lstatSync: (p) => ({
+      isSymbolicLink: () => symlinksSet.has(p),
+      isDirectory: () => dirsSet.has(p),
+      isFile: () => !symlinksSet.has(p) && !dirsSet.has(p),
+    }),
   };
 }
 
@@ -216,6 +224,106 @@ test('(synthetic) algorithm-unregistered flags exactly the rogue .js, not the no
   const unreg = errors.filter((e) => e.kind === 'algorithm-unregistered');
   assert.strictEqual(unreg.length, 1, 'exactly one unregistered finding');
   assert.ok(/rogue\.js/.test(unreg[0].message), 'names the rogue file');
+});
+
+// ---- hardening: scan + export bypass closures (GH #229; insider assume-breach) ----
+
+test('(hardening) a .mjs file is flagged unregistered (extension-evasion closed)', () => {
+  const deps = makeDeps({
+    contents: { [algoFilePath(ROOT, 'route-decide.js')]: 'module.exports = { scoreTask };' },
+    present: [repoPath(ROOT, ROUTE_TEST_REL)],
+    dirEntries: { [algoDirPath(ROOT)]: ['route-decide.js', 'evil.mjs', 'manifest.json', 'README.md'] },
+  });
+  const { errors } = audit(cleanManifest(), deps);
+  const unreg = errors.filter((e) => e.kind === 'algorithm-unregistered');
+  assert.strictEqual(unreg.length, 1, 'the .mjs is flagged');
+  assert.ok(/evil\.mjs/.test(unreg[0].message), 'names the .mjs file');
+});
+
+test('(hardening) a .cjs file is flagged unregistered (extension-evasion closed — both .mjs and .cjs)', () => {
+  const deps = makeDeps({
+    contents: { [algoFilePath(ROOT, 'route-decide.js')]: 'module.exports = { scoreTask };' },
+    present: [repoPath(ROOT, ROUTE_TEST_REL)],
+    dirEntries: { [algoDirPath(ROOT)]: ['route-decide.js', 'evil.cjs', 'manifest.json', 'README.md'] },
+  });
+  const { errors } = audit(cleanManifest(), deps);
+  assert.ok(errors.filter((e) => e.kind === 'algorithm-unregistered').some((e) => /evil\.cjs/.test(e.message)), 'the .cjs is flagged');
+});
+
+test('(hardening) a subdirectory is flagged BY TYPE via lstat (non-flat / recursion-evasion closed)', () => {
+  const deps = makeDeps({
+    contents: { [algoFilePath(ROOT, 'route-decide.js')]: 'module.exports = { scoreTask };' },
+    present: [repoPath(ROOT, ROUTE_TEST_REL)],
+    dirEntries: { [algoDirPath(ROOT)]: ['route-decide.js', 'sub', 'manifest.json', 'README.md'] },
+    dirs: [algoFilePath(ROOT, 'sub')],
+  });
+  const { errors } = audit(cleanManifest(), deps);
+  assert.ok(errors.filter((e) => e.kind === 'algorithm-unregistered').some((e) => /subdirectory/.test(e.message) && /sub/.test(e.message)),
+    'the subdirectory is flagged by type (algorithms must be flat .js files)');
+});
+
+test('(hardening) a symlink NAMED like a registered algorithm is flagged BY TYPE (symlink-evasion closed)', () => {
+  const deps = makeDeps({
+    contents: { [algoFilePath(ROOT, 'route-decide.js')]: 'module.exports = { scoreTask };' },
+    present: [repoPath(ROOT, ROUTE_TEST_REL)],
+    dirEntries: { [algoDirPath(ROOT)]: ['route-decide.js', 'manifest.json', 'README.md'] },
+    symlinks: [algoFilePath(ROOT, 'route-decide.js')], // the registered NAME is actually a symlink
+  });
+  const { errors } = audit(cleanManifest(), deps);
+  assert.ok(errors.filter((e) => e.kind === 'algorithm-unregistered').some((e) => /symlink/.test(e.message) && /route-decide\.js/.test(e.message)),
+    'a .js-named symlink is flagged even though its name is registered (lstat fires before the registered-name check)');
+});
+
+test('(hardening) the manifest.json/README.md allowlist + dotfiles stay UNflagged after the stricter scan', () => {
+  // regression guard: flag-unless-allowlisted must not flag the legit non-algorithm files
+  const { errors } = audit(cleanManifest(), cleanDeps());
+  assert.ok(!kinds(errors).includes('algorithm-unregistered'), 'manifest.json/README.md/.DS_Store remain allowed');
+});
+
+test('(hardening) an export name present ONLY in a comment is NOT counted as exported (false-pass closed)', () => {
+  const deps = makeDeps({
+    // scoreTask appears only inside a comment; the real exports omit it
+    contents: { [algoFilePath(ROOT, 'route-decide.js')]: 'module.exports = {\n  // scoreTask is exported (TODO)\n  ROUTE_THRESHOLD, ROOT_THRESHOLD,\n};' },
+    present: [repoPath(ROOT, ROUTE_TEST_REL)],
+    dirEntries: { [algoDirPath(ROOT)]: ['route-decide.js'] },
+  });
+  const m = cleanManifest(); m.algorithms[0].exports = ['scoreTask', 'ROUTE_THRESHOLD', 'ROOT_THRESHOLD'];
+  const { errors } = audit(m, deps);
+  const miss = errors.filter((e) => e.kind === 'algorithm-export-missing');
+  assert.strictEqual(miss.length, 1, 'export-missing flagged for the comment-only name');
+  assert.ok(/scoreTask/.test(miss[0].message), 'names the comment-only export as missing');
+});
+
+test('(hardening) a nested object literal in module.exports is flagged non-flat (false-pass closed)', () => {
+  const deps = makeDeps({
+    contents: { [algoFilePath(ROOT, 'route-decide.js')]: 'module.exports = { scoreTask, opts: { secret } };' },
+    present: [repoPath(ROOT, ROUTE_TEST_REL)],
+    dirEntries: { [algoDirPath(ROOT)]: ['route-decide.js'] },
+  });
+  const { errors } = audit(cleanManifest(), deps);
+  assert.ok(kinds(errors).includes('algorithm-export-nonflat'), 'nested export literal flagged (convention: flat exports only)');
+});
+
+test('(hardening) a string/template VALUE in module.exports is flagged non-flat (M-1: clear error, not a confusing false-missing)', () => {
+  const deps = makeDeps({
+    contents: { [algoFilePath(ROOT, 'route-decide.js')]: 'module.exports = { scoreTask, tag: `x${1}y` };' },
+    present: [repoPath(ROOT, ROUTE_TEST_REL)],
+    dirEntries: { [algoDirPath(ROOT)]: ['route-decide.js'] },
+  });
+  const { errors } = audit(cleanManifest(), deps);
+  assert.ok(kinds(errors).includes('algorithm-export-nonflat'), 'a key:value / template in the export block is non-flat');
+});
+
+test('(hardening, M-1 regression) a legit FLAT export stays clean despite a // inside a string ELSEWHERE in the source', () => {
+  const src = 'const BASE = "https://api.example.com"; // base url\nfunction scoreTask() {}\nmodule.exports = { scoreTask };';
+  const deps = makeDeps({
+    contents: { [algoFilePath(ROOT, 'route-decide.js')]: src },
+    present: [repoPath(ROOT, ROUTE_TEST_REL)],
+    dirEntries: { [algoDirPath(ROOT)]: ['route-decide.js'] },
+  });
+  const { errors } = audit(cleanManifest(), deps);
+  assert.ok(!kinds(errors).some((k) => k.startsWith('algorithm-export-')),
+    `a flat export must stay clean even with // in an unrelated string; got ${JSON.stringify(kinds(errors))}`);
 });
 
 // ---- schema (differing required-field sets — architect I-4) ----
