@@ -184,4 +184,4 @@ function runTrampoline(opts) {
   }
 }
 
-module.exports = { runTrampoline };
+module.exports = { runTrampoline, MAX_LEAVES };

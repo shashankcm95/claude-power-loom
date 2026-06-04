@@ -1,0 +1,41 @@
+[
+  {
+    "id": "leaf-a",
+    "content": "Produce the foo artifact per the bar spec",
+    "discipline": "spec-driven",
+    "estimated_tokens": 1500,
+    "output_schema": { "result": "string" },
+    "tags": ["a"],
+    "inputs": ["spec"],
+    "allows_subspawn": false
+  },
+  {
+    "id": "leaf-b",
+    "content": "Implement foo with a bounded, well-defined input",
+    "discipline": "tdd",
+    "estimated_tokens": 1500,
+    "output_schema": { "result": "string" },
+    "tags": ["b"],
+    "verification": { "runner": "node", "testFile": "tests/unit/runtime/verify/fixtures/passing.fixture.js" },
+    "allows_subspawn": false
+  },
+  {
+    "id": "leaf-c",
+    "content": "Implement baz; its declared test currently fails",
+    "discipline": "tdd",
+    "estimated_tokens": 1500,
+    "output_schema": { "result": "string" },
+    "tags": ["c"],
+    "verification": { "runner": "node", "testFile": "tests/unit/runtime/verify/fixtures/failing.fixture.js" },
+    "allows_subspawn": false
+  },
+  {
+    "id": "leaf-d",
+    "content": "A leaf that declares no structured output",
+    "discipline": "spec-driven",
+    "estimated_tokens": 1500,
+    "tags": ["d"],
+    "inputs": ["spec"],
+    "allows_subspawn": false
+  }
+]
