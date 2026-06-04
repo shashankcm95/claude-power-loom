@@ -28,6 +28,7 @@ const fs = require('fs');
 const { verifySpawn } = require('../verify/spawn-verify'); // R11 (→ R9 + R12)
 const { runTrampoline, MAX_LEAVES } = require('./trampoline'); // R6 (→ R7 + R10); MAX_LEAVES = the fan-out cap
 const { isSafePathSegment } = require('./_lib/safe-segment'); // shared raw-token id guard (same as R6)
+const { runStateDir } = require('../../kernel/_lib/runState'); // CLI cleanup-path hint only
 
 /**
  * Run a Pattern-A decomposition end-to-end: verify each leaf, then trampoline the admitted set.
@@ -120,7 +121,9 @@ function runDecomposition(opts) {
 // RELATIVE — it is resolved against `--cwd` (default: process.cwd()) so the demo fixture is
 // portable. Uses the DEFAULT run-state (gitignored swarm/run-state) — no HETS_RUN_STATE_DIR
 // manipulation, so the module-load RUN_STATE_BASE capture is never an issue. Use a DISTINCT
-// --run-id per invocation (R7 replaces the ledger).
+// --run-id per invocation (R7 replaces the ledger). STATE ROOTS (clean up BOTH): the checkpoint
+// + leaf folders live under swarm/run-state/<run-id>/; an ABORTED transaction record lives under
+// ~/.claude/spawn-state/<run-id>/records/. The CLI echoes the run-state path on stderr after a run.
 
 function parseArgs(argv) {
   const args = {};
@@ -140,6 +143,8 @@ function runCli(argv) {
   if (missing.length > 0) {
     process.stderr.write(`decompose-run: missing required flag(s): ${missing.map((m) => `--${m}`).join(', ')}\n`);
     process.stderr.write('Usage: decompose-run.js --leaves <file.json> --run-id X --persona Y --task Z [--cwd <dir>] [--max-depth N]\n');
+    process.stderr.write('  NB use a DISTINCT --run-id per invocation — R7 replaces the run ledger, so a reused id silently clobbers the prior run.\n');
+    process.stderr.write('  State roots (clean up BOTH): swarm/run-state/<run-id>/ (checkpoint + leaf folders) and ~/.claude/spawn-state/<run-id>/records/ (transaction records).\n');
     process.exit(1);
   }
   const cwd = typeof args.cwd === 'string' ? path.resolve(args.cwd) : process.cwd();
@@ -185,6 +190,10 @@ function runCli(argv) {
     return; // unreachable after exit; satisfies control-flow analysis
   }
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+  // Cleanup hint (spawn-dogfood usability finding): the JSON's trampoline.appendResult.file reveals
+  // the transaction-record path (on ABORTED), but NOT the run-state path — echo it so a caller can
+  // clean up BOTH state roots. To stderr so it never pollutes the JSON on stdout.
+  process.stderr.write(`decompose-run: run-state (checkpoint + leaf folders) under ${runStateDir(args['run-id'])}\n`);
   // Exit 0 even when leaves are rejected/aborted — those are valid, reported outcomes, NOT a CLI
   // failure. A non-zero exit is reserved for a usage/IO/boundary error (handled above).
   process.exit(0);
