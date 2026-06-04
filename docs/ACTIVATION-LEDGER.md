@@ -20,9 +20,10 @@ This is the build-time form of the layered-architecture principle: *the runtime 
 
 | Feature | Built? | Output / producer | Consumer | Activation fate |
 |---|---|---|---|---|
-| Kernel per-spawn journal (`record-store`) | live-fed, shadow | provenance records (`transaction_id`, `post_state_hash`) | E4 (evidence-link anchor) | **CONSUMED v3.4** (Wave 1) — its first consumer |
+| Kernel per-spawn journal (`record-store`) | live-fed, shadow | provenance records (`transaction_id`, `post_state_hash`) | verdict-attestation enricher (W1) → E4 | **CONSUMER BUILT v3.4 (Wave 1)** — the enricher resolves agentId→`transaction_id`; CI verifies the logic against a fixture journal + the F4 canary guards the line shape; LIVE-stream consumption is dogfood-verified-once, not yet CI-guarded |
+| **Verdict-attestation store** (`lab/verdict-attestation`, NEW) | **built, shadow** (Wave 1) | evidence-linked verdict-emission attestations (subject/verifier + agentId→`transaction_id`) | E4 (Wave 2) | **BUILT v3.4 (Wave 1)** — the net-new producer; consumer E4 planned next phase (Phasing rule ✓) |
 | `computeRecencyDecay` | called, display-only (`registry.js:611`) | a `recency_decay_factor` diagnostic | E4 | **CONSUMED v3.4** — activate-or-supersede in E4 |
-| Reviewer-verdict signal (`verdict-recording.js`) | live (manual CLI) | persona-keyed verdict counts | E4 | **CONSUMED v3.4** — needs the net-new evidence-linked record first (Wave 1) |
+| Reviewer-verdict signal (`verdict-recording.js`) | live (manual CLI) | persona-keyed verdict counts (no spawn-link) | (the W1 evidence-linked record is E4's input) | **ADDITIVE v3.4 (Wave 1)** — legacy counter stays; E4 reads the new evidence-linked record, not this |
 | A6 snapshot mechanism | not built | the derived-view→routing mediator | (it IS the consumer-enabler) | **BUILT v3.4** (Wave 3) |
 | E4 reputation | deferred from v3.3 | reputation aggregate | A6 → routing | **BUILT v3.4** (Wave 2) |
 | E1 negative-attestation | built, starved | `failure_signature`s | E2 (policy) | consumer = **v3.5**; E1 stays low-volume |
@@ -48,4 +49,4 @@ This single decision collapses most of the "when does it turn on" ambiguity. **�
 
 ## How v3.4 corrects the drift
 
-v3.4 is the first **consumer-first** phase: it closes ONE producer→consumer loop on the verified layer below (kernel-provenance → E4 → A6 → routing) instead of building another dark producer. The Producer–Consumer Phasing rule above is the build-gate that keeps it from drifting back. The integration is **bottom-up, one loop at a time** — not a far-off "wire it all together at the end."
+v3.4 is the first **consumer-first** phase: it closes ONE producer→consumer loop on the verified layer below (kernel-provenance → verdict-attestation store [W1] → E4 [W2] → A6 [W3] → routing) instead of building another dark producer. **Wave 1 (this) builds the producer + its in-wave consumer (the enricher, which verifies each link resolves to a real kernel record) — so the loop is closed end-to-end in shadow before E4 stacks on top.** The Producer–Consumer Phasing rule above is the build-gate that keeps it from drifting back. The integration is **bottom-up, one loop at a time** — not a far-off "wire it all together at the end."

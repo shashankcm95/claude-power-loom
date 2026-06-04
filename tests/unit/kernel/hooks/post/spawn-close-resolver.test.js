@@ -901,6 +901,16 @@ test('[real git] P2b #1: clean committed worktree -> record appended; post_state
     assert.strictEqual(provEntry.record_appended, true, 'record_appended must be true on a successful store write');
     assert.strictEqual(provEntry.record_reason, null, 'record_reason must be null when the append succeeded');
 
+    // F4 CANARY (v3.4 Wave 1) — the verdict-attestation ENRICHER depends on this exact journal-line
+    // shape: packages/lab/verdict-attestation/enrich-from-spawn-state.js resolves agentId→kernel
+    // record by reading `spawn_id` + `transaction_id` from the shadow-provenance-record line (its
+    // frozen data contract, fact #4). A rename/removal of either key silently breaks that cross-layer
+    // link — this fails loudly in the KERNEL suite instead of silently in a Lab enricher nobody runs.
+    assert.strictEqual(provEntry.spawn_id, 'clean01', 'F4: provenance line must carry spawn_id (the Lab enricher join key)');
+    assert.ok(typeof provEntry.transaction_id === 'string' && provEntry.transaction_id.length > 0,
+      'F4: provenance line must carry a non-empty transaction_id (the Lab enricher resolves agentId→this)');
+    assert.strictEqual(provEntry.transaction_id, rec.transaction_id, 'F4: the journaled transaction_id matches the stored record');
+
     g(['worktree', 'remove', '--force', wtPath]);
   } finally {
     fs.rmSync(baseDir, { recursive: true, force: true });
