@@ -8,6 +8,18 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [3.2.0] — 2026-06-04 — v3.2 Runtime Decomposition
+
+**Minor release** (additive — new runtime modules + 2 lifecycle hooks + commands; no breaking kernel change. `.claude-plugin/plugin.json` `3.1.0 → 3.2.0`, the SemVer signal [ADR-0007](packages/specs/adrs/0007-v290-minor-bump-rationale.md) reserves for MINOR). Ships the **v3.2 Runtime Decomposition** substrate — phase-closed 2026-06-04 (3-lens CLOSEABLE; [`docs/ROADMAP.md`](docs/ROADMAP.md)).
+
+- **Decomposition + verification tier** (`#214`–`#224`): R6 Pattern-A trampoline + R7 checkpoints + R8 disciplines + R10 budget envelope (Wave 1); R9 leaf-criteria + R11 spawn-verify dispatcher + R12 test-runner adapters → the [ADR-0015](packages/specs/adrs/0015-failure-signature-schema-freeze.md) `failure_signature` frozen witness (Wave 2). **K11 algorithm library + the A4-binding gate** flipped to `enforcement:"error"` (Wave 3, `#227`).
+- **Integration consumer** (`#237`): `decompose-run` — the first live composition of the two tiers (verify each leaf → trampoline the admitted), with an end-to-end integration test + a live dogfood. Validated **drivable by a real Agent spawn** end-to-end (2026-06-04: COMPLETED + budget-ABORTED runs, all `failure_signature` fields correct, the ABORTED record durable on disk).
+- **Tooling**: the `/phase-close` phase-level verification gate (`#226`); the `catalog-reconcile` lifecycle hooks (`#218`).
+
+**Activation surface (honest)**: this release **activates** the 2 `catalog-reconcile` hooks (SessionStart + PostToolUse:`Edit|Write` — fail-soft, ~70ms, library-catalog maintenance) and makes `/phase-close` a live command. The **decomposition tier (R6–R12) ships INERT** — import-only with no hook wiring, so it does not run in a live session until a future consumer wires it (deferred to v3.3, where the orchestration design belongs). v3.2 is validated as a **composition** (the `decompose-run` integration test + the spawn-driven dogfood), not yet as an auto-fired Agent-spawn lifecycle.
+
+---
+
 ## [3.1.0] — 2026-06-02 — v3.x kernel train (Runtime Foundation)
 
 **First published release of the v3.x kernel + runtime substrate** (bumps `.claude-plugin/plugin.json` `2.9.1 → 3.1.0` — a MAJOR jump: the kernel surface changes incompatibly with v2.9 readers, the signal [ADR-0009](packages/specs/adrs/0009-major-bump-rationale.md) reserves for MAJOR). The planned `3.0.0-alpha` train was never cut; per the ADR-0009 amendment it is **consolidated into this `3.1.0` release**. The shadow-default spawn-close transaction loop is **dogfood-proven LIVE in a real session (2026-06-02)** across all three dispatch arms (shadow / enforcing / candidate) — HEAD untouched in every arm. Full phase accounting in [`docs/ROADMAP.md`](docs/ROADMAP.md).

@@ -94,7 +94,7 @@ Closed following the cadence: a **PM lens** (honesty-auditor — claim-vs-eviden
 
 ## ✅ v3.2 — Runtime Decomposition
 
-*Plan: [`2026-06-02-v3.2-runtime-decomposition-scope.md`](../packages/specs/plans/2026-06-02-v3.2-runtime-decomposition-scope.md) · [ADR-0015](../packages/specs/adrs/0015-failure-signature-schema-freeze.md) · PRs #214–227 + #231/#232/#233. Est. ~16–22h.*
+*Plan: [`2026-06-02-v3.2-runtime-decomposition-scope.md`](../packages/specs/plans/2026-06-02-v3.2-runtime-decomposition-scope.md) · [ADR-0015](../packages/specs/adrs/0015-failure-signature-schema-freeze.md) · PRs #214–227 + #231/#232/#233 + #235–#237. Est. ~16–22h. · **Released 3.2.0** (2026-06-04).*
 
 HETS decomposition disciplines (trampolines, leaf criteria, budget envelope, spawn-verify dispatcher, test-runner adapters) + **K11** kernel algorithm library — the point at which Axiom A4 (algorithmic discipline is kernel work) becomes binding.
 

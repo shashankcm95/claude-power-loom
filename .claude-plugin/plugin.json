@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "power-loom",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "_phase0Comment": "Phase 0 (v3.0-alpha) workspace restructure: skills/commands/rules + hooks moved into packages/. Path fields below are advisory per design spec §5; Step 11 upgrade-over probe validates Claude Code's plugin loader resolves the new layout. Fallback if discovery breaks: top-level symlinks.",
   "skills": "./packages/skills/library",
   "commands": "./packages/skills/commands",
