@@ -77,6 +77,15 @@ function parseArgs(argv) {
   return args;
 }
 
+// GH #230: the cat-family commands take a bare `<kb_id>` per the usage docs, but agents
+// naturally cite docs with the `kb:` prefix (the resolve-ref form), which silently
+// resolved to a non-existent `KB_BASE/kb:…/….md` path → "Not found". Tolerate an optional
+// leading `kb:` so `cat kb:security-dev/x` and `cat security-dev/x` both work. (resolve has
+// always stripped it via ref.slice(3); this makes the kb_id-taking commands consistent.)
+function stripKbPrefix(id) {
+  return (typeof id === 'string' && id.startsWith('kb:')) ? id.slice(3) : id;
+}
+
 // H.8.7 (chaos H4): parseFrontmatter extracted to ./_lib/frontmatter.js
 // (see require at top of file). The previous inline implementation supported
 // only inline arrays and stripped null literals as plain strings; the canonical
@@ -152,7 +161,7 @@ function loadDoc(kbId) {
 }
 
 function cmdCat(args) {
-  const kbId = args._[0];
+  const kbId = stripKbPrefix(args._[0]);
   if (!kbId) { console.error('Usage: cat <kb_id>'); process.exit(1); }
   const doc = loadDoc(kbId);
   if (!doc) { console.error(`Not found: ${kbId}`); process.exit(1); }
@@ -242,7 +251,7 @@ function extractSections(body, startName, endName) {
 }
 
 function cmdCatSummary(args) {
-  const kbId = args._[0];
+  const kbId = stripKbPrefix(args._[0]);
   if (!kbId) { console.error('Usage: cat-summary <kb_id>'); process.exit(1); }
   const doc = loadDoc(kbId);
   if (!doc) { console.error(`Not found: ${kbId}`); process.exit(1); }
@@ -258,7 +267,7 @@ function cmdCatSummary(args) {
 }
 
 function cmdCatQuickRef(args) {
-  const kbId = args._[0];
+  const kbId = stripKbPrefix(args._[0]);
   if (!kbId) { console.error('Usage: cat-quick-ref <kb_id>'); process.exit(1); }
   const doc = loadDoc(kbId);
   if (!doc) { console.error(`Not found: ${kbId}`); process.exit(1); }
@@ -292,7 +301,7 @@ function cmdCatQuickRef(args) {
 }
 
 function cmdHash(args) {
-  const kbId = args._[0];
+  const kbId = stripKbPrefix(args._[0]);
   if (!kbId) { console.error('Usage: hash <kb_id>'); process.exit(1); }
   const doc = loadDoc(kbId);
   if (!doc) { console.error(`Not found: ${kbId}`); process.exit(1); }
@@ -421,7 +430,7 @@ function cmdSnapshot(args) {
 }
 
 function cmdRegister(args) {
-  const kbId = args._[0];
+  const kbId = stripKbPrefix(args._[0]);
   if (!kbId) { console.error('Usage: register <kb_id>'); process.exit(1); }
   const doc = loadDoc(kbId);
   if (!doc) {
