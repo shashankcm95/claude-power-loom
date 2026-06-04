@@ -172,12 +172,21 @@ The gate **earned its keep**: it caught this ROADMAP section's pre-reshape stale
 
 *Est. ~30–55h + human-authored seed content. The deferred amplifiers + the production trigger.*
 
-The Lab layer comes to volume. **In scope:**
+The Lab layer comes to volume.
 
-- **E2 / E3 / E4** — derived-policy extraction (deterministic; the 4 structural enums + tag-Jaccard scope), the policy-axiom store + K4 recall, and the reputation extension (per-persona × per-task-type × per-quality-axis EWMA). Deferred from v3.3 as volume-amplifiers; design against real attestation distributions (trigger ≈ "≥N attestations across ≥M personas in normal use").
+**Shipped waves (in progress):**
+
+- **Wave 0** — determinism carry-overs + the `canonical-json` `kernel/_lib` leaf (#242).
+- **Wave 1** — the evidence-linked verdict-attestation store + the agentId→`transaction_id` enricher + the F4 kernel canary (#243).
+- **Wave 2** — **E4** reputation derived-view (display-only projection over W1; INV-W1 enriched-only) + the shared `recency-decay` leaf (#244); the bounded JSONL-read deep-fix (#245).
+- **Wave 3 — A6 snapshot mediator** *(this wave)* — the kernel **records** the lab-materialized reputation snapshot into `axioms.evolution_snapshot.reputation` at spawn-close (**records-not-injects**, ADR-0012), read O(1) as a data file (§3.6, K12-clean) + hash-self-verified (INV-22); **atomic-rename supersession** (no invalidation — v6:179/408); the `reputation materialize` / `snapshot` advisory read path — a CLI surface a future router would consume; nothing is wired to it yet (§0a.3.1 "MAY recommend"). **The kernel STAYS shadow** — A6 records + advises, never gates K9 (the "leave shadow?" decision, resolved NO). New leaf `kernel/_lib/evolution-snapshot-read` (4th extract-to-leaf). [Probe spike](../packages/specs/spikes/2026-06-04-v3.4-wave3-a6-probe.md).
+
+**Remaining in scope:**
+
+- **E2 / E3** — derived-policy extraction (deterministic; the 4 structural enums + tag-Jaccard scope) + the policy-axiom store + K4 recall (via A6). Design against real attestation distributions (trigger ≈ "≥N attestations across ≥M personas in normal use"). *(E4 reputation shipped W2+W3.)*
 - **The production decomposition trigger** — the open "how/when does a persona decompose its task in production" question (depth-1 + the general-persona-path constraint mean it can't simply bake into `agents/*.md`).
 - **R10-per-leaf** ([#234](https://github.com/shashankcm95/claude-power-loom/issues/234)) + **K2.c** per-tool-call observability.
-- **Earlier-layer decisions** (v3.3 scope §4.5): kernel shadow-permanence (does the resolver ever leave shadow before a Lab learns *from* the substrate at volume?); the dormant `computeRecencyDecay` (E4 must activate-or-supersede it, never run two half-live decay systems); and reconsider whether the kernel's high-volume **per-spawn resolver-journal** is a richer Lab input than decompose-run's low-volume per-leaf rejects.
+- **Earlier-layer decisions** (v3.3 scope §4.5): kernel shadow-permanence — **partially resolved (W3): the kernel stays shadow for A6; reputation never enters K9 this phase** (leaving shadow is a separate `LOOM_RESOLVER_ENFORCE`-class phase); the `computeRecencyDecay` activate-or-supersede — **resolved (W2): one shared leaf, two display consumers**; and reconsider whether the kernel's high-volume **per-spawn resolver-journal** is a richer Lab input than decompose-run's low-volume per-leaf rejects.
 
 Then: attribution graphs, convergence metrics, evolve/forge triggers, reference test suites — where Axiom A5 (the substrate measures and evolves itself) is realized.
 
