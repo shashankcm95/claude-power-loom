@@ -1,10 +1,10 @@
 {
   "name": "@power-loom/lab",
-  "version": "0.0.0-empty",
+  "version": "0.0.0",
   "private": true,
-  "description": "Loom Evolution Lab layer (v4 §2 Layer 3). Adaptive cognition; experimental; PATCH-iterable; NEVER promoted to kernel without ADR. Empty home created by Phase 0; v3.3+ fills it (negative-attestation, policy-axioms, reputation, attribution, convergence, evolve, review, circuit-breaker).",
+  "description": "Loom Evolution Lab layer (v4 §2 Layer 3). Adaptive cognition; experimental; PATCH-iterable; NEVER promoted to kernel without ADR. v3.3 lit the first primitive — negative-attestation (E1); policy-axioms / reputation / attribution / convergence / evolve / review / circuit-breaker remain home-only (v3.4+).",
   "scripts": {
-    "test": "echo '(lab is empty in v3.0-alpha — no tests)' && exit 0"
+    "test": "echo '(lab unit tests run via the CI lab-tests job over tests/unit/lab/**/*.test.js)' && exit 0"
   },
   "dependencies": {
     "@power-loom/kernel": "workspace:*",

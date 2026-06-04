@@ -28,7 +28,8 @@ const fs = require('fs');
 const { verifySpawn } = require('../verify/spawn-verify'); // R11 (→ R9 + R12)
 const { runTrampoline, MAX_LEAVES } = require('./trampoline'); // R6 (→ R7 + R10); MAX_LEAVES = the fan-out cap
 const { isSafePathSegment } = require('./_lib/safe-segment'); // shared raw-token id guard (same as R6)
-const { runStateDir } = require('../../kernel/_lib/runState'); // CLI cleanup-path hint only
+const { runStateDir } = require('../../kernel/_lib/runState'); // CLI cleanup-path hint + Wave-0 outbox
+const { writeAtomic } = require('../../kernel/_lib/atomic-write'); // Wave-0 outbox (v3.3 un-darkening)
 
 /**
  * Run a Pattern-A decomposition end-to-end: verify each leaf, then trampoline the admitted set.
@@ -53,6 +54,15 @@ function runDecomposition(opts) {
   } = o;
   if (!Array.isArray(leaves) || leaves.length === 0) {
     throw new Error('runDecomposition: leaves must be a non-empty array');
+  }
+  // C1 (hacker VALIDATE — CRITICAL): guard runId as a safe path segment BEFORE it reaches
+  // runStateDir(runId) — both the Wave-0 outbox write (runCli) and the R7 checkpoint path.join it.
+  // runTrampoline guards runId too, but ONLY when ≥1 leaf is admitted; the ALL-REJECTED path (the
+  // primary E1 case — rejected leaves are what the outbox carries) skips the trampoline, so an
+  // unguarded `../`-runId would traverse on the outbox write. Guard the RAW segment PRE-join
+  // (path.join collapses `..` before any post-join check — the #215 trap-class).
+  if (!isSafePathSegment(runId)) {
+    throw new Error(`runDecomposition: runId ${JSON.stringify(runId)} is not a safe path segment — no separators or '..' allowed`);
   }
   // BOUNDARY VALIDATION up-front, BEFORE the expensive verify phase (each tdd leaf spawns a
   // real R12 subprocess) — hacker VALIDATE H1 + M1:
@@ -188,6 +198,24 @@ function runCli(argv) {
     process.stderr.write(`decompose-run: ${e.message}\n`);
     process.exit(1);
     return; // unreachable after exit; satisfies control-flow analysis
+  }
+  // Wave 0 (v3.3 un-darkening): persist the result to a run-state OUTBOX so the Lab-side E1
+  // negative-attestation consumer can read the rejected[] failure_signatures via a DATA-FILE READ —
+  // NOT a runtime→lab import (which K12 would flag; the layer edge stays a data contract, not code).
+  // Best-effort: an outbox-write failure must NEVER fail the decomposition (stdout is authoritative).
+  // The outbox carries PROVENANCE (run_id/persona/task) the bare result lacks, so the E1 ingest needs
+  // only `--run-id` — it never has to be told the persona (and so can't be told the WRONG one).
+  try {
+    writeAtomic(path.join(runStateDir(args['run-id']), 'decompose-result.json'), {
+      run_id: args['run-id'],
+      persona: args.persona,
+      task: args.task,
+      admitted: result.admitted,
+      rejected: result.rejected,
+      all_rejected: result.allRejected,
+    });
+  } catch (e) {
+    process.stderr.write(`decompose-run: outbox write skipped (${e.message})\n`);
   }
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   // Cleanup hint (spawn-dogfood usability finding): the JSON's trampoline.appendResult.file reveals
