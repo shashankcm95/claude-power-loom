@@ -52,6 +52,21 @@
     failed=$((failed + 1))
   fi
 
+  # Test 43b (GH #230): kb-resolver cat-family tolerates the `kb:` prefix. Agents cite
+  # docs as `kb:<id>`; previously cat/cat-summary/hash/etc. only accepted the bare id and
+  # silently returned "Not found" on the prefixed form. The prefixed result must equal the
+  # bare result (and be non-empty).
+  local h230_prefixed h230_bare
+  h230_prefixed=$(node "$SCRIPT_DIR/packages/runtime/orchestration/kb-resolver.js" cat-summary "kb:architecture/crosscut/single-responsibility" 2>/dev/null)
+  h230_bare=$(node "$SCRIPT_DIR/packages/runtime/orchestration/kb-resolver.js" cat-summary "architecture/crosscut/single-responsibility" 2>/dev/null)
+  if echo "$h230_prefixed" | grep -q '## Summary' && [ "$h230_prefixed" = "$h230_bare" ]; then
+    echo "  ✓ kb-resolver: GH #230 cat-family tolerates the kb: prefix (prefixed == bare)"
+    passed=$((passed + 1))
+  else
+    echo "  ✗ kb-resolver: GH #230 cat kb:<id> should equal cat <bare-id>, both non-empty"
+    failed=$((failed + 1))
+  fi
+
   # Test 44 (H.8.1): architecture-relevance-detector matches state-mutation signal
   # and returns idempotency refs
   local h8_1_state_result
