@@ -51,7 +51,9 @@ const LEDGER_PATH = path.join(STORE_DIR, 'ledger.jsonl');
 const LOCK_PATH = path.join(STORE_DIR, '.lock');
 
 const SCHEMA_VERSION = 'v3.4';
-const DEFAULT_EXPIRES_AFTER_DAYS = 30; // matches E1 + the reputation RECENCY_HALF_LIFE_DAYS
+// A ledger SIZE bound (drop the record). COINCIDENTALLY equal to E4's recency TIME-CONSTANT
+// (RECENCY_HALF_LIFE_DAYS, a decay WEIGHT) — NOT the same knob; do not "DRY" them together (verify-plan MEDIUM-1).
+const DEFAULT_EXPIRES_AFTER_DAYS = 30;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const LOCK_WAIT_MS = 2000;        // bounded; the advisory store never blocks longer than this
 const MAX_LEDGER_RECORDS = 10000; // a count cap (time-expiry alone is unbounded under a flood)
@@ -83,12 +85,22 @@ function readLedger() {
   let raw;
   try {
     raw = fs.readFileSync(LEDGER_PATH, 'utf8');
-  } catch {
-    return []; // ENOENT (no ledger yet) or unreadable → empty
+  } catch (err) {
+    // ENOENT (no ledger yet) → quietly empty. Any OTHER read error (e.g. the file grew past V8's
+    // ~512MB string ceiling, or a permission error) is a REAL failure — warn, don't vanish silently
+    // (VALIDATE hacker H1: a silent [] makes the reputation view blank with no signal). Advisory:
+    // still return [] (never crash the caller), but LOUDLY.
+    if (!err || err.code !== 'ENOENT') {
+      try { process.stderr.write(`verdict-attestation: ledger unreadable (${(err && (err.code || err.message)) || 'unknown'}) — treating as empty (advisory)\n`); } catch { /* ignore */ }
+    }
+    return [];
   }
-  return raw
-    .split('\n')
-    .filter((line) => line.length > 0)
+  let lines = raw.split('\n').filter((line) => line.length > 0);
+  // VALIDATE hacker M3 — bound the PARSE cost: a hand-written ledger can exceed the write-path cap;
+  // keep only the newest MAX_LEDGER_RECORDS lines (append-only → newest last), symmetric with the
+  // writeLedger cap (so a normally-written ledger is unaffected; a flooded one can't drive O(n) parse).
+  if (lines.length > MAX_LEDGER_RECORDS) lines = lines.slice(-MAX_LEDGER_RECORDS);
+  return lines
     .map((line) => { try { return JSON.parse(line); } catch { return null; } })
     .filter(Boolean);
 }
