@@ -8,6 +8,17 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [3.3.0] — 2026-06-04 — v3.3 Evolution Lab Foundation (Wave 0 + E1)
+
+**Minor release** (additive — the first Layer-3 / Evolution Lab modules + a `lab-tests` CI job; no breaking kernel/runtime change. `.claude-plugin/plugin.json` `3.2.0 → 3.3.0`, the SemVer signal [ADR-0007](packages/specs/adrs/0007-v290-minor-bump-rationale.md) reserves for MINOR). Ships the **v3.3 Evolution Lab Foundation** — phase-closed 2026-06-04 (3-lens CLOSEABLE; [`docs/ROADMAP.md`](docs/ROADMAP.md)). **RESHAPED** by a cumulative substrate-coherence pass to **Wave 0 + E1**; E2/E3/E4 deferred to v3.4 (volume-amplifiers over a near-empty producer — designed against real attestation volume when it exists).
+
+- **Wave 0 — the un-darkening** (`#240`): `decompose-run` writes a result OUTBOX (`<run-state>/<run-id>/decompose-result.json`); the Lab **E1 ingest** reads it as a **data file** (no `runtime→lab` import — K12-clean; the Lab *pulls*) → records the rejected leaf's `failure_signature` as a negative attestation. Live-dogfood-verified end-to-end: a real `code-reviewer` Agent spawn drove decompose-run → outbox → an E1 attestation on disk.
+- **E1 — negative-attestation store** (`packages/lab/negative-attestation/`): the advisory Layer-3 witness — wraps the [ADR-0015](packages/specs/adrs/0015-failure-signature-schema-freeze.md) `failure_signature` **verbatim** into a durable, wall-clock-expiring record; **accumulate-not-dedup** (the signature is content-hashed into the event id); `verifier_kind` preserved (**R1** — the future E4 weighs measured `test-run` ≠ declared `structural`). The 3-lens VALIDATE found AND fixed **C1** (CRITICAL — `runId` path-traversal on both the outbox-write + the ingest-read) + **H1** (HIGH — dedup-collision).
+
+**Activation surface (honest)**: this release **activates NOTHING new in a live session.** v3.3 ships E1 **INERT** — the decomposition tier remains hook-unwired and the persona instinct-binding was deferred (a shipped general persona can't carry a substrate-internal path), so nothing in production emits or ingests a `failure_signature` yet. v3.3 is validated as **module-composition-driven-by-a-real-spawn** (the MUST-PROBE dogfood + the fixture tests) — NOT Pattern-B (depth-1: a plugin-spawned persona has no Agent/Task tool, so it can't sub-spawn) and NOT an auto-fired production loop. The production decomposition trigger is deferred to v3.4. The only live session surfaces remain the v3.2 `catalog-reconcile` hooks + `/phase-close`.
+
+---
+
 ## [3.2.0] — 2026-06-04 — v3.2 Runtime Decomposition
 
 **Minor release** (additive — new runtime modules + 2 lifecycle hooks + commands; no breaking kernel change. `.claude-plugin/plugin.json` `3.1.0 → 3.2.0`, the SemVer signal [ADR-0007](packages/specs/adrs/0007-v290-minor-bump-rationale.md) reserves for MINOR). Ships the **v3.2 Runtime Decomposition** substrate — phase-closed 2026-06-04 (3-lens CLOSEABLE; [`docs/ROADMAP.md`](docs/ROADMAP.md)).

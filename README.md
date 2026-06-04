@@ -6,7 +6,7 @@
 >
 > **It makes long-horizon agent failures cheap, observable, and reversible. It does _not_ make the underlying LLM smarter.** That honesty is the project's design anchor.
 
-[![CI](https://github.com/shashankcm95/claude-power-loom/actions/workflows/ci.yml/badge.svg)](https://github.com/shashankcm95/claude-power-loom/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Phase](https://img.shields.io/badge/substrate-v3.2%20(runtime%20decomposition)-orange.svg)](docs/ROADMAP.md) [![Plugin](https://img.shields.io/badge/Claude_Code-plugin-orange.svg)](.claude-plugin/plugin.json)
+[![CI](https://github.com/shashankcm95/claude-power-loom/actions/workflows/ci.yml/badge.svg)](https://github.com/shashankcm95/claude-power-loom/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Phase](https://img.shields.io/badge/substrate-v3.3%20(evolution%20lab%20foundation)-orange.svg)](docs/ROADMAP.md) [![Plugin](https://img.shields.io/badge/Claude_Code-plugin-orange.svg)](.claude-plugin/plugin.json)
 
 ---
 
@@ -47,13 +47,13 @@ For the full rationale see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). For t
 
 ## Status
 
-It is distributed as a **Claude Code plugin**, now at **v3.2.0** — the **v3.x kernel + runtime substrate** (v3.1.0 was the first published cut; the prior published line was v2.9.x).
+It is distributed as a **Claude Code plugin**, now at **v3.3.0** — the **v3.x kernel + runtime + Lab substrate** (v3.1.0 was the first published cut; the prior published line was v2.9.x).
 
-**Three phases are complete: Phase 1-alpha (the pure kernel transaction loop), v3.1 (Runtime Foundation), and v3.2 (Runtime Decomposition).** Phase 1-alpha shipped **11 kernel primitives** (atop the pre-existing `K5` validators; sub-PRs `#167`–`#175`, all merged). **v3.1** then built the first runtime layer on top: the persona/capability runtime (**R1–R4** two-tier contracts + the agent.md↔contract reconciliation validator), the live shadow-default **spawn-close transaction loop**, and **INV-22** in-substrate idempotency (`#179`–`#200`). **v3.2** added the **decomposition + verification tier** (R6–R12) + the **K11** algorithm library with the **A4-binding gate enforcing**, phase-closed 2026-06-04 (`#214`–`#237`); its decomposition tier ships **inert** (import-only, no hook wiring) pending a v3.3 consumer. Kernel-primitive status:
+**Four phases are complete: Phase 1-alpha (the pure kernel transaction loop), v3.1 (Runtime Foundation), v3.2 (Runtime Decomposition), and v3.3 (Evolution Lab Foundation — Wave 0 + E1).** Phase 1-alpha shipped **11 kernel primitives** (atop the pre-existing `K5` validators; sub-PRs `#167`–`#175`, all merged). **v3.1** then built the first runtime layer on top: the persona/capability runtime (**R1–R4** two-tier contracts + the agent.md↔contract reconciliation validator), the live shadow-default **spawn-close transaction loop**, and **INV-22** in-substrate idempotency (`#179`–`#200`). **v3.2** added the **decomposition + verification tier** (R6–R12) + the **K11** algorithm library with the **A4-binding gate enforcing**, phase-closed 2026-06-04 (`#214`–`#237`). **v3.3** lit the first **Layer-3 (Evolution Lab)** code — the **un-darkening** (`decompose-run` writes an outbox → the Lab **E1 negative-attestation** ingest reads it; dogfood-proven a real spawn drives it end-to-end) + the **E1** store, phase-closed 2026-06-04 (`#240`); RESHAPED by a cumulative-coherence pass to Wave 0 + E1 (E2/E3/E4 → v3.4). Both the decomposition tier and E1 ship **inert** (no production hook trigger yet — that's v3.4). Kernel-primitive status:
 
 | Live | Dormant | Advisory | Dropped / Deferred |
 |---|---|---|---|
-| K1 K2 K3 K4 K7 K9 K10 K13 K14 | **K3.b** · **K6** (shipped v3.1) | **K12** (layer-boundary lint) | **K8** (dropped — [ADR-0012](packages/specs/adrs/0012-capability-enforcement-is-static-not-runtime-injected.md)) · K11 → v3.2 · K2.c → v3.3 |
+| K1 K2 K3 K4 K7 K9 K10 K13 K14 | **K3.b** · **K6** (shipped v3.1) | **K12** (layer-boundary lint) | **K8** (dropped — [ADR-0012](packages/specs/adrs/0012-capability-enforcement-is-static-not-runtime-injected.md)) · K11 → v3.2 · K2.c → v3.4 |
 
 "Dormant" = the code ships with **no production importer yet** (a CI gate enforces it) — for K6, the reconciliation validator does its own containment check, so K6 awaits a v3.2+ runtime consumer. "Advisory" = it **warns, never blocks**. See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the phase-by-phase plan and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#kernel-primitives) for what each primitive does.
 

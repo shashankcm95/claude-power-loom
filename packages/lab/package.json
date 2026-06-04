@@ -7,7 +7,6 @@
     "test": "echo '(lab unit tests run via the CI lab-tests job over tests/unit/lab/**/*.test.js)' && exit 0"
   },
   "dependencies": {
-    "@power-loom/kernel": "workspace:*",
-    "@power-loom/runtime": "workspace:*"
+    "@power-loom/kernel": "workspace:*"
   }
 }
