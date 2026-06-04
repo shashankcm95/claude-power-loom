@@ -6,7 +6,7 @@
 >
 > **It makes long-horizon agent failures cheap, observable, and reversible. It does _not_ make the underlying LLM smarter.** That honesty is the project's design anchor.
 
-[![CI](https://github.com/shashankcm95/claude-power-loom/actions/workflows/ci.yml/badge.svg)](https://github.com/shashankcm95/claude-power-loom/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Phase](https://img.shields.io/badge/substrate-v3.1%20(runtime%20foundation)-orange.svg)](docs/ROADMAP.md) [![Plugin](https://img.shields.io/badge/Claude_Code-plugin-orange.svg)](.claude-plugin/plugin.json)
+[![CI](https://github.com/shashankcm95/claude-power-loom/actions/workflows/ci.yml/badge.svg)](https://github.com/shashankcm95/claude-power-loom/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Phase](https://img.shields.io/badge/substrate-v3.2%20(runtime%20decomposition)-orange.svg)](docs/ROADMAP.md) [![Plugin](https://img.shields.io/badge/Claude_Code-plugin-orange.svg)](.claude-plugin/plugin.json)
 
 ---
 
@@ -47,9 +47,9 @@ For the full rationale see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). For t
 
 ## Status
 
-It is distributed as a **Claude Code plugin**, now at **v3.1.0** — the first published release of the **v3.x kernel train** (the kernel + runtime substrate; the prior published line was v2.9.x).
+It is distributed as a **Claude Code plugin**, now at **v3.2.0** — the **v3.x kernel + runtime substrate** (v3.1.0 was the first published cut; the prior published line was v2.9.x).
 
-**Two phases are complete: Phase 1-alpha (the pure kernel transaction loop) and v3.1 (Runtime Foundation).** Phase 1-alpha shipped **11 kernel primitives** (atop the pre-existing `K5` validators; sub-PRs `#167`–`#175`, all merged). **v3.1** then built the first runtime layer on top: the persona/capability runtime (**R1–R4** two-tier contracts + the agent.md↔contract reconciliation validator), the live shadow-default **spawn-close transaction loop**, and **INV-22** in-substrate idempotency (`#179`–`#200`). Kernel-primitive status:
+**Three phases are complete: Phase 1-alpha (the pure kernel transaction loop), v3.1 (Runtime Foundation), and v3.2 (Runtime Decomposition).** Phase 1-alpha shipped **11 kernel primitives** (atop the pre-existing `K5` validators; sub-PRs `#167`–`#175`, all merged). **v3.1** then built the first runtime layer on top: the persona/capability runtime (**R1–R4** two-tier contracts + the agent.md↔contract reconciliation validator), the live shadow-default **spawn-close transaction loop**, and **INV-22** in-substrate idempotency (`#179`–`#200`). **v3.2** added the **decomposition + verification tier** (R6–R12) + the **K11** algorithm library with the **A4-binding gate enforcing**, phase-closed 2026-06-04 (`#214`–`#237`); its decomposition tier ships **inert** (import-only, no hook wiring) pending a v3.3 consumer. Kernel-primitive status:
 
 | Live | Dormant | Advisory | Dropped / Deferred |
 |---|---|---|---|
@@ -57,7 +57,7 @@ It is distributed as a **Claude Code plugin**, now at **v3.1.0** — the first p
 
 "Dormant" = the code ships with **no production importer yet** (a CI gate enforces it) — for K6, the reconciliation validator does its own containment check, so K6 awaits a v3.2+ runtime consumer. "Advisory" = it **warns, never blocks**. See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the phase-by-phase plan and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#kernel-primitives) for what each primitive does.
 
-> ⚠️ Early major release. **v3.1.0** is the first published cut of the v3.x kernel; its surface changes incompatibly with v2.9 readers (the MAJOR bump — see [ADR-0009](packages/specs/adrs/0009-major-bump-rationale.md)). Expect the kernel schema to keep evolving across v3.x minors as runtime consumers (v3.2+) land — pin a version if you depend on it.
+> ⚠️ Early major release. **v3.1.0** is the first published cut of the v3.x kernel; its surface changes incompatibly with v2.9 readers (the MAJOR bump — see [ADR-0009](packages/specs/adrs/0009-major-bump-rationale.md)). Expect the kernel schema to keep evolving across v3.x minors as runtime consumers (v3.3+) land — pin a version if you depend on it.
 
 ---
 
