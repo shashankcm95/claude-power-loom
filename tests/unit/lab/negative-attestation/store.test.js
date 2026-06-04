@@ -162,5 +162,47 @@ test('containment: ledger is under LOOM_LAB_STATE_DIR; the store module touches 
   assert.deepStrictEqual(forbidden, [], `store.js imports no kernel/identity STATE store (advisory-only) — found: ${forbidden.join(', ')}`);
 });
 
+// ── 9. ★ design-input (b) (v3.4 Wave 0): the attestation_id's signature component is canonical
+//       (sorted-keys) hashed, so two nodes that build the SAME failure_signature with DIFFERENT key
+//       insertion order compute the SAME id → the second is correctly recognized as a replay (dedup
+//       fires). Under the prior JSON.stringify basis these would diverge → a phantom duplicate. The
+//       in-test guard asserts the two encodings actually differ (so the test is non-vacuous).
+test('★ design-input (b): key-reordered content-identical signatures → same attestation_id → dedup fires', () => {
+  const base = sig({ failed_criterion_id: 'cost-justified', expected: 'tokens>=500', observed: 'tokens=120' });
+  const reordered = {};
+  Object.keys(base).reverse().forEach((k) => { reordered[k] = base[k]; });
+  // precondition: the reorder genuinely changed insertion order (the OLD JSON.stringify basis WOULD diverge)…
+  assert.notStrictEqual(JSON.stringify(base), JSON.stringify(reordered), 'precondition: the two key orders differ');
+  // …yet the content is identical
+  assert.deepStrictEqual(reordered, base, 'precondition: same content, only key order differs');
+
+  const rec1 = store.recordAttestation({ failureSignature: base, identity: ident(), runId: 'b1', leafRef: 'L', now: T0 });
+  const res2 = store.recordAttestation({ failureSignature: reordered, identity: ident(), runId: 'b1', leafRef: 'L', now: T0 });
+  assert.strictEqual(res2.deduped, true, 'the key-reordered replay dedups (same canonical id)');
+  assert.strictEqual(res2.attestation_id, rec1.attestation_id, 'cross-node reproducible: same id regardless of key order');
+  assert.strictEqual(store.listAttestations({ now: T0 }).length, 1, 'exactly one row — no phantom duplicate');
+});
+
+// ── 10. ★ canonicalSigBasis is TOTAL (hacker VALIDATE — the HIGH fix): on the canonical depth/node
+//        bound firing it emits a unique sentinel — it NEVER falls back to JSON.stringify, which is
+//        itself non-total (it RangeErrors on deep nesting, like canonical, and re-serializes a wide
+//        blob the node bound just refused). Tested at the helper: deterministic, because canonical's
+//        bounds are call-local COUNTERS (stack-independent) — not a stack-fragile deep recordAttestation.
+test('★ canonicalSigBasis is total: normal → sorted-canonical; bound-tripping → unique sentinel, never a throw', () => {
+  // normal path: sorted-key canonical (the design-input-b property)
+  assert.strictEqual(store.canonicalSigBasis({ b: 2, a: 1 }), '{"a":1,"b":2}', 'normal input → sorted canonical');
+  // depth past MAX_CANONICAL_DEPTH (100) → canonical throws → sentinel: NO throw, NOT a JSON.stringify re-serialize
+  let deep = {}; let cur = deep;
+  for (let i = 0; i < 130; i++) { cur.n = {}; cur = cur.n; }
+  let basis;
+  assert.doesNotThrow(() => { basis = store.canonicalSigBasis(deep); }, 'a deep object must not throw');
+  assert.ok(typeof basis === 'string' && basis.length > 0, 'returns a string basis');
+  assert.notStrictEqual(basis, JSON.stringify(deep), 'the sentinel is NOT a JSON.stringify re-serialize of the blob');
+  // width past MAX_CANONICAL_NODES (10000) → canonical throws → sentinel too
+  assert.doesNotThrow(() => store.canonicalSigBasis(new Array(10001).fill(1)), 'a wide structure must not throw');
+  // the sentinel is unique per call (non-dedupable — it accumulates, like the null-leafRef path)
+  assert.notStrictEqual(store.canonicalSigBasis(deep), store.canonicalSigBasis(deep), 'sentinel is unique per call');
+});
+
 process.stdout.write(`\nstore.test.js: ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
