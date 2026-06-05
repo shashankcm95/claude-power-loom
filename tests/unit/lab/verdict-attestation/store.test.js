@@ -214,5 +214,50 @@ test('immutability: record + subject/verifier/evidence_refs are frozen', () => {
   assert.throws(() => { rec.verdict = 'fail'; }, TypeError, 'cannot mutate a frozen record (strict mode)');
 });
 
+// ── 13. ★ H-1 (VALIDATE hacker): agentId pins ONE subject spawn = ONE persona. A second persona for the
+//        same agentId is a MISLABEL — REJECT (fail-loud), never silently dedup-drop / split E4.
+test('★ H-1: same agentId under a DIFFERENT subject.persona → reject (mislabel), original survives', () => {
+  store.recordVerdict(vin({ now: T0 }));                                          // AGENT / node-backend
+  assert.throws(
+    () => store.recordVerdict(vin({ subject: { persona: 'ml-engineer' }, now: T0 })),
+    /mislabel|already attested|one spawn/i,
+    'a second persona for the same agentId is rejected',
+  );
+  const rows = store.listVerdicts({ now: T0 });
+  assert.strictEqual(rows.length, 1, 'the mislabel wrote nothing');
+  assert.strictEqual(rows[0].subject.persona, 'node-backend', 'the original persona survives');
+});
+
+// ── 13b. ★ H-1 inverse: the reject keys on agent_id, NOT persona — two DIFFERENT spawns of the SAME
+//         persona are legitimate distinct evidence and MUST accumulate (architect verify-plan guard).
+test('★ H-1 inverse: two different agentIds under one persona → accumulate (scan keys on agent_id)', () => {
+  store.recordVerdict(vin({ agentId: 'a104143b476ed011f', now: T0 }));
+  store.recordVerdict(vin({ agentId: 'b205254c587fe122a', now: T0 }));           // different spawn, same persona
+  assert.strictEqual(store.listVerdicts({ now: T0 }).length, 2, 'two spawns of one persona both recorded');
+});
+
+// ── 14. ★ M-1 (VALIDATE hacker): control chars (NUL/newline/CR/tab) in any string field corrupt the
+//        JSONL ledger / E4 grouping keys → REJECT at the store boundary. SHORT strings (a long value
+//        would hit the MAX_FIELD_LEN cap first → the control-char path would be untested — CR LOW).
+test('★ M-1: a control char in any string field → reject, never stored', () => {
+  assert.throws(() => store.recordVerdict(vin({ verifier: { identity: 'no\nva', kind: 'structural' } })), /control/i, 'newline in identity');
+  assert.throws(() => store.recordVerdict(vin({ verifier: { identity: 'nova', kind: 'str\tuct' } })), /control/i, 'tab in kind');
+  assert.throws(() => store.recordVerdict(vin({ subject: { persona: `node${String.fromCharCode(0)}be` } })), /control/i, 'NUL in persona');
+  assert.throws(() => store.recordVerdict(vin({ agentId: 'a104\r143b' })), /control/i, 'CR in agentId');
+  // M-A (VALIDATE hacker): C1 (0x80-0x9f) + Unicode line/para separators also rejected (E4 key-pollution).
+  assert.throws(() => store.recordVerdict(vin({ subject: { persona: `node${String.fromCharCode(0x2028)}be` } })), /control|separator/i, 'U+2028 line-sep in persona');
+  assert.throws(() => store.recordVerdict(vin({ verifier: { identity: `no${String.fromCharCode(0x85)}va`, kind: 'structural' } })), /control|separator/i, 'C1 NEL in identity');
+  assert.strictEqual(store.listVerdicts({ now: T0 }).length, 0, 'no control-char record stored');
+});
+
+// ── 15. ★ M-1: a path-hostile agentId (the enricher later path-joins agent_id — #215 trap-class) →
+//        REJECT via isSafePathSegment at the store (defense-in-depth first layer for the read path).
+test('★ M-1: a path-hostile agentId (traversal / separator) → reject, never stored', () => {
+  assert.throws(() => store.recordVerdict(vin({ agentId: '../../etc' })), /safe path segment/i, 'traversal');
+  assert.throws(() => store.recordVerdict(vin({ agentId: 'a/b' })), /safe path segment/i, 'separator');
+  assert.throws(() => store.recordVerdict(vin({ agentId: '..' })), /safe path segment/i, 'dotdot');
+  assert.strictEqual(store.listVerdicts({ now: T0 }).length, 0, 'no path-hostile agentId stored');
+});
+
 process.stdout.write(`\nstore.test.js (verdict-attestation): ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);

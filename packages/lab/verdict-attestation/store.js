@@ -43,6 +43,7 @@ const { writeAtomicString } = require('../../kernel/_lib/atomic-write');
 const { acquireLock, releaseLock } = require('../../kernel/_lib/lock');
 const { canonicalJsonSerialize } = require('../../kernel/_lib/canonical-json');
 const { readJsonlBounded } = require('../../kernel/_lib/jsonl-read');
+const { isSafePathSegment } = require('../../kernel/_lib/path-canonicalize'); // M-1: agentId path-safety
 
 // Resolved ONCE at module-load (the ENV-BEFORE-REQUIRE discipline; tests set LOOM_LAB_STATE_DIR first).
 const LAB_STATE_BASE = process.env.LOOM_LAB_STATE_DIR || path.join(os.homedir(), '.claude', 'lab-state');
@@ -126,21 +127,25 @@ function nonEmptyString(v) {
   return typeof v === 'string' && v.length > 0;
 }
 
-/**
- * Record a verdict-emission attestation. ADVISORY — never blocks.
- *
- * @param {object} input
- * @param {string} input.verdict        'pass'|'partial'|'fail'
- * @param {object} input.subject        { persona } — the JUDGED persona (the reputation subject)
- * @param {object} input.verifier       { identity, kind } — WHO emitted + the verification kind (R1)
- * @param {string} input.agentId        REQUIRED — the kernel spawn-record link (tool_response.agentId)
- * @param {number} [input.expiresAfterDays]
- * @param {number|string} [input.now]   injected wall-clock (tests); default Date.now()
- * @returns {object} the frozen record, OR { deduped:true, attestation_id } on a same-event replay,
- *                   OR { skipped:'lock-contended', attestation_id } on lock contention
- */
-function recordVerdict(input) {
-  const o = input || {};
+// VALIDATE hacker M-1 — reject control chars (C0 ≤ 0x1f, or DEL 0x7f) in a stored string field: a
+// newline/CR would split the single-line-per-record JSONL ledger; NUL/control chars corrupt the E4/stats
+// grouping keys. Char-code scan, NOT a /[ -]/ regex (that trips eslint no-control-regex — its
+// proper home is this boundary, per the W6 revert). Does NOT reject non-ASCII Unicode (only true controls).
+function hasControlChars(v) {
+  for (let i = 0; i < v.length; i += 1) {
+    const c = v.charCodeAt(i);
+    // M-A (VALIDATE hacker): reject C0 (<=0x1f), DEL+C1 (0x7f-0x9f), and the Unicode line/para
+    // separators (U+2028, U+2029) - C1 + line-seps were the residual; they pollute an E4 grouping
+    // key (a near-dup persona) without splitting a JSONL line. Legit substrate ids are never these.
+    if (c <= 0x1f || (c >= 0x7f && c <= 0x9f) || c === 0x2028 || c === 0x2029) return true;
+  }
+  return false;
+}
+
+// Validate + normalize recordVerdict input AT THE BOUNDARY (before the lock — a bad input writes nothing).
+// Extracted so recordVerdict stays < 50 lines (verify-plan code-reviewer MEDIUM). Throws a clean Error on
+// any violation. Returns the validated { verifier, subject, expiresAfterDays }.
+function validateRecordVerdictInput(o) {
   if (!VALID_VERDICTS.includes(o.verdict)) {
     throw new Error(`recordVerdict: verdict must be ${VALID_VERDICTS.join('|')} (got ${JSON.stringify(o.verdict)})`);
   }
@@ -158,15 +163,48 @@ function recordVerdict(input) {
   if (!nonEmptyString(subject.persona)) {
     throw new Error('recordVerdict: subject.persona (the judged persona) is required');
   }
-  // VALIDATE hacker M2 — bound each field so a multi-MB value can't bloat the re-serialized ledger.
+  // M2 — bound each field so a multi-MB value can't bloat the re-serialized ledger.
   if (o.agentId.length > MAX_FIELD_LEN || verifier.identity.length > MAX_FIELD_LEN
       || verifier.kind.length > MAX_FIELD_LEN || subject.persona.length > MAX_FIELD_LEN) {
     throw new Error(`recordVerdict: a field exceeds the ${MAX_FIELD_LEN}-char cap (agentId/verifier.identity/verifier.kind/subject.persona must be bounded)`);
   }
-  const nowMs = nowMsFrom(o);
-  const recordedAt = new Date(nowMs).toISOString();
+  // M-1 — agentId is later path-joined by the enricher (resolver-journal-<agentId>.jsonl), so it MUST be
+  // a safe single path segment (#215 trap-class; isSafePathSegment rejects separators / '..' / NUL). The
+  // store is the defense-in-depth FIRST layer for that read path; the enricher's pre-join guard is the 2nd.
+  if (!isSafePathSegment(o.agentId)) {
+    throw new Error(`recordVerdict: agentId ${JSON.stringify(o.agentId)} is not a safe path segment (no separators, '..', or NUL — it is later path-joined by the enricher)`);
+  }
+  // M-1 — reject control chars in EVERY stored string field (agentId too: isSafePathSegment misses
+  // newline/CR/tab, which would split a JSONL line).
+  const fields = [['agentId', o.agentId], ['verifier.identity', verifier.identity], ['verifier.kind', verifier.kind], ['subject.persona', subject.persona]];
+  for (const [name, val] of fields) {
+    if (hasControlChars(val)) {
+      throw new Error(`recordVerdict: ${name} contains a control / line-separator character (C0/DEL/C1/U+2028/U+2029 are rejected at the store boundary)`);
+    }
+  }
   const expiresAfterDays = (typeof o.expiresAfterDays === 'number' && o.expiresAfterDays > 0)
     ? o.expiresAfterDays : DEFAULT_EXPIRES_AFTER_DAYS;
+  return { verifier, subject, expiresAfterDays };
+}
+
+/**
+ * Record a verdict-emission attestation. ADVISORY — never blocks.
+ *
+ * @param {object} input
+ * @param {string} input.verdict        'pass'|'partial'|'fail'
+ * @param {object} input.subject        { persona } — the JUDGED persona (the reputation subject)
+ * @param {object} input.verifier       { identity, kind } — WHO emitted + the verification kind (R1)
+ * @param {string} input.agentId        REQUIRED — the kernel spawn-record link (tool_response.agentId)
+ * @param {number} [input.expiresAfterDays]
+ * @param {number|string} [input.now]   injected wall-clock (tests); default Date.now()
+ * @returns {object} the frozen record, OR { deduped:true, attestation_id } on a same-event replay,
+ *                   OR { skipped:'lock-contended', attestation_id } on lock contention
+ */
+function recordVerdict(input) {
+  const o = input || {};
+  const { verifier, subject, expiresAfterDays } = validateRecordVerdictInput(o); // pre-lock; throws on bad input
+  const nowMs = nowMsFrom(o);
+  const recordedAt = new Date(nowMs).toISOString();
 
   // Content-address: the basis is 4 validated non-empty scalars (canonical is total here — no
   // untrusted nesting, unlike E1's failure_signature). A flat string array has no keys to sort, so
@@ -192,6 +230,15 @@ function recordVerdict(input) {
   return withLabLock(() => {
     const all = readLedger();
     let live = all.filter((r) => !isExpired(r, nowMs)); // prune-on-write
+    // H-1 (VALIDATE hacker) — agentId pins ONE subject spawn = ONE persona. A live record under this
+    // agentId with a DIFFERENT subject.persona is a MISLABEL (a false "one spawn = two personas" state
+    // that would silently dedup-drop or split E4). Fail LOUD rather than corrupt the reputation view.
+    // (Scanned against LIVE records only — an aged-out persona is forgotten; reuses this read, O(live).)
+    const mislabel = live.find((r) => r.evidence_refs && r.evidence_refs.agent_id === o.agentId
+      && r.subject && r.subject.persona !== subject.persona);
+    if (mislabel) {
+      throw new Error(`recordVerdict: agentId ${JSON.stringify(o.agentId)} is already attested under subject.persona ${JSON.stringify(mislabel.subject.persona)} — refusing to record it under ${JSON.stringify(subject.persona)} (one spawn = one persona; this is a mislabel)`);
+    }
     const prunedSome = live.length !== all.length;
     if (live.some((r) => r.attestation_id === attestationId)) {
       if (prunedSome) writeLedger(live); // persist the prune even on a dedup'd write
