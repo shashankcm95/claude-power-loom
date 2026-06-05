@@ -425,6 +425,43 @@ When parent has `traits.skillFocus === null` (no dominant skill yet), the kid in
 
 L3 needs population-level data to design rules well. Trying to design breeding from n=1 verdict produces guesswork rules that get tuned later anyway. L1 + L2 are the substrate that the population accumulates *into*. After ≥20 builder verdicts, the data exists to design L3 empirically.
 
+## v3.4 Evidence-Linked Verdict-Attestation (E4) — the §0a.3.1 successor signal
+
+The trust system above (`agent-identity.js` + `agent-identities.json`) is a **per-identity verdict
+counter** — its verdicts are *not* linked to a kernel spawn-record, so under v6 §0a.3.1 it is
+"trust-by-frequency" (a self-asserted count, not evidence-linked to a verified outcome). The v3.4
+Evolution Lab adds a **distinct, evidence-linked** reputation signal (E4) that the anti-amplification
+clause permits as a derived view: `packages/lab/verdict-attestation/` (the store + `record-review`
+CLI + the `agentId`→`transaction_id` enricher) → `packages/lab/reputation/` (E4 projection + A6
+snapshot). It is advisory/display-only and **never gates K9** (Axiom 3b). The two systems coexist; E4
+is the one whose verdicts trace to a real kernel record.
+
+### Recording convention (v3.4 Wave 6 — the dogfood un-darkening)
+
+When a **delegated builder spawn**'s delta is reviewed (the per-wave 3-lens VALIDATE), the orchestrator
+records the verdicts as evidence-linked attestations:
+
+```
+node packages/lab/verdict-attestation/cli.js record-review \
+  --subject-persona <builder-persona>  --agent-id <the builder spawn's tool_response.agentId> \
+  --review "<verifier-identity>|<verifier-kind>|<verdict>"   # one repeatable flag per reviewer
+  [--review ...]                                             # auto-enriches after recording
+```
+
+- **`--agent-id` is the SUBJECT (judged builder) spawn**, NOT the verifier — it is the §0a.3.1
+  evidence-link. Only a **delta-bearing delegated spawn** has a kernel record (a
+  `resolver-journal-<agentId>.jsonl` with a `transaction_id`) → only those are legal, enrichable
+  subjects. Orchestrator-authored work (no spawn-record) and read-only reviewer spawns (no delta) are
+  **not** valid subjects.
+- The verifier is identified by name + kind (R1-stratified — `structural` ≠ `adversarial-security`);
+  the verdict polarity is data, never attested truth (v6:504 emission/content split).
+- **Honest scope:** this yields **dogfood / substrate-self-measurement** volume (the substrate's own
+  delegated builds, per Axiom 5 — advisory, so the recursive-Goodhart caveat is acceptable). High-volume
+  capture from arbitrary user repos is a deferred follow-on (it needs a shipped-surface convention + a
+  capture hook). First live closure: v3.4 Wave 6 (this wave's own `record-review` build was the subject).
+
+Full rationale: `packages/specs/plans/2026-06-04-v3.4-wave6-verdict-undarken.md`.
+
 ## Related Patterns
 
 - [Trust-Tiered Verification Depth](trust-tiered-verification.md) — reads per-identity trust to decide verification depth
