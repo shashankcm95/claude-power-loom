@@ -97,7 +97,7 @@ H.7.10 is the immediate dogfood demonstration: applying mira's 5 fixes via `/bui
 - [skills/build-plan/SKILL.md](../../build-plan/SKILL.md) — the skill operationalizing this pattern
 - [commands/build-plan.md](../../../commands/build-plan.md) — the slash command
 - [swarm/plan-template.md](../../../swarm/plan-template.md) — canonical plan structure
-- [scripts/agent-team/route-decide.js](../../../scripts/agent-team/route-decide.js) — deterministic gate
+- [packages/kernel/algorithms/route-decide.js](../../../../kernel/algorithms/route-decide.js) — deterministic gate
 - [rules/core/workflow.md](../../../rules/core/workflow.md) — workflow discipline
 - [agents/planner.md](../../../agents/planner.md) — base planner agent that `/build-plan` wraps
 

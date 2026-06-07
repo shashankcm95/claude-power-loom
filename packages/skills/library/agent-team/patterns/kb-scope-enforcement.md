@@ -7,7 +7,7 @@ related: [shared-knowledge-base, content-addressed-refs, persona-skills-mapping,
 
 ## Summary
 
-Each persona contract has `kb_scope.default` (a list of `kb:domain/doc-id` strings). Spawn prompts list these refs. The verifier check `kb_scope_consumed` reads the actor's transcript JSONL post-hoc, extracts every KB read (Bash `kb-resolver cat`, `kb-resolver resolve kb:<id>`, or `Read` against `skills/agent-team/kb/<id>.md`), and confirms each declared scope appears ≥1 time. Failure mode: declare-but-don't-read drift — same shape as the H.2.6 `invokesRequiredSkills` precedent. Graceful pass when no transcript supplied so spawn-time invocations remain backwards-compatible; enforcement triggers only when a transcript is fed in at verification time.
+Each persona contract has `kb_scope.default` (a list of `kb:domain/doc-id` strings). Spawn prompts list these refs. The verifier check `kb_scope_consumed` reads the actor's transcript JSONL post-hoc, extracts every KB read (Bash `kb-resolver cat`, `kb-resolver resolve kb:<id>`, or `Read` against `packages/skills/library/agent-team/kb/<id>.md`), and confirms each declared scope appears ≥1 time. Failure mode: declare-but-don't-read drift — same shape as the H.2.6 `invokesRequiredSkills` precedent. Graceful pass when no transcript supplied so spawn-time invocations remain backwards-compatible; enforcement triggers only when a transcript is fed in at verification time.
 
 ## Intent
 
@@ -20,7 +20,7 @@ CS-1 and CS-2 architects both flagged: `kb_scope` was loaded into spawn-time pro
 - **Transcript extractor** — walks the JSONL, scans `tool_use` blocks, normalizes three invocation shapes to `kb:<domain>/<doc>` form:
   - Bash: `kb-resolver(.js)? cat <id>` (bare or `kb:`-prefixed)
   - Bash: `kb-resolver(.js)? resolve kb:<id>[@<short-hash>]`
-  - Read: `file_path` matching `skills/agent-team/kb/<domain>/<doc>.md`
+  - Read: `file_path` matching `packages/skills/library/agent-team/kb/<domain>/<doc>.md`
 - **Verifier check** `kb_scope_consumed` — diff declared vs observed; missing entries → fail. Returns rich `{pass, source, declared, consumed, kbReadsObserved, missingKbScope}` for audit.
 - **No CLI fallback** — unlike `invokesRequiredSkills`, there is no `--kb-reads` flag. The whole point is to prevent self-reporting drift; manual passthrough would defeat enforcement.
 
@@ -54,7 +54,7 @@ Stress-test scenarios:
 
 ## Toolkit-meta KB docs are intentionally exempt
 
-Not every doc under `skills/agent-team/kb/` is subject to `kb_scope_consumed` enforcement. **Per-persona-domain KB docs** (e.g., `kb:security-dev/threat-modeling-essentials`, `kb:mobile-dev/swift-essentials`) are declared in `contract.kb_scope.default` and ARE enforced. **Toolkit-meta KB docs** describe shared orchestration vocabulary used by skills/commands at execution time, not by per-persona contracts at verify time, and are deliberately NOT in any contract's `kb_scope.default`:
+Not every doc under `packages/skills/library/agent-team/kb/` is subject to `kb_scope_consumed` enforcement. **Per-persona-domain KB docs** (e.g., `kb:security-dev/threat-modeling-essentials`, `kb:mobile-dev/swift-essentials`) are declared in `contract.kb_scope.default` and ARE enforced. **Toolkit-meta KB docs** describe shared orchestration vocabulary used by skills/commands at execution time, not by per-persona contracts at verify time, and are deliberately NOT in any contract's `kb_scope.default`:
 
 | Doc | Consumed by | Why exempt |
 |-----|-------------|-----------|

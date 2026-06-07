@@ -7,7 +7,7 @@ related: [route-decision, structural-code-review, kb-scope-enforcement, system-d
 
 ## Summary
 
-Two conventions for hook validators in `hooks/scripts/validators/` and `scripts/agent-team/contracts-validate.js`. **Convention A**: separate repo-internal correctness from external-dependency presence — the latter must be gated on environmental signals (e.g., `MARKETPLACE_BASE` non-empty) rather than enforced unconditionally. **Convention B**: validator stderr output must self-document why a check is skipped or firing, not just report status. Both originated as drift-notes 7 + 8 from this session's H.7.10 + H.7.12 work; codified here for future validator authors.
+Two conventions for hook validators in `hooks/scripts/validators/` and `packages/runtime/orchestration/contracts-validate.js`. **Convention A**: separate repo-internal correctness from external-dependency presence — the latter must be gated on environmental signals (e.g., `MARKETPLACE_BASE` non-empty) rather than enforced unconditionally. **Convention B**: validator stderr output must self-document why a check is skipped or firing, not just report status. Both originated as drift-notes 7 + 8 from this session's H.7.10 + H.7.12 work; codified here for future validator authors.
 
 ## Convention A — Separation of repo-internal and external-dependency concerns
 
@@ -40,7 +40,7 @@ When the gate is closed (no external dependency installed), the validator **stil
 
 ### Reference implementation
 
-`scripts/agent-team/contracts-validate.js`'s `contract-skill-status-values` (H.7.10):
+`packages/runtime/orchestration/contracts-validate.js`'s `contract-skill-status-values` (H.7.10):
 
 ```javascript
 const marketplaceCheckEnabled = (() => {
@@ -101,7 +101,7 @@ When a validator skips a check, fires a soft warning, or otherwise produces stde
 `contracts-validate.js` H.7.23 — `contract-marketplace-schema` validator:
 ```
 ℹ contract-marketplace-schema: schemas: 2 validated
-ℹ contract-marketplace-schema: vendored schemas missing in swarm/schemas/ (this is normal on fresh checkout / minimal install; run scripts/agent-team/refresh-plugin-schema.sh to vendor)
+ℹ contract-marketplace-schema: vendored schemas missing in swarm/schemas/ (this is normal on fresh checkout / minimal install; run packages/runtime/orchestration/refresh-plugin-schema.sh to vendor)
 ```
 
 Both messages: explain why, reference the relevant context, indicate expected vs unexpected.
@@ -309,7 +309,7 @@ A validator's correctness requires BOTH conventions. Wrong placement (D violatio
 
 ## Convention G — Forcing-instruction class taxonomy (H.7.25)
 
-Originated in H.7.25 retrospective on the 11-instruction count growth (drift-note 21 closure). Codifies the mechanism choice that earlier instructions made implicitly. Sibling document: `skills/agent-team/patterns/forcing-instruction-family.md` (per-instruction catalog).
+Originated in H.7.25 retrospective on the 11-instruction count growth (drift-note 21 closure). Codifies the mechanism choice that earlier instructions made implicitly. Sibling document: `packages/skills/library/agent-team/patterns/forcing-instruction-family.md` (per-instruction catalog).
 
 ### Why this convention exists
 
@@ -364,7 +364,7 @@ When the active forcing-instruction count crosses **N=15** (current 10 active po
 
 ### Reference implementations
 
-See `skills/agent-team/patterns/forcing-instruction-family.md` for per-instruction class assignment, landing-rate observations, phase-tag origins, and verdicts. Cross-reference comments in each emission file (`hooks/scripts/...`) point at this convention.
+See `packages/skills/library/agent-team/patterns/forcing-instruction-family.md` for per-instruction class assignment, landing-rate observations, phase-tag origins, and verdicts. Cross-reference comments in each emission file (`hooks/scripts/...`) point at this convention.
 
 ### Phase
 

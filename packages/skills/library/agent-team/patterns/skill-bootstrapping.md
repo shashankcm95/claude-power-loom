@@ -26,7 +26,7 @@ A toolkit without specialized skills can only handle generic tasks. A toolkit th
 ## The 3-step orchestrator flow (H.6.3)
 
 ```
-1. assign:  node ~/.claude/scripts/agent-team/agent-identity.js \
+1. assign:  node ~/.claude/packages/runtime/orchestration/agent-identity.js \
               assign --persona <NN-name> --task "..."
             ↓
             output JSON includes `forgeNeeded.required` + `forgeNeeded.recommended`

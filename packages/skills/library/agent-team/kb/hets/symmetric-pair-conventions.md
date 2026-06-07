@@ -23,9 +23,9 @@ For everything else (high-trust spot-check, medium-trust asymmetric challenger),
 
 ```bash
 # 1. Pick TWO challenger identities (different persona preferred for both)
-CH1=$(node ~/Documents/claude-toolkit/scripts/agent-team/agent-identity.js \
+CH1=$(node ~/Documents/claude-toolkit/packages/runtime/orchestration/agent-identity.js \
   assign-challenger --exclude-persona $IMPL_PERSONA --task "$RUN_ID" | jq -r .challenger.identity)
-CH2=$(node ~/Documents/claude-toolkit/scripts/agent-team/agent-identity.js \
+CH2=$(node ~/Documents/claude-toolkit/packages/runtime/orchestration/agent-identity.js \
   assign-challenger --exclude-persona $IMPL_PERSONA --exclude-identity $CH1 --task "$RUN_ID" | jq -r .challenger.identity)
 # Note: --exclude-identity prevents picking the same challenger twice
 

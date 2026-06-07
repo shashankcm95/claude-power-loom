@@ -7,7 +7,7 @@ related: [content-addressed-refs, prompt-distillation, hets, skill-bootstrapping
 
 ## Summary
 
-KB docs live at `skills/agent-team/kb/` with stable `kb_id` (e.g. `web-dev/react-essentials`). All agents in a run reference the same docs via the `kb-resolver` CLI. At run start, the manifest is **frozen into the run-state directory**, so agents resolve against an immutable snapshot — KB edits during the run cannot retroactively change what already-spawned agents read.
+KB docs live at `packages/skills/library/agent-team/kb/` with stable `kb_id` (e.g. `web-dev/react-essentials`). All agents in a run reference the same docs via the `kb-resolver` CLI. At run start, the manifest is **frozen into the run-state directory**, so agents resolve against an immutable snapshot — KB edits during the run cannot retroactively change what already-spawned agents read.
 
 ## Intent
 
@@ -15,9 +15,9 @@ Real engineering teams converge on shared documentation (SharePoint, Notion, int
 
 ## Components
 
-- **KB directory**: `skills/agent-team/kb/<topic>/<doc>.md`. Each file has frontmatter with `kb_id`, `version`, `tags[]`.
-- **Manifest**: `skills/agent-team/kb/manifest.json` — index of `kb_id → path / version / hash / tags`. Regenerate via `kb-resolver scan` after editing.
-- **Resolver CLI**: `scripts/agent-team/kb-resolver.js` — `cat`, `hash`, `list`, `resolve`, `scan`, `snapshot`, `register`.
+- **KB directory**: `packages/skills/library/agent-team/kb/<topic>/<doc>.md`. Each file has frontmatter with `kb_id`, `version`, `tags[]`.
+- **Manifest**: `packages/skills/library/agent-team/kb/manifest.json` — index of `kb_id → path / version / hash / tags`. Regenerate via `kb-resolver scan` after editing.
+- **Resolver CLI**: `packages/runtime/orchestration/kb-resolver.js` — `cat`, `hash`, `list`, `resolve`, `scan`, `snapshot`, `register`.
 - **Run-state snapshot**: `swarm/run-state/<run-id>/kb-snapshot.json` — frozen view at run start. See [content-addressed-refs](content-addressed-refs.md) for ref syntax.
 
 ## Failure Modes

@@ -17,7 +17,7 @@ Every HETS actor spawn follows the same sequence. Skipping a step means the audi
 #### 1. Assign identity
 
 ```bash
-IDENTITY=$(node ~/Documents/claude-toolkit/scripts/agent-team/agent-identity.js assign \
+IDENTITY=$(node ~/Documents/claude-toolkit/packages/runtime/orchestration/agent-identity.js assign \
   --persona ${PERSONA} --task chaos-${RUN_ID} | jq -r .identity)
 # IDENTITY is "persona.name", e.g., "04-architect.mira"
 ```
@@ -27,7 +27,7 @@ Round-robin assignment from the persona's roster. The roster lives in `~/.claude
 #### 2. Track in spawn tree
 
 ```bash
-node ~/Documents/claude-toolkit/scripts/agent-team/tree-tracker.js spawn \
+node ~/Documents/claude-toolkit/packages/runtime/orchestration/tree-tracker.js spawn \
   --run-id $RUN_ID \
   --parent super-root \
   --child "actor-${PERSONA_NAME}-${IDENTITY##*.}" \
@@ -78,7 +78,7 @@ semantics. The drift-note logs to stderr but does NOT fail the verdict.
 #### 5. Verify and record
 
 ```bash
-node ~/Documents/claude-toolkit/scripts/agent-team/contract-verifier.js \
+node ~/Documents/claude-toolkit/packages/kernel/validators/contract-verifier.js \
   --contract ~/Documents/claude-toolkit/swarm/personas-contracts/${PERSONA_NAME}.contract.json \
   --output ${OUTPUT_PATH} \
   --previous-run ${PRIOR_RUN_PATH} \
@@ -91,7 +91,7 @@ Identity flows automatically to:
 
 ### Path-resolution caveat
 
-Always invoke from `~/Documents/claude-toolkit/scripts/agent-team/...`, NOT `~/.claude/scripts/agent-team/...`. The `tree-tracker.js` resolves `tree.json` relative to its own directory; the two install locations write to different `swarm/run-state/` trees, leading to "Node not found" errors when `spawn` and `complete` are called from different copies. Filed for proper fix in H.2.
+Always invoke the HETS scripts (`tree-tracker.js` + siblings) from a SINGLE consistent copy — the canonical repo path is now `~/Documents/claude-toolkit/packages/runtime/orchestration/...` (the v4 restructure moved them from the old top-level `scripts/agent-team/`). `tree-tracker.js` resolves `tree.json` relative to its own directory, so mixing the repo copy with an installed plugin copy writes to different `swarm/run-state/` trees → "Node not found" errors when `spawn` and `complete` run from different copies.
 
 ### Identity rosters
 
@@ -118,7 +118,7 @@ Schema (one or more requests per spawn return):
     related_skills: [...]                          # for forge-persona / forge-skill
     related_kb_scope: [...]                        # for forge-persona / author-kb-doc
     suggested_files:                               # for author-kb-doc
-      - path: skills/agent-team/kb/<domain>/<name>.md
+      - path: packages/skills/library/agent-team/kb/<domain>/<name>.md
         purpose: <one line>
 ```
 

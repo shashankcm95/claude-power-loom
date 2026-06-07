@@ -56,8 +56,8 @@ A module can be encapsulated yet leaky (private data but public methods that exp
 
 **Substrate examples**:
 
-- `scripts/agent-team/_lib/lock.js` — hides cross-process locking mechanism (lockfile + stale-PID detection); callers just call `acquireLock()` / `releaseLock()`
-- `scripts/agent-team/_lib/frontmatter.js` — hides YAML parsing logic + inline-comment-strip details; callers get clean key/value pairs
+- `packages/kernel/_lib/lock.js` — hides cross-process locking mechanism (lockfile + stale-PID detection); callers just call `acquireLock()` / `releaseLock()`
+- `packages/kernel/_lib/frontmatter.js` — hides YAML parsing logic + inline-comment-strip details; callers get clean key/value pairs
 - `hooks/scripts/auto-store-enrichment.js` — hides counter-store schema + 30-turn scan trigger; substrate just emits Stop hook input
 - ADR-0001 — codifies fail-open + try/catch + logger invariants as substrate discipline; consumers of hooks know "hooks fail soft," not "hooks have these specific try/catch sites"
 
@@ -253,7 +253,7 @@ This information hiding is what allows hooks to evolve (add validation rules, ch
 
 ### `_lib/` shared modules
 
-`scripts/agent-team/_lib/lock.js`, `_lib/frontmatter.js`, `_lib/safe-exec.js`, `_lib/atomic-write.js` each hide a substrate concern behind a narrow API:
+`packages/kernel/_lib/lock.js`, `_lib/frontmatter.js`, `_lib/safe-exec.js`, `_lib/atomic-write.js` each hide a substrate concern behind a narrow API:
 
 - `lock.js`: callers get `acquireLock(path)` / `releaseLock(path)`; they don't know about lockfiles, stale-PID detection, or the underlying syscalls
 - `frontmatter.js`: callers get `parseFrontmatter(content)`; they don't know about YAML 1.2 inline-comment handling or quote-aware scanning
