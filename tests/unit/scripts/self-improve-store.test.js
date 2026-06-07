@@ -5,7 +5,8 @@
 // GAP-H Phase 1 (TDD-treatment) — failing tests first. Describes the CORRECT
 // behavior of cmdScan's auto-graduation transition. Run against the v2.6.1
 // impl, T2, T3, T4, T8, T9, T10 should FAIL because the smoking-gun bug at
-// scripts/self-improve-store.js:231+332 (knownSignatures Set treats first-
+// packages/kernel/spawn-state/self-improve-store.js (moved from scripts/ in the v4 restructure;
+// approx :231+332 pre-restructure) — knownSignatures Set treats first-
 // candidate-creation as terminal — signals can never transition pending →
 // auto-graduated even when count crosses 10).
 //
@@ -26,7 +27,7 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 
-const STORE = path.resolve(__dirname, '../../../scripts/self-improve-store.js');
+const STORE = path.resolve(__dirname, '../../../packages/kernel/spawn-state/self-improve-store.js');
 
 let passed = 0;
 let failed = 0;
@@ -454,7 +455,7 @@ test('T10: scan_concurrent_bump_and_scan_does_not_double_graduate', () => {
 // T11-T14: v2.8.2 Fix-3 — non-tautological observations.log on auto-graduate
 // ============================================================================
 
-const store = require('../../../scripts/self-improve-store');
+const store = require('../../../packages/kernel/spawn-state/self-improve-store');
 
 test('T11: signalToProposedAction differentiates filePath: signal from generic observation-log', () => {
   const action = store.signalToProposedAction('filePath:/some/path.js', 'observation-log');
@@ -538,11 +539,11 @@ test('T15: bumpBatch single lock span: bump+scan execute under one outer lock ac
     // Run bumpBatch in-process (the in-process callsite is the load-bearing
     // path — auto-store-enrichment.js uses it via require, not subprocess).
     process.env.HOME = h.home;
-    const subStore = require('../../../scripts/self-improve-store');
+    const subStore = require('../../../packages/kernel/spawn-state/self-improve-store');
     // require.cache may be holding the prior copy; bust it so the new HOME
     // takes effect for COUNTERS_PATH/PENDING_PATH resolution.
-    delete require.cache[require.resolve('../../../scripts/self-improve-store')];
-    const fresh = require('../../../scripts/self-improve-store');
+    delete require.cache[require.resolve('../../../packages/kernel/spawn-state/self-improve-store')];
+    const fresh = require('../../../packages/kernel/spawn-state/self-improve-store');
     void subStore;  // appease lint
     const result = fresh.bumpBatch(['filePath:/single-lock.js']);
 
