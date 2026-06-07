@@ -58,7 +58,7 @@ Emit **plain ASCII** in code edits unless a non-ASCII codepoint is genuinely req
 - **Unicode whitespace** — non-breaking space `U+00A0`, narrow/zero-width spaces — where a normal space ` ` was intended.
 - **Unicode dashes/ellipsis** `— … ‐` inside identifiers or code (fine in prose; never in a token).
 
-If a non-ASCII character is intentional in a string, prefer the escaped form (` `, `—`) so the intent is explicit and the linter stays quiet. This is distinct from the markdown-emphasis discipline (that one is about `_underscores_`); this one is about non-ASCII codepoints leaking into source.
+If a non-ASCII character is intentional in a string, prefer the escaped form (`\u00A0`, `\u2014`) so the intent is explicit and the linter stays quiet. This is distinct from the markdown-emphasis discipline (that one is about `_underscores_`); this one is about non-ASCII codepoints leaking into source.
 
 **Origin**: recurred 3× (latest: a literal BOM inside a regex tripped `no-irregular-whitespace`). Promoted from memory via `/self-improve` 2026-06-07.
 
