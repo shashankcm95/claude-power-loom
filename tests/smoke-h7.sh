@@ -162,7 +162,7 @@
   # Test 22 (H.7.20): validate-frontmatter-on-skills Edit coverage — Edit that
   # REMOVES frontmatter should block. Setup temp skill file with valid frontmatter,
   # send Edit JSON that removes the frontmatter block.
-  local h7_20_skill_dir="/tmp/h7-20-skills/skills/test"
+  local h7_20_skill_dir="/tmp/h7-20-skills/skills/library/test"
   mkdir -p "$h7_20_skill_dir"
   cat > "$h7_20_skill_dir/SKILL.md" <<'SKILL_EOF'
 ---
@@ -174,7 +174,7 @@ description: H.7.20 test fixture
 
 Body content here.
 SKILL_EOF
-  local h7_20_remove_json='{"tool_name":"Edit","tool_input":{"file_path":"/tmp/h7-20-skills/skills/test/SKILL.md","old_string":"---\nname: test-skill\ndescription: H.7.20 test fixture\n---\n\n","new_string":""}}'
+  local h7_20_remove_json='{"tool_name":"Edit","tool_input":{"file_path":"/tmp/h7-20-skills/skills/library/test/SKILL.md","old_string":"---\nname: test-skill\ndescription: H.7.20 test fixture\n---\n\n","new_string":""}}'
   local h7_20_remove_result
   h7_20_remove_result=$(printf '%s' "$h7_20_remove_json" | node "$CLAUDE_DIR/packages/kernel/validators/validate-frontmatter-on-skills.js" 2>&1)
   if echo "$h7_20_remove_result" | grep -q '"decision":"block"'; then
@@ -186,7 +186,7 @@ SKILL_EOF
   fi
 
   # Test 23 (H.7.20): Edit that touches body but preserves frontmatter → approve
-  local h7_20_preserve_json='{"tool_name":"Edit","tool_input":{"file_path":"/tmp/h7-20-skills/skills/test/SKILL.md","old_string":"Body content here.","new_string":"Updated body content."}}'
+  local h7_20_preserve_json='{"tool_name":"Edit","tool_input":{"file_path":"/tmp/h7-20-skills/skills/library/test/SKILL.md","old_string":"Body content here.","new_string":"Updated body content."}}'
   local h7_20_preserve_result
   h7_20_preserve_result=$(printf '%s' "$h7_20_preserve_json" | node "$CLAUDE_DIR/packages/kernel/validators/validate-frontmatter-on-skills.js" 2>&1)
   if echo "$h7_20_preserve_result" | grep -q '"decision":"approve"'; then
@@ -196,6 +196,20 @@ SKILL_EOF
     echo "  ✗ validate-frontmatter-on-skills: H.7.20 Edit preserving frontmatter should approve — got: ${h7_20_preserve_result:0:80}"
     failed=$((failed + 1))
   fi
+  # Test 23b (v3.4 migration-rot fix): skills/commands/*.md ship frontmatter-less by convention —
+  # the gate must EXCLUDE them (the regression that mis-blocked command-doc edits; the prior regex
+  # `skills/<dir>/<file>.md` wrongly matched skills/commands/*). A frontmatter-less command → approve.
+  local h7_cmd_json='{"tool_name":"Write","tool_input":{"file_path":"/tmp/h7-20-skills/skills/commands/build-team.md","content":"# /build-team\n\nno frontmatter\n"}}'
+  local h7_cmd_result
+  h7_cmd_result=$(printf '%s' "$h7_cmd_json" | node "$CLAUDE_DIR/packages/kernel/validators/validate-frontmatter-on-skills.js" 2>&1)
+  if echo "$h7_cmd_result" | grep -q '"decision":"approve"'; then
+    echo "  ✓ validate-frontmatter-on-skills: skills/commands/*.md frontmatter-less → approve (excluded)"
+    passed=$((passed + 1))
+  else
+    echo "  ✗ validate-frontmatter-on-skills: command doc should approve (excluded) — got: ${h7_cmd_result:0:80}"
+    failed=$((failed + 1))
+  fi
+
   rm -rf /tmp/h7-20-skills
 
   # Test 24 (H.7.21): validate-no-bare-secrets Edit-result scan — Edit that

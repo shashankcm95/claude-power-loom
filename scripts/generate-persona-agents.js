@@ -26,8 +26,9 @@ const path = require('node:path');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const AGENTS_DIR = path.join(REPO_ROOT, 'agents');
-const PERSONAS_DIR = path.join(REPO_ROOT, 'swarm', 'personas');
-const CONTRACTS_DIR = path.join(REPO_ROOT, 'swarm', 'personas-contracts');
+// v4 restructure repoint: persona briefs + contracts moved out of the (removed) swarm/personas* tree.
+const PERSONAS_DIR = path.join(REPO_ROOT, 'packages', 'runtime', 'personas');
+const CONTRACTS_DIR = path.join(REPO_ROOT, 'packages', 'runtime', 'contracts');
 
 // Persona definition table. The 5 existing agents (architect, code-reviewer,
 // optimizer, planner, security-auditor) are SKIPPED — they have bespoke
@@ -198,9 +199,18 @@ function main() {
 
   const created = [];
   const skipped = [];
+  const malformed = []; // M1 (VALIDATE hacker): exists-but-broken (no frontmatter / empty body)
   for (const p of PERSONAS) {
     const target = path.join(AGENTS_DIR, `${p.agent}.md`);
     if (fs.existsSync(target) && !isForce) {
+      // M1: `--check` must catch a stub that EXISTS but lost its frontmatter / is empty (an unspawnable
+      // persona that would otherwise pass CI green on existsSync alone). A well-formed stub opens with a
+      // `---` frontmatter block (closing `---` on its own line) and has a non-trivial body.
+      if (isCheck) {
+        const content = fs.readFileSync(target, 'utf8');
+        const hasFm = /^\uFEFF?---\r?\n[\s\S]*?\r?\n---\s*(\r?\n|$)/.test(content);
+        if (!hasFm || content.trim().length < 20) malformed.push(p.agent);
+      }
       skipped.push(p.agent);
       continue;
     }
@@ -211,11 +221,14 @@ function main() {
   }
 
   if (isCheck) {
-    if (created.length > 0) {
-      process.stdout.write(`generate-persona-agents: ${created.length} missing — ${created.join(', ')}\n`);
+    const problems = [];
+    if (created.length > 0) problems.push(`${created.length} missing (${created.join(', ')})`);
+    if (malformed.length > 0) problems.push(`${malformed.length} malformed/no-frontmatter (${malformed.join(', ')})`);
+    if (problems.length > 0) {
+      process.stdout.write(`generate-persona-agents: ${problems.join('; ')}\n`);
       process.exit(1);
     }
-    process.stdout.write(`generate-persona-agents: clean — all ${PERSONAS.length} persona agents present\n`);
+    process.stdout.write(`generate-persona-agents: clean — all ${PERSONAS.length} persona agents present + well-formed\n`);
     return;
   }
 

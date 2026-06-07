@@ -6,10 +6,12 @@
 // skill resolver surfaces silently-broken skills that look fine on disk but
 // don't load.
 //
-// Scope:
-//   - file_path matches `**/skills/**/*.md`  → must have frontmatter
-//   - file_path matches `**/patterns/*.md`   → must have frontmatter
-//   - everything else                        → approve (out of scope)
+// Scope (post-restructure layout — skills live under packages/skills/library/<skill>/):
+//   - skills/library/<skill>/**/*.md             → must have frontmatter (SKILL.md, patterns/, kb/**, …)
+//   - SKIP: README/BACKLOG/CHANGELOG (basename) + agent-team/contract-format.md (path)
+//   - skills/commands/*.md                       → EXCLUDED (commands ship frontmatter-less)
+//   - everything else                           → approve (out of scope)
+// Paths are path.posix.normalize'd before matching (so `library//x` / `a/../b` can't dodge the gate).
 //
 // **H.7.20 — Edit coverage extension**: prior version only validated Write.
 // An Edit that removes frontmatter (e.g., deletes the closing `---\n` line)
@@ -25,21 +27,48 @@ const logger = log('validate-frontmatter-on-skills');
 
 // Path patterns that require frontmatter. Add to this list (don't fork the
 // validator) when new doc trees adopt the same convention.
+//
+// REPOINTED for the v4 restructure (skills moved to packages/skills/library/<skill>/): the prior
+// patterns expected `skills/<dir>/SKILL.md` + `skills/agent-team/patterns/`, which (a) matched NOTHING
+// real (real skills are skills/library/<skill>/...) so the gate silently protected nothing, and (b) only
+// ever caught skills/commands/*.md — the bug that mis-blocked command-doc edits. The single broad
+// pattern gates EVERY doc under a library skill dir at ANY depth — SKILL.md, patterns/*, the kb/** tree,
+// USING.md, nested subdirs — because all of those are skill-loaded / kb-resolved and a frontmatter-less
+// one "looks fine on disk but doesn't load" (VALIDATE hacker H1/H2: the prior narrow patterns left the
+// 47-doc kb/ tree + nested dirs unprotected). The SKIP sets carve out the conventional exceptions.
 const REQUIRES_FRONTMATTER = [
-  /(?:^|\/)skills\/[^/]+\/SKILL\.md$/,
-  /(?:^|\/)skills\/[^/]+\/[^/]+\.md$/,             // skill subfiles (e.g. patterns/*.md inside a skill)
-  /(?:^|\/)skills\/agent-team\/patterns\/[^/]+\.md$/, // agent-team patterns library
+  /(?:^|\/)skills\/library\/[^/]+\/.+\.md$/,
 ];
 
-// README.md and BACKLOG.md are intentionally non-frontmatter docs even when
-// they live inside skills/. Skip them.
+// Conventional non-frontmatter docs (any location): READMEs, backlogs, changelogs.
 const SKIP_BASENAMES = new Set(['README.md', 'BACKLOG.md', 'CHANGELOG.md']);
+
+// Specific reference/schema docs that are intentionally frontmatter-less — PATH-scoped, not basename
+// (VALIDATE hacker M2: a bare-basename skip would wave through a same-named file ANYWHERE).
+// contract-format.md is the agent-team contract-schema reference doc.
+const SKIP_PATHS = [
+  /(?:^|\/)skills\/library\/agent-team\/contract-format\.md$/,
+];
+
+// Defensive exclusion: skills/commands/*.md are slash-command docs that ship WITHOUT frontmatter
+// (13/14; the loader registers them regardless). The REQUIRES pattern is library-scoped so it won't
+// match commands today — this guards a future broadening (the exact regression the repoint fixed).
+const SKIP_DIR_PATTERNS = [
+  /(?:^|\/)skills\/commands\/[^/]+\.md$/,
+];
 
 function requiresFrontmatter(filePath) {
   if (!filePath) return false;
-  const basename = path.basename(filePath);
+  // C1 (VALIDATE hacker, CRITICAL): NORMALIZE redundant separators + ./.. BEFORE matching. A path like
+  // `skills/library//x/SKILL.md` or `skills/library/a/../b/SKILL.md` dodges the anchored regex while
+  // fs collapses it to a real broken-skill write. path.posix.normalize collapses `//` + resolves `.`/`..`
+  // (the #215 / path-canonicalize discipline applied to a string-matching gate).
+  const norm = path.posix.normalize(filePath);
+  const basename = path.posix.basename(norm);
   if (SKIP_BASENAMES.has(basename)) return false;
-  return REQUIRES_FRONTMATTER.some((p) => p.test(filePath));
+  if (SKIP_PATHS.some((p) => p.test(norm))) return false;
+  if (SKIP_DIR_PATTERNS.some((p) => p.test(norm))) return false;
+  return REQUIRES_FRONTMATTER.some((p) => p.test(norm));
 }
 
 function hasFrontmatter(content) {
@@ -160,7 +189,7 @@ process.stdin.on('end', () => {
         '<body content>',
         '```',
         '',
-        'Skill loaders look for the closing `---` line; without it the skill won\'t register, even though the file exists on disk. See skills/agent-team/patterns/*.md for examples.',
+        'Skill loaders look for the closing `---` line; without it the skill won\'t register, even though the file exists on disk. See skills/library/agent-team/patterns/*.md for examples.',
       ].join('\n'),
     }));
   } catch (err) {
