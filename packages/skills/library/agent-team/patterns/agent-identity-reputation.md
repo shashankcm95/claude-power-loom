@@ -466,7 +466,8 @@ Full rationale: `packages/specs/plans/2026-06-04-v3.4-wave6-verdict-undarken.md`
 
 The verdict stream feeds TWO advisory consumers, paired at persona-selection time:
 
-- **E4 / A6 = advisory RANK** ("prefer the higher-reputation persona") — display-only, never gates.
+- **E4 / A6 = advisory PREFERENCE** ("prefer the stronger *distribution*, NOT a score" — see the A6
+  section below) — display-only, never gates.
 - **E11 = safety HALT** ("block the persona whose recent fail-rate tripped") — a denial-rate
   circuit-breaker (`packages/lab/circuit-breaker/`) projecting the verdict-`fail` slice over a sliding
   window.
@@ -504,6 +505,56 @@ live verdict-`fail` stream goes UNWATCHED. Treat a non-default `source` (anythin
 like `bypassed:true`: a clear result from a starved source is not a safety signal. Likewise
 `excluded_future > 0` in `show` is a tamper / clock-skew caution, not a benign diagnostic. Full
 rationale: `packages/specs/plans/2026-06-07-v3.4-e11-rescue-verdict-fail-consumer.md`.
+
+### A6 reputation snapshot — the advisory-PREFERENCE consumer (the "advise" half)
+
+The companion to the E11 halt above: when choosing among >=2 candidate personas **for the same
+role/lens**, the orchestrator MAY prefer the one with the stronger track record.
+
+**There is no "rep score."** E4 is a DISTRIBUTION, not a scalar grade (`reputation/project.js` — label
+"NOT a quality score"). So this consumer is **the orchestrator reading distributions and judging**, never
+a substrate-computed rank.
+
+**Convention (orchestrator, advisory).** At persona-selection, read the A6-MEDIATED snapshot for the
+candidate set:
+
+```
+node packages/lab/reputation/cli.js snapshot --personas <P1,P2,...>
+# -> { present, value: [ {persona, by_verdict, distinct_spawns, pending_enrichment, ...} | {persona, status:"no-data"} ... ],
+#      filter: { requested, note: "... NOT ranked, NOT a score ..." } }
+```
+
+The `value` array is in **caller order** (NOT sorted by any metric). Prefer the persona whose
+distribution is stronger *by your judgment* (more `pass`, fewer `fail`, higher `distinct_spawns`, recent
+`last_seen`) — advisory (A3b), never a hard gate.
+
+**Reputation is a TIE-BREAKER after lens-fit, not a primary selector.** Pick the candidate SET by lens
+(the route-by-LENS rule); use reputation only to break ties among same-lens candidates. This bounds the
+rich-get-richer loop (prefer high-rep -> more spawns -> entrench) — without it the advisory could ossify
+one persona.
+
+**`no-data` / `pending_enrichment` is UNMEASURED — neither better nor worse (VALIDATE hacker M2).** A
+`{status:"no-data"}` persona (absent from the snapshot) or one with `pending_enrichment > 0` is
+**unmeasured** — NOT a negative AND NOT a "clean slate" positive. Do **not** deselect on absence, and do
+**not** prefer it over a measured-but-weak peer (absence is not evidence of quality, in either
+direction). When candidates differ ONLY by measured-vs-unmeasured, fall back to lens-fit — the
+non-reputation criterion. (The E11-M1 generalization, both directions.) An absent snapshot
+(`present:false`) -> reputation-blind: select on lens-fit alone.
+
+**`present:true` attests INTEGRITY, not AUTHENTICITY (VALIDATE hacker M1).** The snapshot content-hash
+(INV-22) catches truncation / bit-rot — it does NOT prove provenance. A self-consistent hand-written
+snapshot (fabricated distribution + a recomputed hash) reads as `present:true`. This is acceptable for an
+ADVISORY/shadow read (nothing gates on it), but **before any KERNEL gate consumes the snapshot the
+write-path needs provenance** (restrictive lab-state dir perms as a documented trust assumption, or an
+HMAC keyed outside the dir). Treat `present:true` as "intact", not "trustworthy".
+
+**Why it's §0a.3.1-clean.** The orchestrator reads the **A6-mediated** snapshot (v6 §3.6 — the required
+mediation for any reputation->decision flow; the kernel records it at spawn-close), interprets the
+distribution advisorily (line 173 "MAY recommend"), and only **NARROWS the selection** among lens-equals
+— it NEVER widens capability. In particular it MUST NOT feed the verification-tier / `skipChecks`
+decision (good rep -> less oversight would be the amplification §0a.3.1 forbids). INV-W1 (enriched-only)
+is inherited from the projection. Full rationale:
+`packages/specs/plans/2026-06-07-v3.4-a6-advise-read-consumer.md`.
 
 ## Related Patterns
 

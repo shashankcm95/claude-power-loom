@@ -6,13 +6,15 @@
 // spawns (display-only). It only READS (the projection is pure); it never writes, gates, or routes.
 //
 // Subcommands:
-//   show [--persona <name>]   print the LIVE per-subject-persona distribution (pure projection)
-//   materialize               write the A6 reputation SNAPSHOT off-hot-path (what the kernel reads)
-//   snapshot                  read the PRE-COMPUTED snapshot (the advisory read path)
+//   show [--persona <name>]      print the LIVE per-subject-persona distribution (pure projection)
+//   materialize                  write the A6 reputation SNAPSHOT off-hot-path (what the kernel reads)
+//   snapshot [--personas a,b,c]  read the PRE-COMPUTED snapshot, optionally filtered to a candidate SET
 //
-// `snapshot` is the honest v3.4 advisory READ PATH (a future router would consume it — nothing is wired
-// to it yet): it reads the snapshot the kernel records, NOT the live projection — display-only/advisory
-// (§0a.3.1 line 173 "MAY recommend"), never gates, never widens.
+// `snapshot` is the v3.4 advisory READ PATH consumed by the orchestrator persona-selection step (the
+// A6-advise convention in agent-identity-reputation.md): it reads the snapshot the kernel records, NOT
+// the live projection — display-only/advisory (§0a.3.1 line 173 "MAY recommend"), never gates, never
+// widens. `--personas`/`--persona` filters to the candidate set in CALLER ORDER (NOT ranked, NOT a
+// score — the orchestrator judges over the raw distributions). An absent snapshot → reputation-blind.
 //
 // Exit codes: 0 on success; 1 on usage / IO error (a clean message, never a stack dump).
 
@@ -34,11 +36,26 @@ function parseArgs(argv) {
   return args;
 }
 
+// A6-advise read-consumer: collect requested persona names from --personas (comma-list) + --persona
+// (single alias). Defensive (verify-plan code-reviewer Check 1): parseArgs yields `true` for a bare flag
+// → typeof-guard; trim each, drop empties (handles whitespace / trailing-comma / 'a,,b'); dedup
+// preserving first-occurrence order (Set is also prototype-safe — a "__proto__" name can't collide).
+// An empty result → no filter (whole snapshot).
+function collectPersonas(args) {
+  const names = [];
+  if (typeof args.personas === 'string') {
+    for (const tok of args.personas.split(',')) { const n = tok.trim(); if (n) names.push(n); }
+  }
+  if (typeof args.persona === 'string') { const n = args.persona.trim(); if (n) names.push(n); }
+  return [...new Set(names)];
+}
+
 const USAGE = [
   'Usage:',
-  '  cli.js show [--persona <name>]   the LIVE advisory-verdict distribution (pure projection)',
-  '  cli.js materialize               write the A6 reputation SNAPSHOT (off-hot-path; the kernel reads it)',
-  '  cli.js snapshot                  read the PRE-COMPUTED snapshot (the advisory routing-consumer read)',
+  '  cli.js show [--persona <name>]        the LIVE advisory-verdict distribution (pure projection)',
+  '  cli.js materialize                    write the A6 reputation SNAPSHOT (off-hot-path; the kernel reads it)',
+  '  cli.js snapshot [--personas a,b,c]    read the PRE-COMPUTED snapshot, optionally filtered to a candidate',
+  '                                        SET in caller order (the A6-advise read; NOT ranked, NOT a score)',
   '',
 ].join('\n');
 
@@ -74,10 +91,32 @@ function main(argv) {
   }
 
   if (cmd === 'snapshot') {
-    // The advisory routing-consumer read path: read the PRE-COMPUTED snapshot (NOT the live
-    // projection). An absent snapshot is NOT an error (reputation-blind is the safe default) → exit 0.
+    // The advisory read path: read the PRE-COMPUTED A6 snapshot (NOT the live projection). An absent
+    // snapshot is NOT an error (reputation-blind is the safe default) → exit 0. Optional --personas/
+    // --persona filters to a candidate SET (the A6-advise consumer): caller-order, NOT ranked/sorted.
     const snap = readEvolutionSnapshot();
-    process.stdout.write(`${JSON.stringify({ path: resolveSnapshotPath(), ...snap }, null, 2)}\n`);
+    const requested = collectPersonas(args);
+    if (requested.length === 0 || !snap.present || !Array.isArray(snap.value)) {
+      // No filter, OR blind (absent snapshot), OR no value array → return the envelope UNCHANGED.
+      // (Conflating "no snapshot at all" with "these personas unmeasured" would mislead — Check 3.)
+      process.stdout.write(`${JSON.stringify({ path: resolveSnapshotPath(), ...snap }, null, 2)}\n`);
+      process.exit(0);
+    }
+    // Map-lookup over the REQUESTED array → caller order (snap.value is alpha-sorted; .filter() would
+    // keep snapshot order — Check 2). The Map is prototype-safe (Check 5 — never obj[name]). An absent
+    // persona → an explicit no-data marker, NEVER dropped (no-data != low-rep — D3 / E11-M1). No sort,
+    // no derived score (the NOT-A-SCORE invariant; the orchestrator judges over the raw distributions).
+    const byPersona = new Map(snap.value.map((p) => [p.persona, p]));
+    const value = requested.map((name) => byPersona.get(name) || { persona: name, status: 'no-data' });
+    process.stdout.write(`${JSON.stringify({
+      path: resolveSnapshotPath(),
+      ...snap,
+      value,
+      filter: {
+        requested,
+        note: 'distributions in CALLER ORDER - NOT ranked, NOT a score; the orchestrator judges. no-data / pending_enrichment>0 means UNMEASURED: neither better NOR worse than a measured distribution - do NOT prefer OR deselect on absence alone; when candidates differ only by measured-vs-unmeasured, fall back to lens-fit (VALIDATE hacker M2).',
+      },
+    }, null, 2)}\n`);
     process.exit(0);
   }
 
