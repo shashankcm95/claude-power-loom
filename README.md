@@ -53,7 +53,7 @@ It is distributed as a **Claude Code plugin**, now at **v3.4.0** — the **v3.x 
 
 | Live | Dormant | Advisory | Dropped / Deferred |
 |---|---|---|---|
-| K1 K2 K3 K4 K7 K9 K10 K13 K14 | **K3.b** · **K6** (shipped v3.1) | **K12** (layer-boundary lint) | **K8** (dropped — [ADR-0012](packages/specs/adrs/0012-capability-enforcement-is-static-not-runtime-injected.md)) · K11 → v3.2 · K2.c → v3.5+ |
+| K1 K2 K3 K4 K7 K9 K10 K13 K14 | **K3.b** (shipped v3.1) | **K12** (layer-boundary lint) | **K6** (retired v3.2, `#216`) · **K8** (dropped — [ADR-0012](packages/specs/adrs/0012-capability-enforcement-is-static-not-runtime-injected.md)) · K11 → v3.2 · K2.c → v3.5+ |
 
 "Dormant" = the code ships with **no production importer yet** (a CI gate enforces it) — for K6, the reconciliation validator does its own containment check, so K6 awaits a v3.2+ runtime consumer. "Advisory" = it **warns, never blocks**. See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the phase-by-phase plan and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#kernel-primitives) for what each primitive does.
 
