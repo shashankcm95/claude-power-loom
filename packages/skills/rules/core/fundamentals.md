@@ -47,8 +47,6 @@ Many small files over few large files:
 - Types/components: `PascalCase`
 - Constants: `UPPER_SNAKE_CASE`
 
-<important if "task involves editing or generating source code">
-
 ## ASCII-only in source edits
 
 Emit **plain ASCII** in code edits unless a non-ASCII codepoint is genuinely required by the data. The lint gate (`eslint no-irregular-whitespace`) treats stray non-ASCII as an error, and CI fails on it. Recurring offenders:
@@ -60,9 +58,7 @@ Emit **plain ASCII** in code edits unless a non-ASCII codepoint is genuinely req
 
 If a non-ASCII character is intentional in a string, prefer the escaped form (`\u00A0`, `\u2014`) so the intent is explicit and the linter stays quiet. This is distinct from the markdown-emphasis discipline (that one is about `_underscores_`); this one is about non-ASCII codepoints leaking into source.
 
-**Origin**: recurred 3× (latest: a literal BOM inside a regex tripped `no-irregular-whitespace`). Promoted from memory via `/self-improve` 2026-06-07.
-
-</important>
+**Origin**: recurred 3× (latest: a literal BOM inside a regex tripped `no-irregular-whitespace`). Promoted from memory via `/self-improve` 2026-06-07. (Kept always-on rather than predicate-gated: applies to nearly every code edit, and the core-rules predicate-block count is at the T76 ceiling of 14.)
 
 <important if "task involves multi-file changes (≥2 distinct files) or task is at completion">
 
