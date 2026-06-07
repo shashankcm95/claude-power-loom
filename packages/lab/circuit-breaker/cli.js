@@ -23,7 +23,18 @@
 
 'use strict';
 
-const { projectBreaker, evaluate } = require('./project');
+const { projectBreaker, evaluate, DEFAULT_SOURCE } = require('./project');
+
+// M1 (USER review #250) — explicit validation at the CLI boundary: if the resolved denial source is
+// NOT the live default, warn on STDERR (stdout stays clean JSON). This catches the valid-but-starved
+// config (`LOOM_BREAKER_SOURCE=negative-attestation` reads the probe-dead E1 tier → a clear result is
+// not a safety signal) that the unknown-value fail-safe cannot — surfacing it at invocation rather than
+// trusting the operator to have read the doc. Revisit when v3.5 un-starves E1 (then non-default is legit).
+function warnIfNonDefaultSource(sourceId) {
+  if (sourceId && sourceId !== DEFAULT_SOURCE) {
+    process.stderr.write(`breaker: WARNING active denial source is '${sourceId}' (non-default); it may be STARVED — a clear result is NOT a safety signal. Set LOOM_BREAKER_SOURCE=${DEFAULT_SOURCE} (the live default) unless this is intentional.\n`);
+  }
+}
 
 function parseArgs(argv) {
   const args = {};
@@ -53,7 +64,9 @@ function main(argv) {
 
   if (cmd === 'show') {
     try {
-      process.stdout.write(`${JSON.stringify(projectBreaker(), null, 2)}\n`);
+      const view = projectBreaker();
+      warnIfNonDefaultSource(view.source); // stderr (stdout stays clean JSON)
+      process.stdout.write(`${JSON.stringify(view, null, 2)}\n`);
     } catch (e) {
       process.stderr.write(`breaker: show failed: ${e.message}\n`);
       process.exit(1);
@@ -65,7 +78,9 @@ function main(argv) {
   if (cmd === 'check') {
     try {
       const persona = typeof args.persona === 'string' ? args.persona : undefined;
-      process.stdout.write(`${JSON.stringify(evaluate({ persona }), null, 2)}\n`);
+      const decision = evaluate({ persona });
+      warnIfNonDefaultSource(decision.source); // stderr (stdout stays clean JSON)
+      process.stdout.write(`${JSON.stringify(decision, null, 2)}\n`);
     } catch (e) {
       process.stderr.write(`breaker: check failed: ${e.message}\n`);
       process.exit(1);

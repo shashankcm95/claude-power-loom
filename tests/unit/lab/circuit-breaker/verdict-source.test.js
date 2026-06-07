@@ -141,5 +141,32 @@ test('8. CLI consumer: check --persona over a seeded verdict-fail burst → exit
   assert.ok(/"tripped": true/.test(res.stdout) && /"scope": "persona"/.test(res.stdout), 'the consumer halt decision over the verdict-fail stream');
 });
 
+test('9. CLI default source (verdict-fail) → NO non-default warning on stderr (M1)', () => {
+  for (let i = 0; i < 5; i += 1) {
+    seq += 1;
+    vstore.recordVerdict({
+      verdict: 'fail', subject: { persona: 'node-backend' },
+      verifier: { identity: '03-code-reviewer.nova', kind: 'structural' },
+      agentId: `c${String(seq).padStart(16, '0')}`,
+    });
+  }
+  const res = spawnSync(process.execPath, [CLI, 'check', '--persona', 'node-backend'], {
+    env: { ...process.env, LOOM_LAB_STATE_DIR: TMP }, encoding: 'utf8', // no LOOM_BREAKER_SOURCE → default
+  });
+  assert.strictEqual(res.status, 0, `exit 0 (stderr=${res.stderr})`);
+  assert.ok(!/WARNING/.test(res.stderr), 'the live default source emits no non-default warning');
+  assert.ok(/"tripped": true/.test(res.stdout), 'stdout is still the clean decision');
+});
+
+test('10. CLI non-default source (negative-attestation, STARVED) → explicit stderr WARNING; stdout clean JSON (M1)', () => {
+  const res = spawnSync(process.execPath, [CLI, 'check', '--persona', 'node-backend'], {
+    env: { ...process.env, LOOM_LAB_STATE_DIR: TMP, LOOM_BREAKER_SOURCE: 'negative-attestation' }, encoding: 'utf8',
+  });
+  assert.strictEqual(res.status, 0, `exit 0 (stderr=${res.stderr})`);
+  assert.ok(/WARNING/.test(res.stderr) && /non-default/.test(res.stderr), 'a non-default source warns explicitly on stderr');
+  const parsed = JSON.parse(res.stdout); // throws if the warning leaked into stdout
+  assert.strictEqual(parsed.source, 'negative-attestation', 'stdout stays clean JSON + echoes the resolved source');
+});
+
 process.stdout.write(`\nverdict-source.test.js (E11-rescue): ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
