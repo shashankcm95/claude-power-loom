@@ -7,7 +7,7 @@
 ## Source
 
 - Skill files: [`skills/*/SKILL.md`](../../skills/)
-- Notable: [`skills/agent-team/SKILL.md`](../../skills/agent-team/SKILL.md) — HETS deep-dive
-- End-user walkthrough: [`skills/agent-team/USING.md`](../../skills/agent-team/USING.md)
+- Notable: [`packages/skills/library/agent-team/SKILL.md`](../../packages/skills/library/agent-team/SKILL.md) — HETS deep-dive
+- End-user walkthrough: [`packages/skills/library/agent-team/USING.md`](../../packages/skills/library/agent-team/USING.md)
 
 > Up: [docs/](..)

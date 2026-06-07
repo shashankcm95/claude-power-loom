@@ -102,7 +102,7 @@ paths, references to external sources.]
 **At brief-intake (tech-stack-analyzer / architect / planner)**:
 
 1. Parse user brief → extract stated component choices (storage backends, auth mechanisms, deployment targets, language/framework selections, etc.)
-2. List all `design-pushback/*.md` entries via `node scripts/agent-team/kb-resolver.js list-design-pushback` (v2.9.0+) OR by reading `skills/agent-team/kb/design-pushback/` directory directly (v2.8.6)
+2. List all `design-pushback/*.md` entries via `node packages/runtime/orchestration/kb-resolver.js list-design-pushback` (v2.9.0+) OR by reading `packages/skills/library/agent-team/kb/design-pushback/` directory directly (v2.8.6)
 3. For each entry, evaluate the `applies_when` filter against the parsed brief:
    - All `applies_when` conditions match → candidate
    - Any `applies_NOT_when` exclusion matches → drop candidate
@@ -123,7 +123,7 @@ Before adding an entry, verify:
 
 Then:
 - Pick a slug: `<context>-<bad-choice>` or `<bad-choice>-for-<context>`
-- Create `skills/agent-team/kb/design-pushback/<slug>.md` following the schema above
+- Create `packages/skills/library/agent-team/kb/design-pushback/<slug>.md` following the schema above
 - Add cross-references from related architecture/security/data KB docs
 - Open a PR — review by 1 other person (sanity check on filter calibration)
 

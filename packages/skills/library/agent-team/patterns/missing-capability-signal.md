@@ -86,12 +86,12 @@ For all request types, the user is the trust boundary. Root surfaces the request
 >   Files this would create:
 >     - swarm/personas/13-node-backend.md
 >     - swarm/personas-contracts/13-node-backend.contract.json
->     - skills/agent-team/kb/backend-dev/node-runtime-basics.md
->     - skills/agent-team/kb/backend-dev/express-essentials.md
+>     - packages/skills/library/agent-team/kb/backend-dev/node-runtime-basics.md
+>     - packages/skills/library/agent-team/kb/backend-dev/express-essentials.md
 >   Files this would update:
->     - scripts/agent-team/agent-identity.js (DEFAULT_ROSTERS)
+>     - packages/runtime/orchestration/agent-identity.js (DEFAULT_ROSTERS)
 >     - ~/.claude/agent-identities.json (live store rosters)
->     - skills/agent-team/kb/hets/stack-skill-map.md
+>     - packages/skills/library/agent-team/kb/hets/stack-skill-map.md
 >
 > Approve? [y/n/cancel]
 ```

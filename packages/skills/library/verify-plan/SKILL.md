@@ -85,7 +85,7 @@ CODEREVIEWER_FINDINGS=$(mktemp -t code-reviewer-findings.XXXXXX.md)
 ### 3. Aggregate findings into Pre-Approval Verification section
 
 ```bash
-node "$HOME/.claude/scripts/agent-team/verify-plan-spawn.js" \
+node "$HOME/.claude/packages/runtime/orchestration/verify-plan-spawn.js" \
   "$PLAN_PATH" \
   "$ARCHITECT_FINDINGS" \
   "$CODEREVIEWER_FINDINGS"
@@ -94,7 +94,7 @@ node "$HOME/.claude/scripts/agent-team/verify-plan-spawn.js" \
 Or if running from the plugin install path, the script lives at:
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/agent-team/verify-plan-spawn.js" "$PLAN_PATH" "$ARCHITECT_FINDINGS" "$CODEREVIEWER_FINDINGS"
+node "${CLAUDE_PLUGIN_ROOT}/packages/runtime/orchestration/verify-plan-spawn.js" "$PLAN_PATH" "$ARCHITECT_FINDINGS" "$CODEREVIEWER_FINDINGS"
 ```
 
 The aggregator appends a `## Pre-Approval Verification` section to the plan file with both reviewers' findings.
@@ -140,7 +140,7 @@ Honesty: this skill is a **forcing function for procedural discipline**, not a t
 
 - `agents/architect.md` — provides the architect persona definition (with Principle Audit ADR field per H.7.22)
 - `agents/code-reviewer.md` — code-review persona
-- `scripts/agent-team/verify-plan-spawn.js` — aggregator helper (this script does NOT spawn; Claude does in step 2)
+- `packages/runtime/orchestration/verify-plan-spawn.js` — aggregator helper (this script does NOT spawn; Claude does in step 2)
 - `validate-plan-schema.js` Tier 1 conditional — enforces section presence on HETS-routed plans
 
 ## Drift-note 40 — closed by H.7.23

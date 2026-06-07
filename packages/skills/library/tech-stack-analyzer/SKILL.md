@@ -34,7 +34,7 @@ If task is too vague to extract intent + domain → emit ONE clarifying question
 ### Step 2 — Look up stack
 Query `kb:hets/stack-skill-map`:
 ```bash
-node ~/Documents/claude-toolkit/scripts/agent-team/kb-resolver.js cat hets/stack-skill-map
+node ~/Documents/claude-toolkit/packages/runtime/orchestration/kb-resolver.js cat hets/stack-skill-map
 ```
 
 Match the user's task signals to the closest stack entry (substring match on rationale + domain). If user already specified a stack (e.g., "I want it in Spring Boot"), use it directly — don't second-guess.
@@ -56,7 +56,7 @@ Query the catalog to mark each required + recommended skill as `available` / `ma
 
 ```bash
 # For local + marketplace skills
-node ~/Documents/claude-toolkit/scripts/agent-team/kb-resolver.js list --tag <topic>
+node ~/Documents/claude-toolkit/packages/runtime/orchestration/kb-resolver.js list --tag <topic>
 
 # For each skill, check its skill_status across the persona contracts
 grep -l "\"<skill-name>\":" ~/Documents/claude-toolkit/swarm/personas-contracts/*.contract.json
@@ -124,11 +124,11 @@ Apply trust-tiered verification per `agent-identity recommend-verification`. For
 
 ```bash
 # 1. Assign identity
-IDENTITY=$(node ~/Documents/claude-toolkit/scripts/agent-team/agent-identity.js \
+IDENTITY=$(node ~/Documents/claude-toolkit/packages/runtime/orchestration/agent-identity.js \
   assign --persona ${PERSONA} --task "${TASK_TAG}" | jq -r .identity)
 
 # 2. Get verification policy
-POLICY=$(node ~/Documents/claude-toolkit/scripts/agent-team/agent-identity.js \
+POLICY=$(node ~/Documents/claude-toolkit/packages/runtime/orchestration/agent-identity.js \
   recommend-verification --identity ${IDENTITY})
 
 # 3. Spawn the actor (per kb:hets/spawn-conventions)

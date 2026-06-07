@@ -234,7 +234,7 @@ The second-most-common failure: stuffing the prompt with "just in case" content.
 
 ### `budget-tracker.js` per-spawn accounting
 
-The substrate tracks per-spawn token + cost usage via `scripts/agent-team/budget-tracker.js`. Each HETS actor spawn records input + output tokens; aggregation across spawns + persona ladders gives per-task cost visibility.
+The substrate tracks per-spawn token + cost usage via `packages/runtime/orchestration/budget-tracker.js`. Each HETS actor spawn records input + output tokens; aggregation across spawns + persona ladders gives per-task cost visibility.
 
 This is the substrate's cost-observability surface — substrate users can see what HETS runs actually cost; cost trends across runs are visible.
 

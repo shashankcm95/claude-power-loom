@@ -41,7 +41,7 @@ This skill converts the soft norm into a sharper gate by:
 
 ### 1. Route-decide gate
 
-Invoke `node ~/Documents/claude-toolkit/scripts/agent-team/route-decide.js --task "$TASK"` (with `--context` on continuations).
+Invoke `node ~/Documents/claude-toolkit/packages/kernel/algorithms/route-decide.js --task "$TASK"` (with `--context` on continuations).
 
 Decision matrix:
 - `route` → continue silently (HETS-aware planning warranted)

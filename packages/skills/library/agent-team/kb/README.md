@@ -33,7 +33,7 @@ tags: [topic-tag, scope-tag]   # for catalog query
 
 ## Resolver CLI
 
-`scripts/agent-team/kb-resolver.js` — invoke via `node`:
+`packages/runtime/orchestration/kb-resolver.js` — invoke via `node`:
 
 | Subcommand | Purpose | Example |
 |------------|---------|---------|
@@ -79,6 +79,6 @@ Older kb docs (without `## Quick Reference`) gracefully fall back: `cat-quick-re
 
 ## Path resolution
 
-- Default location: `~/Documents/claude-toolkit/skills/agent-team/kb/`
+- Default location: `~/Documents/claude-toolkit/packages/skills/library/agent-team/kb/`
 - Override via env var: `HETS_KB_DIR=<path>`
 - Resolver also reads `HETS_RUN_STATE_DIR` for snapshot writes (default: `~/Documents/claude-toolkit/swarm/run-state/`)

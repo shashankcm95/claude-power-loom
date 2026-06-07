@@ -316,7 +316,7 @@ Each tier is itself an agent loop — the super-agent decides which personas to 
 
 ### Workflow-vs-agent gate (`route-decide`)
 
-`scripts/agent-team/route-decide.js` is the substrate's workflow-vs-agent gate. Given a task, it returns `root` (handle inline; trivial) or `route` (spawn team; non-trivial). This is the default-to-workflow discipline encoded.
+`packages/kernel/algorithms/route-decide.js` is the substrate's workflow-vs-agent gate. Given a task, it returns `root` (handle inline; trivial) or `route` (spawn team; non-trivial). This is the default-to-workflow discipline encoded.
 
 The gate uses a weighted formula across surface-pattern signals (file count, complexity vocabulary, tool-use intent) — a workflow-style decision before the agent layer is invoked.
 
@@ -332,7 +332,7 @@ The contract is the agent's scope envelope. Verification (`contract-verifier.js`
 
 ### Budget tracking
 
-`scripts/agent-team/budget-tracker.js` records per-spawn token + cost + step usage. The substrate logs accumulating spend across multi-tier agent runs; per-tier caps can be enforced.
+`packages/runtime/orchestration/budget-tracker.js` records per-spawn token + cost + step usage. The substrate logs accumulating spend across multi-tier agent runs; per-tier caps can be enforced.
 
 ## History
 

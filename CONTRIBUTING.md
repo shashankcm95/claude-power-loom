@@ -183,7 +183,7 @@ Restart Claude Code to pick up the changes (or wait for the next session — eac
 
 ### What's safe to skip
 
-Phases that touch ONLY `scripts/agent-team/`, `swarm/`, or `skills/agent-team/{patterns,kb}/` don't need the installer — those paths aren't synced into `~/.claude/`. The HETS scripts (per the manual-sync convention earlier in this CONTRIBUTING doc) are copied into `~/.claude/scripts/agent-team/` separately, by the per-script `cp` step that each phase commit explicitly runs.
+Phases that touch ONLY `swarm/run-state/` (transient runtime artifacts) don't need the installer — that path isn't synced into `~/.claude/`. Everything else now ships WITH the plugin: the HETS scripts live under `packages/runtime/orchestration/` + `packages/kernel/`, the skills under `packages/skills/`, installed via the plugin / `install.sh` flow. *(Pre-restructure note: these used to live at top-level `scripts/agent-team/` + `skills/agent-team/` and were hand-`cp`'d into `~/.claude/scripts/agent-team/` per a manual-sync convention; the v4 workspace restructure moved them into `packages/`, retiring that per-script `cp` step.)*
 
 ### Periodic reconciliation
 

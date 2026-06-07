@@ -26,7 +26,7 @@ The route-decision gate exists to minimize the bottom-row case while preserving 
 
 ## Components
 
-The 7-dimension scoring table consumed by `scripts/agent-team/route-decide.js`:
+The 7-dimension scoring table consumed by `packages/kernel/algorithms/route-decide.js`:
 
 | Dimension | Weight | Trigger | Example keywords |
 |-----------|--------|---------|------------------|
@@ -85,7 +85,7 @@ Stress tests: empty prompt → exit 2; single-keyword prompt → root; multi-key
 
 ## Enforcement callsite
 
-The 7-dimension scoring at `scripts/agent-team/route-decide.js` is consumed by `commands/build-team.md` Step 0. Step 0 branches on the `recommendation` field returned by `route-decide.js --task X`, dispatching to one of three flows: `route` (continue to Step 1), `borderline` (escalate to user with score decomposition + 3-option menu), `root` (exit 0 with skip-orchestration message). The Step 0 bash flow uses fail-open default (missing script → assume `route`) to preserve pre-H.7.3 behavior on degraded installs. See `commands/build-team.md` Step 0 for the literal shell flow.
+The 7-dimension scoring at `packages/kernel/algorithms/route-decide.js` is consumed by `commands/build-team.md` Step 0. Step 0 branches on the `recommendation` field returned by `route-decide.js --task X`, dispatching to one of three flows: `route` (continue to Step 1), `borderline` (escalate to user with score decomposition + 3-option menu), `root` (exit 0 with skip-orchestration message). The Step 0 bash flow uses fail-open default (missing script → assume `route`) to preserve pre-H.7.3 behavior on degraded installs. See `commands/build-team.md` Step 0 for the literal shell flow.
 
 ## H.7.5 — Layered context-aware routing
 

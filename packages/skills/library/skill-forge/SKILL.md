@@ -35,7 +35,7 @@ Before generic internet research, consult the canonical-source registry for tech
 
 ```bash
 # Read the registry once at forge time
-node ~/.claude/scripts/agent-team/kb-resolver.js cat hets/canonical-skill-sources
+node ~/.claude/packages/runtime/orchestration/kb-resolver.js cat hets/canonical-skill-sources
 ```
 
 Look up the skill name in the `### Registry` section. If a canonical source exists:

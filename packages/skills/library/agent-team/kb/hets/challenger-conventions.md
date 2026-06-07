@@ -18,7 +18,7 @@ IMPL_IDENTITY="07-java-backend.sasha"
 IMPL_OUTPUT="$RUN_DIR/node-actor-java-backend-sasha.md"
 
 # 2. Pick challenger (different persona preferred)
-CHALLENGER=$(node ~/Documents/claude-toolkit/scripts/agent-team/agent-identity.js \
+CHALLENGER=$(node ~/Documents/claude-toolkit/packages/runtime/orchestration/agent-identity.js \
   assign-challenger \
   --exclude-persona 07-java-backend \
   --exclude-identity $IMPL_IDENTITY \
@@ -26,7 +26,7 @@ CHALLENGER=$(node ~/Documents/claude-toolkit/scripts/agent-team/agent-identity.j
 # e.g., CHALLENGER="04-architect.theo"
 
 # 3. Track in tree
-node ~/Documents/claude-toolkit/scripts/agent-team/tree-tracker.js spawn \
+node ~/Documents/claude-toolkit/packages/runtime/orchestration/tree-tracker.js spawn \
   --run-id $RUN_ID \
   --parent $IMPL_IDENTITY \
   --child "challenger-${CHALLENGER//./-}-vs-${IMPL_IDENTITY//./-}" \
@@ -85,7 +85,7 @@ task: <task summary>
 ### Verifier
 
 ```bash
-node ~/Documents/claude-toolkit/scripts/agent-team/contract-verifier.js \
+node ~/Documents/claude-toolkit/packages/kernel/validators/contract-verifier.js \
   --contract ~/Documents/claude-toolkit/swarm/personas-contracts/challenger.contract.json \
   --output $CHALLENGER_OUTPUT \
   --identity $CHALLENGER

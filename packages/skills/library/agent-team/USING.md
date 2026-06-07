@@ -44,8 +44,8 @@ Verify the install resolved by listing available skills — you should see `agen
 The toolkit ships with a small substrate of registries (identity rosters, KB documents, persona contracts, the stack-skill map). On first use you'll want to confirm those registries resolve cleanly. From any directory inside your project:
 
 ```bash
-node ~/Documents/claude-toolkit/scripts/agent-team/agent-identity.js list | head
-node ~/Documents/claude-toolkit/scripts/agent-team/kb-resolver.js scan
+node ~/Documents/claude-toolkit/packages/runtime/orchestration/agent-identity.js list | head
+node ~/Documents/claude-toolkit/packages/runtime/orchestration/kb-resolver.js scan
 ```
 
 The first command prints the current persona rosters (each persona has a small pool of named identities — `04-architect.ari`, `13-node-backend.kira`, etc. — that round-robin across spawns so trust accumulates per identity, not per persona). The second scans the KB index for broken refs.
@@ -205,7 +205,7 @@ After all spawned identities complete + verification + (per policy) challenger p
 **`weighted_trust_score`** — a per-identity number (0.0-1.0) the orchestrator uses to pick verification policy on the NEXT spawn. Most users don't need to inspect it. You'd inspect it when: an identity that was passing reliably suddenly drops to symmetric-pair verification (signals trust degradation worth understanding), OR you're debugging why a task is taking longer than expected (the orchestrator may have switched to more verbose verification).
 
 ```bash
-node ~/Documents/claude-toolkit/scripts/agent-team/agent-identity.js \
+node ~/Documents/claude-toolkit/packages/runtime/orchestration/agent-identity.js \
   stats --identity 13-node-backend.kira | jq '.aggregate_quality_factors'
 ```
 

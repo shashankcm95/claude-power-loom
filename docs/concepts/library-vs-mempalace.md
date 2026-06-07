@@ -37,7 +37,7 @@ These remain credited in `ATTRIBUTION.md`.
 - **Chaos-test isolation** via `CLAUDE_LIBRARY_ROOT` env override (Component O bulkhead)
 - **6 named test scenarios** (J1-J6) wired into install.sh — all live-verified at ship
 
-These design choices were arrived at via architect + code-reviewer parallel spawn at plan-time (MANDATORY-gate per HT.1.6 4/5 triggers), with both reviewers grounded in our 37-doc kb tree at `skills/agent-team/kb/` per the H.9.20.0 KB-consultation-discipline.
+These design choices were arrived at via architect + code-reviewer parallel spawn at plan-time (MANDATORY-gate per HT.1.6 4/5 triggers), with both reviewers grounded in our 37-doc kb tree at `packages/skills/library/agent-team/kb/` per the H.9.20.0 KB-consultation-discipline.
 
 ## File-system layout deltas
 
