@@ -168,13 +168,13 @@ The gate **earned its keep**: it caught this ROADMAP section's pre-reshape stale
 
 ---
 
-## ⬜ v3.4 — Evolution Lab Full
+## ✅ v3.4 — Evolution Lab Full (closed at the advisory loop, in shadow)
 
 *Est. ~30–55h + human-authored seed content. The deferred amplifiers + the production trigger.*
 
 The Lab layer comes to volume.
 
-**Shipped waves (in progress):**
+**Shipped waves (all merged to `main`):**
 
 - **Wave 0** — determinism carry-overs + the `canonical-json` `kernel/_lib` leaf (#242).
 - **Wave 1** — the evidence-linked verdict-attestation store + the agentId→`transaction_id` enricher + the F4 kernel canary (#243).
@@ -182,16 +182,46 @@ The Lab layer comes to volume.
 - **Wave 3 — A6 snapshot mediator** *(this wave)* — the kernel **records** the lab-materialized reputation snapshot into `axioms.evolution_snapshot.reputation` at spawn-close (**records-not-injects**, ADR-0012), read O(1) as a data file (§3.6, K12-clean) + hash-self-verified (INV-22); **atomic-rename supersession** (no invalidation — v6:179/408); the `reputation materialize` / `snapshot` advisory read path — a CLI surface a future router would consume; nothing is wired to it yet (§0a.3.1 "MAY recommend"). **The kernel STAYS shadow** — A6 records + advises, never gates K9 (the "leave shadow?" decision, resolved NO). New leaf `kernel/_lib/evolution-snapshot-read` (4th extract-to-leaf). [Probe spike](../packages/specs/spikes/2026-06-04-v3.4-wave3-a6-probe.md).
 - **Wave 4 — E11 circuit-breaker (shadow)** *(this wave)* — recon found the W0→W3 loop **inert** (0 production triggers → E2/E3 premature), so the disciplined next is the **un-darkening prerequisite**: a denial-rate circuit-breaker (`lab/circuit-breaker`), built **before** the thing it guards (design-input (a)). A pure sliding-window projection over E1's denials → per-persona + global breakers + an `evaluate` decision API. **§0a.3.1-safe by construction**: it only NARROWS/halts (v6:173 "monotonically safe") → no INV-W1 gate (unlike E4). OQ-8 resolved (per-persona + global; sliding window; `LOOM_DISABLE_CIRCUIT_BREAKER` bypass; env-thresholds capped *below* the ledger bound so they can't disable it). **SHADOW — halts nothing yet** (hooks.json 0-ref); wiring it live is a binding **GATE** on un-darkening the decompose tier. No `kernel/_lib` leaf (correctly resisted — no cross-layer consumer).
 - **Wave 5 — the promote/merge identity RFC (decision, no code)** *(this wave)* — recon reframed the open "enforcing vs advisory" question: v6 already settles the broad split (A3a kernel-gates enforce / A3b LLM-mediated advises), so the genuinely-open question is the **disposition of a gate-PASSING delta** (shadow → enforce-quarantine → candidate-stage → auto-merge). RFC [`2026-06-04-enforcing-vs-advisory-identity`](../packages/specs/rfcs/2026-06-04-enforcing-vs-advisory-identity.md) (architect + honesty-auditor reviewed; honesty Grade A) **ratified Option B — human-gated promotion (PROVISIONAL)**: shadow stays default, the staging machinery becomes a supported opt-in ceiling (revert-toward-retire if unused within one release cycle), **auto-merge retired-until-ContainerAdapter**. Activation (docs + a promote-path breaker + picking the rung-2 mechanism) is a follow-up build.
-- **Wave 6 — verdict→E4 dogfood un-darkening** *(this wave)* — the verdict-attestation→E4→A6 chain was built but had **no routine producer**; recon found the §0a.3.1 evidence-link is the **SUBJECT (delegated, delta-bearing) spawn**, so only delegated builds yield legal subjects. Closed the loop by **dogfooding on this wave's own build**: delegated the `record-review` CLI build to `node-backend` (a delta-bearing subject), 3-lens VALIDATEd it, then recorded the first real verdict-attestation linking its spawn → enrich → E4 (`13-node-backend`: 3 pass, R1-stratified) → A6 snapshot. NEW `record-review` batch subcommand ([cli.js](../packages/lab/verdict-attestation/cli.js)) + the recording convention in the agent-team reputation pattern. **Dogfood/self-measurement scope** (Axiom 5; advisory). The store-hardening the 3-lens hacker surfaced (H-1 silent-drop + M-1 input-screening, both in the merged store, mislabel-triggered) was **deferred to a follow-up** (spawn-task). User-repo high-volume capture is the named follow-on. [plan](../packages/specs/plans/2026-06-04-v3.4-wave6-verdict-undarken.md).
+- **Wave 6 — verdict→E4 dogfood un-darkening** *(this wave)* — the verdict-attestation→E4→A6 chain was built but had **no routine producer**; recon found the §0a.3.1 evidence-link is the **SUBJECT (delegated, delta-bearing) spawn**, so only delegated builds yield legal subjects. Closed the loop by **dogfooding on this wave's own build**: delegated the `record-review` CLI build to `node-backend` (a delta-bearing subject), 3-lens VALIDATEd it, then recorded the first real verdict-attestation linking its spawn → enrich → E4 (`13-node-backend`: 3 pass, R1-stratified) → A6 snapshot. NEW `record-review` batch subcommand ([cli.js](../packages/lab/verdict-attestation/cli.js)) + the recording convention in the agent-team reputation pattern. **Dogfood/self-measurement scope** (Axiom 5; advisory). The store-hardening the 3-lens hacker surfaced (H-1 silent-drop + M-1 input-screening) was completed in a follow-up (`#249`). [plan](../packages/specs/plans/2026-06-04-v3.4-wave6-verdict-undarken.md).
+- **E11-rescue** (`#250`) — re-aimed the W4 breaker's DEFAULT denial-source from the starved E1 store to the LIVE verdict-`fail` stream (pluggable source registry; E1 opt-in via `LOOM_BREAKER_SOURCE`) + wired the orchestrator persona-selection **HALT-consumer** (`check --persona`). [plan](../packages/specs/plans/2026-06-07-v3.4-e11-rescue-verdict-fail-consumer.md).
+- **A6-advise** (`#254`) — wired the orchestrator persona-selection **ADVISE-consumer** (`reputation snapshot --personas`: caller-order filter, `no-data` markers, prefer-stronger-DISTRIBUTION among same-lens candidates, tie-breaker-after-lens; NOT a score). **Closes the last E4/A6 dark edge** → the advisory loop is complete in shadow. [plan](../packages/specs/plans/2026-06-07-v3.4-a6-advise-read-consumer.md).
 
-**Remaining in scope:**
+**Exit criteria (v3.4 close — RESHAPED to the advisory loop, mirroring the v3.3 reshape):**
 
-- **E2 / E3** — derived-policy extraction (deterministic; the 4 structural enums + tag-Jaccard scope) + the policy-axiom store + K4 recall (via A6). Design against real attestation distributions (trigger ≈ "≥N attestations across ≥M personas in normal use"). *(E4 reputation shipped W2+W3.)*
-- **The production decomposition trigger** — the open "how/when does a persona decompose its task in production" question (depth-1 + the general-persona-path constraint mean it can't simply bake into `agents/*.md`).
-- **R10-per-leaf** ([#234](https://github.com/shashankcm95/claude-power-loom/issues/234)) + **K2.c** per-tool-call observability.
-- **Earlier-layer decisions** (v3.3 scope §4.5): kernel shadow-permanence — **partially resolved (W3): the kernel stays shadow for A6; reputation never enters K9 this phase** (leaving shadow is a separate `LOOM_RESOLVER_ENFORCE`-class phase); the `computeRecencyDecay` activate-or-supersede — **resolved (W2): one shared leaf, two display consumers**; and reconsider whether the kernel's high-volume **per-spawn resolver-journal** is a richer Lab input than decompose-run's low-volume per-leaf rejects.
+The cumulative-coherence discipline that reshaped v3.3 applies again: v3.4 "Full" was over-chartered; the volume-/Pattern-B-gated remainder can't be built coherently yet (building it ships premature/inert code — ADR-0012). So v3.4 closes at the **complete advisory loop, in shadow**:
 
-Then: attribution graphs, convergence metrics, evolve/forge triggers, reference test suites — where Axiom A5 (the substrate measures and evolves itself) is realized.
+- **EC1 — Evidence-linked reputation:** the verdict-attestation store records emission-attestations evidence-linked (`agentId`→`transaction_id`) to kernel spawn-records; **E4** projects them into a per-persona advisory-verdict **DISTRIBUTION** (display-only; INV-W1 enriched-only; NOT a score).
+- **EC2 — A6 mediation, kernel stays shadow:** the kernel **records** the lab-materialized reputation snapshot at spawn-close (records-not-injects, ADR-0012), O(1) data-file read + hash-self-verified (INV-22), atomic-rename supersession; reputation **never enters K9**.
+- **EC3 — E11 denial circuit-breaker:** a pure sliding-window projection over the verdict-`fail` stream → per-persona + global breakers + an `evaluate` decision API; **§0a.3.1-safe by construction** (narrows-only); env-thresholds capped below the ledger bound.
+- **EC4 — the advisory loop CLOSED (in shadow):** both consumers wired as orchestrator conventions — **E11 halt** (`circuit-breaker check --persona`) + **A6 advise** (`reputation snapshot --personas`). `produce → advise + halt → consume` complete; 0 `hooks.json` production triggers (shadow).
+- **EC5 — §0a.3.1 coherence throughout:** derived views project over evidence-linked emission-attestations (no trust-by-frequency); advisory-only — never gates K9, never widens capability; the leave-shadow graduation gates (E11 G1 dedup-by-subject + G2 source-validation; A6 M1 snapshot-provenance) are TRACKED, not built (graduation is a separate phase).
+
+**Deferred to v3.5+ — the volume-/Pattern-B-gated remainder (RESHAPED, NOT scope-cut; structural reasons, the same class v3.3 deferred):**
+
+- **E2 / E3** (derived-policy extraction + policy-axiom store + K4 recall) — **premature**: gated on real attestation volume (≈ "≥N attestations across ≥M personas in normal use"), of which there is none. Tuning the amplifiers (Jaccard/recall/EWMA) to fixtures would fit the wrong distribution (the exact v3.3 lesson).
+- **The production decomposition trigger** — a hard open design problem (depth-1: plugin-spawned personas have no Agent/Task tool; the general-persona-path constraint). It is the prerequisite for E2/E3 volume and naturally co-lands with Pattern B.
+- **E5–E10** (attribution graphs · convergence-metrics CLI · evolve/forge triggers · cross-persona review · KB-seed · reference test suites) — the deep Axiom-A5 realization; also wants real volume.
+- **R10-per-leaf** ([#234](https://github.com/shashankcm95/claude-power-loom/issues/234)) — blocked on **Pattern B** (per-leaf sub-spawn, v3.5+/E12); **K2.c** per-tool-call observability ships with its consumer.
+
+**Earlier-layer decisions (v3.3 §4.5) — RESOLVED in-phase:** kernel shadow-permanence (W3 — stays shadow for A6; reputation never enters K9; leaving shadow is a separate `LOOM_RESOLVER_ENFORCE`-class phase); `computeRecencyDecay` activate-or-supersede (W2 — one shared leaf, two display consumers). Carried: reconsider the kernel per-spawn resolver-journal as a richer Lab input than decompose-run's low-volume per-leaf rejects.
+
+### Phase-close sign-off (2026-06-07)
+
+Run per `/phase-close v3.4` — three independent full-context lenses (PM = honesty-auditor; Principal-SDE = code-reviewer at phase altitude; Architect) reviewed the **integrated** phase against EC1–EC5. **All three CLOSEABLE.**
+
+- **PM** — Grade A / no-overclaim. All five exit criteria honestly met against code (EC4 "loop closed in shadow" verified — `grep "lab/" packages/kernel/hooks.json` = ∅; EC1 evidence-link REQUIRED at `verdict-attestation/store.js:152`; INV-W1 enriched-only at `reputation/project.js:90`). The **reshape is structurally legitimate, not goalpost-moving** — the deferrals are volume-/Pattern-B-gated (the same class v3.3 deferred); the W4→W6 "real volume" is honestly scoped as **dogfood-only** (3 attestations, 1 spawn), never inflated to production. Graduation gates (E11 G1/G2, A6 M1) tracked as future-work. The phase systematically rounds DOWN.
+- **Principal-SDE** — cross-PR contracts CONSISTENT (the verdict-attestation shape agrees across the E4 / E11 / A6 consumers; `VALID_VERDICTS` imported, not re-declared); the A6 snapshot shape single-sourced via the `evolution-snapshot-read` path+hash leaf; the four shared `kernel/_lib` leaves used consistently; K12 0 findings; shadow intact (0 `lab/` hooks). **FLAG-4 RESOLVED** — the reported `jest`-parallel "25 failures" was an artifact of a tool the project does not use (the lab-test runner is `find + node`, per `.github/workflows/ci.yml`; no jest dep/config); root cause was duplicate test copies in an **orphaned agent worktree**, now removed + `.claude/` gitignored.
+- **Architect** — the advisory loop coheres end-to-end as a layer (every Lab module imports only `kernel/_lib` pure leaves; the single Lab→Kernel edge is the §3.6 A6 mediation, records-not-injects); the **close-boundary is the right shippable unit** — nothing built needs a deferred item to be correct (the E11-rescue re-aim is what makes "complete loop" honest, not aspirational); the verdict-attestation + snapshot schemas are forward-complete Published Languages for the deferred E2/E3 readers (no v3.5 breaking reshape implied); kernel-stays-shadow is sound as a phase-permanent stance.
+
+**v3.5 carry-list (named, non-blocking — from the phase-close lenses):**
+
+- Cross-store integration fixture (W1→E4→A6→E11 in one test) [SDE].
+- E11 D6 dedup-by-subject (`evidence_refs.agent_id`) **+ a half-open/hysteresis gate** — REQUIRED alongside E11 G1/G2 + A6 M1 before any leave-shadow gating phase [architect + SDE].
+- Re-validate the ledger/field bounds (`MAX_FIELD_LEN`, `MAX_LEDGER_RECORDS`) against real E2/E3 volume [architect].
+- G1/G2/M1 graduation-gate comment anchors in the lab code for traceability [SDE].
+- The loop stays INERT (0 production triggers) — v3.5 inherits an empty store; the production decomposition trigger + Pattern B unblock E2/E3 volume [architect].
+
+Durable record: the `toolkit/phase-close/v3.4-close` library volume.
 
 ---
 

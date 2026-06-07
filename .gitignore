@@ -2,6 +2,11 @@ node_modules/
 .DS_Store
 *.log
 
+# Local Claude Code working dir (session state, plans, agent worktrees). Nothing
+# here is tracked; gitignored to prevent accidental commits + stale agent-worktree
+# dupes polluting glob-based test discovery (v3.4 phase-close FLAG-4).
+.claude/
+
 # Swarm run state (per-run findings, not for version control)
 swarm/run-state/
 
