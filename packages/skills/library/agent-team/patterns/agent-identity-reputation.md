@@ -54,7 +54,7 @@ Stress-test scenarios:
 
 ## Trust Formula (H.4.2 — explicit + auditable)
 
-The trust score is **computed on demand** from each identity's persisted verdict history; there is no static `trust: 0.85` field on disk. Source of truth: `tierOf(stats)` in `scripts/agent-team/agent-identity.js:97-104`. The formula is intentionally simple — no recency decay, no skill-invocation weighting, no per-task complexity adjustment — so audits can reproduce any tier assignment from `verdicts {pass, partial, fail}` alone.
+The trust score is **computed on demand** from each identity's persisted verdict history; there is no static `trust: 0.85` field on disk. Source of truth: `tierOf(stats)` in `packages/runtime/orchestration/agent-identity.js:97-104`. The formula is intentionally simple — no recency decay, no skill-invocation weighting, no per-task complexity adjustment — so audits can reproduce any tier assignment from `verdicts {pass, partial, fail}` alone.
 
 ### The actual formula
 
@@ -121,7 +121,7 @@ clamped_bonus = clamp(Σ axis_contribution_i, -0.10, +0.50)
 axis_contribution_i = WEIGHTS[i] × normalize_i(aggregateQF[i])
 ```
 
-Source of truth: `computeWeightedTrustScore(stats, aggregateQF)` in `scripts/agent-team/agent-identity.js`. Surfaced as `cmdStats --identity X` JSON field `weighted_trust_score`.
+Source of truth: `computeWeightedTrustScore(stats, aggregateQF)` in `packages/runtime/orchestration/agent-identity.js`. Surfaced as `cmdStats --identity X` JSON field `weighted_trust_score`.
 
 #### Weights table (theory-driven; refit scheduled for H.8.x at n≥20)
 
@@ -198,7 +198,7 @@ The H.7.2 doc projected an "empirical refit at H.8.x once n≥20 verdicts accumu
 
 #### Methodology
 
-- **Tool**: `scripts/agent-team/weight-fit.js` (Pearson correlation + linear regression; deterministic, auditable, no opaque ML).
+- **Tool**: `packages/runtime/orchestration/weight-fit.js` (Pearson correlation + linear regression; deterministic, auditable, no opaque ML).
 - **Data source**: `~/.claude/agent-patterns.json`, filtered to entries with `quality_factors` populated and verdict ∈ {pass, fail}.
 - **Confidence thresholds**: high (n≥30 AND |r|≥0.30), moderate (n≥15 AND |r|≥0.20), low (else), insufficient (n<5).
 - **Decision rule**: adjust if confidence ≥ moderate AND |delta| ≥ 0.02; flag for human review if |delta| ≥ 0.10; else keep theory.

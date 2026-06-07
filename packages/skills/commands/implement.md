@@ -67,8 +67,8 @@ Each phase has success criteria. Run them:
 ```bash
 # Common verification (adapt per plan)
 bash install.sh --hooks --test
-node scripts/agent-team/contracts-validate.js
-node scripts/agent-team/_h70-test.js
+node packages/runtime/orchestration/contracts-validate.js
+node packages/runtime/orchestration/_h70-test.js
 ```
 
 Fix any failures before proceeding.

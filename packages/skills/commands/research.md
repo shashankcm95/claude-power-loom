@@ -59,11 +59,11 @@ Each persona's contract explicitly forbids critique language. They are documenta
 
 ```bash
 # Identity assignment for each documentary persona
-LOCATOR=$(node ~/Documents/claude-toolkit/scripts/agent-team/agent-identity.js assign \
+LOCATOR=$(node ~/Documents/claude-toolkit/packages/runtime/orchestration/agent-identity.js assign \
   --persona 14-codebase-locator --task "research-${RUN_ID}" | jq -r '.identity')
-ANALYZER=$(node ~/Documents/claude-toolkit/scripts/agent-team/agent-identity.js assign \
+ANALYZER=$(node ~/Documents/claude-toolkit/packages/runtime/orchestration/agent-identity.js assign \
   --persona 15-codebase-analyzer --task "research-${RUN_ID}" | jq -r '.identity')
-PATTERN_FINDER=$(node ~/Documents/claude-toolkit/scripts/agent-team/agent-identity.js assign \
+PATTERN_FINDER=$(node ~/Documents/claude-toolkit/packages/runtime/orchestration/agent-identity.js assign \
   --persona 16-codebase-pattern-finder --task "research-${RUN_ID}" | jq -r '.identity')
 ```
 
