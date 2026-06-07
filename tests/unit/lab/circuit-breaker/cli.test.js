@@ -17,6 +17,9 @@ const { spawnSync } = require('child_process');
 
 const TMP = path.join(os.tmpdir(), 'w4-e11-cli-' + crypto.randomBytes(6).toString('hex'));
 process.env.LOOM_LAB_STATE_DIR = TMP; // BEFORE requiring the store
+// E11-rescue: PIN the E1 source (the default is now verdict-fail). Set at module scope so it rides
+// `...process.env` into the spawned CLI (run() below) AND the in-process store require.
+process.env.LOOM_BREAKER_SOURCE = 'negative-attestation';
 fs.mkdirSync(TMP, { recursive: true });
 
 const REPO = path.join(__dirname, '..', '..', '..', '..');
