@@ -101,5 +101,9 @@ test('4. loop coherence: ONE producer -> advise (A6) + halt (E11) AGREE on the w
   assert.strictEqual(weakHalt.tripped, true, 'E11 halt: weak is tripped — the two consumers cohere from one evidence base');
 });
 
+// Best-effort temp cleanup (every test() catches its own throw, so this line is always reached on
+// pass OR fail; a hard crash leaves the OS to reclaim os.tmpdir). CodeRabbit MAJOR — folded.
+try { fs.rmSync(TMP, { recursive: true, force: true }); } catch { /* tmpdir reclaim is the OS's job */ }
+
 process.stdout.write(`\ncross-store-loop.test.js (v3.4 advisory loop): ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
