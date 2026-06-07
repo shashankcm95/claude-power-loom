@@ -219,6 +219,7 @@ Run per `/phase-close v3.4` — three independent full-context lenses (PM = hone
 - Re-validate the ledger/field bounds (`MAX_FIELD_LEN`, `MAX_LEDGER_RECORDS`) against real E2/E3 volume [architect].
 - G1/G2/M1 graduation-gate comment anchors in the lab code for traceability [SDE].
 - The loop stays INERT (0 production triggers) — v3.5 inherits an empty store; the production decomposition trigger + Pattern B unblock E2/E3 volume [architect].
+- **`route-decide` dictionary-expansion architect pass** — `drift:dictionary-gap` converged (3) via `/self-improve` 2026-06-07: the scorer dictionary is `v1.2-dict-expanded-2026-05-07` and contains **none** of the v3.3/v3.4 Lab vocabulary (E1–E12, `decompose-run`, circuit-breaker, reputation, attestation, canonical-json, evolution-snapshot, K12–K14), so substrate-meta tasks under-route. Keyword-set/weight changes are LOAD-BEARING (`route-decide.js:11-13`) and **require a new architect pass** with a re-validation of the weighted formula — do NOT hand-edit the keyword sets. Bump `WEIGHTS_VERSION` on landing. [self-improve]
 
 Durable record: the `toolkit/phase-close/v3.4-close` library volume.
 
