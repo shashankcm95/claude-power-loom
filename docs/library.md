@@ -178,4 +178,4 @@ To roll back: `node scripts/library-migrate.js rollback --to <run-id>`.
 - `docs/concepts/library-vs-mempalace.md` — attribution + design-deltas
 - `ATTRIBUTION.md` — MempPalace credit + superseded-integration note
 - `scripts/library.js` + `scripts/library-migrate.js` — implementation
-- `scripts/agent-team/_lib/library-paths.js` + `library-catalog.js` — substrate primitives
+- `packages/kernel/_lib/library-paths.js` + `library-catalog.js` — substrate primitives

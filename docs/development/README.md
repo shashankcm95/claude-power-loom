@@ -15,7 +15,7 @@
 ## Plugin-dev tooling (H.7.8)
 
 - [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) — GitHub Actions CI: 3 parallel jobs on push:main + pull_request:main
-  - `smoke` — runs `bash install.sh --test` (12/12 hook tests) + `node scripts/agent-team/contracts-validate.js`
+  - `smoke` — runs `bash install.sh --test` (12/12 hook tests) + `node packages/runtime/orchestration/contracts-validate.js`
   - `markdown-lint` — `npx markdownlint-cli2` against all `*.md` (excludes `node_modules`, `swarm/`)
   - `json-validate` — bash loop validating every `*.json` with `python3 -m json.tool`
 - [`.markdownlint.json`](../../.markdownlint.json) — lenient markdown lint config (catches real bugs; tolerates stylistic inconsistency in 60+ existing docs)

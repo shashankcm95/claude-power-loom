@@ -28,7 +28,7 @@ If `$ARGUMENTS` contains the literal flag `--force-plan`, skip Step 0 entirely a
 **H.7.5 — context-aware**: when invoking on a conversation continuation, ALWAYS pass `--context "<last assistant excerpt>"`. Bare task strips the routing signal that lived in the prior recommendation.
 
 ```bash
-ROUTE_DECIDE_SCRIPT="$HOME/Documents/claude-toolkit/scripts/agent-team/route-decide.js"
+ROUTE_DECIDE_SCRIPT="$HOME/Documents/claude-toolkit/packages/kernel/algorithms/route-decide.js"
 PRIOR_TURN_EXCERPT="${PRIOR_TURN_EXCERPT:-}"
 
 if [ ! -f "$ROUTE_DECIDE_SCRIPT" ]; then
@@ -112,7 +112,7 @@ if [ "$(echo "$CONVERGENCE_VALUE >= 0.10" | bc -l)" = "1" ] && [ -z "$SKIP_HETS"
   echo "  paired architectural review (asymmetric-challenger pattern)."
   echo ""
   echo "Recommended spawn: 04-architect.<round-robin> + paired challenger 03-code-reviewer.<round-robin>"
-  echo "  See: scripts/agent-team/agent-identity.js assign --persona 04-architect --task plan-<RUN_ID>"
+  echo "  See: packages/runtime/orchestration/agent-identity.js assign --persona 04-architect --task plan-<RUN_ID>"
   echo ""
   echo "This is a recommendation, NOT auto-spawn. User decides at Step 5 gate."
 fi

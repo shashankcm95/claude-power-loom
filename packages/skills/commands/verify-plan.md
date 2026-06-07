@@ -28,7 +28,7 @@ The skill body at `skills/verify-plan/SKILL.md` defines the 6-step procedure. Su
 
 1. Read plan file
 2. Spawn architect (verification-mode brief) + code-reviewer in parallel via Agent tool
-3. Aggregate findings via `scripts/agent-team/verify-plan-spawn.js`
+3. Aggregate findings via `packages/runtime/orchestration/verify-plan-spawn.js`
 4. Surface verdict (READY / NEEDS-REVISION / BLOCKED)
 5. Apply fixes inline if NEEDS-REVISION
 6. ExitPlanMode
