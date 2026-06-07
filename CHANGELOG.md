@@ -8,6 +8,18 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [3.4.0] — 2026-06-07 — v3.4 Evolution Lab Full (the advisory loop, in shadow)
+
+**Minor release** (additive — the Evolution Lab advisory loop + the orchestrator persona-selection conventions; no breaking kernel/runtime change. `.claude-plugin/plugin.json` `3.3.0 → 3.4.0`, the SemVer signal [ADR-0007](packages/specs/adrs/0007-v290-minor-bump-rationale.md) reserves for MINOR). Ships the **v3.4 Evolution Lab Full** substrate — **RESHAPED** (mirroring the v3.3 reshape) to close at the **complete advisory loop, in shadow**; the volume-/Pattern-B-gated remainder (E2/E3, the production decomposition trigger, E5–E10, R10) is deferred to v3.5+. Phase-closed 2026-06-07 (3-lens CLOSEABLE; [`docs/ROADMAP.md`](docs/ROADMAP.md)).
+
+- **The `produce → advise + halt → consume` loop** (`#243`–`#254`): the evidence-linked **verdict-attestation** store + the `agentId`→`transaction_id` enricher (W1, `#243`) → **E4** reputation derived-view (display-only DISTRIBUTION, INV-W1 enriched-only — **NOT a score**; W2, `#244`) → **A6** snapshot mediator (the kernel **records** the lab-materialized snapshot at spawn-close — records-not-injects per [ADR-0012](packages/specs/adrs/0012-pre-spawn-tool-mask-inert.md), hash-self-verified INV-22; W3, `#246`) → **E11** denial circuit-breaker (sliding-window, **narrows-only**; W4 `#247`, re-aimed to the live verdict-`fail` stream in `#250`) → the orchestrator persona-selection **consumers**: E11 halt (`circuit-breaker check --persona`) + A6 advise (`reputation snapshot --personas`; `#254`).
+- **Determinism + shared leaves**: the `canonical-json` / `recency-decay` / `jsonl-read` / `evolution-snapshot-read` `kernel/_lib` pure leaves (W0 `#242` + the bounded JSONL-read deep-fix `#245`).
+- **Identity-promotion RFC** (`#248`): ratified **Option B** — human-gated promotion (provisional); auto-merge retired-until-ContainerAdapter.
+
+**Activation surface (honest)**: this release **activates NOTHING new in a live session.** The entire Evolution Lab tier ships **SHADOW** — 0 production hook triggers (`packages/kernel/hooks.json` has no `lab/` refs). The advisory loop is **complete as an orchestrator-convention chain** (the consumers are CLI surfaces + documented conventions the orchestrator MAY consult), **NOT a kernel router** — reputation never enters K9, never gates or widens capability. The "real volume" recorded (W6) is **dogfood-only** (3 verdict-attestations from one delegated spawn). The deferred amplifiers (E2/E3), the production decomposition trigger, E5–E10, and R10 are **structurally blocked** (no attestation volume yet / no Pattern B), deferred to v3.5+ with reasons. The leave-shadow graduation gates (E11 G1/G2 dedup + source-validation; A6 M1 snapshot-provenance + half-open) are tracked, not built. The only live session surfaces remain the v3.2 `catalog-reconcile` hooks + `/phase-close`.
+
+---
+
 ## [3.3.0] — 2026-06-04 — v3.3 Evolution Lab Foundation (Wave 0 + E1)
 
 **Minor release** (additive — the first Layer-3 / Evolution Lab modules + a `lab-tests` CI job; no breaking kernel/runtime change. `.claude-plugin/plugin.json` `3.2.0 → 3.3.0`, the SemVer signal [ADR-0007](packages/specs/adrs/0007-v290-minor-bump-rationale.md) reserves for MINOR). Ships the **v3.3 Evolution Lab Foundation** — phase-closed 2026-06-04 (3-lens CLOSEABLE; [`docs/ROADMAP.md`](docs/ROADMAP.md)). **RESHAPED** by a cumulative substrate-coherence pass to **Wave 0 + E1**; E2/E3/E4 deferred to v3.4 (volume-amplifiers over a near-empty producer — designed against real attestation volume when it exists).
