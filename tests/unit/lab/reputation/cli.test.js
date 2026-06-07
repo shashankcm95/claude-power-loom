@@ -85,5 +85,84 @@ test('snapshot with no materialized file → present:false, exit 0 (reputation-b
   assert.ok(/"present": false/.test(s.out), 'absent → present:false');
 });
 
+// ── A6-advise read-consumer: the `snapshot --personas` candidate-set filter (NOT a rank/score) ──
+
+test('snapshot --personas → filters to the set in CALLER ORDER; absent persona → no-data marker', () => {
+  seedEnriched('alpha', 'aFa', 'txFa');
+  seedEnriched('gamma', 'aFg', 'txFg'); // NOT beta
+  run(['materialize']);
+  const r = run(['snapshot', '--personas', 'gamma,beta,alpha']);
+  assert.strictEqual(r.code, 0, `exit 0 (stderr=${r.err})`);
+  const j = JSON.parse(r.out);
+  assert.deepStrictEqual(j.value.map((p) => p.persona), ['gamma', 'beta', 'alpha'], 'caller order, NOT alpha-sorted');
+  assert.strictEqual(j.value[1].status, 'no-data', 'absent persona → explicit no-data marker (not dropped)');
+  assert.ok(j.value[0].by_verdict && j.value[2].by_verdict, 'present personas carry their distribution');
+});
+
+test('snapshot --persona <one> → single-persona filter', () => {
+  seedEnriched('alpha', 'aFs1', 'txFs1');
+  seedEnriched('gamma', 'aFs2', 'txFs2');
+  run(['materialize']);
+  const r = run(['snapshot', '--persona', 'gamma']);
+  assert.strictEqual(r.code, 0, `exit 0 (stderr=${r.err})`);
+  const j = JSON.parse(r.out);
+  assert.deepStrictEqual(j.value.map((p) => p.persona), ['gamma'], 'only the requested persona');
+});
+
+test('snapshot --personas → output carries an explicit NOT-ranked / NOT-a-score note', () => {
+  seedEnriched('alpha', 'aFn', 'txFn');
+  run(['materialize']);
+  const r = run(['snapshot', '--personas', 'alpha']);
+  const j = JSON.parse(r.out);
+  assert.ok(j.filter && /NOT ranked|NOT a score/i.test(JSON.stringify(j.filter)), 'explicit not-ranked/not-a-score note on the filter path');
+});
+
+test('snapshot --personas (bare, no value) → whole snapshot, NO crash', () => {
+  seedEnriched('alpha', 'aFb', 'txFb');
+  run(['materialize']);
+  const r = run(['snapshot', '--personas']); // parseArgs → args.personas === true
+  assert.strictEqual(r.code, 0, `no crash on bare flag (stderr=${r.err})`);
+  const j = JSON.parse(r.out);
+  assert.strictEqual(j.present, true);
+  assert.ok(j.value.some((p) => p.persona === 'alpha'), 'whole snapshot (bare flag → filter ignored)');
+  assert.ok(!j.filter, 'no filter object when no valid personas parsed');
+});
+
+test('snapshot --personas → trims whitespace, drops empties/trailing-comma, dedups', () => {
+  seedEnriched('alpha', 'aFw', 'txFw');
+  run(['materialize']);
+  const r = run(['snapshot', '--personas', ' alpha , alpha ,']);
+  const j = JSON.parse(r.out);
+  assert.deepStrictEqual(j.value.map((p) => p.persona), ['alpha'], 'trimmed + deduped + empties dropped → single alpha');
+});
+
+test('snapshot --persona + --personas → merged + deduped', () => {
+  seedEnriched('alpha', 'aFp1', 'txFp1');
+  seedEnriched('gamma', 'aFp2', 'txFp2');
+  run(['materialize']);
+  const r = run(['snapshot', '--persona', 'alpha', '--personas', 'gamma,alpha']);
+  const j = JSON.parse(r.out);
+  const names = j.value.map((p) => p.persona);
+  assert.ok(names.includes('alpha') && names.includes('gamma'), 'both present');
+  assert.strictEqual(names.filter((n) => n === 'alpha').length, 1, 'alpha deduped across both args');
+});
+
+test('snapshot --personas with NO materialized file → present:false, blind (no synthesized no-data)', () => {
+  const r = run(['snapshot', '--personas', 'alpha,beta']);
+  assert.strictEqual(r.code, 0, 'absent snapshot is not an error');
+  const j = JSON.parse(r.out);
+  assert.strictEqual(j.present, false, 'absent snapshot → blind, not filtered');
+  assert.ok(!/no-data/.test(r.out), 'no synthesized no-data markers when blind (no-snapshot != unmeasured-persona)');
+});
+
+test('snapshot --personas with present:true but EMPTY value (materialize, no records) → all no-data, present stays true', () => {
+  run(['materialize']); // no seeds → present:true, value:[] (distinct from present:false / absent)
+  const r = run(['snapshot', '--personas', 'alpha,beta']);
+  assert.strictEqual(r.code, 0, `exit 0 (stderr=${r.err})`);
+  const j = JSON.parse(r.out);
+  assert.strictEqual(j.present, true, 'empty snapshot is PRESENT (distinct from absent → present:false)');
+  assert.deepStrictEqual(j.value.map((p) => p.status), ['no-data', 'no-data'], 'empty value → every requested persona is no-data');
+});
+
 process.stdout.write(`\ncli.test.js (E4 reputation): ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
