@@ -39,6 +39,16 @@ This is the build-time form of the layered-architecture principle: *the runtime 
 | R10 per-leaf attribution | blocked | per-leaf token / schema | E1 / E4 | **BLOCKED** on Pattern-A no-per-leaf-boundary (unblock = Pattern B) [#234] |
 | Wave 0 `attestation_id` determinism | built (held PR) | `canonical-json` leaf + cross-node id | E4 reuses `canonical-json` | **`canonical-json` CONSUMED v3.4**; cross-node-id determinism = forward-robustness |
 
+## v3.5 scope — Memory Manage-Layer (SCOPED 2026-06-07; not yet built)
+
+v3.5's thrust is the **Memory Manage-Layer + Causal-Recall Graph** (USER-chosen), NOT E2/E3 — so the items this ledger had pegged to "v3.5" (E2/E3 policy pipeline; K2.c ships-with-consumer) **shift to v3.6+**. Scope doc: `packages/specs/plans/2026-06-07-v3.5-memory-manage-scope.md` (bigger build, de-risked: Wave 0 foundations + spike-gated graph loop; architect cumulative-coherence + `/verify-plan` board both done). Its deferred items, NAMED (Producer-Consumer Phasing — not silent "someday"):
+
+| v3.5-deferred feature | Reason | Consumer | Fate |
+|---|---|---|---|
+| R2 live destructive-manage enforcement (TOMBSTONE/SUPERSEDE) | leave-shadow event (v3.4 ratified kernel-stays-shadow); needs the OQ-E kernel-attested-writer primitive | human reviewer | **v3.6+** (separate leave-shadow phase, breaker-paired) |
+| Utility-linked edge/confidence | needs a NON-starved v3.4 outcome loop (currently shadow/empty) | E4/A6 reputation | **v3.6+** |
+| Semantic-edge store + OQ-27 walker | spike-gated (Spike B GO/NO-GO); RESERVE-schema fallback on NO-GO | the OQ-27 walker (in-phase if GO) | **v3.5 if Spike B GO, else RESERVE→v3.6** |
+
 ## The one strategic decision underneath all of it — RESOLVED 2026-06-04 (Option B)
 
 **Was: is Power Loom an ENFORCING substrate, or an ADVISORY one by identity?** The reframe (RFC
