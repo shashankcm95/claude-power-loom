@@ -270,6 +270,52 @@ jobs:
           fi
           exit $failed
 
+  aux-unit-tests:
+    # v3.4 post-release (CI-coverage gap closed). The kernel/runtime/lab jobs above each gate ONLY
+    # their own find root, leaving tests/unit/{scripts,hooks,agents,agent-team,kb} UNGATED — they could
+    # rot silently (e.g. self-improve-store.test.js was dead from the v4 restructure #158 until a manual
+    # post-release sweep, fixed in PR #256). This job is the CATCH-ALL: it runs every tests/unit
+    # *.test.js OUTSIDE kernel/runtime/lab, so any NEW dir is auto-gated (no silent rot). If a future
+    # layer gets its own dedicated job above, add its root to the -not -path excludes here to avoid
+    # double-running. Mirrors the lab-tests pattern: per-file runner, null-delimited find, vacuous-pass
+    # guard. (Tracked: chip task_f6e54208.)
+    name: Auxiliary unit tests (outside kernel/runtime/lab)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run auxiliary unit tests (scripts/hooks/agents/agent-team/kb + future dirs)
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        run: |
+          set +e  # explicit; the loop manages exit code via $failed accumulator
+          failed=0
+          count=0
+          while IFS= read -r -d '' f; do
+            count=$((count+1))
+            echo "::group::$f"
+            node "$f"
+            rc=$?
+            echo "::endgroup::"
+            [ $rc -ne 0 ] && failed=1
+          done < <(find "$GITHUB_WORKSPACE/tests/unit" -name '*.test.js' -type f \
+            -not -path '*/tests/unit/kernel/*' \
+            -not -path '*/tests/unit/runtime/*' \
+            -not -path '*/tests/unit/lab/*' -print0)
+          echo "Ran $count test files; failures: $failed"
+          # Vacuous-pass guard: if find matched zero files (cwd mismatch, all roots renamed, or globbing
+          # failure), fail rather than pass vacuously — same defense as the kernel/runtime/lab jobs.
+          if [ "$count" -eq 0 ]; then
+            echo "::error::Zero auxiliary test files matched outside kernel/runtime/lab — vacuous-pass guard failing the job."
+            exit 2
+          fi
+          exit $failed
+
   dormancy-assertion-k3b:
     # Phase 1-alpha K3.b context-envelope ships DORMANT — the validator module +
     # its JSON schema land in PR 1, but NO production code imports the module
