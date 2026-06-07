@@ -63,6 +63,12 @@ jobs:
           # check so a crafted filename can't inject the success substring. (GH #228)
           grep -qE '^Total violations: 0$' /tmp/contracts.log
 
+      - name: Persona-agent roster check
+        # v3.4 stabilization: guard against the "missing agents/*.md stub → general-purpose
+        # fallback" drift that originally motivated generate-persona-agents.js. --check exits
+        # non-zero if any roster persona lacks its agents/<name>.md stub (it writes nothing).
+        run: node scripts/generate-persona-agents.js --check
+
   markdown-lint:
     name: Markdown lint
     runs-on: ubuntu-latest
