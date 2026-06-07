@@ -19,6 +19,10 @@ const crypto = require('crypto');
 
 const TMP = path.join(os.tmpdir(), 'w4-e11-' + crypto.randomBytes(6).toString('hex'));
 process.env.LOOM_LAB_STATE_DIR = TMP; // BEFORE requiring the E1 store (ENV-BEFORE-REQUIRE)
+// E11-rescue: the breaker's DEFAULT source is now the verdict-`fail` stream. This file exercises the
+// E1 (negative-attestation) source path, so PIN it explicitly. (NOT in BREAKER_ENVS below → the
+// per-test clear loop preserves it; the verdict-fail default is covered in verdict-source.test.js.)
+process.env.LOOM_BREAKER_SOURCE = 'negative-attestation';
 fs.mkdirSync(TMP, { recursive: true });
 
 const REPO = path.join(__dirname, '..', '..', '..', '..');

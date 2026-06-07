@@ -462,6 +462,49 @@ node packages/lab/verdict-attestation/cli.js record-review \
 
 Full rationale: `packages/specs/plans/2026-06-04-v3.4-wave6-verdict-undarken.md`.
 
+### Circuit-breaker on the verdict-`fail` stream (E11-rescue) — the safety-halt consumer
+
+The verdict stream feeds TWO advisory consumers, paired at persona-selection time:
+
+- **E4 / A6 = advisory RANK** ("prefer the higher-reputation persona") — display-only, never gates.
+- **E11 = safety HALT** ("block the persona whose recent fail-rate tripped") — a denial-rate
+  circuit-breaker (`packages/lab/circuit-breaker/`) projecting the verdict-`fail` slice over a sliding
+  window.
+
+**Convention (orchestrator, advisory).** BEFORE a delegated builder spawn of persona `P`, the
+orchestrator MAY consult the breaker:
+
+```
+node packages/lab/circuit-breaker/cli.js check --persona <P>
+# -> { "tripped": true|false, "scope": "...", "source": "verdict-fail", ... }
+```
+
+`tripped:true` -> do NOT spawn `P`: reroute to an alternate lens, or halt and surface to the user. This
+is **narrows-only** (it removes a choice, never adds one), **advisory** (A3b — never a hard gate), and
+the breaker itself halts nothing automatically (shadow). Only `fail` verdicts are denials (`pass` /
+`partial` are not); the count is fail-VERDICT records (a multi-reviewer fail of one build counts each
+reviewer — a disclosed characteristic, advisory + thresholds tunable).
+
+**Why it's §0a.3.1-clean.** The consumer is the orchestrator (root / user-space) narrowing its OWN
+spawn choice — not a kernel state-transition, so it needs no A6-snapshot mediation (A6 mediates only
+Lab->KERNEL reads, v6 §3.6). A halt grants nothing, so the anti-amplification trace test is vacuous
+(the W4 "monotonically safe" property). The source is evidence-linked at the store WRITE boundary (the
+verdict store requires `agentId`); the breaker does not re-verify a hand-written ledger line at read —
+acceptable because a halt only narrows (an injected `fail` can over-halt, never grant).
+
+**Honest scope.** Structurally wired + fixture-tested; it TRIPS only once delegated builds accumulate
+`fail` verdicts in the window (advisory dogfood volume — 0 fails at first close). The default source is
+`verdict-fail`; `LOOM_BREAKER_SOURCE=negative-attestation` opts into the E1 decompose-reject stream;
+`LOOM_DISABLE_CIRCUIT_BREAKER=1` bypasses.
+
+**CAUTION — verify the `source` before trusting a clear result (VALIDATE hacker M1).** `check` echoes a
+`source` field. `LOOM_BREAKER_SOURCE=negative-attestation` points the breaker at the E1 store, which is
+**STARVED today** (the decompose tier is dark) — so it returns `bypassed:false` + all-clear while the
+live verdict-`fail` stream goes UNWATCHED. Treat a non-default `source` (anything but `verdict-fail`)
+like `bypassed:true`: a clear result from a starved source is not a safety signal. Likewise
+`excluded_future > 0` in `show` is a tamper / clock-skew caution, not a benign diagnostic. Full
+rationale: `packages/specs/plans/2026-06-07-v3.4-e11-rescue-verdict-fail-consumer.md`.
+
 ## Related Patterns
 
 - [Trust-Tiered Verification Depth](trust-tiered-verification.md) — reads per-identity trust to decide verification depth

@@ -2,15 +2,24 @@
 
 // @loom-layer: lab
 //
-// v3.4 Wave 4 — E11 circuit-breaker CLI: inspect the denial-rate breaker (SHADOW — it halts nothing).
-// It only READS (the projection is pure); it never writes, gates, or halts.
+// v3.4 Wave 4 + E11-rescue — E11 circuit-breaker CLI: inspect the denial-rate breaker (SHADOW — it
+// halts nothing). It only READS (the projection is pure); it never writes, gates, or halts.
+//
+// The active denial source is `LOOM_BREAKER_SOURCE` — `verdict-fail` (DEFAULT; the W6 verdict-`fail`
+// stream) | `negative-attestation` (the E1 decompose-reject store, opt-in). An unknown value fails
+// SAFE to the default. Both `show` and `check` echo the resolved `source` field. CAUTION (VALIDATE
+// hacker M1): `negative-attestation` is STARVED today → opting in returns a clear / `bypassed:false`
+// view while the live verdict-`fail` stream goes UNWATCHED; a consumer should verify the echoed
+// `source` is the live one before trusting a clear result.
 //
 // Subcommands:
-//   show                    print the per-persona + global breaker view as JSON
-//   check [--persona <p>]   print the consumer DECISION (tripped? scope?) for a persona (or global-only)
+//   show                    print the per-persona + global breaker view as JSON (incl. `source`)
+//   check [--persona <p>]   print the consumer DECISION (tripped? scope? source?) for a persona (or global)
 //
-// A tripped breaker is a VALID state, not a CLI error → `check` exits 0 regardless; the consumer reads
-// the `tripped` field. Exit codes: 0 on success; 1 on usage / IO error (a clean message, never a stack).
+// The CONSUMER: an orchestrator consults `check --persona P` BEFORE a delegated builder spawn and
+// narrows its own spawn choice on `tripped` (advisory/A3b — reroute or halt). A tripped breaker is a
+// VALID state, not a CLI error → `check` exits 0 regardless; the consumer reads the `tripped` field.
+// Exit codes: 0 on success; 1 on usage / IO error (a clean message, never a stack).
 
 'use strict';
 
@@ -32,6 +41,9 @@ const USAGE = [
   'Usage:',
   '  cli.js show                    the per-persona + global denial-rate breaker view (shadow)',
   '  cli.js check [--persona <p>]   the consumer decision: tripped? + scope (global supersedes persona)',
+  '',
+  '  Env: LOOM_BREAKER_SOURCE=verdict-fail (default) | negative-attestation   (unknown -> fail-safe default)',
+  '       LOOM_DISABLE_CIRCUIT_BREAKER=1   bypass (all-clear)',
   '',
 ].join('\n');
 
