@@ -8,16 +8,19 @@
 // NOT the kernel quarantine-promote.js spawn-delta staging.) Imports only the sibling store + manage-ops.
 //
 // Subcommands:
-//   quarantine --target <txid> --justification "..." [--origin O]   (propose; the producer)
-//   list [--disposition pending|approved|rejected]                   (the human review surface)
-//   dispose --proposal-id <id> --decision approved|rejected          (the human acts; the CLI operator IS the human)
+//   quarantine --target <txid> --justification "..." [--origin O]                    (propose; the producer)
+//   content-dedup|cull|merge --targets <txid,txid,...> --justification "..." [--origin O]  (multi-target propose)
+//   list [--disposition pending|approved|rejected]                                   (the human review surface)
+//   dispose --proposal-id <id> --decision approved|rejected                          (the human acts; the CLI operator IS the human)
 //
 // Exit codes: 0 on success; 1 on usage / validation error (a clean message, never a stack dump).
 
 'use strict';
 
 const { listProposals, updateDisposition } = require('./store');
-const { quarantineRecord } = require('./manage-ops');
+const {
+  quarantineRecord, contentDedupRecord, cullRecord, mergeRecord,
+} = require('./manage-ops');
 const { DISPOSITIONS, validateEnum } = require('./enums');
 
 function parseArgs(argv) {
@@ -32,14 +35,17 @@ function parseArgs(argv) {
   return args;
 }
 
-const USAGE = 'Usage: cli.js <quarantine --target <txid> --justification "..." [--origin O] | list [--disposition D] | dispose --proposal-id <id> --decision approved|rejected>\n';
+const USAGE = 'Usage: cli.js <quarantine --target <txid> --justification "..." [--origin O] | content-dedup|cull|merge --targets <txid,txid,...> --justification "..." [--origin O] | list [--disposition D] | dispose --proposal-id <id> --decision approved|rejected>\n  (--justification is a single-line free string, <=512 bytes; for merge it carries the proposed summary)\n';
 
 function emit(obj) {
   process.stdout.write(`${JSON.stringify(obj, null, 2)}\n`);
 }
 
 function fail(msg) {
-  process.stderr.write(`manage-proposal: ${msg}\n`);
+  // Do NOT double-prefix: store/wrapper errors already carry the `manage-proposal: ` namespace (VALIDATE
+  // hacker LOW-1). Re-prefix only a bare CLI usage message.
+  const m = String(msg).startsWith('manage-proposal: ') ? String(msg) : `manage-proposal: ${msg}`;
+  process.stderr.write(`${m}\n`);
   process.exit(1);
 }
 
@@ -54,6 +60,21 @@ function main(argv) {
         justification: args.justification,
         origin: args.origin || 'cli',
       }));
+    } catch (e) { fail(e.message); return; }
+    process.exit(0);
+  }
+
+  if (cmd === 'content-dedup' || cmd === 'cull' || cmd === 'merge') {
+    // A bare `--targets` (no value) parses to boolean true; reject it (do NOT pass true to split()).
+    // A missing flag is undefined - same clean usage error. A present string is comma-split; trimmed,
+    // empties dropped (forgiving), and the STORE validates non-empty + HEX64-per-element (one gate, DRY).
+    if (typeof args.targets !== 'string') {
+      fail(`${cmd} requires --targets <txid,txid,...>`); return;
+    }
+    const targets = args.targets.split(',').map((s) => s.trim()).filter(Boolean);
+    const producer = { 'content-dedup': contentDedupRecord, cull: cullRecord, merge: mergeRecord }[cmd];
+    try {
+      emit(producer({ targets, justification: args.justification, origin: args.origin || 'cli' }));
     } catch (e) { fail(e.message); return; }
     process.exit(0);
   }

@@ -200,7 +200,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 
 - `packages/lab/manage-proposal/cli.js` - v3.5 Wave 3b.1 - the manage-proposal CLI - the dogfood vehicle + the human-DISPOSITION surface for the
 - `packages/lab/manage-proposal/enums.js` - v3.5 Wave 3b.1 - shared manage-proposal enums + R4 validation re-export.
-- `packages/lab/manage-proposal/manage-ops.js` - v3.5 Wave 3b.1 - the manage-op producers.
+- `packages/lab/manage-proposal/manage-ops.js` - v3.5 Wave 3b - the manage-op producers.
 - `packages/lab/manage-proposal/projections.js` - v3.5 Wave 3b.1 - the `quarantined` projection: a PURE Lab projection over the manage-proposal set.
 - `packages/lab/manage-proposal/store.js` - v3.5 Wave 3b.1 - the manage-proposal store (the destructive-proposal PRODUCER of the manage-write loop).
 

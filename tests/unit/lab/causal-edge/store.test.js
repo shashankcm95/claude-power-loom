@@ -179,12 +179,27 @@ test('* field-length cap: over-long source_block/target_block/source_origin reje
   assert.doesNotThrow(() => store.createEdge(ein({ sourceOrigin: 'a'.repeat(store.MAX_FIELD_LEN), now: T0 })), 'AT the cap is fine');
 });
 
+// -- 9b. * the cap is a BYTE cap, not a char count (carry-3): a multibyte string UNDER MAX_FIELD_LEN chars
+//        but OVER MAX_FIELD_LEN bytes is rejected; a multibyte string under the byte cap is accepted. The
+//        prior pure-ASCII fixtures (length == bytes) did NOT exercise the .length -> Buffer.byteLength fix.
+test('* byte-cap (carry-3): a <char-cap-but->byte-cap multibyte field is rejected; under the byte cap is fine', () => {
+  const eAcute = String.fromCharCode(0x00e9); // a 2-byte (UTF-8) char; ASCII-source via fromCharCode
+  const overBytes = eAcute.repeat(260); // 260 chars (< 512 char) but 520 bytes (> 512 byte) -> reject
+  assert.ok(overBytes.length < store.MAX_FIELD_LEN, 'fixture is UNDER the char count');
+  assert.ok(Buffer.byteLength(overBytes, 'utf8') > store.MAX_FIELD_LEN, 'fixture is OVER the byte count');
+  assert.throws(() => store.createEdge(ein({ sourceOrigin: overBytes })), /cap|exceed|byte|length/i, 'over-byte multibyte source_origin rejected');
+  assert.strictEqual(store.listEdges().length, 0, 'nothing stored on an over-byte reject');
+  const underBytes = eAcute.repeat(200); // 200 chars, 400 bytes (< 512 byte) -> accepted
+  assert.doesNotThrow(() => store.createEdge(ein({ sourceOrigin: underBytes, now: T0 })), 'a multibyte field under the byte cap is fine');
+});
+
 // -- 10. * control chars in any free-string field corrupt the single-line-per-record JSONL -> REJECT.
-test('* control chars (newline/CR/tab/NUL) in a free-string field -> reject, never stored', () => {
+test('* control chars (newline/CR/tab/NUL/BOM) in a free-string field -> reject, never stored', () => {
   assert.throws(() => store.createEdge(ein({ sourceBlock: 'block\nA' })), /control/i, 'newline in source_block');
   assert.throws(() => store.createEdge(ein({ targetBlock: 'block\tB' })), /control/i, 'tab in target_block');
   assert.throws(() => store.createEdge(ein({ sourceOrigin: `run${String.fromCharCode(0)}x` })), /control/i, 'NUL in source_origin');
   assert.throws(() => store.createEdge(ein({ targetBlock: 'block\rB' })), /control/i, 'CR in target_block');
+  assert.throws(() => store.createEdge(ein({ sourceOrigin: `run${String.fromCharCode(0xfeff)}x` })), /control/i, 'U+FEFF BOM in source_origin (parity with the enum >0x7f gate)');
   assert.strictEqual(store.listEdges().length, 0, 'no control-char record stored');
 });
 

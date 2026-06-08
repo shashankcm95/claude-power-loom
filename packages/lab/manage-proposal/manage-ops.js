@@ -2,11 +2,11 @@
 
 // @loom-layer: lab
 //
-// v3.5 Wave 3b.1 - the manage-op producers. 3b.1 ships `quarantineRecord` - the SAFE, non-destructive
-// marker (the RFC places quarantine OUTSIDE R2: retrieval-suppression, not deletion). The destructive-
-// proposal ops (content-dedup->SUPERSEDE-proposal, cull->TOMBSTONE-proposal, merge) are Wave 3b.2 wrappers
-// over the SAME store. (DISAMBIGUATION: a Memory-Manage retrieval-suppression marker, NOT the kernel
-// quarantine-promote.js spawn-delta staging.)
+// v3.5 Wave 3b - the manage-op producers. 3b.1 ships `quarantineRecord` - the SAFE, non-destructive
+// marker (the RFC places quarantine OUTSIDE R2: retrieval-suppression, not deletion). 3b.2 adds the
+// multi-target destructive-PROPOSAL ops (content-dedup / cull / merge) as thin wrappers over the SAME
+// store - CREATE-only, the "destructive" notional until the v3.6 promotion. (DISAMBIGUATION: a Memory-
+// Manage retrieval-suppression marker, NOT the kernel quarantine-promote.js spawn-delta staging.)
 //
 // THIN wrapper (the flagConflict pattern): it OWNS three PRESENCE guards (clean errors naming the wrapper's
 // contract) + delegates FORMAT validity (the HEX64 target, length/control-char, the lock, the content-
@@ -62,4 +62,74 @@ function quarantineRecord(input) {
   });
 }
 
-module.exports = { quarantineRecord, QUARANTINE };
+const CONTENT_DEDUP = 'content-dedup';
+const CULL = 'cull';
+const MERGE = 'merge';
+
+/**
+ * The shared producer for the multi-target destructive-PROPOSAL ops (content-dedup / cull / merge). A THIN
+ * validated CREATE over the proposal store, mirroring quarantineRecord: it OWNS three PRESENCE guards (a
+ * MISSING field names THIS wrapper's contract) + delegates FORMAT validity (is-array / non-empty / HEX64-
+ * per-element / length / control-char / lock / content-address) to store.createProposal - one admission
+ * gate (DRY). CREATE-only - NEVER calls updateDisposition; 0 destructive op-class in executable code.
+ *
+ * ARITY is intentionally NOT enforced (VERIFY A1): a single-target merge/dedup is harmless advisory data
+ * a human rejects; semantic arity (a merge needs >=2 to be meaningful) is a v3.6-execution concern, not an
+ * advisory-record one. The store's non-empty check is the only target-count gate.
+ *
+ * @param {string} opName the wrapper name (for the presence-guard error messages)
+ * @param {string} opType the pinned op_type (one of OP_TYPES)
+ * @param {object} input  { targets:string[], justification:string, origin:string, now?:number|string }
+ * @returns {object} the pending proposal record, OR the live row (dedup), OR { skipped:'lock-contended' }
+ */
+function proposeMultiTargetOp(opName, opType, input) {
+  const {
+    targets, justification, origin, now,
+  } = input || {};
+
+  // PRESENCE guards (the quarantineRecord pattern): a MISSING field names THIS wrapper; FORMAT validity
+  // (non-array / empty / non-hex element) delegates to the store's one admission gate.
+  if (justification === undefined || justification === null) {
+    throw new Error(`${opName}: justification is required (the why)`);
+  }
+  if (origin === undefined || origin === null) {
+    throw new Error(`${opName}: origin is required (the provenance of the flag)`);
+  }
+  if (targets === undefined || targets === null) {
+    throw new Error(`${opName}: targets is required (an array of 64-hex kernel transaction_ids)`);
+  }
+
+  return createProposal({
+    opType, targetRecords: targets, justification, origin, now,
+  });
+}
+
+/**
+ * content-dedup: propose superseding a set of duplicate kernel records. ADVISORY / CREATE-only - the
+ * "destructive" is notional until the v3.6 promotion (nothing is superseded here). See proposeMultiTargetOp.
+ */
+const contentDedupRecord = (input) => proposeMultiTargetOp('contentDedupRecord', CONTENT_DEDUP, input);
+
+/**
+ * cull: propose tombstoning a set of kernel records. ADVISORY / CREATE-only - the "destructive" is notional
+ * until the v3.6 promotion (nothing is removed here). See proposeMultiTargetOp.
+ */
+const cullRecord = (input) => proposeMultiTargetOp('cullRecord', CULL, input);
+
+/**
+ * merge: propose merging a set of kernel records into a summary. The proposed-summary text rides
+ * `justification` (a single-line, 512-byte-capped free string - the structured multi-line summary slot is
+ * v3.6); the human writes it (no synthesis here). ADVISORY / CREATE-only. See proposeMultiTargetOp.
+ */
+const mergeRecord = (input) => proposeMultiTargetOp('mergeRecord', MERGE, input);
+
+module.exports = {
+  quarantineRecord,
+  QUARANTINE,
+  contentDedupRecord,
+  cullRecord,
+  mergeRecord,
+  CONTENT_DEDUP,
+  CULL,
+  MERGE,
+};

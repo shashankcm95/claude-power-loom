@@ -131,26 +131,30 @@ function nonEmptyString(v) {
   return typeof v === 'string' && v.length > 0;
 }
 
-// Reject C0 (<=0x1f), DEL+C1 (0x7f-0x9f), and the Unicode line/para separators (U+2028/U+2029) in a
-// stored FREE-string field: a newline/CR would split the single-line-per-record JSONL ledger; control
-// chars corrupt downstream grouping keys. Char-code scan (NOT a /[..]/ regex - that trips eslint
-// no-control-regex). Does NOT reject ordinary non-ASCII (a block id may legitimately be non-ASCII).
+// Reject C0 (<=0x1f), DEL+C1 (0x7f-0x9f), the Unicode line/para separators (U+2028/U+2029), and U+FEFF
+// (BOM/ZWNBSP) in a stored FREE-string field: a newline/CR would split the single-line-per-record JSONL
+// ledger; control chars corrupt downstream grouping keys; the BOM is a zero-width format codepoint the
+// enum path already rejects (>0x7f), rejected here too for parity (VALIDATE hacker MEDIUM-1). Char-code
+// scan (NOT a /[..]/ regex - that trips eslint no-control-regex). Does NOT reject ordinary non-ASCII (a
+// block id may legitimately be non-ASCII).
 function hasControlChars(v) {
   for (let i = 0; i < v.length; i += 1) {
     const c = v.charCodeAt(i);
-    if (c <= 0x1f || (c >= 0x7f && c <= 0x9f) || c === 0x2028 || c === 0x2029) return true;
+    if (c <= 0x1f || (c >= 0x7f && c <= 0x9f) || c === 0x2028 || c === 0x2029 || c === 0xfeff) return true;
   }
   return false;
 }
 
-// A free-string field (source_block / target_block / source_origin): non-empty, length-capped,
-// control-char-free. NOT enum-validated (these are arbitrary identifiers / provenance strings).
+// A free-string field (source_block / target_block / source_origin): non-empty, BYTE-length-capped,
+// control-char-free. NOT enum-validated (these are arbitrary identifiers / provenance strings). The cap
+// is a BYTE cap (Buffer.byteLength), not a char count: a multibyte string under MAX_FIELD_LEN chars can
+// still exceed the byte budget the canonical edge_id basis + the ledger bloat bound assume.
 function validateFreeString(v, fieldName) {
   if (!nonEmptyString(v)) {
     throw new Error(`causal-edge: ${fieldName} (a non-empty string) is required`);
   }
-  if (v.length > MAX_FIELD_LEN) {
-    throw new Error(`causal-edge: ${fieldName} exceeds the ${MAX_FIELD_LEN}-char length cap`);
+  if (Buffer.byteLength(v, 'utf8') > MAX_FIELD_LEN) {
+    throw new Error(`causal-edge: ${fieldName} exceeds the ${MAX_FIELD_LEN}-byte length cap`);
   }
   if (hasControlChars(v)) {
     throw new Error(`causal-edge: ${fieldName} contains a control / line-separator character (rejected at the store boundary)`);
