@@ -41,7 +41,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/kernel/_lib/provenance-walk.js` - W0.0 — bounded provenance chain-walk leaf (v3.5 Memory Manage-Layer, Wave 0).
 - `packages/kernel/_lib/quarantine-promote.js` - PR-3c-a — DORMANT materialization library for the enforcing spawn-close
 - `packages/kernel/_lib/recency-decay.js` - Pure recency-decay leaf.
-- `packages/kernel/_lib/record-store.js` - PR-P1 — the provenance state-chain store (ships DORMANT; only its test imports
+- `packages/kernel/_lib/record-store.js` - The provenance state-chain store (origin: PR-P1, where it shipped dormant).
 - `packages/kernel/_lib/route-decide-export.js` - route-decide-export.js — H.7.0 helper module.
 - `packages/kernel/_lib/runState.js` - Shared run-state path resolution.
 - `packages/kernel/_lib/safe-exec.js` - safe-exec.js — H.8.4 shared helper: safe subprocess invocation without shell.
