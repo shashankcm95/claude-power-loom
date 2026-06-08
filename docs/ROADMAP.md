@@ -225,11 +225,18 @@ Durable record: the `toolkit/phase-close/v3.4-close` library volume.
 
 ---
 
-## 📄 v3.5 — Memory Manage-Layer (draft)
+## 🔄 v3.5 — Memory Manage-Layer + Causal-Recall Graph (in progress)
 
-*RFC: [`packages/specs/rfcs/2026-05-30-v3.5-memory-manage-causal-graph-DRAFT.md`](../packages/specs/rfcs/2026-05-30-v3.5-memory-manage-causal-graph-DRAFT.md) — merged as recorded design; **amends nothing**.*
+*RFC: [`packages/specs/rfcs/2026-05-30-v3.5-memory-manage-causal-graph-DRAFT.md`](../packages/specs/rfcs/2026-05-30-v3.5-memory-manage-causal-graph-DRAFT.md) — merged as recorded design; **amends nothing**. Scope: [`2026-06-07-v3.5-memory-manage-scope.md`](../packages/specs/plans/2026-06-07-v3.5-memory-manage-scope.md). SHADOW throughout (advisory; never gates K9).*
 
-A forward design candidate (pre-scope-decision): a *manage layer* (manage-operations-as-transactions) + a typed causal-edge schema, re-grounding the older causal-recall-graph RFC onto the v6 consistency model. Carries an authority spine (R1–R4) from its security review and open questions (OQ-E/F/G) with fail-closed defaults.
+The first **Memory Manage-Layer** code: a *manage layer* (manage-operations over memory) + a typed causal-edge graph, re-grounded onto the v6 consistency model. The same cumulative-coherence discipline that reshaped v3.3/v3.4 governs each wave — derive from the PROBED reality of the layers below, not the blueprint. Waves 0–2 are MERGED; the manage **write** half (Wave 3) is underway.
+
+- **Wave 0 — the read/project half** (`#259`) — the deterministic-manage PROJECTIONS (`mark-stale` + `retention-archive`) + the provenance-edge VIEW: pure projections over a passed-in record set that emit NO record (v6 §5a.1). [provenance-projections](../packages/kernel/_lib/provenance-projections.js).
+- **Wave 1 — the spikes / GO-NO-GO** (`#261`) — **OQ-E NO-GO**: the record-store + wal-append are both writer-unauthenticated, so the kernel-attested-writer primitive defers to v3.6 (exposure LATENT — no live destructive emitter); OQ-27 GO (the read-side walker is tractable); OQ-21 GO-advisory (a real-`claude -p` rung-2 calibration is owed). [spikes](../packages/specs/spikes/2026-06-07-v3.5-wave1-spikes-oqe-oq27-oq21.md).
+- **Wave 2 — the causal-edge graph loop** (`#262`) — the advisory `packages/lab/causal-edge/` store (**D1**: a dedicated advisory Lab store, v6-conformant via §10b/OQ-24 — NOT a kernel schema-branch) + the OQ-27 read-side walker (R3 FILTER-THEN-INDEX) + the faithfulness rung-2 fail-closed injectable judge. The first producer→consumer loop, function-level. **C1** (the 3-lens durable): `updateEdgeStatus` flips R3 eligibility UNAUTHENTICATED = the writer-unauthenticated Lab model — DOCUMENTED-not-enforced (ADR-0012 inert-theater), bounded by narrowing-safety. [plan](../packages/specs/plans/2026-06-07-v3.5-wave2-causal-edge-graph-loop.md).
+- **Wave 3a — `flag-conflict`, the manage WRITE half's first op** *(this wave)* — a cumulative-coherence pass found Wave 2 ABSORBED scope-W3.2 (R3/R4), collapsing the planned "W3 security spine" to its **manage-write-layer**. `flagConflict` is a thin validated CREATE over the Wave 2 store (relation pinned to `contradicts`, born `unvalidated`/AUDIT-ONLY — the candidate safety-tag), plus the `conflicted` LAB projection (**D2**: a Lab projection, NOT a kernel lifecycle state — the kernel cannot read Lab/K12), the function-level flag→candidate→rung-2→confirmed loop, a `flag-conflict` CLI subcommand, and the rung-2 judge-prompt SPEC. CREATE-only; SHADOW. [plan](../packages/specs/plans/2026-06-08-v3.5-wave3a-flag-conflict-manage-op.md).
+
+**Named-deferred:** **Wave 3b** — the destructive-proposal / candidate-record ops (`content-dedup`→SUPERSEDE-proposal, `cull`→TOMBSTONE-proposal, `merge`, `quarantine`); the destructive class stays a PROPOSAL in v3.5 (live enforcement = the v3.6 leave-shadow event). **v3.6** — the OQ-E kernel-attested-writer primitive + R1 kernel-derivation + live destructive enforcement + un-darkening the loop into live K4 recall.
 
 ---
 

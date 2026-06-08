@@ -7,8 +7,12 @@
 // the consumer feeds record-store.listByRun(opts); injectable nowMs like
 // recency-decay). They emit NO record: per v6 §5a.1 lifecycle states are pure
 // projections, re-derivable and NEVER stored — which is what makes the "adds 4 new
-// derived states, no v6 amendment" claim verifiable. Wave 0 produces `stale` +
-// `archived`; `conflicted`/`quarantined` arrive with W2/W3.
+// derived states, no v6 amendment" claim verifiable. Wave 0 produces the two KERNEL
+// lifecycle states `stale` + `archived`. The other two did NOT become kernel states:
+// v3.5 Wave 2 (D1) moved the contradicts edge into the advisory Lab causal-edge store,
+// and the kernel cannot read Lab (K12 inner->outer), so `conflicted` is a pure LAB
+// projection (`packages/lab/causal-edge/projections.js`, Wave 3a) and `quarantined` is a
+// Wave 3b Lab projection — NOT kernel derivedLifecycleStates.
 //
 // HONESTLY BOUNDED (v3.5 RFC §1 MEDIUM-3): the deterministic-manage column catches
 // ONLY invalidations the substrate witnessed AS A TRANSACTION (a COMMITTED SUPERSEDE).

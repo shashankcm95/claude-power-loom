@@ -8,6 +8,7 @@
 //
 // Subcommands:
 //   create --relation R --source A --target B [--conflict-type C] [--status S] [--source-origin O]
+//   flag-conflict --source A --target B --conflict-type C [--origin O]   (v3.5 Wave 3a manage-op; relation pinned)
 //   list
 //   update-status --edge-id E --status S
 //   walk --seed A [--mode cluster|related|causal-chain] [--max-nodes N]   (store -> walker = the loop)
@@ -18,6 +19,7 @@
 
 const { createEdge, updateEdgeStatus, listEdges } = require('./store');
 const { walk } = require('./walker');
+const { flagConflict } = require('./manage-ops');
 
 function parseArgs(argv) {
   const args = {};
@@ -31,7 +33,7 @@ function parseArgs(argv) {
   return args;
 }
 
-const USAGE = 'Usage: cli.js <create --relation R --source A --target B [--conflict-type C] [--status S] [--source-origin O] | list | update-status --edge-id E --status S | walk --seed A [--mode M] [--max-nodes N]>\n';
+const USAGE = 'Usage: cli.js <create --relation R --source A --target B [--conflict-type C] [--status S] [--source-origin O] | flag-conflict --source A --target B --conflict-type C [--origin O] | list | update-status --edge-id E --status S | walk --seed A [--mode M] [--max-nodes N]>\n';
 
 function emit(obj) {
   process.stdout.write(`${JSON.stringify(obj, null, 2)}\n`);
@@ -55,6 +57,20 @@ function main(argv) {
         conflictType: args['conflict-type'],
         faithfulnessStatus: args.status,
         sourceOrigin: args['source-origin'] || 'cli',
+      }));
+    } catch (e) { fail(e.message); return; }
+    process.exit(0);
+  }
+
+  if (cmd === 'flag-conflict') {
+    // The Manage-Layer's first write op (v3.5 Wave 3a): relation is PINNED to contradicts; conflictType +
+    // origin are required by flagConflict. --origin defaults to 'cli' (mirrors create's --source-origin).
+    try {
+      emit(flagConflict({
+        blockX: args.source,
+        blockY: args.target,
+        conflictType: args['conflict-type'],
+        origin: args.origin || 'cli',
       }));
     } catch (e) { fail(e.message); return; }
     process.exit(0);
