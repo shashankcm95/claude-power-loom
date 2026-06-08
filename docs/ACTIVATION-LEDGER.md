@@ -41,13 +41,15 @@ This is the build-time form of the layered-architecture principle: *the runtime 
 
 ## v3.5 scope — Memory Manage-Layer (SCOPED 2026-06-07; not yet built)
 
-v3.5's thrust is the **Memory Manage-Layer + Causal-Recall Graph** (USER-chosen), NOT E2/E3 — so the items this ledger had pegged to "v3.5" (E2/E3 policy pipeline; K2.c ships-with-consumer) **shift to v3.6+**. Scope doc: `packages/specs/plans/2026-06-07-v3.5-memory-manage-scope.md` (bigger build, de-risked: Wave 0 foundations + spike-gated graph loop; architect cumulative-coherence + `/verify-plan` board both done). Its deferred items, NAMED (Producer-Consumer Phasing — not silent "someday"):
+v3.5's thrust is the **Memory Manage-Layer + Causal-Recall Graph** (USER-chosen), NOT E2/E3 — so the items this ledger had pegged to "v3.5" (E2/E3 policy pipeline; K2.c ships-with-consumer) **shift to v3.6+**. Scope doc: `packages/specs/plans/2026-06-07-v3.5-memory-manage-scope.md` (bigger build, de-risked: Wave 0 foundations + spike-gated graph loop; architect cumulative-coherence + `/verify-plan` board both done). **Wave 1 spikes RESOLVED 2026-06-07** (`packages/specs/spikes/2026-06-07-v3.5-wave1-spikes-oqe-oq27-oq21.md`; 3-lens-reviewed): **OQ-E = NO-GO** (defer the primitive to v3.6), **OQ-27 = GO** (W2 graph loop is on), **OQ-21 = GO-as-advisory-gate** (W2.3). Its deferred items, NAMED (Producer-Consumer Phasing — not silent "someday"):
 
 | v3.5-deferred feature | Reason | Consumer | Fate |
 |---|---|---|---|
-| R2 live destructive-manage enforcement (TOMBSTONE/SUPERSEDE) | leave-shadow event (v3.4 ratified kernel-stays-shadow); needs the OQ-E kernel-attested-writer primitive | human reviewer | **v3.6+** (separate leave-shadow phase, breaker-paired) |
+| **OQ-E kernel-attested-writer-identity primitive** | **Spike A NO-GO (firsthand 2026-06-07): the cache (`record-store`) AND the canonical WAL (`wal-append`) are both writer-unauthenticated; mechanism (b) kernel-signing collapses to the sandbox requirement on a single-uid host; (c) no kernel-exclusive write path. Needs the ContainerAdapter execution boundary.** Exposure is LATENT not live (no live SUPERSEDE/TOMBSTONE emitter) | R1 kernel-derivation + R2 authority gate | **v3.6** (with the sandbox). v3.5 W3 ships the **symmetric abort**: R1 fail-closed defaults (un-attested ⇒ `assertion_class=stochastic_sample`) + R3/R4 deterministic enforcement |
+| R2 live destructive-manage enforcement (TOMBSTONE/SUPERSEDE) | leave-shadow event (v3.4 ratified kernel-stays-shadow); needs the OQ-E primitive above | human reviewer | **v3.6+** (separate leave-shadow phase, breaker-paired) |
 | Utility-linked edge/confidence | needs a NON-starved v3.4 outcome loop (currently shadow/empty) | E4/A6 reputation | **v3.6+** |
-| Semantic-edge store + OQ-27 walker | spike-gated (Spike B GO/NO-GO); RESERVE-schema fallback on NO-GO | the OQ-27 walker (in-phase if GO) | **v3.5 if Spike B GO, else RESERVE→v3.6** |
+| Real-LLM faithfulness calibration + injection-resistant judge (rung-2) | Spike C proved the CONTRACT + narrowing-safety on a MOCK judge; real-LLM accuracy unmeasured | the W2.2 walker (R3 gate) | **v3.5 W2.3** (owed: a real-`claude -p` calibration + an injection-resistant judge prompt) |
+| Semantic-edge store + OQ-27 walker | **Spike B = GO (firsthand 2026-06-07): the R3-honoring walker is tractable as an algorithm; store-integration is W2.2** | the OQ-27 walker (in-phase) | **v3.5 W2** (producer + consumer together — non-dark) |
 
 ## The one strategic decision underneath all of it — RESOLVED 2026-06-04 (Option B)
 
