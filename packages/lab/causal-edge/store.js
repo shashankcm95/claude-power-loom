@@ -45,6 +45,7 @@ const { writeAtomicString } = require('../../kernel/_lib/atomic-write');
 const { acquireLock, releaseLock } = require('../../kernel/_lib/lock');
 const { canonicalJsonSerialize } = require('../../kernel/_lib/canonical-json');
 const { readJsonlBounded } = require('../../kernel/_lib/jsonl-read');
+const { nonEmptyString, hasControlChars } = require('../../kernel/_lib/free-string-checks');
 const {
   RELATIONS, CONFLICT_TYPES, FAITHFULNESS_STATUSES, DEFAULT_FAITHFULNESS_STATUS, validateEnum,
 } = require('./enums');
@@ -125,24 +126,6 @@ function nowMsFrom(opts) {
 function tsOf(record) {
   const t = Date.parse(record && record.recorded_at);
   return Number.isNaN(t) ? -Infinity : t;
-}
-
-function nonEmptyString(v) {
-  return typeof v === 'string' && v.length > 0;
-}
-
-// Reject C0 (<=0x1f), DEL+C1 (0x7f-0x9f), the Unicode line/para separators (U+2028/U+2029), and U+FEFF
-// (BOM/ZWNBSP) in a stored FREE-string field: a newline/CR would split the single-line-per-record JSONL
-// ledger; control chars corrupt downstream grouping keys; the BOM is a zero-width format codepoint the
-// enum path already rejects (>0x7f), rejected here too for parity (VALIDATE hacker MEDIUM-1). Char-code
-// scan (NOT a /[..]/ regex - that trips eslint no-control-regex). Does NOT reject ordinary non-ASCII (a
-// block id may legitimately be non-ASCII).
-function hasControlChars(v) {
-  for (let i = 0; i < v.length; i += 1) {
-    const c = v.charCodeAt(i);
-    if (c <= 0x1f || (c >= 0x7f && c <= 0x9f) || c === 0x2028 || c === 0x2029 || c === 0xfeff) return true;
-  }
-  return false;
 }
 
 // A free-string field (source_block / target_block / source_origin): non-empty, BYTE-length-capped,

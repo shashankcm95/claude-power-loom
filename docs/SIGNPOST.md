@@ -15,6 +15,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/kernel/_lib/enum-validate.js` - Shared R4 closed-enum validation with an NFC/homoglyph defense.
 - `packages/kernel/_lib/env-placeholder.js` - _lib/env-placeholder.js — v2.9.0 Phase C.2 (FIX-I7)
 - `packages/kernel/_lib/evolution-snapshot-read.js` - v3.4 Wave 3 — the A6 hot-path snapshot reader (the 4th extract-to-leaf; canonical-json W0 ·
+- `packages/kernel/_lib/free-string-checks.js` - Shared free-string FIELD CHECKS for the Lab JSONL stores (an extract-to-kernel/_lib alongside
 - `packages/kernel/_lib/frontmatter.js` - _lib/frontmatter.js — H.8.7 shared YAML-frontmatter parser.
 - `packages/kernel/_lib/integrate-merge.js` - PR-P3a — DORMANT integration merge primitives for the P3c ordered integrator.
 - `packages/kernel/_lib/integration-record.js` - PR-P3c-c — the NON-GENESIS chained-record builder for the ordered integrator.
@@ -184,7 +185,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 ### `lab/causal-edge/`
 
 - `packages/lab/causal-edge/cli.js` - v3.5 Wave 2 - causal-edge CLI - the dogfood vehicle + the manual surface for the SHADOW causal-edge graph loop.
-- `packages/lab/causal-edge/enums.js` - v3.5 Wave 2 - shared causal-edge enums + R4 validation primitives.
+- `packages/lab/causal-edge/enums.js` - v3.5 Wave 2 - shared causal-edge enums + the R4 validation re-export.
 - `packages/lab/causal-edge/faithfulness.js` - v3.5 Wave 2 - the faithfulness rung-2 advisory check (Spike C).
 - `packages/lab/causal-edge/manage-ops.js` - v3.5 Wave 3a - the Manage-Layer's first WRITE op: flag-conflict (the SECOND producer->consumer loop of
 - `packages/lab/causal-edge/projections.js` - v3.5 Wave 3a - the `conflicted` projection (D2): a PURE Lab projection over the causal-edge set.
