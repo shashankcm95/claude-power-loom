@@ -278,13 +278,16 @@ function updateEdgeStatus(edgeId, newStatus) {
 /**
  * List stored edges. Read-only; no lock needed. (No wall-clock expiry - edges are stable identities.)
  * @param {object} [opts] { filter?: (edge)=>boolean }
- * @returns {object[]}
+ * @returns {object[]} frozen records
  */
 function listEdges(opts) {
   const o = opts || {};
   let records = readLedger();
   if (typeof o.filter === 'function') records = records.filter(o.filter);
-  return records;
+  // Freeze at the read boundary (phase-close MEDIUM: parity with manage-proposal's listProposals; the
+  // read-back-immutability rule). A shallow freeze suffices - an edge record is all-scalar (no nested
+  // array/object to leak, unlike a proposal's target_records). readLedger stays raw for internal callers.
+  return records.map((e) => Object.freeze({ ...e }));
 }
 
 module.exports = {

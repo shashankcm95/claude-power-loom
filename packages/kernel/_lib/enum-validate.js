@@ -8,7 +8,8 @@
 // store share ONE homoglyph defense - a SECURITY validator must not be duplicated (two copies drift,
 // and the gap is a silent homoglyph-bypass on whichever copy lagged a fix). Error messages take a
 // NEUTRAL `enum-validate:` prefix (NOT a layer name) so each consumer's errors name its own field
-// honestly. The causal-edge/enums.js migration to re-export this leaf is a NAMED follow-up.
+// honestly. The causal-edge/enums.js migration to re-export this leaf landed in #267 - both Lab stores now
+// share this one leaf.
 
 'use strict';
 
