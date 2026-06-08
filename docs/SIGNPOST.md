@@ -12,6 +12,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/kernel/_lib/atomic-write.js` - _lib/atomic-write.js — shared hardened atomic file-write primitive.
 - `packages/kernel/_lib/canonical-json.js` - Pure, stateless canonical JSON serialization (sorted keys, no whitespace).
 - `packages/kernel/_lib/context-envelope.js` - K3.b context envelope validator — DORMANT in v3.0-alpha.
+- `packages/kernel/_lib/enum-validate.js` - Shared R4 closed-enum validation with an NFC/homoglyph defense.
 - `packages/kernel/_lib/env-placeholder.js` - _lib/env-placeholder.js — v2.9.0 Phase C.2 (FIX-I7)
 - `packages/kernel/_lib/evolution-snapshot-read.js` - v3.4 Wave 3 — the A6 hot-path snapshot reader (the 4th extract-to-leaf; canonical-json W0 ·
 - `packages/kernel/_lib/frontmatter.js` - _lib/frontmatter.js — H.8.7 shared YAML-frontmatter parser.
@@ -194,6 +195,14 @@ Auto-generated map of where things live, derived from the repo structure + each 
 
 - `packages/lab/circuit-breaker/cli.js` - v3.4 Wave 4 + E11-rescue — E11 circuit-breaker CLI: inspect the denial-rate breaker (SHADOW — it
 - `packages/lab/circuit-breaker/project.js` - v3.4 Wave 4 (E11) + the E11-rescue wave — denial-rate circuit-breaker (SHADOW).
+
+### `lab/manage-proposal/`
+
+- `packages/lab/manage-proposal/cli.js` - v3.5 Wave 3b.1 - the manage-proposal CLI - the dogfood vehicle + the human-DISPOSITION surface for the
+- `packages/lab/manage-proposal/enums.js` - v3.5 Wave 3b.1 - shared manage-proposal enums + R4 validation re-export.
+- `packages/lab/manage-proposal/manage-ops.js` - v3.5 Wave 3b.1 - the manage-op producers.
+- `packages/lab/manage-proposal/projections.js` - v3.5 Wave 3b.1 - the `quarantined` projection: a PURE Lab projection over the manage-proposal set.
+- `packages/lab/manage-proposal/store.js` - v3.5 Wave 3b.1 - the manage-proposal store (the destructive-proposal PRODUCER of the manage-write loop).
 
 ### `lab/negative-attestation/`
 
