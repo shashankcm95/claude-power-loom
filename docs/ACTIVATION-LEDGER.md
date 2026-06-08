@@ -49,7 +49,7 @@ v3.5's thrust is the **Memory Manage-Layer + Causal-Recall Graph** (USER-chosen)
 | R2 live destructive-manage enforcement (TOMBSTONE/SUPERSEDE) | leave-shadow event (v3.4 ratified kernel-stays-shadow); needs the OQ-E primitive above | human reviewer | **v3.6+** (separate leave-shadow phase, breaker-paired) |
 | Utility-linked edge/confidence | needs a NON-starved v3.4 outcome loop (currently shadow/empty) | E4/A6 reputation | **v3.6+** |
 | Real-LLM faithfulness calibration + injection-resistant judge (rung-2) | Spike C proved the CONTRACT + narrowing-safety on a MOCK judge; real-LLM accuracy unmeasured | the W2.2 walker (R3 gate) | **v3.5 W2.3** (owed: a real-`claude -p` calibration + an injection-resistant judge prompt) |
-| Semantic-edge store + OQ-27 walker | **Spike B = GO (firsthand 2026-06-07): the R3-honoring walker is tractable as an algorithm; store-integration is W2.2)** | the OQ-27 walker (in-phase) | **v3.5 W2** (producer + consumer together — non-dark) |
+| Semantic-edge store + OQ-27 walker | **Spike B = GO (firsthand 2026-06-07): the R3-honoring walker is tractable as an algorithm; store-integration is W2.2** | the OQ-27 walker (in-phase) | **v3.5 W2** (producer + consumer together — non-dark) |
 
 ## The one strategic decision underneath all of it — RESOLVED 2026-06-04 (Option B)
 
