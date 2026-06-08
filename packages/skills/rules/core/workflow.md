@@ -21,6 +21,7 @@ Per ADR-0005 slopfiles authoring discipline, sections below are wrapped in `<imp
 - 80%+ coverage for critical paths (auth, payments, data mutations)
 - Integration tests for data flows crossing boundaries (API → DB → response)
 - Run the full test suite before marking work complete
+- **Immutability of read paths** (2026-06-08): for a store/layer that returns objects parsed from disk/JSON, test the immutability of the **read-back / dedup / update** return paths — not just the freshly-constructed record. A shallow `Object.freeze` of a parsed row leaves its nested arrays/objects mutable; this leak bit twice (a Lab store's `listProposals` / `listEdges` returning unfrozen rows after the construct-path was already frozen).
 
 </important>
 
@@ -32,6 +33,16 @@ Per ADR-0005 slopfiles authoring discipline, sections below are wrapped in `<imp
 - Review checklist: security → correctness → performance → readability
 - Only flag issues you are > 80% confident about
 - Consolidate similar findings (not 5 separate "missing error handling" notes)
+
+### Async review-bot gate — don't trust the status-check (2026-06-08)
+
+When a PR is reviewed by an **async bot** (e.g. CodeRabbit), a green or "skipped" status-check is **NOT** the signal that review finished — the bot posts findings minutes later, on a different surface than the status-check reflects (the check can read `pass | Review skipped` while real findings exist). Before reporting a PR clean:
+
+1. **Fetch the bot's ACTUAL review surface** — inline review comments + review bodies + the walkthrough — not the status-check state, and not the issue-timeline alone (the actionable inline findings live on the pull-request comments surface, not the issue timeline).
+2. **POLL until the bot's review actually posts** — a green CI run is not the signal; the bot re-reviews after each push, and a later review can add new findings.
+3. **Premise-probe each finding firsthand before folding** — some are false positives; verify the claim against the code before changing anything.
+
+Reporting "0 actionable" on a green check alone has twice let real findings (including a Major bug) reach merge unreviewed. The project-specific fetch commands (the exact `gh api .../pulls/N/comments` + `/reviews` calls) live in the project's memory, not in this global rule.
 
 </important>
 
