@@ -181,6 +181,9 @@ test('CLI smoke: quarantine -> list -> dispose (exit 0); bad-hex target exits 1'
   let lcode = 0;
   try { run(['list', '--disposition', 'bogus']); } catch (e) { lcode = e.status; }
   assert.strictEqual(lcode, 1, 'list --disposition bogus -> exit 1 (validated, not silent-empty)');
+  let bcode = 0;
+  try { run(['list', '--disposition']); } catch (e) { bcode = e.status; }
+  assert.strictEqual(bcode, 1, 'bare --disposition (no value) -> exit 1, not the full unfiltered list');
   // a bad-hex target -> clean exit 1 (never a stack dump)
   let code = 0;
   try { run(['quarantine', '--target', 'not-hex', '--justification', 'j']); } catch (e) { code = e.status; }

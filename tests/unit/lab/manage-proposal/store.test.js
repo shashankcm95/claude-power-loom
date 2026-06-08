@@ -156,6 +156,11 @@ test('* field-length cap: over-long justification/origin rejected; AT cap fine',
   assert.throws(() => store.createProposal(pin({ justification: huge })), /cap|exceed|length/i, 'over-long justification');
   assert.throws(() => store.createProposal(pin({ origin: huge })), /cap|exceed|length/i, 'over-long origin');
   assert.doesNotThrow(() => store.createProposal(pin({ justification: 'y'.repeat(store.MAX_FIELD_LEN), now: T0 })), 'AT cap fine');
+  // byte-precise cap (the ledger is byte-budgeted): <=cap CHARS but >cap BYTES is rejected. A 2-byte
+  // UTF-8 codepoint (U+00E9) x300 = 600 bytes but only 300 chars (the char-length bypass). fromCharCode
+  // keeps the SOURCE pure-ASCII while the DATA under test is multibyte (the ASCII-only rule).
+  const multibyte = String.fromCharCode(0x00e9).repeat(300);
+  assert.throws(() => store.createProposal(pin({ justification: multibyte })), /byte|cap|exceed|length/i, 'multibyte over the BYTE cap rejected');
 });
 
 // -- 11. * control chars in a free-string field -> reject.
@@ -187,11 +192,18 @@ test('* K12 containment: store.js imports only kernel/_lib (+ ./enums) - no reco
 });
 
 // -- 14. Immutability: the returned record (and its target_records) is frozen.
-test('immutability: record + target_records frozen', () => {
+test('immutability: record + target_records frozen (create / dedup / updateDisposition paths)', () => {
   const rec = store.createProposal(pin({ now: T0 }));
   assert.ok(Object.isFrozen(rec), 'record frozen');
   assert.throws(() => { rec.disposition = 'approved'; }, TypeError, 'cannot mutate a frozen field');
-  assert.ok(Object.isFrozen(rec.target_records), 'target_records frozen');
+  assert.ok(Object.isFrozen(rec.target_records), 'create-path target_records frozen');
+  // the dedup early-return + updateDisposition paths ALSO deep-freeze target_records (the shallow-freeze leak fix):
+  // a row read back from disk has a mutable target_records array; a bare Object.freeze would leak it.
+  const dup = store.createProposal(pin({ now: T0 }));
+  assert.ok(Object.isFrozen(dup.target_records), 'dedup-path target_records frozen');
+  assert.throws(() => { dup.target_records.push(hx('z')); }, TypeError, 'cannot mutate the dedup-path target_records');
+  const upd = store.updateDisposition(dup.proposal_id, 'approved');
+  assert.ok(Object.isFrozen(upd) && Object.isFrozen(upd.target_records), 'update-path record + target_records frozen');
 });
 
 // -- 15. Count cap: ledger bounded to MAX_LEDGER_RECORDS (newest kept). Seed directly with REAL proposal_ids.

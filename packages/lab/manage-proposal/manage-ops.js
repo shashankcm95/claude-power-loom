@@ -22,9 +22,11 @@ const { createProposal } = require('./store');
 const QUARANTINE = 'quarantine';
 
 /**
- * quarantine-record: propose that a kernel record be quarantined (retrieval-suppressed). An ADVISORY
- * `quarantine` proposal born `pending` - NOT actionable until a human disposes it `approved`, and even then
- * RECORDED-NOT-EXECUTED in v3.5 (the v3.6 promotion is the leave-shadow enforcement). CREATE-only.
+ * quarantine-record: propose that a kernel record be quarantined. In v3.5 this is an ADVISORY MARKER
+ * (the projection annotates; real retrieval-suppression is owed to v3.6 K4-recall - nothing is suppressed
+ * or executed here): a `quarantine` proposal born `pending`, NOT actionable until a human disposes it
+ * `approved`, and even then RECORDED-NOT-EXECUTED in v3.5 (the v3.6 promotion is the leave-shadow
+ * enforcement). CREATE-only.
  *
  * @param {object} input
  * @param {string} input.target        the kernel transaction_id to quarantine (a 64-hex string; format validated by the store)

@@ -6,8 +6,9 @@
 // read, no I/O, no module-load state) so store.js / manage-ops.js / projections.js can all require it
 // without triggering store-state resolution.
 //
-// DISAMBIGUATION (load-bearing): this `quarantine` op_type is a Memory MANAGE-LAYER op - it marks a
-// memory RECORD as quarantined (retrieval-suppressed). It is UNRELATED to the kernel's
+// DISAMBIGUATION (load-bearing): this `quarantine` op_type is a Memory MANAGE-LAYER op - in v3.5 an
+// ADVISORY MARKER that a memory record SHOULD be retrieval-suppressed (the projection annotates; actual
+// suppression is DEFERRED to v3.6 K4-recall - nothing is suppressed or executed in v3.5). It is UNRELATED to the kernel's
 // packages/kernel/_lib/quarantine-promote.js (the PR-3c spawn-delta STAGING materializer). They collide
 // only on the English word; the path (lab/manage-proposal vs kernel/_lib/quarantine-promote) + the
 // node_type ('manage-proposal') namespace them. No shared code, no functional overlap.

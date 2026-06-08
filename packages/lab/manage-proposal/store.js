@@ -120,6 +120,17 @@ function writeLedger(records) {
   writeAtomicString(LEDGER_PATH, body);
 }
 
+// DEEP-freeze a proposal record for return. A bare Object.freeze is SHALLOW: a row read back from disk
+// (JSON.parsed) carries a MUTABLE target_records array, so the dedup + updateDisposition return paths would
+// otherwise leak a mutable array (the immutability contract is record-WIDE). Clone + freeze the array, then
+// freeze the record. Used by ALL return paths (create / dedup / update) so the guarantee is uniform.
+function freezeProposalRecord(r) {
+  if (!r || typeof r !== 'object') return r;
+  const targetRecords = Array.isArray(r.target_records)
+    ? Object.freeze(r.target_records.slice()) : r.target_records;
+  return Object.freeze({ ...r, target_records: targetRecords });
+}
+
 function nowMsFrom(opts) {
   return (opts && opts.now !== undefined) ? new Date(opts.now).getTime() : Date.now();
 }
@@ -150,8 +161,8 @@ function validateFreeString(v, fieldName) {
   if (!nonEmptyString(v)) {
     throw new Error(`manage-proposal: ${fieldName} (a non-empty string) is required`);
   }
-  if (v.length > MAX_FIELD_LEN) {
-    throw new Error(`manage-proposal: ${fieldName} exceeds the ${MAX_FIELD_LEN}-char length cap`);
+  if (Buffer.byteLength(v, 'utf8') > MAX_FIELD_LEN) {
+    throw new Error(`manage-proposal: ${fieldName} exceeds the ${MAX_FIELD_LEN}-byte length cap`);
   }
   if (hasControlChars(v)) {
     throw new Error(`manage-proposal: ${fieldName} contains a control / line-separator character (rejected at the store boundary)`);
@@ -225,12 +236,12 @@ function createProposal(input) {
   const recordedAt = new Date(nowMs).toISOString();
   const proposalId = computeProposalId(v.opType, v.targetRecords);
 
-  const record = Object.freeze({
+  const record = freezeProposalRecord({
     node_type: 'manage-proposal',
     proposal_id: proposalId,
     schema_version: SCHEMA_VERSION,
     op_type: v.opType,
-    target_records: Object.freeze(v.targetRecords.slice()),
+    target_records: v.targetRecords,
     justification: v.justification,
     proposer_origin: v.proposerOrigin,
     disposition: v.disposition,
@@ -242,7 +253,7 @@ function createProposal(input) {
     // DEDUP on proposal_id: one live row per identity. An existing identity is returned AS-IS (first-write-
     // wins on justification/origin; disposition changes go through updateDisposition - NOT a second row).
     const existing = all.find((r) => r && r.proposal_id === proposalId);
-    if (existing) return Object.freeze(existing);
+    if (existing) return freezeProposalRecord(existing);
     let live = all.slice();
     live.push(record);
     // Count cap: keep the newest MAX_LEDGER_RECORDS with a STABLE index tiebreaker (same-ms rows drop
@@ -280,7 +291,7 @@ function updateDisposition(proposalId, decision) {
     const all = readLedger();
     const idx = all.findIndex((r) => r && r.proposal_id === proposalId);
     if (idx === -1) return Object.freeze({ notFound: true, proposal_id: proposalId });
-    const updated = Object.freeze({ ...all[idx], disposition });
+    const updated = freezeProposalRecord({ ...all[idx], disposition });
     const next = all.slice();
     next[idx] = updated;
     writeLedger(next);

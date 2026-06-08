@@ -59,6 +59,11 @@ function main(argv) {
   }
 
   if (cmd === 'list') {
+    // A bare `--disposition` (no value) parses to boolean true; reject it (do NOT silently return the full
+    // unfiltered list). A present-but-non-string disposition is a usage error, not "no filter".
+    if (args.disposition !== undefined && typeof args.disposition !== 'string') {
+      fail('list --disposition requires a value: pending|approved|rejected'); return;
+    }
     let filter;
     if (typeof args.disposition === 'string') {
       // Validate the read-path filter too (VALIDATE code-reviewer MEDIUM): a typo/bad-case disposition
