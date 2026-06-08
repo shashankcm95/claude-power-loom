@@ -2,16 +2,19 @@
 
 // @loom-layer: lab
 //
-// v3.5 Wave 2 - shared causal-edge enums + R4 validation primitives. SIDE-EFFECT-FREE (no env read,
-// no I/O, no module-load state) so store.js, walker.js, and faithfulness.js can all require it without
-// triggering store-state resolution or breaking the walker/faithfulness purity contract.
+// v3.5 Wave 2 - shared causal-edge enums + the R4 validation re-export. SIDE-EFFECT-FREE (no env read,
+// no I/O, no module-load state) so store.js + walker.js can require it without triggering store-state
+// resolution or breaking the walker purity contract.
 //
-// R4 (closed enums + canonicalization): the store is the SELF-OWNED validation boundary for semantic
-// edges (D1 - edges live in this advisory Lab store, NOT the kernel transaction-record schema, which
-// is documentary/un-enforced; a node_type discriminator there would be an inert control per ADR-0012).
-// So the enum membership + the NFC/homoglyph defense live here, not in the kernel envelope.
+// R4 (closed enums + canonicalization): the enum CONSTANTS (RELATIONS etc.) live here; the NFC/homoglyph
+// defense is the SHARED kernel/_lib/enum-validate leaf (consolidated 2026-06-08 - a security validator must
+// not be duplicated), re-exported here so the store + walker import one module. The store is the SELF-OWNED
+// validation boundary for semantic edges (D1 - edges live in this advisory Lab store, NOT the kernel
+// transaction-record schema; a node_type discriminator there would be an inert control per ADR-0012).
 
 'use strict';
+
+const { normalizeAsciiEnum, validateEnum } = require('../../kernel/_lib/enum-validate');
 
 // The 9 semantic relations a causal edge may assert (LLM-asserted, advisory). NOT kernel provenance
 // edges (those are prev_state_hash / evidence_refs, embedded-in-nodes per v6 section 4.2).
@@ -40,47 +43,6 @@ const DEFAULT_FAITHFULNESS_STATUS = 'unvalidated';
 // The R3 walker-eligible subset: only an LLM-checked or human-confirmed edge is traversable. An
 // unvalidated / surface_overlap_only edge is AUDIT-ONLY (the walker filters it out before indexing).
 const WALKER_ELIGIBLE_STATUSES = Object.freeze(['advisory_llm_checked', 'human_confirmed']);
-
-/**
- * R4 NFC/homoglyph defense for an enum-candidate field. Normalize to NFC, then reject any codepoint
- * > U+007F BEFORE the closed-enum membership check. Catches Cyrillic/Greek lookalikes, combining
- * sequences, zero-width joiners, and the BOM - none of which can appear in a legitimate ASCII enum
- * value, but all of which can spoof one visually. Genuinely NEW (0 NFC logic in packages/kernel).
- *
- * @param {*} v the raw field value
- * @param {string} fieldName for the error message
- * @returns {string} the NFC-normalized pure-ASCII string (membership-checkable)
- * @throws if v is not a string, or contains a non-ASCII codepoint
- */
-function normalizeAsciiEnum(v, fieldName) {
-  if (typeof v !== 'string') {
-    throw new Error(`causal-edge: ${fieldName} must be a string (got ${typeof v})`);
-  }
-  const nfc = v.normalize('NFC');
-  for (let i = 0; i < nfc.length; i += 1) {
-    if (nfc.charCodeAt(i) > 0x7f) {
-      throw new Error(`causal-edge: ${fieldName} contains a non-ASCII codepoint (homoglyph / zero-width / combining rejected before the enum check)`);
-    }
-  }
-  return nfc;
-}
-
-/**
- * Validate an enum-candidate field: NFC/ASCII defense, then closed-set membership.
- *
- * @param {*} v raw value
- * @param {readonly string[]} validSet the closed enum
- * @param {string} fieldName for the error message
- * @returns {string} the validated value
- * @throws if non-ASCII or not a member
- */
-function validateEnum(v, validSet, fieldName) {
-  const ascii = normalizeAsciiEnum(v, fieldName);
-  if (!validSet.includes(ascii)) {
-    throw new Error(`causal-edge: ${fieldName} must be one of ${validSet.join('|')} (got ${JSON.stringify(ascii)})`);
-  }
-  return ascii;
-}
 
 module.exports = {
   RELATIONS,

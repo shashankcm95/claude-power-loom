@@ -45,6 +45,7 @@ const { acquireLock, releaseLock } = require('../../kernel/_lib/lock');
 const { canonicalJsonSerialize } = require('../../kernel/_lib/canonical-json');
 const { readJsonlBounded } = require('../../kernel/_lib/jsonl-read');
 const { HEX64 } = require('../../kernel/_lib/provenance-walk');
+const { nonEmptyString, hasControlChars } = require('../../kernel/_lib/free-string-checks');
 const {
   OP_TYPES, DISPOSITIONS, DEFAULT_DISPOSITION, validateEnum,
 } = require('./enums');
@@ -142,24 +143,8 @@ function tsOf(record) {
   return Number.isNaN(t) ? -Infinity : t;
 }
 
-function nonEmptyString(v) {
-  return typeof v === 'string' && v.length > 0;
-}
-
-// Reject C0 (<=0x1f), DEL+C1 (0x7f-0x9f), U+2028/U+2029, and U+FEFF (BOM/ZWNBSP) in a stored FREE-string
-// field: a newline/CR would split the single-line-per-record JSONL ledger; the BOM is a zero-width format
-// codepoint with no legitimate mid-string use that the enum path already rejects (>0x7f), so reject it here
-// too for parity (VALIDATE hacker MEDIUM-1). Char-code scan (NOT a regex - eslint no-control-regex). Does
-// NOT reject ordinary non-ASCII (a justification may legitimately be non-ASCII).
-function hasControlChars(v) {
-  for (let i = 0; i < v.length; i += 1) {
-    const c = v.charCodeAt(i);
-    if (c <= 0x1f || (c >= 0x7f && c <= 0x9f) || c === 0x2028 || c === 0x2029 || c === 0xfeff) return true;
-  }
-  return false;
-}
-
 // A free-string field (justification / proposer_origin): non-empty, length-capped, control-char-free.
+// nonEmptyString + hasControlChars are the shared kernel/_lib/free-string-checks primitives (imported above).
 function validateFreeString(v, fieldName) {
   if (!nonEmptyString(v)) {
     throw new Error(`manage-proposal: ${fieldName} (a non-empty string) is required`);
