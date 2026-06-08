@@ -119,6 +119,129 @@ test('* no destructive write: manage-ops.js has 0 SUPERSEDE/TOMBSTONE + never ca
 });
 
 // ===========================================================================================
+// W3b2 - the destructive-PROPOSAL wrappers (content-dedup / cull / merge): thin multi-target
+// CREATE-only wrappers over the SAME store. op_type pinned; born pending; CREATE-only. The
+// "destructive" is NOTIONAL (a proposed future op) until the v3.6 promotion - nothing executes.
+// ===========================================================================================
+
+const MULTI_OPS = [
+  { fn: 'contentDedupRecord', op: 'content-dedup' },
+  { fn: 'cullRecord', op: 'cull' },
+  { fn: 'mergeRecord', op: 'merge' },
+];
+
+function mtin(over) {
+  return {
+    targets: [hx('a'), hx('b')], justification: 'dup set', origin: 'run-1/dreamcycle', ...over,
+  };
+}
+
+const CLIPATH = path.join(REPO_ROOT, 'packages', 'lab', 'manage-proposal', 'cli.js');
+
+// -- 15. Happy path per op -> a pending proposal (op_type pinned, targets -> canonical target_records).
+for (const { fn, op } of MULTI_OPS) {
+  test(`happy path -> a ${op}/pending proposal (op_type pinned, targets -> canonical target_records)`, () => {
+    const rec = manageOps[fn](mtin({ now: T0 }));
+    assert.strictEqual(rec.op_type, op, 'op_type PINNED');
+    assert.deepStrictEqual(rec.target_records, [hx('a'), hx('b')], 'targets -> canonical (sorted) target_records');
+    assert.strictEqual(rec.disposition, 'pending', 'born pending (R1)');
+    assert.strictEqual(rec.proposer_origin, 'run-1/dreamcycle', 'origin -> proposer_origin');
+    assert.strictEqual(store.listProposals().length, 1);
+  });
+}
+
+// -- 16. Multi-target canonicalization: order-independent dedup+sort (delegated to the store).
+test('multi-target: targets are dedup+sorted into canonical target_records', () => {
+  const rec = manageOps.contentDedupRecord(mtin({ targets: [hx('b'), hx('a'), hx('b')], now: T0 }));
+  assert.deepStrictEqual(rec.target_records, [hx('a'), hx('b')], 'dup dropped, sorted');
+});
+
+// -- 17. OQ1 identity: a different blast radius is a DISTINCT identity; order is the SAME identity.
+test('* OQ1 identity: merge[A,B] != merge[A,B,C] (distinct blast radius); merge[A,B] == merge[B,A] (order-independent)', () => {
+  const ab = manageOps.mergeRecord(mtin({ targets: [hx('a'), hx('b')], now: T0 }));
+  const abc = manageOps.mergeRecord(mtin({ targets: [hx('a'), hx('b'), hx('c')], now: T0 }));
+  assert.notStrictEqual(abc.proposal_id, ab.proposal_id, 'A,B,C is a different identity than A,B');
+  assert.strictEqual(store.computeProposalId('merge', [hx('b'), hx('a')]), ab.proposal_id, 'merge[B,A] == merge[A,B]');
+});
+
+// -- 17b. Dedup idempotency at the WRAPPER level: the same op + target set twice -> one row, live row returned.
+test('* dedup: the same content-dedup proposal twice -> one row, same proposal_id (first-write-wins)', () => {
+  const a = manageOps.contentDedupRecord(mtin({ now: T0 }));
+  const b = manageOps.contentDedupRecord(mtin({ justification: 'a different reason', now: T0 }));
+  assert.strictEqual(b.proposal_id, a.proposal_id, 'same identity (op_type + canonical target set)');
+  assert.strictEqual(store.listProposals().length, 1, 'one row (idempotent)');
+});
+
+// -- 18. Presence guards per op (a MISSING field names THIS wrapper's contract; FORMAT delegates to the store).
+for (const { fn } of MULTI_OPS) {
+  test(`guard: ${fn} missing justification/origin/targets -> clean ${fn}-named error`, () => {
+    for (const field of ['justification', 'origin', 'targets']) {
+      for (const bad of [undefined, null]) {
+        let err; try { manageOps[fn](mtin({ [field]: bad })); } catch (e) { err = e; }
+        assert.ok(err && new RegExp(fn).test(err.message) && new RegExp(field).test(err.message),
+          `${fn} ${field}=${bad} names the wrapper + field`);
+      }
+    }
+    assert.strictEqual(store.listProposals().length, 0, 'nothing stored on a guard failure');
+  });
+}
+
+// -- 19. Delegation (DRY): a bad-FORMAT target set is rejected by the STORE (not re-validated in the wrapper).
+test('delegation: a bad-hex element / non-array / empty targets -> the store target_records message (DRY)', () => {
+  assert.throws(() => manageOps.cullRecord(mtin({ targets: [hx('a'), 'not-hex'] })), /target_records/i, 'store HEX64 reject');
+  assert.throws(() => manageOps.cullRecord(mtin({ targets: 'aaa' })), /target_records/i, 'store non-array reject');
+  assert.throws(() => manageOps.cullRecord(mtin({ targets: [] })), /target_records/i, 'store empty reject');
+  assert.strictEqual(store.listProposals().length, 0);
+});
+
+// -- 20. merge summary rides justification (no synthesis - the human writes the proposed summary).
+test('merge: the proposed-summary text is stored verbatim in justification', () => {
+  const summary = 'A is authoritative; B is a stale dup - promote A, retire B';
+  const rec = manageOps.mergeRecord(mtin({ justification: summary, now: T0 }));
+  assert.strictEqual(rec.justification, summary, 'summary stored verbatim in justification');
+});
+
+// -- 21. Immutability incl. READ-BACK (the 3b.1 shallow-freeze lesson): listProposals() rows are frozen.
+test('* immutability read-back: a listProposals() row + its target_records are frozen', () => {
+  manageOps.contentDedupRecord(mtin({ now: T0 }));
+  const [row] = store.listProposals();
+  assert.ok(Object.isFrozen(row), 'the read-back row is frozen');
+  assert.ok(Object.isFrozen(row.target_records), 'the read-back target_records array is frozen');
+  assert.throws(() => { row.target_records.push(hx('c')); }, TypeError, 'cannot mutate the read-back array');
+});
+
+// -- 22. Cross-op: the same txid under two op_types is DISTINCT; the quarantine projection sees ONLY quarantine.
+test('* cross-op: quarantine + content-dedup on the same txid are distinct; quarantinedRecords pre-filter excludes the dedup', () => {
+  const q = manageOps.quarantineRecord({
+    target: hx('a'), justification: 'suppress a', origin: 'r', now: T0,
+  });
+  const d = manageOps.contentDedupRecord(mtin({ targets: [hx('a'), hx('b')], now: T0 }));
+  assert.notStrictEqual(d.proposal_id, q.proposal_id, 'op_type is in the identity -> distinct');
+  assert.strictEqual(store.listProposals().length, 2, 'two distinct proposals stored');
+  const proj = projections.quarantinedRecords(store.listProposals());
+  assert.ok(proj.has(hx('a')), 'the quarantine target is surfaced');
+  assert.strictEqual(proj.get(hx('a')).proposals.length, 1, 'ONLY the quarantine proposal (the dedup is pre-filtered out)');
+  assert.strictEqual(proj.has(hx('b')), false, 'the dedup-only target is NOT quarantined');
+});
+
+// -- 23. CLI smoke (subprocess) for the W3b2 ops: content-dedup/cull/merge -> exit 0; bare/bad -> exit 1.
+test('CLI smoke: content-dedup/cull/merge --targets a,b (exit 0); bare --targets + bad-hex exit 1', () => {
+  const env = { ...process.env, LOOM_LAB_STATE_DIR: TMP };
+  const run = (args) => execFileSync('node', [CLIPATH, ...args], { env, encoding: 'utf8', timeout: 10000, maxBuffer: 1024 * 1024 });
+  for (const op of ['content-dedup', 'cull', 'merge']) {
+    try { fs.rmSync(store.LEDGER_PATH, { force: true }); } catch { /* no ledger yet */ } // explicit per-op isolation
+    const rec = JSON.parse(run([op, '--targets', `${hx('a')},${hx('b')}`, '--justification', 'j', '--origin', 'run/x']));
+    assert.strictEqual(rec.op_type, op, `${op} op_type`);
+    assert.deepStrictEqual(rec.target_records, [hx('a'), hx('b')], `${op} targets parsed + canonical`);
+    assert.strictEqual(rec.disposition, 'pending', `${op} born pending`);
+    let bare = 0; try { run([op, '--targets', '--justification', 'j']); } catch (e) { bare = e.status; }
+    assert.strictEqual(bare, 1, `${op} bare --targets (no value) -> exit 1`);
+    let bad = 0; try { run([op, '--targets', 'not-hex', '--justification', 'j', '--origin', 'o']); } catch (e) { bad = e.status; }
+    assert.strictEqual(bad, 1, `${op} bad-hex element -> exit 1`);
+  }
+});
+
+// ===========================================================================================
 // W3b1 loop + the section 0a.3.1 firewall + CLI smoke
 // ===========================================================================================
 
@@ -184,9 +307,11 @@ test('CLI smoke: quarantine -> list -> dispose (exit 0); bad-hex target exits 1'
   let bcode = 0;
   try { run(['list', '--disposition']); } catch (e) { bcode = e.status; }
   assert.strictEqual(bcode, 1, 'bare --disposition (no value) -> exit 1, not the full unfiltered list');
-  // a bad-hex target -> clean exit 1 (never a stack dump)
+  // a bad-hex target -> clean exit 1 (never a stack dump). Explicit --origin (carry-1): make the test
+  // reach the HEX64 check independent of cli.js's `origin || 'cli'` default (else it could pass for the
+  // wrong reason if that default were ever removed).
   let code = 0;
-  try { run(['quarantine', '--target', 'not-hex', '--justification', 'j']); } catch (e) { code = e.status; }
+  try { run(['quarantine', '--target', 'not-hex', '--justification', 'j', '--origin', 'run/x']); } catch (e) { code = e.status; }
   assert.strictEqual(code, 1, 'bad-hex target -> exit 1');
 });
 

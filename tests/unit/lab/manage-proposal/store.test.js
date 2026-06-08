@@ -164,10 +164,11 @@ test('* field-length cap: over-long justification/origin rejected; AT cap fine',
 });
 
 // -- 11. * control chars in a free-string field -> reject.
-test('* control chars (newline/CR/NUL/tab) in justification/origin -> reject', () => {
+test('* control chars (newline/CR/NUL/tab/BOM) in justification/origin -> reject', () => {
   assert.throws(() => store.createProposal(pin({ justification: 'a\nb' })), /control/i, 'newline');
   assert.throws(() => store.createProposal(pin({ origin: `run${String.fromCharCode(0)}x` })), /control/i, 'NUL');
   assert.throws(() => store.createProposal(pin({ justification: 'a\tb' })), /control/i, 'tab');
+  assert.throws(() => store.createProposal(pin({ justification: `a${String.fromCharCode(0xfeff)}b` })), /control/i, 'U+FEFF BOM (parity with the enum >0x7f gate)');
   assert.strictEqual(store.listProposals().length, 0, 'nothing stored');
 });
 

@@ -146,12 +146,15 @@ function nonEmptyString(v) {
   return typeof v === 'string' && v.length > 0;
 }
 
-// Reject C0 (<=0x1f), DEL+C1 (0x7f-0x9f), and U+2028/U+2029 in a stored FREE-string field (a newline/CR
-// would split the single-line-per-record JSONL ledger). Char-code scan (NOT a regex - eslint no-control-regex).
+// Reject C0 (<=0x1f), DEL+C1 (0x7f-0x9f), U+2028/U+2029, and U+FEFF (BOM/ZWNBSP) in a stored FREE-string
+// field: a newline/CR would split the single-line-per-record JSONL ledger; the BOM is a zero-width format
+// codepoint with no legitimate mid-string use that the enum path already rejects (>0x7f), so reject it here
+// too for parity (VALIDATE hacker MEDIUM-1). Char-code scan (NOT a regex - eslint no-control-regex). Does
+// NOT reject ordinary non-ASCII (a justification may legitimately be non-ASCII).
 function hasControlChars(v) {
   for (let i = 0; i < v.length; i += 1) {
     const c = v.charCodeAt(i);
-    if (c <= 0x1f || (c >= 0x7f && c <= 0x9f) || c === 0x2028 || c === 0x2029) return true;
+    if (c <= 0x1f || (c >= 0x7f && c <= 0x9f) || c === 0x2028 || c === 0x2029 || c === 0xfeff) return true;
   }
   return false;
 }
@@ -300,15 +303,19 @@ function updateDisposition(proposalId, decision) {
 }
 
 /**
- * List stored proposals. Read-only; no lock needed.
+ * List stored proposals. Read-only; no lock needed. Records are frozen at the return boundary (the 4th
+ * return path - VERIFY F1): readLedger() yields JSON-parsed (mutable) rows, so freeze them here for a
+ * uniform record-WIDE immutability guarantee (deep, incl. target_records), consistent with the
+ * create/dedup/update paths. Internal RMW callers use readLedger() directly (they slice+spread, never
+ * mutate in place), so the freeze lives at this read boundary, not in readLedger.
  * @param {object} [opts] { filter?: (proposal)=>boolean }
- * @returns {object[]}
+ * @returns {object[]} frozen records
  */
 function listProposals(opts) {
   const o = opts || {};
   let records = readLedger();
   if (typeof o.filter === 'function') records = records.filter(o.filter);
-  return records;
+  return records.map(freezeProposalRecord);
 }
 
 module.exports = {
