@@ -17,10 +17,11 @@
 // block free-strings, R1/R4, the lock, the content-address) - one admission gate (DRY).
 //
 // `origin` is the provenance of the FLAG (who/what flagged it), NOT the conflict evidence (why x vs y).
-// The justifying-evidence list (conflict_evidence) is NAMED-DEFERRED to Wave 3b - the Wave 2 edge record
-// has no evidence_refs slot, and folding evidence into source_origin would conflate "who flagged" with
-// "why". There is NO assertion_class field (D4: the section 0a.3.1 firewall holds by LAYER-ABSENCE +
-// walker-exclusion, not a field).
+// The justifying-evidence list (conflict_evidence) stays v3.6 - the Wave 2 edge record has no evidence_refs
+// slot, and folding evidence into source_origin would conflate "who flagged" with "why". (Wave 3b is now
+// complete; its `justification` slot lives on the manage-proposal record - a DIFFERENT op - so it does NOT
+// give the flag-conflict EDGE an evidence slot; this deferral correctly carries to v3.6.) There is NO
+// assertion_class field (D4: the section 0a.3.1 firewall holds by LAYER-ABSENCE + walker-exclusion, not a field).
 //
 // Layer discipline (K12, by PATH): under packages/lab/, so `lab`. Imports ONLY the sibling ./store
 // (kernel/_lib transitively via the store). NO kernel/identity/runtime STATE. SHADOW - 0
