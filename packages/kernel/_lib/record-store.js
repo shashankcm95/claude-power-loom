@@ -1,12 +1,16 @@
 // packages/kernel/_lib/record-store.js
 //
-// PR-P1 — the provenance state-chain store (ships DORMANT; only its test imports
-// it). A content-addressed on-disk store of transaction-records that backs K9's
-// `resolveParent` chain-walk seam (`k9-promote-deltas.js:137-191`). Today that
-// seam is `undefined` at every live call site; this module supplies the store +
-// reader so a later PR (P2) can wire `resolveParent = readByPostStateHash` into
-// the live shadow walk. No production importer is added here (Probe #8 — trips
-// no CI dormancy gate).
+// The provenance state-chain store (origin: PR-P1, where it shipped dormant). A
+// content-addressed on-disk store of transaction-records that backs K9's
+// `resolveParent` chain-walk seam (`k9-promote-deltas.js:137-191`). That dormancy
+// has ENDED: the store is now LIVE-FED, in SHADOW, by four production importers:
+// `kernel/hooks/post/spawn-close-resolver.js` (the first; a live PostToolUse:Agent|Task
+// hook that writes a provenance record at spawn close, with resolve() running
+// observe-only/dry-run), `runtime/orchestration/trampoline.js`,
+// `kernel/spawn-state/stage-candidate.js`, and `kernel/spawn-state/integrator.js`.
+// The P2 wiring the original header anticipated has LANDED: `integrator.js` defaults
+// its `resolveParentFn` chain-walk seam to `readByPostStateHash` (:427). Everything
+// stays SHADOW: the walk advises, it does not gate K9 in production.
 //
 // v6 spec anchors:
 //   §4.2 — transaction-record shape (the stored value); §4.3 — Genesis Sentinel.
