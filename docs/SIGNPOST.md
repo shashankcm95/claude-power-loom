@@ -185,6 +185,8 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/lab/causal-edge/cli.js` - v3.5 Wave 2 - causal-edge CLI - the dogfood vehicle + the manual surface for the SHADOW causal-edge graph loop.
 - `packages/lab/causal-edge/enums.js` - v3.5 Wave 2 - shared causal-edge enums + R4 validation primitives.
 - `packages/lab/causal-edge/faithfulness.js` - v3.5 Wave 2 - the faithfulness rung-2 advisory check (Spike C).
+- `packages/lab/causal-edge/manage-ops.js` - v3.5 Wave 3a - the Manage-Layer's first WRITE op: flag-conflict (the SECOND producer->consumer loop of
+- `packages/lab/causal-edge/projections.js` - v3.5 Wave 3a - the `conflicted` projection (D2): a PURE Lab projection over the causal-edge set.
 - `packages/lab/causal-edge/store.js` - v3.5 Wave 2 - Causal-edge store (the semantic-edge PRODUCER of the graph loop).
 - `packages/lab/causal-edge/walker.js` - v3.5 Wave 2 - the OQ-27 read-side walker (the CONSUMER of the graph loop).
 
