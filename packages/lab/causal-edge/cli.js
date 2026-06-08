@@ -61,7 +61,9 @@ function main(argv) {
   }
 
   if (cmd === 'list') {
-    emit(listEdges());
+    try {
+      emit(listEdges());
+    } catch (e) { fail(e.message); return; }
     process.exit(0);
   }
 
@@ -78,11 +80,13 @@ function main(argv) {
   if (cmd === 'walk') {
     if (typeof args.seed !== 'string') { fail('walk requires --seed A'); return; }
     const n = args['max-nodes'] !== undefined ? Number(args['max-nodes']) : undefined;
-    // The loop: the store's bounded listEdges() feeds the pure walker.
-    emit(walk(args.seed, listEdges(), {
-      mode: typeof args.mode === 'string' ? args.mode : undefined,
-      maxNodes: Number.isInteger(n) ? n : undefined,
-    }));
+    try {
+      // The loop: the store's bounded listEdges() feeds the pure walker.
+      emit(walk(args.seed, listEdges(), {
+        mode: typeof args.mode === 'string' ? args.mode : undefined,
+        maxNodes: Number.isInteger(n) ? n : undefined,
+      }));
+    } catch (e) { fail(e.message); return; }
     process.exit(0);
   }
 

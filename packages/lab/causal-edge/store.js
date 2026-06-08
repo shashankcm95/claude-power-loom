@@ -64,6 +64,9 @@ const MAX_LEDGER_BYTES = Number(process.env.LOOM_LAB_MAX_LEDGER_BYTES) > 0
   ? Number(process.env.LOOM_LAB_MAX_LEDGER_BYTES) : 64 * 1024 * 1024;
 // Per-field byte cap (mirrors W1 M2): bounds ledger bloat + keeps the canonical edge_id basis total.
 const MAX_FIELD_LEN = 512;
+// The ECMAScript Date limit (+/-8.64e15 ms from the epoch). A `now` past this is finite but still makes
+// new Date().toISOString() throw RangeError - so Number.isFinite alone is NOT a sufficient guard (CodeRabbit).
+const MAX_DATE_MS = 8.64e15;
 
 function sha256(s) {
   return crypto.createHash('sha256').update(s).digest('hex');
@@ -208,11 +211,12 @@ function createEdge(input) {
   const o = input || {};
   const v = validateCreateEdgeInput(o); // pre-lock; throws on bad input
   const nowMs = nowMsFrom(o);
-  // VALIDATE hacker H2: a non-finite `now` (NaN / "garbage" / Infinity / {}) would make new Date().toISOString()
-  // throw a deep, UNCAUGHT RangeError - violating the advisory "never throw a stack dump" contract. Reject it
-  // as a CLEAN boundary error (the CLI try/catch turns it into a tidy exit-1), before the lock.
-  if (!Number.isFinite(nowMs)) {
-    throw new Error('causal-edge: now must be a finite timestamp (got a non-finite/invalid value)');
+  // VALIDATE hacker H2 (+ CodeRabbit range fix): a non-finite `now` (NaN / "garbage" / Infinity / {}) OR a
+  // finite-but-out-of-Date-range one (e.g. 1e20 > MAX_DATE_MS) would make new Date().toISOString() throw a
+  // deep, UNCAUGHT RangeError - violating the advisory "never throw a stack dump" contract. Reject BOTH as a
+  // CLEAN boundary error (the CLI try/catch turns it into a tidy exit-1), before the lock.
+  if (!Number.isFinite(nowMs) || Math.abs(nowMs) > MAX_DATE_MS) {
+    throw new Error('causal-edge: now must be a finite timestamp within the supported Date range');
   }
   const recordedAt = new Date(nowMs).toISOString();
   const edgeId = computeEdgeId(v.relation, v.sourceBlock, v.targetBlock, v.conflictType);

@@ -251,10 +251,12 @@ test('listEdges: returns stored records; filter narrows', () => {
 
 // -- 16. * H2 (VALIDATE hacker): a non-finite `now` is a CLEAN boundary error, never a deep RangeError.
 test('* H2: a non-finite now (NaN / garbage / Infinity / object) -> clean Error, never an uncaught RangeError', () => {
-  for (const bad of [NaN, 'not-a-date', Infinity, {}]) {
+  // includes 1e20: FINITE but beyond the +/-8.64e15 ms Date range -> would still throw RangeError in
+  // toISOString() if guarded by Number.isFinite alone (the CodeRabbit catch on the H2 fix).
+  for (const bad of [NaN, 'not-a-date', Infinity, {}, 1e20, -1e20]) {
     let err;
     try { store.createEdge(ein({ now: bad })); } catch (e) { err = e; }
-    assert.ok(err && /finite timestamp/i.test(err.message), `now=${JSON.stringify(bad)} -> clean boundary Error`);
+    assert.ok(err && /finite timestamp|Date range/i.test(err.message), `now=${JSON.stringify(bad)} -> clean boundary Error`);
     assert.ok(!/Invalid time value/.test(err.message), 'not a raw RangeError stack');
   }
   assert.strictEqual(store.listEdges().length, 0, 'nothing stored on a bad-now reject');

@@ -97,7 +97,8 @@ test('* SHADOW: packages/kernel/hooks.json has zero causal / lab refs (never ker
 test('CLI smoke: create two eligible edges, then `walk --seed A` reaches the cluster', () => {
   const cli = path.join(REPO_ROOT, 'packages', 'lab', 'causal-edge', 'cli.js');
   const env = { ...process.env, LOOM_LAB_STATE_DIR: TMP };
-  const run = (args) => execFileSync('node', [cli, ...args], { env, encoding: 'utf8' });
+  // Bounded execution (CodeRabbit): a timeout + maxBuffer so a CLI deadlock/flood fails fast, never hangs CI.
+  const run = (args) => execFileSync('node', [cli, ...args], { env, encoding: 'utf8', timeout: 10000, maxBuffer: 1024 * 1024 });
   run(['create', '--relation', 'caused_by', '--source', 'A', '--target', 'B', '--status', 'advisory_llm_checked']);
   run(['create', '--relation', 'caused_by', '--source', 'B', '--target', 'C', '--status', 'human_confirmed']);
   const listed = JSON.parse(run(['list']));
