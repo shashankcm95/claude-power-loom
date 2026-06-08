@@ -129,5 +129,20 @@ test('* purity/containment: projections imports ./walker only (no ./store, no ke
   assert.ok(!/require\(['"]fs['"]\)|writeFile|readFile|child_process|fetch\(/.test(code), 'projections does no I/O (pure)');
 });
 
+// -- 10. * SELF-LOOP guard (no double-count): a degenerate self-loop contradicts edge (source===target)
+//        annotates its single endpoint ONCE, not twice. flagConflict REJECTS blockX===blockY on the write
+//        path, but conflictedBlocks is pure over ANY edge set - a self-loop can be planted via the raw
+//        store.createEdge / `cli.js create`, so the projection must not double-list it.
+test('* self-loop edge (source===target) annotates its single endpoint once, not twice (no double-count)', () => {
+  const m = proj.conflictedBlocks([ce({ edge_id: 'eSelf', source_block: 'X', target_block: 'X' })]);
+  assert.strictEqual(m.size, 1, 'one block key (X)');
+  assert.strictEqual(m.get('X').edges.length, 1, 'the self-loop edge is listed ONCE, not duplicated');
+  assert.strictEqual(m.get('X').tier, 'candidate', 'tier still correct (unjudged)');
+  // a confirmed self-loop is likewise listed once
+  const c = proj.conflictedBlocks([ce({ edge_id: 'eSelf2', source_block: 'Y', target_block: 'Y', faithfulness_status: 'human_confirmed' })]);
+  assert.strictEqual(c.get('Y').edges.length, 1, 'confirmed self-loop also listed once');
+  assert.strictEqual(c.get('Y').tier, 'confirmed');
+});
+
 process.stdout.write(`\nprojections.test.js (causal-edge): ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);

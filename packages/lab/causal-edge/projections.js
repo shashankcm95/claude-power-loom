@@ -77,7 +77,13 @@ function conflictedBlocks(edges) {
   for (const e of contradicts) {
     const confirmed = isEligible(e); // e is already a contradicts edge -> eligibility == judged (advisory/human)
     annotate(e.source_block, e, confirmed);
-    annotate(e.target_block, e, confirmed);
+    // A self-loop edge (source===target) touches ONE node - annotate it once, not twice (else the edge is
+    // double-listed in that block's `edges`). flagConflict rejects blockX===blockY on the write path, but
+    // conflictedBlocks is pure over ANY edge set (e.g. a self-loop planted via the raw store.createEdge /
+    // `cli.js create`), so guard the degenerate case here too.
+    if (e.target_block !== e.source_block) {
+      annotate(e.target_block, e, confirmed);
+    }
   }
   return result;
 }
