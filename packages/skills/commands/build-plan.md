@@ -139,6 +139,8 @@ The output plan file at `~/.claude/plans/<name>.md` MUST conform to `packages/sp
 
 ### 5. User gate (USER GATE 1)
 
+**Pre-approval verification gate (H.7.23)**: if the plan is HETS-routed (Routing Decision `"recommendation": "route"`, or a substantive `## HETS Spawn Plan`), run `/verify-plan` BEFORE presenting — it spawns architect + code-reviewer against the plan file and appends a `## Pre-Approval Verification` section (`rules/core/workflow.md` mandates this; the plan-schema validator flags the section's absence). Skip for `root`-routed plans.
+
 Present plan + recommendations. User picks:
 - **Approve** → exit plan mode + execute
 - **Adjust** → iterate the plan inline

@@ -8,7 +8,7 @@ Watch for these signals during work (observe silently, batch for session end):
 - An agent or skill that feels outdated → evolve candidate
 - Uncertainty about an API or library → research mode applies
 
-**Throttle**: Do NOT interrupt mid-task with forge/promotion suggestions. The hook layer collects them silently into the auto-loop store; you'll see batched candidates at the next session start.
+**Throttle**: Do NOT interrupt mid-task with forge/promotion suggestions. Batch them yourself for the session-end review below. (The former automatic path — frequency-counter capture + a session-start batch reminder — was RETIRED 2026-05-30; the auto-loop store remains inspectable via `/self-improve`, but nothing surfaces candidates unprompted.)
 
 Exception: If a missing agent/skill would materially change the current task's outcome, mention it once — briefly — then continue working.
 
@@ -19,7 +19,7 @@ At the end of substantial work sessions, briefly note (one or two sentences max)
 - Forge/evolve candidates observed
 - Rules followed but not yet codified
 
-The auto-loop already captures recurrence counts; your review is the qualitative layer on top of the deterministic layer.
+Your review is the primary capture path (recurrence-counter capture was retired 2026-05-30); session snapshots + MEMORY.md are where the noted candidates persist.
 
 ## Pre-Compact Awareness
 

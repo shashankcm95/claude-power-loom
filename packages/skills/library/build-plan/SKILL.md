@@ -103,6 +103,8 @@ Drift notes feed the auto-loop's session-end review per `rules/core/self-improve
 
 ### 6. User gate (USER GATE 1)
 
+**Pre-approval verification gate (H.7.23)**: if the plan is HETS-routed (Routing Decision `"recommendation": "route"`, or a substantive `## HETS Spawn Plan`), run `/verify-plan` BEFORE presenting — architect + code-reviewer pressure-test the plan and append a `## Pre-Approval Verification` section per `rules/core/workflow.md`. Skip for `root`-routed plans.
+
 Present plan + recommendations. User picks:
 - **Approve** → ExitPlanMode + execute
 - **Adjust** → iterate inline

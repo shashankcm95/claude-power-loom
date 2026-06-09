@@ -13,18 +13,17 @@ Continuously evolve the toolkit by promoting proven patterns from session memory
 Work → Capture (auto, multi-trigger) → Consolidate (auto, threshold-based) → Approve (batched, session-scoped) → Promote → Enforce
 ```
 
-**H.4.1 update**: capture + consolidation + low-risk graduation now run **automatically** at multiple natural breakpoints. The user no longer has to invoke `/self-improve` to keep the loop alive — but the command still works for on-demand triage and explicit Memory→Rule promotion.
+**H.4.1 era — since narrowed (2026-05-30)**: capture + consolidation originally ran automatically at multiple breakpoints. The **frequency-capture arm was RETIRED** (path/command frequency proved a poor proxy for promotable patterns); what remains automatic is prompt-pattern capture, the pre-compact consolidation scan, and auto-memory/snapshots. `/self-improve` is the primary triage + promotion surface.
 
 ### 1. Capture (Automatic, multi-trigger)
-- **Stop hook** (every assistant turn): `auto-store-enrichment.js` bumps per-signal counters in `~/.claude/self-improve-counters.json` (file paths, slash commands, skill invocations). Cheap, deterministic, no LLM.
+- **Stop hook** (every assistant turn): `auto-store-enrichment.js` captures `[ENRICHED-PROMPT-START]` markers into the prompt-pattern store. (Its per-signal frequency counters were RETIRED 2026-05-30 — see the retirement note in the script; candidates now come from session-end review + snapshots.)
 - **Auto-memory** records patterns in `MEMORY.md` during sessions (existing).
 - **Library session-snapshots** capture verbatim session content via pre-compact hooks (v2.1.0+; see `docs/library.md`).
 - **Forged agents/skills** accumulate personality over time (existing).
 
-### 2. Consolidate (Automatic, threshold-based)
-- **Every 30th turn** (Stop hook): triggers `self-improve-store.js scan` if turns since last scan ≥30. Catches sessions that never compact.
-- **PreCompact hook**: same scan triggers at compaction. Heavier review at the natural "session in retrospect" moment.
-- **Thresholds**:
+### 2. Consolidate (Automatic at compaction)
+- **PreCompact hook**: `pre-compact-save.js` triggers a best-effort `self-improve-store.js scan` at compaction — the natural "session in retrospect" moment. (The former every-30th-turn Stop-hook scan was retired with frequency capture.)
+- **Thresholds** (applied by the store when scanned):
   - Signal observed ≥5 times → queued as candidate for approval
   - Signal observed ≥10 times AND risk = `low` → **auto-graduated** (logged to `~/.claude/checkpoints/observations.log`, no user action needed)
 - **Risk taxonomy**:
@@ -32,8 +31,8 @@ Work → Capture (auto, multi-trigger) → Consolidate (auto, threshold-based) �
   - `medium` (always prompt): skill-candidate (forge a new skill)
   - `high` (always prompt): rule-candidate (Memory → Rule), agent-evolution
 
-### 3. Approve (Batched, session-scoped)
-- **UserPromptSubmit hook** (`session-self-improve-prompt.js`): on the FIRST prompt of each session, reads `~/.claude/checkpoints/self-improve-pending.json`; if non-empty, injects ONE batched reminder listing pending candidates. Idempotent within a session.
+### 3. Approve (Explicit, queue-driven)
+- The session-start reminder hook (`session-self-improve-prompt.js`) exists on disk but is **NOT registered** in `hooks.json` (retired with frequency capture) — pending candidates do NOT surface automatically. Inspect the queue explicitly via `/self-improve` or the CLI.
 - User approves specific IDs, dismisses some, or invokes `/self-improve` for full triage:
   ```
   node ~/.claude/packages/kernel/spawn-state/self-improve-store.js promote --id <cand-id>
