@@ -40,7 +40,7 @@ Audit the installed `~/.claude/rules/toolkit/` for the live state, but **edit th
 
 ## Step 3 — Audit Agents & Skills
 
-List the source `packages/agents/` + `packages/skills/`. Flag overlapping scope or one-off forges. Without an invocation log, "unused" is a judgment from catalog/snapshots, not a metric — label it as such. **Edit the source**, never the installed/cached copy.
+List the source `agents/` + `packages/skills/library/`. Flag overlapping scope or one-off forges. Without an invocation log, "unused" is a judgment from catalog/snapshots, not a metric — label it as such. **Edit the source**, never the installed/cached copy.
 
 ## Step 4 — Audit Library volumes
 
