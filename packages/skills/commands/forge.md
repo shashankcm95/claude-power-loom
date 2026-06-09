@@ -8,11 +8,11 @@ $ARGUMENTS — description of the agent/skill to create (e.g., "stripe payment i
 ## Steps
 
 ### 1. Gap Detection
-Check what already exists:
-- `ls ~/.claude/agents/` — existing agents
-- `ls ~/.claude/skills/` — existing skills
+Check what already exists in the SOURCE tree (the canonical roster — the installed `~/.claude/` copies are build artifacts):
+- `ls ~/Documents/claude-toolkit/agents/` — existing agents
+- `ls ~/Documents/claude-toolkit/packages/skills/library/` — existing skills
 - Determine if any existing agent/skill already covers this domain
-- If overlap exists, suggest extending rather than creating new
+- If overlap exists, suggest extending rather than creating new (use `/evolve`)
 
 ### 2. Design
 Based on the description, determine:
@@ -22,15 +22,13 @@ Based on the description, determine:
 - **Model tier**: `sonnet` for mechanical/repetitive, `opus` for reasoning-heavy
 - **Tools**: Minimum set needed (principle of least privilege)
 
-### 3. Create
+### 3. Create (SOURCE only — never the installed copy)
 
-**For agents** — write to both locations:
-- `~/Documents/claude-toolkit/agents/{name}.md`
-- `~/.claude/agents/{name}.md`
+**For agents** — write the source: `~/Documents/claude-toolkit/agents/{name}.md`
 
-**For skills** — write to both locations:
-- `~/Documents/claude-toolkit/packages/skills/library/{name}/SKILL.md`
-- `~/.claude/skills/{name}/SKILL.md`
+**For skills** — write the source: `~/Documents/claude-toolkit/packages/skills/library/{name}/SKILL.md`
+
+Do NOT also write the installed `~/.claude/agents/` / `~/.claude/skills/` copy. That is the dual-write hotfix trap (#275 removed the same step from `/evolve`): the installed copy is a build artifact that `install.sh` / `claude plugin update` clobbers, and a hand-written one silently drifts from source. The forged file goes live through the normal ship path (Step 5).
 
 ### 4. Record provenance in library
 Write a forge-provenance volume to the library so future sessions can reconstruct the why:
@@ -43,5 +41,5 @@ node ~/Documents/claude-toolkit/scripts/library.js write toolkit/decisions/forge
   --form narrative --topic forge,<persona-or-skill-name> --entities <related-entities>
 ```
 
-### 5. Confirm
-Report what was created, where it lives, and how to invoke it.
+### 5. Confirm + ship
+Report what was created, where it lives, and how to invoke it. Then ship it: branch → PR → user merge → live on `claude plugin update` (plugin surfaces) / `bash install.sh` (installed copies). The forge is not done at file-write — it is done when the source ships.
