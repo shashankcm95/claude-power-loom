@@ -59,6 +59,6 @@ Show estimated bytes per item and the projected total (e.g. `MEMORY 26.6 KB -> ~
 
 Apply the approved edits, then **report the outcome — do not assume it**:
 
-- `wc -c MEMORY.md` after -> bytes reclaimed + **under/over the limit** (re-run a trim if still over).
+- `wc -c ~/.claude/projects/<project-hash>/memory/MEMORY.md` after (the SAME absolute path as Step 0, so the pre/post numbers are comparable) -> bytes reclaimed + **under/over the limit** (re-run a trim if still over).
 - Confirm load-bearing nuggets survived: grep the specific tokens, but loosen the pattern first — markdown bold/backticks (`**E11**`, `` `checkWithinRoot` ``) cause grep false-negatives that look like losses.
 - For rules / skills / agents the change is a repo edit -> branch -> PR -> user merge -> ships on `claude plugin update` / `install.sh`. Never hotfix the installed or plugin-cache copy.
