@@ -7,6 +7,17 @@ description: Multi-agent workflow for large features that span many files and co
 
 Multi-agent workflow for large features that span many files and concern areas.
 
+## Step 0 — Route-decide gate (required before any spawn)
+
+Run `node ~/Documents/claude-toolkit/packages/kernel/algorithms/route-decide.js --task "<task>"` first:
+- `root` → answer directly; do NOT swarm (over-routing wastes ~30x tokens for ~3x failure-mode coverage on trivial tasks)
+- `borderline` → surface the score decomposition to the user and let them pick
+- `route` → proceed below
+
+## Relationship to /build-team
+
+This skill is the **lightweight** fan-out: parallel Agent-tool calls with ad-hoc role assignment, no persistent identities. `/build-team` is the **HETS** path: persona identities, reputation tracking, contracts, and trust-tiered verification. For substantive team-shaped builds prefer `/build-team`; reach for agent-swarm when you want quick parallel units without the HETS substrate.
+
 ## When to Swarm
 
 - Features spanning 5+ files across different domains
@@ -30,12 +41,14 @@ Break the task into independent work units. Each unit should:
 - Be completable by a single agent
 
 ### 2. Assign Agents
-Map each unit to the right agent:
+Map each unit to the right agent — pick by the LENS the unit needs, not the tech domain:
 - **planner** — scope and phase the work (run first if unclear)
 - **architect** — design decisions, trade-offs, ADRs
 - **code-reviewer** — review completed work
-- **security-auditor** — audit security-sensitive changes
+- **hacker** — adversarial audit of security-sensitive changes (read-only)
 - **optimizer** — tune harness configuration
+
+Review/audit units MUST use read-only personas (architect / code-reviewer / hacker / honesty-auditor). Never wire the Write-capable `security-auditor` into a review unit — a Write-capable reviewer invites scope leak ("fixing" mid-review). `security-auditor` is for APPLYING remediations after findings are triaged, not for finding them.
 
 ### 3. Execute in Parallel
 Spawn parallel `Agent` calls for non-dependent units:
@@ -55,6 +68,9 @@ Final verification that the swarm's output is coherent:
 - Run the test suite
 - Check for inconsistencies between parallel branches
 
+### 6. Hand off — the merge is the USER's gate
+The swarm produces reviewed changes; it does NOT auto-commit, push, or merge. Branch → PR → the user merges. Same convention as `/build-team` Step 5.
+
 ## Example
 
 ```
@@ -70,6 +86,6 @@ Unit 4 (agent):       Implement checkout flow + pricing UI
 
 [wait for both]
 
-Unit 5 (code-reviewer):    Review all changes
-Unit 6 (security-auditor): Audit payment handling
+Unit 5 (code-reviewer): Review all changes
+Unit 6 (hacker):        Adversarial audit of payment handling (read-only)
 ```
