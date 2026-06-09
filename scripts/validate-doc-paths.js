@@ -51,6 +51,12 @@ const PATH_RE = new RegExp(
   'g'
 );
 const PLACEHOLDER_RE = /[<>{}*$]|\.\.\.|…|YYYY/; // <x>/{x}/glob/ellipsis + YYYY date-template segments
+// RUNTIME-GENERATED, gitignored paths a doc may legitimately cite (orchestration
+// writes them at run time, e.g. swarm/run-state/<run-id>/). They are intentionally
+// ABSENT from the repo / a clean CI checkout, so non-existence is NOT a staleness
+// signal — exempt them. (Without this the gate passes locally, where the dir
+// exists from prior runs, but FAILS in CI on a clean checkout.)
+const EXEMPT_PREFIXES = ['swarm/run-state'];
 
 /**
  * The longest leading path segment run that contains NO placeholder. Used so a
@@ -136,6 +142,8 @@ function findStaleInFile(file) {
       if (!prefix || prefix.split('/').length < 2) continue; // need at least root/child
       const abs = resolveToRepo(prefix, docDir);
       if (!abs) continue;
+      const rel = path.relative(REPO_ROOT, abs);
+      if (EXEMPT_PREFIXES.some((p) => rel === p || rel.startsWith(p + '/'))) continue; // runtime/gitignored
       if (seen.has(abs)) continue;
       seen.add(abs);
       if (!fs.existsSync(abs)) stale.push({ path: token, prefixChecked: prefix, line: i + 1 });

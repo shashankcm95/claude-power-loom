@@ -80,6 +80,18 @@ test('findStaleInFile: suppresses prose ("agents/skills") + URL fragments', () =
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+// -- runtime/gitignored exempt: a concrete (non-placeholder) swarm/run-state path that
+// does NOT exist is NOT flagged (it is runtime-generated, intentionally absent from a
+// clean checkout — the local-vs-CI divergence that broke #276).
+test('findStaleInFile: exempts runtime swarm/run-state paths even when absent', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'docpath-'));
+  const file = path.join(dir, 'rt.md');
+  // a fully-concrete (no placeholder) path under swarm/run-state that does not exist:
+  fs.writeFileSync(file, 'Output lands at `swarm/run-state/orch-run-9999-nonexistent/node-actor-04-architect.md`.');
+  assert.deepStrictEqual(findStaleInFile(file), [], 'runtime-generated swarm/run-state refs are exempt');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 // -- a clean doc (only live paths) -> no findings.
 test('findStaleInFile: a doc with only live paths -> []', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'docpath-'));
