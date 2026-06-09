@@ -2,7 +2,7 @@
 title: "Shadow -> Live-for-Beta — the 3.x substrate activation plan"
 plan_id: shadow-to-live-beta-roadmap
 created: 2026-06-08
-status: draft (pre-VERIFY)
+status: accepted — 2-lens VERIFY folded; USER-approved; executing from v3.6 W1
 scope: strategic multi-phase arc (each phase gets its own per-wave plan at kickoff)
 supersedes: null
 related:
