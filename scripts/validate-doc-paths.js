@@ -172,11 +172,10 @@ function collectDocs() {
 // KNOWN-DEBT allowlist: files whose stale refs are TRACKED but do NOT fail the
 // gate yet (so the gate can block NEW rot immediately while pre-existing debt is
 // paid down separately). Each entry needs a reason + a follow-up.
-//   - agent-team/SKILL.md: ~87 refs, almost all in its long historical CHANGELOG
-//     pointing at deleted swarm/H.x-findings.md / swarm/adrs / swarm/personas
-//     docs. The fix is to TRIM the changelog (history belongs in git+snapshots),
-//     not to remap dead paths — a separate PR. Remove this entry once trimmed.
-const KNOWN_DEBT = new Set(['packages/skills/library/agent-team/SKILL.md']);
+// Currently EMPTY — the sole entry (agent-team/SKILL.md, ~86 changelog refs)
+// was paid down 2026-06-09 by trimming the historical changelog (history lives
+// in git + the library session-snapshots).
+const KNOWN_DEBT = new Set([]);
 
 function main() {
   const json = process.argv.includes('--json');
