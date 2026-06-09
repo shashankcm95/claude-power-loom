@@ -179,7 +179,7 @@ For each request, surface to the user with the concrete file list, then act per 
 | Request type | Root acquires by | User-gate question |
 |--------------|---------------------|----------------------|
 | `forge-skill` | Invoke `/forge` skill (existing flow) | "Author skill X via /forge?" |
-| `forge-persona` | Direct authoring via Edit/Write — 4 files (persona.md, contract.json, 2 KB docs) + 3 config edits (DEFAULT_ROSTERS in agent-identity.js, live `agent-identities.json`, stack-skill-map) | "Author new persona X with these 4 files + 3 config edits?" |
+| `forge-persona` | Direct authoring via Edit/Write — 4 SOURCE files (`packages/runtime/personas/{NN-name}.md`, `packages/runtime/contracts/{NN-name}.contract.json`, 2 KB docs under `packages/skills/library/agent-team/kb/`) + 3 config edits (`DEFAULT_ROSTERS` in agent-identity.js, the live runtime `agent-identities.json`, stack-skill-map). All repo-source edits — never the installed `~/.claude` copy | "Author new persona X with these 4 files + 3 config edits?" |
 | `author-kb-doc` | Direct Write of the KB doc + `kb-resolver scan` to register | "Author KB doc kb:X/Y at path Z?" |
 | `extend-stack-map` | Edit `kb:hets/stack-skill-map` to add the new stack entry | "Extend stack-skill-map with entry for stack X?" |
 

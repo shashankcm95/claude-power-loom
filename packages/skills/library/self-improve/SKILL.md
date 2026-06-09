@@ -60,25 +60,26 @@ grep across narrative volumes for conventions that emerged organically
 
 **Check existing rules:**
 ```
-Read ~/.claude/rules/toolkit/
+Read ~/.claude/rules/toolkit/   (the installed LIVE state — read here, edit at the source)
 Are any rules outdated?
 Are there gaps — patterns we follow but haven't codified?
 ```
 
 ### 3. Promote
-When a pattern is proven (recurring, successful, stable):
+When a pattern is proven (recurring, successful, stable), edit the **SOURCE** tree, never the installed `~/.claude/` copy (install clobbers it; an installed-copy edit is an unreviewed hotfix):
 
-**Memory → Rule**: Move from `MEMORY.md` to `~/.claude/rules/toolkit/{category}/`
+**Memory → Rule**: Move from `MEMORY.md` to the source rules tree `packages/skills/rules/{category}/`
 - The pattern becomes permanent guidance, not a memory entry
 - Frees memory capacity for new observations
+- Ships to the installed `~/.claude/rules/toolkit/{category}/` via `bash install.sh --rules` after the PR merges
 
 **Pattern → Skill**: Convert a recurring multi-step workflow into a skill
-- Write to `~/.claude/skills/{name}/SKILL.md`
+- Write the source at `packages/skills/library/{name}/SKILL.md`; it goes live via branch → PR → user merge → `claude plugin update` / `install.sh`
 - Optionally write a forge-provenance volume to `toolkit/decisions/` in the library for cross-session searchability
 
 **Pattern → Agent**: When a domain needs persistent expertise
-- Use the Skill Forge to create a specialized agent
-- Embed accumulated personality directly in the agent's `.md` file (the agent file is the source of truth; library volumes provide cross-session context)
+- Use the Skill Forge to create a specialized agent at the repo root `agents/{name}.md` (the source of truth; the installed `~/.claude/agents/` copy is a build artifact)
+- Embed accumulated personality directly in the agent's `.md` file (library volumes provide cross-session context)
 
 ### 4. Prune
 Remove what's no longer useful:

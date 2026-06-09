@@ -17,9 +17,9 @@ Create specialized agents and skills on the fly when existing ones don't fit the
 ## Forge Process
 
 ### 1. Gap Detection
-Before starting complex work, check:
-- `ls ~/.claude/agents/` — what agents exist?
-- `ls ~/.claude/skills/` — what skills exist?
+Before starting complex work, check the SOURCE tree (the canonical roster — the installed `~/.claude/` copies are build artifacts):
+- `ls ~/Documents/claude-toolkit/agents/` — what agents exist?
+- `ls ~/Documents/claude-toolkit/packages/skills/library/` — what skills exist?
 - Does the current task fit an existing agent's description?
 - If not, what specialty is missing?
 
@@ -58,9 +58,11 @@ For most tech skills (react, kubernetes-config, airflow), the canonical URL alon
 
 **At task end**: if you forged a skill that SHOULD have had a canonical source OR validation_sources but the registry didn't list them, surface the gap via missing-capability-signal `request: { type: extend-canonical-sources, ... }` so root can update the registry. This is L2 of the evolution-cycle vision: better INPUTS to the substrate produce higher-quality skills, faster trust accumulation.
 
-### 3. Create the File
+### 3. Create the File (SOURCE only — never the installed `~/.claude/` copy)
 
-**For agents** — write to `~/.claude/agents/{name}.md`:
+The installed `~/.claude/agents/` + `~/.claude/skills/` copies are build artifacts that `install.sh` / `claude plugin update` clobber — writing them directly is the unreviewed-hotfix trap (same class `/evolve` shed in #275).
+
+**For agents** — write the source at `~/Documents/claude-toolkit/agents/{name}.md`:
 ```markdown
 ---
 name: {name}
@@ -73,7 +75,7 @@ color: {color}
 {System prompt with domain expertise, workflow, and constraints}
 ```
 
-**For skills** — write to `~/.claude/skills/{name}/SKILL.md`:
+**For skills** — write the source at `~/Documents/claude-toolkit/packages/skills/library/{name}/SKILL.md`:
 ```markdown
 # {Skill Name}
 
@@ -95,8 +97,8 @@ This stays in the file — Claude reads it on every invocation. Optionally write
 
 **What this is NOT**: agents do NOT accumulate personality or learn across invocations. Each `Agent` tool call spawns a fresh subagent with the system prompt as written in its `.md` file. To "evolve" an agent, you must explicitly edit the `.md` file (use `/evolve {name}` for the workflow).
 
-### 5. Register for Recall
-The new agent/skill is immediately available in `~/.claude/agents/` or `~/.claude/skills/`. Claude discovers them by listing those directories — no further registration needed.
+### 5. Ship (registration = the ship path, not the file-write)
+The new agent/skill is NOT live the moment the source file is written. It ships through the normal path: branch → PR → user merge → `bash install.sh` (installed copies) / `claude plugin update` (plugin surfaces). Claude then discovers it from the installed `~/.claude/agents/` / skills surfaces next session — no further registration needed beyond the ship.
 
 ## Evolution
 After each use of a forged agent/skill:

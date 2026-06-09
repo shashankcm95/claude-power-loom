@@ -11,7 +11,7 @@ Read the project's `MEMORY.md` (if it exists) and identify:
 - Entries that have led to successful outcomes
 
 ### 2. Scan Rules
-Read all files in `~/.claude/rules/toolkit/` and check:
+Read all files in `~/.claude/rules/toolkit/` (the installed LIVE state — read here, edit at the source `packages/skills/rules/`) and check:
 - Are any rules outdated or contradicted by recent practice?
 - Are there gaps — patterns we consistently follow but haven't codified?
 - Do any rules duplicate each other?
@@ -23,10 +23,10 @@ Search the library for cross-session patterns:
 - Conventions that emerged organically across multiple narrative volumes
 
 ### 4. Recommend Promotions
-For each proven pattern, recommend one of:
-- **Memory → Rule**: Move from MEMORY.md to `~/.claude/rules/toolkit/{category}/`
-- **Pattern → Skill**: Convert recurring workflow to `~/.claude/skills/{name}/SKILL.md`
-- **Pattern → Agent**: Create specialized agent in `~/.claude/agents/{name}.md`
+For each proven pattern, recommend one of (all promotions edit the **SOURCE** tree, never the installed `~/.claude/` copy — install clobbers it; ship via branch → PR → user merge → `install.sh` / `claude plugin update`):
+- **Memory → Rule**: Move from MEMORY.md to the source rules tree `packages/skills/rules/{category}/`
+- **Pattern → Skill**: Convert recurring workflow to `packages/skills/library/{name}/SKILL.md`
+- **Pattern → Agent**: Create specialized agent at the repo root `agents/{name}.md`
 
 ### 5. Recommend Pruning
 Flag for removal:
