@@ -59,7 +59,7 @@ Query the catalog to mark each required + recommended skill as `available` / `ma
 node ~/Documents/claude-toolkit/packages/runtime/orchestration/kb-resolver.js list --tag <topic>
 
 # For each skill, check its skill_status across the persona contracts
-grep -l "\"<skill-name>\":" ~/Documents/claude-toolkit/swarm/personas-contracts/*.contract.json
+grep -l "\"<skill-name>\":" ~/Documents/claude-toolkit/packages/runtime/contracts/*.contract.json
 ```
 
 For each `missing` skill, mark it for the bootstrap step.
@@ -170,6 +170,6 @@ Per `patterns/tech-stack-analyzer.md` validation strategy:
 
 ## What this skill is NOT
 
-- Not the orchestrator itself — it sets up the plan; the actual spawn loop is the orchestrator's job (`swarm/super-agent.md`)
+- Not the orchestrator itself — it sets up the plan; the actual spawn loop is the orchestrator's job (`packages/specs/research/super-agent.md`)
 - Not a replacement for `chaos-test` — chaos-test is meta-validation (audit the toolkit); this is product-work setup
 - Not a substitute for human judgment — every gate exists because automated stack inference is fundamentally heuristic; user redirects are the trust boundary

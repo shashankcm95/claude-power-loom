@@ -1,6 +1,6 @@
 # /build-plan — HETS-aware plan authoring (H.7.9)
 
-User-facing entry point for the [build-plan](../skills/build-plan/SKILL.md) skill. Wraps the [planner](../agents/planner.md) agent with a deterministic route-decide gate (Step 0) plus an architect-spawn recommendation (Step 3) when the task scores high on `convergence_value`. Designed to convert the soft-norm plan-mode discipline (`rules/core/workflow.md`) into a sharper gate without merging it with the route-decide gate (different concerns: file-count vs HETS-cost-justification).
+User-facing entry point for the [build-plan](../library/build-plan/SKILL.md) skill. Wraps the [planner](../../../agents/planner.md) agent with a deterministic route-decide gate (Step 0) plus an architect-spawn recommendation (Step 3) when the task scores high on `convergence_value`. Designed to convert the soft-norm plan-mode discipline (`rules/core/workflow.md`) into a sharper gate without merging it with the route-decide gate (different concerns: file-count vs HETS-cost-justification).
 
 **Relationship to `/plan`** — additive, not replacement. `/plan` stays as the thin planner-agent delegate for trivial-to-medium scope. `/build-plan` is for substantive multi-file architectural work where convergence value is high enough that an architect's design pass earns its token cost. Step 0's `root` recommendation redirects cleanly to `/plan`.
 
@@ -126,7 +126,7 @@ If user accepts the architect recommendation at Step 5, spawn `04-architect.<nam
 
 If the user declines (or convergence_value < 0.10), proceed with the planner agent directly per Phase 2 of plan-mode workflow.
 
-The output plan file at `~/.claude/plans/<name>.md` MUST conform to `swarm/plan-template.md` schema:
+The output plan file at `~/.claude/plans/<name>.md` MUST conform to `packages/specs/research/plan-template.md` schema:
 
 - **Context** (why this change)
 - **Routing Decision** (verbatim route-decide JSON)
@@ -154,4 +154,4 @@ Preserves user authority; defaults nothing.
 - **Additive to `/plan`** — both coexist; `/plan` for trivial; `/build-plan` for substantive
 - **Drift-notes section** — captures soft-norm-drift observations during plan work (per user H.7.9 directive treating conversations as testing framework)
 
-See [skills/build-plan/SKILL.md](../skills/build-plan/SKILL.md) for the skill body and [skills/agent-team/patterns/plan-mode-hets-injection.md](../skills/agent-team/patterns/plan-mode-hets-injection.md) for the underlying pattern.
+See [packages/skills/library/build-plan/SKILL.md](../library/build-plan/SKILL.md) for the skill body and [packages/skills/library/agent-team/patterns/plan-mode-hets-injection.md](../library/agent-team/patterns/plan-mode-hets-injection.md) for the underlying pattern.

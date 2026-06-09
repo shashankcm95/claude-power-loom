@@ -1,6 +1,6 @@
 # /verify-plan — Pre-approval verification (H.7.23)
 
-User-facing entry point for the [verify-plan](../skills/verify-plan/SKILL.md) skill. Spawns architect + code-reviewer agents in parallel to catch design issues + concrete bugs in proposed code changes BEFORE the user sees the plan via ExitPlanMode.
+User-facing entry point for the [verify-plan](../library/verify-plan/SKILL.md) skill. Spawns architect + code-reviewer agents in parallel to catch design issues + concrete bugs in proposed code changes BEFORE the user sees the plan via ExitPlanMode.
 
 **Codifies drift-note 40**: the parallel-spawn pre-approval verification pattern that caught 4 HIGH/CRITICAL bugs in H.7.22 + 5 substantive issues in H.7.23. Required (per `rules/core/workflow.md`) for HETS-routed phases.
 
@@ -24,7 +24,7 @@ If no plan file is found, ask the user to specify a path or invoke from inside p
 
 ## Steps
 
-The skill body at `skills/verify-plan/SKILL.md` defines the 6-step procedure. Summary:
+The skill body at `packages/skills/library/verify-plan/SKILL.md` defines the 6-step procedure. Summary:
 
 1. Read plan file
 2. Spawn architect (verification-mode brief) + code-reviewer in parallel via Agent tool
@@ -51,4 +51,4 @@ The validator (`validate-plan-schema.js` H.7.23 Tier 1 conditional) checks for `
 - **Idempotent re-run** — `verify-plan-spawn.js` replaces existing `## Pre-Approval Verification` section if present, so users can re-run after applying fixes.
 - **Insertion order** — section is appended before `## Open design choices` if present, else at end of plan file.
 
-See [skills/verify-plan/SKILL.md](../skills/verify-plan/SKILL.md) for full procedure body and [skills/agent-team/patterns/plan-mode-hets-injection.md](../skills/agent-team/patterns/plan-mode-hets-injection.md) for the underlying plan-mode-injection pattern.
+See [packages/skills/library/verify-plan/SKILL.md](../library/verify-plan/SKILL.md) for full procedure body and [packages/skills/library/agent-team/patterns/plan-mode-hets-injection.md](../library/agent-team/patterns/plan-mode-hets-injection.md) for the underlying plan-mode-injection pattern.

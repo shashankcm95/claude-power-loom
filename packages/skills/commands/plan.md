@@ -5,7 +5,7 @@ Create a phased implementation plan for a feature or refactor.
 ## When to use `/plan` vs `/build-plan` (H.7.9)
 
 - Use `/plan` for trivial-to-medium scope, single-architect planning. This command is a thin delegate to the **planner** agent.
-- Use [`/build-plan`](build-plan.md) for substantive multi-file architectural work where `convergence_value ≥ 0.10`. It wraps the planner with a route-decide gate (Step 0) plus an architect-spawn recommendation (Step 3), writes plans matching `swarm/plan-template.md` schema, and captures drift notes.
+- Use [`/build-plan`](build-plan.md) for substantive multi-file architectural work where `convergence_value ≥ 0.10`. It wraps the planner with a route-decide gate (Step 0) plus an architect-spawn recommendation (Step 3), writes plans matching `packages/specs/research/plan-template.md` schema, and captures drift notes.
 - Both coexist; `/build-plan` Step 0 redirects to `/plan` cleanly when route-decide returns `root`.
 
 ## Steps

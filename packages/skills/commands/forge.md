@@ -29,7 +29,7 @@ Based on the description, determine:
 - `~/.claude/agents/{name}.md`
 
 **For skills** — write to both locations:
-- `~/Documents/claude-toolkit/skills/{name}/SKILL.md`
+- `~/Documents/claude-toolkit/packages/skills/library/{name}/SKILL.md`
 - `~/.claude/skills/{name}/SKILL.md`
 
 ### 4. Record provenance in library

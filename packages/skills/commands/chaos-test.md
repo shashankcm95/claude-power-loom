@@ -45,7 +45,7 @@ echo "Run ID: $RUN_ID"
 ```
 
 ### 2. Activate Super Agent (HETS pattern)
-Read `~/Documents/claude-toolkit/swarm/super-agent.md` and `~/Documents/claude-toolkit/skills/agent-team/SKILL.md`. Follow the HETS workflow:
+Read `~/Documents/claude-toolkit/packages/specs/research/super-agent.md` and `~/Documents/claude-toolkit/packages/skills/library/agent-team/SKILL.md`. Follow the HETS workflow:
 
 **a. Spawn actors flat (recommended for chaos test):**
 Spawn all 5 actors in parallel directly from super-agent (avoids the rate-limit cliff of 3-orch-spawn-actors fan-out we hit in chaos-20260501-184505).
@@ -53,9 +53,9 @@ Spawn all 5 actors in parallel directly from super-agent (avoids the rate-limit 
 For each actor:
 1. **Assign identity** (Phase H.2-bridge):
    `node ~/Documents/claude-toolkit/packages/runtime/orchestration/agent-identity.js assign --persona {NN-name} --task chaos-{run-id}`
-   → returns `{persona}.{name}` (e.g. `04-architect.mira`). Use this as the identity for all downstream steps. See [agent-identity-reputation pattern](../skills/agent-team/patterns/agent-identity-reputation.md).
+   → returns `{persona}.{name}` (e.g. `04-architect.mira`). Use this as the identity for all downstream steps. See [agent-identity-reputation pattern](../library/agent-team/patterns/agent-identity-reputation.md).
 2. `node ~/Documents/claude-toolkit/packages/runtime/orchestration/tree-tracker.js spawn --run-id $RUN_ID --parent super-root --child actor-{name}-{identity-name} --task "..." --role actor`
-3. Spawn the Agent with persona + contract + skills block. Skills block lists `skills.required` and `skills.recommended` from the contract by **name only** — actor invokes `Skill` tool to load on demand. See [persona-skills-mapping](../skills/agent-team/patterns/persona-skills-mapping.md) + [prompt-distillation](../skills/agent-team/patterns/prompt-distillation.md).
+3. Spawn the Agent with persona + contract + skills block. Skills block lists `skills.required` and `skills.recommended` from the contract by **name only** — actor invokes `Skill` tool to load on demand. See [persona-skills-mapping](../library/agent-team/patterns/persona-skills-mapping.md) + [prompt-distillation](../library/agent-team/patterns/prompt-distillation.md).
 4. Include in actor's frontmatter: `identity: "{full-identity-string}"` (YAML-quoted; SynthId suffixes contain `~` which YAML 1.2 treats as null marker — FIX-I2) so the verifier auto-records per-identity.
 5. Tell the actor to write to `node-actor-{name}-{identity-name}.md` with proper frontmatter
 
@@ -63,7 +63,7 @@ For each actor:
 For each actor's output file, run:
 ```bash
 node ~/Documents/claude-toolkit/packages/kernel/validators/contract-verifier.js \
-  --contract ~/Documents/claude-toolkit/swarm/personas-contracts/{NN-name}.contract.json \
+  --contract ~/Documents/claude-toolkit/packages/runtime/contracts/{NN-name}.contract.json \
   --output ~/Documents/claude-toolkit/swarm/run-state/$RUN_ID/node-actor-{name}-{identity}.md \
   --previous-run ~/Documents/claude-toolkit/swarm/run-state/$PREVIOUS_RUN_ID \
   --identity {NN-name}.{identity}
@@ -76,7 +76,7 @@ For any `verdict: "fail"`: re-spawn the actor once with a tighter prompt highlig
 You ARE the super agent — synthesize the orchestrator-tier views (orch-code, orch-behavior, orch-architecture) yourself based on the verified actor outputs. Write three `node-orch-{area}.md` files with proper frontmatter.
 
 **d. Run aggregator + compliance probe:**
-- `node ~/Documents/claude-toolkit/swarm/hierarchical-aggregate.js $RUN_ID --previous chaos-...`
+- `node ~/Documents/claude-toolkit/packages/runtime/orchestration/aggregate/hierarchical-aggregate.js $RUN_ID --previous chaos-...`
 - `bash ~/.claude/scripts/compliance-probe.sh --last-24h`
 
 **e. Write super-root consolidated report.**
