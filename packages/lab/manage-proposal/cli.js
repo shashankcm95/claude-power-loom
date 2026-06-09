@@ -12,6 +12,7 @@
 //   content-dedup|cull|merge --targets <txid,txid,...> --justification "..." [--origin O]  (multi-target propose)
 //   list [--disposition pending|approved|rejected]                                   (the human review surface)
 //   dispose --proposal-id <id> --decision approved|rejected                          (the human acts; the CLI operator IS the human)
+//   lifecycle --txid <txid>                                                          (v3.6 W1: the advisory lifecycle READ verdict for a kernel txid)
 //
 // Exit codes: 0 on success; 1 on usage / validation error (a clean message, never a stack dump).
 
@@ -22,6 +23,8 @@ const {
   quarantineRecord, contentDedupRecord, cullRecord, mergeRecord,
 } = require('./manage-ops');
 const { DISPOSITIONS, validateEnum } = require('./enums');
+const { manageLifecycleStatus } = require('./lifecycle');
+const { HEX64 } = require('../../kernel/_lib/provenance-walk');
 
 function parseArgs(argv) {
   const args = {};
@@ -35,7 +38,7 @@ function parseArgs(argv) {
   return args;
 }
 
-const USAGE = 'Usage: cli.js <quarantine --target <txid> --justification "..." [--origin O] | content-dedup|cull|merge --targets <txid,txid,...> --justification "..." [--origin O] | list [--disposition D] | dispose --proposal-id <id> --decision approved|rejected>\n  (--justification is a single-line free string, <=512 bytes; for merge it carries the proposed summary)\n';
+const USAGE = 'Usage: cli.js <quarantine --target <txid> --justification "..." [--origin O] | content-dedup|cull|merge --targets <txid,txid,...> --justification "..." [--origin O] | list [--disposition D] | dispose --proposal-id <id> --decision approved|rejected | lifecycle --txid <txid>>\n  (--justification is a single-line free string, <=512 bytes; for merge it carries the proposed summary)\n';
 
 function emit(obj) {
   process.stdout.write(`${JSON.stringify(obj, null, 2)}\n`);
@@ -104,6 +107,20 @@ function main(argv) {
     }
     try {
       emit(updateDisposition(args['proposal-id'], args.decision));
+    } catch (e) { fail(e.message); return; }
+    process.exit(0);
+  }
+
+  if (cmd === 'lifecycle') {
+    // The READ consumer (v3.6 W1): the advisory manage-layer lifecycle verdict for a kernel txid. --txid is
+    // a 64-hex transaction_id (grammar matches `dispose --proposal-id`; a positional is dropped by parseArgs).
+    // SHADOW: records are NOT supplied this wave (the run-seam is W2) -> kernel_state defaults 'unknown'; the
+    // manage-half (approved_ops, read live from the store) is the dark-edge-closing signal.
+    if (typeof args.txid !== 'string' || !HEX64.test(args.txid)) {
+      fail('lifecycle requires --txid <64-hex transaction_id>'); return;
+    }
+    try {
+      emit(manageLifecycleStatus(args.txid, { proposals: listProposals() }));
     } catch (e) { fail(e.message); return; }
     process.exit(0);
   }

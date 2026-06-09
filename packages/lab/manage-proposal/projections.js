@@ -23,7 +23,7 @@
 
 'use strict';
 
-const { APPROVED_DISPOSITION } = require('./enums');
+const { APPROVED_DISPOSITION, OP_TYPES } = require('./enums');
 
 const QUARANTINE = 'quarantine';
 const REJECTED = 'rejected';
@@ -78,4 +78,41 @@ function quarantinedRecords(proposals) {
   return result;
 }
 
-module.exports = { quarantinedRecords };
+/**
+ * approvedOpsByRecord projection (v3.6 Wave 1): map each kernel txid to the APPROVED manage-ops targeting
+ * it, across ALL op_types. A SIBLING of quarantinedRecords - it shares the load-bearing op_type +
+ * disposition pre-filter SHAPE, but is APPROVED-only + all-op-type + tier-free (NOT a superset: it drops
+ * the candidate/quarantined tier `quarantinedRecords` carries). This is the "approved manage-intent" view
+ * the v3.6 Wave 2 destructive mint consumes (a `cull` -> a kernel TOMBSTONE; a `content-dedup` -> a
+ * SUPERSEDE). PURE over a passed-in array (the store feeds listProposals() in); ANNOTATION, never suppression.
+ *
+ * @param {object[]} proposals the manage-proposal set (any op_type / disposition; ineligible tolerated)
+ * @returns {Map<string, Array<{op_type:string, proposal_id:string, justification:string}>>} txid -> approved ops
+ */
+function approvedOpsByRecord(proposals) {
+  const result = new Map();
+  if (!Array.isArray(proposals)) return result;
+
+  // PRE-FILTER: approved + a KNOWN op_type (closed-enum membership - a garbage op_type is dropped) + a
+  // target array (the F3-trap analog). Approved-only: this view FEEDS the mint, so pending/rejected are out.
+  const approved = proposals.filter((p) => isRecord(p)
+    && p.disposition === APPROVED_DISPOSITION
+    && OP_TYPES.includes(p.op_type)
+    && Array.isArray(p.target_records));
+
+  for (const p of approved) {
+    // Dedup targets WITHIN a proposal so a hand-planted duplicate does not double-list (pure over ANY set;
+    // the store canonicalizes on write - the 3a self-loop lesson).
+    const seen = new Set();
+    for (const txid of p.target_records) {
+      if (!nonEmptyStr(txid) || seen.has(txid)) continue;
+      seen.add(txid);
+      let entry = result.get(txid);
+      if (!entry) { entry = []; result.set(txid, entry); }
+      entry.push({ op_type: p.op_type, proposal_id: p.proposal_id, justification: p.justification });
+    }
+  }
+  return result;
+}
+
+module.exports = { quarantinedRecords, approvedOpsByRecord };
