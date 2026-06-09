@@ -82,18 +82,18 @@ function placeholderFreePrefix(p) {
  * @returns {string|null}
  */
 function resolveToRepo(token, docDir) {
-  let rel;
-  if (token.startsWith(TOOLKIT_PREFIX)) {
-    rel = token.slice(TOOLKIT_PREFIX.length);
-    return path.join(REPO_ROOT, rel);
-  }
-  if (token.startsWith('../') || token.startsWith('./')) {
-    return path.resolve(docDir, token);
-  }
-  // bare repo-rooted token (starts with a ROOT segment)
-  const head = token.split('/')[0];
-  if (ROOTS.includes(head)) return path.join(REPO_ROOT, token);
-  return null;
+  let abs;
+  if (token.startsWith(TOOLKIT_PREFIX)) abs = path.join(REPO_ROOT, token.slice(TOOLKIT_PREFIX.length));
+  else if (token.startsWith('../') || token.startsWith('./')) abs = path.resolve(docDir, token);
+  else if (ROOTS.includes(token.split('/')[0])) abs = path.join(REPO_ROOT, token); // bare repo-rooted token
+  else return null;
+  // Path-traversal / reproducibility guard (Gemini review #276): a `../`-bearing or
+  // toolkit-prefixed token must not ESCAPE REPO_ROOT — else fs.existsSync would probe
+  // arbitrary HOST paths (out-of-repo, non-reproducible across machines/CI). An escaping
+  // token resolves to null (not checked), same as a `~/.claude/...` runtime path.
+  const rel = path.relative(REPO_ROOT, abs);
+  if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return null;
+  return abs;
 }
 
 /**

@@ -44,6 +44,13 @@ test('resolveToRepo: a ~/.claude runtime path is NOT a repo path -> null', () =>
   assert.strictEqual(resolveToRepo('skills/x', '/any') !== null, true); // bare root IS checked
   assert.strictEqual(resolveToRepo('http://example.com/x', '/any'), null);
 });
+test('resolveToRepo: a token that ESCAPES the repo -> null (path-traversal guard, Gemini #276)', () => {
+  const docDir = path.join(REPO_ROOT, 'packages/skills/commands');
+  assert.strictEqual(resolveToRepo('../../../../../../etc/passwd', docDir), null, 'a ../ traversal escaping REPO_ROOT is not checked');
+  assert.strictEqual(resolveToRepo('~/Documents/claude-toolkit/../../../etc/passwd', '/any'), null, 'a toolkit-prefixed escape is not checked');
+  // a legit DEEP in-repo relative still resolves (agents/ lives at the repo root):
+  assert.strictEqual(resolveToRepo('../../../agents/planner.md', docDir), path.join(REPO_ROOT, 'agents/planner.md'), 'an in-repo ../../../ ref still resolves');
+});
 
 // -- findStaleInFile: a temp doc citing valid + stale + placeholder paths.
 test('findStaleInFile: flags dead paths, passes live + placeholder-live ones', () => {
