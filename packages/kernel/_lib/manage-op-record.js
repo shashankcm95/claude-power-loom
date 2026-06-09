@@ -35,6 +35,11 @@ const HEX64 = /^[a-f0-9]{64}$/;
 const MANAGE_OPS = Object.freeze(['SUPERSEDE', 'TOMBSTONE']);
 const PERSONA_ID = 'lab:manage-promote';
 
+/**
+ * True iff `v` is a 64-char lowercase-hex string (the transaction_id / sha256 shape).
+ * @param {*} v
+ * @returns {boolean}
+ */
 function isHex64(v) { return typeof v === 'string' && HEX64.test(v); }
 
 /**

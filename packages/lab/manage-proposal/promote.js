@@ -40,15 +40,31 @@ const SCHEMA_VERSION = 'v6';
 // is a recall-layer retrieval-suppression (v3.8a), NOT a kernel op.
 const OP_MAP = Object.freeze({ cull: 'TOMBSTONE' });
 
+/**
+ * The leave-shadow opt-in gate: true iff `LOOM_MANAGE_ENFORCE` is exactly '1' (shadow is the default).
+ * @returns {boolean}
+ */
 const isEnforced = () => process.env.LOOM_MANAGE_ENFORCE === '1';
+
+/**
+ * Build a frozen refusal result (the never-throws contract -- a clean {ok:false} instead of an exception).
+ * @param {string} reason the machine-readable refusal code
+ * @param {object} [extra] additional context merged into the result
+ * @returns {Readonly<{ok:false, refused:string}>}
+ */
 const refuse = (reason, extra) => Object.freeze({ ok: false, refused: reason, ...extra });
 
-// A target is manage-eligible iff it is a real, non-kernel, non-manage memory record (hacker IDOR gate). The
-// kernel persona namespace is BOTH 'kernel:' AND 'kernel-' -- the LIVE integrator is 'kernel-loom-integrator'
-// (VALIDATE NEW-2; integration-record.js); normalize (trim + casefold) before the check (VALIDATE MED-1, against
-// 'KERNEL:' / ' kernel:' evasions). RESIDUAL: an ordinary non-kernel CREATE/APPEND provenance record is still
-// targetable -- the human reviewing the proposal is the scope gate; a fuller content-class allow-list is future
-// work once "memory records" are a distinct class.
+/**
+ * The IDOR target-eligibility gate (hacker VERIFY/VALIDATE): a cull may tombstone only a real, non-kernel,
+ * non-manage memory record. The kernel persona namespace is BOTH 'kernel:' AND 'kernel-' (the LIVE integrator is
+ * 'kernel-loom-integrator', VALIDATE NEW-2; integration-record.js); the persona is normalized (trim + casefold)
+ * before the prefix check (VALIDATE MED-1, against 'KERNEL:' / leading-whitespace evasions). RESIDUAL: an
+ * ordinary non-kernel CREATE/APPEND provenance record is still targetable -- the human reviewing the proposal is
+ * the scope gate; a fuller content-class allow-list is future work once "memory records" are a distinct class.
+ *
+ * @param {object|null} targetRecord the resolved target record (from readById), or null
+ * @returns {string|null} a refusal code ('target-not-found' | 'target-kernel-owned' | 'target-is-a-manage-op'), or null if eligible
+ */
 function eligibilityRefusal(targetRecord) {
   if (!targetRecord) return 'target-not-found';
   const persona = typeof targetRecord.writer_persona_id === 'string'
