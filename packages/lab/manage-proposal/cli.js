@@ -13,8 +13,9 @@
 //   list [--disposition pending|approved|rejected]                                   (the human review surface)
 //   dispose --proposal-id <id> --decision approved|rejected                          (the human acts; the CLI operator IS the human)
 //   lifecycle --txid <txid>                                                          (v3.6 W1: the advisory lifecycle READ verdict for a kernel txid)
+//   promote --proposal-id <id>                                                       (v3.6 W2a: the leave-shadow MINT - approved cull -> COMMITTED TOMBSTONE; LOOM_MANAGE_ENFORCE=1 to opt in)
 //
-// Exit codes: 0 on success; 1 on usage / validation error (a clean message, never a stack dump).
+// Exit codes: 0 on success; 1 on usage / validation error / a REFUSAL or FAILURE (the JSON result explains).
 
 'use strict';
 
@@ -24,6 +25,7 @@ const {
 } = require('./manage-ops');
 const { DISPOSITIONS, validateEnum } = require('./enums');
 const { manageLifecycleStatus } = require('./lifecycle');
+const { promoteProposal } = require('./promote');
 const { HEX64 } = require('../../kernel/_lib/provenance-walk');
 
 function parseArgs(argv) {
@@ -38,7 +40,7 @@ function parseArgs(argv) {
   return args;
 }
 
-const USAGE = 'Usage: cli.js <quarantine --target <txid> --justification "..." [--origin O] | content-dedup|cull|merge --targets <txid,txid,...> --justification "..." [--origin O] | list [--disposition D] | dispose --proposal-id <id> --decision approved|rejected | lifecycle --txid <txid>>\n  (--justification is a single-line free string, <=512 bytes; for merge it carries the proposed summary)\n';
+const USAGE = 'Usage: cli.js <quarantine --target <txid> --justification "..." [--origin O] | content-dedup|cull|merge --targets <txid,txid,...> --justification "..." [--origin O] | list [--disposition D] | dispose --proposal-id <id> --decision approved|rejected | lifecycle --txid <txid> | promote --proposal-id <id>>\n  (--justification is a single-line free string, <=512 bytes; for merge it carries the proposed summary)\n';
 
 function emit(obj) {
   process.stdout.write(`${JSON.stringify(obj, null, 2)}\n`);
@@ -123,6 +125,19 @@ function main(argv) {
       emit(manageLifecycleStatus(args.txid, { proposals: listProposals() }));
     } catch (e) { fail(e.message); return; }
     process.exit(0);
+  }
+
+  if (cmd === 'promote') {
+    // The leave-shadow MINT (v3.6 W2a): promote ONE approved cull proposal -> a COMMITTED kernel TOMBSTONE.
+    // SHADOW DEFAULT: a no-op REFUSE unless LOOM_MANAGE_ENFORCE=1 (the human is the trust anchor). The
+    // structured result goes to stdout; a REFUSAL or FAILURE exits 1 (the JSON `refused`/`failed` explains).
+    if (typeof args['proposal-id'] !== 'string' || args['proposal-id'].length === 0) {
+      fail('promote requires --proposal-id <id>'); return;
+    }
+    let result;
+    try { result = promoteProposal(args['proposal-id'], {}); } catch (e) { fail(e.message); return; }
+    emit(result);
+    process.exit(result.ok ? 0 : 1);
   }
 
   process.stderr.write(USAGE);
