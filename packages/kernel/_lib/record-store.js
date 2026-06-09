@@ -289,6 +289,27 @@ function loadRecordFile(file) {
     isGenesisPosition: isGenesisPositionRecord(parsed),
   });
   if (!validation.valid) return null; // invalid record → skip
+  // Content-address integrity on READ (W2b.1 VALIDATE hacker — two probe-proven CRITICALs). A content-addressed
+  // store MUST verify the key it serves a record under; a filename↔field check ALONE is bypassable, so this
+  // gate has THREE parts (ALL read paths — readById / the *-By* scans / listByRun — funnel through here):
+  //   (a) the body's transaction_id must be a 64-hex STRING. The lenient validator only regex-checks it WHEN it
+  //       is a string, so a non-string field (e.g. the array [K]) passes validation and then string-COERCES
+  //       past a bare basename compare ('record-' + [K] + '.json' === 'record-K.json'). Gate the type first.
+  //   (b) the FILENAME txid must equal that field — else a record claiming J is served under key K (the
+  //       original wrong-key confusion the W2b.1 finding targeted).
+  //   (c) the body's CONTENT must hash to that txid (re-run S5 on read) — else a same-uid PLANTED body whose
+  //       field == filename but whose content != computeTransactionId(body) (attacker persona, etc.) loads
+  //       anyway, re-opening the manage-promote IDOR with no type trick. computeTransactionId EXCLUDES the
+  //       transaction_id field, so this is non-circular; appendRecord enforces it on WRITE, so a legit record
+  //       always passes — the re-hash is paid only to fail-soft a tampered/planted file to null (the not-found
+  //       path every caller already tolerates). Wrapped: a pathologically deep/wide planted field trips
+  //       canonicalJsonSerialize's bound (a controlled throw) → null, never an escape (mirrors appendRecord S5).
+  const id = parsed.transaction_id;
+  if (typeof id !== 'string' || !HEX64.test(id)) return null;          // (a) type + shape, before any coercion
+  if (path.basename(file) !== 'record-' + id + '.json') return null;   // (b) filename ↔ field
+  let computed;
+  try { computed = computeTransactionId(parsed); } catch { return null; }
+  if (computed !== id) return null;                                    // (c) field ↔ content (S5-on-read)
   return parsed;
 }
 
