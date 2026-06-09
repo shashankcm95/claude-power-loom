@@ -283,17 +283,33 @@ function writeCheckpoint(checkpoint) {
 // context after Claude may already be executing the 3-task list.
 
 /**
- * Locate the `self-improve-store.js` CLI script across both the canonical
- * repo path and the installed `~/.claude/packages/kernel/` location. H.4.1
- * pattern — mirrors auto-store-enrichment.js's `resolveStoreScript`. Used
- * to trigger a consolidation scan at compaction time.
+ * Locate the `self-improve-store.js` CLI script across the canonical
+ * repo/plugin-cache path and the installed `~/.claude/packages/kernel/`
+ * location. Follows auto-store-enrichment.js's `resolveStoreScript`
+ * candidate-order pattern (the CLI moved scripts/ -> packages/kernel/
+ * spawn-state/ in the v4 restructure; the old candidates resolved only via
+ * a legacy installed copy, so fresh installs silently skipped the compaction
+ * scan). Used to trigger a consolidation scan at compaction time.
+ *
+ * Two intentional divergences from `resolveStoreScript`: (1) a 4th LEGACY
+ * `~/.claude/scripts/` candidate the reference lacks; (2) returns null (NOT
+ * `candidates[0]`) on all-miss — load-bearing: `runSelfImproveScan`'s
+ * `if (!script) return null` fail-soft + the all-miss test depend on it.
+ * DO NOT "fix" the null return to match the reference — `candidates[0]`
+ * would spawnSync a non-existent path.
  *
  * @returns {string|null} Absolute path to self-improve-store.js, or null if not found
  */
 function resolveSelfImproveScript() {
   const candidates = [
-    path.join(__dirname, '..', '..', 'scripts', 'self-improve-store.js'),
-    path.join(__dirname, '..', 'scripts', 'self-improve-store.js'),
+    path.join(__dirname, '..', '..', 'spawn-state', 'self-improve-store.js'),
+    // Vestigial intermediate fallback (never resolves in known layouts; mirrors
+    // resolveStoreScript for structural parity).
+    path.join(__dirname, '..', 'spawn-state', 'self-improve-store.js'),
+    path.join(os.homedir(), '.claude', 'packages', 'kernel', 'spawn-state', 'self-improve-store.js'),
+    // Legacy pre-v4 installed copy. Fires only on a partial install where no
+    // canonical copy exists; the scan is best-effort and fail-soft, so a
+    // schema-stale legacy CLI degrades to a no-op, not corruption.
     path.join(os.homedir(), '.claude', 'scripts', 'self-improve-store.js'),
   ];
   for (const c of candidates) {
@@ -325,64 +341,72 @@ function runSelfImproveScan() {
   try { return JSON.parse(res.stdout); } catch { return null; }
 }
 
-let input = '';
-process.stdin.setEncoding('utf8');
-process.stdin.on('data', (chunk) => { input += chunk; });
-process.stdin.on('end', () => {
-  let checkpointOk = false;
-  try {
-    const checkpoint = extractCheckpoint(input);
-    writeCheckpoint(checkpoint);
-    checkpointOk = true;
-    logger('checkpoint_saved', {
-      contextLength: input.length,
-      mentionedFiles: checkpoint.mentionedFiles.length,
-      cwd: checkpoint.cwd,
-    });
-  } catch (err) {
-    if (err.message === 'library_initialized_but_migrate_incomplete') {
-      // H.9.21 CRITICAL #2 fail-closed observability — race detected; surface
-      // clearly so user can run `node scripts/library-migrate.js migrate`.
-      logger('library_migrate_race_detected', {
-        libraryManifest: LIBRARY_MANIFEST,
-        migrateSentinel: MIGRATE_SENTINEL,
-        message: 'library.json exists but .migrate-complete absent; refusing to write to avoid race',
+// Test seam (2026-06-09): requiring this file as a module exposes the
+// resolver internals WITHOUT attaching the stdin runner — the hook path
+// (require.main === module, as hooks.json invokes it) is unchanged. Same
+// positive-guard shape as self-improve-store.js + the other kernel CLIs.
+module.exports = { resolveSelfImproveScript, runSelfImproveScan };
+
+if (require.main === module) {
+  let input = '';
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', (chunk) => { input += chunk; });
+  process.stdin.on('end', () => {
+    let checkpointOk = false;
+    try {
+      const checkpoint = extractCheckpoint(input);
+      writeCheckpoint(checkpoint);
+      checkpointOk = true;
+      logger('checkpoint_saved', {
+        contextLength: input.length,
+        mentionedFiles: checkpoint.mentionedFiles.length,
+        cwd: checkpoint.cwd,
       });
-    } else {
-      logger('error', { error: err.message });
+    } catch (err) {
+      if (err.message === 'library_initialized_but_migrate_incomplete') {
+        // H.9.21 CRITICAL #2 fail-closed observability — race detected; surface
+        // clearly so user can run `node scripts/library-migrate.js migrate`.
+        logger('library_migrate_race_detected', {
+          libraryManifest: LIBRARY_MANIFEST,
+          migrateSentinel: MIGRATE_SENTINEL,
+          message: 'library.json exists but .migrate-complete absent; refusing to write to avoid race',
+        });
+      } else {
+        logger('error', { error: err.message });
+      }
     }
-  }
 
-  // H.4.1 — best-effort self-improve scan. Failures here never block
-  // compaction or response output; result is logged for diagnostics.
-  try {
-    const scanResult = runSelfImproveScan();
-    if (scanResult) {
-      logger('self_improve_scan', scanResult);
+    // H.4.1 — best-effort self-improve scan. Failures here never block
+    // compaction or response output; result is logged for diagnostics.
+    try {
+      const scanResult = runSelfImproveScan();
+      if (scanResult) {
+        logger('self_improve_scan', scanResult);
+      }
+    } catch (err) {
+      logger('self_improve_scan_error', { error: err.message });
     }
-  } catch (err) {
-    logger('self_improve_scan_error', { error: err.message });
-  }
 
-  // H.7.7 + H.7.10 C-3: detect active orchestration runs and integrate
-  // workflow-state as a numbered 4th task INSIDE buildSavePrompt rather
-  // than appending an unnumbered H2 suffix.
-  let activeRuns = [];
-  try {
-    activeRuns = detectActiveOrchestrationRuns();
-    if (activeRuns.length > 0) {
-      logger('workflow_state_detected', { count: activeRuns.length, runIds: activeRuns.map((r) => r.runId) });
+    // H.7.7 + H.7.10 C-3: detect active orchestration runs and integrate
+    // workflow-state as a numbered 4th task INSIDE buildSavePrompt rather
+    // than appending an unnumbered H2 suffix.
+    let activeRuns = [];
+    try {
+      activeRuns = detectActiveOrchestrationRuns();
+      if (activeRuns.length > 0) {
+        logger('workflow_state_detected', { count: activeRuns.length, runIds: activeRuns.map((r) => r.runId) });
+      }
+    } catch (err) {
+      logger('workflow_state_error', { error: err.message });
     }
-  } catch (err) {
-    logger('workflow_state_error', { error: err.message });
-  }
 
-  // H.7.10 C-3: emit SAVE_PROMPT (with optional integrated 4th task) only
-  // when the checkpoint was actually written. The error branch no longer
-  // glues workflow-state onto an inline error message — that previously
-  // produced an H2-after-error markdown break (mira finding).
-  const suffix = checkpointOk
-    ? '\n\n---\n' + buildSavePrompt(activeRuns)
-    : '\n\n---\n[pre-compact-save: checkpoint write failed — library snapshot instruction skipped to avoid hallucinated file references]';
-  process.stdout.write(input + suffix);
-});
+    // H.7.10 C-3: emit SAVE_PROMPT (with optional integrated 4th task) only
+    // when the checkpoint was actually written. The error branch no longer
+    // glues workflow-state onto an inline error message — that previously
+    // produced an H2-after-error markdown break (mira finding).
+    const suffix = checkpointOk
+      ? '\n\n---\n' + buildSavePrompt(activeRuns)
+      : '\n\n---\n[pre-compact-save: checkpoint write failed — library snapshot instruction skipped to avoid hallucinated file references]';
+    process.stdout.write(input + suffix);
+  });
+}
