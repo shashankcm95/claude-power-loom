@@ -882,6 +882,75 @@ test('27. width guard: a record with a huge evidence_refs is rejected at the has
   } finally { cleanup(stateDir); }
 });
 
+// ── 28. filename/body integrity (W2b.1 VALIDATE hacker MEDIUM, parser-differential / filename-confusion):
+// the store keys a record by its FILENAME (record-<txid>.json), but the body carries its OWN transaction_id.
+// A tampered / hand-planted file whose basename txid != body txid must NOT be returned under the filename's
+// key — else a content-addressed consumer (e.g. the lab manage-promote eligibility gate) is fooled into
+// acting on the WRONG record. loadRecordFile rejects the mismatch (fail-soft null). On every legit write the
+// filename IS record-<body.txid>.json (recordFilePath(id) where id is the S5-verified body txid), so no legit
+// flow is affected. ──
+test('28. filename/body integrity: a record-<A>.json whose body.transaction_id is B(!=A) is not returned under key A; the legit record-<B>.json is unaffected', () => {
+  const stateDir = tmpStateDir();
+  try {
+    // A legit record B written the normal way (filename === body txid via appendRecord).
+    const recB = keyedSpawn({ agentId: 'legitB', postStateHash: 'b'.repeat(64) });
+    assert.strictEqual(store.appendRecord(recB, { runId: RUN_ID, stateDir }).ok, true);
+    const B = recB.transaction_id;
+    // A TAMPERED file: named record-<A>.json but its body is recB (transaction_id === B != A).
+    const A = 'a'.repeat(64);
+    assert.notStrictEqual(A, B, 'A and B are distinct keys');
+    const dir = path.join(stateDir, RUN_ID, 'records');
+    fs.writeFileSync(path.join(dir, `record-${A}.json`), JSON.stringify(recB, null, 2));
+    // readById(A) keys by the filename A, but the body says B -> filename/body mismatch -> null.
+    assert.strictEqual(store.readById(A, { runId: RUN_ID, stateDir }), null, 'a filename/body-txid mismatch is not returned under the wrong key');
+    // readById(B) via its OWN correct file is unaffected.
+    const got = store.readById(B, { runId: RUN_ID, stateDir });
+    assert.ok(got && got.transaction_id === B, 'the legit record-<B>.json still loads under its own key');
+    // listByRun skips the mismatched file, keeps the legit one (exactly 1).
+    const all = store.listByRun({ runId: RUN_ID, stateDir });
+    assert.strictEqual(all.length, 1, 'listByRun skips the filename/body-mismatch file');
+    assert.strictEqual(all[0].transaction_id, B, 'the surviving record is the legit B');
+  } finally { cleanup(stateDir); }
+});
+
+// ── 29. content-address integrity, part (a) — TYPE-COERCION (VALIDATE hacker CRITICAL-1): the lenient
+// validator only hex-checks transaction_id WHEN it is a string, so a non-string field (the array [A]) passes
+// validation and string-COERCES past a bare basename compare ('record-'+[A]+'.json' === 'record-A.json'). The
+// typeof-string gate must reject it BEFORE the compare. ──
+test('29. content-address integrity (type-coercion): a body transaction_id of the ARRAY [A] does not load under key A', () => {
+  const stateDir = tmpStateDir();
+  try {
+    const A = 'a'.repeat(64);
+    const base = keyedSpawn({ agentId: 'arr', postStateHash: 'b'.repeat(64) });
+    const decoy = { ...base, transaction_id: [A], writer_persona_id: '07-attacker' }; // array coerces to "A"
+    const dir = path.join(stateDir, RUN_ID, 'records');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, `record-${A}.json`), JSON.stringify(decoy, null, 2));
+    assert.strictEqual(store.readById(A, { runId: RUN_ID, stateDir }), null, 'a non-string txid cannot coerce past the filename check');
+    assert.strictEqual(store.listByRun({ runId: RUN_ID, stateDir }).length, 0, 'listByRun skips the coercion decoy');
+  } finally { cleanup(stateDir); }
+});
+
+// ── 30. content-address integrity, part (c) — S5-ON-READ (VALIDATE hacker CRITICAL-2): a planted body whose
+// transaction_id FIELD == the filename A but whose CONTENT does not hash to A (computeTransactionId excludes the
+// field) must NOT load — else a same-uid attacker substitutes an eligible body under a victim key with no type
+// trick, re-opening the manage-promote IDOR. ──
+test('30. content-address integrity (S5-on-read): a field==filename body whose content does not hash to A does not load', () => {
+  const stateDir = tmpStateDir();
+  try {
+    const A = 'a'.repeat(64);
+    const base = keyedSpawn({ agentId: 'planted', postStateHash: 'b'.repeat(64) });
+    const decoy = { ...base, transaction_id: A, writer_persona_id: '07-attacker' };
+    delete decoy.idempotency_key; // a direct disk plant, not an appendRecord-keyed write
+    assert.notStrictEqual(computeTransactionId(decoy), A, 'the planted body does NOT hash to its claimed txid A');
+    const dir = path.join(stateDir, RUN_ID, 'records');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, `record-${A}.json`), JSON.stringify(decoy, null, 2));
+    assert.strictEqual(store.readById(A, { runId: RUN_ID, stateDir }), null, 'S5-on-read rejects a field==filename body whose content does not hash to it');
+    assert.strictEqual(store.listByRun({ runId: RUN_ID, stateDir }).length, 0, 'listByRun skips the content-mismatch plant');
+  } finally { cleanup(stateDir); }
+});
+
 // `os` is used by tmpStateDir (mkdtempSync). This void keeps lint quiet without a
 // suppression comment if a future refactor stops using it directly.
 void os;
