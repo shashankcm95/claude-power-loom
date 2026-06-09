@@ -32,7 +32,7 @@ fs.mkdirSync(LAB_TMP, { recursive: true });
 const REPO = path.join(__dirname, '..', '..', '..');
 const P = (...a) => path.join(REPO, 'packages', ...a);
 const { promoteProposal } = require(P('lab', 'manage-proposal', 'promote.js'));
-const { listProposals, updateDisposition, LEDGER_PATH } = require(P('lab', 'manage-proposal', 'store.js'));
+const { listProposals, updateDisposition, LEDGER_PATH, computeProposalId } = require(P('lab', 'manage-proposal', 'store.js'));
 const { cullRecord, quarantineRecord, contentDedupRecord } = require(P('lab', 'manage-proposal', 'manage-ops.js'));
 const { manageLifecycleStatus } = require(P('lab', 'manage-proposal', 'lifecycle.js'));
 const { buildSpawnRecord } = require(P('kernel', '_lib', 'quarantine-promote.js'));
@@ -117,6 +117,23 @@ test('scope: a multi-target cull -> REFUSE (deferred to W2b)', () => {
   const dir = freshState();
   const [a, b] = [seedTarget('runX', dir), seedTarget('runX', dir)];
   assert.strictEqual(promoteProposal(approvedCull([a, b]), { stateDir: dir, nowIso: T0 }).refused, 'multi-target-deferred-w2b');
+});
+
+// never-throws (CodeRabbit Major): a same-uid PLANTED authentic row with a non-array target_records must
+// REFUSE cleanly, not crash on `.length` (the contract is "never throws -- returns a frozen {ok,...}").
+test('never-throws: a planted authentic proposal with non-array target_records -> REFUSE (not a throw)', () => {
+  const dir = freshState();
+  fs.mkdirSync(path.dirname(LEDGER_PATH), { recursive: true });
+  // proposal_id content-addresses op_type + (canonicalized) targets; null targets canonicalize to [] -> a
+  // stable, AUTHENTIC id, so listProposals serves the row (the store is not a sandbox -- p-writescope).
+  const malformed = {
+    node_type: 'manage-proposal', op_type: 'cull', target_records: null, disposition: 'approved',
+    proposal_id: computeProposalId('cull', null), justification: 'x', proposer_origin: 't', recorded_at: T0, schema_version: 'v3.5',
+  };
+  fs.appendFileSync(LEDGER_PATH, JSON.stringify(malformed) + '\n');
+  const res = promoteProposal(malformed.proposal_id, { stateDir: dir, nowIso: T0 });
+  assert.strictEqual(res.ok, false);
+  assert.strictEqual(res.refused, 'invalid-proposal-shape'); // a clean refusal -- the never-throws contract holds
 });
 
 // -- 5. Phantom target REFUSE.

@@ -78,14 +78,17 @@ test('a SYMLINKED run dir that escapes the store is NOT matched (hacker HIGH)', 
   const rec = seedRecord(1);
   // Plant the record in an EXTERNAL dir, reachable from the store ONLY via a symlinked run dir.
   const external = path.join(os.tmpdir(), 'rl-ext-' + crypto.randomBytes(6).toString('hex'));
-  fs.mkdirSync(path.join(external, 'records'), { recursive: true });
-  fs.writeFileSync(path.join(external, 'records', `record-${rec.transaction_id}.json`), JSON.stringify(rec));
-  try {
-    fs.symlinkSync(external, path.join(dir, 'symrun'), 'dir');
-  } catch { process.stdout.write('  (symlink unsupported — skipping)\n'); fs.rmSync(external, { recursive: true, force: true }); return; }
-  // The record is reachable ONLY via the escaping symlink -> findRecordRun must NOT return it.
-  assert.strictEqual(findRecordRun(rec.transaction_id, { stateDir: dir }), null);
-  fs.rmSync(external, { recursive: true, force: true });
+  try { // try/finally so `external` is cleaned even if the assertion throws (CodeRabbit Minor)
+    fs.mkdirSync(path.join(external, 'records'), { recursive: true });
+    fs.writeFileSync(path.join(external, 'records', `record-${rec.transaction_id}.json`), JSON.stringify(rec));
+    try {
+      fs.symlinkSync(external, path.join(dir, 'symrun'), 'dir');
+    } catch { process.stdout.write('  (symlink unsupported — skipping)\n'); return; }
+    // The record is reachable ONLY via the escaping symlink -> findRecordRun must NOT return it.
+    assert.strictEqual(findRecordRun(rec.transaction_id, { stateDir: dir }), null);
+  } finally {
+    try { fs.rmSync(external, { recursive: true, force: true }); } catch { /* ignore */ }
+  }
 });
 
 test('a decoy garbage record-<T>.json does NOT match; a valid record in another run wins (hacker HIGH)', () => {

@@ -75,7 +75,11 @@ function promoteProposal(proposalId, opts = {}) {
   const nowIso = opts.nowIso || new Date().toISOString();
 
   // (1) Load the NAMED proposal -- content-authentic by construction (listProposals re-derives proposal_id).
-  const proposal = listProposals().find((p) => p && p.proposal_id === proposalId);
+  // The store is NOT a sandbox (p-writescope): wrap the read so the never-throws contract holds on a store read
+  // error, and guard the proposal SHAPE below against a planted malformed row (CodeRabbit Major).
+  let proposals;
+  try { proposals = listProposals(); } catch (e) { return refuse('proposal-store-read-failed', { error: e && e.message ? e.message : String(e) }); }
+  const proposal = (Array.isArray(proposals) ? proposals : []).find((p) => p && p.proposal_id === proposalId);
   if (!proposal) return refuse('proposal-not-found');
   if (proposal.disposition !== APPROVED_DISPOSITION) return refuse('not-approved', { disposition: proposal.disposition });
 
@@ -89,6 +93,7 @@ function promoteProposal(proposalId, opts = {}) {
         : 'content-dedup/merge -> SUPERSEDE is W2b',
     });
   }
+  if (!Array.isArray(proposal.target_records)) return refuse('invalid-proposal-shape', { reason: 'target_records-not-an-array' });
   if (proposal.target_records.length !== 1) {
     return refuse('multi-target-deferred-w2b', { count: proposal.target_records.length });
   }
