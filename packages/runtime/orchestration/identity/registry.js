@@ -196,10 +196,34 @@ function _readStorePartitioned() {
   return synthesized;
 }
 
+// Roster-fallback merge (skills-audit research #33, 2026-06-09). A store
+// initialized under an OLDER DEFAULT_ROSTERS never gains personas added
+// later (e.g. 14-16 from HT.1.6): the per-mode `|| { ...DEFAULT_ROSTERS }`
+// fallbacks fire only when the map is entirely ABSENT, so a stale-but-present
+// map wins and `assign --persona 14-codebase-locator` dies with "No roster".
+// Per-key semantics: STORED entries win wholesale (custom rosters + index
+// positions preserved); keys missing from the store are filled from
+// DEFAULT_ROSTERS (rosters) / zero-seeded (nextIndex, matching emptyStore()).
+// Pure + idempotent — applied on every read; cold-path RMW round-trips
+// persist the merged keys (convergent self-heal, not drift).
+// LOAD-BEARING: this merge lives at the readStore() layer ONLY. readPersona()
+// bypasses readStore() by design (identities-only; never reads rosters) —
+// do not add roster reads to the persona path expecting this merge.
+function _mergeRosterDefaults(store) {
+  return {
+    ...store,
+    rosters: { ...DEFAULT_ROSTERS, ...(store.rosters || {}) },
+    nextIndex: {
+      ...Object.fromEntries(Object.keys(DEFAULT_ROSTERS).map((k) => [k, 0])),
+      ...(store.nextIndex || {}),
+    },
+  };
+}
+
 function readStore() {
-  if (_isLegacyMode()) return _readStoreLegacy();
-  if (_isBulkheadActive()) return _readStorePartitioned();
-  return _readStoreConsolidated();  // v2.1.0 layout via library consolidated.json
+  if (_isLegacyMode()) return _mergeRosterDefaults(_readStoreLegacy());
+  if (_isBulkheadActive()) return _mergeRosterDefaults(_readStorePartitioned());
+  return _mergeRosterDefaults(_readStoreConsolidated());  // v2.1.0 layout via library consolidated.json
 }
 
 // H.9.21.1 — Legacy single-file write (preserved verbatim from pre-H.9.21.1 impl).
@@ -280,6 +304,10 @@ function _projectPersonaFromFullStore(store, persona) {
  *   - Pre-bulkhead    → project from consolidated.json (v2.1.0 layout)
  *   - Legacy mode     → project from STORE_PATH (test compat)
  * Returns {identities: {name: data, ...}, version: 1}.
+ *
+ * LOAD-BEARING: identities-only by design — this path never reads rosters/
+ * nextIndex and intentionally bypasses readStore()'s _mergeRosterDefaults.
+ * A future caller needing roster data must go through readStore().
  */
 function readPersona(persona) {
   if (_isLegacyMode()) return _projectPersonaFromFullStore(_readStoreLegacy(), persona);
@@ -813,6 +841,7 @@ module.exports = {
   _isBulkheadActive,
   // Identity helpers
   ensureIdentity,
+  _mergeRosterDefaults,
   _backfillSchema,
   _computeRecommendation,
   // v2.9.0 FIX-I3 — reconciled verdicts total (Phase A.2)
