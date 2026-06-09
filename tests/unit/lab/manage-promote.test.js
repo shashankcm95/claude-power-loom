@@ -2,16 +2,22 @@
 
 // tests/unit/lab/manage-promote.test.js
 //
-// v3.6 Wave 2a — the human-gated manage-promote LOOP + its security contract (the leave-shadow MINT). This is
-// the SAFETY PROOF for the first WAL mutation: every CLOSED hacker VERIFY/VALIDATE finding has a coverage test
-// across the W2a suite (this file + record-locate.test.js); the ACCEPTED residuals (OQ-E forge, same-uid
-// self-approval) are documented, not tested (a cooperative-model acceptance cannot be test-proven).
+// v3.6 Wave 2a + W2b.1 — the human-gated manage-promote LOOP + its security contract (the leave-shadow MINT).
+// This is the SAFETY PROOF for the first WAL mutation: every CLOSED hacker VERIFY/VALIDATE finding has a
+// coverage test across the suite (this file + record-locate.test.js); the ACCEPTED residuals (OQ-E forge,
+// same-uid self-approval) are documented, not tested (a cooperative-model acceptance cannot be test-proven).
 //   - the LOOP: approved cull -> COMMITTED TOMBSTONE in the target's run -> the W1 reader reports `tombstoned`.
 //   - shadow-default (flag off) REFUSES; not-approved / unknown-id REFUSE (TOCTOU).
-//   - scope guards: quarantine / content-dedup / merge / multi-target REFUSE.
+//   - scope guards: quarantine REFUSES (recall-layer v3.8a, not a kernel op).
 //   - phantom target REFUSE; IDOR (kernel-owned / manage-op target) REFUSE.
 //   - INV-22 re-promote DEDUPS (post-condition still passes).
 //   - the CRITICAL: an INV-22 poison-key decoy -> POST-CONDITION FAILS (no silent fail-open).
+//
+// W2b.1 (multi-target single-run generalization): content-dedup/merge -> SUPERSEDE + multi-target cull;
+// exact-SET-equality post-condition (superset/subset/dup-pad decoys FAIL); per-target eligibility (one
+// kernel-owned target refuses the whole op); cross-run REFUSE (cross-run-deferred-w2c, not target-not-found);
+// canonicalize-at-the-boundary (a planted authentic non-canonical row promotes correctly, no self-DoS);
+// blast-radius re-cap (a planted over-MAX_TARGETS row REFUSES).
 //
 // Two stores: the proposal ledger (LOOM_LAB_STATE_DIR, set before require) + the kernel record-store (a
 // per-test stateDir passed in). LOOM_MANAGE_ENFORCE is the opt-in flag (set per enforcing test).
@@ -32,8 +38,8 @@ fs.mkdirSync(LAB_TMP, { recursive: true });
 const REPO = path.join(__dirname, '..', '..', '..');
 const P = (...a) => path.join(REPO, 'packages', ...a);
 const { promoteProposal } = require(P('lab', 'manage-proposal', 'promote.js'));
-const { listProposals, updateDisposition, LEDGER_PATH, computeProposalId } = require(P('lab', 'manage-proposal', 'store.js'));
-const { cullRecord, quarantineRecord, contentDedupRecord } = require(P('lab', 'manage-proposal', 'manage-ops.js'));
+const { listProposals, updateDisposition, LEDGER_PATH, computeProposalId, MAX_TARGETS } = require(P('lab', 'manage-proposal', 'store.js'));
+const { cullRecord, quarantineRecord, contentDedupRecord, mergeRecord } = require(P('lab', 'manage-proposal', 'manage-ops.js'));
 const { manageLifecycleStatus } = require(P('lab', 'manage-proposal', 'lifecycle.js'));
 const { buildSpawnRecord } = require(P('kernel', '_lib', 'quarantine-promote.js'));
 const { buildManageOpRecord } = require(P('kernel', '_lib', 'manage-op-record.js'));
@@ -52,10 +58,25 @@ function seedTarget(runId, stateDir, persona = 'p1') {
   appendRecord(rec, { runId, stateDir });
   return rec.transaction_id;
 }
-function approvedCull(targets) {
-  const p = cullRecord({ targets, justification: 'stale', origin: 'test' });
+// Parametrized approve helper (DRY over cull/content-dedup/merge — all take { targets }). Returns the
+// approved proposal_id.
+function approvedOp(builderFn, targets) {
+  const p = builderFn({ targets, justification: 'stale', origin: 'test' });
   updateDisposition(p.proposal_id, 'approved');
   return p.proposal_id;
+}
+const approvedCull = (targets) => approvedOp(cullRecord, targets);
+// Plant a directly-written AUTHENTIC proposal row (bypasses createProposal's canonicalize + MAX_TARGETS cap)
+// — the same-uid p-writescope attacker class the post-condition + boundary canonicalize/re-cap defend.
+function plantProposal(opType, targetRecords) {
+  fs.mkdirSync(path.dirname(LEDGER_PATH), { recursive: true });
+  const row = {
+    node_type: 'manage-proposal', op_type: opType, target_records: targetRecords, disposition: 'approved',
+    proposal_id: computeProposalId(opType, targetRecords), justification: 'x', proposer_origin: 't',
+    recorded_at: T0, schema_version: 'v3.5',
+  };
+  fs.appendFileSync(LEDGER_PATH, JSON.stringify(row) + '\n');
+  return row.proposal_id;
 }
 function freshState() {
   try { fs.rmSync(LEDGER_PATH, { force: true }); } catch { /* none */ }
@@ -101,22 +122,149 @@ test('not-approved (pending) -> REFUSE; unknown proposal-id -> REFUSE', () => {
   assert.strictEqual(promoteProposal(hx('0'), { stateDir: dir, nowIso: T0 }).refused, 'proposal-not-found');
 });
 
-// -- 4. Scope guards: quarantine / content-dedup / merge / multi-target REFUSE.
-test('scope: quarantine -> REFUSE (recall-layer); content-dedup/merge -> REFUSE (W2b)', () => {
+// -- 4. Scope guard: quarantine REFUSES (a recall-layer suppression, NOT a kernel op).
+test('scope: quarantine -> REFUSE (recall-layer v3.8a, not a kernel op)', () => {
   const dir = freshState();
   const t = seedTarget('runX', dir);
   const q = quarantineRecord({ target: t, justification: 'x', origin: 'test' });
   updateDisposition(q.proposal_id, 'approved');
-  assert.strictEqual(promoteProposal(q.proposal_id, { stateDir: dir, nowIso: T0 }).refused, 'op-not-supported-in-w2a');
-  const cd = contentDedupRecord({ targets: [t], justification: 'x', origin: 'test' });
-  updateDisposition(cd.proposal_id, 'approved');
-  assert.strictEqual(promoteProposal(cd.proposal_id, { stateDir: dir, nowIso: T0 }).refused, 'op-not-supported-in-w2a');
+  assert.strictEqual(promoteProposal(q.proposal_id, { stateDir: dir, nowIso: T0 }).refused, 'op-not-supported');
 });
 
-test('scope: a multi-target cull -> REFUSE (deferred to W2b)', () => {
+// -- 4b (W2b). Multi-target cull -> COMMITTED TOMBSTONE on ALL targets (the W2a single-target refusal lifted).
+test('W2b multi-target cull -> COMMITTED TOMBSTONE -> every target tombstoned', () => {
+  const dir = freshState();
+  const [a, b, c] = [seedTarget('runX', dir), seedTarget('runX', dir), seedTarget('runX', dir)];
+  const res = promoteProposal(approvedOp(cullRecord, [a, b, c]), { stateDir: dir, nowIso: T0 });
+  assert.strictEqual(res.ok, true, JSON.stringify(res));
+  assert.strictEqual(res.operation_class, 'TOMBSTONE');
+  const recs = listByRun({ runId: res.runId, stateDir: dir });
+  for (const t of [a, b, c]) {
+    assert.strictEqual(manageLifecycleStatus(t, { records: recs, nowMs: Date.parse(T0) }).kernel_state, 'tombstoned');
+  }
+});
+
+// -- 4c (W2b). content-dedup + merge -> COMMITTED SUPERSEDE (the op-map extension); reader reports superseded.
+test('W2b merge -> COMMITTED SUPERSEDE -> every target superseded', () => {
   const dir = freshState();
   const [a, b] = [seedTarget('runX', dir), seedTarget('runX', dir)];
-  assert.strictEqual(promoteProposal(approvedCull([a, b]), { stateDir: dir, nowIso: T0 }).refused, 'multi-target-deferred-w2b');
+  const res = promoteProposal(approvedOp(mergeRecord, [a, b]), { stateDir: dir, nowIso: T0 });
+  assert.strictEqual(res.ok, true, JSON.stringify(res));
+  assert.strictEqual(res.operation_class, 'SUPERSEDE');
+  const recs = listByRun({ runId: res.runId, stateDir: dir });
+  assert.strictEqual(manageLifecycleStatus(a, { records: recs, nowMs: Date.parse(T0) }).kernel_state, 'superseded');
+  assert.strictEqual(manageLifecycleStatus(b, { records: recs, nowMs: Date.parse(T0) }).kernel_state, 'superseded');
+});
+
+test('W2b content-dedup -> COMMITTED SUPERSEDE (op-map)', () => {
+  const dir = freshState();
+  const [a, b] = [seedTarget('runX', dir), seedTarget('runX', dir)];
+  const res = promoteProposal(approvedOp(contentDedupRecord, [a, b]), { stateDir: dir, nowIso: T0 });
+  assert.strictEqual(res.ok, true, JSON.stringify(res));
+  assert.strictEqual(res.operation_class, 'SUPERSEDE');
+});
+
+// -- 4d (W2b CRITICAL): the exact-SET post-condition rejects superset / subset / dup-pad decoys (the NEW-1
+// generalization). Each decoy shares the idempotency_key (same proposalId) but a different affected_records.
+test('W2b CRITICAL: superset / subset / dup-pad poison decoys all FAIL the exact-SET post-condition', () => {
+  for (const decoyOf of [
+    (a, b) => [a, b, hx('9')], // SUPERSET — a subset .includes would launder the victim
+    (a) => [a],                // SUBSET — the mint only half-happened
+    (a) => [a, a],             // DUP-PAD — right length, wrong cardinality
+  ]) {
+    const dir = freshState();
+    const [a, b] = [seedTarget('runX', dir), seedTarget('runX', dir)];
+    const pid = approvedOp(mergeRecord, [a, b]);
+    const proposal = listProposals().find((p) => p.proposal_id === pid);
+    const axiom = sha256(canonicalJsonSerialize(proposal));
+    const decoy = buildManageOpRecord({ operationClass: 'SUPERSEDE', affectedRecords: decoyOf(a, b), proposalId: pid, approvalAxiomHash: axiom, schemaVersion: 'v6', nowIso: '2026-01-01T00:00:00.000Z' });
+    assert.strictEqual(appendRecord(decoy, { runId: 'runX', stateDir: dir }).ok, true);
+    const res = promoteProposal(pid, { stateDir: dir, nowIso: T0 });
+    assert.strictEqual(res.ok, false, `decoy ${JSON.stringify(decoyOf(a, b))} should FAIL`);
+    assert.strictEqual(res.failed, 'post-condition-mismatch');
+    assert.strictEqual(res.deduped, true); // the same-key collision is real
+  }
+});
+
+// -- 4e (W2b IDOR): per-target eligibility — ONE kernel-owned target (SAME run, else cross-run short-circuits)
+// refuses the WHOLE op; no partial mint.
+test('W2b IDOR: a multi-target set with one kernel-owned target -> REFUSE whole op, no mint', () => {
+  const dir = freshState();
+  const ok = seedTarget('runX', dir);
+  const kernelOwned = seedTarget('runX', dir, 'kernel-loom-integrator');
+  const res = promoteProposal(approvedOp(mergeRecord, [ok, kernelOwned]), { stateDir: dir, nowIso: T0 });
+  assert.strictEqual(res.ok, false);
+  assert.strictEqual(res.refused, 'target-kernel-owned');
+  assert.strictEqual(listByRun({ runId: 'runX', stateDir: dir }).filter((r) => r.operation_class === 'SUPERSEDE').length, 0);
+});
+
+// -- 4f (W2b cross-run): targets spanning runs -> REFUSE cross-run-deferred-w2c (NOT target-not-found).
+test('W2b cross-run: targets in different runs -> REFUSE cross-run-deferred-w2c', () => {
+  const dir = freshState();
+  const a = seedTarget('runX', dir);
+  const b = seedTarget('runY', dir);
+  const res = promoteProposal(approvedOp(mergeRecord, [a, b]), { stateDir: dir, nowIso: T0 });
+  assert.strictEqual(res.ok, false);
+  assert.strictEqual(res.refused, 'cross-run-deferred-w2c');
+});
+
+// -- 4g (W2b INV-22): re-promoting a multi-target proposal DEDUPS (one SUPERSEDE).
+test('W2b INV-22: re-promoting a multi-target proposal DEDUPS (one SUPERSEDE)', () => {
+  const dir = freshState();
+  const [a, b] = [seedTarget('runX', dir), seedTarget('runX', dir)];
+  const pid = approvedOp(mergeRecord, [a, b]);
+  const r1 = promoteProposal(pid, { stateDir: dir, nowIso: T0 });
+  const r2 = promoteProposal(pid, { stateDir: dir, nowIso: '2026-06-09T00:00:00.000Z' });
+  assert.strictEqual(r1.ok && r2.ok, true, JSON.stringify([r1, r2]));
+  assert.strictEqual(r2.deduped, true);
+  assert.strictEqual(r1.transaction_id, r2.transaction_id);
+  assert.strictEqual(listByRun({ runId: 'runX', stateDir: dir }).filter((r) => r.operation_class === 'SUPERSEDE').length, 1);
+});
+
+// -- 4h (W2b hacker HIGH): canonicalize-at-the-boundary — a planted AUTHENTIC but NON-canonical row
+// (unsorted + duplicate) must promote correctly (not self-DoS the legit approval).
+test('W2b canonicalize self-DoS: a planted authentic non-canonical [t2,t1,t1] row promotes to {t1,t2}', () => {
+  const dir = freshState();
+  const t1 = seedTarget('runX', dir);
+  const t2 = seedTarget('runX', dir);
+  const pid = plantProposal('merge', [t2, t1, t1]); // non-canonical, but proposal_id canonicalizes internally
+  const res = promoteProposal(pid, { stateDir: dir, nowIso: T0 });
+  assert.strictEqual(res.ok, true, JSON.stringify(res));
+  assert.strictEqual(res.operation_class, 'SUPERSEDE');
+  const recs = listByRun({ runId: res.runId, stateDir: dir });
+  assert.strictEqual(manageLifecycleStatus(t1, { records: recs, nowMs: Date.parse(T0) }).kernel_state, 'superseded');
+  assert.strictEqual(manageLifecycleStatus(t2, { records: recs, nowMs: Date.parse(T0) }).kernel_state, 'superseded');
+});
+
+// -- 4i (W2b hacker MEDIUM): blast-radius re-cap — a planted authentic row over MAX_TARGETS REFUSES
+// (the create-time cap is bypassed by the direct ledger write).
+test('W2b too-many-targets: a planted authentic over-MAX_TARGETS row -> REFUSE too-many-targets', () => {
+  const dir = freshState();
+  const many = Array.from({ length: MAX_TARGETS + 1 }, (_, i) => sha256('t' + i));
+  const pid = plantProposal('cull', many);
+  const res = promoteProposal(pid, { stateDir: dir, nowIso: T0 });
+  assert.strictEqual(res.ok, false);
+  assert.strictEqual(res.refused, 'too-many-targets');
+});
+
+// -- 4j (W2b VALIDATE hacker MEDIUM): the success result + its targets array are DEEPLY frozen — a shallow
+// Object.freeze would leak a mutable derived array (the repo Testing-rule read-back-immutability class).
+test('W2b immutability: the success result + its targets array are frozen', () => {
+  const dir = freshState();
+  const [a, b] = [seedTarget('runX', dir), seedTarget('runX', dir)];
+  const res = promoteProposal(approvedOp(mergeRecord, [a, b]), { stateDir: dir, nowIso: T0 });
+  assert.strictEqual(res.ok, true, JSON.stringify(res));
+  assert.ok(Object.isFrozen(res) && Object.isFrozen(res.targets));
+  assert.throws(() => res.targets.push('EVIL'), TypeError);
+});
+
+// -- 4k (W2b VALIDATE hacker LOW): a planted op_type reaching the Object prototype (toString) -> REFUSE
+// op-not-supported at promote's OWN boundary (not a truthy inherited Function slipping the !operationClass guard).
+test('W2b op_type prototype-poison: a planted op_type=toString -> REFUSE op-not-supported', () => {
+  const dir = freshState();
+  const t = seedTarget('runX', dir);
+  const pid = plantProposal('toString', [t]);
+  assert.strictEqual(promoteProposal(pid, { stateDir: dir, nowIso: T0 }).refused, 'op-not-supported');
 });
 
 // never-throws (CodeRabbit Major): a same-uid PLANTED authentic row with a non-array target_records must
@@ -239,5 +387,5 @@ test('* SHADOW: hooks.json has no promote / manage-proposal / lab ref', () => {
 });
 
 try { fs.rmSync(LAB_TMP, { recursive: true, force: true }); } catch { /* OS reclaims tmp */ }
-process.stdout.write(`\nmanage-promote.test.js (v3.6 W2a): ${passed} passed, ${failed} failed\n`);
+process.stdout.write(`\nmanage-promote.test.js (v3.6 W2a + W2b.1): ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
