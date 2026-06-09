@@ -16,7 +16,7 @@ Called by the `prompt-enrich-trigger.js` UserPromptSubmit hook, which injects a 
 Before building a new enrichment, check if a similar pattern is already stored. Run:
 
 ```bash
-node ~/.claude/scripts/prompt-pattern-store.js lookup --raw "<raw user prompt>"
+node ~/.claude/packages/kernel/spawn-state/prompt-pattern-store.js lookup --raw "<raw user prompt>"
 ```
 
 This returns JSON. Behavior depends on `bestMatch` and `bestMatchTier`:
@@ -129,7 +129,7 @@ Approve, modify, or say "just do it" to skip enrichment.
 When you produce the `[ENRICHED-PROMPT-START]...[ENRICHED-PROMPT-END]` markup in your response, the **`auto-store-enrichment.js` Stop hook** automatically:
 1. Detects the marker pair in your output
 2. Parses the structured fields (RAW, CATEGORY, TECHNIQUES, INSTRUCTIONS, etc.)
-3. Calls `node ~/.claude/scripts/prompt-pattern-store.js store ...` with the parsed values
+3. Calls `node ~/.claude/packages/kernel/spawn-state/prompt-pattern-store.js store ...` with the parsed values
 4. Writes to `~/.claude/prompt-patterns.json` (the canonical local store)
 
 This means: **showing the enriched prompt with proper markup IS the storage trigger.** You don't need to call the CLI manually.

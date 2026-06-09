@@ -1,6 +1,6 @@
 # /research — Document codebase as-is for downstream Plan/Implement cycle
 
-User-facing entry point for the **Research** step of the canonical RPI (Research → Plan → Implement) workflow adopted in H.8.6 from [humanlayer/advanced-context-engineering-for-coding-agents](https://github.com/humanlayer/advanced-context-engineering-for-coding-agents). See `skills/agent-team/patterns/research-plan-implement.md` for doctrine.
+User-facing entry point for the **Research** step of the canonical RPI (Research → Plan → Implement) workflow adopted in H.8.6 from [humanlayer/advanced-context-engineering-for-coding-agents](https://github.com/humanlayer/advanced-context-engineering-for-coding-agents). See `packages/skills/library/agent-team/patterns/research-plan-implement.md` for doctrine.
 
 ## Arguments
 
@@ -34,11 +34,11 @@ If the user mentions specific files (tickets, plans, source files), read them FU
 
 ### 2. Search for prior research artifacts
 
-Before spawning sub-agents, search `swarm/thoughts/shared/research/` for prior research on similar topics:
+Before spawning sub-agents, search `packages/specs/research/` for prior research on similar topics:
 
 ```bash
-ls swarm/thoughts/shared/research/ 2>/dev/null
-grep -lri "<keyword>" swarm/thoughts/shared/research/ 2>/dev/null
+ls packages/specs/research/ 2>/dev/null
+grep -lri "<keyword>" packages/specs/research/ 2>/dev/null
 ```
 
 If a prior artifact covers the topic, surface it and ask the user whether to (a) reuse it, (b) supersede it (mark old `status: superseded`, write new), or (c) extend it. Don't redo research that exists.
@@ -73,11 +73,11 @@ Spawn each in parallel with focused sub-questions. Don't spawn all three for eve
 
 After sub-agents complete, synthesize their findings into a single research artifact. Verify file:line citations are accurate (re-read suspicious ones in the main context).
 
-### 6. Write research artifact to `swarm/thoughts/shared/research/`
+### 6. Write research artifact to `packages/specs/research/`
 
-Filename: `swarm/thoughts/shared/research/YYYY-MM-DD-<description>.md`
+Filename: `packages/specs/research/YYYY-MM-DD-<description>.md`
 
-Required frontmatter (see `swarm/thoughts/shared/research/README.md`):
+Required frontmatter (see `packages/specs/research/README.md`):
 
 ```yaml
 ---
@@ -100,7 +100,7 @@ Body: descriptive sections (no critique). End with a `## Follow-up questions for
 
 Show the user the path to the research artifact and a one-paragraph executive summary. Suggest the next step:
 
-> Research complete: `swarm/thoughts/shared/research/YYYY-MM-DD-X.md`. Next step: `/plan` consuming this artifact.
+> Research complete: `packages/specs/research/YYYY-MM-DD-X.md`. Next step: `/plan` consuming this artifact.
 
 ## What this command is NOT
 
@@ -113,4 +113,4 @@ Show the user the path to the research artifact and a one-paragraph executive su
 
 Per ace-fca.md doctrine, separating research from critique protects context Correctness. A research context full of critique language contaminates the downstream plan: the planner reads "this is buggy" framing instead of neutral "this works as follows" framing, and produces plan items based on the critique rather than the actual system. Research-first, critique-later is the canonical workflow.
 
-The command is also **resumable**: research artifacts persist in `swarm/thoughts/shared/research/`, so subsequent sessions (and subsequent phases) can consume prior research without recomputing it.
+The command is also **resumable**: research artifacts persist in `packages/specs/research/`, so subsequent sessions (and subsequent phases) can consume prior research without recomputing it.

@@ -77,6 +77,16 @@ jobs:
         # hand-maintenance. Mirrors the persona-roster --check above.
         run: node scripts/generate-signpost.js --check
 
+      - name: Doc-path validation
+        # Skill/command docs CITE filesystem paths; the v4 restructure (#158)
+        # moved files into packages/ but markdown refs (not `require`s) broke
+        # SILENTLY and survived the migration-rot cleanup. This gate fails on a
+        # cited path that no longer exists, so doc-path rot is a loud CI failure
+        # instead of a latent bug that only surfaces when the skill is run.
+        # Known pre-existing debt is allowlisted in the script (agent-team
+        # changelog) and reported-not-blocked until trimmed.
+        run: node scripts/validate-doc-paths.js
+
   markdown-lint:
     name: Markdown lint
     runs-on: ubuntu-latest

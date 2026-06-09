@@ -36,8 +36,8 @@ Work → Capture (auto, multi-trigger) → Consolidate (auto, threshold-based) �
 - **UserPromptSubmit hook** (`session-self-improve-prompt.js`): on the FIRST prompt of each session, reads `~/.claude/checkpoints/self-improve-pending.json`; if non-empty, injects ONE batched reminder listing pending candidates. Idempotent within a session.
 - User approves specific IDs, dismisses some, or invokes `/self-improve` for full triage:
   ```
-  node ~/.claude/scripts/self-improve-store.js promote --id <cand-id>
-  node ~/.claude/scripts/self-improve-store.js dismiss --id <cand-id>
+  node ~/.claude/packages/kernel/spawn-state/self-improve-store.js promote --id <cand-id>
+  node ~/.claude/packages/kernel/spawn-state/self-improve-store.js dismiss --id <cand-id>
   ```
 - Auto-graduated entries are informational (already executed); they appear in the reminder for transparency.
 
@@ -100,12 +100,12 @@ Remove what's no longer useful:
 
 | Command | Action |
 |---------|--------|
-| `node ~/.claude/scripts/self-improve-store.js stats` | Counter + queue summary (debugging) |
-| `node ~/.claude/scripts/self-improve-store.js pending` | List pending + auto-graduated candidates |
-| `node ~/.claude/scripts/self-improve-store.js scan` | Force a consolidation pass (normally automatic) |
-| `node ~/.claude/scripts/self-improve-store.js promote --id <id>` | Execute low-risk promotion (medium/high need /self-improve) |
-| `node ~/.claude/scripts/self-improve-store.js dismiss --id <id>` | Mark a candidate dismissed |
-| `node ~/.claude/scripts/self-improve-store.js reset` | Wipe counters + queue (test fixture only) |
+| `node ~/.claude/packages/kernel/spawn-state/self-improve-store.js stats` | Counter + queue summary (debugging) |
+| `node ~/.claude/packages/kernel/spawn-state/self-improve-store.js pending` | List pending + auto-graduated candidates |
+| `node ~/.claude/packages/kernel/spawn-state/self-improve-store.js scan` | Force a consolidation pass (normally automatic) |
+| `node ~/.claude/packages/kernel/spawn-state/self-improve-store.js promote --id <id>` | Execute low-risk promotion (medium/high need /self-improve) |
+| `node ~/.claude/packages/kernel/spawn-state/self-improve-store.js dismiss --id <id>` | Mark a candidate dismissed |
+| `node ~/.claude/packages/kernel/spawn-state/self-improve-store.js reset` | Wipe counters + queue (test fixture only) |
 
 ## Quality Gates
 

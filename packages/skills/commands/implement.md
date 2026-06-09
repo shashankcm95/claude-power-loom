@@ -1,19 +1,19 @@
-# /implement — Execute an approved plan from `swarm/thoughts/shared/plans/`
+# /implement — Execute an approved plan from `packages/specs/plans/`
 
-User-facing entry point for the **Implement** step of the canonical RPI (Research → Plan → Implement) workflow adopted in H.8.6 from [humanlayer/advanced-context-engineering-for-coding-agents](https://github.com/humanlayer/advanced-context-engineering-for-coding-agents). See `skills/agent-team/patterns/research-plan-implement.md` for doctrine.
+User-facing entry point for the **Implement** step of the canonical RPI (Research → Plan → Implement) workflow adopted in H.8.6 from [humanlayer/advanced-context-engineering-for-coding-agents](https://github.com/humanlayer/advanced-context-engineering-for-coding-agents). See `packages/skills/library/agent-team/patterns/research-plan-implement.md` for doctrine.
 
 ## Arguments
 
-`$ARGUMENTS` — path to a plan in `swarm/thoughts/shared/plans/`.
+`$ARGUMENTS` — path to a plan in `packages/specs/plans/`.
 
 Examples:
-- `/implement swarm/thoughts/shared/plans/2026-05-09-H.8.7-batch-h1-h5.md`
+- `/implement packages/specs/plans/2026-06-09-v3.6-wave2b-multitarget-supersede.md`
 - `/implement` (no path) — list available plans, ask user to pick
 
 If `$ARGUMENTS` is empty, list plans:
 
 ```bash
-ls -t swarm/thoughts/shared/plans/*.md 2>/dev/null
+ls -t packages/specs/plans/*.md 2>/dev/null
 ```
 
 and ask the user to pick.

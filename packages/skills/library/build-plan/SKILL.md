@@ -34,7 +34,7 @@ Phases H.7.5/7.6/7.7/7.8 demonstrated a recurring drift: root-direct skipped pla
 This skill converts the soft norm into a sharper gate by:
 1. Running `route-decide.js` deterministically before any planning happens (Step 0)
 2. Recommending architect spawn when `convergence_value ≥ 0.10` (Step 3)
-3. Producing plans that conform to `swarm/plan-template.md` schema (Step 4)
+3. Producing plans that conform to `packages/specs/research/plan-template.md` schema (Step 4)
 4. Preserving user authority at the final gate (Step 5)
 
 ## Steps
@@ -79,7 +79,7 @@ Recommendation is **NOT** auto-spawn. User decides at Step 5.
 If user accepts architect recommendation: spawn architect; integrate their design.
 If user declines (or low convergence_value): proceed with planner agent directly.
 
-Either way, write plan to `~/.claude/plans/<name>.md` conforming to `swarm/plan-template.md`:
+Either way, write plan to `~/.claude/plans/<name>.md` conforming to `packages/specs/research/plan-template.md`:
 
 | Section | Content |
 |---------|---------|
