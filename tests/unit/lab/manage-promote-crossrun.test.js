@@ -250,6 +250,8 @@ test('loadRecordsForTarget: locate-then-load (present run) | [] on absent | [] o
   assert.ok(Array.isArray(recs) && recs.some((r) => r.transaction_id === t), 'returns the run holding the target');
   assert.deepStrictEqual(loadRecordsForTarget(hx('0'), { stateDir: dir }), [], 'absent txid -> []');
   assert.deepStrictEqual(loadRecordsForTarget('not-hex', { stateDir: dir }), [], 'non-hex txid -> []');
+  // never-throws on a null opts (the default `= {}` only catches undefined; a hex txid reaches the stateDir read).
+  assert.doesNotThrow(() => loadRecordsForTarget(hx('0'), null), 'a null opts must not throw (never-throws contract)');
 });
 
 // -- 9b. loadRecordsForTarget M2: a target duplicated across runs (ambiguous) -> UNION (not a silent under-report).

@@ -112,7 +112,7 @@ function resolveTargetRuns(targets, opts) {
   for (const t of targets) {
     const loc = findRecordRun(t, opts);
     if (!loc) return { refused: 'target-not-found', target: t };
-    if (loc.ambiguous) return { refused: 'target-in-multiple-runs-w2b', target: t, runs: loc.runs };
+    if (loc.ambiguous) return { refused: 'target-in-multiple-runs-w2b', target: t, runs: [...loc.runs].sort() }; // sorted -> deterministic refusal payload (not readdir-order)
     if (!byRun.has(loc.runId)) byRun.set(loc.runId, []);
     byRun.get(loc.runId).push(t);
   }

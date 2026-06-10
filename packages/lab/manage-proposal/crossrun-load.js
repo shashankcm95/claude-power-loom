@@ -36,9 +36,9 @@ const { HEX64 } = require('../../kernel/_lib/provenance-walk');
  * @param {{stateDir?: string}} [opts] the record-store state root (defaults inside record-store)
  * @returns {object[]} the run's records (UNION across runs on an ambiguous txid); [] on non-hex / absent
  */
-function loadRecordsForTarget(txid, opts = {}) {
+function loadRecordsForTarget(txid, opts) {
   if (typeof txid !== 'string' || !HEX64.test(txid)) return []; // F8: hex-gate at the helper's own boundary
-  const stateDir = opts.stateDir;
+  const stateDir = (opts || {}).stateDir; // normalize: a null opts (not just undefined) must not throw (never-throws)
   const loc = findRecordRun(txid, { stateDir });
   if (!loc) return [];                                          // absent -> [] (reader -> 'unknown', safe default)
   if (loc.ambiguous) {                                          // M2: UNION across the dup runs (not under-report)
