@@ -91,7 +91,7 @@ The chat agent reading `/build-plan` follows this flow on every invocation. If `
 
 ### 1. Enter plan mode (if not already)
 
-If the orchestrator is not already in plan mode AND scope ≥ 2 files (heuristic: count file paths or "and" conjunctions in `$ARGUMENTS`), invoke EnterPlanMode. This honors `rules/core/workflow.md` "Plan Mode for Multi-File Changes" deterministically rather than as soft norm.
+If the orchestrator is not already in plan mode AND scope ≥ 2 files (heuristic: count file paths or "and" conjunctions in `$ARGUMENTS`), produce a plan artifact. The mechanism is mode-dependent (per `rules/core/workflow.md` Plan-Before-Edit Discipline): **interactive** → `EnterPlanMode`; **headless `claude -p`** → a `.claude/plans/<slug>.md` plan-file OR a `TodoWrite` with ≥2 todos (the `EnterPlanMode` tool is deterministically denied in headless by `redirect-plan-mode-in-headless.js`, whose approval dialog can't resolve without a user).
 
 ### 2. Phase 1 — Reconnaissance
 
@@ -126,7 +126,7 @@ If user accepts the architect recommendation at Step 5, spawn `04-architect.<nam
 
 If the user declines (or convergence_value < 0.10), proceed with the planner agent directly per Phase 2 of plan-mode workflow.
 
-The output plan file at `~/.claude/plans/<name>.md` MUST conform to `packages/specs/research/plan-template.md` schema:
+The output plan file at `.claude/plans/<name>.md` (matching `/plan` and the headless Plan-Before-Edit rule; the plan-schema validator also accepts `~/.claude/plans/` and `$CLAUDE_PLAN_DIR`) MUST conform to `packages/specs/research/plan-template.md` schema:
 
 - **Context** (why this change)
 - **Routing Decision** (verbatim route-decide JSON)

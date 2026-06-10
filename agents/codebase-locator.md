@@ -22,7 +22,7 @@ You locate, you don't analyze. Return paths + line numbers. Cite multiple candid
 
 Default kb_scope for this persona (override in spawn prompt if needed):
 
-- `kb:hets/spawn-conventions`
+- `kb:hets/code-search-heuristics`
 - `kb:hets/spawn-conventions` — output-format requirements for HETS spawns
 
 Consult via `node packages/runtime/orchestration/kb-resolver.js cat <kb_id>` (or `Read packages/skills/library/agent-team/kb/<kb_id>.md` if Bash isn't in your tool inventory).

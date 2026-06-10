@@ -7,13 +7,13 @@ forged_via: v2.8.3-run1-bootstrap (tech-stack-analyzer Step 6)
 related_kb: [web-dev/typescript-react-patterns, web-dev/react-essentials]
 notes: |
   Style/convention skill — no validation_sources per canonical-skill-sources registry
-  (subjective design choices, not academic claims). Focused on Next.js 14 App Router +
+  (subjective design choices, not academic claims). Focused on Next.js 14/15 App Router +
   Drizzle ORM + Claude SDK + zod stack. Bootstrap context: v2.8.3-run1 PDF→Tutorial.
 ---
 
 # TypeScript
 
-Specialist skill for any HETS persona working in TypeScript. Loaded on demand via the `Skill` tool when the spawn prompt lists `typescript` as required. Codifies the idioms that show up in Next.js 14 + Node + React projects with Drizzle ORM and zod.
+Specialist skill for any HETS persona working in TypeScript. Loaded on demand via the `Skill` tool when the spawn prompt lists `typescript` as required. Codifies the idioms that show up in Next.js 14/15 + Node + React projects with Drizzle ORM and zod.
 
 ## When to use this skill
 

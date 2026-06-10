@@ -53,8 +53,14 @@ Re-run the widened gate (Wave 1) → must be clean.
 - `node-backend-development/SKILL.md:97` legacy nodejs.org event-loop URL → current learn URL (verify live).
 - `penetration-testing/SKILL.md` OWASP 2021 "current categories" → verify current edition; relabel/update.
 
-### Wave 6 — dogfood (the goal)
-After Waves 1-5 land: exercise each touched command/skill/agent against live substrate — run the slash-command bash blocks, resolve every cited path/kb-id, spawn one agent per touched persona def (schema-validate), run the full gate set (install --hooks --test + contracts + doc-path + signpost + kernel suite). Report per-doc PASS/FAIL.
+### Wave 6 — dogfood (the goal) — DONE, all GREEN
+Exercised the touched surface against the LIVE substrate (on the branch source):
+- **Paths/refs**: doc-path 115/0 clean; all 5 cited `kb:` ids resolve via kb-resolver; `contract-kb-scope-resolves` 0 violations.
+- **Command CLIs**: `route-decide.js` (build-plan/build-team Step 0) → borderline; `agent-identity.js assign` for 09-react-frontend/14-codebase-locator/04-architect all OK (#279 roster path healthy); `kb-resolver cat hets/stack-skill-map` + `agent-identity list` (build-team preflight) OK.
+- **The 2 HIGH commands EXECUTE end-to-end**: `contract-verifier.js --contract packages/runtime/contracts/04-architect.contract.json` → `{"agentId":"actor-architect","persona":"04-architect",...}`. Note: the verifier binary lives at `packages/kernel/validators/contract-verifier.js` (the command cites it correctly; the agent-team SKILL "consumes" header covers it via "+ packages/kernel/").
+- **Agent spawns**: `architect` loaded + emitted `## KB Sources Consulted` with 2 valid `kb:` refs (the `### Citation format` ref resolves); `codebase-locator` loaded, located the gate files, cited `kb:hets/code-search-heuristics` correctly + independently confirmed the dup-KB fix is needed (live def still has it; PR-B fixes on merge).
+
+## Status: PR-A #283 + PR-B #284 (stacked) up; dogfood GREEN. Awaiting user merge.
 
 ## Runtime Probes (firsthand, from the audit)
 

@@ -137,6 +137,7 @@ Always consult before proposing the team / stack. Catalog entries:
 - `kb:design-pushback/plain-http-for-sensitive-data` — MEDIUM
 - `kb:design-pushback/synchronous-llm-calls-in-request-path` — MEDIUM
 - `kb:design-pushback/single-region-deploy-for-mission-critical` — MEDIUM
+- `kb:design-pushback/syntactic-gate-extension-for-tool-bypass` — MEDIUM
 
 This is **proactive** (catches user-stated choices); `trade-off-articulation` is **reactive** (surfaces sacrifices in your proposed design). Both apply.
 
@@ -156,6 +157,8 @@ Format:
 ```
 
 **Minimum**: at least 2 `kb:<id>` references (1 from always-relevant architecture crosscut + 1 context-appropriate). If the design touches AI systems, add an AI-systems ref. If you cannot identify 2 relevant kb docs, that is a smell — pause and re-scan the kb index above before responding.
+
+### Citation format
 
 **Citation format is strict** — the `kb-citation-gate` PostToolUse hook requires the `kb:<id>` prefix on each ref. Anything else fails the gate, even if the heading is present (v2.8.2-run1 shakedown P2-3: an architect wrote a populated section with file-path + skill-name "citations" → gate fired SECONDARY-enforcement on missing `kb:` prefix).
 
