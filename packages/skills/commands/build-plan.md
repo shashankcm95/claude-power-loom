@@ -122,7 +122,7 @@ If `--skip-hets` is in `$ARGUMENTS`, short-circuit Step 3 even when `convergence
 
 ### 4. Phase 2 — Design + write plan to canonical template
 
-If user accepts the architect recommendation at Step 5, spawn `04-architect.<name>` per the 5-step convention in `kb/hets/spawn-conventions.md`. The architect produces a design that lands in `swarm/run-state/<RUN_ID>/node-actor-04-architect-<NAME>.md`.
+If user accepts the architect recommendation at Step 5, spawn `04-architect.<name>` per the 5-step convention in `packages/skills/library/agent-team/kb/hets/spawn-conventions.md`. The architect produces a design that lands in `swarm/run-state/<RUN_ID>/node-actor-04-architect-<NAME>.md`.
 
 If the user declines (or convergence_value < 0.10), proceed with the planner agent directly per Phase 2 of plan-mode workflow.
 

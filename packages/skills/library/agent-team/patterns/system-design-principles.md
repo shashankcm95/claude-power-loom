@@ -40,7 +40,7 @@ Five principle families govern design decisions in this toolkit. They're listed 
 
 **Toolkit example**:
 - `contracts-validate.js` has 4 named validators today. Adding `contract-plugin-hook-deployment` is OCP-clean: a new function added alongside, registered in the dispatcher map, no existing code modified.
-- New HETS persona contracts are added as `swarm/personas-contracts/<NN>-<persona>.contract.json` without touching existing personas.
+- New HETS persona contracts are added as `packages/runtime/contracts/<NN>-<persona>.contract.json` without touching existing personas.
 - New forcing instructions (`[FAILURE-REPEATED]`, `[PLUGIN-NOT-LOADED]`, etc.) are added as new hooks; the existing 8 instruction emitters are not modified.
 
 **Violation example**: a switch-statement that requires a new `case` for every new pattern type. Refactor to a registration/dispatch model.
@@ -64,7 +64,7 @@ Five principle families govern design decisions in this toolkit. They're listed 
 **When it applies**: when designing shared utility modules in `_lib/`.
 
 **Toolkit example**:
-- `hooks/scripts/_lib/settings-reader.js` exports `readSettings()`, `isPluginEnabled()`, `getRegisteredMarketplaces()` as separate functions. A consumer that only needs `isPluginEnabled()` doesn't pull in the full `readSettings()` parser logic.
+- `packages/kernel/hooks/_lib/settings-reader.js` exports `readSettings()`, `isPluginEnabled()`, `getRegisteredMarketplaces()` as separate functions. A consumer that only needs `isPluginEnabled()` doesn't pull in the full `readSettings()` parser logic.
 - `_lib/lock.js` exports just `withLock()` — not `lockFile`, `unlockFile`, `checkLockState`. The single function encapsulates the full RMW protection.
 
 **Violation example**: a `SettingsManager` class with 20 methods where most callers use 2. Refactor to small focused exports.

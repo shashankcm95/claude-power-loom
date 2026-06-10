@@ -64,7 +64,7 @@ Read `convergence_value.contribution` from route-decide JSON. If ≥ 0.10 AND `-
 
 > Recommend Phase 2 architect spawn (`04-architect.<roster-pick>`) with paired asymmetric challenger from `03-code-reviewer.*` family for design review.
 
-Spawn convention (from `kb/hets/spawn-conventions.md`):
+Spawn convention (from `packages/skills/library/agent-team/kb/hets/spawn-conventions.md`):
 1. `agent-identity.js assign --persona 04-architect --task plan-<RUN_ID>` → returns `{name, tier}`
 2. `tree-tracker.js spawn --node 04-architect-<name> --parent <parent>`
 3. Invoke architect with persona contract via Skill tool

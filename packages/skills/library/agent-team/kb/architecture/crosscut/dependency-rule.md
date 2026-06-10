@@ -473,7 +473,7 @@ Each persona's `contract.json` is the stable abstraction. Persona implementation
 
 ### The `_lib/` extraction pattern
 
-Substrate's `scripts/agent-team/_lib/` directory holds DRY abstractions extracted across multiple callers. By H.7.27, this includes:
+Substrate's `packages/runtime/orchestration/_lib/` directory holds DRY abstractions extracted across multiple callers. By H.7.27, this includes:
 
 - `lock.js` — file-locking primitive (4+ callers)
 - `runState.js` — run-state directory resolution (3+ callers)

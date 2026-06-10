@@ -107,7 +107,7 @@ The v2.8.2-run1 PDF→Tutorial shakedown's chaos audit produced one CRITICAL fin
 - Post-/plugin-update log entries showed the fix operative correctly
 - The "broken behavior" entries both actors cited were PRE-/plugin-update
 
-The convergence between two actors looked like strong validation but was actually two actors making the same temporal-blindness error. **Convergence between actors with shared methodological blindspots is NOT a reliable signal.** See `kb:agent-team/patterns/asymmetric-challenger` §Failure Modes #4 (shared-method-convergence false-positive) for the deeper pattern note.
+The convergence between two actors looked like strong validation but was actually two actors making the same temporal-blindness error. **Convergence between actors with shared methodological blindspots is NOT a reliable signal.** See `../library/agent-team/patterns/asymmetric-challenger.md` §Failure Modes #4 (shared-method-convergence false-positive) for the deeper pattern note.
 
 When in doubt: also spawn a live PROBE (not just a log read). A diverse-method convergence (one actor reads logs, another spawns a fresh test prompt and inspects the response) is qualitatively stronger than two actors both reading the same log.
 

@@ -1,13 +1,13 @@
 ---
 pattern: research-plan-implement
 status: active
-intent: Three-step workflow (Research → Plan → Implement) for substantive multi-file work; each step produces a markdown artifact in `swarm/thoughts/shared/`; documentation phase separates from critique phase to protect context Correctness; resumable across sessions via plan-file checkboxes.
+intent: Three-step workflow (Research → Plan → Implement) for substantive multi-file work; each step produces a markdown artifact in `packages/specs/`; documentation phase separates from critique phase to protect context Correctness; resumable across sessions via plan-file checkboxes.
 related: [validator-conventions, system-design-principles, route-decision, plan-mode-hets-injection, asymmetric-challenger, forcing-instruction-family]
 ---
 
 ## Summary
 
-Research-Plan-Implement (RPI) is the canonical agent-coding workflow from [humanlayer/advanced-context-engineering-for-coding-agents](https://github.com/humanlayer/advanced-context-engineering-for-coding-agents) (Dex Horthy, 2025). Adopted in power-loom H.8.6 as substrate-supported infrastructure for the Hardening Track and beyond. Three slash commands (`/research`, `/plan`, `/implement`) produce three classes of markdown artifact (`swarm/thoughts/shared/{research,plans}/`). Each phase has different discipline: research is **documentary** (no critique), plan **synthesizes critique** (architects + reviewers contribute FLAGs), implement is **phase-by-phase with pause-for-human-verification** (resumable via checkboxes). Maps directly to ace-fca.md "Frequent Intentional Compaction" — each step is a fresh-context invocation consuming the prior step's artifact, not its raw context.
+Research-Plan-Implement (RPI) is the canonical agent-coding workflow from [humanlayer/advanced-context-engineering-for-coding-agents](https://github.com/humanlayer/advanced-context-engineering-for-coding-agents) (Dex Horthy, 2025). Adopted in power-loom H.8.6 as substrate-supported infrastructure for the Hardening Track and beyond. Three slash commands (`/research`, `/plan`, `/implement`) produce three classes of markdown artifact (`packages/specs/{research,plans}/`). Each phase has different discipline: research is **documentary** (no critique), plan **synthesizes critique** (architects + reviewers contribute FLAGs), implement is **phase-by-phase with pause-for-human-verification** (resumable via checkboxes). Maps directly to ace-fca.md "Frequent Intentional Compaction" — each step is a fresh-context invocation consuming the prior step's artifact, not its raw context.
 
 ## Intent
 
@@ -57,11 +57,11 @@ The Hardening Track (HT.0+) is the canonical RPI use case: the audit IS a resear
 
 ### Research command (`commands/research.md`)
 
-Spawns documentary sub-agents in parallel: `14-codebase-locator` (WHERE), `15-codebase-analyzer` (HOW), `16-codebase-pattern-finder` (existing patterns). Each persona contract has an explicit `documentary: true` flag and `noCritiqueLanguage` antiPattern check listing forbidden phrases (`should be`, `recommend`, `anti-pattern`, etc.). Output: markdown artifact in `swarm/thoughts/shared/research/YYYY-MM-DD-X.md` with frontmatter (date, researcher, git_commit, branch, topic, tags, status).
+Spawns documentary sub-agents in parallel: `14-codebase-locator` (WHERE), `15-codebase-analyzer` (HOW), `16-codebase-pattern-finder` (existing patterns). Each persona contract has an explicit `documentary: true` flag and `noCritiqueLanguage` antiPattern check listing forbidden phrases (`should be`, `recommend`, `anti-pattern`, etc.). Output: markdown artifact in `packages/specs/research/YYYY-MM-DD-X.md` with frontmatter (date, researcher, git_commit, branch, topic, tags, status).
 
 ### Plan command (`commands/plan.md` — existing, H.7.9)
 
-Already exists. Power-loom convention: plans for substantive work go through **parallel pre-approval verification** (drift-note 40 lineage) before execution — architect + code-reviewer spawned in parallel, FLAGs absorbed into revised plan. RPI integration is additive: write the plan to `swarm/thoughts/shared/plans/YYYY-MM-DD-PHASE-X.md` with frontmatter linking the research artifact (`research_artifact:` field).
+Already exists. Power-loom convention: plans for substantive work go through **parallel pre-approval verification** (drift-note 40 lineage) before execution — architect + code-reviewer spawned in parallel, FLAGs absorbed into revised plan. RPI integration is additive: write the plan to `packages/specs/plans/YYYY-MM-DD-PHASE-X.md` with frontmatter linking the research artifact (`research_artifact:` field).
 
 ### Implement command (`commands/implement.md`)
 
@@ -103,7 +103,7 @@ A common LLM failure: "this phase is small, I'll just continue." Pause-for-verif
 
 ### F4 — Research-without-search
 
-If `/research` is invoked without first checking `swarm/thoughts/shared/research/` for prior artifacts, the same research happens twice. Currently mitigated by command instructions step 2 + manual user/agent discipline; future enhancement: `kb-resolver`-style search over thoughts/research/.
+If `/research` is invoked without first checking `packages/specs/research/` for prior artifacts, the same research happens twice. Currently mitigated by command instructions step 2 + manual user/agent discipline; future enhancement: `kb-resolver`-style search over thoughts/research/.
 
 ### F5 — Plan staleness during implementation
 

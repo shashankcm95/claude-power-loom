@@ -14,7 +14,7 @@ const os = require('os');
 const path = require('path');
 
 const V = require('../../../scripts/validate-doc-paths.js');
-const { placeholderFreePrefix, resolveToRepo, findStaleInFile, REPO_ROOT } = V;
+const { placeholderFreePrefix, resolveToRepo, findStaleInFile, collectDocs, REPO_ROOT } = V;
 
 let passed = 0; let failed = 0;
 function test(name, fn) {
@@ -105,6 +105,38 @@ test('findStaleInFile: a doc with only live paths -> []', () => {
   const file = path.join(dir, 'clean.md');
   fs.writeFileSync(file, 'See `packages/runtime/contracts/01-hacker.contract.json` and `scripts/library.js`.');
   assert.deepStrictEqual(findStaleInFile(file), []);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// -- shebang FP: a `/usr/bin/env` system path (e.g. inside a ripgrep example) is NOT a repo path.
+test('findStaleInFile: a #!/usr/bin/env shebang token is not flagged (bin/env suppression)', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'docpath-'));
+  const file = path.join(dir, 'shebang.md');
+  fs.writeFileSync(file, "Match mains with `rg -n '#!/usr/bin/env'` across the tree.");
+  assert.deepStrictEqual(findStaleInFile(file), [], 'a /usr/bin/env shebang is a system path, not a stale repo path');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// -- widened scan: collectDocs now includes the agent-team kb/ + patterns/ trees
+// (the #282-follow-up blind spot — prescriptive convention docs that rotted in v4).
+test('collectDocs: scans the agent-team kb/ + patterns/ convention trees', () => {
+  const docs = collectDocs().map((d) => path.relative(REPO_ROOT, d));
+  assert.ok(docs.some((d) => d.startsWith('packages/skills/library/agent-team/kb/')), 'kb/ tree is scanned');
+  assert.ok(docs.some((d) => d.startsWith('packages/skills/library/agent-team/patterns/')), 'patterns/ tree is scanned');
+  // and the prior surface is still covered
+  assert.ok(docs.some((d) => d.startsWith('packages/skills/commands/')), 'commands still scanned');
+  assert.ok(docs.some((d) => /packages\/skills\/library\/[^/]+\/SKILL\.md$/.test(d)), 'SKILL.md still scanned');
+});
+
+// -- the rot class the widening was built to catch: a kb-tree doc citing the dead
+// swarm/personas-contracts/ dir IS flagged (swarm is a ROOT; the dir is gone post-v4).
+test('findStaleInFile: a kb-tree doc citing the dead swarm/personas-contracts/ dir is flagged', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'docpath-'));
+  const file = path.join(dir, 'kbdoc.md');
+  fs.writeFileSync(file, 'Persona contracts live at `swarm/personas-contracts/04-architect.contract.json`.');
+  const stale = findStaleInFile(file);
+  assert.strictEqual(stale.length, 1, 'the dead swarm/personas-contracts ref is flagged');
+  assert.strictEqual(stale[0].prefixChecked, 'swarm/personas-contracts/04-architect.contract.json');
   fs.rmSync(dir, { recursive: true, force: true });
 });
 

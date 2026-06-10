@@ -87,7 +87,7 @@ The Thought step is the load-bearing component — it gives the model space to p
 **Substrate examples**:
 
 - HETS (Hierarchical Ensemble Task Substrate) — super-agent orchestrator + tier-2 personas + tier-3 actors
-- Persona contracts at `swarm/personas-contracts/` — declare each persona's scope, allowed tools, anti-patterns
+- Persona contracts at `packages/runtime/contracts/` — declare each persona's scope, allowed tools, anti-patterns
 - `route-decide.js` — substrate's workflow-vs-agent gate (returns `root` for trivial tasks; `route` for non-trivial)
 - `agent-identity` registry — assigns persona+identity per spawn; codifies the agent's role for the lifetime of the loop
 
@@ -322,7 +322,7 @@ The gate uses a weighted formula across surface-pattern signals (file count, com
 
 ### Persona contracts as agent-scope declarations
 
-Each contract in `swarm/personas-contracts/*.json` declares:
+Each contract in `packages/runtime/contracts/*.json` declares:
 
 - `tools.allowed` — which tools the persona can use
 - `anti_patterns` — what behaviors to avoid

@@ -79,7 +79,7 @@ semantics. The drift-note logs to stderr but does NOT fail the verdict.
 
 ```bash
 node ~/Documents/claude-toolkit/packages/kernel/validators/contract-verifier.js \
-  --contract ~/Documents/claude-toolkit/swarm/personas-contracts/${PERSONA_NAME}.contract.json \
+  --contract ~/Documents/claude-toolkit/packages/runtime/contracts/${PERSONA_NAME}.contract.json \
   --output ${OUTPUT_PATH} \
   --previous-run ${PRIOR_RUN_PATH} \
   --identity ${IDENTITY}
@@ -91,7 +91,7 @@ Identity flows automatically to:
 
 ### Path-resolution caveat
 
-Always invoke the HETS scripts (`tree-tracker.js` + siblings) from a SINGLE consistent copy — the canonical repo path is now `~/Documents/claude-toolkit/packages/runtime/orchestration/...` (the v4 restructure moved them from the old top-level `scripts/agent-team/`). `tree-tracker.js` resolves `tree.json` relative to its own directory, so mixing the repo copy with an installed plugin copy writes to different `swarm/run-state/` trees → "Node not found" errors when `spawn` and `complete` run from different copies.
+Always invoke the HETS scripts (`tree-tracker.js` + siblings) from a SINGLE consistent copy — the canonical repo path is now `~/Documents/claude-toolkit/packages/runtime/orchestration/...` (relocated there in the v4 restructure). `tree-tracker.js` resolves `tree.json` relative to its own directory, so mixing the repo copy with an installed plugin copy writes to different `swarm/run-state/` trees → "Node not found" errors when `spawn` and `complete` run from different copies.
 
 ### Identity rosters
 

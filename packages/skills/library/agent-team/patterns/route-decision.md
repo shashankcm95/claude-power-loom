@@ -11,7 +11,7 @@ Pure-function CLI scores a task on 7 weighted dimensions (stakes, novelty, compo
 
 ## Intent
 
-The toolkit had no first-class gate between "user types a task" and "spawn a HETS team" before H.7.3 — root made that call ad-hoc. The dataset of two motivating events: the URL-shortener pair-run cost ~93K tokens for a one-shot user task whose root-direct alternative would have shipped at ~3K (`swarm/run-state/orch-user-task-url-shortener-20260507-062607/`); the BACKLOG-cleanup got architect+code-reviewer for a 9-line doc surgery (`swarm/H.5.7-findings.md:14-16`). At ~30× cost ratio for ~3× failure-mode coverage, the under-/over-routing tax was large enough to deserve a deterministic gate.
+The toolkit had no first-class gate between "user types a task" and "spawn a HETS team" before H.7.3 — root made that call ad-hoc. The dataset of two motivating events: the URL-shortener pair-run cost ~93K tokens for a one-shot user task whose root-direct alternative would have shipped at ~3K (`swarm/run-state/orch-user-task-url-shortener-20260507-062607/`); the BACKLOG-cleanup got architect+code-reviewer for a 9-line doc surgery (the H.5.7 audit, 2026-05-07). At ~30× cost ratio for ~3× failure-mode coverage, the under-/over-routing tax was large enough to deserve a deterministic gate.
 
 The asymmetric cost-quality table (mirrors `missing-capability-signal.md:22-27`):
 

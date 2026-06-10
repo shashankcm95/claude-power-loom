@@ -86,7 +86,7 @@ task: <task summary>
 
 ```bash
 node ~/Documents/claude-toolkit/packages/kernel/validators/contract-verifier.js \
-  --contract ~/Documents/claude-toolkit/swarm/personas-contracts/challenger.contract.json \
+  --contract ~/Documents/claude-toolkit/packages/runtime/contracts/challenger.contract.json \
   --output $CHALLENGER_OUTPUT \
   --identity $CHALLENGER
 ```

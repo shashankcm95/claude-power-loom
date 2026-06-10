@@ -275,7 +275,7 @@ These are deterministic hooks. The substrate doesn't trust the LLM to refuse —
 For content-level refusals (safety, alignment, scope-of-discourse), the substrate delegates to model behavior. The substrate's role is exposing the *boundary*, not implementing the *policy*:
 
 - System prompts in commands (`/research`, `/implement`) declare scope; model handles refusal
-- Persona contracts in `swarm/personas-contracts/` declare role boundaries; model + contract verifier handle scope refusal
+- Persona contracts in `packages/runtime/contracts/` declare role boundaries; model + contract verifier handle scope refusal
 - KB content (this doc + sibling KBs) establishes shared understanding of which surfaces are LLM-enforced vs substrate-enforced
 
 ### Refusal-as-discipline distinction
