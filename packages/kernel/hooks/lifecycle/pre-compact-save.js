@@ -17,6 +17,10 @@ const logger = log('pre-compact-save');
 // extractor adds Windows + quoted-paths-with-spaces coverage.
 const { extractFilePaths } = require('../_lib/file-path-pattern');
 
+// chip task_d068048a — symlink/owner-hardened candidate resolution for the
+// self-improve-store CLI before it is spawnSync-executed at compaction.
+const { resolveExecCandidate } = require('../../_lib/safe-resolve');
+
 // H.9.21 v2.1.0 Component G — fail-soft require of _lib/lock for compact-history
 // append serialization (code-reviewer HIGH 5 absorbed at MANDATORY-gate). Path
 // resolution falls back to ~/.claude/packages/kernel/ for installed-plugin layout; if
@@ -291,12 +295,12 @@ function writeCheckpoint(checkpoint) {
  * a legacy installed copy, so fresh installs silently skipped the compaction
  * scan). Used to trigger a consolidation scan at compaction time.
  *
- * Two intentional divergences from `resolveStoreScript`: (1) a 4th LEGACY
- * `~/.claude/scripts/` candidate the reference lacks; (2) returns null (NOT
- * `candidates[0]`) on all-miss — load-bearing: `runSelfImproveScan`'s
- * `if (!script) return null` fail-soft + the all-miss test depend on it.
- * DO NOT "fix" the null return to match the reference — `candidates[0]`
- * would spawnSync a non-existent path.
+ * ONE intentional divergence from `resolveStoreScript`: a 4th LEGACY
+ * `~/.claude/scripts/` candidate the reference lacks (kept + hardened per
+ * #281). Both resolvers now return null on all-miss and delegate symlink/uid
+ * hardening to `_lib/safe-resolve.resolveExecCandidate` (chip task_d068048a)
+ * — a planted symlink or foreign-owned file at any candidate is refused
+ * before it can be spawnSync-executed.
  *
  * @returns {string|null} Absolute path to self-improve-store.js, or null if not found
  */
@@ -312,10 +316,7 @@ function resolveSelfImproveScript() {
     // schema-stale legacy CLI degrades to a no-op, not corruption.
     path.join(os.homedir(), '.claude', 'scripts', 'self-improve-store.js'),
   ];
-  for (const c of candidates) {
-    try { fs.accessSync(c, fs.constants.F_OK); return c; } catch { /* next */ }
-  }
-  return null;
+  return resolveExecCandidate(candidates);
 }
 
 /**

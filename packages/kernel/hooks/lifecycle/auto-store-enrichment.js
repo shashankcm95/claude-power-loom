@@ -14,22 +14,24 @@
 //       like HTTPS:// from being treated as new field keys)
 
 const { spawnSync } = require('child_process');
-const fs = require('fs');
 const path = require('path');
 const { log: makeLogger } = require('../_lib/_log.js');
+// chip task_d068048a — symlink/owner-hardened candidate resolution for the
+// prompt-pattern-store CLI before it is spawnSync-executed.
+const { resolveExecCandidate, isSafeExecCandidate } = require('../../_lib/safe-resolve');
 const log = makeLogger('auto-store-enrichment');
 
-// Phase-F3: prompt-pattern-store.js was relocated to scripts/; Phase 0: moved to packages/kernel/spawn-state/.
+// Phase-F3: prompt-pattern-store.js was relocated to scripts/; Phase 0: moved
+// to packages/kernel/spawn-state/. All-miss returns null (was candidates[0]) —
+// a non-existent candidates[0] only fail-softs by burning a child spawn + a
+// misleading store_failed log; null short-circuits storePattern cleanly.
 function resolveStoreScript() {
   const candidates = [
     path.join(__dirname, '..', '..', 'spawn-state', 'prompt-pattern-store.js'),
     path.join(__dirname, '..', 'spawn-state', 'prompt-pattern-store.js'),
     path.join(require('os').homedir(), '.claude', 'packages', 'kernel', 'spawn-state', 'prompt-pattern-store.js'),
   ];
-  for (const c of candidates) {
-    try { fs.accessSync(c, fs.constants.F_OK); return c; } catch { /* next */ }
-  }
-  return candidates[0];
+  return resolveExecCandidate(candidates);
 }
 const STORE_SCRIPT = resolveStoreScript();
 
@@ -161,6 +163,12 @@ function parseFields(body) {
  * @returns {string|null} Stdout from the store CLI on success, null on failure
  */
 function storePattern(enrichment) {
+  // All-miss (STORE_SCRIPT null) short-circuit: no script -> no spawn, no log.
+  if (!STORE_SCRIPT) return null;
+  // chip task_d068048a F2 — re-verify safety immediately before spawn. The
+  // module-load resolve happened once; a swap between then and now (a long-
+  // lived Stop hook) is caught here, collapsing the resolve->spawn window.
+  if (!isSafeExecCandidate(STORE_SCRIPT)) return null;
   try {
     const args = [
       STORE_SCRIPT,
@@ -212,24 +220,33 @@ function storePattern(enrichment) {
 // NOTE: this hook ALSO captures prompt-enrichment patterns (extractEnrichments /
 // storePattern, above) — that capability is load-bearing and is NOT retired.
 
-let input = '';
-process.stdin.setEncoding('utf8');
-process.stdin.on('data', (chunk) => { input += chunk; });
-process.stdin.on('end', () => {
-  // Always pass input through — never break the response pipeline
-  process.stdout.write(input);
+// Test seam (chip task_d068048a): requiring this file as a module exposes the
+// resolver/store internals WITHOUT attaching the stdin runner — the hook path
+// (require.main === module, as hooks.json invokes it) is unchanged. STORE_SCRIPT
+// stays resolved at module load (a read-only lstat scan). Same positive-guard
+// shape as pre-compact-save.js + the other kernel CLIs.
+module.exports = { resolveStoreScript, storePattern, extractEnrichments, parseFields };
 
-  try {
-    const enrichments = extractEnrichments(input);
-    if (enrichments.length === 0) {
-      log('no_enrichment', { inputLen: input.length });
-    } else {
-      log('detected', { count: enrichments.length });
-      for (const enrichment of enrichments) {
-        storePattern(enrichment);
+if (require.main === module) {
+  let input = '';
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', (chunk) => { input += chunk; });
+  process.stdin.on('end', () => {
+    // Always pass input through — never break the response pipeline
+    process.stdout.write(input);
+
+    try {
+      const enrichments = extractEnrichments(input);
+      if (enrichments.length === 0) {
+        log('no_enrichment', { inputLen: input.length });
+      } else {
+        log('detected', { count: enrichments.length });
+        for (const enrichment of enrichments) {
+          storePattern(enrichment);
+        }
       }
+    } catch (err) {
+      log('error', { error: err.message });
     }
-  } catch (err) {
-    log('error', { error: err.message });
-  }
-});
+  });
+}

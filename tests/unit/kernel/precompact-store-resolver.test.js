@@ -34,9 +34,11 @@ function test(name, fn) {
 
 /** Run `node -e <code>` as a child with HOME=<home>; return parsed-JSON stdout. */
 function runChild(code, home) {
+  // Preserve the parent env (PATH, SystemRoot, …) + override HOME and USERPROFILE
+  // so os.homedir() isolates to the tmpdir on POSIX *and* Windows. CodeRabbit #282.
   const res = spawnSync(process.execPath, ['-e', code], {
     encoding: 'utf8', timeout: 15000,
-    env: { PATH: process.env.PATH, HOME: home },
+    env: { ...process.env, HOME: home, USERPROFILE: home },
   });
   if (res.status !== 0) {
     throw new Error(`child exited ${res.status}: ${(res.stderr || '').slice(0, 400)}`);
@@ -108,16 +110,14 @@ test('all-miss: resolver -> null and runSelfImproveScan -> null without throwing
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'pcs-miss-home-'));
   const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'pcs-miss-fix-'));
   try {
-    // replicate hooks/{_lib,lifecycle}/ shape so the hook's relative requires
-    // resolve, but kernel/spawn-state does NOT exist at the fixture root.
-    const libSrc = path.join(REPO_ROOT, 'packages/kernel/hooks/_lib');
-    const libDst = path.join(fixture, 'kernel', 'hooks', '_lib');
+    // replicate kernel/{_lib, hooks/{_lib,lifecycle}}/ so the hook's relative
+    // requires resolve (../_lib -> hooks/_lib ; ../../_lib -> kernel/_lib, which
+    // holds safe-resolve.js), but kernel/spawn-state does NOT exist at the
+    // fixture root so the __dirname candidates miss.
+    fs.cpSync(path.join(REPO_ROOT, 'packages/kernel/hooks/_lib'), path.join(fixture, 'kernel', 'hooks', '_lib'), { recursive: true });
+    fs.cpSync(path.join(REPO_ROOT, 'packages/kernel/_lib'), path.join(fixture, 'kernel', '_lib'), { recursive: true });
     const lcDst = path.join(fixture, 'kernel', 'hooks', 'lifecycle');
-    fs.mkdirSync(libDst, { recursive: true });
     fs.mkdirSync(lcDst, { recursive: true });
-    for (const f of fs.readdirSync(libSrc)) {
-      fs.copyFileSync(path.join(libSrc, f), path.join(libDst, f));
-    }
     const hookCopy = path.join(lcDst, 'pre-compact-save.js');
     fs.copyFileSync(HOOK, hookCopy);
     const out = runChild(
