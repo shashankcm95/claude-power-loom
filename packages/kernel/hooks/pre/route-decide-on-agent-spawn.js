@@ -138,7 +138,9 @@ function main() {
     return;
   }
 
-  const result = spawnSync('node', [routeDecidePath, '--task', taskText], {
+  // process.execPath (the absolute path of the CURRENT node) instead of bare 'node'
+  // — deterministic interpreter, no PATH-resolution variability (CodeRabbit #290).
+  const result = spawnSync(process.execPath, [routeDecidePath, '--task', taskText], {
     encoding: 'utf8',
     timeout: TIMEOUT_MS,
   });
