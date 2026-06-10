@@ -374,6 +374,10 @@ run_smoke_tests() {
   # library reindex smoke (T120 — catalog rebuild from directly-written volumes,
   # repairs the pre-compact SAVE_PROMPT catalog-drift failure mode).
   source "$SCRIPT_DIR/tests/smoke-library-reindex.sh"
+  # CAND-5 (self-improve 2026-06-10) — the 3 drift gates that were CI-only
+  # (T121 signpost --check, T122 doc-paths, T123 contracts-validate); closes the
+  # local-vs-CI gap that let SIGNPOST / doc-path / related-link drift reach push 5x.
+  source "$SCRIPT_DIR/tests/smoke-drift-gates.sh"
 
 
   echo ""
