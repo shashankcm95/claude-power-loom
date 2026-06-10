@@ -67,6 +67,7 @@ const os = require('os');
 const path = require('path');
 
 const { writeAtomicString } = require('./atomic-write');
+const { deepFreeze } = require('./deep-freeze');
 const {
   computeTransactionId,
   validateTransactionRecord,
@@ -310,7 +311,12 @@ function loadRecordFile(file) {
   let computed;
   try { computed = computeTransactionId(parsed); } catch { return null; }
   if (computed !== id) return null;                                    // (c) field ↔ content (S5-on-read)
-  return parsed;
+  // B3 (2026-06-10 chip, LOW): deep-freeze the parsed record so EVERY read path
+  // (readById / readBy* / listByRun all funnel through here) serves an IMMUTABLE
+  // row — a caller cannot mutate a nested array/object (the #266 shallow-freeze
+  // class). Freeze is the LAST step (after validation + the S5 re-hash, which read
+  // but never mutate parsed).
+  return deepFreeze(parsed);
 }
 
 /**

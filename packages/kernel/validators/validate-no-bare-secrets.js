@@ -32,6 +32,13 @@ const fs = require('fs');
 const { log } = require('../hooks/_lib/_log.js');
 const logger = log('validate-no-bare-secrets');
 
+// B4 (2026-06-10 chip, LOW): cap the Edit post-image disk read. The Edit branch
+// reads the target file to build the post-edit scan text; an oversized file is an
+// unbounded readFileSync (memory). Over-cap → skip the read and fall back to the
+// new_string-only scan (the same fail-open path as an unreadable file). 2MB is
+// generous for source files; a multi-MB edit target is pathological for this gate.
+const MAX_EDIT_SCAN_BYTES = 2 * 1024 * 1024;
+
 // Each pattern: { id, regex, description }. id is what the user sees.
 // H.9.15 SEC-5/SEC-6 documented intentional gaps (audited at chaos test):
 //   - Base64-encoded secrets: same surface as base64-encoded non-secrets
@@ -286,7 +293,15 @@ process.stdin.on('end', () => {
       // Try to read existing file to produce post-edit result.
       let existing = null;
       try {
-        existing = fs.readFileSync(filePath, 'utf8');
+        // B4: skip an over-cap file — leave existing null so the code below falls
+        // back to the new_string-only scan. DELIBERATE POLICY (not merely an I/O
+        // fallback like an unreadable file): a >2MB edit target with a PRE-EXISTING
+        // secret outside the edit region is not caught on this call. The
+        // bounded-memory robustness win outweighs that narrow gap in the cooperative
+        // threat model; the new_string (the actual delta being written) is still scanned.
+        if (fs.statSync(filePath).size <= MAX_EDIT_SCAN_BYTES) {
+          existing = fs.readFileSync(filePath, 'utf8');
+        }
       } catch {
         /* file doesn't exist or unreadable — fall back to new_string-only */
       }

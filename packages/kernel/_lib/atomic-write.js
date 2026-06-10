@@ -36,6 +36,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { currentUid } = require('./safe-resolve');
 
 /**
  * Generate a collision-resistant tmp-file suffix.
@@ -50,6 +51,21 @@ const crypto = require('crypto');
 function _tmpSuffix() {
   const nonce = crypto.randomBytes(6).toString('hex');
   return `.tmp.${process.pid}.${process.hrtime.bigint()}.${nonce}`;
+}
+
+/**
+ * PURE policy (B2): is `stat` (an lstat result) owned by a DIFFERENT uid than
+ * `selfUid`? uid-ONLY (no mode/group check — see _resolveForAtomicWrite for why
+ * the exec-policy writability check is deliberately NOT reused here). A null
+ * stat (target absent) or null selfUid (Windows, uid unknowable) → false: we
+ * cannot establish foreignness, so we do NOT refuse. Pure so the foreign-uid
+ * branch is unit-testable without root/chown.
+ * @param {fs.Stats|null} stat result of an lstat (NOT a follow stat)
+ * @param {number|null} selfUid current uid, or null to skip (Windows)
+ * @returns {boolean}
+ */
+function _foreignOwned(stat, selfUid) {
+  return selfUid !== null && !!stat && stat.uid !== selfUid;
 }
 
 /**
@@ -87,14 +103,32 @@ function _resolveForAtomicWrite(filePath) {
   let current = filePath;
   for (let i = 0; i < 10; i++) {
     let stat;
-    try { stat = fs.lstatSync(current); } catch { return current; }
-    if (!stat.isSymbolicLink()) return current;
+    try { stat = fs.lstatSync(current); } catch { break; } // unresolvable chain → stop, contain below
+    if (!stat.isSymbolicLink()) break;                       // reached a real (non-symlink) target
     const target = fs.readlinkSync(current);
     current = path.isAbsolute(target)
       ? target
       : path.resolve(path.dirname(current), target);
   }
-  return current; // hit the loop bound; write to last-resolved path
+  // B2 (2026-06-10 chip, LOW): foreign-uid symlink containment. If the chain
+  // followed a symlink OUT to a target owned by a DIFFERENT uid, REFUSE the
+  // redirection and write to the ORIGINAL path (replacing a hostile symlink with
+  // a regular file in the intended, user-owned dir). Same-uid symlinks (the legit
+  // FIX-H3 library-volume case) still follow. uid-ONLY — NOT safe-resolve's
+  // group-writable exec policy, which would false-refuse legitimate loosely-
+  // permissioned write targets. Windows (currentUid()===null) skips. Defends
+  // FOREIGN-uid redirection only; same-uid stays conceded (OQ-E / ContainerAdapter).
+  // RESIDUAL (hacker VALIDATE M1, accepted): a symlink to a NON-EXISTENT target
+  // (lstat throws → rstat null → undecidable → not refused) is still followed. It
+  // only ever creates a NEW writer-owned file (no foreign file is overwritten) and
+  // is byte-identical to pre-chip behavior — the conceded same-uid residual.
+  // Refusing it would break FIX-H3's legit symlink-to-not-yet-existent-target case.
+  if (current !== filePath) {
+    let rstat = null;
+    try { rstat = fs.lstatSync(current); } catch { rstat = null; }
+    if (_foreignOwned(rstat, currentUid())) return filePath;
+  }
+  return current; // last-resolved path (or original, if a foreign redirect was refused above)
 }
 
 /**
@@ -146,4 +180,4 @@ function writeAtomicString(filePath, str) {
   }
 }
 
-module.exports = { writeAtomic, writeAtomicString };
+module.exports = { writeAtomic, writeAtomicString, _foreignOwned };

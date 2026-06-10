@@ -951,6 +951,39 @@ test('30. content-address integrity (S5-on-read): a field==filename body whose c
   } finally { cleanup(stateDir); }
 });
 
+// ── B3 (2026-06-10 chip): read paths return DEEPLY-FROZEN rows (the #266 class) ──
+// Before the fix, loadRecordFile returned the raw parsed object — a caller could
+// mutate a record's NESTED arrays/objects (a shallow Object.freeze would not have
+// closed it). All read paths funnel through loadRecordFile, so freezing there
+// covers readById / readBy* / listByRun.
+
+test('B3: readById returns a DEEPLY-frozen row — nested evidence_refs is immutable', () => {
+  const stateDir = tmpStateDir();
+  try {
+    const rec = buildRecord({ hashSeed: 'b3-readById' });
+    store.appendRecord(rec, { runId: RUN_ID, stateDir });
+    const got = store.readById(rec.transaction_id, { runId: RUN_ID, stateDir });
+    assert.ok(got, 'precondition: record reads back');
+    assert.ok(Object.isFrozen(got), 'top-level row must be frozen');
+    assert.ok(Array.isArray(got.evidence_refs) && Object.isFrozen(got.evidence_refs), 'NESTED evidence_refs must be frozen (the leak)');
+    assert.throws(() => { got.evidence_refs[0] = 'POISON'; }, TypeError, 'nested element write must throw');
+    assert.throws(() => { got.evidence_refs.push('INJECTED'); }, TypeError, 'nested push must throw');
+    assert.throws(() => { got.commit_outcome = 'TAMPERED'; }, TypeError, 'top-level write must throw');
+  } finally { cleanup(stateDir); }
+});
+
+test('B3: listByRun rows are DEEPLY frozen (the exact read-back/dedup leak class)', () => {
+  const stateDir = tmpStateDir();
+  try {
+    const rec = buildRecord({ hashSeed: 'b3-listByRun' });
+    store.appendRecord(rec, { runId: RUN_ID, stateDir });
+    const rows = store.listByRun({ runId: RUN_ID, stateDir });
+    assert.strictEqual(rows.length, 1);
+    assert.ok(Object.isFrozen(rows[0]) && Object.isFrozen(rows[0].evidence_refs), 'listByRun row + nested must be frozen');
+    assert.throws(() => { rows[0].evidence_refs.push('X'); }, TypeError);
+  } finally { cleanup(stateDir); }
+});
+
 // `os` is used by tmpStateDir (mkdtempSync). This void keeps lint quiet without a
 // suppression comment if a future refactor stops using it directly.
 void os;
