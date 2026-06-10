@@ -45,14 +45,18 @@ const RECORD_FILE_RE = /^record-[a-f0-9]{64}\.json$/;
 
 /**
  * Cross-run scan for committed records whose `operation_class` is in `opClasses` and whose
- * FILE mtime is >= `sinceMs`. Read-only; never content-verifies (halt-only count).
+ * FILE mtime is STRICTLY GREATER THAN `sinceMs` (half-open window — a record at exactly
+ * `sinceMs` is EXCLUDED, matching projectBreaker's `ts <= windowStart` boundary). Read-only;
+ * never content-verifies (halt-only count).
  *
  * @param {object} o
  * @param {string[]} o.opClasses operation_class values to count (e.g. ['TOMBSTONE','SUPERSEDE'])
- * @param {number} o.sinceMs lower mtime bound (ms epoch); records older are excluded
+ * @param {number} o.sinceMs exclusive lower mtime bound (ms epoch); records with mtime <= sinceMs are excluded
  * @param {string} [o.stateDir] the record-store state root (defaults to ~/.claude/spawn-state)
  * @returns {Array<{transaction_id:string, operation_class:string, mtime_ms:number}>}
- * @throws if the base exists but is unreadable (M3 — the consumer fails closed)
+ * @throws on ANY base error other than ENOENT — a MISSING store is clean-empty (`[]`), but a
+ *   permission error (EACCES) / not-a-dir / symlink-loop is AMBIGUOUS and fails CLOSED (M3: the
+ *   consumer refuses rather than minting). Per-run/file errors below are skipped (resilient).
  */
 function scanCommittedOps(o) {
   const opts = o || {};
@@ -62,8 +66,13 @@ function scanCommittedOps(o) {
   const wanted = new Set(opClasses);
 
   let realBase;
-  try { realBase = fs.realpathSync(base); } catch { return []; } // ABSENT store → clean empty (0 mints)
-  // An UNREADABLE base throws here (EACCES) → propagates → the consumer fails CLOSED (M3).
+  try {
+    realBase = fs.realpathSync(base);
+  } catch (e) {
+    if (e && e.code === 'ENOENT') return [];  // ABSENT store → clean empty (0 mints)
+    throw e;  // EACCES (unsearchable parent) / ENOTDIR / ELOOP → AMBIGUOUS → fail CLOSED (M3), don't fail OPEN to []
+  }
+  // An UNREADABLE base (exists but not readable) throws here → propagates → the consumer fails CLOSED (M3).
   const runs = fs.readdirSync(realBase);
 
   const out = [];

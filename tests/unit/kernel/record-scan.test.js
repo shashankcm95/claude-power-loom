@@ -26,13 +26,21 @@ function test(name, fn) {
 }
 
 const hex64 = () => crypto.randomBytes(32).toString('hex');
+/** Make a throwaway record-store root and return its absolute path. @returns {string} */
 function freshStore() {
   const d = path.join(os.tmpdir(), 'rscan-' + crypto.randomBytes(6).toString('hex'));
   fs.mkdirSync(d, { recursive: true });
   return d;
 }
-// Write a record-<64hex>.json into <stateDir>/<runId>/records/ with the given op_class +
-// set its mtime to mtimeMs (the window axis). Returns the txid.
+/**
+ * Write a `record-<64hex>.json` into `<stateDir>/<runId>/records/` with the given operation_class,
+ * then set its FILE mtime (the window axis the scan reads).
+ * @param {string} stateDir record-store root
+ * @param {string} runId the run dir
+ * @param {string} opClass operation_class to stamp
+ * @param {number} mtimeMs the mtime to set (ms epoch)
+ * @returns {string} the generated transaction_id
+ */
 function writeRecord(stateDir, runId, opClass, mtimeMs) {
   const txid = hex64();
   const dir = path.join(stateDir, runId, 'records');
@@ -115,6 +123,31 @@ test('scanCommittedOps: a run dir without a records/ subdir is silently skipped'
 test('scanCommittedOps: an absent store -> [] (clean empty, not an error)', () => {
   const missing = path.join(os.tmpdir(), 'rscan-absent-' + crypto.randomBytes(6).toString('hex'));
   assert.deepStrictEqual(scanCommittedOps({ opClasses: ['TOMBSTONE'], sinceMs: 0, stateDir: missing }), []);
+});
+
+// -- BOUNDARY (half-open): a record at EXACTLY mtime == sinceMs is EXCLUDED (matches projectBreaker).
+test('scanCommittedOps: a record at exactly mtime == sinceMs is excluded (half-open boundary)', () => {
+  const s = freshStore();
+  try {
+    writeRecord(s, 'r', 'TOMBSTONE', NOW); // mtime exactly on the boundary (NOW is ms-aligned)
+    const got = scanCommittedOps({ opClasses: ['TOMBSTONE'], sinceMs: NOW, stateDir: s });
+    assert.strictEqual(got.length, 0, 'a record at the exact sinceMs boundary is excluded (strict >)');
+  } finally { fs.rmSync(s, { recursive: true, force: true }); }
+});
+
+// -- M3 / realpathSync EACCES (CodeRabbit): a base under an UNSEARCHABLE parent makes realpathSync throw
+// EACCES — which must be RE-THROWN (fail-closed), NOT swallowed to [] (fail-open). Distinct from ENOENT.
+test('scanCommittedOps: a base under an unsearchable parent re-throws (EACCES, not fail-open [])', () => {
+  if (typeof process.getuid === 'function' && process.getuid() === 0) { process.stdout.write('    (skipped: root bypasses perms)\n'); return; }
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'rscan-par-'));
+  const base = path.join(parent, 'store');
+  fs.mkdirSync(base);
+  fs.chmodSync(parent, 0o000); // realpathSync(base) -> EACCES on the parent
+  try {
+    let threw = false;
+    try { scanCommittedOps({ opClasses: ['TOMBSTONE'], sinceMs: 0, stateDir: base }); } catch { threw = true; }
+    assert.strictEqual(threw, true, 'an EACCES from realpathSync must re-throw (fail-closed), not return []');
+  } finally { fs.chmodSync(parent, 0o700); fs.rmSync(parent, { recursive: true, force: true }); }
 });
 
 // -- M3: an unreadable base THROWS (so the consumer can fail CLOSED), distinct from clean-empty.
