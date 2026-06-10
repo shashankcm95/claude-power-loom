@@ -21,10 +21,15 @@
 //     the canonical approved SET exactly (W2b exact-SET-equality, generalizing the W2a single-element check). A
 //     deduped DECOY (same idempotency_key, different affected_records) is a FAIL in every shape (superset /
 //     subset / dup-pad / foreign), never a success.
-//   - W2b.1 scope: MULTI-target SINGLE-RUN -> `cull`->TOMBSTONE, `content-dedup`/`merge`->SUPERSEDE. The target
-//     set is CANONICALIZED + re-capped at MAX_TARGETS at the boundary (a planted authentic row is not trusted
-//     as canonical/bounded); per-target eligibility; cross-run REFUSE (cross-run-deferred-w2c). `quarantine`
-//     REFUSES (recall-layer v3.8a). Cross-run mints + the E11 promote-path breaker are W2c / W2b.2.
+//   - W2b.1 scope: MULTI-target -> `cull`->TOMBSTONE, `content-dedup`/`merge`->SUPERSEDE. The target set is
+//     CANONICALIZED + re-capped at MAX_TARGETS at the boundary (a planted authentic row is not trusted as
+//     canonical/bounded); per-target eligibility; `quarantine` REFUSES (recall-layer v3.8a).
+//   - W2c scope: CROSS-RUN. Targets spanning runs are PARTITIONED by run (resolveTargetRuns -> Map) and minted
+//     ONE COMMITTED op per run (each naming that run's subset), with per-(proposal,run) idempotency (the runId is
+//     folded into writer_spawn_id — manage-op-record.js). The breaker is PREDICTIVE (denials+K>threshold ->
+//     breaker-would-exceed, ZERO mints). Cross-run is NOT atomic: a per-run failure returns an honest
+//     partial-cross-run {minted, unminted} (NO rollback — §0a.3.1; idempotent re-invoke recovers). A SINGLE
+//     target id duplicated across runs (ambiguous) STAYS refused (target-in-multiple-runs-w2b).
 //   - Rate-bound (architect MED, doc): the per-invocation explicit --proposal-id + INV-22 dedup + the boundary
 //     MAX_TARGETS re-cap IS the W2b.1 rate/blast-radius bound; the E11 promote-path breaker generalizes it in W2b.2.
 //
@@ -37,7 +42,7 @@ const { listProposals, canonicalizeTargets, MAX_TARGETS } = require('./store');
 const { APPROVED_DISPOSITION } = require('./enums');
 const { buildManageOpRecord } = require('../../kernel/_lib/manage-op-record');
 const { findRecordRun } = require('../../kernel/_lib/record-locate');
-const { appendRecord, readById } = require('../../kernel/_lib/record-store');
+const { appendRecord, readById, readByIdempotencyKey } = require('../../kernel/_lib/record-store');
 const { canonicalJsonSerialize } = require('../../kernel/_lib/canonical-json');
 // v3.6 W2b.2: the promote-path breaker (EC2) — bounds the destructive-mint RATE.
 const { evaluate: evaluateBreaker } = require('../circuit-breaker/project');
@@ -90,26 +95,98 @@ function eligibilityRefusal(targetRecord) {
 }
 
 /**
- * Resolve the SINGLE run holding ALL targets (D5 -- per-target then unanimity). Calls findRecordRun on EVERY
- * target (NOT readById against a guessed run), so a cross-run target is detected as cross-run -- never
- * mis-reported as `target-not-found` (architect VERIFY CRITICAL). Fail-closed: any phantom -> target-not-found;
- * any ambiguous -> target-in-multiple-runs-w2b; >1 distinct run -> cross-run-deferred-w2c (the W2c boundary).
+ * Resolve the run holding EACH target -> a Map<runId, target[]> (W2c: cross-run is now LEGAL — the
+ * `cross-run-deferred-w2c` refusal is LIFTED; targets spanning runs are PARTITIONED, one mint per run). Calls
+ * findRecordRun on EVERY target (NOT readById against a guessed run), so each target is resolved to its OWN run
+ * (architect VERIFY CRITICAL). Fail-closed: any phantom -> target-not-found; a SINGLE target id duplicated across
+ * runs (loc.ambiguous) -> target-in-multiple-runs-w2b (D7 — under-determined, kept refused; orthogonal to
+ * cross-run-DIFFERENT-targets).
  *
  * @param {string[]} targets canonical (dedup+sorted) target transaction_ids
  * @param {{stateDir?: string}} opts
- * @returns {{runId:string} | {refused:string, [k:string]:*}}
+ * @returns {{byRun: Map<string,string[]>} | {refused:string, [k:string]:*}}
  */
-function resolveSingleRun(targets, opts) {
+function resolveTargetRuns(targets, opts) {
   if (!Array.isArray(targets) || targets.length === 0) return { refused: 'no-targets' };
-  const runs = new Set();
+  const byRun = new Map();
   for (const t of targets) {
     const loc = findRecordRun(t, opts);
     if (!loc) return { refused: 'target-not-found', target: t };
     if (loc.ambiguous) return { refused: 'target-in-multiple-runs-w2b', target: t, runs: loc.runs };
-    runs.add(loc.runId);
+    if (!byRun.has(loc.runId)) byRun.set(loc.runId, []);
+    byRun.get(loc.runId).push(t);
   }
-  if (runs.size > 1) return { refused: 'cross-run-deferred-w2c', runs: [...runs].sort() };
-  return { runId: [...runs][0] };
+  return { byRun };
+}
+
+/**
+ * Build the honest per-run mint-failure result (D4). TWO shapes by whether anything committed:
+ *   - NO run committed yet (`minted` empty) -> a CLEAN total failure: surface the `cause` directly as `failed`
+ *     (matches the single-run post-condition / append contract — there is no partial state to report).
+ *   - SOME runs committed, the run at `failRid` did not -> a genuine cross-run PARTIAL: `failed:'partial-cross-run'`
+ *     with `{minted, unminted, cause}`. NO rollback (un-committing a destructive op is itself a destructive op —
+ *     §0a.3.1); recovery is an idempotent re-invoke (the per-(proposal,run) key DEDUPS the already-minted runs and
+ *     retries only the unminted). `unminted` = failRid + every run after it in the sorted order.
+ * Never throws — returns a frozen {ok:false} result.
+ *
+ * @param {object[]} minted the already-committed per-run mint records (frozen entries)
+ * @param {string[]} runIds the full sorted run order
+ * @param {string} failRid the run that failed
+ * @param {string} cause the per-run failure code (append-failed | append-error | build-failed | post-condition-mismatch)
+ * @param {object} [extra] additional context
+ * @returns {Readonly<object>}
+ */
+function partialResult(minted, runIds, failRid, cause, extra) {
+  const mintedRuns = new Set(minted.map((m) => m.runId));
+  const unminted = runIds.filter((r) => !mintedRuns.has(r));
+  if (minted.length === 0) {
+    // No partial state — a clean total failure (single-run, or the first run failing). Surface the cause.
+    return Object.freeze({ ok: false, failed: cause, fail_run: failRid, unminted: Object.freeze(unminted), ...extra });
+  }
+  return Object.freeze({
+    ok: false,
+    failed: 'partial-cross-run',
+    cause,
+    fail_run: failRid,
+    minted: Object.freeze(minted.slice()),
+    unminted: Object.freeze(unminted),
+    ...extra,
+  });
+}
+
+/**
+ * Append each PLANNED per-run mint (one COMMITTED op per run, naming THAT run's subset). On the FIRST per-run
+ * failure: STOP and return the honest partial (D4 — no rollback; idempotent retry recovers). Per-run: append ->
+ * re-read + exact-SET post-condition on THAT run's subset (architect F4 — the global set would falsely reject).
+ * Every append is wrapped so a thrown error (e.g. a transient EACCES) becomes a clean partial, never a propagated
+ * throw (the never-throws contract).
+ *
+ * @param {Array<{rid:string, subset:string[], record:object}>} planned the per-run build plan (sorted runId order)
+ * @param {string[]} runIds the full sorted run order (for the unminted computation)
+ * @param {string} operationClass the expected COMMITTED op class
+ * @param {{stateDir?: string}} opts
+ * @returns {{minted: object[]} | Readonly<object>} {minted} on full success, else a frozen partialResult
+ */
+function mintPlannedRuns(planned, runIds, operationClass, opts) {
+  const { stateDir } = opts;
+  const minted = [];
+  for (const p of planned) {
+    let res;
+    try {
+      res = appendRecord(p.record, { runId: p.rid, stateDir });
+    } catch (e) { return partialResult(minted, runIds, p.rid, 'append-error', { error: e && e.message ? e.message : String(e) }); }
+    if (!res.ok) return partialResult(minted, runIds, p.rid, 'append-failed', { reason: res.reason });
+    // POST-CONDITION (hacker CRITICAL -- the INV-22 poison-key fail-OPEN): the append may have DEDUPED against a
+    // pre-planted decoy with the same (proposalId, runId) key but a different affected_records; re-read + HARD-FAIL
+    // unless the stored op acts on EXACTLY this run's subset (exact-SET-equality; superset/subset/dup-pad/foreign).
+    let stored;
+    try { stored = readById(res.transaction_id, { runId: p.rid, stateDir }); } catch { stored = null; }
+    if (!postConditionOk(stored, operationClass, new Set(p.subset))) {
+      return partialResult(minted, runIds, p.rid, 'post-condition-mismatch', { transaction_id: res.transaction_id, deduped: !!res.deduped });
+    }
+    minted.push(Object.freeze({ runId: p.rid, transaction_id: res.transaction_id, targets: Object.freeze([...p.subset]), deduped: !!res.deduped }));
+  }
+  return { minted };
 }
 
 /**
@@ -131,14 +208,14 @@ function postConditionOk(stored, operationClass, wantSet) {
 }
 
 /**
- * Promote ONE explicit approved `cull` / `content-dedup` / `merge` proposal to a COMMITTED kernel op
- * (TOMBSTONE / SUPERSEDE) over its MULTI-target, SINGLE-RUN set. Human-gated + flag-gated + shadow-default.
- * NEVER throws -- returns a frozen { ok, ... } result.
+ * Promote ONE explicit approved `cull` / `content-dedup` / `merge` proposal to COMMITTED kernel ops
+ * (TOMBSTONE / SUPERSEDE) over its MULTI-target, possibly CROSS-RUN set (W2c — one mint per run).
+ * Human-gated + flag-gated + shadow-default. NEVER throws -- returns a frozen { ok, ... } result.
  *
  * @param {string} proposalId the id the human reviewed + approved
  * @param {{stateDir?: string, nowIso?: string}} [opts]
- * @returns {object} frozen: { ok:true, transaction_id, runId, targets, operation_class, deduped }
- *                   | { ok:false, refused, ... } | { ok:false, failed, ... }
+ * @returns {object} frozen: { ok:true, operation_class, targets, mints:[{runId, transaction_id, targets, deduped}] }
+ *                   | { ok:false, refused, ... } (pre-flight) | { ok:false, failed:'partial-cross-run', minted, unminted, ... }
  */
 function promoteProposal(proposalId, opts = {}) {
   if (!isEnforced()) return refuse('shadow-default', { hint: 'set LOOM_MANAGE_ENFORCE=1 to opt in (the human is the trust anchor)' });
@@ -183,27 +260,54 @@ function promoteProposal(proposalId, opts = {}) {
   if (wantTargets.length === 0) return refuse('no-targets');
   if (wantTargets.length > MAX_TARGETS) return refuse('too-many-targets', { count: wantTargets.length });
 
-  // (4) Resolve the single run holding ALL targets (D5) -- fail-closed on phantom / ambiguous / cross-run.
-  const loc = resolveSingleRun(wantTargets, { stateDir });
-  if (loc.refused) { const { refused: code, ...extra } = loc; return refuse(code, extra); }
-  const runId = loc.runId;
+  // (4) Resolve EACH target's run -> a Map<runId, target[]> (W2c: cross-run is now LEGAL). Fail-closed on
+  // phantom / ambiguous (D7). Deterministic sorted run order -> the mint loop + the mints[] result reproduce.
+  const resolved = resolveTargetRuns(wantTargets, { stateDir });
+  if (resolved.refused) { const { refused: code, ...extra } = resolved; return refuse(code, extra); }
+  const byRun = resolved.byRun;
+  const runIds = [...byRun.keys()].sort();
 
-  // (5) Per-target IDOR eligibility (D4 -- after run-resolution; all-or-nothing). Any kernel-owned / manage-op
-  // target refuses the WHOLE op before any mint.
-  for (const t of wantTargets) {
-    const elig = eligibilityRefusal(readById(t, { runId, stateDir }));
-    if (elig) return refuse(elig, { target: t });
+  // (5) Per-target IDOR eligibility (all-or-nothing, BEFORE any mint). Read each target against its OWN run
+  // (the byRun map — the W2a CRITICAL: never a guessed run). Any kernel-owned / manage-op target refuses the
+  // WHOLE op across all runs (no partial mint on an eligibility failure — that is a pre-flight refusal, distinct
+  // from the post-flight partial-cross-run).
+  for (const rid of runIds) {
+    for (const t of byRun.get(rid)) {
+      const elig = eligibilityRefusal(readById(t, { runId: rid, stateDir }));
+      if (elig) return refuse(elig, { target: t });
+    }
   }
 
-  // (5.5) PROMOTE-PATH BREAKER (W2b.2, EC2): bound the destruction RATE before the irreversible mint.
-  // Evaluate the `manage-promote` source (committed TOMBSTONE/SUPERSEDE mints, CROSS-run, windowed on FS
-  // mtime) on the GLOBAL cap (no persona — every mint carries the same writer_persona_id, so per-persona is
-  // degenerate; F5). The breaker uses REAL wall-clock (NOT the caller's nowIso — else a future nowIso would
-  // shift the window forward and age out the real recent mints → fail-to-trip; the C1 lesson at the window
-  // level). It counts PRIOR committed mints (the in-flight one is not appended yet) → caps the (N+1)th.
-  // Rides LOOM_MANAGE_ENFORCE (no second flag; the cap is live exactly when destruction is live — F2);
-  // kill-switch is LOOM_DISABLE_CIRCUIT_BREAKER (opt-OUT). FAIL-CLOSED on a scan ERROR (M3): a thrown
-  // source read REFUSES (never silently mints; preserves the never-throws contract).
+  // (6) PLAN the per-run mints UP FRONT (before the breaker): build each run's record + determine which runs will
+  // DEDUP (an existing committed mint for the same (proposalId, runId) key) vs net-MINT. The approval axiom is
+  // computed ONCE — it is per-PROPOSAL, identical for every per-run mint (architect F9). A build error here is a
+  // clean pre-flight refuse (nothing minted yet). Pure: buildManageOpRecord + readByIdempotencyKey are read-only.
+  const approvalAxiomHash = crypto.createHash('sha256').update(canonicalJsonSerialize(proposal)).digest('hex');
+  const planned = [];
+  for (const rid of runIds) {
+    const subset = byRun.get(rid);
+    let record;
+    try {
+      record = buildManageOpRecord({ operationClass, affectedRecords: subset, proposalId, runId: rid, approvalAxiomHash, schemaVersion: SCHEMA_VERSION, nowIso });
+    } catch (e) { return refuse('build-failed', { error: e.message, run: rid }); }
+    let willDedup = false;
+    try { willDedup = !!readByIdempotencyKey(record.idempotency_key, { runId: rid, stateDir }); } catch { willDedup = false; }
+    planned.push({ rid, subset, record, willDedup });
+  }
+
+  // (6.5) PROMOTE-PATH BREAKER (W2b.2 EC2, W2c-predictive). Evaluate the `manage-promote` source (committed
+  // TOMBSTONE/SUPERSEDE mints, CROSS-run, windowed on FS mtime) ONCE on the GLOBAL cap (no persona — every mint
+  // carries the same writer_persona_id, so per-persona is degenerate; F5). ONE evaluation, not per-run (per-run
+  // re-eval would manufacture partials — architect D5). REAL wall-clock (NOT the caller's nowIso — else a future
+  // nowIso would age out the recent mints → fail-to-trip; the C1 window-level lesson).
+  // PREDICTIVE (hacker VERIFY H1/F2 + VALIDATE H1): K = the count of runs that will NET-MINT (NOT runIds.length —
+  // a run that will dedup adds 0 net destruction AND is already counted in denials_in_window, so counting it in K
+  // too would double-count it and WEDGE the documented partial-retry recovery near the threshold). Refuse
+  // `breaker-would-exceed` (ZERO mints) if denials_in_window + K would EXCEED the threshold — a non-predictive
+  // check lets ONE approval mint up to #runs<=MAX_TARGETS irreversible ops past the cap. The arithmetic is HERE
+  // (the breaker stays source-agnostic — architect SRP). Rides LOOM_MANAGE_ENFORCE (no second flag — F2);
+  // kill-switch LOOM_DISABLE_CIRCUIT_BREAKER. FAIL-CLOSED on a scan error / tamper signal (never silently mints).
+  const k = planned.filter((p) => !p.willDedup).length;
   let breaker;
   try {
     breaker = evaluateBreaker({ source: 'manage-promote', stateDir });
@@ -211,8 +315,8 @@ function promoteProposal(proposalId, opts = {}) {
     return refuse('breaker-source-unavailable', { error: e && e.message ? e.message : String(e) });
   }
   // VALIDATE hacker M1: a nonzero excluded_future is a STORM-HIDING tamper signal — a same-uid utimes() of a
-  // destructive mint into the future drops it from the window (under-count → fail-to-trip). The breaker
-  // already computes it; for THIS irreversible op we fail-CLOSED on the signal rather than silently mint.
+  // destructive mint into the future drops it from the window (under-count → fail-to-trip). Fail-CLOSED. (The
+  // signal is one-directional: a BACK-date storm is the un-instrumented OQ-E/sandbox residual — record-scan.js.)
   if (breaker.excluded_future > 0) {
     return refuse('breaker-tamper-signal', { excluded_future: breaker.excluded_future });
   }
@@ -221,33 +325,25 @@ function promoteProposal(proposalId, opts = {}) {
       scope: breaker.scope, denials_in_window: breaker.denials_in_window, threshold: breaker.threshold, window_ms: breaker.window_ms,
     });
   }
-
-  // (6) Mint: the human approval IS the A10 axiom (bound to the canonical proposal body). ONE atomic op naming
-  // all targets in affected_records.
-  const approvalAxiomHash = crypto.createHash('sha256').update(canonicalJsonSerialize(proposal)).digest('hex');
-  let record;
-  try {
-    record = buildManageOpRecord({ operationClass, affectedRecords: wantTargets, proposalId, approvalAxiomHash, schemaVersion: SCHEMA_VERSION, nowIso });
-  } catch (e) { return refuse('build-failed', { error: e.message }); }
-
-  const res = appendRecord(record, { runId, stateDir });
-  if (!res.ok) return refuse('append-failed', { reason: res.reason });
-
-  // (7) POST-CONDITION verify (hacker CRITICAL -- the INV-22 poison-key fail-OPEN, exact-SET-equality). The
-  // append may have DEDUPED against a pre-planted decoy carrying the same idempotency_key but a different
-  // affected_records; re-read the STORED record and HARD-FAIL unless it acts on EXACTLY the approved set.
-  const stored = readById(res.transaction_id, { runId, stateDir });
-  if (!postConditionOk(stored, operationClass, new Set(wantTargets))) {
-    return Object.freeze({
-      ok: false,
-      failed: 'post-condition-mismatch',
-      detail: 'the stored op does not act on EXACTLY the approved target set as a COMMITTED op (possible INV-22 poison-key suppression)',
-      transaction_id: res.transaction_id,
-      deduped: !!res.deduped,
+  // The predictive bound (strict `>`): a promotion may bring the window count UP TO the threshold (matching the
+  // existing K=1 "the threshold-reaching mint is allowed, the next is refused" behavior), never PAST it.
+  if (breaker.denials_in_window + k > breaker.threshold) {
+    return refuse('breaker-would-exceed', {
+      denials_in_window: breaker.denials_in_window, threshold: breaker.threshold, k, window_ms: breaker.window_ms,
     });
   }
 
-  return Object.freeze({ ok: true, transaction_id: res.transaction_id, runId, targets: wantTargets, operation_class: operationClass, deduped: !!res.deduped });
+  // (7) MINT each planned run (one COMMITTED op per run, sorted order; per-run exact-SET post-condition; honest
+  // partial on the first failure — D4). (8) Success: clean-break {mints:[...]} (no single-run alias — architect
+  // F5): operation_class + targets are PROMOTION-level; the per-run facts are in mints[] (sorted runId order).
+  const outcome = mintPlannedRuns(planned, runIds, operationClass, { stateDir });
+  if (outcome.failed) return outcome; // a partial / total mint failure
+  return Object.freeze({
+    ok: true,
+    operation_class: operationClass,
+    targets: wantTargets,
+    mints: Object.freeze(outcome.minted),
+  });
 }
 
 module.exports = { promoteProposal, OP_MAP };

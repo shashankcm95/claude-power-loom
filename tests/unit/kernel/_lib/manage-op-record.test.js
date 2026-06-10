@@ -8,7 +8,9 @@
 //   - post_state_hash null (a logical op — no git tree; the architect VERIFY confirmed this is the HONEST choice);
 //   - evidence_refs = [USER_INTENT_AXIOM:<sha256(canonical(approved-proposal))>] (the A10 bootstrap = the human approval);
 //   - writer_persona_id 'lab:manage-promote' (VERIFY: Lab-originated, never claims kernel authorship);
-//   - writer_spawn_id derived from proposalId internally (VERIFY MED-1: the INV-22 binding is checked, not assumed).
+//   - writer_spawn_id derived from (proposalId, runId) internally (VERIFY MED-1: the INV-22 binding is checked).
+// W2c adds per-(proposal,run) idempotency: the resolved runId is folded into writer_spawn_id (distinct per-run
+// keys for a cross-run mint) + a 64-hex proposalId assertion (the colon-join unambiguity invariant — hacker M3).
 
 'use strict';
 
@@ -42,6 +44,7 @@ const build = (over = {}) => {
     operationClass: 'TOMBSTONE',
     affectedRecords: p.target_records,
     proposalId: p.proposal_id,
+    runId: 'run0',
     approvalAxiomHash: sha256(canonicalJsonSerialize(p)),
     schemaVersion: 'v6',
     nowIso: T0,
@@ -71,9 +74,9 @@ test('evidence_refs is the USER_INTENT_AXIOM bootstrap bound to the proposal (A1
   assert.ok(isBootstrapSentinel(r.evidence_refs[0]));
 });
 
-test('writer_spawn_id is derived from proposalId internally (the INV-22 binding)', () => {
+test('writer_spawn_id is derived from (proposalId, runId) internally (the per-(proposal,run) INV-22 binding)', () => {
   const p = proposal([hx('a')]);
-  assert.strictEqual(build({ proposal: p }).writer_spawn_id, `manage-promote:${p.proposal_id}`);
+  assert.strictEqual(build({ proposal: p }).writer_spawn_id, `manage-promote:${p.proposal_id}:run0`);
 });
 
 test('transaction_id + idempotency_key are verified content-addresses (appendRecord will accept)', () => {
@@ -116,6 +119,33 @@ test('rejects a non-hex approvalAxiomHash (the sentinel must be valid) + an empt
 
 test('rejects an invalid operationClass (only SUPERSEDE/TOMBSTONE)', () => {
   assert.throws(() => build({ fields: { operationClass: 'CREATE' } }));
+});
+
+// -- W2c: per-(proposal,run) idempotency — the resolved runId is folded into the key.
+test('W2c: same proposal, DIFFERENT runId -> DIFFERENT idempotency_key (no cross-run key collapse)', () => {
+  const p = proposal([hx('a')]);
+  const rA = build({ proposal: p, fields: { runId: 'runA' } });
+  const rB = build({ proposal: p, fields: { runId: 'runB' } });
+  assert.notStrictEqual(rA.idempotency_key, rB.idempotency_key);
+  assert.notStrictEqual(rA.transaction_id, rB.transaction_id);
+});
+
+test('W2c: same (proposal, runId) -> SAME idempotency_key (the idempotent-retry recovery property)', () => {
+  const p = proposal([hx('a')]);
+  const r1 = build({ proposal: p, fields: { runId: 'runA' } });
+  const r2 = build({ proposal: p, fields: { runId: 'runA', nowIso: '2026-06-09T00:00:00.000Z' } });
+  assert.strictEqual(r1.idempotency_key, r2.idempotency_key);
+});
+
+test('W2c: rejects a missing / empty runId (the per-(proposal,run) key axis is required)', () => {
+  const p = proposal([hx('a')]);
+  assert.throws(() => buildManageOpRecord({ operationClass: 'TOMBSTONE', affectedRecords: p.target_records, proposalId: p.proposal_id, approvalAxiomHash: sha256(canonicalJsonSerialize(p)), schemaVersion: 'v6', nowIso: T0 }), /runId/);
+  assert.throws(() => build({ fields: { runId: '' } }), /runId/);
+});
+
+test('W2c M3: rejects a non-64-hex proposalId (the colon-join unambiguity invariant)', () => {
+  assert.throws(() => build({ fields: { proposalId: 'manage:evil' } }), /64-hex/);
+  assert.throws(() => build({ fields: { proposalId: 'seed' } }), /64-hex/);
 });
 
 process.stdout.write(`\nmanage-op-record.test.js (v3.6 W2a): ${passed} passed, ${failed} failed\n`);

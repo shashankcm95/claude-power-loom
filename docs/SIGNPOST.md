@@ -35,7 +35,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/kernel/_lib/library-reconcile.js` - library-reconcile.js — single source of truth for catalog-entry construction
 - `packages/kernel/_lib/lineage.js` - K3 lineage primitive — parent_state_id chain + session_id prompt injection.
 - `packages/kernel/_lib/lock.js` - Shared file-lock primitive for HETS scripts.
-- `packages/kernel/_lib/manage-op-record.js` - v3.6 Wave 2a — the genesis-rooted COMMITTED SUPERSEDE/TOMBSTONE builder for the human-gated manage-promote
+- `packages/kernel/_lib/manage-op-record.js` - v3.6 Wave 2a + W2c — the genesis-rooted COMMITTED SUPERSEDE/TOMBSTONE builder for the human-gated manage-promote
 - `packages/kernel/_lib/memory-root.js` - Memory Root Pointer reader per v6 §5a.9 + Round-3d trust policy.
 - `packages/kernel/_lib/network-egress-detect.js` - Pure network-egress detection helpers for the PostToolUse:Bash audit
 - `packages/kernel/_lib/path-canonicalize.js` - K7 — Path canonicalization + CWE-22 traversal guard (v3.0-alpha, PR 2).
@@ -204,6 +204,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 ### `lab/manage-proposal/`
 
 - `packages/lab/manage-proposal/cli.js` - v3.5 Wave 3b.1 - the manage-proposal CLI - the dogfood vehicle + the human-DISPOSITION surface for the
+- `packages/lab/manage-proposal/crossrun-load.js` - v3.6 Wave 2c — the READER-SIDE cross-run load convention.
 - `packages/lab/manage-proposal/enums.js` - v3.5 Wave 3b.1 - shared manage-proposal enums + R4 validation re-export.
 - `packages/lab/manage-proposal/lifecycle.js` - v3.6 Wave 1 (consumer-first, SHADOW) - the manage-layer lifecycle READ consumer.
 - `packages/lab/manage-proposal/manage-ops.js` - v3.5 Wave 3b - the manage-op producers.

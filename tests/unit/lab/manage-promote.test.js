@@ -15,9 +15,10 @@
 //
 // W2b.1 (multi-target single-run generalization): content-dedup/merge -> SUPERSEDE + multi-target cull;
 // exact-SET-equality post-condition (superset/subset/dup-pad decoys FAIL); per-target eligibility (one
-// kernel-owned target refuses the whole op); cross-run REFUSE (cross-run-deferred-w2c, not target-not-found);
-// canonicalize-at-the-boundary (a planted authentic non-canonical row promotes correctly, no self-DoS);
-// blast-radius re-cap (a planted over-MAX_TARGETS row REFUSES).
+// kernel-owned target refuses the whole op); canonicalize-at-the-boundary (a planted authentic non-canonical row
+// promotes correctly, no self-DoS); blast-radius re-cap (a planted over-MAX_TARGETS row REFUSES).
+// W2c LIFTED the cross-run refusal: targets spanning runs now SUCCEED (one mint per run; full coverage in
+// manage-promote-crossrun.test.js). The success contract is {mints:[...]} (no single-run transaction_id alias).
 //
 // Two stores: the proposal ledger (LOOM_LAB_STATE_DIR, set before require) + the kernel record-store (a
 // per-test stateDir passed in). LOOM_MANAGE_ENFORCE is the opt-in flag (set per enforcing test).
@@ -98,7 +99,7 @@ test('THE LOOP: approved cull -> COMMITTED TOMBSTONE -> manageLifecycleStatus re
   const res = promoteProposal(approvedCull([t]), { stateDir: dir, nowIso: T0 });
   assert.strictEqual(res.ok, true, JSON.stringify(res));
   assert.strictEqual(res.operation_class, 'TOMBSTONE');
-  const reader = manageLifecycleStatus(t, { records: listByRun({ runId: res.runId, stateDir: dir }), nowMs: Date.parse(T0) });
+  const reader = manageLifecycleStatus(t, { records: listByRun({ runId: res.mints[0].runId, stateDir: dir }), nowMs: Date.parse(T0) });
   assert.strictEqual(reader.kernel_state, 'tombstoned'); // the loop closes
 });
 
@@ -138,7 +139,7 @@ test('W2b multi-target cull -> COMMITTED TOMBSTONE -> every target tombstoned', 
   const res = promoteProposal(approvedOp(cullRecord, [a, b, c]), { stateDir: dir, nowIso: T0 });
   assert.strictEqual(res.ok, true, JSON.stringify(res));
   assert.strictEqual(res.operation_class, 'TOMBSTONE');
-  const recs = listByRun({ runId: res.runId, stateDir: dir });
+  const recs = listByRun({ runId: res.mints[0].runId, stateDir: dir });
   for (const t of [a, b, c]) {
     assert.strictEqual(manageLifecycleStatus(t, { records: recs, nowMs: Date.parse(T0) }).kernel_state, 'tombstoned');
   }
@@ -151,7 +152,7 @@ test('W2b merge -> COMMITTED SUPERSEDE -> every target superseded', () => {
   const res = promoteProposal(approvedOp(mergeRecord, [a, b]), { stateDir: dir, nowIso: T0 });
   assert.strictEqual(res.ok, true, JSON.stringify(res));
   assert.strictEqual(res.operation_class, 'SUPERSEDE');
-  const recs = listByRun({ runId: res.runId, stateDir: dir });
+  const recs = listByRun({ runId: res.mints[0].runId, stateDir: dir });
   assert.strictEqual(manageLifecycleStatus(a, { records: recs, nowMs: Date.parse(T0) }).kernel_state, 'superseded');
   assert.strictEqual(manageLifecycleStatus(b, { records: recs, nowMs: Date.parse(T0) }).kernel_state, 'superseded');
 });
@@ -177,7 +178,7 @@ test('W2b CRITICAL: superset / subset / dup-pad poison decoys all FAIL the exact
     const pid = approvedOp(mergeRecord, [a, b]);
     const proposal = listProposals().find((p) => p.proposal_id === pid);
     const axiom = sha256(canonicalJsonSerialize(proposal));
-    const decoy = buildManageOpRecord({ operationClass: 'SUPERSEDE', affectedRecords: decoyOf(a, b), proposalId: pid, approvalAxiomHash: axiom, schemaVersion: 'v6', nowIso: '2026-01-01T00:00:00.000Z' });
+    const decoy = buildManageOpRecord({ operationClass: 'SUPERSEDE', affectedRecords: decoyOf(a, b), proposalId: pid, runId: 'runX', approvalAxiomHash: axiom, schemaVersion: 'v6', nowIso: '2026-01-01T00:00:00.000Z' });
     assert.strictEqual(appendRecord(decoy, { runId: 'runX', stateDir: dir }).ok, true);
     const res = promoteProposal(pid, { stateDir: dir, nowIso: T0 });
     assert.strictEqual(res.ok, false, `decoy ${JSON.stringify(decoyOf(a, b))} should FAIL`);
@@ -198,14 +199,16 @@ test('W2b IDOR: a multi-target set with one kernel-owned target -> REFUSE whole 
   assert.strictEqual(listByRun({ runId: 'runX', stateDir: dir }).filter((r) => r.operation_class === 'SUPERSEDE').length, 0);
 });
 
-// -- 4f (W2b cross-run): targets spanning runs -> REFUSE cross-run-deferred-w2c (NOT target-not-found).
-test('W2b cross-run: targets in different runs -> REFUSE cross-run-deferred-w2c', () => {
+// -- 4f (W2c): targets spanning runs now SUCCEED — one mint per run (the cross-run-deferred-w2c refusal is
+// LIFTED in W2c). Full cross-run coverage lives in manage-promote-crossrun.test.js; this is the in-file smoke.
+test('W2c cross-run: targets in different runs -> SUCCEED with one mint per run', () => {
   const dir = freshState();
   const a = seedTarget('runX', dir);
   const b = seedTarget('runY', dir);
   const res = promoteProposal(approvedOp(mergeRecord, [a, b]), { stateDir: dir, nowIso: T0 });
-  assert.strictEqual(res.ok, false);
-  assert.strictEqual(res.refused, 'cross-run-deferred-w2c');
+  assert.strictEqual(res.ok, true, JSON.stringify(res));
+  assert.strictEqual(res.mints.length, 2);
+  assert.deepStrictEqual(res.mints.map((m) => m.runId).sort(), ['runX', 'runY']);
 });
 
 // -- 4g (W2b INV-22): re-promoting a multi-target proposal DEDUPS (one SUPERSEDE).
@@ -216,8 +219,8 @@ test('W2b INV-22: re-promoting a multi-target proposal DEDUPS (one SUPERSEDE)', 
   const r1 = promoteProposal(pid, { stateDir: dir, nowIso: T0 });
   const r2 = promoteProposal(pid, { stateDir: dir, nowIso: '2026-06-09T00:00:00.000Z' });
   assert.strictEqual(r1.ok && r2.ok, true, JSON.stringify([r1, r2]));
-  assert.strictEqual(r2.deduped, true);
-  assert.strictEqual(r1.transaction_id, r2.transaction_id);
+  assert.strictEqual(r2.mints[0].deduped, true);
+  assert.strictEqual(r1.mints[0].transaction_id, r2.mints[0].transaction_id);
   assert.strictEqual(listByRun({ runId: 'runX', stateDir: dir }).filter((r) => r.operation_class === 'SUPERSEDE').length, 1);
 });
 
@@ -231,7 +234,7 @@ test('W2b canonicalize self-DoS: a planted authentic non-canonical [t2,t1,t1] ro
   const res = promoteProposal(pid, { stateDir: dir, nowIso: T0 });
   assert.strictEqual(res.ok, true, JSON.stringify(res));
   assert.strictEqual(res.operation_class, 'SUPERSEDE');
-  const recs = listByRun({ runId: res.runId, stateDir: dir });
+  const recs = listByRun({ runId: res.mints[0].runId, stateDir: dir });
   assert.strictEqual(manageLifecycleStatus(t1, { records: recs, nowMs: Date.parse(T0) }).kernel_state, 'superseded');
   assert.strictEqual(manageLifecycleStatus(t2, { records: recs, nowMs: Date.parse(T0) }).kernel_state, 'superseded');
 });
@@ -255,7 +258,12 @@ test('W2b immutability: the success result + its targets array are frozen', () =
   const res = promoteProposal(approvedOp(mergeRecord, [a, b]), { stateDir: dir, nowIso: T0 });
   assert.strictEqual(res.ok, true, JSON.stringify(res));
   assert.ok(Object.isFrozen(res) && Object.isFrozen(res.targets));
+  // the new {mints:[...]} payload must be deep-frozen too (VALIDATE code-reviewer HIGH — the contract change moved
+  // the primary payload into mints[]; a shallow freeze would leave the per-run entries + their targets mutable).
+  assert.ok(Object.isFrozen(res.mints) && Object.isFrozen(res.mints[0]) && Object.isFrozen(res.mints[0].targets));
   assert.throws(() => res.targets.push('EVIL'), TypeError);
+  assert.throws(() => res.mints.push('EVIL'), TypeError);
+  assert.throws(() => res.mints[0].targets.push('EVIL'), TypeError);
 });
 
 // -- 4k (W2b VALIDATE hacker LOW): a planted op_type reaching the Object prototype (toString) -> REFUSE
@@ -299,7 +307,7 @@ test('IDOR: a kernel:-namespaced target -> REFUSE (target-kernel-owned)', () => 
 
 test('IDOR: a target that is itself a manage-op (TOMBSTONE) -> REFUSE (target-is-a-manage-op)', () => {
   const dir = freshState();
-  const op = buildManageOpRecord({ operationClass: 'TOMBSTONE', affectedRecords: [hx('a')], proposalId: 'seed', approvalAxiomHash: hx('c'), schemaVersion: 'v6', nowIso: T0 });
+  const op = buildManageOpRecord({ operationClass: 'TOMBSTONE', affectedRecords: [hx('a')], proposalId: hx('1'), runId: 'runX', approvalAxiomHash: hx('c'), schemaVersion: 'v6', nowIso: T0 });
   appendRecord(op, { runId: 'runX', stateDir: dir });
   assert.strictEqual(promoteProposal(approvedCull([op.transaction_id]), { stateDir: dir, nowIso: T0 }).refused, 'target-is-a-manage-op');
 });
@@ -312,8 +320,8 @@ test('INV-22: re-promoting the same approved proposal DEDUPS (one TOMBSTONE), po
   const r1 = promoteProposal(pid, { stateDir: dir, nowIso: T0 });
   const r2 = promoteProposal(pid, { stateDir: dir, nowIso: '2026-06-09T00:00:00.000Z' });
   assert.strictEqual(r1.ok && r2.ok, true);
-  assert.strictEqual(r2.deduped, true);
-  assert.strictEqual(r1.transaction_id, r2.transaction_id); // same transaction
+  assert.strictEqual(r2.mints[0].deduped, true);
+  assert.strictEqual(r1.mints[0].transaction_id, r2.mints[0].transaction_id); // same transaction
   assert.strictEqual(listByRun({ runId: 'runX', stateDir: dir }).filter((r) => r.operation_class === 'TOMBSTONE').length, 1);
 });
 
@@ -326,7 +334,7 @@ test('CRITICAL: a same-idempotency_key poison decoy -> POST-CONDITION FAILS (not
   const axiom = sha256(canonicalJsonSerialize(proposal));
   // The attacker pre-plants a TOMBSTONE with the SAME idempotency_key (same proposalId -> same writer_spawn_id)
   // but affected_records:[decoy] (a DIFFERENT target). It is a valid record -> appends.
-  const decoy = buildManageOpRecord({ operationClass: 'TOMBSTONE', affectedRecords: [hx('d')], proposalId: pid, approvalAxiomHash: axiom, schemaVersion: 'v6', nowIso: '2026-01-01T00:00:00.000Z' });
+  const decoy = buildManageOpRecord({ operationClass: 'TOMBSTONE', affectedRecords: [hx('d')], proposalId: pid, runId: 'runX', approvalAxiomHash: axiom, schemaVersion: 'v6', nowIso: '2026-01-01T00:00:00.000Z' });
   assert.strictEqual(appendRecord(decoy, { runId: 'runX', stateDir: dir }).ok, true);
   // The human promotes -> appendRecord DEDUPS against the decoy (same key) -> writes nothing. The POST-CONDITION
   // catches that the stored op tombstones [decoy], NOT [t] -> HARD FAIL (the real target stays NOT tombstoned).
@@ -348,7 +356,7 @@ test('CRITICAL NEW-1: a SUPERSET poison decoy [target,victim] -> POST-CONDITION 
   // The decoy carries the SAME idempotency_key (same proposalId) but affected_records:[t, victim] -- a SUPERSET
   // that a subset .includes(t) would bless. With OLD code promote returned ok:true (laundering the victim);
   // with EXACT-equality it returns failed. (The decoy itself standing in the store is the OQ-E forge residual.)
-  const decoy = buildManageOpRecord({ operationClass: 'TOMBSTONE', affectedRecords: [t, hx('9')], proposalId: pid, approvalAxiomHash: axiom, schemaVersion: 'v6', nowIso: '2026-01-01T00:00:00.000Z' });
+  const decoy = buildManageOpRecord({ operationClass: 'TOMBSTONE', affectedRecords: [t, hx('9')], proposalId: pid, runId: 'runX', approvalAxiomHash: axiom, schemaVersion: 'v6', nowIso: '2026-01-01T00:00:00.000Z' });
   assert.strictEqual(appendRecord(decoy, { runId: 'runX', stateDir: dir }).ok, true);
   const res = promoteProposal(pid, { stateDir: dir, nowIso: T0 });
   assert.strictEqual(res.ok, false);
