@@ -30,8 +30,8 @@ function test(name, fn) {
 }
 
 // synthetic stat builder (so the uid branch is testable without chown/root)
-function stat({ symlink = false, file = true, uid = 501 }) {
-  return { isSymbolicLink: () => symlink, isFile: () => file, uid };
+function stat({ symlink = false, file = true, uid = 501, mode = 0o644 }) {
+  return { isSymbolicLink: () => symlink, isFile: () => file, uid, mode };
 }
 
 // -- pure policy: isSafeExecStat(stat, selfUid) --
@@ -47,10 +47,20 @@ test('isSafeExecStat: a non-file (dir/fifo/socket) is refused', () => {
 test('isSafeExecStat: a foreign-owned file is refused (POSIX defense-in-depth)', () => {
   assert.strictEqual(isSafeExecStat(stat({ uid: 99999 }), 501), false);
 });
-test('isSafeExecStat: selfUid=null (Windows: no getuid) SKIPS the uid check', () => {
-  // a foreign uid still passes the uid gate when selfUid is null (uid unknowable);
-  // symlink + isFile checks still apply.
+test('isSafeExecStat: a group/other-writable self-owned file is refused (foreign-tamper, CodeRabbit)', () => {
+  // a foreign uid can overwrite a SELF-OWNED but loosely-permissioned script
+  // without changing ownership -> the uid check passes but the contents are
+  // attacker-controlled. Reject any group- or other-writable regular file.
+  assert.strictEqual(isSafeExecStat(stat({ uid: 501, mode: 0o664 }), 501), false, 'group-writable refused');
+  assert.strictEqual(isSafeExecStat(stat({ uid: 501, mode: 0o646 }), 501), false, 'other-writable refused');
+  assert.strictEqual(isSafeExecStat(stat({ uid: 501, mode: 0o666 }), 501), false, 'group+other-writable refused');
+  assert.strictEqual(isSafeExecStat(stat({ uid: 501, mode: 0o755 }), 501), true, 'a 0755 script is accepted');
+});
+test('isSafeExecStat: selfUid=null (Windows: no getuid) SKIPS the POSIX checks', () => {
+  // a foreign uid AND group-writable both pass the gate when selfUid is null
+  // (uid/mode unknowable on Windows); symlink + isFile checks still apply.
   assert.strictEqual(isSafeExecStat(stat({ uid: 99999 }), null), true);
+  assert.strictEqual(isSafeExecStat(stat({ uid: 99999, mode: 0o666 }), null), true);
   assert.strictEqual(isSafeExecStat(stat({ symlink: true, uid: 99999 }), null), false);
 });
 test('isSafeExecStat: a null/undefined stat is refused', () => {
@@ -75,6 +85,18 @@ test('isSafeExecCandidate: a real symlink (even to a self-owned target) is refus
     const link = path.join(dir, 'link.js');
     fs.symlinkSync(target, link);
     assert.strictEqual(isSafeExecCandidate(link), false, 'a symlink candidate must be refused');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+test('isSafeExecCandidate: a real group/other-writable regular file is refused (POSIX)', () => {
+  if (typeof process.getuid !== 'function') { process.stdout.write('    (skipped: non-POSIX)\n'); return; }
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sr-perm-'));
+  try {
+    const f = path.join(dir, 'loose.js');
+    fs.writeFileSync(f, '// x\n');
+    fs.chmodSync(f, 0o666);
+    assert.strictEqual(isSafeExecCandidate(f), false, 'a 0666 file must be refused');
+    fs.chmodSync(f, 0o644);
+    assert.strictEqual(isSafeExecCandidate(f), true, 'tightened back to 0644 -> accepted');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 test('isSafeExecCandidate: a missing path is refused (lstat throws -> false)', () => {

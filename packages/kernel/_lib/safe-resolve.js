@@ -11,16 +11,20 @@
 // runs the target. This module refuses such candidates BEFORE they reach exec.
 //
 // WHAT THIS BUYS (honest framing — sibling of the M1 TOCTOU note; sharpened
-// after the VALIDATE hacker re-probe). The two checks together raise the bar
-// against a FOREIGN-uid attacker who can write into a misconfigured (group/
-// other-writable) $HOME subtree:
+// after the VALIDATE hacker re-probe + the CodeRabbit perms catch). Three
+// checks together CLOSE the FOREIGN-uid misconfigured-$HOME case (an attacker
+// who can write into a group/other-writable $HOME subtree):
 //   - symlink-reject — refuses a symlink AT THE CANDIDATE PATH ITSELF (final
 //     component). Its unique value: it stops a final-component symlink that
 //     redirects to an existing USER-OWNED file (which the uid check would
 //     otherwise pass). lstat is no-follow on the FINAL component ONLY.
-//   - uid-ownership (POSIX) — refuses a foreign-owned target. This is what
-//     actually holds the line against attacker CODE: a foreign attacker's
-//     planted file is foreign-owned and refused.
+//   - uid-ownership (POSIX) — refuses a foreign-OWNED target: a foreign
+//     attacker's freshly-planted file is foreign-owned and refused.
+//   - group/other-writability (POSIX) — refuses a SELF-owned but 0664/0666
+//     file: a foreign uid can overwrite a loosely-permissioned self-owned
+//     script (uid unchanged) and plant code; the writability reject closes
+//     that vector the uid check alone left open. Canonical scripts ship
+//     0644/0755, so no false-refusal.
 //
 // WHAT IT DOES NOT DEFEND (state plainly — "raises the bar," not "closes it"):
 //   - same-uid full-$HOME breach — a same-uid regular file OR hardlink passes
@@ -63,16 +67,23 @@ function currentUid() {
 /**
  * PURE policy: is this lstat result safe to execute? Rejects symlinks, any
  * non-regular-file (dir/fifo/socket/device), and — when selfUid is known
- * (POSIX) — foreign-owned files.
+ * (POSIX) — foreign-owned OR group/other-writable files. The writability
+ * check closes the misconfigured-$HOME gap the owner check alone left open:
+ * a foreign uid can overwrite a SELF-OWNED but 0664/0666 script (uid
+ * unchanged) and plant attacker code; rejecting any group/other-writable
+ * regular file refuses it (canonical scripts ship 0644/0755 — no FP).
  * @param {fs.Stats|null|undefined} stat result of an lstat (NOT a follow stat)
- * @param {number|null} selfUid current uid, or null to skip the owner check
+ * @param {number|null} selfUid current uid, or null to skip the POSIX checks
  * @returns {boolean}
  */
 function isSafeExecStat(stat, selfUid) {
   if (!stat) return false;
   if (stat.isSymbolicLink()) return false;        // load-bearing: symlink-swap defense
   if (!stat.isFile()) return false;               // must be a regular file
-  if (selfUid !== null && stat.uid !== selfUid) return false; // POSIX defense-in-depth
+  if (selfUid !== null) {                          // POSIX checks (skipped on Windows)
+    if (stat.uid !== selfUid) return false;         // foreign-owned -> refuse
+    if ((stat.mode & 0o022) !== 0) return false;    // group/other-writable -> refuse (foreign-tamper)
+  }
   return true;
 }
 

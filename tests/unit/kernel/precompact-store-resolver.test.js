@@ -34,9 +34,11 @@ function test(name, fn) {
 
 /** Run `node -e <code>` as a child with HOME=<home>; return parsed-JSON stdout. */
 function runChild(code, home) {
+  // Preserve the parent env (PATH, SystemRoot, …) + override HOME and USERPROFILE
+  // so os.homedir() isolates to the tmpdir on POSIX *and* Windows. CodeRabbit #282.
   const res = spawnSync(process.execPath, ['-e', code], {
     encoding: 'utf8', timeout: 15000,
-    env: { PATH: process.env.PATH, HOME: home },
+    env: { ...process.env, HOME: home, USERPROFILE: home },
   });
   if (res.status !== 0) {
     throw new Error(`child exited ${res.status}: ${(res.stderr || '').slice(0, 400)}`);
