@@ -34,11 +34,26 @@ const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const { log } = require('../_lib/_log.js');
+const { resolveExecCandidate } = require('../../_lib/safe-resolve');
 const logger = log('route-decide-on-agent-spawn');
 
-const ROUTE_DECIDE_PATH = path.join(os.homedir(), '.claude/packages/kernel/algorithms/route-decide.js');
 const LOG_FILE = path.join(os.homedir(), '.claude/checkpoints/route-decide-log.jsonl');
 const TIMEOUT_MS = 5000;
+
+// B1 (2026-06-10 chip, LOW): resolve route-decide.js across candidates instead of
+// a single hardcoded homedir path. Under a plugin install __dirname is
+// ${CLAUDE_PLUGIN_ROOT}/packages/kernel/hooks/pre, so ../../algorithms/route-decide.js
+// is ${CLAUDE_PLUGIN_ROOT}/packages/kernel/algorithms/route-decide.js — exactly where it
+// ships. The prior single ~/.claude/packages/ path was the LEGACY install-mirror
+// (populated only by `install.sh --hooks`), so a pure-plugin user found nothing and the
+// consultation gate was silently inert. resolveExecCandidate also applies the #282
+// symlink/uid exec-safety hardening the sibling resolvers already use.
+function resolveRouteDecidePath() {
+  return resolveExecCandidate([
+    path.join(__dirname, '..', '..', 'algorithms', 'route-decide.js'),
+    path.join(os.homedir(), '.claude', 'packages', 'kernel', 'algorithms', 'route-decide.js'),
+  ]);
+}
 
 function readStdin() {
   let raw = '';
@@ -109,20 +124,23 @@ function main() {
     return;
   }
 
-  // Run route-decide.
-  if (!fs.existsSync(ROUTE_DECIDE_PATH)) {
+  // Run route-decide (resolved across candidates — B1).
+  const routeDecidePath = resolveRouteDecidePath();
+  if (!routeDecidePath) {
     appendLog({
       timestamp: new Date().toISOString(),
       session_id: sessionId,
       tool_use_id: toolUseId,
       tool_name: toolName,
-      skipped: 'route-decide.js not installed at ' + ROUTE_DECIDE_PATH,
+      skipped: 'route-decide.js not found (checked __dirname-relative + homedir mirror)',
     });
     emit({ decision: 'approve' });
     return;
   }
 
-  const result = spawnSync('node', [ROUTE_DECIDE_PATH, '--task', taskText], {
+  // process.execPath (the absolute path of the CURRENT node) instead of bare 'node'
+  // — deterministic interpreter, no PATH-resolution variability (CodeRabbit #290).
+  const result = spawnSync(process.execPath, [routeDecidePath, '--task', taskText], {
     encoding: 'utf8',
     timeout: TIMEOUT_MS,
   });
@@ -158,4 +176,8 @@ function main() {
   emit({ decision: 'approve' });
 }
 
-main();
+if (require.main === module) {
+  main();
+}
+
+module.exports = { resolveRouteDecidePath };
