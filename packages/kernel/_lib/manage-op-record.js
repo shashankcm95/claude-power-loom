@@ -1,6 +1,6 @@
 // packages/kernel/_lib/manage-op-record.js
 //
-// v3.6 Wave 2a — the genesis-rooted COMMITTED SUPERSEDE/TOMBSTONE builder for the human-gated manage-promote
+// v3.6 Wave 2a + W2c — the genesis-rooted COMMITTED SUPERSEDE/TOMBSTONE builder for the human-gated manage-promote
 // (the leave-shadow MINT). The kernel-side counterpart of lab/manage-proposal/promote.js, which orchestrates
 // (read approved proposal -> locate run -> append + post-condition verify); THIS module only MINTS the record.
 //
@@ -13,9 +13,14 @@
 //     (a sentinel form). The caller binds approvalAxiomHash = sha256(canonicalJsonSerialize(<the approved proposal>)).
 //   - writer_persona_id 'lab:manage-promote' (VERIFY hacker MED: Lab-originated + un-attested until the sandbox;
 //     it NEVER claims a 'kernel:' namespace it cannot attest).
-//   - writer_spawn_id DERIVED from proposalId here (VERIFY architect MED-1: the INV-22 binding is internal +
-//     checked, not a free-form caller param that could drift from affected_records). Two proposals -> two keys;
-//     re-promoting the same proposal -> the same key (an INV-22 idempotent no-op).
+//   - writer_spawn_id DERIVED from (proposalId, runId) here (VERIFY architect MED-1: the INV-22 binding is
+//     internal + checked, not a free-form caller param that could drift from affected_records). v3.6 W2c folds
+//     the RESOLVED runId in so a cross-run promotion's per-run mints get DISTINCT keys (else, since the dedup is
+//     single-run-scoped, the per-run records would share ONE transaction_id across runs — identity-erasing).
+//     Two (proposal,run) pairs -> two keys; re-promoting the same proposal INTO THE SAME RUN -> the same key (an
+//     INV-22 idempotent no-op — the property the cross-run partial-failure retry relies on). The colon-join is
+//     unambiguous because proposalId is asserted 64-hex (no colon, fixed width) — the runId tail is unambiguous
+//     even though isSafePathSegment permits a ':' in a runId (hacker VERIFY M3).
 //
 // TRUST (OQ-E residual): this builds a record any same-uid caller could also forge (un-attested writer) —
 // accepted under the cooperative threat model; the human approval (the axiom) is the trust anchor; the
@@ -49,22 +54,29 @@ function isHex64(v) { return typeof v === 'string' && HEX64.test(v); }
  * @param {object} o
  * @param {'SUPERSEDE'|'TOMBSTONE'} o.operationClass
  * @param {string[]} o.affectedRecords  the target kernel transaction_ids (non-empty; 64-hex each)
- * @param {string} o.proposalId         the approved proposal's id (seeds writer_spawn_id — the INV-22 binding)
+ * @param {string} o.proposalId         the approved proposal's id (64-hex; seeds writer_spawn_id — INV-22 binding)
+ * @param {string} o.runId              the RESOLVED run this mint lands in (per-(proposal,run) key; W2c)
  * @param {string} o.approvalAxiomHash  sha256(canonicalJsonSerialize(<the approved proposal>)) — the A10 axiom
  * @param {string} o.schemaVersion      e.g. 'v6' (drives the genesis hash + schema_version)
  * @param {string} o.nowIso             intent_recorded_at (ISO 8601; injected for determinism)
  * @returns {object} a validated genesis manage-op record (transaction_id set)
  */
 function buildManageOpRecord(o) {
-  const { operationClass, affectedRecords, proposalId, approvalAxiomHash, schemaVersion, nowIso } = o || {};
+  const { operationClass, affectedRecords, proposalId, runId, approvalAxiomHash, schemaVersion, nowIso } = o || {};
   if (!MANAGE_OPS.includes(operationClass)) {
     throw new Error(`manage-op-record: operationClass must be SUPERSEDE|TOMBSTONE, got ${JSON.stringify(operationClass)}`);
   }
   if (!Array.isArray(affectedRecords) || affectedRecords.length === 0 || !affectedRecords.every(isHex64)) {
     throw new Error('manage-op-record: affectedRecords must be a non-empty array of 64-hex transaction_ids');
   }
-  if (typeof proposalId !== 'string' || proposalId.length === 0) {
-    throw new Error('manage-op-record: proposalId (a non-empty string) is required');
+  // 64-hex assertion (hacker VERIFY M3): the colon-join `proposalId:runId` is only unambiguous when proposalId is
+  // fixed-width hex (no colon) — so the runId tail can never be confused with part of the id, even though a runId
+  // may itself contain a ':'. Enforce the invariant rather than rely on the (current) accident of the caller.
+  if (!isHex64(proposalId)) {
+    throw new Error('manage-op-record: proposalId must be a 64-hex sha256 (the colon-join unambiguity invariant)');
+  }
+  if (typeof runId !== 'string' || runId.length === 0) {
+    throw new Error('manage-op-record: runId (a non-empty string — the per-(proposal,run) key axis) is required');
   }
   if (!isHex64(approvalAxiomHash)) {
     throw new Error('manage-op-record: approvalAxiomHash must be a 64-hex sha256 of the canonical approved proposal');
@@ -77,7 +89,7 @@ function buildManageOpRecord(o) {
   }
 
   const prevStateHash = computeGenesisHash(schemaVersion, 'per-project'); // genesis-rooted (not forked from a state)
-  const writerSpawnId = `manage-promote:${proposalId}`;                   // derived here — the INV-22 binding
+  const writerSpawnId = `manage-promote:${proposalId}:${runId}`;          // per-(proposal,run) — the INV-22 binding (W2c)
   // content_hash binds the op identity (writer_spawn_id encodes proposalId); post/head are null (a logical op).
   const contentHash = computeContentHash({ postStateHash: null, writerSpawnId, headAnchor: null });
   const idempotencyKey = computeIdempotencyKey({

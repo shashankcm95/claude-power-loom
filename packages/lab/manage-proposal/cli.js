@@ -25,6 +25,7 @@ const {
 } = require('./manage-ops');
 const { DISPOSITIONS, validateEnum } = require('./enums');
 const { manageLifecycleStatus } = require('./lifecycle');
+const { loadRecordsForTarget } = require('./crossrun-load');
 const { promoteProposal } = require('./promote');
 const { HEX64 } = require('../../kernel/_lib/provenance-walk');
 
@@ -116,13 +117,13 @@ function main(argv) {
   if (cmd === 'lifecycle') {
     // The READ consumer (v3.6 W1): the advisory manage-layer lifecycle verdict for a kernel txid. --txid is
     // a 64-hex transaction_id (grammar matches `dispose --proposal-id`; a positional is dropped by parseArgs).
-    // SHADOW: records are NOT supplied this wave (the run-seam is W2) -> kernel_state defaults 'unknown'; the
-    // manage-half (approved_ops, read live from the store) is the dark-edge-closing signal.
+    // v3.6 W2c: the run-seam is CLOSED — loadRecordsForTarget locates the txid's run + loads it (cross-run-aware,
+    // content-verified) so kernel_state is REAL (no longer the 'unknown' default), composed with the manage-half.
     if (typeof args.txid !== 'string' || !HEX64.test(args.txid)) {
       fail('lifecycle requires --txid <64-hex transaction_id>'); return;
     }
     try {
-      emit(manageLifecycleStatus(args.txid, { proposals: listProposals() }));
+      emit(manageLifecycleStatus(args.txid, { records: loadRecordsForTarget(args.txid, {}), proposals: listProposals() }));
     } catch (e) { fail(e.message); return; }
     process.exit(0);
   }
