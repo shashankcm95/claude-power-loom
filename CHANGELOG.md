@@ -8,6 +8,32 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [3.6.0] — 2026-06-10 — v3.6 Human-gated destructive-manage enforcement (leave-shadow event #1)
+
+**Minor release** (additive — the first human-gated LIVE-mutating manage path, opt-in + shadow-default; no breaking kernel/runtime change. `.claude-plugin/plugin.json` `3.4.0 → 3.6.0`; v3.5 was phase-closed but never cut as a version, so this bump folds both — see the [3.5.0] entry below). Ships **v3.6 — Human-gated destructive-manage enforcement** — phase-closed 2026-06-10 (3-lens CLOSEABLE; [`docs/ROADMAP.md`](docs/ROADMAP.md)). The first **leave-shadow event**: a human-`approved` manage-proposal → a COMMITTED kernel `SUPERSEDE`/`TOMBSTONE`.
+
+- **W1 — the consumer-first lifecycle READER** (`#269`): `manageLifecycleStatus` (kernel-lifecycle × approved-manage-intent), narrowing-safe; closes the v3.5 dark-producer edge.
+- **W2a/W2b.1 — the MINT** (`#270`/`#272` + `readById` content-verify `#273`): `cull`→`TOMBSTONE`, `content-dedup`/`merge`→`SUPERSEDE`; the exact-SET post-condition (rejects superset/subset/dup-pad/foreign poison decoys); per-target IDOR eligibility (a kernel-owned or manage-op target refuses the whole op); `evidence_refs = [USER_INTENT_AXIOM:sha256(canonical(approved-proposal))]` (the A10 genesis-bootstrap sentinel — EC1's derived evidence). The approve→execute TOCTOU is closed by the content-addressed `proposal_id` (a swap → `proposal-not-found` / a distinct unapproved id → `not-approved`) — no snapshot, which the writer-unauthenticated `updateDisposition` would leave equally forgeable.
+- **W2b.2 — the promote-path breaker** (`#285`, EC2): the E11 sliding-window pattern over a cross-run record-scan source windowed on FS `mtime` (NOT the content-hashed, caller-chosen `intent_recorded_at`); §0a.3.1 halt-only.
+- **W2c — cross-run mints** (`#286`): targets spanning runs partition per run (one mint each) with per-`(proposal,run)` idempotency (the resolved `runId` folds into `writer_spawn_id`); the breaker goes PREDICTIVE on NET-NEW runs (refuses before the within-promotion overshoot); honest `partial-cross-run` (no rollback — §0a.3.1; idempotent re-invoke recovers); the reader-side cross-run load.
+
+**Activation surface (honest)**: this release ships the project's FIRST **live-mutating** capability — BUT **activates NOTHING automatically.** The destructive-manage enforcement is **opt-in** (`LOOM_MANAGE_ENFORCE=1`; shadow is the default), **CLI-invoked** (`packages/lab/manage-proposal/cli.js promote --proposal-id <id>`), and has **0 `hooks.json` triggers** (grep-verified). A plugin install/restart fires **nothing** — the path mutates ONLY when a human explicitly runs the promote CLI with the flag set, on a proposal they explicitly approved. Threat model: cooperative / trusted-local-fs / human-in-loop — the human approval IS the trust anchor (the OQ-E kernel-attested-writer primitive is deferred — autonomy-only). Accepted residuals (the honest boundary): a hostile same-uid persona automating `approve` + promote (the writer-unauthenticated `approve` — the same residual Option B accepts), and a `utimes()` back-date storm against the breaker's FS-mtime window (the `excluded_future` tamper signal is one-directional) — both close only at the Track-2 ContainerAdapter sandbox. The kernel stays shadow (the only auto-fired session surfaces remain the v3.2 `catalog-reconcile` hooks + `/phase-close`).
+
+---
+
+## [3.5.0] — 2026-06-08 — v3.5 Memory Manage-Layer + Causal-Recall Graph (recorded-not-executed)
+
+**Minor release, retroactively cut** (v3.5 was phase-closed 2026-06-08 but not cut as a version at the time; this entry documents it, released together with v3.6 under the `3.6.0` bump). Ships the **v3.5 Memory Manage-Layer** — a manage layer over memory + a typed causal-edge graph, re-grounded on the v6 consistency model. Phase-closed 2026-06-08 (3-lens CLOSEABLE; [`docs/ROADMAP.md`](docs/ROADMAP.md)).
+
+- **Wave 0 — the read/project half** (`#259`): the deterministic-manage PROJECTIONS (`mark-stale` + `retention-archive`) + the provenance-edge VIEW — pure projections emitting NO record.
+- **Waves 1–2** (`#261`/`#262`): the OQ-E/OQ-27/OQ-21 spikes (OQ-E **NO-GO** — record-store + wal-append are writer-unauthenticated, so the kernel-attested-writer primitive defers to v3.6) + the advisory `causal-edge/` store + the read-side walker + the fail-closed faithfulness judge.
+- **Waves 3a–3b.2** (`#263`/`#264`/`#265`): `flag-conflict` (CREATE-only) + the manage-proposal store + `quarantine`/`content-dedup`/`cull`/`merge` ops + `updateDisposition` + the dispose CLI — destructive ops are **recorded-not-executed PROPOSALS** in v3.5.
+- **Validator consolidation** (`#267`) + the cross-store integration test/sign-off (`#268`); rules promoted (`#266`).
+
+**Activation surface (honest)**: this phase **activated NOTHING new in a live session.** The entire manage-layer ships **SHADOW** — proposals are RECORDED-not-executed, every projection is pure (emits no record), and `hooks.json` has 0 `lab/`/`manage-proposal` refs. The destructive ops are NOTIONAL until v3.6 enforces them. The only live session surfaces remained the v3.2 `catalog-reconcile` hooks + `/phase-close`.
+
+---
+
 ## [3.4.0] — 2026-06-07 — v3.4 Evolution Lab Full (the advisory loop, in shadow)
 
 **Minor release** (additive — the Evolution Lab advisory loop + the orchestrator persona-selection conventions; no breaking kernel/runtime change. `.claude-plugin/plugin.json` `3.3.0 → 3.4.0`, the SemVer signal [ADR-0007](packages/specs/adrs/0007-v290-minor-bump-rationale.md) reserves for MINOR). Ships the **v3.4 Evolution Lab Full** substrate — **RESHAPED** (mirroring the v3.3 reshape) to close at the **complete advisory loop, in shadow**; the volume-/Pattern-B-gated remainder (E2/E3, the production decomposition trigger, E5–E10, R10) is deferred to v3.5+. Phase-closed 2026-06-07 (3-lens CLOSEABLE; [`docs/ROADMAP.md`](docs/ROADMAP.md)).
