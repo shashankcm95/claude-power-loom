@@ -177,7 +177,11 @@ const runCli = (args) => execFileSync(process.execPath, [CLI, ...args], {
 test('CLI lifecycle --txid <hex>: valid -> JSON verdict (empty store -> unknown / [])', () => {
   const out = JSON.parse(runCli(['lifecycle', '--txid', A]));
   assert.strictEqual(out.txid, A);
-  assert.strictEqual(out.kernel_state, 'unknown'); // CLI supplies no records this wave (run-seam = W2)
+  // W2c wired loadRecordsForTarget into the CLI (the run-seam is CLOSED); for an UNSEEDED txid the kernel store
+  // holds no record -> [] -> 'unknown'. (The seeded loadRecordsForTarget -> 'tombstoned' path is covered
+  // programmatically in manage-promote-crossrun.test.js tests 1-2; the CLI reads the real ~/.claude/spawn-state,
+  // so a hermetic CLI-level kernel_state assertion isn't possible without a kernel-stateDir env — out of scope.)
+  assert.strictEqual(out.kernel_state, 'unknown');
   assert.deepStrictEqual(out.approved_ops, []);
   assert.strictEqual(out.advisory, true);
 });

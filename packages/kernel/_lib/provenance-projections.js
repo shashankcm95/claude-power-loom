@@ -195,6 +195,9 @@ function buildProvenanceView(record, records, opts = {}) {
   if (!isRecord(record)) return null;
   const id = typeof record.transaction_id === 'string' ? record.transaction_id : null;
   const chain = walkStateChain(record, records, opts);
+  // HEX64-only: a bootstrap sentinel (e.g. a manage-op's `USER_INTENT_AXIOM:<sha256>` — manage-op-record.js) is
+  // INTENTIONALLY excluded — it is an A10 genesis-justification, NOT a txid edge in the evidence closure. A future
+  // un-darkening wave must NOT "fix" this filter to surface it (it would inject a non-edge into the provenance view).
   const directEvidence = (Array.isArray(record.evidence_refs) ? record.evidence_refs : []).filter(
     (r) => typeof r === 'string' && HEX64.test(r)
   );

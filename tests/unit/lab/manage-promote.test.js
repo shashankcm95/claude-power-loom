@@ -325,6 +325,32 @@ test('INV-22: re-promoting the same approved proposal DEDUPS (one TOMBSTONE), po
   assert.strictEqual(listByRun({ runId: 'runX', stateDir: dir }).filter((r) => r.operation_class === 'TOMBSTONE').length, 1);
 });
 
+// -- 7b/7c. EC1 TOCTOU (v3.6 phase-close legibility): the approve->execute window is closed by the
+// content-addressed proposal_id — it IS the "re-verify the approved content-hash against approval-time" check
+// (no snapshot field, which updateDisposition being writer-unauthenticated would leave equally forgeable).
+test('EC1 TOCTOU: a target-swap KEEPING the approved id -> proposal-not-found (inauthentic row, skipped)', () => {
+  const dir = freshState();
+  const t1 = seedTarget('runX', dir);
+  const evil = seedTarget('runX', dir);
+  const idP = computeProposalId('cull', [t1]); // the id the human approved (over [t1])
+  // attacker rewrites the ledger row to carry idP but a SWAPPED target-set -> the body no longer hashes to idP.
+  fs.mkdirSync(path.dirname(LEDGER_PATH), { recursive: true });
+  fs.appendFileSync(LEDGER_PATH, JSON.stringify({
+    node_type: 'manage-proposal', op_type: 'cull', target_records: [t1, evil], disposition: 'approved',
+    proposal_id: idP, justification: 'x', proposer_origin: 't', recorded_at: T0, schema_version: 'v3.5',
+  }) + '\n');
+  assert.strictEqual(promoteProposal(idP, { stateDir: dir, nowIso: T0 }).refused, 'proposal-not-found');
+});
+
+test('EC1 TOCTOU: a RE-DERIVED swapped proposal is a distinct identity the human never approved -> not-approved', () => {
+  const dir = freshState();
+  const t1 = seedTarget('runX', dir);
+  const evil = seedTarget('runX', dir);
+  approvedCull([t1]); // human approves the op over [t1]
+  const swapped = cullRecord({ targets: [t1, evil], justification: 'x', origin: 'test' }); // re-derived, left PENDING
+  assert.strictEqual(promoteProposal(swapped.proposal_id, { stateDir: dir, nowIso: T0 }).refused, 'not-approved');
+});
+
 // -- 8. THE CRITICAL (hacker): an INV-22 poison-key decoy -> POST-CONDITION FAILS (no silent fail-open).
 test('CRITICAL: a same-idempotency_key poison decoy -> POST-CONDITION FAILS (not a silent success)', () => {
   const dir = freshState();
