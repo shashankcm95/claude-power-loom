@@ -364,7 +364,7 @@ When the active forcing-instruction count crosses **N=15** (current 10 active po
 
 ### Reference implementations
 
-See `packages/skills/library/agent-team/patterns/forcing-instruction-family.md` for per-instruction class assignment, landing-rate observations, phase-tag origins, and verdicts. Cross-reference comments in each emission file (`hooks/scripts/...`) point at this convention.
+See `packages/skills/library/agent-team/patterns/forcing-instruction-family.md` for per-instruction class assignment, landing-rate observations, phase-tag origins, and verdicts. Cross-reference comments in each emission file (`packages/kernel/hooks/...`) point at this convention.
 
 ### Phase
 
