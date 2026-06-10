@@ -55,7 +55,7 @@ Trigger when:
 
 - **MERGE pattern** (Postgres 15+ or via `INSERT ... ON CONFLICT`): upsert keyed by natural primary key OR by `(source_system, source_id)` composite. Re-runs of the same task with the same input produce the same output.
 - **Stage table + atomic swap**: load into `staging.x`, validate, then `BEGIN; TRUNCATE production.x; INSERT INTO production.x SELECT * FROM staging.x; COMMIT;` (or rename-table swap). Atomic per-batch.
-- **Deletion-aware sync**: when source can delete, use `MERGE INTO ... WHEN NOT MATCHED BY SOURCE DELETE` (snowflake; postgres-17+) OR full-table replace via stage swap.
+- **Deletion-aware sync**: when source can delete, use `MERGE INTO ... WHEN NOT MATCHED BY SOURCE THEN DELETE` (snowflake; postgres-17+) OR full-table replace via stage swap.
 - **Hash-based dedup**: when natural PK doesn't exist, compute `MD5(...)` over relevant columns and use as dedup key. Good for fact tables with no obvious unique constraint.
 - **Dedup window**: when source emits duplicate events (kafka at-least-once), use `ROW_NUMBER() OVER (PARTITION BY dedup_key ORDER BY event_time DESC) = 1` in the load.
 

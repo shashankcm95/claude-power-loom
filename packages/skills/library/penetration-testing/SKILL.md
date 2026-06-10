@@ -36,7 +36,7 @@ Trigger when:
 
 ### OWASP Top 10 (2021)
 
-> **Note (2026-06):** OWASP Top 10:2025 is now the current edition (released Jan 2026 — SSRF folded into A01, new A10 "Mishandling of Exceptional Conditions", "Vulnerable & Outdated Components" matured into "Software Supply Chain Failures"). The 2021 categories below remain a solid testing checklist; re-baseline against <https://owasp.org/Top10/2025/> for current prevalence ranking.
+> **Note (2026-06):** OWASP Top 10:2025 is now the current edition (announced at OWASP Global AppSec, Nov 2025 — SSRF folded into A01, new A10 "Mishandling of Exceptional Conditions", "Vulnerable & Outdated Components" matured into "Software Supply Chain Failures"). The 2021 categories below remain a solid testing checklist; re-baseline against <https://owasp.org/Top10/2025/> for current prevalence ranking.
 
 1. **A01: Broken Access Control** — auth-z bugs (BOLA / IDOR / privilege escalation / function-level auth bypass)
 2. **A02: Cryptographic Failures** — weak crypto, missing encryption-at-rest, plaintext transit, hardcoded keys
