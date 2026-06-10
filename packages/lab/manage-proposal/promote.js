@@ -39,6 +39,8 @@ const { buildManageOpRecord } = require('../../kernel/_lib/manage-op-record');
 const { findRecordRun } = require('../../kernel/_lib/record-locate');
 const { appendRecord, readById } = require('../../kernel/_lib/record-store');
 const { canonicalJsonSerialize } = require('../../kernel/_lib/canonical-json');
+// v3.6 W2b.2: the promote-path breaker (EC2) — bounds the destructive-mint RATE.
+const { evaluate: evaluateBreaker } = require('../circuit-breaker/project');
 
 const SCHEMA_VERSION = 'v6';
 // op_type -> kernel operation_class (W2b.1). `cull` -> TOMBSTONE; `content-dedup`/`merge` -> SUPERSEDE (both
@@ -191,6 +193,33 @@ function promoteProposal(proposalId, opts = {}) {
   for (const t of wantTargets) {
     const elig = eligibilityRefusal(readById(t, { runId, stateDir }));
     if (elig) return refuse(elig, { target: t });
+  }
+
+  // (5.5) PROMOTE-PATH BREAKER (W2b.2, EC2): bound the destruction RATE before the irreversible mint.
+  // Evaluate the `manage-promote` source (committed TOMBSTONE/SUPERSEDE mints, CROSS-run, windowed on FS
+  // mtime) on the GLOBAL cap (no persona — every mint carries the same writer_persona_id, so per-persona is
+  // degenerate; F5). The breaker uses REAL wall-clock (NOT the caller's nowIso — else a future nowIso would
+  // shift the window forward and age out the real recent mints → fail-to-trip; the C1 lesson at the window
+  // level). It counts PRIOR committed mints (the in-flight one is not appended yet) → caps the (N+1)th.
+  // Rides LOOM_MANAGE_ENFORCE (no second flag; the cap is live exactly when destruction is live — F2);
+  // kill-switch is LOOM_DISABLE_CIRCUIT_BREAKER (opt-OUT). FAIL-CLOSED on a scan ERROR (M3): a thrown
+  // source read REFUSES (never silently mints; preserves the never-throws contract).
+  let breaker;
+  try {
+    breaker = evaluateBreaker({ source: 'manage-promote', stateDir });
+  } catch (e) {
+    return refuse('breaker-source-unavailable', { error: e && e.message ? e.message : String(e) });
+  }
+  // VALIDATE hacker M1: a nonzero excluded_future is a STORM-HIDING tamper signal — a same-uid utimes() of a
+  // destructive mint into the future drops it from the window (under-count → fail-to-trip). The breaker
+  // already computes it; for THIS irreversible op we fail-CLOSED on the signal rather than silently mint.
+  if (breaker.excluded_future > 0) {
+    return refuse('breaker-tamper-signal', { excluded_future: breaker.excluded_future });
+  }
+  if (breaker.tripped) {
+    return refuse('breaker-open', {
+      scope: breaker.scope, denials_in_window: breaker.denials_in_window, threshold: breaker.threshold, window_ms: breaker.window_ms,
+    });
   }
 
   // (6) Mint: the human approval IS the A10 axiom (bound to the canonical proposal body). ONE atomic op naming

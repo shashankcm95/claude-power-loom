@@ -39,6 +39,9 @@
 // source's path too late). The source registry selects between the already-loaded modules at call-time.
 const negStore = require('../negative-attestation/store');
 const verdictStore = require('../verdict-attestation/store');
+// v3.6 W2b.2: the manage-promote denial source — committed destructive mints, cross-run,
+// windowed on FS mtime (the kernel scan; see record-scan.js for the C1/H1/H2 rationale).
+const { scanCommittedOps } = require('../../kernel/_lib/record-scan');
 
 // "stateless windowed" carried in the runtime label (W4 honesty nit): this is a sliding-window denial
 // COUNTER, not a stateful open/half-open/closed breaker — a consumer must not assume hysteresis. It
@@ -75,6 +78,22 @@ const SOURCES = {
       .listAttestations({ now: nowMs })
       .map((r) => ({ persona: personaOfNeg(r), recorded_at: r.recorded_at })),
   },
+  // v3.6 W2b.2: committed destructive MINTS (the promote-path breaker's source). A "denial" here is a
+  // committed TOMBSTONE/SUPERSEDE — counting them bounds the destruction RATE (halting a mint NARROWS,
+  // grants nothing → same §0a.3.1 safety as the other sources). CROSS-run (an attacker who spreads mints
+  // across runs must still be aggregated — H1) and windowed on FS `mtime` (NOT the content-hashed,
+  // caller-chosen intent_recorded_at — the C1 back-date evasion; see record-scan.js). The consumer
+  // (promote.js) selects this source EXPLICITLY via opts.source + passes opts.stateDir (the store it mints
+  // into). The persona is constant ('lab:manage-promote') → per-persona is degenerate; the GLOBAL cap
+  // gates (F5). Default 10min/10 is the burst blast-radius bound (tune via LOOM_BREAKER_* for slow-drip).
+  'manage-promote': {
+    id: 'manage-promote',
+    list: (nowMs, srcOpts) => scanCommittedOps({
+      opClasses: ['TOMBSTONE', 'SUPERSEDE'],
+      sinceMs: nowMs - windowMs(),
+      stateDir: srcOpts && srcOpts.stateDir,
+    }).map((r) => ({ persona: 'lab:manage-promote', recorded_at: new Date(r.mtime_ms).toISOString() })),
+  },
 };
 const DEFAULT_SOURCE = 'verdict-fail';
 
@@ -82,7 +101,11 @@ const DEFAULT_SOURCE = 'verdict-fail';
 // empty / prototype-named LOOM_BREAKER_SOURCE FAILS SAFE to the default (the live producer) — it can
 // NEVER silence the breaker by selecting a no-op source (the safety-control fail-safe; the W4 clamp
 // discipline). hasOwnProperty.call guards against `raw` being 'hasOwnProperty'/'__proto__' etc.
-function resolveSourceId() {
+function resolveSourceId(explicit) {
+  // An EXPLICIT consumer-selected source (opts.source) wins over the env (W2b.2 — promote.js selects
+  // 'manage-promote' without perturbing the env the persona-selection consumer reads). Same
+  // hasOwnProperty guard against a prototype-named value; an unknown explicit falls through to the env.
+  if (typeof explicit === 'string' && Object.prototype.hasOwnProperty.call(SOURCES, explicit)) return explicit;
   const raw = process.env.LOOM_BREAKER_SOURCE;
   return Object.prototype.hasOwnProperty.call(SOURCES, raw) ? raw : DEFAULT_SOURCE;
 }
@@ -154,7 +177,7 @@ function bypassedView(nowMs, sourceId) {
 function projectBreaker(opts) {
   const o = opts || {};
   const nowMs = nowMsFrom(o);
-  const sourceId = resolveSourceId();
+  const sourceId = resolveSourceId(o.source);
   if (isBypassed()) return bypassedView(nowMs, sourceId);
 
   const win = windowMs();
@@ -162,8 +185,9 @@ function projectBreaker(opts) {
   const maxD = maxDenials();
   const globalMaxD = globalMaxDenials();
   // Normalized denial-events {persona, recorded_at}; pass the RESOLVED nowMs so the source's expiry
-  // filter uses the identical clock (full determinism).
-  const records = SOURCES[sourceId].list(nowMs);
+  // filter uses the identical clock (full determinism). srcOpts carries opts.stateDir for the
+  // manage-promote source (the kernel store it scans); the lab-store sources ignore it.
+  const records = SOURCES[sourceId].list(nowMs, { stateDir: o.stateDir });
 
   const byPersona = new Map(); // Map → a __proto__/toString persona name can't poison the accumulator
   let globalCount = 0;
@@ -211,9 +235,9 @@ function projectBreaker(opts) {
 function evaluate(opts) {
   const o = opts || {};
   const persona = (typeof o.persona === 'string' && o.persona) || null;
-  const view = projectBreaker({ now: o.now });
+  const view = projectBreaker({ now: o.now, source: o.source, stateDir: o.stateDir });
   if (view.bypassed) {
-    return { tripped: false, scope: 'bypassed', source: view.source, global_tripped: false, persona_tripped: false, denials_in_window: 0, threshold: view.max_denials, window_ms: view.window_ms };
+    return { tripped: false, scope: 'bypassed', source: view.source, global_tripped: false, persona_tripped: false, denials_in_window: 0, threshold: view.max_denials, window_ms: view.window_ms, excluded_future: 0 };
   }
   const globalTripped = view.global.tripped;
   const personaRow = persona ? view.personas.find((p) => p.persona === persona) : undefined;
@@ -222,9 +246,13 @@ function evaluate(opts) {
   return {
     tripped: globalTripped || personaTripped,
     scope,
-    source: view.source, // which denial source the decision is based on (verdict-fail | negative-attestation)
+    source: view.source, // which denial source the decision is based on (verdict-fail | negative-attestation | manage-promote)
     global_tripped: globalTripped,
     persona_tripped: personaTripped,
+    // VALIDATE hacker M1: a NONZERO excluded_future is a tamper / clock-skew STORM-HIDING signal (a same-uid
+    // utimes() of a mint into the future under-counts it). Surfaced here so a destructive consumer can
+    // fail-CLOSED on it (the breaker already computed it; promote.js refuses on >0). Narrowing-safe.
+    excluded_future: view.excluded_future,
     // VALIDATE code-reviewer M1: a named-but-clear persona reports 0 (NOT the global count — which,
     // paired with the per-persona threshold, is an inconsistent triple a future alerting consumer
     // would misread). Only the global-only call (no persona) reports the global count.

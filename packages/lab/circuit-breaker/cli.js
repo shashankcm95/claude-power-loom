@@ -31,7 +31,9 @@ const { projectBreaker, evaluate, DEFAULT_SOURCE } = require('./project');
 // not a safety signal) that the unknown-value fail-safe cannot — surfacing it at invocation rather than
 // trusting the operator to have read the doc. Revisit when v3.5 un-starves E1 (then non-default is legit).
 function warnIfNonDefaultSource(sourceId) {
-  if (sourceId && sourceId !== DEFAULT_SOURCE) {
+  // manage-promote (W2b.2) is an EXPLICITLY-wired, non-starved source (the promote-path consumer selects it)
+  // — the starvation caution does not apply, so don't emit the misleading "may be STARVED" warning for it.
+  if (sourceId && sourceId !== DEFAULT_SOURCE && sourceId !== 'manage-promote') {
     process.stderr.write(`breaker: WARNING active denial source is '${sourceId}' (non-default); it may be STARVED — a clear result is NOT a safety signal. Set LOOM_BREAKER_SOURCE=${DEFAULT_SOURCE} (the live default) unless this is intentional.\n`);
   }
 }
@@ -50,11 +52,12 @@ function parseArgs(argv) {
 
 const USAGE = [
   'Usage:',
-  '  cli.js show                    the per-persona + global denial-rate breaker view (shadow)',
-  '  cli.js check [--persona <p>]   the consumer decision: tripped? + scope (global supersedes persona)',
+  '  cli.js show [--source <s>] [--state-dir <d>]              the per-persona + global breaker view (shadow)',
+  '  cli.js check [--persona <p>] [--source <s>] [--state-dir <d>]   the consumer decision: tripped? + scope',
   '',
-  '  Env: LOOM_BREAKER_SOURCE=verdict-fail (default) | negative-attestation   (unknown -> fail-safe default)',
-  '       LOOM_DISABLE_CIRCUIT_BREAKER=1   bypass (all-clear)',
+  '  --source verdict-fail (default) | negative-attestation | manage-promote   (W2b.2; explicit-source wins over env)',
+  '  --state-dir <d>   record-store root for the manage-promote source (the kernel store it scans)',
+  '  Env: LOOM_BREAKER_SOURCE (same set; explicit --source wins) | LOOM_DISABLE_CIRCUIT_BREAKER=1 (bypass)',
   '',
 ].join('\n');
 
@@ -62,9 +65,11 @@ function main(argv) {
   const cmd = argv[0];
   const args = parseArgs(argv.slice(1));
 
+  const srcOpts = { source: typeof args.source === 'string' ? args.source : undefined, stateDir: typeof args['state-dir'] === 'string' ? args['state-dir'] : undefined };
+
   if (cmd === 'show') {
     try {
-      const view = projectBreaker();
+      const view = projectBreaker(srcOpts);
       warnIfNonDefaultSource(view.source); // stderr (stdout stays clean JSON)
       process.stdout.write(`${JSON.stringify(view, null, 2)}\n`);
     } catch (e) {
@@ -78,7 +83,7 @@ function main(argv) {
   if (cmd === 'check') {
     try {
       const persona = typeof args.persona === 'string' ? args.persona : undefined;
-      const decision = evaluate({ persona });
+      const decision = evaluate({ persona, source: srcOpts.source, stateDir: srcOpts.stateDir });
       warnIfNonDefaultSource(decision.source); // stderr (stdout stays clean JSON)
       process.stdout.write(`${JSON.stringify(decision, null, 2)}\n`);
     } catch (e) {
