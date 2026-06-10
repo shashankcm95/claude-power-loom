@@ -295,7 +295,7 @@ Extracting microservices before the change-reasons have stabilized produces "dis
 
 ### `_lib/` discipline (H.7.14)
 
-The substrate's `scripts/agent-team/_lib/` extraction is SRP applied at the module level. Before H.7.14, six different files each had their own version of "find the toolkit root" — same code, six places, six change-reasons fused into one repeating pattern. The H.7.14 refactor extracted `_lib/toolkit-root.js` with one reason-to-change ("substrate filesystem semantics") and six callers that each have their own different reasons-to-change.
+The substrate's `packages/runtime/orchestration/_lib/` extraction is SRP applied at the module level. Before H.7.14, six different files each had their own version of "find the toolkit root" — same code, six places, six change-reasons fused into one repeating pattern. The H.7.14 refactor extracted `_lib/toolkit-root.js` with one reason-to-change ("substrate filesystem semantics") and six callers that each have their own different reasons-to-change.
 
 ### Convention G's class taxonomy (H.7.25)
 

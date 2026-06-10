@@ -175,7 +175,7 @@ Map your reasoning sources to specific `kb:<id>` refs from the catalog above. If
 
 **Why mandatory at the response level (not just ADR level)**: design reviews, trade-off walkthroughs, and recommendation memos are valid architect outputs that don't always warrant a full ADR. Without a response-level citation contract, kb grounding becomes invisible to reviewers and to the bench harness `kb_consultation` soft-signal. The ADR `Sources:` field (above) remains required for ADRs specifically; this section is the universal floor.
 
-**Narrow exception** — only when the file being edited lives under `agents/` or `swarm/` (i.e., a meta-fix to the architect's own definition, persona contracts, or HETS substrate files), `## KB Sources Consulted` may contain `n/a — <one-line justification>` instead of citations. Structural criterion, not semantic: the test is "does the edited path start with `agents/` or `swarm/`?", not "does this feel mechanical?". Outside that file scope, always cite.
+**Narrow exception** — only when the file being edited lives under `agents/`, `packages/runtime/personas/`, `packages/runtime/contracts/`, or `swarm/run-state/` (i.e., a meta-fix to the architect's own definition, persona contracts, or HETS substrate files), `## KB Sources Consulted` may contain `n/a — <one-line justification>` instead of citations. Structural criterion, not semantic: the test is "does the edited path start with `agents/`, `packages/runtime/personas/`, `packages/runtime/contracts/`, or `swarm/run-state/`?", not "does this feel mechanical?". Outside that file scope, always cite.
 
 ## Output Contract — Requirements Checklist (mandatory for multi-requirement tasks)
 

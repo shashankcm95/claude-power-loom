@@ -17,8 +17,8 @@ The discipline existed in workflow.md:30 as one bullet:
 
 Soft norms drift. This pattern converts the soft norm into a sharper gate by embedding it in:
 - A dedicated slash command (`/build-plan`)
-- A canonical plan template (`swarm/plan-template.md`)
-- A reusable skill (`skills/build-plan/SKILL.md`)
+- A canonical plan template (`packages/specs/research/plan-template.md`)
+- A reusable skill (`packages/skills/library/build-plan/SKILL.md`)
 - An updated workflow rule with explicit decision tree
 
 The discipline becomes self-enforcing at invocation time — the user types `/build-plan`, route-decide runs deterministically, architect-spawn is recommended when `convergence_value` is high enough, and the plan template structure surfaces drift observations.
@@ -50,7 +50,7 @@ This is **recommendation**, not auto-spawn. The user gate at Step 5 is always pr
 
 ### Layer 3 — Canonical plan template
 
-The plan that gets written to `~/.claude/plans/<name>.md` conforms to `swarm/plan-template.md`'s mandatory sections (Context / Routing Decision / HETS Spawn Plan / Files / Phases / Verification / Out of Scope / Drift Notes). The Routing Decision section preserves verbatim route-decide JSON — replay-ability for future audits.
+The plan that gets written to `~/.claude/plans/<name>.md` conforms to `packages/specs/research/plan-template.md`'s mandatory sections (Context / Routing Decision / HETS Spawn Plan / Files / Phases / Verification / Out of Scope / Drift Notes). The Routing Decision section preserves verbatim route-decide JSON — replay-ability for future audits.
 
 ## The recursive-dogfood property
 
@@ -94,12 +94,12 @@ H.7.10 is the immediate dogfood demonstration: applying mira's 5 fixes via `/bui
 
 ## References
 
-- [skills/build-plan/SKILL.md](../../build-plan/SKILL.md) — the skill operationalizing this pattern
+- [packages/skills/library/build-plan/SKILL.md](../../build-plan/SKILL.md) — the skill operationalizing this pattern
 - [commands/build-plan.md](../../../commands/build-plan.md) — the slash command
-- [swarm/plan-template.md](../../../swarm/plan-template.md) — canonical plan structure
+- [packages/specs/research/plan-template.md](../../../../specs/research/plan-template.md) — canonical plan structure
 - [packages/kernel/algorithms/route-decide.js](../../../../kernel/algorithms/route-decide.js) — deterministic gate
 - [rules/core/workflow.md](../../../rules/core/workflow.md) — workflow discipline
-- [agents/planner.md](../../../agents/planner.md) — base planner agent that `/build-plan` wraps
+- [agents/planner.md](../../../../../agents/planner.md) — base planner agent that `/build-plan` wraps
 
 ## Phase
 

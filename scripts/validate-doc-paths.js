@@ -137,6 +137,7 @@ function findStaleInFile(file) {
     while ((m = PATH_RE.exec(lineText)) !== null) {
       const before = lineText.slice(0, m.index);
       const token = m[0].replace(/[).,:;`'"]+$/, ''); // trim trailing markdown/punctuation
+      if (before.endsWith('/usr/')) continue;          // `/usr/bin/...` system path (e.g. a #!/usr/bin/env shebang), not a repo path
       if (!isPathContext(before, token)) continue;    // skip prose + URL fragments
       const prefix = placeholderFreePrefix(token);
       if (!prefix || prefix.split('/').length < 2) continue; // need at least root/child
@@ -152,7 +153,26 @@ function findStaleInFile(file) {
   return stale;
 }
 
-/** Collect the skill + command doc files to scan. */
+/** Recursively collect *.md under a directory (returns [] if the dir is absent). */
+function collectMarkdownTree(dir) {
+  const out = [];
+  let entries;
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return out; }
+  for (const e of entries) {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) out.push(...collectMarkdownTree(p));
+    else if (e.name.endsWith('.md')) out.push(p);
+  }
+  return out;
+}
+
+/**
+ * Collect the docs to scan: the slash-command docs, each library skill's
+ * SKILL.md, AND the agent-team `kb/` + `patterns/` convention trees — the
+ * latter were a blind spot (#282 follow-up): they hold prescriptive,
+ * copy-pasteable path references (e.g. spawn/challenger contract-verifier
+ * commands) that rotted in the v4 restructure without any gate catching them.
+ */
 function collectDocs() {
   const out = [];
   const cmdDir = path.join(REPO_ROOT, 'packages/skills/commands');
@@ -166,6 +186,9 @@ function collectDocs() {
       if (fs.existsSync(sk)) out.push(sk);
     }
   }
+  const agentTeam = path.join(REPO_ROOT, 'packages/skills/library/agent-team');
+  out.push(...collectMarkdownTree(path.join(agentTeam, 'kb')));
+  out.push(...collectMarkdownTree(path.join(agentTeam, 'patterns')));
   return out;
 }
 

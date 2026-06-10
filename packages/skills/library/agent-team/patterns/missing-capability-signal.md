@@ -84,8 +84,8 @@ For all request types, the user is the trust boundary. Root surfaces the request
 >   Request: forge-persona
 >   Scope: Node backend developer for Express/NestJS
 >   Files this would create:
->     - swarm/personas/13-node-backend.md
->     - swarm/personas-contracts/13-node-backend.contract.json
+>     - packages/runtime/personas/13-node-backend.md
+>     - packages/runtime/contracts/13-node-backend.contract.json
 >     - packages/skills/library/agent-team/kb/backend-dev/node-runtime-basics.md
 >     - packages/skills/library/agent-team/kb/backend-dev/express-essentials.md
 >   Files this would update:

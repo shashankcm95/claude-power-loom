@@ -7,7 +7,7 @@ related: [route-decision, structural-code-review, kb-scope-enforcement, system-d
 
 ## Summary
 
-Two conventions for hook validators in `hooks/scripts/validators/` and `packages/runtime/orchestration/contracts-validate.js`. **Convention A**: separate repo-internal correctness from external-dependency presence — the latter must be gated on environmental signals (e.g., `MARKETPLACE_BASE` non-empty) rather than enforced unconditionally. **Convention B**: validator stderr output must self-document why a check is skipped or firing, not just report status. Both originated as drift-notes 7 + 8 from this session's H.7.10 + H.7.12 work; codified here for future validator authors.
+Two conventions for hook validators in `packages/kernel/validators/` and `packages/runtime/orchestration/contracts-validate.js`. **Convention A**: separate repo-internal correctness from external-dependency presence — the latter must be gated on environmental signals (e.g., `MARKETPLACE_BASE` non-empty) rather than enforced unconditionally. **Convention B**: validator stderr output must self-document why a check is skipped or firing, not just report status. Both originated as drift-notes 7 + 8 from this session's H.7.10 + H.7.12 work; codified here for future validator authors.
 
 ## Convention A — Separation of repo-internal and external-dependency concerns
 
@@ -364,7 +364,7 @@ When the active forcing-instruction count crosses **N=15** (current 10 active po
 
 ### Reference implementations
 
-See `packages/skills/library/agent-team/patterns/forcing-instruction-family.md` for per-instruction class assignment, landing-rate observations, phase-tag origins, and verdicts. Cross-reference comments in each emission file (`hooks/scripts/...`) point at this convention.
+See `packages/skills/library/agent-team/patterns/forcing-instruction-family.md` for per-instruction class assignment, landing-rate observations, phase-tag origins, and verdicts. Cross-reference comments in each emission file (`packages/kernel/hooks/...`) point at this convention.
 
 ### Phase
 

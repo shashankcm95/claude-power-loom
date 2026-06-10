@@ -275,7 +275,7 @@ Cycles are particularly bad here because they break the stability gradient: if A
 
 ### `_lib/` extraction as ADP discipline
 
-Substrate's `scripts/agent-team/_lib/` directory is acyclic-dependencies applied at substrate scale. Six different scripts originally each had their own version of "find the toolkit root." Each script independently coupled to the filesystem layout:
+Substrate's `packages/runtime/orchestration/_lib/` directory is acyclic-dependencies applied at substrate scale. Six different scripts originally each had their own version of "find the toolkit root." Each script independently coupled to the filesystem layout:
 
 ```text
 Before (no cycle yet, but high coupling and duplication):
