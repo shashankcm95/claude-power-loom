@@ -74,7 +74,7 @@ When spawned with `swift-development` as a required skill:
 1. Invoke this skill first: `Skill swift-development`
 2. Read the persona-mapped KB docs (e.g., `kb:mobile-dev/swift-essentials`, `kb:mobile-dev/ios-app-architecture`)
 3. Begin the actual task
-4. Cite this skill in the output's "Skills used" section so the verifier's `invokesRequiredSkills` check (planned for H.2.6) can confirm
+4. Cite this skill in the output's "Skills used" section so the verifier's `invokesRequiredSkills` check confirms
 
 ## Out of scope for this skill
 

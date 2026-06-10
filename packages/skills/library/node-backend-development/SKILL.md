@@ -94,7 +94,7 @@ See `kb:backend-dev/express-essentials` for express-specific middleware ordering
 - Node.js API reference: https://nodejs.org/docs/latest/api/ (canonical source per `kb:hets/canonical-skill-sources` H.6.7 registry)
 - Async hooks: https://nodejs.org/api/async_hooks.html
 - Streams: https://nodejs.org/api/stream.html
-- Event loop guide: https://nodejs.org/en/docs/guides/event-loop-timers-and-nexttick
+- Event loop guide: https://nodejs.org/learn/asynchronous-work/event-loop-timers-and-nexttick
 - Express 4.x API reference: https://expressjs.com/en/4x/api.html
 
 ## When to forge specialized sub-skills

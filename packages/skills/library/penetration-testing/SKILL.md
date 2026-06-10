@@ -4,7 +4,7 @@ status: active
 domain: security-dev
 canonical_source: https://owasp.org/www-project-web-security-testing-guide/
 forged_via: H.6.7-canonical-source-registry
-related_kb: [security-dev/threat-modeling-essentials, security-dev/web-vulnerability-classes]
+related_kb: [security-dev/threat-modeling-essentials]
 notes: WSTG (Web Security Testing Guide) is the methodology canonical source. Cross-reference OWASP Top 10 (https://owasp.org/www-project-top-ten/) for prevalence framing and CWE (https://cwe.mitre.org/) for specific weakness IDs. Tool-specific docs (Burp, OWASP ZAP) are secondary.
 ---
 
@@ -34,7 +34,9 @@ Trigger when:
 - **Verify, don't just claim**: every finding has a reproducible PoC (request/response, code path, test case). Findings without verification are guesses.
 - **Severity calibration**: CVSS 3.1 base score is the lingua franca. CRITICAL ≥ 9.0, HIGH 7.0-8.9, MEDIUM 4.0-6.9, LOW < 4.0. Don't inflate; inflated severity rots your credibility on future findings.
 
-### OWASP Top 10 (2021) — current categories
+### OWASP Top 10 (2021)
+
+> **Note (2026-06):** OWASP Top 10:2025 is now the current edition (released Jan 2026 — SSRF folded into A01, new A10 "Mishandling of Exceptional Conditions", "Vulnerable & Outdated Components" matured into "Software Supply Chain Failures"). The 2021 categories below remain a solid testing checklist; re-baseline against <https://owasp.org/Top10/2025/> for current prevalence ranking.
 
 1. **A01: Broken Access Control** — auth-z bugs (BOLA / IDOR / privilege escalation / function-level auth bypass)
 2. **A02: Cryptographic Failures** — weak crypto, missing encryption-at-rest, plaintext transit, hardcoded keys
@@ -118,7 +120,7 @@ A finding without all 6 is not actionable.
 ## Sources
 
 - OWASP Web Security Testing Guide: https://owasp.org/www-project-web-security-testing-guide/ (canonical source per `kb:hets/canonical-skill-sources` H.6.7 registry)
-- OWASP Top 10 (2021): https://owasp.org/www-project-top-ten/
+- OWASP Top 10: 2025 is current (Jan 2026) https://owasp.org/Top10/2025/ ; 2021 edition (categories above) https://owasp.org/www-project-top-ten/
 - OWASP ASVS (Application Security Verification Standard): https://owasp.org/www-project-application-security-verification-standard/
 - OWASP Cheat Sheets: https://cheatsheetseries.owasp.org/
 - CWE (Common Weakness Enumeration): https://cwe.mitre.org/

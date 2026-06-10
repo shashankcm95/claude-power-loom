@@ -220,7 +220,7 @@ node packages/runtime/orchestration/kb-resolver.js resolve kb:hets/spawn-convent
 Refs of the form `kb:<id>@<short-hash>` validate the doc hasn't drifted since the snapshot. See [content-addressed-refs pattern](patterns/content-addressed-refs.md). Starter KB:
 - `kb:hets/spawn-conventions` — the canonical 5-step spawn convention
 - `kb:hets/identity-roster` — per-persona identity rosters
-- `kb:web-dev/react-essentials` — reference doc for the planned `09-react-frontend` persona
+- `kb:web-dev/react-essentials` — reference doc for the `09-react-frontend` persona
 
 ## Files in this skill
 
@@ -229,9 +229,6 @@ Refs of the form `kb:<id>@<short-hash>` validate the doc hasn't drifted since th
 - `BACKLOG.md` — deferred work + rationale (added in H.2.1)
 - `patterns/` — reusable architectural patterns (substrate for new simulations)
 - `kb/` — shared knowledge base (content-addressed, frozen-per-run)
-- `role-templates/pm.md` — super-agent role template
-- `role-templates/senior.md` — orchestrator role template
-- `role-templates/engineer.md` — actor role template
 
 ## Files this skill consumes (in `packages/runtime/orchestration/` + `packages/kernel/`)
 
@@ -244,6 +241,14 @@ Refs of the form `kb:<id>@<short-hash>` validate the doc hasn't drifted since th
 - `pattern-runner.js` (H.2.9) — extracts testable scenarios from pattern docs' `## Validation Strategy` section; emits actor-prompt skeletons for `chaos-test --pattern <name>` flow. Subcommands: `list-patterns`, `extract`, `summary`, `prompts`.
 - `contracts-validate.js` (H.3.0) — cross-validates 4 sources of truth (per-pattern frontmatter ↔ patterns/README.md ↔ SKILL.md catalog ↔ contract `skill_status` filesystem references). 7 validators: pattern-status-frontmatter, pattern-status-readme-consistency, pattern-status-skill-md-consistency, pattern-related-bidirectional, contract-skills-status-keys, contract-skill-status-values, contract-kb-scope-resolves. Closes architect's #1 top-leverage change from chaos-20260502-060039. CS-1 first run surfaced 29 real drift violations; backlog item per validator.
 - (Phase H.2: `trust-tracker.js` — persists per-persona trust scores; superseded by `agent-identity.js`'s tier API in H.2.4)
+
+## Gates (cost-justification + pre-approval)
+
+The HETS spawn lifecycle is bracketed by three live gates (the description's "integrates with the route-decide gate" + the v3.x verification gates):
+
+- **`packages/kernel/algorithms/route-decide.js`** — the Step-0 cost gate: scores a task `root` / `borderline` / `route` before any team spawns, so HETS only fires when convergence value justifies its ~30× token cost.
+- **`/verify-plan`** — pre-approval verification for HETS-routed plans (spawns architect + code-reviewer against the plan before `ExitPlanMode`).
+- **`/phase-close`** — the phase-boundary 3-lens gate (PM + Principal-SDE + Architect) that reviews an integrated phase against its exit criteria, catching cross-PR drift the per-wave verification can't.
 
 ## Phase status
 

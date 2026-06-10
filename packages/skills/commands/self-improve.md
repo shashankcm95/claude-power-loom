@@ -6,7 +6,7 @@ Run a full review of captured patterns and promote proven ones to permanent rule
 
 ### 1. Scan Memory
 Read the project's `MEMORY.md` (if it exists) and identify:
-- Patterns that appear 2+ times across sessions
+- Patterns recurring across MEMORY entries + library session-snapshots (a manual read-and-judge — the former auto recurrence-counter was RETIRED 2026-05-30, so there is no tally; you assess recurrence yourself)
 - Stale entries that no longer apply to current practices
 - Entries that have led to successful outcomes
 
@@ -32,12 +32,12 @@ For each proven pattern, recommend one of (all promotions edit the **SOURCE** tr
 Flag for removal:
 - Stale memory entries
 - Duplicate rules
-- Unused skills/agents (not invoked in 2+ weeks)
+- Skills/agents judged unused (from catalog + snapshots — there is NO per-entry invocation log, so "unused" is a judgment, not a metric; label it as such)
 - Overly-specific rules (demote back to memory)
 
 ### Quality Gates
 Before promoting anything, verify:
-- [ ] Pattern appeared in 2+ separate sessions
+- [ ] Pattern recurs across 2+ sessions (your judgment from MEMORY + snapshots; no auto-counter exists)
 - [ ] Led to successful outcomes when followed
 - [ ] General enough to apply beyond one specific project
 - [ ] Does not conflict with existing rules

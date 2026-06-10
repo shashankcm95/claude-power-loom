@@ -88,7 +88,7 @@ export async function POST(request: Request) {
 - Return `Response` or `NextResponse` — both work; `NextResponse` adds cookie/header helpers
 - **Default runtime is Node.js**. Add `export const runtime = 'edge'` for Edge Runtime (faster cold-start, no Node APIs).
 - Dynamic params come via the function's second arg: `(request, { params })`
-- Route handlers are **NOT cached by default** when they read `Request` (PG14+ behavior; older versions cached `GET` by default — verify your version)
+- Route handlers are **NOT cached by default** when they read `Request` (Next 14+ behavior; older versions cached `GET` by default — verify your version)
 
 **When to use a route handler vs a Server Action vs a Server Component**:
 - Direct DB read for page rendering → **Server Component** (no API needed)

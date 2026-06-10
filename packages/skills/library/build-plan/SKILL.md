@@ -29,11 +29,11 @@ phase: H.7.9
 
 ## Why this skill exists
 
-Phases H.7.5/7.6/7.7/7.8 demonstrated a recurring drift: root-direct skipped plan-mode + route-decide gate + HETS architect spawn for multi-file substantive work, even when those gates would have caught real defects. Mira's H.7.7+H.7.8 retrospective surfaced 3 CRITICAL + 2 HIGH bugs traceable to this drift. The discipline existed in `rules/core/workflow.md:28-44` as a soft norm, but soft norms drift.
+Phases H.7.5/7.6/7.7/7.8 demonstrated a recurring drift: root-direct skipped plan-mode + route-decide gate + HETS architect spawn for multi-file substantive work, even when those gates would have caught real defects. Mira's H.7.7+H.7.8 retrospective surfaced 3 CRITICAL + 2 HIGH bugs traceable to this drift. The discipline existed in the Plan-Before-Edit Discipline section of `rules/core/workflow.md` as a soft norm, but soft norms drift.
 
 This skill converts the soft norm into a sharper gate by:
 1. Running `route-decide.js` deterministically before any planning happens (Step 0)
-2. Recommending architect spawn when `convergence_value ≥ 0.10` (Step 3)
+2. Recommending architect spawn when the `convergence_value` contribution `≥ 0.10` (Step 3; the post-context-mult borderline-promotion floor, `BORDERLINE_PROMOTION_THRESHOLD` in route-decide.js — NOT the 0.15 dimension weight)
 3. Producing plans that conform to `packages/specs/research/plan-template.md` schema (Step 4)
 4. Preserving user authority at the final gate (Step 5)
 
@@ -79,7 +79,7 @@ Recommendation is **NOT** auto-spawn. User decides at Step 5.
 If user accepts architect recommendation: spawn architect; integrate their design.
 If user declines (or low convergence_value): proceed with planner agent directly.
 
-Either way, write plan to `~/.claude/plans/<name>.md` conforming to `packages/specs/research/plan-template.md`:
+Either way, write plan to `.claude/plans/<name>.md` (consistent with `/plan` + the headless rule; the validator also accepts `~/.claude/plans/`) conforming to `packages/specs/research/plan-template.md`:
 
 | Section | Content |
 |---------|---------|
@@ -123,7 +123,7 @@ Present plan + recommendations. User picks:
 - **No subprocess LLM** — pure-deterministic route-decide; no model calls
 - **No auto-spawn HETS** — Step 5 user gate is always present
 - **Additive to /plan** — never replace; both coexist
-- **Route-decide weights byte-frozen** — H.7.9 doesn't perturb `weights_version v1.1-context-aware-2026-05-07`
+- **Route-decide weights untouched** — this skill doesn't perturb the route-decide weights (current `weights_version v1.2-dict-expanded-2026-05-07`; a later phase may legitimately advance it)
 - **Escape hatches available** — `--skip-hets` and `--force-plan` for explicit user override
 
 ## Phase
