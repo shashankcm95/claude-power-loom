@@ -1,0 +1,39 @@
+# yaml-language-server: $schema=https://www.coderabbit.ai/integrations/schema.v2.json
+#
+# CodeRabbit configuration. The single purpose of this file (so far) is to encode the
+# repo's design-record lifecycle policy so CodeRabbit stops a recurring false positive:
+# flagging in-place edits to files under packages/specs/plans/** as "editing an
+# immutable/canonical path." That FP recurred on PRs #269, #270, and #293 (escalating
+# to a "Major" severity finding). See PR #293 discussion_r3398606523 for the rationale.
+#
+# The actual policy (CLAUDE.md line 15): ADRs and RFCs are immutable/canonical; PLANS
+# are the LIVING per-wave design record. The three path_instructions below make that
+# boundary explicit to the reviewer.
+language: en-US
+reviews:
+  path_instructions:
+    - path: "packages/specs/plans/**"
+      instructions: >-
+        These are LIVING, per-wave planning documents — NOT immutable. Updating an
+        existing plan after creation is the established, correct workflow: a plan
+        accretes sections (e.g. "## Pre-Approval Verification", "## VALIDATE result",
+        wave-close status) as each wave of work completes. Per CLAUDE.md, ADRs and RFCs
+        — NOT plans — are the immutable/canonical records. Do NOT flag an in-place edit
+        to a plan file as "editing an immutable/canonical path," and do NOT suggest
+        moving the update into docs/ARCHITECTURE.md or docs/ROADMAP.md: the plan is the
+        canonical home for its own wave record, and duplicating it would fork the source
+        of truth. (Still review the change on its own merits — accuracy, links, internal
+        consistency — just not as an immutability violation.)
+    - path: "packages/specs/adrs/**"
+      instructions: >-
+        These ARE immutable/canonical historical decision records. A new decision
+        SUPERSEDES an old ADR via a NEW ADR — it does not rewrite an accepted one. It is
+        appropriate to flag a substantive rewrite of an existing ADR's decision or
+        context as an immutability concern (typo, formatting, and link fixes are fine).
+    - path: "packages/specs/rfcs/**"
+      instructions: >-
+        These ARE canonical proposal records. A ratified RFC is changed through its own
+        documented amendment process (e.g. a status or amendment section appended to the
+        RFC), not silently rewritten. It is appropriate to flag a substantive rewrite of
+        a ratified RFC's core proposal as an immutability concern (typo, formatting, and
+        link fixes are fine).
