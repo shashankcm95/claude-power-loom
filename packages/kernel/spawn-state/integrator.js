@@ -39,6 +39,13 @@ const { computePostStateHash } = require('../_lib/transaction-record.js');
 const { buildChainedRecord } = require('../_lib/integration-record.js');
 const { appendRecord, readByPostStateHash } = require('../_lib/record-store.js');
 const { checkEvidenceLinkPreCommit } = require('../_lib/k9-promote-deltas.js');
+// v3.7 W1 — the REJECT-event ledger arm's collaborators (used only when minting is
+// ON). It records the integrator's REJECT decisions (quarantine + provenance-reject)
+// as content-addressed, NON-CHAIN reject-events ISOLATED off the post_state_hash
+// keyspace (a sibling reject-events/ store). The absorb/clean-merge side is NOT minted
+// here — it is the chained integration record above (mechanical clean-merge != quality,
+// display-only). See reject-event-store.js for the A1-isolation + content-address detail.
+const { buildRejectEvent, appendRejectEvent } = require('../_lib/reject-event-store.js');
 
 const DEFAULT_INTEGRATION_REF = 'refs/heads/loom/integration';
 const CANDIDATE_PREFIX = 'refs/loom/candidates/';
@@ -284,6 +291,43 @@ function quarantineCandidate(cand, runGit) {
 }
 
 /**
+ * REJECT-LEDGER MINT (v3.7 W1) — record a kernel-DECIDED reject (a conflict
+ * quarantine or a provenance-reject) as a content-addressed reject-event. The
+ * integrator is the DECIDER (RP-9: the agent produces the delta, the integrator
+ * decides the disposition), so `outcome` is set HERE — never by a caller; an agent
+ * cannot forge its own reject classification. FAIL-SOFT (H3): a build/append throw
+ * or {ok:false} NEVER aborts the human-triggered fold — it only means no ledger entry
+ * for that candidate. Gated on ctx.minting (the same runId+stateDir gate as the
+ * chained record). Writes NO git ref (a record-store append) -> NEVER-TOUCH-HEAD
+ * stays intact. The candidate's kernel identity is computePostStateHash over its
+ * delta tree (the value its genesis is keyed by); a rev-parse miss -> no entry.
+ *
+ * @param {{rawId:string, safeId:string, delta_sha:string}} cand the rejected candidate.
+ * @param {'quarantined'|'provenance-rejected'} outcome the integrator's decision.
+ * @param {Object} ctx the minting context.
+ * @returns {void}
+ */
+function mintRejectEvent(cand, outcome, ctx) {
+  if (!ctx.minting) return; // the ledger is part of the minting arm (runId+stateDir present)
+  try {
+    const res = ctx.runGit(['rev-parse', `${cand.delta_sha}^{tree}`]);
+    const tree = res && res.ok ? String(res.stdout).trim() : '';
+    if (!GIT_SHA_RE.test(tree)) return; // can't compute the candidate identity -> no entry (fail-soft)
+    const candidatePost = computePostStateHash(tree);
+    const event = ctx.buildRejectEventFn({
+      runId: ctx.runId,
+      safeId: cand.safeId,
+      candidatePostStateHash: candidatePost,
+      outcome,
+      schemaVersion: ctx.schemaVersion,
+    });
+    ctx.appendRejectEventFn(event); // {ok:false} on a store reject is acceptable in shadow; the return is advisory
+  } catch {
+    // H3 — a mint throw (build validate / git / append) NEVER aborts the fold.
+  }
+}
+
+/**
  * Fold the resolved candidates onto one out-of-tree tip, IN DECLARED ORDER, writing
  * NO ref (the terminal CAS is the composer's job). SEED = resolved[0].delta_sha
  * (candidate-0 adopted WHOLE — never merged/quarantined). When MINTING, the seed's
@@ -313,13 +357,14 @@ function foldCandidatesOntoTip(resolved, runGit, ctx) {
     if (s.outcome === 'clean') {
       const c = integrateOneClean(tip, chainHeadPost, cand, s.tree, runGit, ctx);
       if (c.ok) { tip = c.tip; chainHeadPost = c.chainHeadPost; integratedIds = [...integratedIds, cand.rawId]; }
-      else if (c.kind === 'provenance') { provenanceRejectedIds = [...provenanceRejectedIds, cand.rawId]; }
+      else if (c.kind === 'provenance') { provenanceRejectedIds = [...provenanceRejectedIds, cand.rawId]; mintRejectEvent(cand, 'provenance-rejected', ctx); }
       else return { ...acc, aborted: true, reason: 'merge-error' }; // kind:'commit' — shared-substrate health
     } else if (s.outcome === 'conflict') {
       const q = quarantineCandidate(cand, runGit);
       if (!q.ok) return { ...acc, aborted: true, reason: 'merge-error' };
       quarantinedIds = [...quarantinedIds, cand.rawId];
       if (q.overwrote) quarantineOverwrites = [...quarantineOverwrites, cand.rawId];
+      mintRejectEvent(cand, 'quarantined', ctx); // v3.7 W1 — kernel-decided reject -> the ledger (fail-soft)
     } else {
       return { ...acc, aborted: true, reason: 'merge-error' };
     }
@@ -404,6 +449,8 @@ function runIntegration(ids, integrationRef, runGit, ctx) {
  * @param {function} [opts.chainRecordFn] non-genesis builder override (default buildChainedRecord).
  * @param {function} [opts.resolveParentFn] chain-walk seam override (default readByPostStateHash).
  * @param {function} [opts.appendRecordFn] record-append override (default appendRecord).
+ * @param {function} [opts.buildRejectEventFn] reject-event builder override (default buildRejectEvent).
+ * @param {function} [opts.appendRejectEventFn] reject-event append override (default appendRejectEvent).
  * @returns {Object} the run-report.
  */
 function integrateCandidates(opts) {
@@ -422,10 +469,14 @@ function integrateCandidates(opts) {
   const ctx = {
     minting: !!(o.runId && o.stateDir),
     runGit,
+    runId: o.runId, // v3.7 W1 — the reject-event mint stamps this into the record (a field, not a path-only token)
     schemaVersion: typeof o.schemaVersion === 'string' && o.schemaVersion ? o.schemaVersion : DEFAULT_SCHEMA_VERSION,
     chainRecordFn: typeof o.chainRecordFn === 'function' ? o.chainRecordFn : buildChainedRecord,
     resolveParentFn: typeof o.resolveParentFn === 'function' ? o.resolveParentFn : (h) => readByPostStateHash(h, { runId: o.runId, stateDir: o.stateDir }),
     appendRecordFn: typeof o.appendRecordFn === 'function' ? o.appendRecordFn : (r) => appendRecord(r, { runId: o.runId, stateDir: o.stateDir }),
+    // v3.7 W1 — the reject-event ledger seams (DIP; default-bound, test-overridable).
+    buildRejectEventFn: typeof o.buildRejectEventFn === 'function' ? o.buildRejectEventFn : buildRejectEvent,
+    appendRejectEventFn: typeof o.appendRejectEventFn === 'function' ? o.appendRejectEventFn : (ev) => appendRejectEvent(ev, { runId: o.runId, stateDir: o.stateDir }),
   };
 
   const valid = validateOrderedIds(o.orderedIds);
