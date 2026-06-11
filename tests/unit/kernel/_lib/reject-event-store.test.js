@@ -75,6 +75,8 @@ function tmpState() {
 function postFor(label) {
   // A 40-hex fake tree sha derived from the label (sha1-shaped), fed through the
   // canonical formula so the value is a real computePostStateHash output.
+  // NOTE: SHA1 is intentional — git tree SHAs ARE sha1-hex; this is test-data shaping,
+  // not security (the production store content-addresses with sha256). SAST false-positive.
   const fakeTree = require('crypto').createHash('sha1').update(label).digest('hex');
   return computePostStateHash(fakeTree);
 }
