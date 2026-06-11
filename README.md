@@ -6,7 +6,7 @@
 >
 > **It makes long-horizon agent failures cheap, observable, and reversible. It does _not_ make the underlying LLM smarter.** That honesty is the project's design anchor.
 
-[![CI](https://github.com/shashankcm95/claude-power-loom/actions/workflows/ci.yml/badge.svg)](https://github.com/shashankcm95/claude-power-loom/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Phase](https://img.shields.io/badge/substrate-v3.4%20(evolution%20lab%20full)-orange.svg)](docs/ROADMAP.md) [![Plugin](https://img.shields.io/badge/Claude_Code-plugin-orange.svg)](.claude-plugin/plugin.json)
+[![CI](https://github.com/shashankcm95/claude-power-loom/actions/workflows/ci.yml/badge.svg)](https://github.com/shashankcm95/claude-power-loom/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Phase](https://img.shields.io/badge/substrate-v3.7%20(delta--promote%20activation)-orange.svg)](docs/ROADMAP.md) [![Plugin](https://img.shields.io/badge/Claude_Code-plugin_3.7.0-orange.svg)](.claude-plugin/plugin.json)
 
 ---
 
@@ -45,22 +45,6 @@ For the full rationale see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). For t
 
 ---
 
-## Status
-
-It is distributed as a **Claude Code plugin**, now at **v3.4.0** — the **v3.x kernel + runtime + Lab substrate** (v3.1.0 was the first published cut; the prior published line was v2.9.x).
-
-**Five phases are complete: Phase 1-alpha (the pure kernel transaction loop), v3.1 (Runtime Foundation), v3.2 (Runtime Decomposition), v3.3 (Evolution Lab Foundation — Wave 0 + E1), and v3.4 (Evolution Lab Full — the advisory loop, in shadow).** Phase 1-alpha shipped **11 kernel primitives** (atop the pre-existing `K5` validators; sub-PRs `#167`–`#175`, all merged). **v3.1** then built the first runtime layer on top: the persona/capability runtime (**R1–R4** two-tier contracts + the agent.md↔contract reconciliation validator), the live shadow-default **spawn-close transaction loop**, and **INV-22** in-substrate idempotency (`#179`–`#200`). **v3.2** added the **decomposition + verification tier** (R6–R12) + the **K11** algorithm library with the **A4-binding gate enforcing**, phase-closed 2026-06-04 (`#214`–`#237`). **v3.3** lit the first **Layer-3 (Evolution Lab)** code — the **un-darkening** (`decompose-run` writes an outbox → the Lab **E1 negative-attestation** ingest reads it; dogfood-proven a real spawn drives it end-to-end) + the **E1** store, phase-closed 2026-06-04 (`#240`); RESHAPED by a cumulative-coherence pass to Wave 0 + E1. **v3.4** then built the full Evolution Lab **advisory loop** (verdict-attestation → E4 reputation → A6 snapshot → E11 breaker → the orchestrator persona-selection consumers), phase-closed 2026-06-07 (`#243`–`#254`); RESHAPED (mirroring v3.3) to close at the advisory loop **in shadow**, deferring E2/E3 + the production decomposition trigger + E5–E10 + R10 to v3.5+. The entire Lab tier (decompose tier + E1 + the advisory loop) ships **shadow** — 0 production hook triggers; advisory-only, never gates or widens K9. Kernel-primitive status:
-
-| Live | Dormant | Advisory | Dropped / Deferred |
-|---|---|---|---|
-| K1 K2 K3 K4 K7 K9 K10 K13 K14 | **K3.b** (shipped v3.1) | **K12** (layer-boundary lint) | **K6** (retired v3.2, `#216`) · **K8** (dropped — [ADR-0012](packages/specs/adrs/0012-capability-enforcement-is-static-not-runtime-injected.md)) · K11 → v3.2 · K2.c → v3.5+ |
-
-"Dormant" = the code ships with **no production importer yet** (a CI gate enforces it) — for K6, the reconciliation validator does its own containment check, so K6 awaits a v3.2+ runtime consumer. "Advisory" = it **warns, never blocks**. See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the phase-by-phase plan and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#kernel-primitives) for what each primitive does.
-
-> ⚠️ Early major release. **v3.1.0** is the first published cut of the v3.x kernel; its surface changes incompatibly with v2.9 readers (the MAJOR bump — see [ADR-0009](packages/specs/adrs/0009-major-bump-rationale.md)). Expect the kernel schema to keep evolving across v3.x minors as runtime consumers (v3.3+) land — pin a version if you depend on it.
-
----
-
 ## Install
 
 **Canonical — Claude Code plugin marketplace:**
@@ -83,19 +67,56 @@ The legacy path wires hooks directly into `~/.claude/settings.json`; it works bu
 
 > **Repo vs plugin name**: the GitHub repo is `claude-power-loom` (the `claude-` prefix aids ecosystem discovery); the plugin is `power-loom` (Anthropic marketplace convention). The repo was formerly `claude-skills-consolidated`; GitHub auto-redirects old URLs.
 
+### See it run (5 seconds, hermetic)
+
+The flagship transaction loop — spawn deltas staged as candidates, folded out-of-tree, recorded in the trust ledger, and merged only by a human — has a runnable, narrated demo that touches nothing outside a temp dir:
+
+```bash
+node examples/delta-promote-demo.js
+```
+
+CI re-runs it on every push. The documented workflow (and how to opt in for real) is [`docs/delta-promote-walkthrough.md`](docs/delta-promote-walkthrough.md).
+
+---
+
+## Status
+
+Distributed as a **Claude Code plugin**, now at **v3.7.0**. The v3.x line is the kernel + runtime + Evolution Lab substrate; v3.1.0 was its first published cut (the prior published line was v2.9.x). Eight phases are complete:
+
+| Phase | What shipped | Closed |
+|---|---|---|
+| Phase 1-alpha | the pure kernel transaction loop — 11 primitives atop the K5 validators | 2026-06-02 (with v3.1) |
+| v3.1 — Runtime Foundation | the persona/capability runtime (R1–R4 contracts + reconciliation), the shadow-default spawn-close transaction loop, INV-22 idempotency | 2026-06-02 |
+| v3.2 — Runtime Decomposition | the decomposition + verification tier (R6–R12), the K11 algorithm library (A4-binding) | 2026-06-04 |
+| v3.3 — Evolution Lab Foundation | the first Layer-3 code: the un-darkening + the E1 negative-attestation store | 2026-06-04 |
+| v3.4 — Evolution Lab Full | the complete advisory loop in shadow: verdict-attestation → E4 reputation → A6 snapshot → E11 breaker → persona-selection consumers | 2026-06-07 |
+| v3.5 — Memory Manage-Layer | the manage layer over memory + the typed causal-edge graph (destructive ops recorded-not-executed) | 2026-06-08 |
+| v3.6 — Destructive-manage enforcement | **leave-shadow event #1**: a human-approved proposal → a committed kernel TOMBSTONE/SUPERSEDE (opt-in, breaker-bounded) | 2026-06-10 |
+| v3.7 — Delta-promote activation | **the trust system's first producer**: the reject-event ledger at the integrator + the documented, demo-proven human-gated promote workflow | 2026-06-11 |
+
+**Next:** v3.8 wires the reject-event **breaker consumer** (reject-rate may only narrow trust — never harden it) and calibrates the advisory loop; **v3.9 is the first live beta** — the named decision point for whether human-gated promotion has a real consumer ([RFC §10](packages/specs/rfcs/2026-06-04-enforcing-vs-advisory-identity.md)). The full narrative lives in [`docs/ROADMAP.md`](docs/ROADMAP.md); what is dark/flag-gated and why in [`docs/ACTIVATION-LEDGER.md`](docs/ACTIVATION-LEDGER.md).
+
+Kernel-primitive status (details: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#kernel-primitives)):
+
+| Live | Dormant | Advisory | Dropped / Retired |
+|---|---|---|---|
+| K1 K2 K3 K4 K7 K9 K10 K11 K13 K14 + the reject-event ledger | **K3.b** (no production importer yet; CI-asserted) | **K12** (layer-boundary lint — warns, never blocks) | **K6** (retired v3.2) · **K8** (dropped — [ADR-0012](packages/specs/adrs/0012-capability-enforcement-is-static-not-runtime-injected.md)) |
+
+> ⚠️ Early major line. The v3.x kernel surface changes incompatibly with v2.9 readers (the MAJOR bump — [ADR-0009](packages/specs/adrs/0009-major-bump-rationale.md)), and the kernel schema keeps evolving across v3.x minors — pin a version if you depend on it.
+
 ---
 
 ## How the substrate is layered
 
-Power Loom is a microkernel architecture in three layers (a fourth, `adapters`, is a v3.5+ convention path):
+Power Loom is a microkernel architecture in three layers (a fourth, `adapters` — the ContainerAdapter sandbox boundary — is a reserved Track-2 path that does not yet exist on disk):
 
 | Layer | Path | Responsibility | Trust |
 |---|---|---|---|
 | **Kernel** | `packages/kernel/**` | Deterministic, portable, minimal. Hooks + validators + recall-CLI + spawn-state + the transaction primitives. | **Pure-function gates only — no LLM in the blocking path.** |
 | **Runtime** | `packages/runtime/**` | The agent team (HETS): personas, decomposition disciplines, capability traits, contracts. | Kernel gates (blocking) + advisory checks (non-blocking, audit-logged). |
-| **Evolution Lab** | `packages/lab/**` | Adaptive cognition — measures the substrate's own quality and feeds reputation. Phase 3+ (v3.3+). | Advisory only; outputs reach the kernel **only** through an explicit reputation snapshot. |
+| **Evolution Lab** | `packages/lab/**` | Adaptive cognition — measures the substrate's own quality and feeds reputation. | Advisory only; outputs reach the kernel **only** through an explicit reputation snapshot. |
 
-The **dependency rule** points inward: an inner layer may never import an outer one (`kernel` imports nothing outward; `runtime` may import `kernel`). This is enforced by convention + per-file `// @loom-layer:` markers + the **`K12` advisory lint** — downgraded from mandatory in v5.1 after six months on the spike branch produced zero observed cross-layer drift (the `_lib/` extraction pattern keeps the tree acyclic by construction).
+The **dependency rule** points inward: an inner layer may never import an outer one (`kernel` imports nothing outward; `runtime` may import `kernel`). This is enforced by convention + per-file `// @loom-layer:` markers + the **`K12` advisory lint** — downgraded from mandatory after six months on the spike branch produced zero observed cross-layer drift (the `_lib/` extraction pattern keeps the tree acyclic by construction).
 
 The kernel boundary is **Axiom 2**: *kernel = pure deterministic functions; user-space = agent spawns; interface = filesystem deltas + contract-conformant text.* It forbids LLMs writing to kernel paths, kernel code calling LLMs in a verification gate, and agents bypassing the interface. The Ten Axioms (A1–A10) are stated in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#the-ten-axioms).
 
@@ -115,11 +136,13 @@ The value is concentrated in the enforced layer. The runtime adds *verifiable* m
 
 ## Documentation
 
-- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — the substrate model: layers, the Ten Axioms, the transaction loop, and every kernel primitive K1–K14.
-- **[docs/ROADMAP.md](docs/ROADMAP.md)** — Phase 0 ✓ → Phase 1-alpha ✓ → v3.1 ✓ → v3.2+ (appended as each phase lands).
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — the substrate model: layers, the Ten Axioms, the transaction loop, every kernel primitive, and the threat model.
+- **[docs/ROADMAP.md](docs/ROADMAP.md)** — the phase-by-phase record (Phase 0 → v3.7 ✓, each with its phase-close sign-off) and what comes next (v3.8 → v3.9 first live beta).
+- **[docs/ACTIVATION-LEDGER.md](docs/ACTIVATION-LEDGER.md)** — every built-but-dark / flag-gated capability, its consumer, and its activation fate. The honest inventory.
+- **[docs/delta-promote-walkthrough.md](docs/delta-promote-walkthrough.md)** — the human-gated promote workflow, end to end (with the runnable demo).
 - **[docs/README.md](docs/README.md)** — the full documentation index.
 
-Machinery references (still accurate, preserved): **[Hooks](docs/hooks/)** · **[Library memory organizer](docs/library.md)** · **[Install](docs/install/)** · **[Commands](docs/reference/commands.md)** · **[Rules](docs/reference/rules.md)** · **[Project structure](docs/reference/project-structure.md)** · **[Stability commitment](docs/reference/stability-commitment.md)**.
+Machinery references: **[Hooks](docs/hooks/)** · **[Library memory organizer](docs/library.md)** · **[Install](docs/install/)** · **[Commands](docs/reference/commands.md)** · **[Rules](docs/reference/rules.md)** · **[Project structure](docs/reference/project-structure.md)** · **[Stability commitment](docs/reference/stability-commitment.md)**.
 
 ---
 
@@ -128,10 +151,10 @@ Machinery references (still accurate, preserved): **[Hooks](docs/hooks/)** · **
 What this substrate does **not** do:
 
 - ❌ **Does not make the LLM better at long-horizon coding.** It makes failures cheap, observable, and reversible. That is the whole pitch; anything more would be an overclaim.
-- ❌ **Does not guarantee Claude follows the markdown rules in `rules/`.** Those are advisory text. *Specific* behaviors are hook-enforced and deterministic (read-before-edit, vague-prompt detection, config-guard, pre-compact checkpoint); the rest ride on best-effort instruction-following.
+- ❌ **Does not guarantee Claude follows the markdown rules.** Those are advisory text. *Specific* behaviors are hook-enforced and deterministic (read-before-edit, vague-prompt detection, config-guard, pre-compact checkpoint); the rest ride on best-effort instruction-following.
 - ❌ **Does not give agents continuous LLM memory across sessions.** Each spawn is a fresh call. The substrate maintains *per-identity reputation* on disk (trust scores, history) — that is persistence of a record, not of the model's memory.
-- ⚠️ **Is local-trust-anchored.** v3.0-alpha does **not** defend against host-level filesystem tampering; hash-chained tamper-evidence and network-egress policy are deferred (see ROADMAP).
-- ⚠️ **`K3.b` and `K9`-style dormant code, and the `K12` advisory lint, are not yet load-bearing.** They ship early so the design can settle; the docs label them as such rather than implying an active system.
+- ⚠️ **Is local-trust-anchored.** The v3.x line does **not** defend against hostile same-uid filesystem tampering (e.g. back-dating a record's mtime to hide it from a rate window) — those residuals are named in the [threat model](docs/ARCHITECTURE.md#threat-model--the-human-gated-delta-path) and close only at the Track-2 **ContainerAdapter** sandbox.
+- ⚠️ **Ships some code ahead of its consumer — deliberately, and tracked.** Producers may land one phase before the thing that reads them (e.g. the v3.7 reject-event ledger's breaker consumer arrives in v3.8). Every such edge is named in the [activation ledger](docs/ACTIVATION-LEDGER.md) rather than implied to be live.
 
 These are intentional architecture decisions, not gaps to fix.
 
@@ -141,10 +164,11 @@ These are intentional architecture decisions, not gaps to fix.
 
 - `packages/kernel/` — the Loom Kernel: `hooks/` + `validators/` + `recall/` + `spawn-state/` + `_lib/` (transaction primitives), `hooks.json`, `schema/`.
 - `packages/runtime/` — the Loom Runtime: HETS orchestration, persona contracts, identity registry.
-- `packages/lab/` — the Evolution Lab (Phase 3+).
-- `packages/specs/` — the design record: `rfcs/`, `adrs/`, `plans/`, `research/`.
-- `packages/skills/` — cross-cutting skills (including `agent-team/` for HETS).
-- `agents/` · `commands/` · `rules/` — agent definitions, slash commands, always-on guidance.
+- `packages/lab/` — the Evolution Lab: attribution, reputation, circuit-breaker, manage-proposal, verdict-attestation.
+- `packages/specs/` — the design record: `rfcs/`, `adrs/`, `plans/` (living per-wave docs), `research/`.
+- `packages/skills/` — the instruction-following layer SOURCE: `rules/` (always-on guidance), `commands/` (slash commands), `library/` (skills).
+- `agents/` — the Agent-tool persona definitions (architect, code-reviewer, hacker, …).
+- `examples/` — runnable demos (`delta-promote-demo.js`). `tests/` — the unit + E2E suites.
 
 Full walkthrough: [`docs/reference/project-structure.md`](docs/reference/project-structure.md).
 
