@@ -6,6 +6,8 @@ status: accepted — produced by a 20-agent adversarial review of Fable-5's two 
 scope: strategic multi-phase arc — the single canonical forward charter; supersedes the unified-vision charter for SEQUENCING
 supersedes: packages/specs/plans/_archive/2026-06-10-unified-vision-synthesis.md  # archived; its survivors are absorbed here
 related:
+  - packages/specs/rfcs/2026-06-11-north-star-autonomous-sde-trust.md # the DESTINATION the spine derives toward (+ OQ-NS-6 law)
+  - packages/specs/plans/2026-06-10-v3.7-delta-promote.md            # v3.7 (re-scoped: the absorb/reject ledger)
   - packages/specs/plans/2026-06-08-shadow-to-live-beta-roadmap.md   # THE SPINE — inherited UNCHANGED
   - packages/specs/plans/2026-06-10-predictive-persona-program.md    # Track 3 (corrected) — the post-beta parallel track
   - docs/ACTIVATION-LEDGER.md                                        # producer-consumer phasing + the new S5 evidence ledger
@@ -67,6 +69,35 @@ the PROBED reality of the layer below; the v6 blueprint + RFCs *agree-with-probe
 mandate); **producer-consumer phasing** (every shadow producer needs a next-phase consumer or an
 explicit OPTION tag); **ADR-0012** (no per-spawn injection; enforcement is static); **section-0a.3.1**
 (advisory artifacts narrow/inform, never gate/widen).
+
+## The north-star destination + the v3.7 re-scope (charter-gated, ratified 2026-06-11)
+
+The spine now derives backward from an explicit destination: **the north-star RFC**
+(`packages/specs/rfcs/2026-06-11-north-star-autonomous-sde-trust.md`) — Power Loom as a DDIA
+fault-tolerance layer around a probabilistic actor; the apex signal is an EXTERNAL maintainer merge;
+trust is fractal (internal commit-absorption + external merge). It survived a 9-agent adversarial panel
+(COHERENT-WITH-GAPS — the skeleton holds, the joints are the build).
+
+- **OQ-NS-6 is a BINDING LAW (ratified 2026-06-11):** the same-system **absorb-rate may only NARROW**
+  review; **only a world-anchored merge** (external maintainer, or the USER) may **HARDEN** (unlock
+  reduced scrutiny). Every reputation / review-depth consumer MUST honor it.
+- **v3.7 is RE-SCOPED (charter-gated, ratified 2026-06-11; VERIFY-RESHAPED — 3-lens NEEDS-REVISION
+  folded):** W1 becomes **mint the REJECT-event ledger at the integrator** (`foldCandidatesOntoTip`):
+  the absorb/clean-merge side is ALREADY minted (the P3c-c `mintIntegrationRecord` chained record), so
+  W1 mints only the **quarantine + provenance-reject** events as a **NON-CHAIN record isolated off the
+  `post_state_hash` keyspace** (keying on `post_state_hash` POLLUTES the K9 chain-walk — A1-CRITICAL),
+  `evidence_refs=[candidate genesis txid]` (A10), `outcome` validated + folded into the content-address
+  (H2), **fail-soft** (a mint throw must not abort the human-triggered fold — H3). This IS the breaker's
+  denial source (reject-rate -> breaker, trust-down, v3.8). **"absorb" = clean-merge = MECHANICAL, not
+  quality (C1): an agent guarantees it with a disjoint-files / 1-candidate / seed delta** -> it is
+  DISPLAY-ONLY, near-zero evidence; reputation absorb-rate NARROWS only (OQ-NS-6; HARDEN waits for the
+  v3.9 external merge). **The orchestrator's actual quality judgment is a STACK of narrowing filters**
+  (Layer 0 mergeability [built] / Layer 1 build-test gate / Layer 2 reviewer-verdict / Layer 3 coverage)
+  named + phased in the north-star RFC — v3.7 ships Layer 0 only; Layers 1-3 defer (Layer 2 reuses
+  `verification-policy.js` ~v3.8; Layer 1 = beta/ContainerAdapter; Layer 3 + requirement-tagging =
+  post-intake). Threat-model corrected: a same-uid **back-date INTO THE PAST** ages a reject out of the
+  breaker window and `excluded_future` does NOT catch it (UNMITIGATED at the FS layer; closes at the
+  ContainerAdapter). The demonstration (W2/W3) + §7 reset (W4) are unchanged; v3.7 stays **shadow**.
 
 ## The graft ledger — what lands, where, and why
 
