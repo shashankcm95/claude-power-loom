@@ -48,6 +48,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/kernel/_lib/record-locate.js` - v3.6 Wave 2a — findRecordRun: the content-addressed run locator (the run-scoping seam).
 - `packages/kernel/_lib/record-scan.js` - v3.6 W2b.2 — scanCommittedOps: a read-only CROSS-run scan of committed records by
 - `packages/kernel/_lib/record-store.js` - The provenance state-chain store (origin: PR-P1, where it shipped dormant).
+- `packages/kernel/_lib/reject-event-store.js` - v3.7 W1 — the REJECT-event ledger (the trust-system's DENIAL-SOURCE producer).
 - `packages/kernel/_lib/route-decide-export.js` - route-decide-export.js — H.7.0 helper module.
 - `packages/kernel/_lib/runState.js` - Shared run-state path resolution.
 - `packages/kernel/_lib/safe-exec.js` - safe-exec.js — H.8.4 shared helper: safe subprocess invocation without shell.
