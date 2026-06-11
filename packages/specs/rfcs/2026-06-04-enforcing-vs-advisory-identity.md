@@ -4,6 +4,7 @@ title: "Power Loom's promote/merge disposition — is the substrate advisory, hu
 status: accepted
 created: 2026-06-04
 ratified: 2026-06-04
+amended: "2026-06-11 — §10 (v3.7 W4): the revert-toward-A timer RESET; the decision point = the v3.9 phase close"
 decision: "Option B — human-gated promotion as the enforcing ceiling (PROVISIONAL, pending first real consumer); shadow stays default; auto-merge retired-until-ContainerAdapter"
 author: orchestrator (v3.4 Wave 5) + architect/honesty-auditor 2-lens review (applied inline) + USER ratification 2026-06-04
 amends: nothing (decision-framing RFC; ratification updates ROADMAP + the activation ledger)
@@ -264,3 +265,41 @@ about the gate-PASS disposition.
 - **Still open for the USER (the §7 hinge the review could not settle — it is a product-demand call):**
   will you (or a user) ever actually run a spawn in enforce/candidate mode and merge a `loom-promote/*`
   branch — or is that always a by-hand git/PR workflow? That answer is what chooses B vs A.
+
+---
+
+## §10 — Amendment (2026-06-11, v3.7 W4): the revert-toward-A timer is RESET
+
+*Appended per the RFC amendment convention — §1–§9 above are the ratified record, unmodified.*
+
+**What v3.7 discharged (the §7 item-2 owed activation):**
+
+- **Activation docs — DONE** (W2, #296): the honest shadow/opt-in framing (README 3-tier honesty split;
+  `docs/ARCHITECTURE.md` §6 workflow + threat-model declaration; the activation-ledger rows).
+- **One primary mechanism picked + the capability DEMONSTRATED — DONE** (W3, #297): rung-2
+  (`LOOM_STAGE_CANDIDATES`, the architect-favored out-of-tree path) is the documented primary; the
+  end-to-end demo (`examples/delta-promote-demo.js` + `docs/delta-promote-walkthrough.md`) stages
+  candidates, folds, and a human reviews + merges — CI-guarded so it cannot rot
+  (`delta-promote-demo-e2e.test.js`).
+- **The promote-path breaker — producer HALF built** (W1, #293): the reject-event ledger is the
+  kernel-attested denial source; the breaker CONSUMER is planned for v3.8 (Producer–Consumer Phasing).
+  §7 item 2's breaker is therefore NOT yet discharged — stated honestly, not claimed.
+
+**The timer reset, with rationale (not a silent extension):** the original trigger — *revert toward A
+if no real consumer within one release cycle* — dates from ratification (2026-06-04), and one release
+(v3.6.0) has shipped since with no real consumer. Read strictly, the timer elapsed. But §7 item 2
+conditioned Option B's "supported opt-in" status on *"real docs, an activation story, and a breaker"* —
+none of which existed until v3.7. A demand hinge cannot fairly expire while the capability was
+undocumented, undemonstrated, and unconsumable; the first cycle tested nothing. **The clock therefore
+RESTARTS at v3.7 (the activation release) and runs to the v3.9 phase close** — the first live beta, the
+named decision point where a real human-gated consumer either materializes (the operator running the
+live loop on real work, or an external user enabling the flag) or does not.
+
+**The sharpened hinge:** v3.7 closes the *capability* question (it works, end-to-end, documented,
+CI-guarded — the operator-as-maintainer dogfood). What remains is purely §7's *product-demand* question,
+now cleanly posed: **if no real consumer has materialized by the v3.9 phase close, revert toward
+Option A** (retire the enforce/candidate machinery; shrink the surface). No further reset is
+anticipated — v3.9 is the decision point.
+
+**Unchanged by this amendment:** shadow stays the default; NEVER-TOUCH-HEAD stays the invariant;
+auto-merge stays retired-until-ContainerAdapter; the A3a/A3b split and the advisory chain are untouched.
