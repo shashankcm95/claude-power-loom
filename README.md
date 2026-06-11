@@ -105,7 +105,8 @@ The kernel boundary is **Axiom 2**: *kernel = pure deterministic functions; user
 
 The substrate has a hard floor and a soft ceiling, and the docs never blur them:
 
-- **🔒 Enforced (deterministic).** Hooks and validators are pure logic — they fire every time, no LLM interpretation. Read-before-edit, secret-literal blocking, config-guard, path canonicalization, write-scope detection, serial-spawn enforcement, the pre-commit promote gate. If a behavior *must* always happen, it is a hook.
+- **🔒 Enforced (deterministic).** Hooks and validators are pure logic — they fire every time, no LLM interpretation. Read-before-edit, secret-literal blocking, config-guard, path canonicalization, write-scope detection, serial-spawn enforcement. If a behavior *must* always happen, it is a hook.
+- **🌓 Shadow / opt-in (human-gated).** The deep-substrate delta path — the spawn-close resolver, the ordered integrator, the v3.7 reject-event ledger — RECORDS provenance but does **not** gate. It stays in shadow unless you set a `LOOM_*` flag (default OFF), never writes your checked-out HEAD (all assembly is out-of-tree), and a human reviews + merges the staged `loom/integration` / `loom-promote/*` branch. It is a *capability*, not an enforced behavior — see [ARCHITECTURE §6](docs/ARCHITECTURE.md#6-what-is-enforced-and-where) and the [activation ledger](docs/ACTIVATION-LEDGER.md).
 - **📜 Best-effort (instruction-following).** Rules, skills, and agent prompts shape Claude's reasoning but **can be skipped** by the LLM under context pressure. They are ideals, not guarantees.
 
 The value is concentrated in the enforced layer. The runtime adds *verifiable* multi-agent coordination on top: even when an individual agent skips an instruction, its output is checked against a per-persona contract, so the **team-level verdict is deterministic**. See [Honest disclosures](#honest-disclosures).
