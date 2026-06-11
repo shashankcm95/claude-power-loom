@@ -1,57 +1,69 @@
-# thoughts/shared/plans/
+# packages/specs/plans/
 
-Implementation plans produced by the `/plan` slash command (H.8.6+). See `swarm/thoughts/README.md` for the broader RPI lifecycle.
+Implementation + per-wave phase plans. **Living documents** — updated in place across a
+phase's lifecycle, NOT immutable. (Contrast `../adrs/` and `../rfcs/`, which ARE canonical:
+superseded via a new doc, never rewritten.) The root `CLAUDE.md` indexes this distinction
+and `.coderabbit.yaml` encodes it for review, because conflating the two recurs as a
+false-positive "you edited an immutable path" finding.
+
+## Living, not immutable
+
+A plan is **updated in place** as work proceeds — editing it after creation is the
+workflow, not a violation. It accretes sections as each wave/phase completes:
+
+- `## Runtime Probes` — firsthand current-state grounding (claims verified against the live
+  repo, not prose/memory) BEFORE the build.
+- `## Pre-Approval Verification` — the `/verify-plan` architect + code-reviewer FLAGs, folded
+  before building.
+- `## VALIDATE result` — the post-build multi-lens (code-reviewer / hacker / honesty) findings
+  and the folds applied.
+- `## Phase-close sign-off` — the `/phase-close` record at a phase boundary.
+
+Do NOT move a plan's wave record into `docs/{ARCHITECTURE,ROADMAP}.md` — those carry *live
+project status*; the plan is the canonical home for its own lifecycle.
+
+## Where plans come from
+
+- `/plan` — single-architect planner delegate; trivial-to-medium scope.
+- `/build-plan` — HETS-aware; runs `route-decide.js` first and recommends an architect spawn
+  when `convergence_value >= 0.10`; writes plans conforming to the canonical template.
+
+Canonical schema + section reference: [`../research/plan-template.md`](../research/plan-template.md).
+Schema conformance is advisory — the plan-schema validator hook emits `[PLAN-SCHEMA-DRIFT]`
+when a Tier-1 (`## Context` + one of `## Files To Modify` / `## Phases` + `## Verification
+Probes`) or Tier-2 (`## Routing Decision` + `## HETS Spawn Plan`, for `/build-plan` output)
+section is missing.
 
 ## Filename convention
 
-```
-YYYY-MM-DD-<phase-tag>-<description>.md
+```text
+YYYY-MM-DD-<phase-or-slug>.md
 ```
 
-Examples:
-- `2026-05-09-H.8.7-batch-h1-h5-chaos-fixes.md`
-- `2026-05-09-H.8.8-validate-kb-doc-hook.md`
+Examples: `2026-06-10-v3.7-delta-promote.md`, `2026-06-10-combined-roadmap.md`.
 
-## Required frontmatter
+## Frontmatter (current convention)
 
 ```yaml
 ---
-date: YYYY-MM-DDThh:mm:ssTZ
-planner: <persona.identity or "root">
-phase_tag: H.X.Y
-git_commit: <sha at plan time>
-branch: <branch name>
-research_artifact: <path to thoughts/shared/research/...md OR null if no research>
-status: draft | approved | in-progress | complete | superseded
-phases: <count of phases in this plan>
-last_updated: YYYY-MM-DD
-last_updated_by: <persona.identity or "root">
+title: "v3.7 — the absorb/reject ledger + delta-promote activation"
+plan_id: v3.7-delta-promote
+created: YYYY-MM-DD
+status: DRAFT | RE-SCOPED | IN-PROGRESS | COMPLETE | SUPERSEDED
+scope: <one-line scope>
+related:
+  - packages/specs/plans/<charter>.md      # cross-linked plans / RFCs / ADRs
+lifecycle: persistent                       # or ephemeral / archive-after: YYYY-MM-DD (workspace-hygiene)
 ---
 ```
 
-## Plan structure (per humanlayer canonical implement_plan.md)
-
-Each plan has 1+ named phases. Each phase contains:
-- **Description** — what this phase accomplishes
-- **Files affected** — explicit list with paths
-- **Success criteria** — what makes this phase "done"
-- **Manual verification steps** — what humans need to test post-implementation
-- **Checkboxes** — `- [ ]` for incomplete, `- [x]` for complete
-
-The implement command updates checkboxes in-place as phases complete. This makes plans **resumable** — if a session breaks mid-implementation, the next session reads the plan, sees which phases are checked, and picks up at the first unchecked phase.
-
 ## Content discipline
 
-- **Plans are guides, not laws** (humanlayer canonical). When implementation reveals a mismatch, STOP and report; don't silently work around the plan.
-- **Each phase ends with explicit human-verification pause** — automated tests pass, then implementer notes "Phase N complete; ready for manual verification" and waits for the user before continuing to phase N+1.
-- **Critique is welcome at the plan phase.** Unlike research artifacts (documentary), plans synthesize critic-persona input. The architect / code-reviewer / security-engineer all contribute critique here. If the plan emerged from `/build-plan` or pre-approval verification, the FLAGs from those reviewers belong here.
-
-## Pre-approval verification (drift-note 40 lineage)
-
-Per power-loom convention, plans for substantive multi-file work get **parallel pre-approval verification** before execution:
-- Spawn architect + code-reviewer in parallel
-- Each returns FLAG/PASS verdicts on the plan
-- Apply revisions
-- Then `/implement`
-
-This was the workflow that caught H.8.4's mira+jade flags. It composes naturally with the RPI structure — pre-approval is the explicit "review the plan before implementing" gate.
+- **Plans are guides, not laws.** When the build reveals a mismatch with the plan, STOP and
+  report — do not silently work around it. A plan's prose about an existing module's contract
+  is a *premise to re-probe* against the live source, not a fact.
+- **Critique belongs at the plan phase.** `/verify-plan` spawns architect + code-reviewer (plus
+  adversarial / honesty lenses for kernel / security / data-mutation work) before approval;
+  their FLAGs land in `## Pre-Approval Verification`.
+- **Archive on phase close.** A completed-phase plan moves to `_archive/` per the
+  workspace-hygiene convention once it goes stale.
