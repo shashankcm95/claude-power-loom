@@ -337,4 +337,8 @@ module.exports = {
   computeRejectEventId,
   rejectEventStoreDir,
   REJECT_EVENT_OUTCOMES,
+  // v3.8 W1 — shape constants for record-scan.js's cross-run scanRejectEvents (partial DIP:
+  // the filename/kind/outcome knowledge originates HERE; record-scan owns only the walk).
+  REJECT_EVENT_FILE_RE,
+  RECORD_KIND,
 };

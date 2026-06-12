@@ -30,10 +30,17 @@ const { projectBreaker, evaluate, DEFAULT_SOURCE } = require('./project');
 // config (`LOOM_BREAKER_SOURCE=negative-attestation` reads the probe-dead E1 tier → a clear result is
 // not a safety signal) that the unknown-value fail-safe cannot — surfacing it at invocation rather than
 // trusting the operator to have read the doc. Revisit when v3.5 un-starves E1 (then non-default is legit).
+// NON-STARVED sources — the M1 warning exists to catch a STARVED source giving a false-clear
+// (the negative-attestation trap, USER #250). The exemption keys on the SOURCE's nature (its
+// producer mints live), NOT on how it was selected: an env-selected manage-promote/reject-event
+// is exactly as non-starved as a --source-selected one, so neither warns (the same semantics the
+// pre-W1 `!== 'manage-promote'` check had — selection provenance never factored in).
+// manage-promote: W2b.2, the promote-path consumer mints live. reject-event: v3.8 W1, the
+// integrator mints live at every fold.
+const NON_STARVED_SOURCES = new Set(['manage-promote', 'reject-event']);
+
 function warnIfNonDefaultSource(sourceId) {
-  // manage-promote (W2b.2) is an EXPLICITLY-wired, non-starved source (the promote-path consumer selects it)
-  // — the starvation caution does not apply, so don't emit the misleading "may be STARVED" warning for it.
-  if (sourceId && sourceId !== DEFAULT_SOURCE && sourceId !== 'manage-promote') {
+  if (sourceId && sourceId !== DEFAULT_SOURCE && !NON_STARVED_SOURCES.has(sourceId)) {
     process.stderr.write(`breaker: WARNING active denial source is '${sourceId}' (non-default); it may be STARVED — a clear result is NOT a safety signal. Set LOOM_BREAKER_SOURCE=${DEFAULT_SOURCE} (the live default) unless this is intentional.\n`);
   }
 }
@@ -55,8 +62,8 @@ const USAGE = [
   '  cli.js show [--source <s>] [--state-dir <d>]              the per-persona + global breaker view (shadow)',
   '  cli.js check [--persona <p>] [--source <s>] [--state-dir <d>]   the consumer decision: tripped? + scope',
   '',
-  '  --source verdict-fail (default) | negative-attestation | manage-promote   (W2b.2; explicit-source wins over env)',
-  '  --state-dir <d>   record-store root for the manage-promote source (the kernel store it scans)',
+  '  --source verdict-fail (default) | negative-attestation | manage-promote | reject-event   (explicit-source wins over env)',
+  '  --state-dir <d>   spawn-state root for the manage-promote + reject-event sources (the kernel store they scan)',
   '  Env: LOOM_BREAKER_SOURCE (same set; explicit --source wins) | LOOM_DISABLE_CIRCUIT_BREAKER=1 (bypass)',
   '',
 ].join('\n');

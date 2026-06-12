@@ -41,7 +41,8 @@ const negStore = require('../negative-attestation/store');
 const verdictStore = require('../verdict-attestation/store');
 // v3.6 W2b.2: the manage-promote denial source — committed destructive mints, cross-run,
 // windowed on FS mtime (the kernel scan; see record-scan.js for the C1/H1/H2 rationale).
-const { scanCommittedOps } = require('../../kernel/_lib/record-scan');
+// v3.8 W1: scanRejectEvents — the reject-event source's cross-run, mtime-windowed read.
+const { scanCommittedOps, scanRejectEvents } = require('../../kernel/_lib/record-scan');
 
 // "stateless windowed" carried in the runtime label (W4 honesty nit): this is a sliding-window denial
 // COUNTER, not a stateful open/half-open/closed breaker — a consumer must not assume hysteresis. It
@@ -93,6 +94,30 @@ const SOURCES = {
       sinceMs: nowMs - windowMs(),
       stateDir: srcOpts && srcOpts.stateDir,
     }).map((r) => ({ persona: 'lab:manage-promote', recorded_at: new Date(r.mtime_ms).toISOString() })),
+  },
+  // v3.8 W1: the reject-event source — the v3.7 reject-event ledger's FIRST consumer
+  // (Producer-Consumer Phasing). A "denial" is an integrator-DECIDED candidate reject
+  // (quarantined / provenance-rejected); the reject-RATE may only narrow trust (OQ-NS-6:
+  // trust-DOWN only — only a world-anchored merge HARDENS; the absorb side stays
+  // display-only). CROSS-run (H1) and windowed on FS `mtime` — the record carries NO
+  // recorded_at BY DESIGN (a field timestamp would be caller-choosable + content-hashed,
+  // i.e. an authenticated back-date; see scanRejectEvents' header for the full residual
+  // set). The persona is constant: the bare source id 'reject-event' — deliberately NOT a
+  // `kernel:`-prefixed shape (that namespace belongs to real spawn personas like
+  // `kernel-loom-integrator`; the v3.6 W2a IDOR class) — so per-persona is degenerate and
+  // the GLOBAL cap gates, like manage-promote. A consumer that NAMES the constant persona
+  // (`evaluate({persona:'reject-event'})`) gets the LOWER per-persona threshold applied to
+  // the whole stream — it trips EARLIER, which only NARROWS (§0a.3.1-safe; byte-identical
+  // to the shipped manage-promote semantics, probed). The intended v3.9 consumer is
+  // global-only (no persona arg), like promote.js. OPT-IN (explicit opts.source or env);
+  // the default stays verdict-fail. SHADOW: the gating consumer (fail-CLOSED on
+  // excluded_future>0, promote.js-style) is v3.9.
+  'reject-event': {
+    id: 'reject-event',
+    list: (nowMs, srcOpts) => scanRejectEvents({
+      sinceMs: nowMs - windowMs(),
+      stateDir: srcOpts && srcOpts.stateDir,
+    }).map((r) => ({ persona: 'reject-event', recorded_at: new Date(r.mtime_ms).toISOString() })),
   },
 };
 const DEFAULT_SOURCE = 'verdict-fail';

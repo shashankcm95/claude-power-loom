@@ -330,6 +330,14 @@ v3.6 made the manage path live in its human-gated form; v3.7 did the analogous a
 
 ---
 
+## 🔶 v3.8 — The reject-event breaker source (IN PROGRESS)
+
+v3.7 built the kernel-attested denial PRODUCER; v3.8 wires its consumers (Producer–Consumer Phasing: the consumer is owed in the immediately-next phase). Charter: the combined roadmap (`packages/specs/plans/2026-06-10-combined-roadmap.md`); each wave derives from the probed reality of the layer below (cumulative-coherence — v3.8a/b scope is NOT pre-loaded).
+
+- **W1 — the `reject-event` breaker source** (plan: `packages/specs/plans/2026-06-11-v3.8-reject-event-breaker-source.md`; 3-lens VERIFY all READY-WITH-NOTES, folds applied): `scanRejectEvents` in `record-scan.js` — a cross-run, FS-mtime-windowed enumerator with the same hardened gate as `scanCommittedOps` (DUPLICATED, not extracted — the architect inverted the draft's D1: rule-of-three unmet, and refactoring a shipped control risks under-count regression for BOTH sources; the rule-of-three trigger is recorded in the module header). The 4th `SOURCES` registration: constant persona `reject-event` (bare source id — NOT a `kernel:` shape), GLOBAL cap gates, OPT-IN (the default stays `verdict-fail`), reject-rate → trust-DOWN only (OQ-NS-6). Deliberate, test-LOCKED over-count-safety: no content-verify + no run-binding (§0a.3.1 halt-only — the v3.7 producer's per-run run-binding is INTENTIONALLY dropped; a cross-run plant only over-narrows); `run_id`/`reject_event_id` come from walk-known dir/filename, never the unverified body (no attacker-assertable identity surfaces downstream). **SHADOW** — the breaker still halts nothing; the GATING consumer (fail-CLOSED on `excluded_future`, promote.js-style) is **v3.9**. The v3.7-intake "export `rejectEventFilePath` or an mtime list variant" item COLLAPSED into the scan (it stats files itself).
+
+---
+
 ## ⬜ Deferred / field-survey debt (v3.5+)
 
 Explicitly out of v3.0-alpha scope, tracked for later:
