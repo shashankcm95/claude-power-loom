@@ -118,26 +118,49 @@ function computeWitnessId(body) {
   return crypto.createHash('sha256').update(canonicalJsonSerialize(basis), 'utf8').digest('hex');
 }
 
-// VALIDATE hacker H1 (HIGH): readJsonlBounded does statSync→readFileSync on a NAME — a FIFO planted
-// at the witness path (or via LOOM_SNAPSHOT_WITNESS_PATH) returns a size then BLOCKS FOREVER on the
-// read, hanging the v3.9 gate path / the CLI / materialize with no timeout. Apply this leaf's OWN
-// handle discipline (the readEvolutionSnapshot FIFO defense): open O_NONBLOCK so a FIFO/device opens
-// instantly, fstat the BOUND fd, and treat anything but a regular file as no-ledger. Returns null
-// (caller maps to no-ledger/unwitnessed) or the bounded rows. Never throws / never blocks.
-// (The shared readJsonlBounded chokepoint has the same pre-existing hang for every Lab store; a
-// chokepoint fix is the named broader follow-up — this wave gates the paths IT introduces.)
+// Bound the witness read memory: the writer caps ROWS at 1024, but a same-uid flooder can append
+// junk directly — so the read tail-bounds by BYTES too. 4MB ≈ 16k tiny rows of headroom.
+const MAX_WITNESS_LEDGER_BYTES = 4 * 1024 * 1024;
+
+// VALIDATE hacker H1 (HIGH) + CodeRabbit #306 (CRITICAL): a FIFO planted at the witness path (or via
+// LOOM_SNAPSHOT_WITNESS_PATH) makes a NAME-based statSync→readFileSync return a size then BLOCK
+// FOREVER on the read, hanging the v3.9 gate path / CLI / materialize with no timeout. The fix is
+// HANDLE-BOUND ALL THE WAY THROUGH (this leaf's readEvolutionSnapshot FIFO defense): open O_NONBLOCK
+// (a FIFO/device opens instantly), fstat the BOUND fd, and READ FROM THAT SAME fd — never re-open by
+// name (delegating to readJsonlBounded would re-statSync→readFileSync the path, reopening the
+// fstat→read swap window the gate is meant to close). The fd is pinned to the inode at open, so no
+// post-open path swap can redirect it. Returns null (→ no-ledger/unwitnessed) or the bounded rows.
+// JSONL tail-read for the newest WITNESS_LEDGER_MAX_RECORDS. Never throws / never blocks.
+// (The shared readJsonlBounded chokepoint has the same pre-existing NAME-based hang for every Lab
+// store; a chokepoint fix is the named broader follow-up — this wave gates the paths IT introduces.)
 function readWitnessRowsSafe(ledgerPath) {
   let fd;
   try {
     fd = fs.openSync(ledgerPath, fs.constants.O_RDONLY | (fs.constants.O_NONBLOCK || 0));
   } catch { return null; } // absent / unopenable → no-ledger
   try {
-    if (!fs.fstatSync(fd).isFile()) return null; // FIFO / dir / device / symlink-to-nonfile → no blocking read
+    const st = fs.fstatSync(fd);
+    if (!st.isFile()) return null; // FIFO / dir / device / symlink-to-nonfile → no blocking read
+    const size = st.size;
+    const start = size > MAX_WITNESS_LEDGER_BYTES ? size - MAX_WITNESS_LEDGER_BYTES : 0; // tail past the cap
+    const len = size - start;
+    if (len === 0) return [];
+    const buf = Buffer.allocUnsafe(len);
+    let off = 0;
+    while (off < len) {
+      const n = fs.readSync(fd, buf, off, len - off, start + off); // positional read FROM the bound fd
+      if (n <= 0) break;
+      off += n;
+    }
+    let text = buf.toString('utf8', 0, off);
+    if (start > 0) { const nl = text.indexOf('\n'); text = nl === -1 ? '' : text.slice(nl + 1); } // drop the partial leading line
+    const { lastLines } = require('./jsonl-read'); // pure string fn (no I/O); lazy (A-MED-2)
+    return lastLines(text, WITNESS_LEDGER_MAX_RECORDS)
+      .map((line) => { try { return JSON.parse(line); } catch { return null; } })
+      .filter(Boolean);
   } catch { return null; } finally {
     try { fs.closeSync(fd); } catch { /* best-effort */ }
   }
-  const { readJsonlBounded } = require('./jsonl-read'); // lazy (A-MED-2)
-  return readJsonlBounded(ledgerPath, { maxRecords: WITNESS_LEDGER_MAX_RECORDS, name: 'snapshot-witness' });
 }
 
 /**
