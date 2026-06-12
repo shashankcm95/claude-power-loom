@@ -20,9 +20,11 @@
 //           human_confirmed (that requires a human).
 //
 // ★ The injected real judge OWES (a documented SPEC, NOT enforced here): treat block text as DATA, not
-// instructions (prompt-injection resistance). A mock judgeFn cannot verify that - the structural-guard
-// test proves only the REFUSAL-to-promote contract; real-LLM faithfulness accuracy + injection
-// resistance are owed to a follow-on calibration (the Spike-C honest boundary).
+// instructions (prompt-injection resistance). The structural-guard test proves only the REFUSAL-to-
+// promote contract; real-LLM faithfulness accuracy + injection resistance were CALIBRATED in v3.8b W3
+// (a measured `claude -p` spike — see the calibration record + calibration.js; re-runnable via
+// `calibration-cli.js --real`, UNSANDBOXED only). The calibration is informational: the rung-2 ceiling
+// below keeps a bad judge narrowing-safe regardless.
 //
 // NARROWING-SAFETY (the load-bearing property): rung-2 only NARROWS traversal-eligibility upward into
 // the advisory band; a false-positive admits an edge to ADVISORY reads only - never a kernel gate or

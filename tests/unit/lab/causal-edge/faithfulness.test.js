@@ -15,7 +15,7 @@
 // ★ HONEST TEST SCOPE (the code-reviewer FAIL-fix): this is a STRUCTURAL-GUARD test - it verifies the
 // function REFUSES to promote on a negative/malformed/throwing verdict, and never grants ABOVE
 // advisory_llm_checked. It does NOT (and a mock judgeFn CANNOT) verify real-LLM prompt-injection
-// resistance - that is a documented SPEC for the injected real judge, owed to a follow-on calibration.
+// resistance - that was CALIBRATED in v3.8b W3 (a measured claude -p spike; see calibration.js).
 
 'use strict';
 
