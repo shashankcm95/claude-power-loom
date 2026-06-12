@@ -23,10 +23,24 @@
 // mediation (v6 §3.6; A6 is required only for a Lab->KERNEL read). The breaker itself still halts
 // nothing automatically (shadow).
 //
-// Stateless sliding-window over a stateful 3-state breaker: the window auto-resets OPTIMISTICALLY as
-// denials age out (it does not PROBE recovery — a future kernel-gating wave must revisit half-open
-// before this gates LIVE work). Stateless keeps it a pure deterministic theorem (A1) + is safe for an
-// advisory consumer re-queried per spawn (no long-running process to flap).
+// Stateless sliding-window + the v3.8b HYSTERESIS LATCH (the W4 A-2 revisit, discharged for the
+// human-gated v3.9 consumer): the window alone auto-resets OPTIMISTICALLY as denials age out; the
+// latch holds a trip for LATCH_MS past the LAST threshold-crossing — computed as a pure look-back
+// over (ledger, now), no state file, so the deterministic-theorem property (A1) survives. The latch
+// only ADDS trips (narrows-only). It is NOT a true half-open probe (no single-trial admission); for
+// v3.9 the HUMAN is the trial-admission decision — A-2 RE-OPENS for autonomous v4.x. ENV-STABILITY:
+// the look-back re-evaluates history with the CURRENT LOOM_BREAKER_WINDOW_MS/LATCH_MS — a gating
+// consumer keeps both stable across a wave (narrowing the window between calls can false-CLEAR a
+// historical crossing).
+//
+// v3.8b G2 — requireLive: evaluate({requireLive:true}) THROWS on a statically-STARVED source ("a
+// kernel gate must never silently read a probe-dead tier and report all-clear"). Callers MUST wrap
+// in try/catch (promote.js already converts any breaker throw into refuse('breaker-source-
+// unavailable') — the composition is deliberate). The two refusal idioms intentionally diverge:
+// tamper signal (excluded_future>0) -> a refusal VALUE the consumer checks; starved-under-
+// requireLive -> a THROW (fail-closed-LOUD; a probe-dead tier must never read as a benign field a
+// careless consumer ignores). Bypass (exact '1') wins over requireLive — the operator's explicit
+// override of ALL trip logic, source-health included.
 //
 // Layer discipline (K12, by PATH): `lab`. Imports the sibling E1 + verdict-attestation stores
 // (lab->lab, no cycle — neither store imports the breaker). No kernel/_lib leaf is extracted — there
@@ -60,21 +74,61 @@ function personaOfVerdict(r) {
   return (r && r.subject && typeof r.subject.persona === 'string' && r.subject.persona) || 'unknown';
 }
 
+// v3.8b G1 — dedup-by-subject for the verdict-fail source ONLY (the D6 fix): N reviewer fail-records
+// about ONE subject spawn = ONE denial. The dedup is source-local (the store's accumulate-distinct-
+// verifiers contract is load-bearing for E4 — never collapse there) and operates ONLY on the COUNTABLE
+// class (parseable recorded_at <= now): future-dated/undated rows PASS THROUGH un-deduped so the
+// projection's excluded_future/excluded_undated diagnostics stay intact AND a forged future-dated line
+// sharing a real build's agent_id cannot become the group representative and silence a real in-window
+// denial (the CR-1 under-count class). Representative = the LATEST countable record (narrowing-safe:
+// keeps the denial in-window longest).
+//
+// The dedup key is (PERSONA, id) — VALIDATE hacker H2/M1 (a forged later-dated line with the SAME
+// agent_id but a DIFFERENT subject.persona would otherwise RELOCATE a real persona's denials onto an
+// attacker-chosen plane — an under-count on the consulted persona, the SAFETY-BAD direction). Keying
+// by persona too forks a relocate into its own group, so the real persona keeps its count. This is a
+// NO-OP for honest data: the store's H-1 guard makes one agent_id = one persona, and the D6
+// multi-reviewer records share the SUBJECT persona (they differ only in verifier.identity), so they
+// still collapse. The id sub-key is a chain with a guaranteed-unique terminal — agent_id, else
+// attestation_id, else a positional sentinel; JSON.stringify([persona, idKey]) is the composite (the
+// JSON string-escaping is collision-proof — a persona containing the joiner cannot forge another key).
+function dedupBySubject(records, nowMs) {
+  const byKey = new Map(); // Map: a __proto__-named agent_id cannot poison the accumulator
+  const passThrough = [];
+  records.forEach((r, i) => {
+    const ts = Date.parse(r && r.recorded_at);
+    if (!Number.isFinite(ts) || ts > nowMs) { passThrough.push(r); return; }
+    const refs = r && r.evidence_refs;
+    const agentId = (refs && typeof refs.agent_id === 'string' && refs.agent_id) || null;
+    const attId = (r && typeof r.attestation_id === 'string' && r.attestation_id) || null;
+    const idKey = agentId ? `a:${agentId}` : (attId ? `t:${attId}` : `i:${i}`);
+    const key = JSON.stringify([personaOfVerdict(r), idKey]);
+    const prev = byKey.get(key);
+    if (!prev || ts > prev.ts) byKey.set(key, { r, ts });
+  });
+  const deduped = [];
+  for (const v of byKey.values()) deduped.push(v.r);
+  return deduped.concat(passThrough);
+}
+
 const SOURCES = {
   // DEFAULT. The W6 verdict-`fail` stream (a LIVE, evidence-linked producer). D2: only `fail` is a
-  // denial (pass/partial are NOT). D6: counts fail-VERDICT records (one per reviewer) — a multi-reviewer
-  // fail of ONE build inflates the count (denials_in_window honestly means "fail-verdict records in
-  // window", a caution signal); dedup-by-subject-spawn (evidence_refs.agent_id) is a backlog refinement.
+  // denial (pass/partial are NOT). G1 (v3.8b): denials_in_window now means "DISTINCT failed subject
+  // spawns in window" (dedupBySubject above) — the D6 multi-reviewer inflation is closed.
   'verdict-fail': {
     id: 'verdict-fail',
-    list: (nowMs) => verdictStore
-      .listVerdicts({ now: nowMs, filter: (r) => r.verdict === 'fail' })
-      .map((r) => ({ persona: personaOfVerdict(r), recorded_at: r.recorded_at })),
+    starved: false,
+    list: (nowMs) => dedupBySubject(
+      verdictStore.listVerdicts({ now: nowMs, filter: (r) => r.verdict === 'fail' }), nowMs,
+    ).map((r) => ({ persona: personaOfVerdict(r), recorded_at: r.recorded_at })),
   },
-  // OPT-IN (the W4 original). Every E1 negative-attestation is a denial (a decompose-reject). E1 is
-  // STARVED today but un-starves in v3.5 when the decompose tier goes live.
+  // OPT-IN (the W4 original). Every E1 negative-attestation is a denial (a decompose-reject) — a
+  // per-EVENT stream, NOT deduped. STARVED (G2 static registry fact, USER #250): the decompose tier
+  // is probe-dead for shipped personas — a clear read here is NOT a safety signal. The flag flips in
+  // the same PR that wires the producer live.
   'negative-attestation': {
     id: 'negative-attestation',
+    starved: true,
     list: (nowMs) => negStore
       .listAttestations({ now: nowMs })
       .map((r) => ({ persona: personaOfNeg(r), recorded_at: r.recorded_at })),
@@ -89,9 +143,14 @@ const SOURCES = {
   // gates (F5). Default 10min/10 is the burst blast-radius bound (tune via LOOM_BREAKER_* for slow-drip).
   'manage-promote': {
     id: 'manage-promote',
+    starved: false,
+    // v3.8b: the scan horizon is window + LATCH (not window alone) — a window-only sinceMs would
+    // starve the look-back of aged-out mints and leave the latch structurally INERT for exactly
+    // the sources the v3.9 gating consumer uses. The window loop still counts only (now-W, now];
+    // the extra records fall to its ts <= windowStart branch and feed ONLY the latch math.
     list: (nowMs, srcOpts) => scanCommittedOps({
       opClasses: ['TOMBSTONE', 'SUPERSEDE'],
-      sinceMs: nowMs - windowMs(),
+      sinceMs: nowMs - (windowMs() + latchMs()),
       stateDir: srcOpts && srcOpts.stateDir,
     }).map((r) => ({ persona: 'lab:manage-promote', recorded_at: new Date(r.mtime_ms).toISOString() })),
   },
@@ -114,8 +173,10 @@ const SOURCES = {
   // excluded_future>0, promote.js-style) is v3.9.
   'reject-event': {
     id: 'reject-event',
+    starved: false,
+    // Same window + LATCH horizon as manage-promote (see that source's comment).
     list: (nowMs, srcOpts) => scanRejectEvents({
-      sinceMs: nowMs - windowMs(),
+      sinceMs: nowMs - (windowMs() + latchMs()),
       stateDir: srcOpts && srcOpts.stateDir,
     }).map((r) => ({ persona: 'reject-event', recorded_at: new Date(r.mtime_ms).toISOString() })),
   },
@@ -160,7 +221,27 @@ function clampInt(raw, def, lo, hi) {
 function windowMs() { return clampInt(process.env.LOOM_BREAKER_WINDOW_MS, DEFAULT_WINDOW_MS, WINDOW_MS_FLOOR, WINDOW_MS_CEIL); }
 function maxDenials() { return clampInt(process.env.LOOM_BREAKER_MAX_DENIALS, DEFAULT_MAX_DENIALS, 1, MAX_DENIALS_HARD_CAP); }
 function globalMaxDenials() { return clampInt(process.env.LOOM_BREAKER_GLOBAL_MAX_DENIALS, DEFAULT_GLOBAL_MAX_DENIALS, 1, GLOBAL_MAX_DENIALS_HARD_CAP); }
+// v3.8b: the latch duration. Default = the live window (a trip lives ~2 windows); the floor shares
+// WINDOW_MS_FLOOR (a sub-minute latch is the same silent-shrink class as hacker H1's window floor).
+function latchMs() { return clampInt(process.env.LOOM_BREAKER_LATCH_MS, windowMs(), WINDOW_MS_FLOOR, WINDOW_MS_CEIL); }
 function isBypassed() { return process.env.LOOM_DISABLE_CIRCUIT_BREAKER === '1'; }
+
+// v3.8b — the hysteresis look-back: was the window-count at-or-over threshold `k` at SOME moment t in
+// (now - latch, now]? Continuous-time crossing (NOT crossing-at-denial-times — that would make the
+// latch expire INSIDE the window-trip period, a no-op; the VERIFY CR-F8 catch). Discrete equivalent
+// over the sorted countable timestamps: some k consecutive denials fit one window (d[j+k-1]-d[j] < W)
+// whose containing-window positions end inside the look-back (d[j+k-1] <= now is guaranteed by the
+// countable filter; d[j] > now - latch - W is the left edge, strict — mirroring the window's
+// half-open boundary). For all-denials-at-t0 this holds for now in [t0, t0 + W + latch). O(n) sweep.
+function hasCrossingInLookback(tsArr, k, nowMs, win, latch) {
+  if (!Number.isFinite(k) || k < 1 || tsArr.length < k) return false;
+  const a = tsArr.slice().sort((x, y) => x - y);
+  const leftEdge = nowMs - latch - win;
+  for (let j = 0; j + k - 1 < a.length; j += 1) {
+    if (a[j + k - 1] - a[j] < win && a[j] > leftEdge) return true;
+  }
+  return false;
+}
 
 // Injected wall-clock, NaN-guarded (CR-2): a garbage `now` throws a clear Error BEFORE any read /
 // toISOString (else new Date(NaN).toISOString() RangeErrors mid-projection).
@@ -181,14 +262,17 @@ function bypassedView(nowMs, sourceId) {
   return {
     generated_at: new Date(nowMs).toISOString(),
     source: sourceId,
+    // The registry fact is computable without a read — carried under bypass too (shape-stable).
+    source_starved: SOURCES[sourceId].starved === true,
     label: LABEL,
     bypassed: true,
     window_ms: windowMs(),
+    latch_ms: latchMs(),
     max_denials: maxDenials(),
     global_max_denials: globalMaxDenials(),
     excluded_undated: 0,
     excluded_future: 0,
-    global: { denials_in_window: 0, tripped: false },
+    global: { denials_in_window: 0, tripped: false, latched: false },
     personas: [],
   };
 }
@@ -206,6 +290,7 @@ function projectBreaker(opts) {
   if (isBypassed()) return bypassedView(nowMs, sourceId);
 
   const win = windowMs();
+  const latch = latchMs();
   const windowStart = nowMs - win;
   const maxD = maxDenials();
   const globalMaxD = globalMaxDenials();
@@ -215,6 +300,12 @@ function projectBreaker(opts) {
   const records = SOURCES[sourceId].list(nowMs, { stateDir: o.stateDir });
 
   const byPersona = new Map(); // Map → a __proto__/toString persona name can't poison the accumulator
+  // v3.8b latch input: per-plane COUNTABLE timestamps within the look-back horizon. Same exclusions
+  // as the window loop (future/undated never enter the latch math — CR-1 stays closed); older than
+  // the horizon (now - latch - win) cannot participate in any look-back crossing.
+  const tsByPersona = new Map();
+  const tsGlobal = [];
+  const horizonStart = nowMs - latch - win;
   let globalCount = 0;
   let excludedUndated = 0;
   let excludedFuture = 0;
@@ -223,27 +314,50 @@ function projectBreaker(opts) {
     const ts = Date.parse(r && r.recorded_at);
     if (!Number.isFinite(ts)) { excludedUndated += 1; continue; } // live but undatable → not in any denominator
     if (ts > nowMs) { excludedFuture += 1; continue; }            // CR-1 HIGH: a future-dated line must NOT inflate the window. excluded_future>0 is a tamper / clock-skew signal a consumer should heed (a within-UID storm-HIDING vector), not a benign diagnostic.
-    if (ts <= windowStart) continue;                              // aged out (half-open: exactly-at-start is OUT)
     const p = r.persona;                                          // already normalized + 'unknown'-guarded by the source
+    if (ts > horizonStart) {                                      // latch-eligible (countable, in-horizon)
+      tsGlobal.push(ts);
+      const arr = tsByPersona.get(p);
+      if (arr) arr.push(ts); else tsByPersona.set(p, [ts]);
+    }
+    if (ts <= windowStart) continue;                              // aged out of the WINDOW (half-open: exactly-at-start is OUT) — still feeds the latch above
     byPersona.set(p, (byPersona.get(p) || 0) + 1);
     globalCount += 1;
   }
 
-  const personas = Array.from(byPersona.entries())
-    .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)) // deterministic order
-    .map(([persona, denials_in_window]) => ({ persona, denials_in_window, tripped: denials_in_window >= maxD }));
+  // Rows are per-AXIS facts: `tripped` stays WINDOW-only; `latched` is the look-back axis. A persona
+  // appears when it has an in-window denial OR an active latch (a latched-but-aged-out persona must
+  // stay visible to the decision layer).
+  const personaNames = new Set(byPersona.keys());
+  for (const [p, arr] of tsByPersona) {
+    if (hasCrossingInLookback(arr, maxD, nowMs, win, latch)) personaNames.add(p);
+  }
+  const personas = Array.from(personaNames)
+    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)) // deterministic order
+    .map((persona) => {
+      const denialsInWindow = byPersona.get(persona) || 0;
+      const latched = hasCrossingInLookback(tsByPersona.get(persona) || [], maxD, nowMs, win, latch);
+      return { persona, denials_in_window: denialsInWindow, tripped: denialsInWindow >= maxD, latched };
+    })
+    .filter((row) => row.denials_in_window >= 1 || row.latched);
 
   return {
     generated_at: new Date(nowMs).toISOString(),
     source: sourceId,
+    source_starved: SOURCES[sourceId].starved === true,
     label: LABEL,
     bypassed: false,
     window_ms: win,
+    latch_ms: latch,
     max_denials: maxD,
     global_max_denials: globalMaxD,
     excluded_undated: excludedUndated,
     excluded_future: excludedFuture,
-    global: { denials_in_window: globalCount, tripped: globalCount >= globalMaxD },
+    global: {
+      denials_in_window: globalCount,
+      tripped: globalCount >= globalMaxD,
+      latched: hasCrossingInLookback(tsGlobal, globalMaxD, nowMs, win, latch),
+    },
     personas,
   };
 }
@@ -262,18 +376,40 @@ function evaluate(opts) {
   const persona = (typeof o.persona === 'string' && o.persona) || null;
   const view = projectBreaker({ now: o.now, source: o.source, stateDir: o.stateDir });
   if (view.bypassed) {
-    return { tripped: false, scope: 'bypassed', source: view.source, global_tripped: false, persona_tripped: false, denials_in_window: 0, threshold: view.max_denials, window_ms: view.window_ms, excluded_future: 0 };
+    // Bypass is checked BEFORE the requireLive guard (CR-F3): the operator's exact-'1' override
+    // beats source-health refusal, like every other trip axis.
+    return { tripped: false, scope: 'bypassed', source: view.source, source_starved: view.source_starved, global_tripped: false, persona_tripped: false, latched: false, latched_global: false, latched_persona: false, denials_in_window: 0, threshold: view.max_denials, window_ms: view.window_ms, latch_ms: view.latch_ms, excluded_future: 0 };
+  }
+  // G2 requireLive (the gating-consumer arm): a statically-STARVED source under requireLive is an
+  // exception BY DESIGN — fail-closed-LOUD; callers wrap in try/catch (see the module header).
+  // TRUTHY, not === true (VALIDATE hacker H1): every truthy requireLive means "I want the gate" — the
+  // fail-closed direction. A strict === true silently disabled the arm on requireLive:'x'/1 (and via
+  // the CLI's `--require-live <stray-token>`, which parses the token as the flag VALUE).
+  if (o.requireLive && view.source_starved) {
+    throw new Error(`circuit-breaker: source '${view.source}' is STARVED (its producer is probe-dead) — a clear read is NOT a safety signal; requireLive refuses it. Use the live default (${DEFAULT_SOURCE}) or drop requireLive for an advisory read.`);
   }
   const globalTripped = view.global.tripped;
+  const latchedGlobal = view.global.latched === true;
   const personaRow = persona ? view.personas.find((p) => p.persona === persona) : undefined;
   const personaTripped = !!(personaRow && personaRow.tripped);
-  const scope = globalTripped ? 'global' : (personaTripped ? 'persona' : 'clear');
+  const latchedPersona = !!(personaRow && personaRow.latched);
+  // scope reports the PLANE of the EFFECTIVE trip (window OR latch; global supersedes — CR-6). The
+  // latch axis is reported separately (latched/latched_global/latched_persona — the F2/F4 synthesis):
+  // a latched-global decision reads scope:'global', global_tripped:false, latched_global:true — the
+  // triple is self-explaining, no 'latched' scope value, and the scope value set never changes.
+  const globalEffective = globalTripped || latchedGlobal;
+  const personaEffective = personaTripped || latchedPersona;
+  const scope = globalEffective ? 'global' : (personaEffective ? 'persona' : 'clear');
   return {
-    tripped: globalTripped || personaTripped,
+    tripped: globalEffective || personaEffective,
     scope,
-    source: view.source, // which denial source the decision is based on (verdict-fail | negative-attestation | manage-promote)
+    source: view.source, // which denial source the decision is based on (verdict-fail | negative-attestation | manage-promote | reject-event)
+    source_starved: view.source_starved,
     global_tripped: globalTripped,
     persona_tripped: personaTripped,
+    latched: latchedGlobal || latchedPersona,
+    latched_global: latchedGlobal,
+    latched_persona: latchedPersona,
     // VALIDATE hacker M1: a NONZERO excluded_future is a tamper / clock-skew STORM-HIDING signal (a same-uid
     // utimes() of a mint into the future under-counts it). Surfaced here so a destructive consumer can
     // fail-CLOSED on it (the breaker already computed it; promote.js refuses on >0). Narrowing-safe.
@@ -284,6 +420,7 @@ function evaluate(opts) {
     denials_in_window: personaRow ? personaRow.denials_in_window : (persona ? 0 : view.global.denials_in_window),
     threshold: persona ? view.max_denials : view.global_max_denials,
     window_ms: view.window_ms,
+    latch_ms: view.latch_ms,
   };
 }
 

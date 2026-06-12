@@ -25,23 +25,16 @@
 
 const { projectBreaker, evaluate, DEFAULT_SOURCE } = require('./project');
 
-// M1 (USER review #250) — explicit validation at the CLI boundary: if the resolved denial source is
-// NOT the live default, warn on STDERR (stdout stays clean JSON). This catches the valid-but-starved
-// config (`LOOM_BREAKER_SOURCE=negative-attestation` reads the probe-dead E1 tier → a clear result is
-// not a safety signal) that the unknown-value fail-safe cannot — surfacing it at invocation rather than
-// trusting the operator to have read the doc. Revisit when v3.5 un-starves E1 (then non-default is legit).
-// NON-STARVED sources — the M1 warning exists to catch a STARVED source giving a false-clear
-// (the negative-attestation trap, USER #250). The exemption keys on the SOURCE's nature (its
-// producer mints live), NOT on how it was selected: an env-selected manage-promote/reject-event
-// is exactly as non-starved as a --source-selected one, so neither warns (the same semantics the
-// pre-W1 `!== 'manage-promote'` check had — selection provenance never factored in).
-// manage-promote: W2b.2, the promote-path consumer mints live. reject-event: v3.8 W1, the
-// integrator mints live at every fold.
-const NON_STARVED_SOURCES = new Set(['manage-promote', 'reject-event']);
-
-function warnIfNonDefaultSource(sourceId) {
-  if (sourceId && sourceId !== DEFAULT_SOURCE && !NON_STARVED_SOURCES.has(sourceId)) {
-    process.stderr.write(`breaker: WARNING active denial source is '${sourceId}' (non-default); it may be STARVED — a clear result is NOT a safety signal. Set LOOM_BREAKER_SOURCE=${DEFAULT_SOURCE} (the live default) unless this is intentional.\n`);
+// M1 (USER review #250) → G2 (v3.8b): the starved-source warn now derives from the SAME registry
+// fact the API surfaces (`source_starved` on the view/decision — project.js owns it; the former
+// CLI-local NON_STARVED_SOURCES set is deleted, single source of truth). The warning exists to catch
+// a STARVED source giving a false-clear (`LOOM_BREAKER_SOURCE=negative-attestation` reads the
+// probe-dead E1 tier → a clear result is not a safety signal); it keys on the SOURCE's nature, never
+// on how it was selected. For a hard refusal instead of a warn, pass --require-live (the G2 gating
+// arm — evaluate THROWS on a starved source; the catch below turns it into exit 1).
+function warnIfStarvedSource(result) {
+  if (result && result.source_starved === true) {
+    process.stderr.write(`breaker: WARNING active denial source is '${result.source}' (non-default); it is STARVED — a clear result is NOT a safety signal. Set LOOM_BREAKER_SOURCE=${DEFAULT_SOURCE} (the live default) unless this is intentional.\n`);
   }
 }
 
@@ -60,11 +53,15 @@ function parseArgs(argv) {
 const USAGE = [
   'Usage:',
   '  cli.js show [--source <s>] [--state-dir <d>]              the per-persona + global breaker view (shadow)',
-  '  cli.js check [--persona <p>] [--source <s>] [--state-dir <d>]   the consumer decision: tripped? + scope',
+  '  cli.js check [--persona <p>] [--source <s>] [--state-dir <d>] [--require-live]   the consumer decision: tripped? + scope',
   '',
   '  --source verdict-fail (default) | negative-attestation | manage-promote | reject-event   (explicit-source wins over env)',
   '  --state-dir <d>   spawn-state root for the manage-promote + reject-event sources (the kernel store they scan)',
+  '  --require-live    G2 gating arm (CHECK only): REFUSE (exit 1) when the resolved source is starved (bypass wins)',
   '  Env: LOOM_BREAKER_SOURCE (same set; explicit --source wins) | LOOM_DISABLE_CIRCUIT_BREAKER=1 (bypass)',
+  '       LOOM_BREAKER_LATCH_MS (hysteresis look-back; default = the window — a trip persists past the optimistic reset)',
+  '',
+  '  verdict-fail denials_in_window = DISTINCT failed subject spawns (G1 dedup-by-subject), not fail records.',
   '',
 ].join('\n');
 
@@ -77,7 +74,7 @@ function main(argv) {
   if (cmd === 'show') {
     try {
       const view = projectBreaker(srcOpts);
-      warnIfNonDefaultSource(view.source); // stderr (stdout stays clean JSON)
+      warnIfStarvedSource(view); // stderr (stdout stays clean JSON)
       process.stdout.write(`${JSON.stringify(view, null, 2)}\n`);
     } catch (e) {
       process.stderr.write(`breaker: show failed: ${e.message}\n`);
@@ -90,8 +87,14 @@ function main(argv) {
   if (cmd === 'check') {
     try {
       const persona = typeof args.persona === 'string' ? args.persona : undefined;
-      const decision = evaluate({ persona, source: srcOpts.source, stateDir: srcOpts.stateDir });
-      warnIfNonDefaultSource(decision.source); // stderr (stdout stays clean JSON)
+      // CR-F5: parseArgs stores a valueless flag under its HYPHEN key — bracket access, never
+      // args.requireLive (which is silently undefined and would no-op the gating arm).
+      // VALIDATE hacker H1: parseArgs assigns the NEXT token as a flag's value, so `--require-live x`
+      // sets args['require-live']='x'. PRESENCE arms the gate (any value but the literal 'false') —
+      // a stray token must NOT silently disable a safety gate (the M-1 trap the arm exists to close).
+      const requireLive = args['require-live'] !== undefined && args['require-live'] !== 'false';
+      const decision = evaluate({ persona, source: srcOpts.source, stateDir: srcOpts.stateDir, requireLive });
+      warnIfStarvedSource(decision); // stderr (stdout stays clean JSON)
       process.stdout.write(`${JSON.stringify(decision, null, 2)}\n`);
     } catch (e) {
       process.stderr.write(`breaker: check failed: ${e.message}\n`);
