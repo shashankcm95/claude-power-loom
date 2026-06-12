@@ -1,7 +1,6 @@
 // packages/kernel/_lib/record-scan.js
 //
-// The cross-run, mtime-windowed READ-ONLY scans backing the circuit-breaker's
-// kernel-store denial sources (project.js):
+// The cross-run, mtime-windowed read-only scans backing the circuit-breaker's kernel-store denial sources.
 //
 //   v3.6 W2b.2  scanCommittedOps   — committed destructive mints (TOMBSTONE/SUPERSEDE)
 //                                    under <run>/records/; the `manage-promote` source.

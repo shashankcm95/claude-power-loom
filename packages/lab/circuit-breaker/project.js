@@ -105,8 +105,12 @@ const SOURCES = {
   // set). The persona is constant: the bare source id 'reject-event' — deliberately NOT a
   // `kernel:`-prefixed shape (that namespace belongs to real spawn personas like
   // `kernel-loom-integrator`; the v3.6 W2a IDOR class) — so per-persona is degenerate and
-  // the GLOBAL cap gates, like manage-promote. OPT-IN (explicit opts.source or env); the
-  // default stays verdict-fail. SHADOW: the gating consumer (fail-CLOSED on
+  // the GLOBAL cap gates, like manage-promote. A consumer that NAMES the constant persona
+  // (`evaluate({persona:'reject-event'})`) gets the LOWER per-persona threshold applied to
+  // the whole stream — it trips EARLIER, which only NARROWS (§0a.3.1-safe; byte-identical
+  // to the shipped manage-promote semantics, probed). The intended v3.9 consumer is
+  // global-only (no persona arg), like promote.js. OPT-IN (explicit opts.source or env);
+  // the default stays verdict-fail. SHADOW: the gating consumer (fail-CLOSED on
   // excluded_future>0, promote.js-style) is v3.9.
   'reject-event': {
     id: 'reject-event',

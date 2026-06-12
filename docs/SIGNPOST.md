@@ -46,7 +46,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/kernel/_lib/quarantine-promote.js` - PR-3c-a — DORMANT materialization library for the enforcing spawn-close
 - `packages/kernel/_lib/recency-decay.js` - Pure recency-decay leaf.
 - `packages/kernel/_lib/record-locate.js` - v3.6 Wave 2a — findRecordRun: the content-addressed run locator (the run-scoping seam).
-- `packages/kernel/_lib/record-scan.js` - The cross-run, mtime-windowed READ-ONLY scans backing the circuit-breaker's
+- `packages/kernel/_lib/record-scan.js` - The cross-run, mtime-windowed read-only scans backing the circuit-breaker's kernel-store denial sources.
 - `packages/kernel/_lib/record-store.js` - The provenance state-chain store (origin: PR-P1, where it shipped dormant).
 - `packages/kernel/_lib/reject-event-store.js` - v3.7 W1 — the REJECT-event ledger (the trust-system's DENIAL-SOURCE producer).
 - `packages/kernel/_lib/route-decide-export.js` - route-decide-export.js — H.7.0 helper module.

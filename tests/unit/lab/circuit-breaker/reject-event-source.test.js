@@ -166,6 +166,25 @@ test('9. absent kernel store -> clean empty view (no throw): genuinely 0 rejects
   assert.deepStrictEqual(v.personas, []);
 });
 
+// PINNING test (CodeRabbit #300 probe): naming the constant persona applies the LOWER
+// per-persona threshold to the whole stream — it trips EARLIER than the global cap, which
+// only NARROWS (§0a.3.1-safe) and is byte-identical to the shipped manage-promote semantics.
+// This is DELIBERATE (not the contract violation the bot read it as): the intended v3.9
+// consumer is global-only (no persona arg), like promote.js. If a future change special-cases
+// constant-persona sources out of the per-persona math, this test forces the re-reasoning.
+test('11. PIN: evaluate({persona:"reject-event"}) trips at the per-persona threshold (earlier = narrows-only; manage-promote parity)', () => {
+  const s = freshStore();
+  try {
+    for (let i = 0; i < 5; i += 1) seedEvent(s, 'p' + i, 'quarantined', NOW - 1 * MIN); // 5 = per-persona default, < global 10
+    const named = evaluate({ persona: 'reject-event', source: 'reject-event', stateDir: s, now: NOW });
+    assert.strictEqual(named.persona_tripped, true, 'the named constant persona trips at the per-persona threshold (5)');
+    assert.strictEqual(named.global_tripped, false, 'the global cap (10) has NOT tripped');
+    assert.strictEqual(named.scope, 'persona');
+    const globalOnly = evaluate({ source: 'reject-event', stateDir: s, now: NOW });
+    assert.strictEqual(globalOnly.tripped, false, 'the intended global-only consumer shape stays clear below the global cap');
+  } finally { fs.rmSync(s, { recursive: true, force: true }); }
+});
+
 test('10. bypass env: the kill-switch returns the all-clear shape with the resolved source echoed', () => {
   const s = freshStore();
   try {

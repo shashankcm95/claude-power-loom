@@ -30,14 +30,17 @@ const { projectBreaker, evaluate, DEFAULT_SOURCE } = require('./project');
 // config (`LOOM_BREAKER_SOURCE=negative-attestation` reads the probe-dead E1 tier → a clear result is
 // not a safety signal) that the unknown-value fail-safe cannot — surfacing it at invocation rather than
 // trusting the operator to have read the doc. Revisit when v3.5 un-starves E1 (then non-default is legit).
-// EXPLICITLY-wired, non-starved sources (a consumer selects them deliberately) — the starvation
-// caution does not apply, so don't emit the misleading "may be STARVED" warning for them.
-// manage-promote: W2b.2, the promote-path consumer. reject-event: v3.8 W1, the reject-event
-// ledger source (its producer mints live at every integrator fold).
-const EXPLICITLY_WIRED_SOURCES = new Set(['manage-promote', 'reject-event']);
+// NON-STARVED sources — the M1 warning exists to catch a STARVED source giving a false-clear
+// (the negative-attestation trap, USER #250). The exemption keys on the SOURCE's nature (its
+// producer mints live), NOT on how it was selected: an env-selected manage-promote/reject-event
+// is exactly as non-starved as a --source-selected one, so neither warns (the same semantics the
+// pre-W1 `!== 'manage-promote'` check had — selection provenance never factored in).
+// manage-promote: W2b.2, the promote-path consumer mints live. reject-event: v3.8 W1, the
+// integrator mints live at every fold.
+const NON_STARVED_SOURCES = new Set(['manage-promote', 'reject-event']);
 
 function warnIfNonDefaultSource(sourceId) {
-  if (sourceId && sourceId !== DEFAULT_SOURCE && !EXPLICITLY_WIRED_SOURCES.has(sourceId)) {
+  if (sourceId && sourceId !== DEFAULT_SOURCE && !NON_STARVED_SOURCES.has(sourceId)) {
     process.stderr.write(`breaker: WARNING active denial source is '${sourceId}' (non-default); it may be STARVED — a clear result is NOT a safety signal. Set LOOM_BREAKER_SOURCE=${DEFAULT_SOURCE} (the live default) unless this is intentional.\n`);
   }
 }
