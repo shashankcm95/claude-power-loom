@@ -696,11 +696,12 @@ assertEqual(
   'H.7.11 suppression: compound_weak (refactor) suppressed when stakes (auth) fires'
 );
 
-// (e) WEIGHTS_VERSION bump verification
+// (e) WEIGHTS_VERSION bump verification (the golden moves with each architect-passed
+// dictionary expansion; v3.8a W2 advanced it from v1.2-dict-expanded-2026-05-07)
 assertEqual(
   driftNote1Result.weights_version,
-  'v1.2-dict-expanded-2026-05-07',
-  'H.7.11 schema bump: WEIGHTS_VERSION → v1.2-dict-expanded-2026-05-07'
+  'v1.3-dict-expanded-2026-06-12',
+  'v3.8a schema bump: WEIGHTS_VERSION → v1.3-dict-expanded-2026-06-12'
 );
 
 // ===== Section 7: H.7.16 substrate-meta detection (drift-note 9) =====

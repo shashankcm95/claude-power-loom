@@ -21,7 +21,7 @@
 
 // ---------- constants ----------
 
-const WEIGHTS_VERSION = 'v1.2-dict-expanded-2026-05-07';
+const WEIGHTS_VERSION = 'v1.3-dict-expanded-2026-06-12';
 
 // HIGH-1 + HIGH-2 + MEDIUM-1 + C-2 adjusted weights from theo's design.
 // Sums to 1.00 within decimal-precision tolerance after R1-R6 calibration.
@@ -105,6 +105,18 @@ const KEYWORDS = {
     // scored here, to avoid over-routing general tasks.
     'spawn-verify', 'leaf-criteria', 'verification tier', 'failure-signature',
     'test-runner adapter', 'kernel algorithm',
+    // drift:dictionary-gap v3.8a (2026-06-12, the MANDATED architect pass — plan
+    // 2026-06-12-v3.8a-route-decide-dictionary-expansion.md) — the zero-FP subset of
+    // the v3.3-v3.8 Lab/trust-substrate vocabulary: hyphenated/underscored/2-word
+    // phrases ONLY (no general SWE task says "negative-attestation"). Single words
+    // (integrator/quarantine/reputation/materialize/...) are DETECTION-ONLY in the
+    // Tier-2c sentinel block below — they appear in general prose and must never
+    // score. compound_strong contributes a FLAT 0.15 however many match, so this
+    // expansion structurally cannot push a substrate task past root on its own —
+    // the [ROUTE-META-UNCERTAIN] advisory is the designed escalation hook.
+    'reject-event', 'circuit-breaker', 'denial-rate', 'negative-attestation',
+    'verdict-attestation', 'evolution-snapshot', 'canonical-json', 'content-addressed',
+    'manage-promote', 'delta-promote', 'post_state_hash', 'stage-candidate',
   ],
   // H.7.11 (ari): + `architectural` (synonym of `architecture`), + `refactor`/`refactoring`/`restructure`.
   // `refactor` is genuinely ambiguous; mitigated by compound_weak suppression-by-stakes.
@@ -220,6 +232,23 @@ const SUBSTRATE_META_TOKENS = [
   'failure-signature', 'failure signature', 'test-runner', 'kernel algorithm',
   'algorithm library', 'dispatcher', 'enforcement flip', 'a4 gate', 'a4-binding',
   'trampoline', 'budget envelope',
+  // Tier 2c (drift:dictionary-gap v3.8a, 2026-06-12 — the MANDATED architect pass) —
+  // the v3.3-v3.8 Lab/trust-substrate vocabulary. DETECTION-ONLY here, like Tier 2b;
+  // the 12-phrase zero-FP subset ALSO scores in KEYWORDS.compound_strong (the
+  // intentional overlap, documented above). Single words (integrator, quarantine,
+  // reputation, materialize, attestation, tombstone, supersede, worktree) appear in
+  // general SWE prose — they detect (one harmless advisory line) but NEVER score.
+  // Bare E/K-codes (E4, K9, E11) are REJECTED outright: they match chess/vitamin/
+  // grid text, and the substrate-noun phrases already cover every real usage.
+  'reject-event', 'circuit-breaker', 'breaker source', 'denial-rate',
+  'negative-attestation', 'verdict-attestation', 'attestation',
+  'evolution-snapshot', 'canonical-json', 'decompose-run',
+  'manage-promote', 'manage-proposal', 'tombstone', 'supersede',
+  'record-store', 'record-scan', 'content-address', 'content-addressed',
+  'idempotency-key', 'post_state_hash', 'delta-promote', 'stage-candidate',
+  'integrator', 'quarantine', 'provenance-reject', 'spawn-state',
+  'reputation', 'materialize', 'worktree', 'containeradapter',
+  'refs/loom', 'evolution lab',
 ];
 
 /**

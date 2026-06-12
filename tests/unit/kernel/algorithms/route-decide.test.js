@@ -156,6 +156,96 @@ test('FP-guard: ambiguous single words (gate/dispatcher) are DETECTION-ONLY, nev
   // (they MAY be sentinel-detected — a harmless advisory, not a scoring boost)
 });
 
+// ---------- v3.8a W2 — drift:dictionary-gap Tier 2c (the v3.3+ Lab/trust vocabulary) ----------
+// Same hybrid as the 2026-06-03 block above: detection BROAD (sentinel-only, an FP costs one
+// advisory line), scoring NARROW (12 zero-FP hyphenated/underscored/2-word phrases into
+// compound_strong). The MANDATED architect pass (plan 2026-06-12-v3.8a-route-decide-
+// dictionary-expansion.md, Pre-Approval Verification) is the contract these fixtures pin:
+// the arc tasks land ROOT-WITH-ADVISORY (sentinel fires; compound_strong's flat 0.15 stays
+// sub-borderline BY DESIGN — forcing borderline would be a weight-policy change dressed as
+// a dictionary edit). Weights + thresholds FROZEN.
+
+// The three REAL arc tasks that scored 0.000 with a SILENT sentinel pre-expansion
+// (firsthand probes P1-P3 in the plan).
+const ARC_P1 = 'wire the reject-event ledger producer to its breaker consumer — add a cross-run '
+  + 'scanRejectEvents enumerator + an mtime-bearing read surface in kernel/_lib/reject-event-store.js, '
+  + 'register a 4th reject-event source in lab/circuit-breaker/project.js SOURCES';
+const ARC_P2 = 'mint the REJECT-event ledger at the integrator: content-addressed reject-event records '
+  + 'at quarantine + provenance-reject dispositions, isolated off the post_state_hash keyspace, '
+  + 'run-bound, fail-soft kernel store';
+const ARC_P3 = 'build the E11 denial-rate circuit-breaker over the negative-attestation store with '
+  + 'per-persona and global breakers, then wire the A6 evolution-snapshot mediator so reputation '
+  + 'materializes into the spawn record';
+
+// D5: each arc task fires the sentinel AND stays root-with-advisory — score band, not float.
+function assertArcTask(name, out, requiredTokens) {
+  assert.strictEqual(out.substrate_meta_detected, true, `${name}: the sentinel must fire`);
+  for (const t of requiredTokens) {
+    assert.ok(out.substrate_meta_tokens.includes(t),
+      `${name}: expected token '${t}'; got ${JSON.stringify(out.substrate_meta_tokens)}`);
+  }
+  assert.ok(out.meta_forcing_instruction && /ROUTE-META-UNCERTAIN/.test(out.meta_forcing_instruction),
+    `${name}: emits the [ROUTE-META-UNCERTAIN] advisory`);
+  assert.strictEqual(out.recommendation, 'root', `${name}: root-with-advisory is the contract tier`);
+  assert.ok(out.score_total > 0 && out.score_total <= ROOT_THRESHOLD,
+    `${name}: score in the (0, ROOT_THRESHOLD] band (scoring fires but stays sub-borderline); got ${out.score_total}`);
+}
+
+test('Tier 2c / P1: the v3.8 W1 breaker-source task → sentinel + root-with-advisory', () => {
+  assertArcTask('P1', scoreTask(ARC_P1), ['reject-event', 'circuit-breaker']);
+});
+
+test('Tier 2c / P2: the v3.7 W1 ledger task → sentinel + root-with-advisory (post_state_hash unit match)', () => {
+  assertArcTask('P2', scoreTask(ARC_P2), ['reject-event', 'content-addressed', 'post_state_hash']);
+});
+
+test('Tier 2c / P3: the v3.4 advisory-loop task → sentinel + root-with-advisory', () => {
+  assertArcTask('P3', scoreTask(ARC_P3), ['circuit-breaker', 'denial-rate', 'negative-attestation', 'evolution-snapshot']);
+});
+
+test('Tier 2c regex guard: post_state_hash matches as ONE underscored unit; the space-separated near-miss does NOT', () => {
+  const hit = scoreTask('verify the post_state_hash keyspace isolation holds for every chained record');
+  assert.ok(hit.substrate_meta_tokens.includes('post_state_hash'), 'the underscored token matches as a unit');
+  const miss = scoreTask('document the post state of the hash table after the resize pass completes');
+  assert.ok(!miss.substrate_meta_tokens.includes('post_state_hash'),
+    'the space-separated near-miss must NOT match the underscored token');
+});
+
+test('Tier 2c negatives: the P4/P5 control tasks stay root with a SILENT sentinel', () => {
+  const p4 = scoreTask('fix a typo in the README badges section and refresh the version number');
+  assert.strictEqual(p4.recommendation, 'root');
+  assert.strictEqual(p4.substrate_meta_detected, false, 'P4 must not detect');
+  const p5 = scoreTask('add a --json flag to the stats command output');
+  assert.strictEqual(p5.recommendation, 'root');
+  assert.strictEqual(p5.substrate_meta_detected, false, 'P5 must not detect');
+});
+
+test('Tier 2c FP-guard: no new scoring token fires on a general API task; single-word detection tokens NEVER score', () => {
+  const general = scoreTask('add a rate-limit gate and an event dispatcher to the API service');
+  const NEW_SCORING = ['reject-event', 'circuit-breaker', 'denial-rate', 'negative-attestation',
+    'verdict-attestation', 'evolution-snapshot', 'canonical-json', 'content-addressed',
+    'manage-promote', 'delta-promote', 'post_state_hash', 'stage-candidate'];
+  for (const dim of Object.keys(general.scores_by_dim)) {
+    const m = general.scores_by_dim[dim].matched || [];
+    for (const t of NEW_SCORING) assert.ok(!m.includes(t), `'${t}' must not score on a general task (found in ${dim})`);
+  }
+  // The single-word Tier-2c tokens are DETECTION-ONLY: present in the text → may detect, never score.
+  const singles = scoreTask('quarantine the integrator worktree, then materialize the reputation attestation');
+  for (const dim of Object.keys(singles.scores_by_dim)) {
+    const m = singles.scores_by_dim[dim].matched || [];
+    for (const t of ['quarantine', 'integrator', 'worktree', 'materialize', 'reputation', 'attestation']) {
+      assert.ok(!m.includes(t), `'${t}' is detection-only and must never appear in scores_by_dim (found in ${dim})`);
+    }
+  }
+  assert.strictEqual(singles.substrate_meta_detected, true, 'the single-word tokens DO detect (advisory)');
+});
+
+test('Tier 2c: WEIGHTS_VERSION golden bumped (the review signal for this expansion)', () => {
+  const out = scoreTask(ARC_P1);
+  assert.strictEqual(out.weights_version, 'v1.3-dict-expanded-2026-06-12',
+    `expected the v3.8a golden; got ${out.weights_version}`);
+});
+
 // --- summary ---
 
 process.stdout.write(`\nroute-decide.test.js: ${passed} passed, ${failed} failed\n`);
