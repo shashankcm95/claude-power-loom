@@ -64,6 +64,14 @@ const DEFAULT_STATE_DIR = path.join(os.homedir(), '.claude', 'spawn-state');
 // Stored record filenames are exactly `record-<64-hex>.json` (record-store RECORD_FILE_RE).
 const RECORD_FILE_RE = /^record-[a-f0-9]{64}\.json$/;
 
+// Per-file read ceiling (v3.8 hardening; PR #300 VALIDATE hacker LOW + CodeRabbit) — a
+// same-uid plant of many LARGE matching-name files must not inflate scan latency/memory
+// (a DoS in the SAFE over-count direction; the read was previously unbounded). A legit
+// producer-minted record (writeAtomicString) is a few hundred bytes, so a 1MB ceiling has
+// ~3 orders of magnitude headroom — skipping an oversized file CANNOT under-count a legit
+// event (the only unsafe direction, §0a.3.1). Shared by BOTH scans (gate parity).
+const MAX_SCAN_FILE_BYTES = 1024 * 1024;
+
 /**
  * Cross-run scan for committed records whose `operation_class` is in `opClasses` and whose
  * FILE mtime is STRICTLY GREATER THAN `sinceMs` (half-open window — a record at exactly
@@ -111,10 +119,14 @@ function scanCommittedOps(o) {
       if (!RECORD_FILE_RE.test(f)) continue;
       const fp = path.join(recordsDir, f);
       let st;
-      try { st = fs.statSync(fp); } catch { continue; }
+      // lstat, NOT stat (v3.8 hardening): a planted matching-NAME symlink must never be
+      // followed — lstat of a symlink reports isFile()=false, so the line below skips it.
+      // Legit mints are always regular files (writeAtomicString), so this cannot
+      // under-count a legit record. Size-skip BEFORE the read (MAX_SCAN_FILE_BYTES above).
+      try { st = fs.lstatSync(fp); } catch { continue; }
       // WINDOW on FS mtime (C1). Half-open `<=` exclusion to MATCH projectBreaker's `ts <= windowStart`
       // boundary (VALIDATE code-reviewer LOW — a record at the exact boundary is consistently excluded).
-      if (!st.isFile() || st.mtimeMs <= sinceMs) continue;
+      if (!st.isFile() || st.size > MAX_SCAN_FILE_BYTES || st.mtimeMs <= sinceMs) continue;
       let rec;
       try { rec = JSON.parse(fs.readFileSync(fp, 'utf8')); } catch { continue; } // unparseable → skip (over-count-safe)
       if (rec && typeof rec.operation_class === 'string' && wanted.has(rec.operation_class)) {
@@ -191,8 +203,11 @@ function scanRejectEvents(o) {
       if (!REJECT_EVENT_FILE_RE.test(f)) continue;
       const fp = path.join(eventsDir, f);
       let st;
-      try { st = fs.statSync(fp); } catch { continue; }
-      if (!st.isFile() || st.mtimeMs <= sinceMs) continue; // half-open mtime window (matches above)
+      // lstat, NOT stat (v3.8 hardening — mirrors scanCommittedOps above, gate parity):
+      // a matching-name symlink is never followed (isFile()=false skips it); legit mints
+      // are always small regular files, so neither skip can under-count a legit event.
+      try { st = fs.lstatSync(fp); } catch { continue; }
+      if (!st.isFile() || st.size > MAX_SCAN_FILE_BYTES || st.mtimeMs <= sinceMs) continue; // half-open mtime window (matches above)
       let rec;
       try { rec = JSON.parse(fs.readFileSync(fp, 'utf8')); } catch { continue; } // unparseable -> skip
       // Shape-gate ONLY (not a content-verify): legit records always pass (append enforces
