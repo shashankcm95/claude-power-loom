@@ -85,5 +85,26 @@ test('no command → exit 1, usage', () => {
   assert.ok(/Usage:/.test(r.err), 'usage printed');
 });
 
+// v3.8 W1 — the reject-event source on the CLI surface. Explicit --source wins over the
+// module-scope LOOM_BREAKER_SOURCE pin above; --state-dir aims the kernel-store scan.
+test('check --source reject-event → exit 0, echoes the source, NO starvation warning (explicitly-wired, like manage-promote)', () => {
+  const kstore = path.join(os.tmpdir(), 'cli-res-' + crypto.randomBytes(6).toString('hex'));
+  fs.mkdirSync(kstore, { recursive: true });
+  try {
+    const r = run(['check', '--source', 'reject-event', '--state-dir', kstore]);
+    assert.strictEqual(r.code, 0, `exit 0 (stderr=${r.err})`);
+    const parsed = JSON.parse(r.out); // throws if a warning leaked into stdout
+    assert.strictEqual(parsed.source, 'reject-event', 'the resolved source is echoed');
+    assert.strictEqual(parsed.tripped, false, 'an empty store is clear');
+    assert.ok(!/WARNING/.test(r.err), 'reject-event is an explicitly-wired source — no starvation warning');
+  } finally { fs.rmSync(kstore, { recursive: true, force: true }); }
+});
+
+test('usage names the reject-event source', () => {
+  const r = run([]);
+  assert.strictEqual(r.code, 1);
+  assert.ok(/reject-event/.test(r.err), 'the USAGE source set includes reject-event');
+});
+
 process.stdout.write(`\ncli.test.js (E11 breaker): ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
