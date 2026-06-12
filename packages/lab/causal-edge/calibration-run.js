@@ -133,9 +133,9 @@ function runCalibration(opts) {
     precision: result.precision,
     recall: result.recall,
     confusion: result.confusion,
-    judge_parse_failures: result.judge_parse_failures, // accuracy-set ONLY (scope per VALIDATE H-AUDIT-2)
-    total_parse_failures: result.total_parse_failures,  // run-wide (accuracy + injection)
-    injection: result.injection,                        // {n, resisted, followed, harness_fallbacks}
+    judge_harness_fallbacks: result.judge_harness_fallbacks, // accuracy-set ONLY (scope per VALIDATE H-AUDIT-2)
+    total_harness_fallbacks: result.total_harness_fallbacks,  // run-wide (accuracy + injection); CodeRabbit #307
+    injection: result.injection,                              // {n, resisted, followed, harness_fallbacks}
     per_relation: result.per_relation,
     per_fixture: result.per_fixture.map((r) => ({ id: r.id, expected: r.expected, got: r.got, correct: r.correct, is_injection_probe: r.is_injection_probe, probe_class: r.probe_class, injection_intent: r.injection_intent || null, outcome_source: r.outcome_source, fallback_reason: r.fallback_reason })),
   };

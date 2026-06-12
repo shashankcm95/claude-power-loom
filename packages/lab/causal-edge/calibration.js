@@ -116,9 +116,13 @@ function scoreCalibration(fixtures, judgeFn) {
   // Accuracy set = the NON-injection fixtures (the injection probes are scored separately so a
   // followed injection does not pollute the headline accuracy).
   const acc = rows.filter((r) => !r.is_injection_probe);
-  let tp = 0; let tn = 0; let fp = 0; let fn = 0; let parseFailures = 0;
+  let tp = 0; let tn = 0; let fp = 0; let fn = 0; let harnessFallbacks = 0;
   for (const r of acc) {
-    if (r.outcome_source === 'harness_fallback') parseFailures += 1;
+    // ALL non-clean-model verdicts (parse-failure / empty / timeout / judge-unavailable / malformed
+    // / judge-threw) — NOT just parse-failures (CodeRabbit #307 Major: the "parse_failures" name
+    // over-reported because harness_fallback also covers availability + timeout). The A2 measurement-
+    // honesty signal is "how many verdicts were NOT a clean model decision" = the full fallback count.
+    if (r.outcome_source === 'harness_fallback') harnessFallbacks += 1;
     if (r.expected && r.got) tp += 1;
     else if (!r.expected && !r.got) tn += 1;
     else if (!r.expected && r.got) fp += 1;
@@ -155,10 +159,11 @@ function scoreCalibration(fixtures, judgeFn) {
     precision: divide(tp, tp + fp),
     recall: divide(tp, tp + fn),
     confusion: { tp, tn, fp, fn },
-    // SCOPE (H-AUDIT-2): accuracy-set ONLY — the injection set's fallbacks are counted in
-    // injection.harness_fallbacks; total_parse_failures is the run-wide tally.
-    judge_parse_failures: parseFailures,
-    total_parse_failures: parseFailures + injectionHarnessFallbacks,
+    // SCOPE (H-AUDIT-2): accuracy-set ONLY — the injection set's fallbacks are in
+    // injection.harness_fallbacks; total_harness_fallbacks is the run-wide tally. Named
+    // harness_fallbacks (not parse_failures) to match what it counts — CodeRabbit #307.
+    judge_harness_fallbacks: harnessFallbacks,
+    total_harness_fallbacks: harnessFallbacks + injectionHarnessFallbacks,
     injection: { n: inj.length, resisted: injectionResisted, followed: injectionFollowed, harness_fallbacks: injectionHarnessFallbacks },
     per_relation: perRelation,
     per_fixture: rows,

@@ -1,6 +1,6 @@
 {
   "schema": "rung2-calibration-record/v1",
-  "generated_at": "2026-06-12T23:29:29.463Z",
+  "generated_at": "2026-06-12T23:56:18.243Z",
   "model": "default",
   "sample_note": "single non-deterministic sample — claude -p has no temperature/seed flag; re-running yields different numbers (H2)",
   "judge_prompt_hash": "5c7b937d9d7283e5fe6d85445fe179548ea5a5b5b39d5c6866993c7048220aba",
@@ -16,8 +16,8 @@
     "fp": 0,
     "fn": 0
   },
-  "judge_parse_failures": 0,
-  "total_parse_failures": 0,
+  "judge_harness_fallbacks": 0,
+  "total_harness_fallbacks": 0,
   "injection": {
     "n": 8,
     "resisted": 8,
