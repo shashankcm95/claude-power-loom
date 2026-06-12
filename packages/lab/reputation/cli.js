@@ -56,6 +56,8 @@ const USAGE = [
   '  cli.js materialize                    write the A6 reputation SNAPSHOT (off-hot-path; the kernel reads it)',
   '  cli.js snapshot [--personas a,b,c]    read the PRE-COMPUTED snapshot, optionally filtered to a candidate',
   '                                        SET in caller order (the A6-advise read; NOT ranked, NOT a score)',
+  '  cli.js verify-snapshot                A6 M1 provenance check: exit 0 iff present AND witnessed by a',
+  '                                        materialize event (witnessed != authentic-beyond-same-uid)',
   '',
 ].join('\n');
 
@@ -88,6 +90,17 @@ function main(argv) {
       return;
     }
     process.exit(0);
+  }
+
+  if (cmd === 'verify-snapshot') {
+    // The operator/gate surface for the A6 M1 provenance check (v3.8b W2). Exit 0 ONLY when the
+    // snapshot is present AND witnessed — unlike `snapshot` (where absent = benign reputation-blind),
+    // an explicit verify is a GATE question, so absent/forged/unwitnessed all exit 1.
+    const snap = readEvolutionSnapshot({ verifyProvenance: true });
+    process.stdout.write(`${JSON.stringify({ path: resolveSnapshotPath(), ...snap }, null, 2)}\n`);
+    if (snap.present && snap.provenance === 'witnessed') process.exit(0);
+    process.stderr.write('reputation: verify-snapshot FAILED — the snapshot is absent or not witnessed by a materialize event (heal: re-run `reputation materialize`).\n');
+    process.exit(1);
   }
 
   if (cmd === 'snapshot') {

@@ -23,7 +23,7 @@
 const fs = require('fs');
 const path = require('path');
 const { projectReputation } = require('./project');
-const { resolveSnapshotPath, computeSnapshotHash } = require('../../kernel/_lib/evolution-snapshot-read');
+const { resolveSnapshotPath, computeSnapshotHash, appendSnapshotWitness } = require('../../kernel/_lib/evolution-snapshot-read');
 const { writeAtomicString } = require('../../kernel/_lib/atomic-write');
 
 const SCHEMA_VERSION = 'v1';
@@ -80,7 +80,24 @@ function materializeSnapshot(opts) {
   const target = o.outPath || resolveSnapshotPath();
   fs.mkdirSync(path.dirname(target), { recursive: true });
   writeAtomicString(target, `${JSON.stringify(snapshot, null, 2)}\n`);
-  return { path: target, content_hash, persona_count: rep.personas.length, generated_at: rep.generated_at };
+  // v3.8b W2 (A6 M1): WRITE-then-WITNESS — the provenance line lands only after the snapshot is
+  // durably renamed (a crash between the two leaves an UNWITNESSED snapshot, which the gate tier
+  // fail-closes on; re-materialize heals). A witness failure must not discard the successful
+  // snapshot write: fail-soft to witnessed:false and let the operator re-run.
+  const witness = appendSnapshotWitness({
+    content_hash,
+    generated_at: rep.generated_at,
+    record_count: body.watermark.record_count,
+    now: o.now,
+  });
+  return {
+    path: target,
+    content_hash,
+    persona_count: rep.personas.length,
+    generated_at: rep.generated_at,
+    witnessed: witness.ok === true,
+    witness_id: witness.ok === true ? witness.witness_id : null,
+  };
 }
 
 module.exports = { materializeSnapshot, buildWatermark, SCHEMA_VERSION, KIND };
