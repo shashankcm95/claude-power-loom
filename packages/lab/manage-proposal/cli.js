@@ -26,6 +26,7 @@ const {
 const { DISPOSITIONS, validateEnum } = require('./enums');
 const { manageLifecycleStatus } = require('./lifecycle');
 const { loadRecordsForTarget } = require('./crossrun-load');
+const { recallSuppression } = require('./recall-suppression');
 const { promoteProposal } = require('./promote');
 const { HEX64 } = require('../../kernel/_lib/provenance-walk');
 
@@ -41,7 +42,7 @@ function parseArgs(argv) {
   return args;
 }
 
-const USAGE = 'Usage: cli.js <quarantine --target <txid> --justification "..." [--origin O] | content-dedup|cull|merge --targets <txid,txid,...> --justification "..." [--origin O] | list [--disposition D] | dispose --proposal-id <id> --decision approved|rejected | lifecycle --txid <txid> | promote --proposal-id <id>>\n  (--justification is a single-line free string, <=512 bytes; for merge it carries the proposed summary)\n';
+const USAGE = 'Usage: cli.js <quarantine --target <txid> --justification "..." [--origin O] | content-dedup|cull|merge --targets <txid,txid,...> --justification "..." [--origin O] | list [--disposition D] | dispose --proposal-id <id> --decision approved|rejected | lifecycle --txid <txid> | recall-filter --txids <txid,txid,...> | promote --proposal-id <id>>\n  (--justification is a single-line free string, <=512 bytes; for merge it carries the proposed summary)\n';
 
 function emit(obj) {
   process.stdout.write(`${JSON.stringify(obj, null, 2)}\n`);
@@ -124,6 +125,26 @@ function main(argv) {
     }
     try {
       emit(manageLifecycleStatus(args.txid, { records: loadRecordsForTarget(args.txid, {}), proposals: listProposals() }));
+    } catch (e) { fail(e.message); return; }
+    process.exit(0);
+  }
+
+  if (cmd === 'recall-filter') {
+    // v3.8a W3: the recall-class retrieval-suppression view — partition a candidate txid set
+    // into surfaced/suppressed/flagged against the LIVE manage state (committed TOMBSTONE/
+    // SUPERSEDE facts + advisory intent incl. PENDING quarantine). ADVISORY: the full
+    // partition is always emitted (never lossy); the consumer decides. Element-level issues
+    // (a non-hex txid) stay VISIBLE in `surfaced` with a diagnostic reason — only structural
+    // errors (no/empty --txids, an oversized set) fail the invocation.
+    if (typeof args.txids !== 'string' || args.txids.length === 0) {
+      fail('recall-filter requires --txids <txid,txid,...> (64-hex kernel transaction_ids)'); return;
+    }
+    try {
+      const txids = args.txids.split(',').map((t) => t.trim()).filter((t) => t.length > 0);
+      if (txids.length === 0) {
+        fail('recall-filter --txids: no valid txids after parsing (all entries were empty or whitespace)'); return;
+      }
+      emit(recallSuppression(txids, { proposals: listProposals() }));
     } catch (e) { fail(e.message); return; }
     process.exit(0);
   }
