@@ -34,7 +34,9 @@ const { projectBreaker, evaluate, DEFAULT_SOURCE } = require('./project');
 // arm — evaluate THROWS on a starved source; the catch below turns it into exit 1).
 function warnIfStarvedSource(result) {
   if (result && result.source_starved === true) {
-    process.stderr.write(`breaker: WARNING active denial source is '${result.source}' (non-default); it is STARVED — a clear result is NOT a safety signal. Set LOOM_BREAKER_SOURCE=${DEFAULT_SOURCE} (the live default) unless this is intentional.\n`);
+    // The remediation names BOTH selection paths (CodeRabbit #305): --source wins over the env, so
+    // an env-only remediation is a no-op when the starved source came in via --source.
+    process.stderr.write(`breaker: WARNING active denial source is '${result.source}' (non-default); it is STARVED — a clear result is NOT a safety signal. Drop --source / set LOOM_BREAKER_SOURCE=${DEFAULT_SOURCE} (the live default) unless this is intentional.\n`);
   }
 }
 

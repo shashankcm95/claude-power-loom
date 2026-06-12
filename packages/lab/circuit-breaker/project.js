@@ -89,9 +89,13 @@ function personaOfVerdict(r) {
 // by persona too forks a relocate into its own group, so the real persona keeps its count. This is a
 // NO-OP for honest data: the store's H-1 guard makes one agent_id = one persona, and the D6
 // multi-reviewer records share the SUBJECT persona (they differ only in verifier.identity), so they
-// still collapse. The id sub-key is a chain with a guaranteed-unique terminal — agent_id, else
-// attestation_id, else a positional sentinel; JSON.stringify([persona, idKey]) is the composite (the
-// JSON string-escaping is collision-proof — a persona containing the joiner cannot forge another key).
+// still collapse. The id sub-key: agent_id, else a POSITIONAL sentinel — deliberately NO
+// attestation_id rung (CodeRabbit #305 Major): only HAND-WRITTEN rows lack agent_id (the store
+// requires it), and an id-keyed collapse of hand-written rows is an under-count lever (reuse another
+// row's attestation_id to suppress it); positional keys mean agent_id-less rows NEVER collapse — a
+// hand-duplicated line counting twice is the SAFE (over-halt) direction. JSON.stringify([persona,
+// idKey]) is the composite (string-escaping is collision-proof — a persona containing the joiner
+// cannot forge another key).
 function dedupBySubject(records, nowMs) {
   const byKey = new Map(); // Map: a __proto__-named agent_id cannot poison the accumulator
   const passThrough = [];
@@ -100,8 +104,7 @@ function dedupBySubject(records, nowMs) {
     if (!Number.isFinite(ts) || ts > nowMs) { passThrough.push(r); return; }
     const refs = r && r.evidence_refs;
     const agentId = (refs && typeof refs.agent_id === 'string' && refs.agent_id) || null;
-    const attId = (r && typeof r.attestation_id === 'string' && r.attestation_id) || null;
-    const idKey = agentId ? `a:${agentId}` : (attId ? `t:${attId}` : `i:${i}`);
+    const idKey = agentId ? `a:${agentId}` : `i:${i}`;
     const key = JSON.stringify([personaOfVerdict(r), idKey]);
     const prev = byKey.get(key);
     if (!prev || ts > prev.ts) byKey.set(key, { r, ts });

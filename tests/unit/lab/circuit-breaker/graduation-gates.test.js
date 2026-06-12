@@ -131,10 +131,13 @@ test('4. G1 straddle: same spawn failed at NOW-2W and NOW-1s -> deduped LATEST i
   assert.strictEqual(row.denials_in_window, 1);
 });
 
-test('5. G1 fail-soft: two hand-written fails missing agent_id -> 2 denials via attestation_id', () => {
+test('5. G1 fail-soft: hand-written fails missing agent_id NEVER collapse (positional keys — even on a REUSED attestation_id)', () => {
+  // CodeRabbit #305 Major: an attestation_id dedup rung would let a forged row reuse another row's
+  // attestation_id and suppress it. agent_id-less rows take positional keys — the SAME attestation_id
+  // on two rows still counts 2 (over-halt is the safe direction).
   appendRaw({ attestation_id: 'h1', verdict: 'fail', subject: { persona: 'node-backend' }, recorded_at: new Date(NOW - 1000).toISOString(), expires_after_days: 30 });
-  appendRaw({ attestation_id: 'h2', verdict: 'fail', subject: { persona: 'node-backend' }, recorded_at: new Date(NOW - 2000).toISOString(), expires_after_days: 30 });
-  assert.strictEqual(personaOf(projectBreaker({ now: NOW }), 'node-backend').denials_in_window, 2, 'no cross-record collapse on the attestation_id rung');
+  appendRaw({ attestation_id: 'h1', verdict: 'fail', subject: { persona: 'node-backend' }, recorded_at: new Date(NOW - 2000).toISOString(), expires_after_days: 30 });
+  assert.strictEqual(personaOf(projectBreaker({ now: NOW }), 'node-backend').denials_in_window, 2, 'a reused attestation_id cannot suppress a distinct hand-written row');
 });
 
 test('5b. G1 fail-soft terminal (CR-F1): two rows missing BOTH agent_id AND attestation_id -> 2 denials', () => {
