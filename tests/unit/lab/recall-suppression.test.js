@@ -42,6 +42,14 @@ const TMP = path.join(os.tmpdir(), 'recall-sup-' + crypto.randomBytes(6).toStrin
 process.env.LOOM_LAB_STATE_DIR = TMP; // BEFORE requires
 fs.mkdirSync(TMP, { recursive: true });
 
+// Reset the shared lab ledger between store-backed cases (CodeRabbit #303: the E2E case
+// persists proposals into TMP; without a reset the CLI cases run against leftovers —
+// order-dependent even when it happens to pass).
+function resetLabState() {
+  fs.rmSync(TMP, { recursive: true, force: true });
+  fs.mkdirSync(TMP, { recursive: true });
+}
+
 const REPO = path.join(__dirname, '..', '..', '..');
 const P = (...a) => path.join(REPO, 'packages', ...a);
 const { recallSuppression } = require(P('lab', 'manage-proposal', 'recall-suppression.js'));
@@ -247,6 +255,7 @@ test('prototype-named hostile shapes stay clean (op_type toString / txid __proto
 // ---- the END-TO-END path: the REAL producer (promoteProposal -> COMMITTED TOMBSTONE) ----
 
 test('E2E: a real promoted cull (kernel TOMBSTONE mint) suppresses through the REAL cross-run loader', () => {
+  resetLabState();
   process.env.LOOM_MANAGE_ENFORCE = '1';
   delete process.env.LOOM_DISABLE_CIRCUIT_BREAKER;
   try {
@@ -273,6 +282,7 @@ test('E2E: a real promoted cull (kernel TOMBSTONE mint) suppresses through the R
 // ---- the CLI surface ----
 
 test('CLI recall-filter --txids A,B: empty store -> both surfaced (no-records), valid JSON partition', () => {
+  resetLabState();
   const out = JSON.parse(execFileSync(process.execPath, [CLI, 'recall-filter', '--txids', `${A},${B}`], {
     env: { ...process.env, LOOM_LAB_STATE_DIR: TMP }, encoding: 'utf8',
   }));
