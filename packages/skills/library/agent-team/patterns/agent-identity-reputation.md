@@ -483,8 +483,19 @@ node packages/lab/circuit-breaker/cli.js check --persona <P>
 `tripped:true` -> do NOT spawn `P`: reroute to an alternate lens, or halt and surface to the user. This
 is **narrows-only** (it removes a choice, never adds one), **advisory** (A3b — never a hard gate), and
 the breaker itself halts nothing automatically (shadow). Only `fail` verdicts are denials (`pass` /
-`partial` are not); the count is fail-VERDICT records (a multi-reviewer fail of one build counts each
-reviewer — a disclosed characteristic, advisory + thresholds tunable).
+`partial` are not); since the v3.8b G1 graduation gate, `denials_in_window` counts **distinct failed
+subject spawns** (dedup-by-subject on `evidence_refs.agent_id`) — a multi-reviewer fail of one build is
+ONE denial (the D6 inflation is closed).
+
+**Decision-shape additions (v3.8b graduation gates — all ADDITIVE; existing fields unchanged):**
+`source_starved` (G2: `true` = the resolved source's producer is probe-dead; a clear read is NOT a
+safety signal), and the latch axis `latched` / `latched_global` / `latched_persona` / `latch_ms`
+(the hysteresis latch: a trip persists `latch_ms` past the last threshold-crossing, so a decision of
+`scope:'global'` with `global_tripped:false` and `latched_global:true` reads "held by the latch; the
+window has cleared" — `scope` still names the PLANE, never a `'latched'` value). A GATING consumer
+(the v3.9 shape) passes `requireLive:true` / `--require-live`: the breaker THROWS on a starved source
+instead of returning a clear-looking view (wrap in try/catch; promote.js's
+`refuse('breaker-source-unavailable')` is the composition pattern).
 
 **Why it's §0a.3.1-clean.** The consumer is the orchestrator (root / user-space) narrowing its OWN
 spawn choice — not a kernel state-transition, so it needs no A6-snapshot mediation (A6 mediates only
