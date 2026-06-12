@@ -135,6 +135,59 @@ test('scanCommittedOps: a record at exactly mtime == sinceMs is excluded (half-o
   } finally { fs.rmSync(s, { recursive: true, force: true }); }
 });
 
+// -- per-file hardening (v3.8 follow-up; PR #300 VALIDATE hacker LOW + CodeRabbit): an OVERSIZED
+// plant with VALID countable content must be size-skipped BEFORE the read (DoS bound). Legit
+// producer-minted records are a few hundred bytes — the skip cannot under-count legit events.
+test('scanCommittedOps: an oversized (>1MB) valid-content plant is skipped; the legit sibling still counts', () => {
+  const s = freshStore();
+  try {
+    writeRecord(s, 'r', 'TOMBSTONE', NOW - 1 * MIN); // legit
+    const bigTxid = hex64();
+    const dir = path.join(s, 'r', 'records');
+    const fp = path.join(dir, 'record-' + bigTxid + '.json');
+    fs.writeFileSync(fp, JSON.stringify({ transaction_id: bigTxid, operation_class: 'TOMBSTONE', pad: 'x'.repeat(1100000) }));
+    fs.utimesSync(fp, (NOW - 1 * MIN) / 1000, (NOW - 1 * MIN) / 1000);
+    const got = scanCommittedOps({ opClasses: ['TOMBSTONE'], sinceMs: NOW - 10 * MIN, stateDir: s });
+    assert.strictEqual(got.length, 1, 'the oversized plant is skipped pre-read; only the legit record counts');
+  } finally { fs.rmSync(s, { recursive: true, force: true }); }
+});
+
+// -- per-file hardening: a matching-NAME SYMLINK pointing outside the store must not be
+// followed/counted (lstat gate). Legit mints (writeAtomicString) are never symlinks.
+test('scanCommittedOps: a matching-name symlink to an outside valid record is skipped; the legit sibling still counts', () => {
+  const s = freshStore();
+  const outside = freshStore();
+  try {
+    writeRecord(s, 'r', 'TOMBSTONE', NOW - 1 * MIN); // legit
+    const foreignTxid = hex64();
+    const target = path.join(outside, 'foreign.json');
+    fs.writeFileSync(target, JSON.stringify({ transaction_id: foreignTxid, operation_class: 'TOMBSTONE' }));
+    fs.utimesSync(target, (NOW - 1 * MIN) / 1000, (NOW - 1 * MIN) / 1000);
+    fs.symlinkSync(target, path.join(s, 'r', 'records', 'record-' + foreignTxid + '.json'));
+    const got = scanCommittedOps({ opClasses: ['TOMBSTONE'], sinceMs: NOW - 10 * MIN, stateDir: s });
+    assert.strictEqual(got.length, 1, 'the symlink plant is skipped (never followed); only the legit record counts');
+  } finally { fs.rmSync(s, { recursive: true, force: true }); fs.rmSync(outside, { recursive: true, force: true }); }
+});
+
+// -- per-file hardening round 2 (CodeRabbit #302): the SUBDIR itself can be a symlink — the
+// per-file lstat only protects the FINAL segment (a symlinked PARENT is undetected), so the
+// records/ dir must be lstat-gated BEFORE readdirSync. A legit run's records/ is always a
+// real mkdirSync directory, never a symlink — the skip cannot under-count legit events.
+test('scanCommittedOps: a run whose records/ SUBDIR is a symlink to an outside dir is skipped; a legit run still counts', () => {
+  const s = freshStore();
+  const outside = freshStore();
+  try {
+    writeRecord(s, 'legitrun', 'TOMBSTONE', NOW - 1 * MIN);
+    const foreignTxid = hex64();
+    fs.writeFileSync(path.join(outside, 'record-' + foreignTxid + '.json'), JSON.stringify({ transaction_id: foreignTxid, operation_class: 'TOMBSTONE' }));
+    fs.utimesSync(path.join(outside, 'record-' + foreignTxid + '.json'), (NOW - 1 * MIN) / 1000, (NOW - 1 * MIN) / 1000);
+    fs.mkdirSync(path.join(s, 'evilrun'), { recursive: true });
+    fs.symlinkSync(outside, path.join(s, 'evilrun', 'records'), 'dir'); // the SUBDIR is the symlink
+    const got = scanCommittedOps({ opClasses: ['TOMBSTONE'], sinceMs: NOW - 10 * MIN, stateDir: s });
+    assert.strictEqual(got.length, 1, 'the symlinked-subdir run is skipped; only the legit run counts');
+  } finally { fs.rmSync(s, { recursive: true, force: true }); fs.rmSync(outside, { recursive: true, force: true }); }
+});
+
 // -- M3 / realpathSync EACCES (CodeRabbit): a base under an UNSEARCHABLE parent makes realpathSync throw
 // EACCES — which must be RE-THROWN (fail-closed), NOT swallowed to [] (fail-open). Distinct from ENOENT.
 test('scanCommittedOps: a base under an unsearchable parent re-throws (EACCES, not fail-open [])', () => {

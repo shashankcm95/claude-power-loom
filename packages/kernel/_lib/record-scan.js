@@ -64,6 +64,14 @@ const DEFAULT_STATE_DIR = path.join(os.homedir(), '.claude', 'spawn-state');
 // Stored record filenames are exactly `record-<64-hex>.json` (record-store RECORD_FILE_RE).
 const RECORD_FILE_RE = /^record-[a-f0-9]{64}\.json$/;
 
+// Per-file read ceiling (v3.8 hardening; PR #300 VALIDATE hacker LOW + CodeRabbit) — a
+// same-uid plant of many LARGE matching-name files must not inflate scan latency/memory
+// (a DoS in the SAFE over-count direction; the read was previously unbounded). A legit
+// producer-minted record (writeAtomicString) is a few hundred bytes, so a 1MB ceiling has
+// ~3 orders of magnitude headroom — skipping an oversized file CANNOT under-count a legit
+// event (the only unsafe direction, §0a.3.1). Shared by BOTH scans (gate parity).
+const MAX_SCAN_FILE_BYTES = 1024 * 1024;
+
 /**
  * Cross-run scan for committed records whose `operation_class` is in `opClasses` and whose
  * FILE mtime is STRICTLY GREATER THAN `sinceMs` (half-open window — a record at exactly
@@ -106,15 +114,27 @@ function scanCommittedOps(o) {
     // base, for path consistency now that checkWithinRoot has vouched for realDir being inside the store).
     const recordsDir = path.join(realDir, 'records');
     let files;
-    try { files = fs.readdirSync(recordsDir); } catch { continue; } // a run without a records/ subdir → skip
+    // Subdir gate (CodeRabbit #302): the per-file lstat below only protects the FINAL path
+    // segment — a SYMLINKED records/ subdir would let readdirSync escape the store and its
+    // (regular) outside files pass the per-file check. lstat-reject a symlinked subdir
+    // outright: a legit run's records/ is always a real mkdirSync directory, so this cannot
+    // under-count; a real directory child of the vetted realDir cannot itself escape.
+    try {
+      if (!fs.lstatSync(recordsDir).isDirectory()) continue; // symlink/file in place of the subdir -> skip
+      files = fs.readdirSync(recordsDir);
+    } catch { continue; } // a run without a records/ subdir -> skip
     for (const f of files) {
       if (!RECORD_FILE_RE.test(f)) continue;
       const fp = path.join(recordsDir, f);
       let st;
-      try { st = fs.statSync(fp); } catch { continue; }
+      // lstat, NOT stat (v3.8 hardening): a planted matching-NAME symlink must never be
+      // followed — lstat of a symlink reports isFile()=false, so the line below skips it.
+      // Legit mints are always regular files (writeAtomicString), so this cannot
+      // under-count a legit record. Size-skip BEFORE the read (MAX_SCAN_FILE_BYTES above).
+      try { st = fs.lstatSync(fp); } catch { continue; }
       // WINDOW on FS mtime (C1). Half-open `<=` exclusion to MATCH projectBreaker's `ts <= windowStart`
       // boundary (VALIDATE code-reviewer LOW — a record at the exact boundary is consistently excluded).
-      if (!st.isFile() || st.mtimeMs <= sinceMs) continue;
+      if (!st.isFile() || st.size > MAX_SCAN_FILE_BYTES || st.mtimeMs <= sinceMs) continue;
       let rec;
       try { rec = JSON.parse(fs.readFileSync(fp, 'utf8')); } catch { continue; } // unparseable → skip (over-count-safe)
       if (rec && typeof rec.operation_class === 'string' && wanted.has(rec.operation_class)) {
@@ -186,13 +206,21 @@ function scanRejectEvents(o) {
     if (!checkWithinRoot(realDir, realBase).ok) continue;  // a symlink escaping the store -> skip
     const eventsDir = path.join(realDir, 'reject-events');
     let files;
-    try { files = fs.readdirSync(eventsDir); } catch { continue; } // a run without reject-events/ -> skip
+    // Subdir gate (CodeRabbit #302 — mirrors scanCommittedOps above, gate parity): lstat-reject
+    // a symlinked reject-events/ before readdirSync; a legit subdir is always a real directory.
+    try {
+      if (!fs.lstatSync(eventsDir).isDirectory()) continue; // symlink/file in place of the subdir -> skip
+      files = fs.readdirSync(eventsDir);
+    } catch { continue; } // a run without reject-events/ -> skip
     for (const f of files) {
       if (!REJECT_EVENT_FILE_RE.test(f)) continue;
       const fp = path.join(eventsDir, f);
       let st;
-      try { st = fs.statSync(fp); } catch { continue; }
-      if (!st.isFile() || st.mtimeMs <= sinceMs) continue; // half-open mtime window (matches above)
+      // lstat, NOT stat (v3.8 hardening — mirrors scanCommittedOps above, gate parity):
+      // a matching-name symlink is never followed (isFile()=false skips it); legit mints
+      // are always small regular files, so neither skip can under-count a legit event.
+      try { st = fs.lstatSync(fp); } catch { continue; }
+      if (!st.isFile() || st.size > MAX_SCAN_FILE_BYTES || st.mtimeMs <= sinceMs) continue; // half-open mtime window (matches above)
       let rec;
       try { rec = JSON.parse(fs.readFileSync(fp, 'utf8')); } catch { continue; } // unparseable -> skip
       // Shape-gate ONLY (not a content-verify): legit records always pass (append enforces
