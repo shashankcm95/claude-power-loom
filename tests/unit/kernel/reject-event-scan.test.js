@@ -288,6 +288,24 @@ test('scanRejectEvents: a matching-name symlink to an outside shape-valid file i
   } finally { fs.rmSync(s, { recursive: true, force: true }); fs.rmSync(outside, { recursive: true, force: true }); }
 });
 
+// -- per-file hardening round 2 (CodeRabbit #302): the reject-events/ SUBDIR itself must be
+// lstat-gated BEFORE readdirSync (a symlinked PARENT bypasses the per-file lstat). A legit
+// run's reject-events/ is always a real mkdirSync directory — the skip cannot under-count.
+test('scanRejectEvents: a run whose reject-events/ SUBDIR is a symlink to an outside dir is skipped; a legit run still counts', () => {
+  const s = freshStore();
+  const outside = freshStore();
+  try {
+    seedEvent(s, 'legitrun', 'quarantined', NOW - 1 * MIN);
+    const fp = path.join(outside, 'reject-event-' + hex64() + '.json');
+    fs.writeFileSync(fp, JSON.stringify({ record_kind: 'reject-event-v1', outcome: 'quarantined' }));
+    fs.utimesSync(fp, (NOW - 1 * MIN) / 1000, (NOW - 1 * MIN) / 1000);
+    fs.mkdirSync(path.join(s, 'evilrun'), { recursive: true });
+    fs.symlinkSync(outside, path.join(s, 'evilrun', 'reject-events'), 'dir'); // the SUBDIR is the symlink
+    const got = scanRejectEvents({ sinceMs: NOW - 10 * MIN, stateDir: s });
+    assert.strictEqual(got.length, 1, 'the symlinked-subdir run is skipped; only the legit run counts');
+  } finally { fs.rmSync(s, { recursive: true, force: true }); fs.rmSync(outside, { recursive: true, force: true }); }
+});
+
 // -- scanCommittedOps isolation: reject-events are INVISIBLE to the records/ scan and vice
 // versa (the A1 subdir isolation holds at the cross-run layer too).
 test('scanRejectEvents/scanCommittedOps: the two scans never see each other\'s namespaces', () => {

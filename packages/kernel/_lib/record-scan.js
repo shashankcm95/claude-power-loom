@@ -114,7 +114,15 @@ function scanCommittedOps(o) {
     // base, for path consistency now that checkWithinRoot has vouched for realDir being inside the store).
     const recordsDir = path.join(realDir, 'records');
     let files;
-    try { files = fs.readdirSync(recordsDir); } catch { continue; } // a run without a records/ subdir → skip
+    // Subdir gate (CodeRabbit #302): the per-file lstat below only protects the FINAL path
+    // segment — a SYMLINKED records/ subdir would let readdirSync escape the store and its
+    // (regular) outside files pass the per-file check. lstat-reject a symlinked subdir
+    // outright: a legit run's records/ is always a real mkdirSync directory, so this cannot
+    // under-count; a real directory child of the vetted realDir cannot itself escape.
+    try {
+      if (!fs.lstatSync(recordsDir).isDirectory()) continue; // symlink/file in place of the subdir -> skip
+      files = fs.readdirSync(recordsDir);
+    } catch { continue; } // a run without a records/ subdir -> skip
     for (const f of files) {
       if (!RECORD_FILE_RE.test(f)) continue;
       const fp = path.join(recordsDir, f);
@@ -198,7 +206,12 @@ function scanRejectEvents(o) {
     if (!checkWithinRoot(realDir, realBase).ok) continue;  // a symlink escaping the store -> skip
     const eventsDir = path.join(realDir, 'reject-events');
     let files;
-    try { files = fs.readdirSync(eventsDir); } catch { continue; } // a run without reject-events/ -> skip
+    // Subdir gate (CodeRabbit #302 — mirrors scanCommittedOps above, gate parity): lstat-reject
+    // a symlinked reject-events/ before readdirSync; a legit subdir is always a real directory.
+    try {
+      if (!fs.lstatSync(eventsDir).isDirectory()) continue; // symlink/file in place of the subdir -> skip
+      files = fs.readdirSync(eventsDir);
+    } catch { continue; } // a run without reject-events/ -> skip
     for (const f of files) {
       if (!REJECT_EVENT_FILE_RE.test(f)) continue;
       const fp = path.join(eventsDir, f);

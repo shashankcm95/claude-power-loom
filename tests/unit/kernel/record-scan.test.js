@@ -169,6 +169,25 @@ test('scanCommittedOps: a matching-name symlink to an outside valid record is sk
   } finally { fs.rmSync(s, { recursive: true, force: true }); fs.rmSync(outside, { recursive: true, force: true }); }
 });
 
+// -- per-file hardening round 2 (CodeRabbit #302): the SUBDIR itself can be a symlink — the
+// per-file lstat only protects the FINAL segment (a symlinked PARENT is undetected), so the
+// records/ dir must be lstat-gated BEFORE readdirSync. A legit run's records/ is always a
+// real mkdirSync directory, never a symlink — the skip cannot under-count legit events.
+test('scanCommittedOps: a run whose records/ SUBDIR is a symlink to an outside dir is skipped; a legit run still counts', () => {
+  const s = freshStore();
+  const outside = freshStore();
+  try {
+    writeRecord(s, 'legitrun', 'TOMBSTONE', NOW - 1 * MIN);
+    const foreignTxid = hex64();
+    fs.writeFileSync(path.join(outside, 'record-' + foreignTxid + '.json'), JSON.stringify({ transaction_id: foreignTxid, operation_class: 'TOMBSTONE' }));
+    fs.utimesSync(path.join(outside, 'record-' + foreignTxid + '.json'), (NOW - 1 * MIN) / 1000, (NOW - 1 * MIN) / 1000);
+    fs.mkdirSync(path.join(s, 'evilrun'), { recursive: true });
+    fs.symlinkSync(outside, path.join(s, 'evilrun', 'records'), 'dir'); // the SUBDIR is the symlink
+    const got = scanCommittedOps({ opClasses: ['TOMBSTONE'], sinceMs: NOW - 10 * MIN, stateDir: s });
+    assert.strictEqual(got.length, 1, 'the symlinked-subdir run is skipped; only the legit run counts');
+  } finally { fs.rmSync(s, { recursive: true, force: true }); fs.rmSync(outside, { recursive: true, force: true }); }
+});
+
 // -- M3 / realpathSync EACCES (CodeRabbit): a base under an UNSEARCHABLE parent makes realpathSync throw
 // EACCES — which must be RE-THROWN (fail-closed), NOT swallowed to [] (fail-open). Distinct from ENOENT.
 test('scanCommittedOps: a base under an unsearchable parent re-throws (EACCES, not fail-open [])', () => {
