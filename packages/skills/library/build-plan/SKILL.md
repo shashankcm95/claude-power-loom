@@ -123,7 +123,7 @@ Present plan + recommendations. User picks:
 - **No subprocess LLM** — pure-deterministic route-decide; no model calls
 - **No auto-spawn HETS** — Step 5 user gate is always present
 - **Additive to /plan** — never replace; both coexist
-- **Route-decide weights untouched** — this skill doesn't perturb the route-decide weights (current `weights_version v1.2-dict-expanded-2026-05-07`; a later phase may legitimately advance it)
+- **Route-decide weights untouched** — this skill doesn't perturb the route-decide weights (current `weights_version v1.3-dict-expanded-2026-06-12`; a later phase may legitimately advance it)
 - **Escape hatches available** — `--skip-hets` and `--force-plan` for explicit user override
 
 ## Phase
