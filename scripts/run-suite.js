@@ -88,16 +88,24 @@ function runFile(absPath, relTo) {
     const child = spawn(process.execPath, [absPath], { stdio: ['ignore', 'pipe', 'pipe'] });
     const chunks = [];
     let timedOut = false;
+    // Single-settle guard (VALIDATE LOW): a spawn error fires 'error' AND THEN 'close' -
+    // only the first handler settles; the second is an explicit no-op (the double-resolve
+    // was spec-safe but the invariant deserves to be visible, not incidental).
+    let settled = false;
     const timer = setTimeout(() => { timedOut = true; child.kill('SIGKILL'); }, PER_FILE_TIMEOUT_MS);
 
     child.stdout.on('data', (d) => chunks.push(d));
     child.stderr.on('data', (d) => chunks.push(d));
     child.on('error', (err) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
       chunks.push(Buffer.from('spawn error: ' + err.message + '\n'));
       resolve(finalize(rel, started, false, chunks));
     });
     child.on('close', (code) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
       if (timedOut) chunks.push(Buffer.from('TIMEOUT after ' + PER_FILE_TIMEOUT_MS + 'ms\n'));
       const ok = !timedOut && code === 0;
