@@ -15,6 +15,21 @@
 //   - readEvolutionSnapshot — bounded, fail-open, and SELF-VERIFYING (INV-22: never trust a
 //     self-asserted hash — recompute + compare). It MUST NEVER throw (the spawn hot path is
 //     fail-soft per ADR-0001) and MUST NOT read the ledger (O(1) w.r.t. attestation volume).
+//
+// v3.8b W2 — the A6 M1 PROVENANCE contract (integrity != authenticity): the content-hash
+// self-verify above attests INTACT, not TRUSTWORTHY — the formula is public and the basis is the
+// caller-chosen body, so a hand-written snapshot self-hashes to present:true. The WITNESS ledger
+// makes provenance machine-checkable: materialize appends a whole-body content-addressed witness
+// line (write-then-witness — a crash between the two leaves an UNWITNESSED snapshot, the
+// fail-closed direction; re-materialize heals); verifySnapshotProvenance re-derives each row's
+// witness_id (#273 — never trust a stored id) and matches content_hash. HONEST SCOPE: same-uid is
+// BOTH a forge axis (a forger can append a coherent witness too) AND a denial axis (flooding the
+// ledger past the bounded tail makes a legit snapshot read unwitnessed — over-halt; re-materialize
+// heals); `witnessed` != authentic-beyond-same-uid (closes at the ContainerAdapter). The trail is
+// an ORDER-of-materialize record (positional + append-stamped recorded_at) — body timestamps are
+// honest-but-same-uid-forgeable. The hot path NEVER pays for this: the witness fns lazy-require
+// their deps and readEvolutionSnapshot only verifies under the opt-in `verifyProvenance` flag
+// (spawn-record.js calls it bare).
 
 'use strict';
 
@@ -73,6 +88,179 @@ function computeSnapshotHash(snap) {
 
 function fail(reason) { return { present: false, reason }; }
 
+// ── The witness contract (v3.8b W2) ─────────────────────────────────────────────────────────────
+
+const WITNESS_LEDGER_FILENAME = 'snapshot-provenance.jsonl';
+const WITNESS_SCHEMA_VERSION = 'v1';
+// Read cap == prune cap (VERIFY A-MED-3): a witness that survived the append-side prune is always
+// inside the verify-side read window — the tail-window invariant. Witnesses are ~200B; 1024 ≈ 200KB.
+const WITNESS_LEDGER_MAX_RECORDS = 1024;
+const HEX64_RE = /^[0-9a-f]{64}$/;
+
+// The ONE witness-path formula (the CR-HIGH-2 split-brain discipline, same as resolveSnapshotPath).
+// Env read at call-time: LOOM_SNAPSHOT_WITNESS_PATH (explicit) > lab-state base + filename.
+function resolveWitnessLedgerPath() {
+  const explicit = process.env.LOOM_SNAPSHOT_WITNESS_PATH;
+  if (typeof explicit === 'string' && explicit.length > 0) return explicit;
+  const base = process.env.LOOM_LAB_STATE_DIR || path.join(os.homedir(), '.claude', 'lab-state');
+  return path.join(base, WITNESS_LEDGER_FILENAME);
+}
+
+// witness_id = sha256(canonical(body minus witness_id)) — the WHOLE body (#273): any mutated field
+// breaks the id. NOT a field-pair basis (VERIFY A-HIGH-1: generated_at is inside the snapshot's
+// hashed body — zero independent entropy + a caller-choosable timestamp made load-bearing; hacker
+// H1: out-of-basis fields were mutable while the witness still vouched).
+// spread = define-semantics → a hostile `__proto__` own-key is hashed faithfully, not set as a
+// prototype (same prototype-safety as snapshotHashBody — VALIDATE code-reviewer CR-2).
+function computeWitnessId(body) {
+  const basis = { ...body };
+  delete basis.witness_id;
+  return crypto.createHash('sha256').update(canonicalJsonSerialize(basis), 'utf8').digest('hex');
+}
+
+// Bound the witness read memory: the writer caps ROWS at 1024, but a same-uid flooder can append
+// junk directly — so the read tail-bounds by BYTES too. 4MB ≈ 16k tiny rows of headroom.
+const MAX_WITNESS_LEDGER_BYTES = 4 * 1024 * 1024;
+
+// VALIDATE hacker H1 (HIGH) + CodeRabbit #306 (CRITICAL): a FIFO planted at the witness path (or via
+// LOOM_SNAPSHOT_WITNESS_PATH) makes a NAME-based statSync→readFileSync return a size then BLOCK
+// FOREVER on the read, hanging the v3.9 gate path / CLI / materialize with no timeout. The fix is
+// HANDLE-BOUND ALL THE WAY THROUGH (this leaf's readEvolutionSnapshot FIFO defense): open O_NONBLOCK
+// (a FIFO/device opens instantly), fstat the BOUND fd, and READ FROM THAT SAME fd — never re-open by
+// name (delegating to readJsonlBounded would re-statSync→readFileSync the path, reopening the
+// fstat→read swap window the gate is meant to close). The fd is pinned to the inode at open, so no
+// post-open path swap can redirect it. Returns null (→ no-ledger/unwitnessed) or the bounded rows.
+// JSONL tail-read for the newest WITNESS_LEDGER_MAX_RECORDS. Never throws / never blocks.
+// (The shared readJsonlBounded chokepoint has the same pre-existing NAME-based hang for every Lab
+// store; a chokepoint fix is the named broader follow-up — this wave gates the paths IT introduces.)
+function readWitnessRowsSafe(ledgerPath) {
+  let fd;
+  try {
+    fd = fs.openSync(ledgerPath, fs.constants.O_RDONLY | (fs.constants.O_NONBLOCK || 0));
+  } catch { return null; } // absent / unopenable → no-ledger
+  try {
+    const st = fs.fstatSync(fd);
+    if (!st.isFile()) return null; // FIFO / dir / device / symlink-to-nonfile → no blocking read
+    const size = st.size;
+    const start = size > MAX_WITNESS_LEDGER_BYTES ? size - MAX_WITNESS_LEDGER_BYTES : 0; // tail past the cap
+    const len = size - start;
+    if (len === 0) return [];
+    const buf = Buffer.allocUnsafe(len);
+    let off = 0;
+    while (off < len) {
+      const n = fs.readSync(fd, buf, off, len - off, start + off); // positional read FROM the bound fd
+      if (n <= 0) break;
+      off += n;
+    }
+    let text = buf.toString('utf8', 0, off);
+    if (start > 0) { const nl = text.indexOf('\n'); text = nl === -1 ? '' : text.slice(nl + 1); } // drop the partial leading line
+    const { lastLines } = require('./jsonl-read'); // pure string fn (no I/O); lazy (A-MED-2)
+    return lastLines(text, WITNESS_LEDGER_MAX_RECORDS)
+      .map((line) => { try { return JSON.parse(line); } catch { return null; } })
+      .filter(Boolean);
+  } catch { return null; } finally {
+    try { fs.closeSync(fd); } catch { /* best-effort */ }
+  }
+}
+
+/**
+ * Append a materialize-witness line (write-then-witness: the caller writes the snapshot FIRST).
+ * Locked RMW capped to the newest WITNESS_LEDGER_MAX_RECORDS; an identical witness_id dedups.
+ * FAIL-SOFT: returns { ok:false, reason } rather than throwing (the materializer must not lose its
+ * already-written snapshot to a witness failure — the operator re-runs).
+ *
+ * @param {object} input { content_hash (64-hex), generated_at, record_count?, now? }
+ * @returns {{ok:boolean, witness_id?:string, deduped?:boolean, reason?:string}}
+ */
+function appendSnapshotWitness(input) {
+  const o = input || {};
+  if (typeof o.content_hash !== 'string' || !HEX64_RE.test(o.content_hash)) return { ok: false, reason: 'invalid-content-hash' };
+  if (typeof o.generated_at !== 'string' || o.generated_at.length === 0) return { ok: false, reason: 'invalid-generated-at' };
+  const recordCount = (typeof o.record_count === 'number' && Number.isFinite(o.record_count)) ? o.record_count : 0;
+  const nowMs = (o.now !== undefined) ? new Date(o.now).getTime() : Date.now();
+  if (!Number.isFinite(nowMs)) return { ok: false, reason: 'invalid-now' };
+  const body = {
+    schema_version: WITNESS_SCHEMA_VERSION,
+    content_hash: o.content_hash,
+    generated_at: o.generated_at,
+    // LEDGER-APPLIED stamp (hacker M1): the body's generated_at is caller-chosen; this is the
+    // append-time wall-clock. Inside the id basis (authenticated within the witness), but still
+    // same-uid-forgeable at authoring time — file POSITION is the order signal.
+    recorded_at: new Date(nowMs).toISOString(),
+    record_count: recordCount,
+  };
+  const witnessId = computeWitnessId(body);
+  const row = { witness_id: witnessId, ...body };
+
+  // Writer-side deps are LAZY (VERIFY A-MED-2): this leaf loads on the <50ms spawn-close hook,
+  // whose bare-read path must not pay the writer's module-load tax.
+  const { acquireLock, releaseLock } = require('./lock');
+  const { writeAtomicString } = require('./atomic-write');
+
+  const ledger = resolveWitnessLedgerPath();
+  const lockPath = `${ledger}.lock`;
+  try { fs.mkdirSync(path.dirname(ledger), { recursive: true }); } catch { /* surfaced by the write below */ }
+  if (!acquireLock(lockPath, { maxWaitMs: 2000 })) return { ok: false, reason: 'lock-contended' };
+  try {
+    // H1: the regular-file gate runs INSIDE the lock but is non-blocking (O_NONBLOCK+fstat), so a
+    // FIFO at the ledger path can never hold the lock through a blocking read (hacker L1, subsumed).
+    const rows = readWitnessRowsSafe(ledger) || [];
+    if (rows.some((r) => r && r.witness_id === witnessId)) return { ok: true, witness_id: witnessId, deduped: true };
+    const next = rows.concat([row]).slice(-WITNESS_LEDGER_MAX_RECORDS); // cap: keep the newest
+    writeAtomicString(ledger, `${next.map((r) => JSON.stringify(r)).join('\n')}\n`);
+    return { ok: true, witness_id: witnessId, deduped: false };
+  } catch (e) {
+    return { ok: false, reason: `append-failed: ${e && e.message ? e.message : String(e)}` };
+  } finally {
+    releaseLock(lockPath);
+  }
+}
+
+/**
+ * Was this snapshot's content_hash witnessed by a materialize event? Bounded tail scan; per-row
+ * id re-derivation (#273 — a self-inconsistent stored id is SKIPPED); NEVER throws.
+ * The tail-window invariant: only witnesses inside the newest WITNESS_LEDGER_MAX_RECORDS are
+ * verifiable — flooded/aged-out reads unwitnessed (fail-closed; re-materialize heals).
+ *
+ * @param {object} snapshotish a parsed snapshot BODY (content_hash + the load-bearing fields) — the
+ *                 integrity coupling is recomputed when the full body is present (hacker M1); OR a
+ *                 bare `{content_hash}` (the low-level primitive form — the caller OWNS integrity).
+ * @param {object} [opts] { ledgerPath? }
+ * @returns {{witnessed:boolean, reason:'witnessed'|'unwitnessed'|'no-ledger'|'invalid-snapshot'|'integrity-mismatch'}}
+ */
+function verifySnapshotProvenance(snapshotish, opts) {
+  try {
+    const contentHash = snapshotish && typeof snapshotish.content_hash === 'string' ? snapshotish.content_hash : null;
+    if (!contentHash || !HEX64_RE.test(contentHash)) return { witnessed: false, reason: 'invalid-snapshot' };
+    // M1 (VALIDATE hacker): make the integrity coupling INTRINSIC. The fn is exported, so a future
+    // direct caller (an audit CLI, the v3.9 gate) passing a full body must not get a vouch for a hash
+    // that does not match its own body. When the load-bearing snapshot fields are present, recompute
+    // the snapshot hash and require a match — the bare `{content_hash}` primitive form (no `personas`)
+    // skips this and trusts the caller (the readEvolutionSnapshot path already self-verified INV-22).
+    if (Array.isArray(snapshotish.personas)) {
+      let recomputed;
+      try { recomputed = computeSnapshotHash(snapshotish); } catch { return { witnessed: false, reason: 'integrity-mismatch' }; }
+      if (recomputed !== contentHash) return { witnessed: false, reason: 'integrity-mismatch' };
+    }
+    const ledger = (opts && typeof opts.ledgerPath === 'string') ? opts.ledgerPath : resolveWitnessLedgerPath();
+    const rows = readWitnessRowsSafe(ledger); // H1: O_NONBLOCK+fstat regular-file gate, never blocks
+    if (rows === null) return { witnessed: false, reason: 'no-ledger' };
+    for (let i = rows.length - 1; i >= 0; i -= 1) { // newest first
+      const r = rows[i];
+      if (!r || typeof r !== 'object' || Array.isArray(r)) continue;
+      if (r.content_hash !== contentHash) continue;
+      let derived;
+      // Per-row guard (hacker L1): a syntactically-valid but pathologically-deep row would throw
+      // canonicalJsonSerialize's bounded TypeError mid-scan — skip it, never throw (the leaf contract).
+      try { derived = computeWitnessId(r); } catch { continue; }
+      if (r.witness_id === derived) return { witnessed: true, reason: 'witnessed' };
+    }
+    return { witnessed: false, reason: 'unwitnessed' };
+  } catch {
+    return { witnessed: false, reason: 'unwitnessed' }; // outer fail-soft: a hostile ledger can only deny, never crash a caller
+  }
+}
+
 /**
  * Read + validate the reputation snapshot. NEVER throws: every branch returns an object
  * ({present:true,...} | {present:false, reason}). O(1) w.r.t. attestation volume (reads only the
@@ -82,10 +270,16 @@ function fail(reason) { return { present: false, reason }; }
  */
 function readEvolutionSnapshot(pathOrOpts) {
   let p;
+  let verifyProvenance = false;
   try {
     if (typeof pathOrOpts === 'string') p = pathOrOpts;
-    else if (pathOrOpts && typeof pathOrOpts === 'object' && typeof pathOrOpts.path === 'string') p = pathOrOpts.path;
-    else p = resolveSnapshotPath();
+    else if (pathOrOpts && typeof pathOrOpts === 'object') {
+      if (typeof pathOrOpts.path === 'string') p = pathOrOpts.path;
+      verifyProvenance = pathOrOpts.verifyProvenance === true; // opt-in; the bare hot-path call never sets it
+    }
+    // Default ONLY when no path was provided at all — an EXPLICIT empty/falsy path stays 'absent'
+    // (the pre-existing contract; the leaf suite locks `''` → absent, never a default fall-through).
+    if (p === undefined) p = resolveSnapshotPath();
   } catch { return fail('absent'); }
   if (!p) return fail('absent');
 
@@ -132,7 +326,7 @@ function readEvolutionSnapshot(pathOrOpts) {
 
   const watermark = (parsed.watermark && typeof parsed.watermark === 'object' && !Array.isArray(parsed.watermark))
     ? parsed.watermark : {};
-  return {
+  const result = {
     present: true,
     content_hash: parsed.content_hash,
     generated_at: parsed.generated_at,
@@ -141,6 +335,12 @@ function readEvolutionSnapshot(pathOrOpts) {
     value: parsed.personas, // the bounded per-persona distribution; spawn-record byte-caps the inline copy
     truncated: false,
   };
+  if (verifyProvenance) {
+    // Opt-in ONLY (the no-flag result shape is byte-identical — the hot-path lock). One extra
+    // bounded small-file read; the gating consumer fail-closes on provenance !== 'witnessed'.
+    result.provenance = verifySnapshotProvenance(parsed).witnessed ? 'witnessed' : 'unwitnessed';
+  }
+  return result;
 }
 
 module.exports = {
@@ -148,7 +348,13 @@ module.exports = {
   snapshotHashBody,
   computeSnapshotHash,
   readEvolutionSnapshot,
+  resolveWitnessLedgerPath,
+  computeWitnessId,
+  appendSnapshotWitness,
+  verifySnapshotProvenance,
   SNAPSHOT_FILENAME,
+  WITNESS_LEDGER_FILENAME,
+  WITNESS_LEDGER_MAX_RECORDS,
   DEFAULT_MAX_BYTES,
   HARD_MAX_BYTES,
 };
