@@ -4,10 +4,12 @@ Start at the [main README](../README.md) for the overview and install. This inde
 
 ## Substrate (the current vision)
 
-- [**Architecture**](ARCHITECTURE.md) — the substrate model: the three layers (kernel/runtime/lab), the Ten Axioms, the transaction loop, and every kernel primitive K1–K14 with its live/dormant/advisory status.
-- [**Roadmap**](ROADMAP.md) — how the substrate got here (Phase 0 ✓ → Phase 1-alpha ✓ → v3.1 ✓) and where it goes next (v3.2+). Appended each phase.
+- [**Architecture**](ARCHITECTURE.md) — the substrate model: the three layers (kernel/runtime/lab), the Ten Axioms, the transaction loop, every kernel primitive with its live/dormant/advisory status, and the threat model for the human-gated delta path.
+- [**Roadmap**](ROADMAP.md) — how the substrate got here (Phase 0 → v3.7 ✓, each phase with its 3-lens phase-close sign-off) and where it goes next (v3.8 breaker consumer → v3.9 first live beta). Appended each phase.
+- [**Activation ledger**](ACTIVATION-LEDGER.md) — the honest inventory: every built-but-dark / flag-gated capability, its consumer, and its activation fate (incl. the denial-source taxonomy the breaker draws from).
+- [**Delta-promote walkthrough**](delta-promote-walkthrough.md) — the human-gated promote workflow end to end, with the runnable hermetic demo (`node examples/delta-promote-demo.js`).
 
-The authoritative design record is [`packages/specs/`](../packages/specs/): the v6 synthesis RFC, the ADRs (0008–0012), and the per-phase plans.
+The authoritative design record is [`packages/specs/`](../packages/specs/): the v6 synthesis RFC, the ADRs (0008–0012), and the per-phase plans (living per-wave docs).
 
 ## Hooks
 

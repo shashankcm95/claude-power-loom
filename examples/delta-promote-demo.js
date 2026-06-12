@@ -216,6 +216,7 @@ function main() {
     summary.integrationRecords = appendRecords.length;
     summary.rejectEvents = rejects.map((e) => ({ outcome: e.outcome, candidate: e.candidate_safe_id }));
 
+    // == step 6 ==  NEVER-TOUCH-HEAD (inline: needs headBefore/statusBefore from this scope).
     say('');
     say('== 6. NEVER-TOUCH-HEAD: the fold wrote refs, never the checkout ==');
     summary.headUntouchedDuringFold = git(repo, ['rev-parse', 'HEAD']) === headBefore
