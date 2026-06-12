@@ -36,11 +36,19 @@ function defaultJobs() {
 
 function parseArgs(argv) {
   const out = { tier: 'all', jobs: defaultJobs(), root: DEFAULT_ROOT };
+  // Fail fast on a flag with a missing value (CodeRabbit #304): a bare --root would
+  // otherwise resolve to process.cwd() and scan the wrong suites root — a gate tool
+  // must reject an invocation mistake, never guess.
+  const nextValue = (flag, i) => {
+    const v = argv[i + 1];
+    if (typeof v !== 'string' || v.startsWith('--')) throw new Error('missing value for ' + flag);
+    return v;
+  };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    if (arg === '--tier') out.tier = argv[++i];
-    else if (arg === '--jobs') out.jobs = clampJobs(argv[++i]);
-    else if (arg === '--root') out.root = path.resolve(argv[++i] || '');
+    if (arg === '--tier') { out.tier = nextValue(arg, i); i++; }
+    else if (arg === '--jobs') { out.jobs = clampJobs(nextValue(arg, i)); i++; }
+    else if (arg === '--root') { out.root = path.resolve(nextValue(arg, i)); i++; }
     else throw new Error('unknown argument: ' + arg);
   }
   if (out.tier !== 'all' && !TIERS.includes(out.tier)) {

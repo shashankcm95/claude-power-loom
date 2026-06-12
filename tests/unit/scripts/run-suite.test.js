@@ -42,7 +42,9 @@ function writeTier(root, tier, files) {
 
 function runSuite(root, tier, extraArgs) {
   const args = [RUNNER, '--root', root, '--tier', tier, '--jobs', '2', ...(extraArgs || [])];
-  return spawnSync(process.execPath, args, { encoding: 'utf8' });
+  // Bounded (CodeRabbit #304): a hung runner must fail this hermetic test fast, not wedge
+  // the suite. The fixture tiers complete in <2s; 15s is generous headroom.
+  return spawnSync(process.execPath, args, { encoding: 'utf8', timeout: 15000, killSignal: 'SIGKILL' });
 }
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'run-suite-'));
