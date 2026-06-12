@@ -212,6 +212,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/lab/manage-proposal/manage-ops.js` - v3.5 Wave 3b - the manage-op producers.
 - `packages/lab/manage-proposal/projections.js` - v3.5 Wave 3b.1 - the `quarantined` projection: a PURE Lab projection over the manage-proposal set.
 - `packages/lab/manage-proposal/promote.js` - v3.6 Wave 2a — the human-gated manage-promote orchestrator (the leave-shadow MINT).
+- `packages/lab/manage-proposal/recall-suppression.js` - v3.8a W3 - the recall-class retrieval-suppression VIEW (the manage loop's read edge).
 - `packages/lab/manage-proposal/store.js` - v3.5 Wave 3b.1 - the manage-proposal store (the destructive-proposal PRODUCER of the manage-write loop).
 
 ### `lab/negative-attestation/`
