@@ -113,6 +113,34 @@ test('bootcampSources: covers EVERY .js under attribution/ + issue-corpus/ + the
   assert.ok(files.some((f) => f.includes(`${path.sep}_spike${path.sep}`)), '_spike/ files must be in the EC7 scan set');
 });
 
+test('bootcampSources FAILS CLOSED on a non-ENOENT read error (a bootcamp dir that is a FILE -> throws, not silent skip)', () => {
+  const fs = require('fs');
+  const os = require('os');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'loom-gate-fc-'));
+  // make `packages/lab/attribution` a FILE so readdirSync throws ENOTDIR (not ENOENT)
+  fs.mkdirSync(path.join(root, 'packages/lab'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'packages/lab/attribution'), 'not a dir');
+  assert.throws(() => bootcampSources({ repoRoot: root }), /ENOTDIR/, 'an unreadable bootcamp dir must THROW (fail-closed), never report empty coverage');
+  // a fully-absent tree (ENOENT) is tolerated as clean-empty
+  const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'loom-gate-empty-'));
+  assert.deepStrictEqual(bootcampSources({ repoRoot: empty }), [], 'an ABSENT tree is clean-empty (ENOENT-tolerant)');
+});
+
+test('bootcampSources allowlist is TOP-LEVEL-only — a nested causal-edge/_spike file with a colliding basename IS scanned', () => {
+  const fs = require('fs');
+  const os = require('os');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'loom-gate-nest-'));
+  const ce = path.join(root, 'packages/lab/causal-edge');
+  fs.mkdirSync(path.join(ce, '_spike'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'packages/lab/attribution'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'packages/lab/issue-corpus'), { recursive: true });
+  fs.writeFileSync(path.join(ce, 'store.js'), '// top-level pre-bootcamp; allowlisted out');
+  fs.writeFileSync(path.join(ce, '_spike', 'store.js'), '// a NESTED bootcamp spike named store.js');
+  const files = bootcampSources({ repoRoot: root }).map((s) => s.file);
+  assert.ok(!files.some((f) => f.endsWith(`causal-edge${path.sep}store.js`)), 'the TOP-LEVEL store.js is allowlisted out');
+  assert.ok(files.some((f) => f.endsWith(`_spike${path.sep}store.js`)), 'the NESTED _spike/store.js must STILL be scanned (no basename bypass)');
+});
+
 test('the LIVE bootcamp tree is Path-2-DARK (the real EC7 assertion)', () => {
   const repo = path.resolve(__dirname, '../../../..');
   const srcs = bootcampSources({ repoRoot: repo });

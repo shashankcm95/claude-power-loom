@@ -173,10 +173,14 @@ const CAUSAL_EDGE_ALLOWLIST = new Set([
 
 // RECURSIVE (VALIDATE-honesty H2): a non-recursive scan silently skipped `_spike/`, where
 // the impure real-leg dogfoods live + import the runner — exactly where a future Path-2
-// leak could hide. Recursion makes "fail-closed by coverage" literally true.
+// leak could hide. Recursion makes "fail-closed by coverage" literally true. FAIL-CLOSED on
+// a read error (CodeRabbit Major): an ABSENT dir is clean-empty (`[]`), but a present-but-
+// UNREADABLE dir (EACCES etc.) THROWS — a swallowed error would skip coverage + report a
+// false GREEN (the record-scan.js:101 ENOENT-tolerant-else-throw precedent).
 function listJs(absDir) {
   let entries;
-  try { entries = fs.readdirSync(absDir, { withFileTypes: true }); } catch { return []; }
+  try { entries = fs.readdirSync(absDir, { withFileTypes: true }); }
+  catch (e) { if (e && e.code === 'ENOENT') return []; throw e; }
   const out = [];
   for (const e of entries) {
     const abs = path.join(absDir, e.name);
@@ -186,13 +190,27 @@ function listJs(absDir) {
   return out;
 }
 
+function readSource(file) {
+  // ENOENT (a mid-scan race) -> empty; any other read error (EACCES) THROWS fail-closed —
+  // an unreadable file silently scanned as '' would mask a Path-2 leak (CodeRabbit Major).
+  try { return fs.readFileSync(file, 'utf8'); }
+  catch (e) { if (e && e.code === 'ENOENT') return ''; throw e; }
+}
+
 function bootcampSources({ repoRoot = process.cwd() } = {}) {
   const files = [];
   for (const d of BOOTCAMP_DIRS) files.push(...listJs(path.join(repoRoot, d)));         // wholesale
-  for (const abs of listJs(path.join(repoRoot, CAUSAL_EDGE_DIR))) {
-    if (!CAUSAL_EDGE_ALLOWLIST.has(path.basename(abs))) files.push(abs);                 // bootcamp files only
+  const causalEdge = path.join(repoRoot, CAUSAL_EDGE_DIR);
+  for (const abs of listJs(causalEdge)) {
+    const rel = path.relative(causalEdge, abs);
+    // The allowlist excludes ONLY the PRE-bootcamp TOP-LEVEL causal-edge modules. A NESTED
+    // file (e.g. `_spike/store.js`) whose basename collides with an allowlisted name must
+    // STILL be scanned — a basename-only check would silently bypass it (CodeRabbit Major).
+    const isTopLevel = !rel.includes(path.sep);
+    if (isTopLevel && CAUSAL_EDGE_ALLOWLIST.has(rel)) continue;
+    files.push(abs);
   }
-  return files.map((file) => ({ file, text: (() => { try { return fs.readFileSync(file, 'utf8'); } catch { return ''; } })() }));
+  return files.map((file) => ({ file, text: readSource(file) }));
 }
 
 // --------------------------------------------------------------------------
