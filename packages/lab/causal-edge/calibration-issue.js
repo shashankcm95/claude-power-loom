@@ -238,15 +238,18 @@ async function scoreAttempt(record, candidate_patch, attemptIndex, legs, { tier 
   // target_path — F3b); a refuse => null block.
   let resolution_friction = null;
   if (frictionFn) {
-    const labelerInput = buildFrictionLabelerInput({
-      problem_statement_digest: digest(record.problem_statement),
-      candidate_patch,
-      processGraph: trajectoryOut ? trajectoryOut.process_graph : null,
-    });
-    // Re-validate the injected leg's return against the closed-enum shape before it
-    // lands in the Path-1 record (VALIDATE-honesty LOW: the scorer must not trust an
-    // injected leg's output verbatim) — fail-closed to null on a malformed block.
-    resolution_friction = validateResolutionFriction(await frictionFn(labelerInput));
+    // Report-only: a THROWN/rejected frictionFn (or a malformed return) must NOT abort
+    // scoring — fail-closed to null (CodeRabbit Major; the report-only isolation
+    // contract). Re-validate the return against the closed-enum shape before it lands
+    // in the Path-1 record (the scorer must not trust an injected leg verbatim).
+    try {
+      const labelerInput = buildFrictionLabelerInput({
+        problem_statement_digest: digest(record.problem_statement),
+        candidate_patch,
+        processGraph: trajectoryOut ? trajectoryOut.process_graph : null,
+      });
+      resolution_friction = validateResolutionFriction(await frictionFn(labelerInput));
+    } catch { resolution_friction = null; }
   }
 
   return {

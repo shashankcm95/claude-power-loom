@@ -406,6 +406,15 @@ test('W3 VALIDATE-LOW: an enum-INVALID frictionFn return is nulled, never stored
   assert.strictEqual(a.resolution_friction, null, 'a malformed injected friction block is rejected at the scorer boundary');
 });
 
+test('W3 CodeRabbit-Major: a THROWN/rejected frictionFn is fail-closed to null and does not abort scoring', async () => {
+  const { legs } = mkLegs();
+  legs.frictionFn = async () => { throw new Error('labeler unavailable'); };
+  let a;
+  await assert.doesNotReject(async () => { a = await scoreAttempt(validRecord(), CLEAN_PATCH, 0, legs, { trajectory: trajLog(['x.py']) }); });
+  assert.strictEqual(a.resolution_friction, null, 'a thrown frictionFn degrades to null (report-only isolation)');
+  assert.strictEqual(a.behavioral.verdict, 'BEHAVIORAL_PASS', 'the verdict is unaffected by a label failure');
+});
+
 (async () => {
   for (const { name, fn } of _tests) {
     try { await fn(); process.stdout.write(`  PASS ${name}\n`); passed++; }

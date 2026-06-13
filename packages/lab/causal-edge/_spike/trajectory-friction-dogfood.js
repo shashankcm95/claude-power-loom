@@ -74,23 +74,26 @@ function main() {
   let realCaptureNote = 'SKIPPED (no claude bin)';
   if (bin) {
     const fx = makeFixture();
-    const rec = recordFor(fx);
-    const cap = runActorTrajectory({ record: rec, cwd: fx.dir, allowedTools: ['Read', 'Grep', 'Glob', 'Bash'], timeout: 180000 });
-    const { rows } = parseTrajectory(cap.events);
-    const pg = computeProcessGraph(rows);
-    realCaptureNote = `ok=${cap.ok} reason=${cap.reason || 'none'} events=${cap.events.length} rows=${rows.length} localization_reads=${JSON.stringify(pg.localization_reads)} phases=${JSON.stringify(pg.phases)}`;
-    // a real run that used ANY tool yields >=1 row; if it localized, >=1 localization read.
-    checks.real_capture_parsed = cap.ok && rows.length >= 1;
-    checks.real_capture_has_localization = pg.n_localization >= 1 || pg.n_validation >= 1; // it read or ran tests
-    // VALIDATE-HIGH regression fixture: the actor logs ABSOLUTE per-issue paths. Run
-    // detectRecallSmell on the REAL capture (cloneRoot NOT threaded) — if the actor
-    // read calc.py (the relevant file), the basename fallback must recognize it as READ
-    // (relevant_files_unread === false), proving the F4 fix holds on real absolute paths.
-    const readCalc = pg.localization_reads.some((p) => p.endsWith('/calc.py') || p === 'calc.py');
-    const rs = detectRecallSmell({ processGraph: pg, relevantFiles: ['calc.py'], reachedResolution: true });
-    realCaptureNote += ` | read_calc=${readCalc} real_recall_smell=${rs.recall_smell} unread=${rs.signals.relevant_files_unread}`;
-    checks.real_path_no_false_positive = !readCalc || rs.recall_smell === false; // if it read calc.py, must NOT false-smell
-    try { fs.rmSync(fx.dir, { recursive: true, force: true }); } catch { /* best-effort */ }
+    try { // cleanup must run even if the capture/parse throws (CodeRabbit Minor: no /tmp leak)
+      const rec = recordFor(fx);
+      const cap = runActorTrajectory({ record: rec, cwd: fx.dir, allowedTools: ['Read', 'Grep', 'Glob', 'Bash'], timeout: 180000 });
+      const { rows } = parseTrajectory(cap.events);
+      const pg = computeProcessGraph(rows);
+      realCaptureNote = `ok=${cap.ok} reason=${cap.reason || 'none'} events=${cap.events.length} rows=${rows.length} localization_reads=${JSON.stringify(pg.localization_reads)} phases=${JSON.stringify(pg.phases)}`;
+      // a real run that used ANY tool yields >=1 row; if it localized, >=1 localization read.
+      checks.real_capture_parsed = cap.ok && rows.length >= 1;
+      checks.real_capture_has_localization = pg.n_localization >= 1 || pg.n_validation >= 1; // it read or ran tests
+      // VALIDATE-HIGH regression fixture: the actor logs ABSOLUTE per-issue paths. Run
+      // detectRecallSmell on the REAL capture (cloneRoot NOT threaded) — if the actor
+      // read calc.py (the relevant file), the basename fallback must recognize it as READ
+      // (relevant_files_unread === false), proving the F4 fix holds on real absolute paths.
+      const readCalc = pg.localization_reads.some((p) => p.endsWith('/calc.py') || p === 'calc.py');
+      const rs = detectRecallSmell({ processGraph: pg, relevantFiles: ['calc.py'], reachedResolution: true });
+      realCaptureNote += ` | read_calc=${readCalc} real_recall_smell=${rs.recall_smell} unread=${rs.signals.relevant_files_unread}`;
+      checks.real_path_no_false_positive = !readCalc || rs.recall_smell === false; // if it read calc.py, must NOT false-smell
+    } finally {
+      try { fs.rmSync(fx.dir, { recursive: true, force: true }); } catch { /* best-effort */ }
+    }
   } else {
     checks.real_capture_parsed = true;   // not gated when the bin is absent
     checks.real_capture_has_localization = true;
