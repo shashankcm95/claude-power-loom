@@ -8,6 +8,25 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [3.8.0] — 2026-06-12 — v3.8 Un-darken the advisory/recall loops + the binding graduation gates
+
+**Minor release** (additive — the v3.x advisory substrate un-darkened to CLI/dogfood surfaces + the USER-#250 binding pre-kernel-gate graduation set; ALL **shadow** — the fail-closed gating consumer is v3.9; no breaking kernel/runtime change. `.claude-plugin/plugin.json` `3.7.0 → 3.8.0`). Ships **v3.8** — phase-closed 2026-06-12 (3-lens CLOSEABLE-WITH-NOTES, all notes folded; [`docs/ROADMAP.md`](docs/ROADMAP.md) + the `phase-close/v3.8-close` library volume). Built as two arcs: **v3.8a** (mechanical, narrowing-safe un-darkening) + **v3.8b** (the binding pre-kernel-gate graduation work).
+
+**v3.8a — un-darken the advisory + recall loops** (`#300`–`#304`):
+
+- **The reject-event breaker SOURCE** (`#300`): `scanRejectEvents` — a cross-run, FS-`mtime`-windowed read over the v3.7 reject-event ledger, registered as the breaker's 4th denial source (opt-in; reject-rate → trust-DOWN only per OQ-NS-6; SHADOW). The scan deliberately drops the producer's run-binding (global + halt-only; a cross-run plant only over-narrows = safe).
+- **route-decide dictionary expansion** (`#301`, `#302`): `WEIGHTS_VERSION → v1.3-dict-expanded-2026-06-12` — Tier-2c (32 detection + 12 zero-FP scoring tokens of the v3.3–v3.8 Lab/trust vocabulary); **weights + thresholds FROZEN**, zero stakes additions; substrate-meta tasks now route correctly. Plus a record-scan per-file hardening (1MB size bound + `lstat` symlink gates at file AND subdir level, on both cross-run scans).
+- **The recall-suppression VIEW** (`#303`): `recallSuppression(txids)` — a set-level surfaced/suppressed/flagged partition over kernel records vs the live manage state; advisory, never gates. (`loom-recall.js` untouched — the charter's "K4 live-recall" discharged in substance under scoped naming.)
+- **The verdict routine un-darkened** (`#304`): workflow.md **Rule 4** codifies the producer convention (record-review per delegated-build VALIDATE board; subject-persona = the Agent-tool `agentType` verbatim; Lab-track-only; root builds record nothing) + the `scripts/run-suite.js` parallel test runner (the v3.6 carry item; 55s → 23s kernel tier).
+
+**v3.8b — the USER-#250 binding pre-kernel-gate graduation set** (`#305`–`#307`; ALL shadow):
+
+- **E11 graduation gates** (`#305`): **G1 dedup-by-subject** (the verdict-fail breaker source counts distinct failed subject spawns, not reviewer records — the D6 multi-reviewer inflation closed) + **G2 source-validation** (a static `starved` registry; `evaluate({requireLive})` THROWS on a probe-dead source — "a kernel gate must never silently read a starved tier and report all-clear") + **the hysteresis latch** (a stateless continuous-time look-back holding a trip past the optimistic window reset).
+- **A6 M1 snapshot-provenance** (`#306`): a whole-body content-addressed **witness ledger** for the reputation snapshot (write-then-witness; `verifySnapshotProvenance` re-derives per row; FIFO-hardened handle-bound reads). Closes the "integrity ≠ authenticity" gate — a hand-written self-hashed snapshot now reads `present` but `unwitnessed`. The bare spawn-close hot path stays byte-identical; `reputation verify-snapshot` is the gate surface.
+- **OQ-21 rung-2 real-LLM calibration** (`#307`): the v3.5-owed measurement, finally taken. A deterministic harness TDD'd CI-safe (a fence-strip-then-strict-WHOLE parser resistant to a parser-differential; an adversarial-injection invariant; a model-vs-harness-fallback split) + a real `claude -p` spike. **Across four non-deterministic samples the robust safety invariant held every time: precision 1.0 (zero false positives) and 0 injection followed.** The rung stays `advisory_llm_checked`-capped — narrowing-safe regardless of judge quality.
+
+Every wave ran the per-wave loop (plan → multi-lens VERIFY → RED→GREEN TDD → 3-lens VALIDATE with the hacker re-probing BUILT code → full gate → CodeRabbit). The phase-close added the empirical triple (integration suites + the v3.7 delta-promote E2E demo + a live dogfood of all four v3.8 CLIs — both new refuse paths, G2 `--require-live` and the A6 forged-snapshot check, exercised end-to-end). Exit criteria: v3.8b EC1+EC2 MET; v3.8a EC1+EC2 PARTIAL (honestly-disclosed scope narrowings — owed forward to v3.9).
+
 ## [3.7.0] — 2026-06-11 — v3.7 Delta-promote activation + the reject-event ledger
 
 **Minor release** (additive — the trust system's foundational producer + the delta-promote activation story; no breaking kernel/runtime change. `.claude-plugin/plugin.json` `3.6.0 → 3.7.0`). Ships **v3.7 — Delta-promote activation** — phase-closed 2026-06-11 (3-lens CLOSEABLE-WITH-NOTES, all notes folded into this release; [`docs/ROADMAP.md`](docs/ROADMAP.md)). Layer-0 of the north-star trust filter stack ([RFC](packages/specs/rfcs/2026-06-11-north-star-autonomous-sde-trust.md)).

@@ -6,7 +6,7 @@
 >
 > **It makes long-horizon agent failures cheap, observable, and reversible. It does _not_ make the underlying LLM smarter.** That honesty is the project's design anchor.
 
-[![CI](https://github.com/shashankcm95/claude-power-loom/actions/workflows/ci.yml/badge.svg)](https://github.com/shashankcm95/claude-power-loom/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Phase](https://img.shields.io/badge/substrate-v3.7%20(delta--promote%20activation)-orange.svg)](docs/ROADMAP.md) [![Plugin](https://img.shields.io/badge/Claude_Code-plugin_3.7.0-orange.svg)](.claude-plugin/plugin.json)
+[![CI](https://github.com/shashankcm95/claude-power-loom/actions/workflows/ci.yml/badge.svg)](https://github.com/shashankcm95/claude-power-loom/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Phase](https://img.shields.io/badge/substrate-v3.8%20(un--darken%20%2B%20graduation%20gates)-orange.svg)](docs/ROADMAP.md) [![Plugin](https://img.shields.io/badge/Claude_Code-plugin_3.8.0-orange.svg)](.claude-plugin/plugin.json)
 
 ---
 
@@ -81,7 +81,7 @@ CI re-runs it on every push. The documented workflow (and how to opt in for real
 
 ## Status
 
-Distributed as a **Claude Code plugin**, now at **v3.7.0**. The v3.x line is the kernel + runtime + Evolution Lab substrate; v3.1.0 was its first published cut (the prior published line was v2.9.x). Eight phases are complete:
+Distributed as a **Claude Code plugin**, now at **v3.8.0**. The v3.x line is the kernel + runtime + Evolution Lab substrate; v3.1.0 was its first published cut (the prior published line was v2.9.x). Nine phases are complete:
 
 | Phase | What shipped | Closed |
 |---|---|---|
@@ -93,8 +93,9 @@ Distributed as a **Claude Code plugin**, now at **v3.7.0**. The v3.x line is the
 | v3.5 — Memory Manage-Layer | the manage layer over memory + the typed causal-edge graph (destructive ops recorded-not-executed) | 2026-06-08 |
 | v3.6 — Destructive-manage enforcement | **leave-shadow event #1**: a human-approved proposal → a committed kernel TOMBSTONE/SUPERSEDE (opt-in, breaker-bounded) | 2026-06-10 |
 | v3.7 — Delta-promote activation | **the trust system's first producer**: the reject-event ledger at the integrator + the documented, demo-proven human-gated promote workflow | 2026-06-11 |
+| v3.8 — Un-darken + binding graduation gates | the advisory/recall loops un-darkened (the reject-event **breaker source**, route-decide dictionary, recall-suppression view, verdict-routine convention) + the USER-binding pre-kernel-gate set: E11 graduation gates (dedup-by-subject + source-validation + hysteresis latch), A6 snapshot-provenance (the witness ledger), and the OQ-21 rung-2 real-LLM calibration — all **shadow**, the gating consumer is v3.9 | 2026-06-12 |
 
-**Next:** v3.8 wires the reject-event **breaker consumer** (reject-rate may only narrow trust — never harden it) and calibrates the advisory loop; **v3.9 is the first live beta** — the named decision point for whether human-gated promotion has a real consumer ([RFC §10](packages/specs/rfcs/2026-06-04-enforcing-vs-advisory-identity.md)). The full narrative lives in [`docs/ROADMAP.md`](docs/ROADMAP.md); what is dark/flag-gated and why in [`docs/ACTIVATION-LEDGER.md`](docs/ACTIVATION-LEDGER.md).
+**Next:** **v3.9 is the first live beta** (human-gated; routes around the ContainerAdapter) — it wires the fail-closed gating consumers the v3.8 machinery exposed and is the named decision point for whether human-gated promotion has a real consumer ([RFC §10](packages/specs/rfcs/2026-06-04-enforcing-vs-advisory-identity.md)). The full narrative lives in [`docs/ROADMAP.md`](docs/ROADMAP.md); what is dark/flag-gated and why in [`docs/ACTIVATION-LEDGER.md`](docs/ACTIVATION-LEDGER.md).
 
 Kernel-primitive status (details: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#kernel-primitives)):
 
@@ -154,7 +155,7 @@ What this substrate does **not** do:
 - ❌ **Does not guarantee Claude follows the markdown rules.** Those are advisory text. *Specific* behaviors are hook-enforced and deterministic (read-before-edit, vague-prompt detection, config-guard, pre-compact checkpoint); the rest ride on best-effort instruction-following.
 - ❌ **Does not give agents continuous LLM memory across sessions.** Each spawn is a fresh call. The substrate maintains *per-identity reputation* on disk (trust scores, history) — that is persistence of a record, not of the model's memory.
 - ⚠️ **Is local-trust-anchored.** The v3.x line does **not** defend against hostile same-uid filesystem tampering (e.g. back-dating a record's mtime to hide it from a rate window) — those residuals are named in the [threat model](docs/ARCHITECTURE.md#threat-model--the-human-gated-delta-path) and close only at the Track-2 **ContainerAdapter** sandbox.
-- ⚠️ **Ships some code ahead of its consumer — deliberately, and tracked.** Producers may land one phase before the thing that reads them (e.g. the v3.7 reject-event ledger's breaker consumer arrives in v3.8). Every such edge is named in the [activation ledger](docs/ACTIVATION-LEDGER.md) rather than implied to be live.
+- ⚠️ **Ships some code ahead of its consumer — deliberately, and tracked.** Producers may land one phase before the thing that reads them (e.g. the v3.7 reject-event ledger's breaker **source** landed in v3.8 as a shadow read; its fail-closed **gating** consumer arrives in v3.9). Every such edge is named in the [activation ledger](docs/ACTIVATION-LEDGER.md) rather than implied to be live.
 
 These are intentional architecture decisions, not gaps to fix.
 
