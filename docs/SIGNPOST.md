@@ -206,6 +206,10 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/lab/circuit-breaker/cli.js` - v3.4 Wave 4 + E11-rescue — E11 circuit-breaker CLI: inspect the denial-rate breaker (SHADOW — it
 - `packages/lab/circuit-breaker/project.js` - v3.4 Wave 4 (E11) + the E11-rescue wave — denial-rate circuit-breaker (SHADOW).
 
+### `lab/issue-corpus/`
+
+- `packages/lab/issue-corpus/corpus.js` - v3.9 W0 — the issue-corpus forward contract.
+
 ### `lab/manage-proposal/`
 
 - `packages/lab/manage-proposal/cli.js` - v3.5 Wave 3b.1 - the manage-proposal CLI - the dogfood vehicle + the human-DISPOSITION surface for the
