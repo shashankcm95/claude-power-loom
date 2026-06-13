@@ -32,6 +32,10 @@ const { computeManifestHash } = require('../issue-corpus/corpus');
 const {
   classifyRun, parseTestStatus, evaluateOutcome, RESULT_CLASS,
 } = require('../issue-corpus/container-adapter');
+// W4 — the friction leg (W3, already built) + the recall-graph aggregate/populator + store.
+const { makeFrictionLabeler, runActorTrajectory } = require('./trajectory-friction-run');
+const { aggregateFrictionMap, computeJudgeAgreement, populateRecallGraph } = require('../attribution/recall-graph');
+const { writeNode } = require('../attribution/recall-graph-store');
 
 // --------------------------------------------------------------------------
 // Leg A — the behavioral runner (backend lifecycle + the C1 test-tree rehash).
@@ -162,27 +166,57 @@ function makeReferenceTeacher({ bin = resolveClaude(), timeout = 60000 } = {}) {
 // the un-gated Path-1 record (no evidence-link precondition).
 // --------------------------------------------------------------------------
 
-async function runIssueCalibration(records, attemptsPerIssue, { backend, patchFor, tierOf, outDir, claudeBin } = {}) {
+async function runIssueCalibration(records, attemptsPerIssue, { backend, patchFor, tierOf, outDir, claudeBin, recallGraphDir, trajectoryFor, frictionFn } = {}) {
   // claudeBin: undefined => resolve the real binary (live run); null => disable
   // the LLM legs (fail-closed) for a deterministic/CI-safe run.
+  const bin = claudeBin === undefined ? resolveClaude() : claudeBin;
   const legs = {
     behavioralFn: makeBehavioralFn(backend),
-    semanticFn: makeBlindSemanticJudge({ bin: claudeBin === undefined ? resolveClaude() : claudeBin }),
-    referenceFn: makeReferenceTeacher({ bin: claudeBin === undefined ? resolveClaude() : claudeBin }),
+    semanticFn: makeBlindSemanticJudge({ bin }),
+    referenceFn: makeReferenceTeacher({ bin }),
+    // W4: WIRE the W3 friction labeler — without a frictionFn, scoreAttempt builds NO
+    // resolution_friction block and the friction map is empty-by-construction (§6a).
+    frictionFn: frictionFn || makeFrictionLabeler({ bin }),
   };
+  // W4: capture the top-level `claude -p` trajectory per attempt (the actor runs
+  // top-level — the parent PostToolUse:Agent hook cannot see a sub-agent's tool calls).
+  // Decoupled from patchFor (the candidate patch); the trajectory only feeds the
+  // friction map / recall-smell (report-only). An injectable seam keeps it CI-mockable.
+  const trajFor = trajectoryFor || ((record) => runActorTrajectory({ record, claudeBin: bin }).events);
   // AWAIT — scoreIssueCalibration is async; without this the record's `result`
   // is a pending Promise that JSON.stringify renders as {} (VALIDATE consensus).
-  const result = await scoreIssueCalibration(records, attemptsPerIssue, legs, { patchFor, tierOf });
+  const result = await scoreIssueCalibration(records, attemptsPerIssue, legs, { patchFor, tierOf, trajectoryFor: trajFor });
   // FAIL-CLOSED — a calibration record without its manifest hash is not
   // reproducible; records are pre-validated, so this throws only on a real fault
   // (CodeRabbit #1: don't write a best-effort null-hash record).
   result.manifest_hash = computeManifestHash(records);
+
+  // W4 aggregates (REPORT-ONLY; computed downstream of recall_eligible — never blended):
+  // the cross-issue friction map + the judge's own precision/recall agreement.
+  const friction_map = aggregateFrictionMap(result.attempts);
+  const judge_agreement = computeJudgeAgreement(result.attempts);
+  // W4 recall-graph population — leg-B + contamination gated; written to the per-node
+  // backtest store (the OQ-7 physical firewall). The eligible-vs-written DELTA is the
+  // NEW refuse path driven LIVE (EC6).
+  const pop = populateRecallGraph(result.attempts);
+  let nodes_written = 0;
+  for (const node of pop.nodes) { const w = writeNode(node, { dir: recallGraphDir }); if (w.ok && !w.deduped) nodes_written += 1; }
+  const recall_graph = {
+    n_eligible: pop.n_eligible, n_dropped_contaminated: pop.n_dropped_contaminated,
+    nodes_produced: pop.nodes.length, nodes_written,
+  };
+
+  // IMMUTABLE PERSIST (VERIFY-arch A-MED-1): omit the raw per-attempt blob via the
+  // `_`-prefixed rest-sibling (ADR-0006 varsIgnorePattern) — never `delete result.x`;
+  // attach the aggregates to a FRESH object.
+  const { attempts: _attempts, ...persisted } = result;
   const record = {
     schema: 'rung2-calibration-record/v1',
     kind: 'issue-calibration',
     sample_note: 'three-legged DIAGNOSTIC over a backtest corpus — NOT a trust score; legs never blended; '
-      + 'claude -p has no temperature/seed flag so re-runs vary (H2). Path-1 (un-gated); Path-2 deferred to v3.10.',
-    result,
+      + 'claude -p has no temperature/seed flag so re-runs vary (H2). Path-1 (un-gated); Path-2 deferred to v3.10. '
+      + 'W4: friction_map + judge_agreement are REPORT-ONLY; recall-graph nodes are provenance=backtest (OQ-7).',
+    result: { ...persisted, friction_map, judge_agreement, recall_graph },
   };
   if (outDir) {
     try {

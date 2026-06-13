@@ -415,6 +415,17 @@ test('W3 CodeRabbit-Major: a THROWN/rejected frictionFn is fail-closed to null a
   assert.strictEqual(a.behavioral.verdict, 'BEHAVIORAL_PASS', 'the verdict is unaffected by a label failure');
 });
 
+test('W4: scoreIssueCalibration additively returns a FLAT attempts list (length n*k, distinct objects, no aliasing)', async () => {
+  const { legs } = mkLegs();
+  const records = [validRecord({ id: 'owner__repo-r1' }), validRecord({ id: 'owner__repo-r2' })];
+  const k = 3;
+  const result = await scoreIssueCalibration(records, k, legs, { patchFor: () => CLEAN_PATCH });
+  assert.ok(Array.isArray(result.attempts), 'attempts is an array (the W4 handoff)');
+  assert.strictEqual(result.attempts.length, records.length * k, 'flat length n_issues * k (flattened, not nested)');
+  assert.ok(result.attempts.every((a) => a && typeof a.attempt_index === 'number'), 'each element is a scoreAttempt result, not a nested array');
+  assert.strictEqual(new Set(result.attempts).size, records.length * k, 'each element is a distinct object (no per-record array aliasing)');
+});
+
 (async () => {
   for (const { name, fn } of _tests) {
     try { await fn(); process.stdout.write(`  PASS ${name}\n`); passed++; }
