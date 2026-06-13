@@ -149,6 +149,11 @@ test('f2b. a non-string id (number/object) is a HARD THROW (closes the non-trans
   assert.throws(() => computeManifestHash([inst({ id: 7 })]), /instance-id/);
   assert.throws(() => computeManifestHash([inst({ id: {} })]), /instance-id/);
 });
+test('f2c. a non-object instance entry ([null]/[undefined]/[42]) is a CONTROLLED contract error, not a raw TypeError (CodeRabbit #310)', () => {
+  for (const bad of [[null], [undefined], [42]]) {
+    assert.throws(() => computeManifestHash(bad), /instance: must be a plain object/);
+  }
+});
 test('f3. the hash self-excludes a manifest_hash field on the input instances', () => {
   const h1 = computeManifestHash([inst({ id: 'x' })]);
   const h2 = computeManifestHash([inst({ id: 'x', manifest_hash: 'whatever' })]);

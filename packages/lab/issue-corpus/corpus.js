@@ -163,6 +163,9 @@ function computeManifestHash(instances) {
   if (!Array.isArray(instances)) throw new Error('instances: must be an array');
   const seen = new Set();
   for (const i of instances) {
+    // CodeRabbit #310: guard the entry is a plain object BEFORE reading i.id, so [null]/[undefined]/[42]
+    // fail with a CONTROLLED contract error, not a raw TypeError (fail-closed discipline).
+    if (i === null || typeof i !== 'object' || Array.isArray(i)) throw new Error('instance: must be a plain object');
     // VALIDATE P6d/P5a: a non-string id makes the comparator non-transitive (order-dependent hash) AND
     // a duplicate-by-object-ref slips Set.has — type-guard the forward-contract primitive.
     if (typeof i.id !== 'string' || i.id.length === 0) throw new Error('instance-id: must be a non-empty string');
