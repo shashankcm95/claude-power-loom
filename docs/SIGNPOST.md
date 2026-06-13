@@ -209,10 +209,10 @@ Auto-generated map of where things live, derived from the repo structure + each 
 ### `lab/issue-corpus/`
 
 - `packages/lab/issue-corpus/container-adapter.js` - v3.9 W1 — the ContainerAdapter: PURE read-mostly sandbox orchestration.
-- `packages/lab/issue-corpus/_spike/containment-spike.js` - =============================================================================
+- `packages/lab/issue-corpus/_spike/containment-spike.js` - v3.9 W1 — sandbox-exec containment spike (macOS-only; green-or-block proof).
 - `packages/lab/issue-corpus/corpus.js` - v3.9 W0 — the issue-corpus forward contract.
-- `packages/lab/issue-corpus/_spike/dogfood.js` - v3.9 W1 — ContainerAdapter end-to-end DOGFOOD (macOS-only; a Verification
-- `packages/lab/issue-corpus/sandbox-exec-backend.js` - v3.9 W1 — the IMPURE macOS containment backend behind ContainerAdapter's
+- `packages/lab/issue-corpus/_spike/dogfood.js` - v3.9 W1 — ContainerAdapter end-to-end dogfood (macOS-only verification probe).
+- `packages/lab/issue-corpus/sandbox-exec-backend.js` - v3.9 W1 — the impure macOS sandbox-exec containment backend (ContainerAdapter).
 
 ### `lab/manage-proposal/`
 

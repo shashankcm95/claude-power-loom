@@ -1,7 +1,8 @@
 'use strict';
 
-// v3.9 W1 — ContainerAdapter end-to-end DOGFOOD (macOS-only; a Verification
-// Probe, NOT a unit test — lives in _spike so Linux CI never globs it).
+// v3.9 W1 — ContainerAdapter end-to-end dogfood (macOS-only verification probe).
+// A verification probe, NOT a unit test — lives in _spike so Linux CI never
+// globs it.
 //
 // Drives the FULL behavioral lifecycle on a tiny benign fixture: a buggy repo
 // whose regression test FAILS at base_sha, a candidate patch that fixes it, and
@@ -23,7 +24,9 @@ const { ContainerAdapter, evaluateOutcome, RESULT_CLASS } = require('../containe
 const { createSandboxExecBackend } = require('../sandbox-exec-backend');
 
 function git(args, cwd) { return execFileSync('git', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] }).toString(); }
-function countClones() { return fs.readdirSync(os.tmpdir()).filter((n) => n.startsWith('loom-clone-')).length; }
+// Track the NAME SET, not just the count — `after === before` count can false-
+// green if a concurrent run's loom-clone-* disappears while this run leaks one.
+function cloneNames() { return new Set(fs.readdirSync(os.tmpdir()).filter((n) => n.startsWith('loom-clone-'))); }
 
 function makeFixture() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loom-fixture-'));
@@ -52,8 +55,8 @@ async function main() {
   const homeCanary = path.join(os.homedir(), '.loom_dogfood_canary_DELETEME');
   try { fs.rmSync(homeCanary); } catch { /* absent */ }
   const fixture = makeFixture();
-  const clonesBefore = countClones();
-  const backend = createSandboxExecBackend();
+  const clonesBefore = cloneNames();
+  const backend = createSandboxExecBackend({ allowLocalRepo: true }); // local fixture repo
   console.log('containmentAttested:', backend.containmentAttested);
 
   const adapter = new ContainerAdapter({ backend });
@@ -64,7 +67,7 @@ async function main() {
   console.log('run result:', JSON.stringify(out));
 
   const outcome = out.observed ? evaluateOutcome(out.observed, { failToPass: ['t1'], passToPass: [] }) : { resolved: false };
-  const clonesAfter = countClones();
+  const clonesAfter = cloneNames();
   const homeUntouched = !fs.existsSync(homeCanary);
 
   const checks = {
@@ -72,7 +75,7 @@ async function main() {
     notRefused: out.refused === false,
     testFlipped: out.observed && out.observed.t1 === 'pass',
     resolved: outcome.resolved === true,
-    cloneDiscarded: clonesAfter === clonesBefore,
+    cloneDiscarded: [...clonesAfter].every((n) => clonesBefore.has(n)), // no NEW loom-clone-* leaked
     hostUntouched: homeUntouched,
   };
   try { fs.rmSync(fixture.dir, { recursive: true, force: true }); } catch { /* best-effort */ }

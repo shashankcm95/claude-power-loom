@@ -1,8 +1,7 @@
 'use strict';
 
+// v3.9 W1 — sandbox-exec containment spike (macOS-only; green-or-block proof).
 // =============================================================================
-// v3.9 W1 — sandbox-exec containment SPIKE (macOS-only; green-or-block).
-//
 // This is the FIRST build step of W1 (plan §D5). It is the load-bearing
 // evidence that gates whether the behavioral grading leg is built at all:
 // run a STRANGER's repo tests + an LLM patch as arbitrary code, contained.
@@ -260,9 +259,13 @@ async function caseInheritedDeny(ws) {
   // attempts egress + $HOME write. Inheritance must keep the child denied.
   const childSrc =
     `const net=require('net'),fs=require('fs');` +
+    // BOTH the $HOME write AND the connect run UNCONDITIONALLY + INDEPENDENTLY,
+    // so case 1 proves the re-exec'd child kept the file-write deny AND the
+    // network deny. Gating the write on a successful connect would make the
+    // write-inheritance proof vacuous once connect is denied (CodeRabbit #2).
+    `try{fs.writeFileSync(${JSON.stringify(homeCanary)},'x')}catch(e){}` +
     `const s=net.connect({port:${lport},host:'127.0.0.1'});` +
-    `s.on('connect',()=>{try{fs.writeFileSync(${JSON.stringify(homeCanary)},'x')}catch(e){}});` +
-    `s.on('error',()=>{});setTimeout(()=>process.exit(0),1200);`;
+    `s.on('connect',()=>{});s.on('error',()=>{});setTimeout(()=>process.exit(0),1200);`;
   const src = reporterPreamble(ws.writeDir) + `
 const cp = require('child_process');
 rec('reexec', () => {
@@ -341,15 +344,21 @@ async function caseFailClosed(ws) {
     profilePath, cwd: ws.cloneDir, command: NODE_BIN, argv: [scriptPath], wallClockMs: 4000, cpuSec: 5, maxPids: 256,
   });
   const run = { ...raw, result_class: classifyRun(raw) };
-  // ALSO verify a thrown spawn maps to SETUP_FAILURE (bad sandbox-exec path).
+  // The SHIPPED spawnThrew -> SETUP_FAILURE mapping (CodeRabbit #3): drive the
+  // BUILT classifyRun on the spawnThrew shape the backend emits on a spawn
+  // error, not just a raw spawn (which only proves the OS emitted an error).
+  const shippedSpawnThrow = classifyRun({ spawnThrew: true });
+  // ALSO observe a raw spawn-error end to end (illustrative; the line above is
+  // the load-bearing shipped-path assertion).
   const thrown = await new Promise((resolve) => {
     const c = spawn('/nonexistent/sandbox-exec', ['-f', profilePath, '/bin/sh', '-c', 'true'], { stdio: 'ignore' });
     c.on('error', () => resolve('SETUP_FAILURE'));
     c.on('close', () => resolve('CLOSED'));
   });
-  const pass = run.result_class === 'SETUP_FAILURE' && run.sentinelSeen !== true && thrown === 'SETUP_FAILURE';
-  record('7', 'fail-closed: absent sentinel => SETUP_FAILURE (refuse), backend-throw => SETUP_FAILURE',
-    pass, `tightProfile=${run.result_class} sentinelSeen=${run.sentinelSeen} badBackend=${thrown}`);
+  const pass = run.result_class === 'SETUP_FAILURE' && run.sentinelSeen !== true &&
+    shippedSpawnThrow === 'SETUP_FAILURE' && thrown === 'SETUP_FAILURE';
+  record('7', 'fail-closed: absent sentinel + shipped spawnThrew-mapping => SETUP_FAILURE (refuse)',
+    pass, `tightProfile=${run.result_class} sentinelSeen=${run.sentinelSeen} shippedSpawnThrow=${shippedSpawnThrow} rawBadBackend=${thrown}`);
   return pass;
 }
 
@@ -358,15 +367,18 @@ async function caseFailClosed(ws) {
 // the host git flag parser is rejected; a hostile source repo's post-checkout
 // hook does NOT fire during clone/checkout.
 async function caseGitLifecycle(ws) {
-  const be = createSandboxExecBackend();
+  const be = createSandboxExecBackend({ allowLocalRepo: true }); // hostile fixture is local
+  const beDefault = createSandboxExecBackend();                  // default: local repos DENIED (#6)
   const inj = {};
   const vectors = [
-    ['shaFlag', { repo: '/tmp/x', base_sha: '-q' }],
-    ['repoFlag', { repo: '--upload-pack=touch /tmp/loom_pwn', base_sha: 'a'.repeat(40) }],
-    ['repoExt', { repo: 'ext::sh -c touch% /tmp/loom_pwn', base_sha: 'a'.repeat(40) }],
+    ['shaFlag', be, { repo: '/tmp/x', base_sha: '-q' }],
+    ['repoFlag', be, { repo: '--upload-pack=touch /tmp/loom_pwn', base_sha: 'a'.repeat(40) }],
+    ['repoExt', be, { repo: 'ext::sh -c touch% /tmp/loom_pwn', base_sha: 'a'.repeat(40) }],
+    ['localDefaultDenied', beDefault, { repo: '/tmp/x', base_sha: 'a'.repeat(40) }], // #6 default-deny
+    ['shaRequired', be, { repo: 'https://example.com/r.git' }], // #7 base_sha required
   ];
-  for (const [k, args] of vectors) {
-    try { const r = await be.prepareClone(args); inj[k] = 'ACCEPTED'; try { fs.rmSync(r.workDir, { recursive: true, force: true }); } catch { /* none */ } }
+  for (const [k, backend, args] of vectors) {
+    try { const r = await backend.prepareClone(args); inj[k] = 'ACCEPTED'; try { fs.rmSync(r.workDir, { recursive: true, force: true }); } catch { /* none */ } }
     catch { inj[k] = 'rejected'; }
   }
   // hostile source repo: a post-checkout hook that touches a host canary.
@@ -386,10 +398,13 @@ async function caseGitLifecycle(ws) {
   const hookFired = fs.existsSync(hookCanary);
   if (cloned) { try { fs.rmSync(cloned, { recursive: true, force: true }); } catch { /* none */ } }
   try { fs.rmSync(hookCanary); } catch { /* absent */ }
-  const injRejected = inj.shaFlag === 'rejected' && inj.repoFlag === 'rejected' && inj.repoExt === 'rejected';
-  const pass = injRejected && !hookFired;
-  record('8', 'git-lifecycle hardening (arg-injection rejected; repo post-checkout hook neutralized)',
-    pass, `${JSON.stringify(inj)} hookFired=${hookFired}`);
+  const allRejected = Object.values(inj).every((v) => v === 'rejected');
+  // The clone MUST succeed (cloned !== null) for "hook did not fire" to mean
+  // anything — a clone that threw for an unrelated reason makes it vacuous (#4).
+  const cloneSucceeded = cloned !== null;
+  const pass = allRejected && cloneSucceeded && !hookFired;
+  record('8', 'git-lifecycle hardening (arg-injection + local-default + sha-required rejected; clone OK + hook neutralized)',
+    pass, `${JSON.stringify(inj)} cloneSucceeded=${cloneSucceeded} hookFired=${hookFired}`);
   return pass;
 }
 

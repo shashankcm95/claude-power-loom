@@ -2,9 +2,10 @@
 
 // @loom-layer: lab
 //
-// v3.9 W1 — the IMPURE macOS containment backend behind ContainerAdapter's
-// pluggable seam. macOS-only (uses /usr/bin/sandbox-exec, the Seatbelt MAC
-// layer). It lives OUTSIDE tests/unit/** so the Linux CI never auto-globs it;
+// v3.9 W1 — the impure macOS sandbox-exec containment backend (ContainerAdapter).
+// The IMPURE half behind ContainerAdapter's pluggable seam; macOS-only (uses
+// /usr/bin/sandbox-exec, the Seatbelt MAC layer). It lives OUTSIDE
+// tests/unit/** so the Linux CI never auto-globs it;
 // the pure orchestration is tested with MockBackend, and THIS backend's
 // containment is proven green-or-block by _spike/containment-spike.js (re-run
 // against this code at VALIDATE) AND re-attested LIVE at runtime by
@@ -105,17 +106,30 @@ function git(args, cwd) {
 // A corpus-author-controlled repo / base_sha crosses into the host git flag
 // parser; without a `--` separator a value like `-q` or `--upload-pack=...` is
 // consumed as a FLAG (CWE-88 arg-injection on the UNSANDBOXED git). Validate
-// the shape AND pass `--` at every call site.
-function assertSafeRepo(repo) {
+// the shape AND pass `--` at every call site. A host-LOCAL repo is denied by
+// default (the prod path ingests remote URLs; a local path copies host files
+// into a sandbox-readable dir) — opt in via createSandboxExecBackend({allowLocalRepo}).
+function assertSafeRepo(repo, { allowLocal = false } = {}) {
   if (typeof repo !== 'string' || repo.length === 0) throw new Error('prepareClone: repo required');
   if (repo.startsWith('-')) throw new Error(`prepareClone: repo may not start with "-" (arg-injection): ${repo}`);
-  const ok = path.isAbsolute(repo) || /^https?:\/\//.test(repo) || /^file:\/\//.test(repo);
-  if (!ok) throw new Error(`prepareClone: repo must be an absolute path or http(s)://|file:// URL: ${repo}`);
+  if (/^https?:\/\//.test(repo)) return repo;                       // remote URL — always allowed
+  const isLocal = path.isAbsolute(repo) || /^file:\/\//.test(repo);
+  if (!isLocal) throw new Error(`prepareClone: repo must be http(s):// (or, with allowLocalRepo, an absolute path / file:// URL): ${repo}`);
+  if (!allowLocal) throw new Error('prepareClone: host-local repo requires allowLocalRepo (default off — remote URL expected)');
   return repo;
 }
+// base_sha is REQUIRED: a backtest must pin clone@base (never the remote's
+// default HEAD), else the run is a non-reproducible moving target.
 function assertSafeSha(sha) {
-  if (typeof sha !== 'string' || !/^[0-9a-f]{7,40}$/.test(sha)) throw new Error(`prepareClone: base_sha must be 7-40 lowercase hex: ${sha}`);
+  if (typeof sha !== 'string' || !/^[0-9a-f]{7,40}$/.test(sha)) throw new Error(`prepareClone: base_sha required, must be 7-40 lowercase hex: ${sha}`);
   return sha;
+}
+// `label` becomes a host filename BEFORE sandboxing — a `../` would escape
+// .loom-patches into an arbitrary host write. Clamp to a basename-safe slug.
+function assertSafeLabel(label) {
+  const s = String(label == null ? 'patch' : label);
+  if (!/^[a-zA-Z0-9_-]{1,40}$/.test(s)) throw new Error(`applyPatch: label must be a basename-safe slug [A-Za-z0-9_-]{1,40}: ${label}`);
+  return s;
 }
 
 // Only ever rm -rf a path that canonicalizes strictly within the OS temp root —
@@ -207,7 +221,7 @@ function runContainedSync({ profilePath, cwd, command, argv = [], wallClockMs = 
 // The backend — the lifecycle over runContained (read-mostly; never HEAD).
 // --------------------------------------------------------------------------
 
-function createSandboxExecBackend({ env = process.env, resolveTestCommand } = {}) {
+function createSandboxExecBackend({ env = process.env, resolveTestCommand, allowLocalRepo = false } = {}) {
   let _attested = null; // null = not yet probed; cached after first attest.
   const backend = {
     name: 'sandbox-exec',
@@ -222,8 +236,8 @@ function createSandboxExecBackend({ env = process.env, resolveTestCommand } = {}
     attest() { const r = attestOnce(); _attested = r.attested; return r; },
 
     async prepareClone({ repo, base_sha }) {
-      assertSafeRepo(repo);
-      if (base_sha !== undefined && base_sha !== null) assertSafeSha(base_sha);
+      assertSafeRepo(repo, { allowLocal: allowLocalRepo });
+      assertSafeSha(base_sha); // REQUIRED — pin clone@base, never the remote default HEAD
       const workDir = mkScoped('loom-clone-');
       try {
         // --no-hardlinks: a fresh standalone object store (never share the user's),
@@ -233,7 +247,7 @@ function createSandboxExecBackend({ env = process.env, resolveTestCommand } = {}
         // NO `--` for checkout: `git checkout -- <x>` treats <x> as a PATHSPEC, not
         // a commit. assertSafeSha already guarantees base_sha is [0-9a-f]{7,40}
         // (can't be a flag), so the positional is safe without the separator.
-        if (base_sha) git(['checkout', '--quiet', base_sha], workDir);
+        git(['checkout', '--quiet', base_sha], workDir);
       } catch (e) {
         safeDiscard(workDir); // don't leak the scoped temp on a partial-clone failure
         throw e;
@@ -245,7 +259,7 @@ function createSandboxExecBackend({ env = process.env, resolveTestCommand } = {}
       if (!patch) return { ok: true, skipped: true };
       const pdir = path.join(workDir, '.loom-patches');
       fs.mkdirSync(pdir, { recursive: true });
-      const pfile = path.join(pdir, `${label || 'patch'}.diff`);
+      const pfile = path.join(pdir, `${assertSafeLabel(label)}.diff`); // label -> basename-safe slug (no ../ host write)
       fs.writeFileSync(pfile, patch);
       // git apply refuses `..`/symlink-through writes (VALIDATE-hacker-confirmed);
       // `--` guards the patch-path positional from flag-injection.
