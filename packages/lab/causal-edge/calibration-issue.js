@@ -26,6 +26,9 @@
 
 const crypto = require('crypto');
 const { splitRecord, validateIssueCorpus, N_CLEAN_LARGE_MIN } = require('../issue-corpus/corpus');
+// W3 (pure, CI-safe): the trajectory + friction axis. Both new fields are
+// REPORT-ONLY — they never enter recall_eligible / the verdict / pass@k.
+const { parseTrajectory, computeProcessGraph, detectRecallSmell, buildFrictionLabelerInput, validateResolutionFriction } = require('./trajectory-friction');
 
 // The W2->W4 handoff contract (VERIFY-arch F6) — retrieval-flavored
 // (worked_example_ref), NEVER learned_weight (no training, OQ-NS-6).
@@ -156,8 +159,8 @@ function deriveBehavioralVerdict({ aFallback, tamperFail, treeMutated, issue_tes
 // via spawnSync) are sync, and `await` on a sync value is a harmless no-op.
 // --------------------------------------------------------------------------
 
-async function scoreAttempt(record, candidate_patch, attemptIndex, legs, { tier = 'unknown' } = {}) {
-  const { behavioralFn, semanticFn, referenceFn } = legs || {};
+async function scoreAttempt(record, candidate_patch, attemptIndex, legs, { tier = 'unknown', trajectory = null, cloneRoot } = {}) {
+  const { behavioralFn, semanticFn, referenceFn, frictionFn } = legs || {};
   const tamper = computeTamper(candidate_patch);
 
   const a = (behavioralFn && await behavioralFn(record, candidate_patch)) || {};
@@ -208,9 +211,48 @@ async function scoreAttempt(record, candidate_patch, attemptIndex, legs, { tier 
     })) || null;
   }
 
+  // --- W3 trajectory axis (REPORT-ONLY; computed AFTER the verdict/recall_eligible
+  // above, so by data-flow ordering it can NEVER retroactively touch them — the
+  // never-blend firewall is structural, VERIFY-arch). detectRecallSmell uses the
+  // grader-side accepted_diff for relevantFiles (the same grader-side tier as leg C).
+  let trajectoryOut = null;
+  if (trajectory) {
+    const rows = (Array.isArray(trajectory) && trajectory[0] && typeof trajectory[0].step_idx === 'number')
+      ? trajectory                                                 // pre-parsed rows
+      : parseTrajectory(trajectory).rows;                          // raw stream-json events
+    const process_graph = computeProcessGraph(rows);
+    const relevantFiles = parsePatchTouchedPaths(record.accepted_diff).paths;
+    const rs = detectRecallSmell({
+      processGraph: process_graph, relevantFiles, cloneRoot,
+      reachedResolution: behavioral.verdict === 'BEHAVIORAL_PASS',
+    });
+    trajectoryOut = {
+      process_graph, recall_smell: rs.recall_smell, signals: rs.signals,
+      detector_validated: false,                                  // F1c: the flag never travels without its "unvalidated-on-this-corpus" caveat
+    };
+  }
+
+  // --- W3 resolution_friction (REPORT-ONLY; built INDEPENDENTLY of recall_eligible
+  // — friction is a failure-mode diagnostic, the deliberate INVERSE of reference's
+  // pass-gate, F3a). frictionFn gets a PUBLIC-SAFE input (no sealed field, no
+  // target_path — F3b); a refuse => null block.
+  let resolution_friction = null;
+  if (frictionFn) {
+    const labelerInput = buildFrictionLabelerInput({
+      problem_statement_digest: digest(record.problem_statement),
+      candidate_patch,
+      processGraph: trajectoryOut ? trajectoryOut.process_graph : null,
+    });
+    // Re-validate the injected leg's return against the closed-enum shape before it
+    // lands in the Path-1 record (VALIDATE-honesty LOW: the scorer must not trust an
+    // injected leg's output verbatim) — fail-closed to null on a malformed block.
+    resolution_friction = validateResolutionFriction(await frictionFn(labelerInput));
+  }
+
   return {
     id: record.id, attempt_index: attemptIndex,
-    behavioral, semantic, reference, trajectory: null,           // trajectory reserved — W3
+    behavioral, semantic, reference,
+    trajectory: trajectoryOut, resolution_friction,               // W3 — REPORT-ONLY, never blended
     recall_eligible, rubric_leak_dropped: dropped,
   };
 }
@@ -232,7 +274,7 @@ function passAtK(n, c, k) {
 // Per-axis, NEVER blended; pass@k excludes harness_fallback attempts (A2).
 // --------------------------------------------------------------------------
 
-async function scoreIssueCalibration(records, attemptsPerIssue, legs, { tierOf, patchFor } = {}) {
+async function scoreIssueCalibration(records, attemptsPerIssue, legs, { tierOf, patchFor, trajectoryFor, cloneRoot } = {}) {
   validateIssueCorpus(records);                                  // throws on an invalid corpus
   const k = attemptsPerIssue;
   const per_issue = [];
@@ -247,7 +289,8 @@ async function scoreIssueCalibration(records, attemptsPerIssue, legs, { tierOf, 
     const attempts = [];
     for (let i = 0; i < k; i++) {
       const patch = patchFor ? patchFor(record, i) : '';
-      const at = await scoreAttempt(record, patch, i, legs, { tier });
+      const traj = trajectoryFor ? trajectoryFor(record, i) : null;
+      const at = await scoreAttempt(record, patch, i, legs, { tier, trajectory: traj, cloneRoot });
       attempts.push(at);
       if (at.behavioral.outcome_source === 'harness_fallback') behavioral_fallbacks += 1;
       if (at.rubric_leak_dropped) rubric_leak_dropped += 1;

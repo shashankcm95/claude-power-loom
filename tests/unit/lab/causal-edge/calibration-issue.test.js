@@ -95,7 +95,7 @@ test('scoreAttempt: clean PASS yields the 3-axis record + tests_consistent (neve
   assert.strictEqual(a.behavioral.tests_consistent, true);
   assert.ok(!('correct' in a.behavioral), 'must use tests_consistent, never correct');
   assert.strictEqual(a.semantic.self_graded_optimistic, true);
-  assert.strictEqual(a.trajectory, null); // reserved W3
+  assert.strictEqual(a.trajectory, null); // null when opts.trajectory is absent (W3 report-only field)
   assert.ok(!('score' in a) && !('grade' in a) && !('overall' in a), 'no blended scalar on the attempt');
 });
 
@@ -317,6 +317,93 @@ test('runIssueCalibration: AWAITs the async scorer -> a NON-empty result + pinne
   assert.ok(typeof record.result.manifest_hash === 'string' && record.result.manifest_hash.length > 0, 'manifest_hash must be pinned');
   assert.strictEqual(record.result.not_a_trust_score, true);
   assert.ok(!JSON.stringify(record).includes('"result":{}'), 'the serialized record must not have an empty {} result');
+});
+
+// --------------------------------------------------------------------------
+// W3 — the trajectory + resolution_friction wiring + the never-blend firewall.
+// A synthetic stream-json log shaped like the firsthand probe (plan RP-1).
+// --------------------------------------------------------------------------
+
+function trajLog(reads) {
+  const ev = [];
+  let i = 0;
+  for (const p of reads) {
+    const id = `t${i++}`;
+    ev.push({ type: 'assistant', message: { content: [{ type: 'thinking', thinking: 'look' }, { type: 'tool_use', id, name: 'Read', input: { file_path: p } }] } });
+    ev.push({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content: 'ok' }] } });
+  }
+  ev.push({ type: 'result', subtype: 'success', is_error: false });
+  return ev;
+}
+
+test('W3: opts.trajectory populates the reserved `trajectory` field (process_graph + recall_smell + detector_validated:false)', async () => {
+  const { legs } = mkLegs();
+  const a = await scoreAttempt(validRecord(), CLEAN_PATCH, 0, legs, { trajectory: trajLog(['unrelated.py']) });
+  assert.ok(a.trajectory && a.trajectory.process_graph, 'trajectory populated');
+  assert.strictEqual(a.trajectory.detector_validated, false, 'F1c: the flag carries its unvalidated caveat');
+  // CLEAN_PATCH touches src/foo.py; the actor read only unrelated.py -> relevant unread + low loop + reached PASS => smell.
+  assert.strictEqual(a.trajectory.recall_smell, true);
+});
+
+test('W3 firewall: a trajectory does NOT change behavioral.verdict / recall_eligible (byte-identical)', async () => {
+  const { legs } = mkLegs();
+  const without = await scoreAttempt(validRecord(), CLEAN_PATCH, 0, legs);
+  const withTraj = await scoreAttempt(validRecord(), CLEAN_PATCH, 0, legs, { trajectory: trajLog(['unrelated.py']) });
+  assert.deepStrictEqual(withTraj.behavioral, without.behavioral, 'verdict unchanged by the trajectory axis');
+  assert.strictEqual(withTraj.recall_eligible, without.recall_eligible, 'recall_eligible unchanged');
+});
+
+test('W3 firewall: pass@k is byte-identical with and without trajectories (never blended)', async () => {
+  const { legs } = mkLegs();
+  const recs = [validRecord({ id: 'owner__repo-issue-1' }), validRecord({ id: 'owner__repo-issue-2' })];
+  const base = await scoreIssueCalibration(recs, 2, legs, { patchFor: () => CLEAN_PATCH });
+  const withTraj = await scoreIssueCalibration(recs, 2, legs, { patchFor: () => CLEAN_PATCH, trajectoryFor: () => trajLog(['unrelated.py']) });
+  assert.deepStrictEqual(withTraj.per_issue, base.per_issue, 'pass@k per-issue identical');
+});
+
+test('W3 F3: frictionFn receives a PUBLIC-SAFE input (no accepted_diff / test_patch / target_path) + cannot change the verdict', async () => {
+  let seen = null;
+  const friction = { friction_class: 'wrong-file', friction_phase: 'localization', detection_leg: 'behavioral' };
+  const { legs } = mkLegs({});
+  legs.frictionFn = (input) => { seen = input; return friction; };
+  const a = await scoreAttempt(validRecord(), CLEAN_PATCH, 0, legs, { trajectory: trajLog(['unrelated.py']) });
+  assert.deepStrictEqual(a.resolution_friction, friction, 'label forwarded');
+  const json = JSON.stringify(seen);
+  assert.ok(!/accepted_diff|test_patch|the fix returns 42/.test(json), 'no sealed oracle in the labeler input');
+  assert.ok(!('localization_reads' in (seen.process_graph || {})), 'the path list is stripped from the public-safe projection');
+  // the friction label is REPORT-ONLY.
+  assert.strictEqual(a.behavioral.verdict, 'BEHAVIORAL_PASS');
+});
+
+test('W3 F3a: resolution_friction is built INDEPENDENTLY of recall_eligible (fires on a FAIL AND a neg-control)', async () => {
+  const failLegs = mkLegs({ behavioralFn: () => ({ issue_tests: 'FAIL', full_suite: 'PASS', test_tree_mutated: false, outcome_source: 'model' }) }).legs;
+  failLegs.frictionFn = () => ({ friction_class: 'incorrect-implementation', friction_phase: 'editing', detection_leg: 'behavioral' });
+  const a = await scoreAttempt(validRecord(), CLEAN_PATCH, 0, failLegs, { trajectory: trajLog(['src/foo.py']) });
+  assert.strictEqual(a.behavioral.verdict, 'BEHAVIORAL_FAIL');
+  assert.strictEqual(a.recall_eligible, false);
+  assert.ok(a.resolution_friction && a.resolution_friction.friction_class === 'incorrect-implementation', 'friction built on a FAIL (inverse of reference gate)');
+  // the neg-control half of the claim (VALIDATE-honesty LOW): a confident PASS on a corrupted ticket.
+  const negLegs = mkLegs().legs;
+  negLegs.frictionFn = () => ({ friction_class: 'hallucinated-api', friction_phase: 'editing', detection_leg: 'behavioral' });
+  const neg = await scoreAttempt(validRecord({ is_negative_control: true }), CLEAN_PATCH, 0, negLegs, { trajectory: trajLog(['x.py']) });
+  assert.strictEqual(neg.recall_eligible, false, 'a neg-control is never recall-eligible');
+  assert.ok(neg.resolution_friction && neg.resolution_friction.friction_class === 'hallucinated-api', 'friction still fires on a neg-control');
+});
+
+test('W3 VALIDATE-MEDIUM: a circular tool_input via opts.trajectory does NOT throw scoreAttempt (digest fail-closed)', async () => {
+  const { legs } = mkLegs();
+  const circ = { type: 'assistant', message: { content: [{ type: 'tool_use', id: 'a', name: 'Read', input: {} }] } };
+  circ.message.content[0].input.self = circ.message.content[0].input; // circular
+  let a;
+  await assert.doesNotReject(async () => { a = await scoreAttempt(validRecord(), CLEAN_PATCH, 0, legs, { trajectory: [circ] }); });
+  assert.ok(a.trajectory && a.trajectory.process_graph, 'a circular input degrades the digest, scoreAttempt still returns');
+});
+
+test('W3 VALIDATE-LOW: an enum-INVALID frictionFn return is nulled, never stored verbatim in the record', async () => {
+  const { legs } = mkLegs();
+  legs.frictionFn = () => ({ friction_class: 'NOT-A-CLASS', friction_phase: 'editing', detection_leg: 'behavioral' });
+  const a = await scoreAttempt(validRecord(), CLEAN_PATCH, 0, legs, { trajectory: trajLog(['x.py']) });
+  assert.strictEqual(a.resolution_friction, null, 'a malformed injected friction block is rejected at the scorer boundary');
 });
 
 (async () => {
