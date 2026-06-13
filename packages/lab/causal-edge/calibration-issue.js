@@ -179,6 +179,11 @@ async function scoreAttempt(record, candidate_patch, attemptIndex, legs, { tier 
 
   const behavioral = {
     verdict, tests_consistent: verdict === 'BEHAVIORAL_PASS',     // NEVER `correct`
+    // The RAW leg-A test outcome (PASS|FAIL|FALLBACK), surfaced UNCONDITIONED by leg B
+    // so W4's judge-agreement can compare two INDEPENDENT legs. The verdict folds leg B
+    // in (PARTIAL on a discrepancy), so `tests_consistent`/`verdict` are NOT independent
+    // of `semantic.supported` — `issue_tests` is (VALIDATE-honesty H1: the tautology fix).
+    issue_tests: aFallback ? 'FALLBACK' : (a.issue_tests || null),
     outcome_source: aFallback ? 'harness_fallback' : 'model', tamper_flags,
   };
   const semantic = {
@@ -286,6 +291,7 @@ async function scoreIssueCalibration(records, attemptsPerIssue, legs, { tierOf, 
   let negative_control_false_positive = 0;
   let recall_eligible_count = 0;
   let rubric_leak_dropped = 0;
+  const allAttempts = [];                                        // flat list across ALL (record, attempt) — W4 consumes it (§10)
 
   for (const record of records) {
     const tier = (tierOf ? tierOf(record) : null) || 'unknown';
@@ -300,6 +306,7 @@ async function scoreIssueCalibration(records, attemptsPerIssue, legs, { tierOf, 
       if (at.recall_eligible) recall_eligible_count += 1;
       if (record.is_negative_control === true && at.behavioral.verdict === 'BEHAVIORAL_PASS') negative_control_false_positive += 1;
     }
+    allAttempts.push(...attempts);                               // SPREAD-flatten (never push the array — no nesting/aliasing)
     const model = attempts.filter((x) => x.behavioral.outcome_source === 'model'); // A2 — model-decided ONLY
     const n = model.length;
     const c = model.filter((x) => x.behavioral.verdict === 'BEHAVIORAL_PASS').length;
@@ -322,6 +329,7 @@ async function scoreIssueCalibration(records, attemptsPerIssue, legs, { tierOf, 
     per_issue, per_tier,
     behavioral_fallbacks, negative_control_false_positive,
     recall_eligible_count, rubric_leak_dropped,
+    attempts: allAttempts,                                        // W4: the flat raw-attempt list (the runner drops it before persisting — §6d)
     manifest_hash: null,                                          // the impure runner pins the real hash
     not_a_trust_score: true,                                      // signal-with-error-bars, never a trust score
   };
