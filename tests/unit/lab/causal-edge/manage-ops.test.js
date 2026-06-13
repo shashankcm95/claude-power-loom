@@ -245,7 +245,7 @@ test('* firewall (d) SHADOW: hooks.json has no causal / manage-op / flag-conflic
 
 // -- 18. * JUDGE-PROMPT artifact (structural guard): the injection-resistant rung-2 prompt SPEC exists +
 //        documents the DATA-not-instructions contract + the strict {supported, reason} output shape. A
-//        grep-level guard ONLY - real-LLM injection resistance is a NAMED follow-on calibration (Spike-C).
+//        grep-level guard ONLY - real-LLM injection resistance was CALIBRATED in v3.8b W3 (a claude -p spike).
 test('* judge-prompt artifact exists + documents data-not-instructions + the strict {supported,reason} shape', () => {
   assert.ok(fs.existsSync(JUDGE_PROMPT), 'rung2-judge-prompt.md exists (the injected real judge SPEC)');
   const md = fs.readFileSync(JUDGE_PROMPT, 'utf8');

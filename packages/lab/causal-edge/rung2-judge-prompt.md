@@ -5,10 +5,13 @@
 > `rung2AdvisoryCheck(edge, judgeFn)` module **never calls an LLM itself** — it only
 > applies a `judgeFn`'s verdict, fail-closed. This file is the contract that judge owes.
 >
-> **Honest boundary (Spike-C, carried from Wave 2):** a mock `judgeFn` can only prove the
-> *refusal-to-promote* logic. Real-LLM faithfulness accuracy **and** prompt-injection
-> resistance are owed to a **named follow-on calibration** (a measured `claude -p` spike
-> with a labelled-fixture accuracy run + an injection battery), not to this structural spec.
+> **Calibrated in v3.8b W3.** Real-LLM faithfulness accuracy **and** prompt-injection resistance
+> were measured by a `claude -p` spike over a labelled-fixture corpus + a named injection battery —
+> see the calibration record (`${LOOM_LAB_STATE_DIR}/calibration/rung2-*.json`). The spike is
+> re-runnable via `node packages/lab/causal-edge/calibration-cli.js --real` (an UNSANDBOXED,
+> network-enabled, authenticated shell ONLY — not CI, not a sandboxed sub-agent). Each run is a
+> single non-deterministic sample. The calibration is INFORMATIONAL: rung-2 stays narrowing-safe
+> regardless of judge quality (the ceiling below).
 
 ## Role
 

@@ -190,6 +190,9 @@ Auto-generated map of where things live, derived from the repo structure + each 
 
 ### `lab/causal-edge/`
 
+- `packages/lab/causal-edge/calibration-cli.js` - v3.8b W3 — the rung-2 calibration CLI.
+- `packages/lab/causal-edge/calibration-run.js` - v3.8b W3 — the NON-DETERMINISTIC real-LLM side of the rung-2 calibration.
+- `packages/lab/causal-edge/calibration.js` - v3.8b W3 — the OQ-21 rung-2 faithfulness CALIBRATION scorer.
 - `packages/lab/causal-edge/cli.js` - v3.5 Wave 2 - causal-edge CLI - the dogfood vehicle + the manual surface for the SHADOW causal-edge graph loop.
 - `packages/lab/causal-edge/enums.js` - v3.5 Wave 2 - shared causal-edge enums + the R4 validation re-export.
 - `packages/lab/causal-edge/faithfulness.js` - v3.5 Wave 2 - the faithfulness rung-2 advisory check (Spike C).
