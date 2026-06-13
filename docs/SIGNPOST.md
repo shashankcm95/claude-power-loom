@@ -191,6 +191,9 @@ Auto-generated map of where things live, derived from the repo structure + each 
 ### `lab/causal-edge/`
 
 - `packages/lab/causal-edge/calibration-cli.js` - v3.8b W3 — the rung-2 calibration CLI.
+- `packages/lab/causal-edge/_spike/calibration-issue-dogfood.js` - v3.9 W2 — three-legged scorer end-to-end dogfood (macOS-only verification probe).
+- `packages/lab/causal-edge/calibration-issue-run.js` - v3.9 W2 — the IMPURE real-leg runner for the three-legged scorer.
+- `packages/lab/causal-edge/calibration-issue.js` - v3.9 W2 — the three-legged calibration scorer.
 - `packages/lab/causal-edge/calibration-run.js` - v3.8b W3 — the NON-DETERMINISTIC real-LLM side of the rung-2 calibration.
 - `packages/lab/causal-edge/calibration.js` - v3.8b W3 — the OQ-21 rung-2 faithfulness CALIBRATION scorer.
 - `packages/lab/causal-edge/cli.js` - v3.5 Wave 2 - causal-edge CLI - the dogfood vehicle + the manual surface for the SHADOW causal-edge graph loop.
