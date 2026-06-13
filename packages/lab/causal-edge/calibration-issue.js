@@ -122,12 +122,14 @@ function rubricLeaks(rubric, acceptedDiff) {
 
 // Build leg B's BLIND input: the public fields + a leak-tripwired rubric
 // forwarded under a NON-sealed `rubric` key (so the input carries no sealed name).
+function deepClone(o) { try { return structuredClone(o); } catch { return JSON.parse(JSON.stringify(o)); } }
+
 function buildLegBInput(record) {
   const input = buildActorInput(record);
   let dropped = false;
   if (record && record.criteria_only_rubric) {
     if (rubricLeaks(record.criteria_only_rubric, record.accepted_diff)) dropped = true;
-    else input.rubric = record.criteria_only_rubric;
+    else input.rubric = deepClone(record.criteria_only_rubric); // CLONE — a mutating semanticFn must not poison the record (CodeRabbit #2)
   }
   return { input, dropped };
 }
@@ -138,9 +140,14 @@ function buildLegBInput(record) {
 function deriveBehavioralVerdict({ aFallback, tamperFail, treeMutated, issue_tests, full_suite, semanticSupported }) {
   if (aFallback) return 'BEHAVIORAL_FAIL';                        // placeholder — excluded by outcome_source
   if (tamperFail || treeMutated) return 'BEHAVIORAL_FAIL';
-  if (issue_tests === 'PASS' && (full_suite === 'FAIL' || semanticSupported === false)) return 'BEHAVIORAL_PARTIAL';
-  if (issue_tests === 'PASS') return 'BEHAVIORAL_PASS';
-  return 'BEHAVIORAL_FAIL';
+  if (issue_tests !== 'PASS') return 'BEHAVIORAL_FAIL';
+  // PASS requires the full suite to be PASS or the DELIBERATE SKIPPED (the W2
+  // default — the full-suite second pass is the ingestion-wave concern). A
+  // FAIL / FALLBACK / absent full_suite is a discrepancy or unknown => PARTIAL,
+  // NOT a clean pass (fail-closed — CodeRabbit #3); a leg-B flag also downgrades.
+  const fullOk = full_suite === 'PASS' || full_suite === 'SKIPPED';
+  if (fullOk && semanticSupported !== false) return 'BEHAVIORAL_PASS';
+  return 'BEHAVIORAL_PARTIAL';
 }
 
 // --------------------------------------------------------------------------
@@ -191,10 +198,13 @@ async function scoreAttempt(record, candidate_patch, attemptIndex, legs, { tier 
       accepted_diff: record.accepted_diff, issue_id: record.id, repo: record.repo,
       problem_statement_digest: digest(record.problem_statement), contamination_tier: tier,
     };
-    // leg C gets a PURPOSE-BUILT input (not the record — M2) + FROZEN verdict
-    // copies (it must not rewrite the authoritative verdicts — VALIDATE-hacker M1).
+    // leg C gets a PURPOSE-BUILT input (not the record — M2) + DEEP-frozen verdict
+    // copies (it must not rewrite the authoritative verdicts NOR the nested
+    // tamper_flags array — VALIDATE-hacker M1 + CodeRabbit #2: the prior shallow
+    // freeze left the array mutable).
     reference = (await referenceFn(refInput, candidate_patch, {
-      behavioral: Object.freeze({ ...behavioral }), semantic: Object.freeze({ ...semantic }),
+      behavioral: Object.freeze({ ...behavioral, tamper_flags: Object.freeze([...behavioral.tamper_flags]) }),
+      semantic: Object.freeze({ ...semantic }),
     })) || null;
   }
 

@@ -173,7 +173,10 @@ async function runIssueCalibration(records, attemptsPerIssue, { backend, patchFo
   // AWAIT — scoreIssueCalibration is async; without this the record's `result`
   // is a pending Promise that JSON.stringify renders as {} (VALIDATE consensus).
   const result = await scoreIssueCalibration(records, attemptsPerIssue, legs, { patchFor, tierOf });
-  try { result.manifest_hash = computeManifestHash(records); } catch { /* leave null */ }
+  // FAIL-CLOSED — a calibration record without its manifest hash is not
+  // reproducible; records are pre-validated, so this throws only on a real fault
+  // (CodeRabbit #1: don't write a best-effort null-hash record).
+  result.manifest_hash = computeManifestHash(records);
   const record = {
     schema: 'rung2-calibration-record/v1',
     kind: 'issue-calibration',

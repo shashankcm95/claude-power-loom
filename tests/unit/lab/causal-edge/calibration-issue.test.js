@@ -117,6 +117,13 @@ test('scoreAttempt: full-suite SKIPPED (not run) with issue-tests PASS => BEHAVI
   assert.strictEqual(a.behavioral.verdict, 'BEHAVIORAL_PASS');
 });
 
+test('scoreAttempt: full-suite FALLBACK or ABSENT with issue-tests PASS => BEHAVIORAL_PARTIAL (fail-closed, not a clean pass)', async () => {
+  const fb = mkLegs({ behavioralFn: () => ({ issue_tests: 'PASS', full_suite: 'FALLBACK', test_tree_mutated: false, outcome_source: 'model' }) });
+  assert.strictEqual((await scoreAttempt(validRecord(), CLEAN_PATCH, 0, fb.legs)).behavioral.verdict, 'BEHAVIORAL_PARTIAL');
+  const absent = mkLegs({ behavioralFn: () => ({ issue_tests: 'PASS', test_tree_mutated: false, outcome_source: 'model' }) }); // no full_suite
+  assert.strictEqual((await scoreAttempt(validRecord(), CLEAN_PATCH, 0, absent.legs)).behavioral.verdict, 'BEHAVIORAL_PARTIAL');
+});
+
 test('scoreAttempt: adapter-refused leg A => behavioral.outcome_source harness_fallback (not a PASS)', async () => {
   const { legs } = mkLegs({ behavioralFn: () => ({ issue_tests: 'FALLBACK', full_suite: 'SKIPPED', test_tree_mutated: false, outcome_source: 'harness_fallback' }) });
   const a = await scoreAttempt(validRecord(), CLEAN_PATCH, 0, legs);
@@ -236,6 +243,20 @@ test('leg-C must NOT mutate the record: a 2nd attempt sees a byte-identical leg-
   await scoreAttempt(rec, CLEAN_PATCH, 0, legs);
   await scoreAttempt(rec, CLEAN_PATCH, 1, legs);
   assert.deepStrictEqual(cap.actorInputs[1], cap.actorInputs[0], 'leg B input must be identical across attempts (leg C did not mutate the record)');
+});
+
+test('a mutating semanticFn cannot poison the record rubric for a later attempt (rubric is cloned)', async () => {
+  const seen = [];
+  const legs = {
+    behavioralFn: () => ({ issue_tests: 'PASS', full_suite: 'PASS', test_tree_mutated: false, outcome_source: 'model' }),
+    semanticFn: (actorInput) => { if (actorInput.rubric) actorInput.rubric.INJECTED = 'pwn'; seen.push(actorInput.rubric); return { status: 'advisory_llm_checked', supported: true, outcome_source: 'model' }; },
+    referenceFn: (r) => ({ issue_id: r.issue_id, repo: r.repo, problem_statement_digest: r.problem_statement_digest, candidate_patch_ref: 'r', behavioral_verdict: 'BEHAVIORAL_PASS', reference_divergence: 0, contamination_tier: 'unknown' }),
+  };
+  const rec = validRecord();
+  await scoreAttempt(rec, CLEAN_PATCH, 0, legs);
+  await scoreAttempt(rec, CLEAN_PATCH, 1, legs);
+  assert.ok(!('INJECTED' in rec.criteria_only_rubric), 'the record rubric must not be poisoned by a mutating leg B');
+  assert.notStrictEqual(seen[0], seen[1], 'each attempt must get a FRESH rubric clone (distinct object) so a mutation cannot carry over');
 });
 
 // --------------------------------------------------------------------------
