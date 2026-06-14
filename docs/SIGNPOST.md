@@ -225,6 +225,9 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/lab/issue-corpus/_spike/containment-spike.js` - v3.9 W1 — sandbox-exec containment spike (macOS-only; green-or-block proof).
 - `packages/lab/issue-corpus/corpus.js` - v3.9 W0 — the issue-corpus forward contract.
 - `packages/lab/issue-corpus/_spike/dogfood.js` - v3.9 W1 — ContainerAdapter end-to-end dogfood (macOS-only verification probe).
+- `packages/lab/issue-corpus/pytest-runner.js` - v3.9.x (real-E2E spike) — the pytest test-runner adapter.
+- `packages/lab/issue-corpus/_spike/real-e2e-actor-dogfood.js` - v3.9.x real-E2E spike — STEP B: the REAL attempt.
+- `packages/lab/issue-corpus/_spike/real-e2e-dogfood.js` - v3.9.x real-E2E spike — STEP A: prove the DETERMINISTIC grading path on a REAL
 - `packages/lab/issue-corpus/sandbox-exec-backend.js` - v3.9 W1 — the impure macOS sandbox-exec containment backend (ContainerAdapter).
 
 ### `lab/manage-proposal/`

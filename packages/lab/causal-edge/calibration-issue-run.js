@@ -115,16 +115,30 @@ function resolveClaude() {
 }
 
 // Untrusted bytes (the candidate + problem) ride as ONE argv element (shell:false)
-// — the calibration-run.js H5 discipline; never shell-interpreted.
+// — the calibration-run.js H5 discipline; never shell-interpreted. `--model` is PINNED
+// (the W3 lesson: the child inherits the parent's model, which may be unavailable).
+const JUDGE_MODEL = 'claude-sonnet-4-6';
 function claudeOnce(bin, prompt, timeout) {
   if (!bin) return { ok: false, reason: 'judge-unavailable' };
   let res;
-  try { res = spawnSync(bin, ['-p', prompt], { input: '', shell: false, timeout, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 }); }
+  // The prompt rides STDIN, not a trailing argv (CodeRabbit #316 + the W3 runner pattern).
+  // NOT a shell-injection fix — `shell:false` already passes argv straight to execve, never a
+  // shell — but ARG_MAX-robust for a large issue+patch prompt + consistent with
+  // trajectory-friction-run.js's claudeOnce.
+  try { res = spawnSync(bin, ['-p', '--model', JUDGE_MODEL], { input: prompt, shell: false, timeout, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 }); }
   catch { return { ok: false, reason: 'judge-unavailable' }; }
   if (res.error && res.error.code === 'ETIMEDOUT') return { ok: false, reason: 'timeout' };
   if (res.status !== 0) return { ok: false, reason: 'judge-unavailable' };
-  const text = (res.stdout || '').trim();
+  let text = (res.stdout || '').trim();
   if (!text) return { ok: false, reason: 'empty' };
+  // Strip a WHOLE-OUTPUT fence ONLY (start/end-anchored): the REAL-E2E run surfaced that the
+  // blind judge wraps its JSON in a ```json fence constantly + a bare JSON.parse fell back to
+  // harness_fallback on every fenced verdict (the leg-B/C judges lacked the fence-strip the W3
+  // labeler had). Anchored, NOT embedded (CodeRabbit #316 / the v3.8b calibration-run.js:69
+  // strict-WHOLE parser-differential defense): a model echoing a decoy fenced block amid wrapper
+  // prose must FAIL-CLOSED, never be parsed.
+  const fence = text.match(/^```[a-zA-Z0-9]*\r?\n([\s\S]*?)\r?\n?```$/);
+  if (fence) text = fence[1].trim();
   try { return { ok: true, obj: JSON.parse(text) }; } catch { return { ok: false, reason: 'parse-failure' }; }
 }
 
