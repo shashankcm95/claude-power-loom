@@ -4,7 +4,7 @@ title: "Power Loom's promote/merge disposition — is the substrate advisory, hu
 status: accepted
 created: 2026-06-04
 ratified: 2026-06-04
-amended: "2026-06-11 — §10 (v3.7 W4): the revert-toward-A timer RESET; the decision point = the v3.9 phase close"
+amended: "2026-06-11 — §10 (v3.7 W4): the revert-toward-A timer RESET; decision point = v3.9 phase close. 2026-06-14 — §11 (post-v3.9): decision point RE-ANCHORED from a phase to an EVENT (the first non-demo fold) + a live-delta backstop, since v3.9 pivoted to the bootcamp and never ran the live loop"
 decision: "Option B — human-gated promotion as the enforcing ceiling (PROVISIONAL, pending first real consumer); shadow stays default; auto-merge retired-until-ContainerAdapter"
 author: orchestrator (v3.4 Wave 5) + architect/honesty-auditor 2-lens review (applied inline) + USER ratification 2026-06-04
 amends: nothing (decision-framing RFC; ratification updates ROADMAP + the activation ledger)
@@ -303,3 +303,86 @@ anticipated — v3.9 is the decision point.
 
 **Unchanged by this amendment:** shadow stays the default; NEVER-TOUCH-HEAD stays the invariant;
 auto-merge stays retired-until-ContainerAdapter; the A3a/A3b split and the advisory chain are untouched.
+
+## §11 — Amendment (2026-06-14, post-v3.9-close): the decision point is RE-ANCHORED from a phase to an EVENT
+
+*Appended per the RFC amendment convention — §1–§10 above are the ratified record, unmodified.*
+
+**Status — ratified by the USER, 2026-06-14.** This hinge is the USER's, not the architecture's (§7
+states it twice). The v3.9 phase-close gate surfaced it as exactly that — a USER adjudication, *"surfaced
+not auto-decided"* (`docs/ROADMAP.md`, v3.9 sign-off finding #3: "Option A retire / stay-B reset / explicit
+defer"). Presented the three options + this recommendation, the USER chose **stay-B + event-re-anchor**.
+This section records that ratified decision; it is not an orchestrator-unilateral one.
+
+**The state at the v3.9 phase close (2026-06-13):** the capability stayed demonstrated (the v3.7 W3
+operator-dogfood, still CI-guarded), and **no product-demand consumer materialized** — no non-demo fold
+on real work, no external user enabling a flag. Read strictly against §10's hinge, the timer elapsed:
+*revert toward Option A.*
+
+**Why this amendment does NOT simply execute that retirement — and why it is, plainly, a second reset
+(§10 wrote "no further reset is anticipated"):** §10's decision point was not a bare date — it was
+anchored to a *specific event*: *"v3.9 — the first live beta, the named decision point where a real
+human-gated consumer either materializes or does not."* **v3.9 did not become the first live beta.** It
+pivoted to the retrospective-calibration *bootcamp* ([`2026-06-13-v3.9-retrospective-calibration-bootcamp.md`](2026-06-13-v3.9-retrospective-calibration-bootcamp.md))
+— a backtest/diagnostic track that never ran the live human-gated loop. The event §10 tied the decision
+to **did not occur**; the hinge was never exercised. This is the same honesty test §10 applied to itself
+("a demand hinge cannot fairly expire while the capability was undocumented, undemonstrated, and
+unconsumable"), extended one step: *a demand hinge cannot fairly expire on a release that never ran the
+loop it was meant to test.* **In fairness, the competing reading exists:** §10 also wrote a bare
+date-anchor (*"if no real consumer has materialized by the v3.9 phase close, revert toward Option A"*),
+and under a strictly date-bound reading the timer simply elapsed and Option A is owed. This amendment
+adopts the **event-bound** reading — the date was chosen only as the *expected moment* of the live-beta
+event, which did not occur — and concedes that is the interpretation more favorable to retention. The
+premise broke; re-anchoring is the honest response, not goalpost-moving.
+**The §10 "no further reset" pre-commitment is hereby explicitly overturned — named, not buried.**
+
+**Two facts that changed the picture since §10:**
+
+1. **The North-Star is now ratified** ([`2026-06-11-north-star-autonomous-sde-trust.md`](2026-06-11-north-star-autonomous-sde-trust.md)):
+   the apex is the **external-maintainer-merge**, under the binding law **OQ-NS-6 — a backtest NARROWS
+   confidence; only a world-anchored merge HARDENS it.** The human-gated *"substrate stages a delta → a
+   human reviews + merges it"* loop is, on the most natural reading, **a plausible** rung directly before
+   that apex — on the critical path to the ratified destination, not (on that reading) orphaned surface.
+   Retiring it now would discard **a** mechanism by which a substrate-produced delta could first become a
+   world-anchored merge — one a future live-beta might otherwise rebuild. (The North-Star is itself rated
+   *COHERENT-WITH-GAPS*; this is a plausibility argument, not proof that *this* machinery is the only path —
+   a future beta could produce mergeable deltas through a different surface.)
+2. **The near-term roadmap is all backtest** (the v3.9 bootcamp → the planned 20–30-example batch → a
+   recall graph; every node `provenance=backtest`, narrows-only). The live human-gated loop's real consumer
+   therefore arrives only once the actor is trusted to produce *mergeable real deltas* — several phases out.
+   The capability is un-consumable in the near term **by roadmap design**, not by neglect.
+
+**The case for executing Option A now (steel-manned — it is strong and document-internal):** three release
+cycles have now elapsed with zero real consumers (v3.6 → §10; v3.7 → §10's v3.9 anchor; v3.9 → here); the
+dormant branches sit in `spawn-close-resolver.js`, which runs on every spawn close; and the project's own
+cumulative-coherence rule (§6, Option A) says *don't carry dark surface as someday-debt* and *sunk cost is
+not a reason to keep it.* A reasonable reviewer could conclude Option A is simply correct. This amendment
+does not execute it — for the two reasons above (the loop was never fairly tested; it is a *plausible*
+critical-path rung) — but that is a genuine judgment call on which a reasonable reviewer could disagree, and
+the USER made it (see Status).
+
+**The decision — KEEP Option B (live-but-shadow); re-anchor the trigger from a PHASE to an un-gameable
+EVENT, with a hard backstop. This is intended as the last reset — and unlike §10's date-promise, its
+finality rests on *structure* (an event trigger + a named-milestone backstop), not on a renewed promise:**
+
+- **The new hinge (vindication):** the FIRST **non-demo** delta the substrate produces for a human to
+  actually merge — the existing ledger-operationalized test (`>=1 non-demo fold on real work, OR an
+  external user enabling a flag`; the demo harness does NOT count), now **minus the v3.9 deadline.** When
+  that event occurs, Option B has its real consumer and the provisional status resolves to *supported*.
+- **The backstop (so this is not an open-ended "someday"):** at the close of the roadmap's designated
+  **FIRST-LIVE-BETA milestone** — the phase v3.9 was chartered as and deferred (the first phase whose
+  charter is to run the substrate on LIVE, non-backtest work) — if the human-gated loop is **still not its
+  consumer**, Option B **retires toward Option A automatically, no further amendment.** Anchoring to the
+  *named live-beta charter* (not "some future phase that happens to run live work") is what blocks the
+  Producer-Consumer-deferral move the ledger's governing rule forbids: a phase cannot *be* the chartered
+  live beta while scoping the human-gated loop out of itself.
+
+**The conceded cost (named, not hidden):** the dormant enforce/candidate branches sit in
+`spawn-close-resolver.js`, which runs on every spawn close — a standing maintenance tax on hot kernel code.
+Disposition: **freeze opportunistically** (extract the branches to an archived spike) **if and when that
+tax bites during resolver work** — not a speculative refactor wave now, which would spend effort removing
+tested, CI-guarded code the North-Star trajectory needs back.
+
+**Unchanged by §11:** shadow stays the default; NEVER-TOUCH-HEAD stays the invariant; auto-merge stays
+retired-until-ContainerAdapter; the A3a/A3b split and the advisory chain are untouched. Only §10's
+*decision-point trigger* is re-anchored.
