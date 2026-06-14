@@ -8,6 +8,28 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [3.9.0] — 2026-06-13 — v3.9 Retrospective-calibration bootcamp (diagnostic; shadow)
+
+**Minor release** (additive — a new **Lab-layer diagnostic harness**; no kernel/runtime change, no breaking change. `.claude-plugin/plugin.json` `3.8.0 → 3.9.0`). Ships **v3.9** — phase-closed 2026-06-13 (3-lens unanimous CLOSEABLE-WITH-NOTES, 0 cross-PR drift; [`docs/ROADMAP.md`](docs/ROADMAP.md) + the `phase-close/v3.9-close` library volume), plus a v3.9.x real-end-to-end proof.
+
+**What it is.** A retrospective-calibration **bootcamp**: grade the plugin against *already-resolved* OSS issues — feed a blind actor the problem statement only, let it attempt a fix, then grade the attempt against the accepted resolution. The output is a **diagnostic** (a recall-graph of worked examples + a cross-issue friction map), **not a trust score** — OQ-NS-6 binds it: a backtest only *narrows* confidence; only a world-anchored live merge *hardens* it.
+
+**The waves** (`#310`–`#314`; all **shadow**):
+
+- **W0 — issue-corpus forward contract** (`#310`): an exhaustive sealed partition (anti-oracle-leak — the problem statement is separated from the accepted diff), a deterministic tier, a content-hashed manifest.
+- **W1 — the read-mostly ContainerAdapter** (`#311`): `sandbox-exec` containment for the behavioral leg (the spike ran 8/8); the Track-2 Docker backend remains future.
+- **W2 — the three-legged calibration scorer** (`#312`): behavioral / semantic / reference grades that are **NEVER blended** — each leg stands alone; the behavioral leg is the only authority on "does it pass the issue's tests."
+- **W3 — trajectory + friction capture** (`#313`): a `claude -p` stream-json trajectory + the `resolution_friction` map (report-only).
+- **W4 — the recall-graph populator** (`#314`): leg-B-gated worked-example nodes (no weight field; `provenance` in the content-address) + the cross-issue friction aggregate + the judge's own precision/recall. The **OQ-7 physical firewall**: bootcamp nodes are provenance-tagged `backtest`, live in a physically separate `recall-graph-backtest/` store, and are provenance-rejected + content-verified on read — a future live retriever can never reach them.
+
+**The phase-close** (`#315`): 3-lens unanimous CLOSEABLE-WITH-NOTES. The producer-side machinery is complete + dogfood-proven, but the *populated artifacts* are INSUFFICIENT-N by construction on the seed corpus (disclosed, not over-claimed). The gate caught a cross-PR integration default (the runner defaulted `tierOf` to `unknown`, populating zero nodes by default — masked by both inline dogfoods passing tier explicitly).
+
+**The v3.9.x real-end-to-end proof** (`#316`): the bootcamp run end-to-end on a **real** resolved issue (more-itertools, post-cutoff, zero-dep) — a blind actor recreated a *divergent-but-valid* fix that passed the issue's tests in the real sandbox → the first real worked-example node. Adds `pytest-runner.js` (the per-framework runner: an in-process `pytest.main` wrapper with `TMPDIR`/`--basetemp` redirected into the sandbox's one write-allowed dir) and the **retirement lifecycle** (`provenance=backtest` + a `recorded_at` stamp + `retireBacktestNodes` — these scaffolding nodes are prunable once external trust accrues).
+
+**Discipline** (`#317`): promoted the phase's strongest lesson to an always-on rule — *a green mock/unit suite is a hypothesis about the path it mocks; a live dogfood on the real path gates any "it works" claim* (it recurred three times in v3.9 — each time a bug lived in the real path the unit suite had mocked).
+
+---
+
 ## [3.8.0] — 2026-06-12 — v3.8 Un-darken the advisory/recall loops + the binding graduation gates
 
 **Minor release** (additive — the v3.x advisory substrate un-darkened to CLI/dogfood surfaces + the USER-#250 binding pre-kernel-gate graduation set; ALL **shadow** — the fail-closed gating consumer is v3.9; no breaking kernel/runtime change. `.claude-plugin/plugin.json` `3.7.0 → 3.8.0`). Ships **v3.8** — phase-closed 2026-06-12 (3-lens CLOSEABLE-WITH-NOTES, all notes folded; [`docs/ROADMAP.md`](docs/ROADMAP.md) + the `phase-close/v3.8-close` library volume). Built as two arcs: **v3.8a** (mechanical, narrowing-safe un-darkening) + **v3.8b** (the binding pre-kernel-gate graduation work).

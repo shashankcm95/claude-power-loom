@@ -6,7 +6,7 @@
 >
 > **It makes long-horizon agent failures cheap, observable, and reversible. It does _not_ make the underlying LLM smarter.** That honesty is the project's design anchor.
 
-[![CI](https://github.com/shashankcm95/claude-power-loom/actions/workflows/ci.yml/badge.svg)](https://github.com/shashankcm95/claude-power-loom/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Phase](https://img.shields.io/badge/substrate-v3.8%20(un--darken%20%2B%20graduation%20gates)-orange.svg)](docs/ROADMAP.md) [![Plugin](https://img.shields.io/badge/Claude_Code-plugin_3.8.0-orange.svg)](.claude-plugin/plugin.json)
+[![CI](https://github.com/shashankcm95/claude-power-loom/actions/workflows/ci.yml/badge.svg)](https://github.com/shashankcm95/claude-power-loom/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Phase](https://img.shields.io/badge/substrate-v3.9%20(calibration%20bootcamp)-orange.svg)](docs/ROADMAP.md) [![Plugin](https://img.shields.io/badge/Claude_Code-plugin_3.9.0-orange.svg)](.claude-plugin/plugin.json)
 
 ---
 
@@ -81,7 +81,7 @@ CI re-runs it on every push. The documented workflow (and how to opt in for real
 
 ## Status
 
-Distributed as a **Claude Code plugin**, now at **v3.8.0**. The v3.x line is the kernel + runtime + Evolution Lab substrate; v3.1.0 was its first published cut (the prior published line was v2.9.x). Nine phases are complete:
+Distributed as a **Claude Code plugin**, now at **v3.9.0**. The v3.x line is the kernel + runtime + Evolution Lab substrate; v3.1.0 was its first published cut (the prior published line was v2.9.x). Ten phases are complete:
 
 | Phase | What shipped | Closed |
 |---|---|---|
@@ -93,9 +93,10 @@ Distributed as a **Claude Code plugin**, now at **v3.8.0**. The v3.x line is the
 | v3.5 — Memory Manage-Layer | the manage layer over memory + the typed causal-edge graph (destructive ops recorded-not-executed) | 2026-06-08 |
 | v3.6 — Destructive-manage enforcement | **leave-shadow event #1**: a human-approved proposal → a committed kernel TOMBSTONE/SUPERSEDE (opt-in, breaker-bounded) | 2026-06-10 |
 | v3.7 — Delta-promote activation | **the trust system's first producer**: the reject-event ledger at the integrator + the documented, demo-proven human-gated promote workflow | 2026-06-11 |
-| v3.8 — Un-darken + binding graduation gates | the advisory/recall loops un-darkened (the reject-event **breaker source**, route-decide dictionary, recall-suppression view, verdict-routine convention) + the USER-binding pre-kernel-gate set: E11 graduation gates (dedup-by-subject + source-validation + hysteresis latch), A6 snapshot-provenance (the witness ledger), and the OQ-21 rung-2 real-LLM calibration — all **shadow**, the gating consumer is v3.9 | 2026-06-12 |
+| v3.8 — Un-darken + binding graduation gates | the advisory/recall loops un-darkened (the reject-event **breaker source**, route-decide dictionary, recall-suppression view, verdict-routine convention) + the USER-binding pre-kernel-gate set: E11 graduation gates (dedup-by-subject + source-validation + hysteresis latch), A6 snapshot-provenance (the witness ledger), and the OQ-21 rung-2 real-LLM calibration — all **shadow**, the gating consumer deferred to a later phase | 2026-06-12 |
+| v3.9 — Retrospective-calibration bootcamp | a **diagnostic** harness that grades the plugin against *already-resolved* OSS issues (problem-statement-only → blind attempt → grade-vs-accepted): the sealed issue-corpus, the `sandbox-exec` behavioral leg, the three-legged **never-blended** scorer, and the recall-graph populator + cross-issue friction map — **proven end-to-end on a real issue** (a divergent-but-valid fix, behaviorally graded; the first worked-example node). DIAGNOSTIC, not a trust score (a backtest narrows confidence; only a world-anchored live merge hardens it) | 2026-06-13 |
 
-**Next:** **v3.9 is the first live beta** (human-gated; routes around the ContainerAdapter) — it wires the fail-closed gating consumers the v3.8 machinery exposed and is the named decision point for whether human-gated promotion has a real consumer ([RFC §10](packages/specs/rfcs/2026-06-04-enforcing-vs-advisory-identity.md)). The full narrative lives in [`docs/ROADMAP.md`](docs/ROADMAP.md); what is dark/flag-gated and why in [`docs/ACTIVATION-LEDGER.md`](docs/ACTIVATION-LEDGER.md).
+**Next:** **v3.10** builds the recall-graph *retriever* — v3.9's bootcamp *populated* worked-example nodes but nothing *consumes* them yet — and moves toward the first **world-anchored live merges**, the only thing that *hardens* trust (a retrospective backtest only narrows it; [RFC §10](packages/specs/rfcs/2026-06-04-enforcing-vs-advisory-identity.md) remains the human-gated-promotion decision point). The full narrative lives in [`docs/ROADMAP.md`](docs/ROADMAP.md); what is dark/flag-gated and why in [`docs/ACTIVATION-LEDGER.md`](docs/ACTIVATION-LEDGER.md).
 
 Kernel-primitive status (details: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#kernel-primitives)):
 
