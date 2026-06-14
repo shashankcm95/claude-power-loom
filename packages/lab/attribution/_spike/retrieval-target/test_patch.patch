@@ -1,0 +1,22 @@
+commit ebb0f00dbc5affaf863a250094ae7ac160c35e7c
+Author: Kadir Can Ozden <101993364+bysiber@users.noreply.github.com>
+Date:   Fri Feb 20 18:13:09 2026 +0300
+
+    Add test for slicing negative-step numeric_range
+
+diff --git a/tests/test_more.py b/tests/test_more.py
+index 175d368..2e0cc06 100644
+--- a/tests/test_more.py
++++ b/tests/test_more.py
+@@ -2855,6 +2855,11 @@ class NumericRangeTests(TestCase):
+             ((1.0, 9.0, 1.5), slice(-10, None, 3), (1.0, 9.0, 4.5)),
+             ((1.0, 9.0, 1.5), slice(None, -10, 3), (1.0, 1.0, 4.5)),
+             ((1.0, 9.0, 1.5), slice(None, 10, 3), (1.0, 9.0, 4.5)),
++            (
++                (10.0, 0.0, -2.0),
++                slice(None, None, -1),
++                (2.0, 12.0, 2.0),
++            ),
+             (
+                 (Decimal("1.0"), Decimal("9.0"), Decimal("1.5")),
+                 slice(1, -1, None),

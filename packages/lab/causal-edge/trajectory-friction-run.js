@@ -59,12 +59,21 @@ function parseStreamJson(stdout) {
 // an empty trajectory (never a fabricated one).
 // --------------------------------------------------------------------------
 
-function runActorTrajectory({ record, claudeBin, model = DEFAULT_MODEL, timeout = DEFAULT_TIMEOUT_MS, cwd, allowedTools = ['Read', 'Grep', 'Glob', 'Edit', 'Write', 'Bash'] } = {}) {
+// Build the actor prompt PURELY (exported so an A/B can prove both arms share it). The #78
+// retrieval test injects a retrieved example via `extraContext`, appended AFTER the ISSUE block so
+// the ONLY cross-arm difference is that block; the graded `record` is untouched (grading stays blind).
+function buildActorPrompt(record, extraContext) {
+  const pub = splitRecord(record).public;
+  let prompt = 'You are resolving a software issue in the repository at the current working directory. '
+    + 'Investigate and apply a fix. Do NOT invent a reference solution.\n\nISSUE:\n' + JSON.stringify(pub);
+  if (extraContext) prompt += `\n\n${String(extraContext)}`;
+  return prompt;
+}
+
+function runActorTrajectory({ record, claudeBin, model = DEFAULT_MODEL, timeout = DEFAULT_TIMEOUT_MS, cwd, allowedTools = ['Read', 'Grep', 'Glob', 'Edit', 'Write', 'Bash'], extraContext = null } = {}) {
   const bin = claudeBin === undefined ? resolveClaude() : claudeBin;
   if (!bin) return { ok: false, reason: 'actor-unavailable', events: [] };
-  const pub = splitRecord(record).public;
-  const prompt = 'You are resolving a software issue in the repository at the current working directory. '
-    + 'Investigate and apply a fix. Do NOT invent a reference solution.\n\nISSUE:\n' + JSON.stringify(pub);
+  const prompt = buildActorPrompt(record, extraContext);
   const args = ['-p', '--output-format', 'stream-json', '--verbose', '--model', model, '--allowedTools', allowedTools.join(',')];
   let res;
   try { res = spawnSync(bin, args, { cwd, input: prompt, shell: false, timeout, encoding: 'utf8', maxBuffer: MAX_BUFFER }); }
@@ -126,6 +135,6 @@ function makeFrictionLabeler({ bin = resolveClaude(), timeout = 60000 } = {}) {
 }
 
 module.exports = {
-  runActorTrajectory, parseStreamJson, captureProcessGraph, makeFrictionLabeler, resolveClaude,
-  buildFrictionLabelerInput, detectRecallSmell,
+  runActorTrajectory, buildActorPrompt, parseStreamJson, captureProcessGraph, makeFrictionLabeler,
+  resolveClaude, buildFrictionLabelerInput, detectRecallSmell,
 };

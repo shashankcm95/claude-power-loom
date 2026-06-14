@@ -337,6 +337,6 @@ async function scoreIssueCalibration(records, attemptsPerIssue, legs, { tierOf, 
 
 module.exports = {
   scoreAttempt, scoreIssueCalibration, passAtK,
-  buildActorInput, parsePatchTouchedPaths,
+  buildActorInput, parsePatchTouchedPaths, rubricLeaks,
   WORKED_EXAMPLE_FIELDS,
 };
