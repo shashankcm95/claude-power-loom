@@ -30,7 +30,7 @@ Full 6-step procedure in [the skill](../library/phase-close/SKILL.md). Summary:
 
 1. Establish the phase scope — quote its exit criteria; assemble the cross-PR picture (spanning contracts, deferred items, deployment state).
 2. Spawn the 3 read-only lenses in parallel, framed *"what's true ACROSS these PRs that no single PR's review could verify?"*
-3. Aggregate → CLOSEABLE / NEEDS-WORK (any substantive NEEDS-WORK gates the next phase).
+3. Aggregate → CLOSEABLE / NEEDS-WORK (any substantive NEEDS-WORK gates the next phase). **PLUS the deterministic release-surface gate (3a):** if the phase shipped code, the version bump is part of closing — run `node scripts/validate-release-surface.js --phase <id>` against the bumped tree; a FAIL ("reads 3.(N-1) but closing 3.N") is a blocking NEEDS-WORK (`--allow-unbumped` for a docs-only phase). Catches the stale-version-surface class that slipped at v3.7/v3.8.
 4. Write the phase-close record (`## Phase-close sign-off` in `docs/ROADMAP.md` + a `toolkit/phase-close` library volume).
 5. Feed the ghost-protocol effectiveness loop (`improvement-effectiveness:phase-close` when it catches fresh cross-PR drift).
 6. Surface the verdict; the user closes at their gate.

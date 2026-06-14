@@ -26,7 +26,7 @@ VALIDATE cannot, *by construction*:
 - A single PR or a sub-wave (the per-wave VALIDATE already covers that — do NOT re-litigate per-PR diffs here).
 - A phase with no integration surface (one-PR phases).
 
-## Procedure (6 steps)
+## Procedure (6 steps + the deterministic release-surface gate at 3a)
 
 ### 1. Establish the phase scope
 
@@ -70,6 +70,35 @@ Phase is **CLOSEABLE** iff all three return CLOSEABLE (or NEEDS-WORK with only d
 Any code/contract NEEDS-WORK → the must-fix items **gate the next phase** (surface them; they are the
 next phase's first work). Do NOT auto-close a phase over a substantive NEEDS-WORK.
 
+### 3a. Release-surface gate (deterministic — the 4th CLOSEABLE input)
+
+Beyond the three lenses, the phase is CLOSEABLE only if the **release version surface** matches the phase
+being shipped. The plugin version is repeated across FOUR files that must move together — `.claude-plugin/plugin.json`,
+the README badges + status line, the `CHANGELOG.md` top entry, and the `docs/ARCHITECTURE.md` watermark.
+(`docs/SIGNPOST.md` per-module stamps are a SEPARATE surface owned by the `generate-signpost --check` gate;
+`marketplace.json` has no version field; `docs/ROADMAP.md` is the record surface, not a release surface.)
+The bump is **part of closing**, not a later follow-up:
+
+1. If the phase shipped any user-relevant change (new/changed code under `packages/**`, `agents/**`, `hooks`,
+   or the manifest), **land the 4-file release bump as part of the close** — a `release(vX.Y.0)` commit / PR
+   cut as the closing act (the v3.8.0 release `30d642e` is the canonical 4-file template).
+2. Then run the deterministic gate against the bumped tree:
+
+   ```bash
+   node scripts/validate-release-surface.js --phase <id>   # e.g. --phase v3.9
+   ```
+
+   - **PASS** → the surface is consistent and names the phase; proceed.
+   - **FAIL** ("reads 3.(N-1) but closing 3.N") → a **blocking NEEDS-WORK**: the phase is NOT closeable
+     until the bump lands. This is the deterministic catch for the stale-version-surface class that slipped
+     at the v3.7/v3.8 boundaries (changed shipped code, forgot the bump) — do not hand-wave past it.
+   - A genuinely docs/process-only phase that ships nothing user-relevant passes `--allow-unbumped` (the
+     explicit human override — the version correctly holds; the gate records the deliberate N/A).
+
+The phase-independent `--check` of this same gate runs on every push (drift-gate Test 124), so a *partial*
+bump (plugin.json moved, README forgotten) is caught even outside a phase close. The check is deterministic,
+so it does not depend on a lens *noticing* the stale surface.
+
 ### 4. Write the phase-close record
 
 Append a `## Phase-close sign-off (<phase>, <date>)` block to `docs/ROADMAP.md` (matching the v3.1
@@ -105,10 +134,17 @@ auto-fired). So:
   (3+) `/self-improve` surfaces it.
 - This makes skipping the gate **visible and tracked** — NOT a hard block.
 
-**Hard enforcement** (e.g. a kernel PreToolUse hook that refuses a plugin-manifest version bump unless a
-phase-close record exists) is a deliberate FUTURE escalation — a kernel-hook change, not a ghost-protocol
-edit. Do not describe the current tie-in as hook-enforced; it is a tracked advisory monitor, consistent
-with the toolkit's enforced (hooks) vs best-effort (rules/skills/ghost) split.
+The **release-surface gate (3a)** is a partial, deterministic realization of this: its `--check` mode runs
+in the always-on pre-push + CI smoke (drift-gate Test 124), so a *partial* version bump is caught un-skippably
+on every push — that part IS enforced, not advisory. What stays advisory is the *phase-equality* check
+(`--phase <id>` at close): it is a deterministic PASS/FAIL, but it only runs if the agent runs the skill, so
+it inherits the same "record-presence = forcing function" trust model as the rest of phase-close.
+
+**Fuller hard enforcement** (e.g. a CI gate that runs `--phase` automatically when a `release(vX.Y.0)` /
+`## [X.Y.0]` change lands, or a kernel PreToolUse hook keyed on the bump) is a deliberate FUTURE escalation —
+a CI/kernel change, not a ghost-protocol edit. Probe the harness capability before building on it (ADR-0012:
+a PreToolUse hook's `updatedInput` is inert on some surfaces). Do not describe the phase-equality tie-in as
+hook-enforced; it is a deterministic check run under a tracked advisory discipline.
 
 ## Trust model
 

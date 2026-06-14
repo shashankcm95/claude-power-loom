@@ -54,3 +54,21 @@ else
   echo "FAIL: contracts-validate reported violations — see output (exit $T123_EXIT)"
   failed=$((failed + 1))
 fi
+
+# Test 124: validate-release-surface --check — the plugin version is consistent across
+# its 4 release surfaces (plugin.json + README badges + CHANGELOG top + ARCHITECTURE
+# watermark). This is the always-on PARTIAL-bump catch: a release that bumps plugin.json
+# but forgets the README (or vice-versa) failed silently and only surfaced as a user's
+# "still says 3.8". `--check` is phase-independent (the phase-equality check lives in
+# /phase-close); it only asserts the surfaces agree with EACH OTHER, which holds in every
+# committed steady state between releases (CHANGELOG is bumped per-release, not per-wave).
+echo -n "  Test 124 (drift-gate: validate-release-surface --check — version consistent across the 4 release surfaces): "
+T124_EXIT=0
+T124_OUT=$(cd "$SCRIPT_DIR" && node scripts/validate-release-surface.js --check 2>&1) || T124_EXIT=$?
+if [ "$T124_EXIT" -eq 0 ]; then
+  echo "OK (version consistent across the 4 release surfaces)"
+  passed=$((passed + 1))
+else
+  echo "FAIL: release-surface drift — $T124_OUT (exit $T124_EXIT)"
+  failed=$((failed + 1))
+fi
