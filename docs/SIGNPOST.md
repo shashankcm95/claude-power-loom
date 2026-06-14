@@ -194,6 +194,8 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/lab/attribution/_spike/recall-graph-dogfood.js` - v3.9 W4 DOGFOOD — drives every NEW W4 path LIVE on the REAL filesystem + the REAL
 - `packages/lab/attribution/recall-graph-store.js` - v3.9 W4 — the per-node-file recall-graph store (the bootcamp's RETRIEVAL artifact
 - `packages/lab/attribution/recall-graph.js` - v3.9 W4 — the recall-graph populator.
+- `packages/lab/attribution/_spike/recall-retrieval-test.js` - v3.9.x #78 spike -- the recall-graph RETRIEVAL test (a v3.10-retriever spike, OUT of CI).
+- `packages/lab/attribution/_spike/retrieve.js` - v3.9.x #78 spike -- the MINIMAL lexical retriever for the recall-graph retrieval test.
 
 ### `lab/causal-edge/`
 
