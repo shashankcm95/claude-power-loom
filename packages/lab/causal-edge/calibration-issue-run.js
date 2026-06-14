@@ -121,18 +121,23 @@ const JUDGE_MODEL = 'claude-sonnet-4-6';
 function claudeOnce(bin, prompt, timeout) {
   if (!bin) return { ok: false, reason: 'judge-unavailable' };
   let res;
-  try { res = spawnSync(bin, ['-p', '--model', JUDGE_MODEL, prompt], { input: '', shell: false, timeout, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 }); }
+  // The prompt rides STDIN, not a trailing argv (CodeRabbit #316 + the W3 runner pattern).
+  // NOT a shell-injection fix — `shell:false` already passes argv straight to execve, never a
+  // shell — but ARG_MAX-robust for a large issue+patch prompt + consistent with
+  // trajectory-friction-run.js's claudeOnce.
+  try { res = spawnSync(bin, ['-p', '--model', JUDGE_MODEL], { input: prompt, shell: false, timeout, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 }); }
   catch { return { ok: false, reason: 'judge-unavailable' }; }
   if (res.error && res.error.code === 'ETIMEDOUT') return { ok: false, reason: 'timeout' };
   if (res.status !== 0) return { ok: false, reason: 'judge-unavailable' };
   let text = (res.stdout || '').trim();
   if (!text) return { ok: false, reason: 'empty' };
-  // Strip a leading/trailing markdown fence (```json ... ```): the REAL-E2E run surfaced
-  // that the blind judge wraps its JSON in a fence constantly, and a bare JSON.parse then
-  // fell back to harness_fallback on every fenced verdict (the W3 friction labeler already
-  // fence-strips; the leg-B/C judges did not). Mock judges return clean JSON, so the unit
-  // suite never caught it — only a real claude -p did.
-  const fence = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  // Strip a WHOLE-OUTPUT fence ONLY (start/end-anchored): the REAL-E2E run surfaced that the
+  // blind judge wraps its JSON in a ```json fence constantly + a bare JSON.parse fell back to
+  // harness_fallback on every fenced verdict (the leg-B/C judges lacked the fence-strip the W3
+  // labeler had). Anchored, NOT embedded (CodeRabbit #316 / the v3.8b calibration-run.js:69
+  // strict-WHOLE parser-differential defense): a model echoing a decoy fenced block amid wrapper
+  // prose must FAIL-CLOSED, never be parsed.
+  const fence = text.match(/^```[a-zA-Z0-9]*\r?\n([\s\S]*?)\r?\n?```$/);
   if (fence) text = fence[1].trim();
   try { return { ok: true, obj: JSON.parse(text) }; } catch { return { ok: false, reason: 'parse-failure' }; }
 }

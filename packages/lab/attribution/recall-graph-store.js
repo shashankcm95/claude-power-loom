@@ -105,14 +105,19 @@ function retireBacktestNodes({ dir, before } = {}) {
   const d = dir || DEFAULT_DIR;
   let entries;
   try { entries = fs.readdirSync(d); } catch { return { retired: 0, kept: 0 }; }
+  // TEMPORAL compare, not raw string ordering (CodeRabbit #316): ISO timestamps with different
+  // formats (e.g. a +HH:MM offset vs Z) sort wrong lexically. Parse to epoch ms. A bad/unparseable
+  // `before` retires NOTHING (fail-safe — a typo'd cutoff must not wipe the store).
+  const beforeMs = before ? Date.parse(before) : NaN;
   let retired = 0; let kept = 0;
   for (const name of entries) {
     if (!name.endsWith('.json')) continue;
     const node = loadNode(name.slice(0, -'.json'.length), { dir: d });
     if (!node) { kept += 1; continue; }                            // foreign/tampered — not ours to prune
-    // no `before` => retire all; else retire only nodes datable as older than the cutoff
-    // (a node with no recorded_at is KEPT under a date-based retire — never retire what you can't date).
-    const drop = !before || (typeof node.recorded_at === 'string' && node.recorded_at < before);
+    // no `before` => retire all; else retire only nodes datable as older than the cutoff (a node
+    // whose recorded_at is missing/unparseable is KEPT — never retire what you can't date).
+    const recordedMs = typeof node.recorded_at === 'string' ? Date.parse(node.recorded_at) : NaN;
+    const drop = !before || (Number.isFinite(beforeMs) && Number.isFinite(recordedMs) && recordedMs < beforeMs);
     if (drop) { try { fs.rmSync(path.join(d, name)); retired += 1; } catch { kept += 1; } }
     else kept += 1;
   }
