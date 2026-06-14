@@ -39,6 +39,11 @@ const FIX = path.join(__dirname, 'retrieval-target');
 const out = (s) => process.stdout.write(`${s}\n`);
 function git(args, cwd) { return execFileSync('git', args, { cwd, encoding: 'utf8', timeout: 180000 }); }
 
+// MODULE-scope so BOTH the in-run aborts AND the outer .catch (an UNEXPECTED throw, incl. a failed
+// mirror clone) clean the cache temp dir -- the CodeRabbit + VALIDATE leak finding, fully closed.
+let cache = null;
+const cleanupCache = () => { if (cache) { try { fs.rmSync(cache, { recursive: true, force: true }); } catch { /* best-effort */ } } };
+
 // --- the SOURCE node (+ an AUTHORED strategy_note -- the Option-B augmentation: the real node
 // schema carries NO strategy text, so this is what a v3.10 retriever WOULD have to surface). The
 // note is strategy-only: no `slice.indices()`, no `__getitem__`, no fix -- guarded by F6 below. ---
@@ -102,19 +107,18 @@ function wilson(passes, n, z = 1.96) {
   if (!backend.attest().attested) { out('NO sandbox -- abort'); process.exit(1); }
 
   // 0. local mirror once, so the ~2K actor+grader clones are fast + offline.
-  const cache = fs.mkdtempSync(path.join(os.tmpdir(), 'loom-mit-cache-'));
+  cache = fs.mkdtempSync(path.join(os.tmpdir(), 'loom-mit-cache-'));
   out('--- cloning a local mirror (so per-sample clones are local, not network) ---');
   git(['clone', '--quiet', REPO, cache]);
   // NB: the ACTOR clones from this local cache (fast); the GRADE (behavioral leg) does NOT get a
   // repo_local -> it clones from `target.repo` (the URL), because the W1 sandbox blocks reads of an
   // arbitrary /tmp path (sandbox report: net+homeWrite EPERM). Probed: URL grade -> PASS; cache -> fallback.
-  const cleanup = () => { try { fs.rmSync(cache, { recursive: true, force: true }); } catch { /* best-effort */ } };
 
   // 1. RETRIEVE the prior example for the target (over source + distractors). Print the full vector.
   out('\n--- retrieval (the query = the target title; matched on repo + issue slug) ---');
   const { top, ranked } = retrieve({ repo: target.repo, title: TARGET_TITLE }, [...DISTRACTORS, SOURCE]);
   for (const r of ranked) out(`  ${r.score.toFixed(3)}  shared=[${r.shared.join(',')}]  ${r.node._title}`);
-  if (!top || top.node !== SOURCE) { out('\nretriever did NOT surface the source -- abort (the premise failed)'); cleanup(); process.exit(1); }
+  if (!top || top.node !== SOURCE) { out('\nretriever did NOT surface the source -- abort (the premise failed)'); cleanupCache(); process.exit(1); }
   out(`  -> retrieved: "${top.node._title}" (score ${top.score.toFixed(3)})`);
 
   // 2. render the TREATMENT block from the retrieved node's strategy_note, then LEAK-GUARD it (F6).
@@ -122,14 +126,14 @@ function wilson(passes, n, z = 1.96) {
     + `repository you previously resolved a related issue, graded BEHAVIORAL_PASS. The approach that worked: ${top.node.strategy_note}`;
   if (rubricLeaks({ block: treatmentBlock }, target.accepted_diff)) {
     out('\nABORT (F6): the rendered treatment block shares a >=12-char run with the target accepted_diff -- it leaks the answer.');
-    cleanup(); process.exit(1);
+    cleanupCache(); process.exit(1);
   }
   out('\n--- leak guard (F6): treatment block shares no >=12-char run with the target fix -> PASS ---');
 
   // 3. print both arms' prompts + assert the only diff is the example block (F4).
   const ctrlPrompt = buildActorPrompt(target);
   const treatPrompt = buildActorPrompt(target, treatmentBlock);
-  if (treatPrompt !== `${ctrlPrompt}\n\n${treatmentBlock}`) { out('ABORT (F4): arms differ by more than the example block'); cleanup(); process.exit(1); }
+  if (treatPrompt !== `${ctrlPrompt}\n\n${treatmentBlock}`) { out('ABORT (F4): arms differ by more than the example block'); cleanupCache(); process.exit(1); }
   out('\n--- CONTROL prompt ---'); out(ctrlPrompt);
   out('\n--- TREATMENT prompt (= control + the block; F4 asserted) ---'); out(`...<control>...\n\n${treatmentBlock}`);
 
@@ -171,7 +175,7 @@ function wilson(passes, n, z = 1.96) {
   out(`  treatment: ${tPass}/${res.treatment.length} pass  Wilson95=[${tW[0].toFixed(2)}, ${tW[1].toFixed(2)}]`);
   out(`  intervals ${overlap ? 'OVERLAP -> consistent with no effect at this n (mechanism demonstrated; power deferred to the 20-30 batch)' : 'are DISJOINT -> a directional signal at this n (still n=1 target; not a trust score)'}`);
 
-  cleanup();
+  cleanupCache();
   out('\n=== #78 A/B complete ===');
   process.exit(0);
-})().catch((e) => { out(`SPIKE THREW: ${e.stack}`); process.exit(1); });
+})().catch((e) => { out(`SPIKE THREW: ${e.stack}`); cleanupCache(); process.exit(1); });
