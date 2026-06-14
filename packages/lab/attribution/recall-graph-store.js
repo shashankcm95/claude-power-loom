@@ -68,21 +68,55 @@ function writeNode(node, opts = {}) {
   if (!verifyNode(node, node.node_id)) return { ok: false, reason: 'self-inconsistent' };
   const dir = storeDir(opts);
   const file = path.join(dir, `${node.node_id}.json`);
+  // RETIREMENT-LIFECYCLE stamp: `recorded_at` (first-population time) is a TOP-LEVEL field
+  // OUTSIDE the content-hashed worked_example_ref + the node_id basis, so it never affects
+  // dedup/content-verify — it only supports age/date-based retirement of these SCAFFOLDING
+  // nodes once external trust accrues. Injectable `now` for deterministic tests.
+  const stored = { ...node, recorded_at: opts.now || new Date().toISOString() };
   // Dedup is content-AWARE, not bare file-existence (VALIDATE-hacker LOW: a squatted/
   // truncated stub must not silently drop the real node while reporting ok:true). On an
-  // existing-file hit: if it reads back as a VALID node, genuine first-eligible-wins; if
-  // it is unverifiable garbage (a squat or a crash-truncated write), REPAIR by overwriting.
+  // existing-file hit: if it reads back as a VALID node, genuine first-eligible-wins (its
+  // ORIGINAL recorded_at is kept — age = since FIRST populated); if it is unverifiable
+  // garbage (a squat or a crash-truncated write), REPAIR by overwriting.
   if (fs.existsSync(file)) {
     if (loadNode(node.node_id, opts) != null) return { ok: true, deduped: true, node_id: node.node_id };
-    try { writeAtomicString(file, `${JSON.stringify(node, null, 2)}\n`); }
+    try { writeAtomicString(file, `${JSON.stringify(stored, null, 2)}\n`); }
     catch (e) { return { ok: false, reason: 'write-failed', error: e.message }; }
     return { ok: true, deduped: false, repaired: true, node_id: node.node_id };
   }
   try {
     fs.mkdirSync(dir, { recursive: true });
-    writeAtomicString(file, `${JSON.stringify(node, null, 2)}\n`);
+    writeAtomicString(file, `${JSON.stringify(stored, null, 2)}\n`);
   } catch (e) { return { ok: false, reason: 'write-failed', error: e.message }; }
   return { ok: true, deduped: false, node_id: node.node_id };
+}
+
+// --------------------------------------------------------------------------
+// retireBacktestNodes — the RETIREMENT lifecycle (USER 2026-06-13). Bootcamp nodes are
+// SCAFFOLDING (provenance='backtest', physically separate, recorded_at-stamped). Once
+// EXTERNAL trust accrues (a v3.10+ world-anchored live merge — OQ-NS-6: only that
+// HARDENS), retire them: ALL (no `before`), or only those populated before an ISO `before`
+// cutoff (age-based). Only OUR OWN verified backtest nodes are prunable — a foreign /
+// tampered file is left untouched. A consumer that prefers DOWN-WEIGHT over delete can
+// instead just rank `provenance==='backtest'` below live nodes (the tag is the differentiator).
+// --------------------------------------------------------------------------
+
+function retireBacktestNodes({ dir, before } = {}) {
+  const d = dir || DEFAULT_DIR;
+  let entries;
+  try { entries = fs.readdirSync(d); } catch { return { retired: 0, kept: 0 }; }
+  let retired = 0; let kept = 0;
+  for (const name of entries) {
+    if (!name.endsWith('.json')) continue;
+    const node = loadNode(name.slice(0, -'.json'.length), { dir: d });
+    if (!node) { kept += 1; continue; }                            // foreign/tampered — not ours to prune
+    // no `before` => retire all; else retire only nodes datable as older than the cutoff
+    // (a node with no recorded_at is KEPT under a date-based retire — never retire what you can't date).
+    const drop = !before || (typeof node.recorded_at === 'string' && node.recorded_at < before);
+    if (drop) { try { fs.rmSync(path.join(d, name)); retired += 1; } catch { kept += 1; } }
+    else kept += 1;
+  }
+  return { retired, kept };
 }
 
 // --------------------------------------------------------------------------
@@ -111,4 +145,4 @@ function listNodes(opts = {}) {
   return out;
 }
 
-module.exports = { writeNode, loadNode, listNodes, DEFAULT_DIR };
+module.exports = { writeNode, loadNode, listNodes, retireBacktestNodes, DEFAULT_DIR };

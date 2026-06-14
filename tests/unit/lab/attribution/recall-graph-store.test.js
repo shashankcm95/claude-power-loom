@@ -9,7 +9,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { buildWorkedExampleNode } = require('../../../../packages/lab/attribution/recall-graph');
-const { writeNode, loadNode, listNodes } = require('../../../../packages/lab/attribution/recall-graph-store');
+const { writeNode, loadNode, listNodes, retireBacktestNodes } = require('../../../../packages/lab/attribution/recall-graph-store');
 
 let passed = 0;
 function test(name, fn) { fn(); passed += 1; }
@@ -126,6 +126,39 @@ test('listNodes: skips a tampered file, returns the valid ones, all frozen', () 
   assert.strictEqual(nodes.length, 1, 'the tampered node is skipped');
   assert.strictEqual(nodes[0].node_id, good.node_id);
   assert.ok(Object.isFrozen(nodes[0]));
+});
+
+test('recorded_at stamp — present on read-back, OUTSIDE the content-hash (content-verify still passes)', () => {
+  const dir = tmp();
+  const node = buildWorkedExampleNode(attempt());
+  writeNode(node, { dir, now: '2026-06-13T00:00:00.000Z' });
+  const back = loadNode(node.node_id, { dir });
+  assert.strictEqual(back.recorded_at, '2026-06-13T00:00:00.000Z', 'recorded_at is stamped + read back');
+  assert.strictEqual(back.content_hash, node.content_hash, 'recorded_at does not change content_hash (outside the hashed body)');
+  // a re-run dedups -> the ORIGINAL recorded_at is kept (age = since first populated)
+  const w2 = writeNode(node, { dir, now: '2027-01-01T00:00:00.000Z' });
+  assert.strictEqual(w2.deduped, true);
+  assert.strictEqual(loadNode(node.node_id, { dir }).recorded_at, '2026-06-13T00:00:00.000Z', 'dedup keeps the first recorded_at');
+});
+
+test('retireBacktestNodes — retire ALL, retire-by-date, and never touch a foreign file', () => {
+  const dir = tmp();
+  const a = buildWorkedExampleNode(attempt({ reference: ref({ candidate_patch_ref: 'aaaa000000000001' }) }));
+  const b = buildWorkedExampleNode(attempt({ reference: ref({ candidate_patch_ref: 'bbbb000000000002' }) }));
+  writeNode(a, { dir, now: '2026-01-01T00:00:00.000Z' });           // old
+  writeNode(b, { dir, now: '2026-12-01T00:00:00.000Z' });           // new
+  fs.writeFileSync(path.join(dir, 'foreign.json'), '{"not":"ours"}'); // a foreign file
+  // retire-by-date: only the OLD node before the cutoff
+  const r1 = retireBacktestNodes({ dir, before: '2026-06-01T00:00:00.000Z' });
+  assert.strictEqual(r1.retired, 1, 'only the pre-cutoff node retired');
+  assert.ok(loadNode(b.node_id, { dir }), 'the newer node survives the date-based retire');
+  assert.ok(!loadNode(a.node_id, { dir }), 'the older node is gone');
+  assert.ok(fs.existsSync(path.join(dir, 'foreign.json')), 'a foreign file is NEVER pruned (not ours)');
+  // retire ALL (no before) clears the remaining backtest node, still spares the foreign file
+  const r2 = retireBacktestNodes({ dir });
+  assert.strictEqual(r2.retired, 1);
+  assert.strictEqual(listNodes({ dir }).length, 0, 'all bootcamp nodes retired');
+  assert.ok(fs.existsSync(path.join(dir, 'foreign.json')), 'foreign file still untouched');
 });
 
 console.log(`recall-graph-store.test.js: ${passed} passed`);
