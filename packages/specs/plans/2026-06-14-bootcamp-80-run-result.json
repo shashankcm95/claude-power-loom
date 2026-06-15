@@ -1,0 +1,234 @@
+[
+  {
+    "fix": "edb3346f835ca917efbfda5e2d6664ab952da369",
+    "id": "more-itertools__empty-range-numeric-reversed",
+    "bucket": "lt1hr",
+    "actor": "ok",
+    "behavioral": "BEHAVIORAL_PASS",
+    "eligible": true,
+    "node": {
+      "node_id": "9e62a6aab244",
+      "deduped": false
+    },
+    "secs": 91
+  },
+  {
+    "fix": "3bbe636e23bdfa359d80e6851e0c37abbc860d4c",
+    "id": "more-itertools__merge-pull-request-1128-bysiber-numeric-range-negative-step-slice",
+    "bucket": "1to4hr",
+    "actor": "ok",
+    "behavioral": "BEHAVIORAL_PASS",
+    "eligible": true,
+    "node": {
+      "node_id": "707e03587e09",
+      "deduped": false
+    },
+    "secs": 243
+  },
+  {
+    "fix": "ba6803d57179a4b026c8ed51d970156653153b62",
+    "id": "parse__microsecond-precision-loss-timestamp-parsing",
+    "bucket": "lt1hr",
+    "actor": "ok",
+    "behavioral": "BEHAVIORAL_PASS",
+    "eligible": true,
+    "node": {
+      "node_id": "bd7446bcc919",
+      "deduped": false
+    },
+    "secs": 153
+  },
+  {
+    "fix": "be5793a55f58ee29521d8cbc9f14019f5833454e",
+    "id": "more-itertools__two-repeat-iterator-argument",
+    "bucket": "lt1hr",
+    "actor": "ok",
+    "behavioral": "BEHAVIORAL_PASS",
+    "issue_tests": "PASS",
+    "outcome_source": "model",
+    "eligible": true,
+    "node": "683fd9be072c",
+    "secs": 188
+  },
+  {
+    "fix": "71b46b06fb48abcd2f7a26d74c148a650d340386",
+    "id": "more-itertools__issue-1057-raise-exception-invalid-size-windowed",
+    "bucket": "lt1hr",
+    "actor": "ok",
+    "behavioral": "BEHAVIORAL_PASS",
+    "eligible": true,
+    "node": {
+      "node_id": "6c5fa2799ae1",
+      "deduped": false
+    },
+    "secs": 57
+  },
+  {
+    "fix": "def2d821c0a15ede86578660e7dc48e44bad9579",
+    "id": "more-itertools__simplify-nth-permutation-incorrect-exception",
+    "bucket": "lt1hr",
+    "actor": "ok",
+    "behavioral": "BEHAVIORAL_PASS",
+    "issue_tests": "PASS",
+    "outcome_source": "model",
+    "eligible": true,
+    "node": "2641da6ffe37",
+    "secs": 143
+  },
+  {
+    "fix": "06f31819121eb0620d3165fda73a44cbf71b140d",
+    "id": "more-itertools__simplify-nth-combination-replacement-incorrect-exception",
+    "bucket": "lt1hr",
+    "actor": "ok",
+    "behavioral": "BEHAVIORAL_PASS",
+    "issue_tests": "PASS",
+    "outcome_source": "model",
+    "eligible": true,
+    "node": "2c65d503ed23",
+    "secs": 169
+  },
+  {
+    "fix": "e4f76d5cc24c8dbd0e4f4be419deef06d2b36b7c",
+    "id": "wcwidth__bugfix-virama-width-capped-also-225",
+    "bucket": "lt1hr",
+    "actor": "ok",
+    "behavioral": "BEHAVIORAL_PASS",
+    "issue_tests": "PASS",
+    "outcome_source": "model",
+    "eligible": true,
+    "node": "ec90174ff895",
+    "secs": 307
+  },
+  {
+    "fix": "d0673488e389b36989f495d5006b78f0b9ff9527",
+    "id": "pyparsing__issue-633",
+    "bucket": "lt1hr",
+    "actor": "ok",
+    "behavioral": "BEHAVIORAL_PASS",
+    "issue_tests": "PASS",
+    "outcome_source": "model",
+    "eligible": false,
+    "node": null,
+    "secs": 459
+  },
+  {
+    "fix": "030b4b53a604e28553a677dcffd64d3f3cb6d64d",
+    "id": "wcwidth__bugfix-our-center-padding-algorithm-188",
+    "bucket": "lt1hr",
+    "actor": "ok",
+    "behavioral": "BEHAVIORAL_PASS",
+    "issue_tests": "PASS",
+    "outcome_source": "model",
+    "eligible": true,
+    "node": "b0e72dbbf09b",
+    "secs": 241
+  },
+  {
+    "fix": "226d03933595f8cfc1c26fa320d767f953d3b00f",
+    "id": "wcwidth__bugfix-textwrap-function-like-cpython-140627-170",
+    "bucket": "lt1hr",
+    "actor": "timeout",
+    "behavioral": "BEHAVIORAL_FAIL",
+    "issue_tests": "FAIL",
+    "outcome_source": "model",
+    "eligible": false,
+    "node": null,
+    "secs": 623
+  },
+  {
+    "fix": "e48109921916a6947c5a091b417d1730635e49ca",
+    "id": "wcwidth__width-default-ignorable-code-point-character-174",
+    "bucket": "lt1hr",
+    "actor": "ok",
+    "behavioral": "BEHAVIORAL_FAIL",
+    "issue_tests": "FAIL",
+    "outcome_source": "model",
+    "eligible": false,
+    "node": null,
+    "secs": 447
+  },
+  {
+    "fix": "17374731bcc404908726a65734f941d789f23a78",
+    "id": "boltons__cache-option-remap-research",
+    "bucket": "1to4hr",
+    "actor": "ok",
+    "behavioral": "BEHAVIORAL_PASS",
+    "issue_tests": "PASS",
+    "outcome_source": "model",
+    "eligible": false,
+    "node": null,
+    "secs": 497
+  },
+  {
+    "fix": "8089263d2374e121ecb8cfdef0f5664bab7bafb1",
+    "id": "more-itertools__issue-898-sync-recipe-main-docs-eliminate-quadratic-fallback",
+    "bucket": "1to4hr",
+    "actor": "ok",
+    "behavioral": "BEHAVIORAL_PASS",
+    "issue_tests": "PASS",
+    "outcome_source": "model",
+    "eligible": true,
+    "node": "530b2acfc68b",
+    "secs": 82
+  },
+  {
+    "fix": "35b9ffb355f94bc4cb781fbb3b0adff2232a5602",
+    "id": "parse__allow-grouping-char-decimal-format-string-221",
+    "bucket": "1to4hr",
+    "actor": "ok",
+    "behavioral": "BEHAVIORAL_PASS",
+    "issue_tests": "PASS",
+    "outcome_source": "model",
+    "eligible": false,
+    "node": null,
+    "secs": 259
+  },
+  {
+    "fix": "b1cdbdf4ba4785e1cc949c1bb5eb33b404690718",
+    "id": "wcwidth__bugfix-osc-hyperlink-broken-wrap-191",
+    "bucket": "1to4hr",
+    "actor": "ok",
+    "behavioral": "BEHAVIORAL_FAIL",
+    "issue_tests": "FAIL",
+    "outcome_source": "model",
+    "eligible": false,
+    "node": null,
+    "secs": 762
+  },
+  {
+    "fix": "4b1bbd73a6c6e1c3214b5bdbf394914bf4ce37f6",
+    "id": "wcwidth__bugfix-prepended-concatenation-mark-character-176",
+    "bucket": "1to4hr",
+    "actor": "ok",
+    "behavioral": "BEHAVIORAL_PASS",
+    "issue_tests": "PASS",
+    "outcome_source": "model",
+    "eligible": true,
+    "node": "7a4c5760488e",
+    "secs": 272
+  },
+  {
+    "fix": "7de2e9b0882c2494dc6a26d36f5f839314beed46",
+    "id": "wcwidth__bugfix-osc-hyperlink-broken-mid-text-wrap-193",
+    "bucket": "1to4hr",
+    "actor": "ok",
+    "behavioral": "BEHAVIORAL_FAIL",
+    "issue_tests": "FAIL",
+    "outcome_source": "model",
+    "eligible": false,
+    "node": null,
+    "secs": 714
+  },
+  {
+    "fix": "99e538b4b53ca01d1d1f3076394a5a089ad38a8f",
+    "id": "wcwidth__cap-grapheme-final-width-foot-ghostty-terminal-exe-224",
+    "bucket": "gt4hr",
+    "actor": "ok",
+    "behavioral": "BEHAVIORAL_FAIL",
+    "issue_tests": "FAIL",
+    "outcome_source": "model",
+    "eligible": false,
+    "node": null,
+    "secs": 1133
+  }
+]

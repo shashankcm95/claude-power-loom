@@ -43,7 +43,8 @@ const ALLOWED_CONTEXTS = [
   /training-vs-reliable/gi,
   /(?:model|reliable[- ]knowledge|data)\s+training/gi,
 ];
-const PROPOSED_W4_FIELDS = ['provenance', 'worked_example_ref', 'friction_map', 'judge_agreement', 'contaminated', 'friction_signature_ref'];
+const PROPOSED_W4_FIELDS = ['provenance', 'worked_example_ref', 'friction_map', 'judge_agreement', 'contaminated', 'friction_signature_ref',
+  'built_by', 'graded_by']; // v3.10-W0' net-new persona-provenance fields (M3: never assert pre-existing)
 const ASSERTED_EXISTING = /\b(already|pre-existing|preexisting|existing|present in the)\b/i;
 
 // The [start,end) spans on a line covered by an allow-context, so a learning-claim match

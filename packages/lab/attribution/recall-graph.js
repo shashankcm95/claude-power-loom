@@ -46,6 +46,51 @@ const NODE_TYPE = 'stochastic_sample';
 // DROPPED, never silently admitted (`unknown` is NOT clean). grey/stale also DROP.
 const CLEAN_FOR_RETRIEVAL = new Set(['clean-pending-probe', 'clean']);
 
+// --------------------------------------------------------------------------
+// v3.10-W0' — persona PROVENANCE tagging (built_by / graded_by). These are TOP-LEVEL
+// node fields, OUTSIDE the node_id basis and the content_hash (which cover only
+// worked_example_ref + provenance), so they never affect dedup/content-verify. They are
+// UNAUTHENTICATED provenance metadata: a faceless `claude -p` actor LABELED with an
+// intended persona, NOT a persona that actually ran, and NEVER a trust/authorization
+// input. The step-2 reputation lane must either fold them into the hash (so a forge is
+// rejected on read) or keep them out of every trust/ranking decision.
+// --------------------------------------------------------------------------
+const ROSTER_TOKEN = /^[a-z][a-z0-9-]{0,30}$/;                   // role / roster_name shape (no spaces/control chars/oversize)
+const ACTOR_KINDS = new Set(['claude_p', 'agent_spawn', 'root']);
+const UNATTRIBUTED = Object.freeze({ role: 'unattributed', roster_name: null, actor_kind: 'claude_p' });
+const UNATTRIBUTED_GRADERS = Object.freeze({ leg_b: null, leg_c: null });
+
+// VALIDATE-reviewer: an explicit typeof-string guard BEFORE the regex -- else `String(true)`
+// coerces to 'true' and a boolean role/roster_name false-accepts (the stored node would carry a
+// non-string, violating the contract).
+const isRosterStr = (v) => typeof v === 'string' && ROSTER_TOKEN.test(v);
+// VALIDATE-fold (CodeRabbit #322 Major): persona-validation throws carry a discriminable CODE so
+// populateRecallGraph can drop ONLY malformed-persona attempts and let any OTHER throw (e.g. the
+// canonicalJsonSerialize depth-bound guard) propagate -- never mislabel a structural failure as a
+// persona error or silently swallow it. A `.code` tag is robust where message-prefix matching is not.
+const PERSONA_ERR_CODE = 'PERSONA_TAG_INVALID';
+function personaError(msg) { const e = new Error(msg); e.code = PERSONA_ERR_CODE; return e; }
+function validatePersonaTag(tag, label) {                       // absent -> UNATTRIBUTED; malformed -> THROW (M3)
+  if (tag == null) return UNATTRIBUTED;
+  if (typeof tag !== 'object' || Array.isArray(tag)) throw personaError(`persona ${label}: must be a structured {role, roster_name, actor_kind}, got ${typeof tag}`);
+  if (!isRosterStr(tag.role)) throw personaError(`persona ${label}: bad role ${JSON.stringify(tag.role)}`);
+  if (!isRosterStr(tag.roster_name)) throw personaError(`persona ${label}: bad roster_name ${JSON.stringify(tag.roster_name)}`);
+  if (!ACTOR_KINDS.has(tag.actor_kind)) throw personaError(`persona ${label}: bad actor_kind ${JSON.stringify(tag.actor_kind)}`);
+  return Object.freeze({ role: tag.role, roster_name: tag.roster_name, actor_kind: tag.actor_kind });
+}
+function validateGraderTag(g, label) {                          // a single judge identity, or null
+  if (g == null) return null;
+  if (typeof g !== 'object' || Array.isArray(g)) throw personaError(`persona ${label}: grader must be {role, roster_name} or null`);
+  if (!isRosterStr(g.role)) throw personaError(`persona ${label}: bad grader role ${JSON.stringify(g.role)}`);
+  if (!isRosterStr(g.roster_name)) throw personaError(`persona ${label}: bad grader roster_name ${JSON.stringify(g.roster_name)}`);
+  return Object.freeze({ role: g.role, roster_name: g.roster_name });
+}
+function validateGraders(graded, label) {                       // absent -> UNATTRIBUTED_GRADERS; derived from the harness LEG-CONFIG (an OUTPUT label, never an input)
+  if (graded == null) return UNATTRIBUTED_GRADERS;
+  if (typeof graded !== 'object' || Array.isArray(graded)) throw personaError(`persona ${label}: graded_by must be {leg_b, leg_c}`);
+  return Object.freeze({ leg_b: validateGraderTag(graded.leg_b, `${label}.leg_b`), leg_c: validateGraderTag(graded.leg_c, `${label}.leg_c`) });
+}
+
 function sha256hex(s) { return crypto.createHash('sha256').update(s).digest('hex'); }
 
 // --------------------------------------------------------------------------
@@ -104,6 +149,9 @@ function buildWorkedExampleNode(attempt, { provenance = PROVENANCE } = {}) {
     provenance,
     contaminated: !CLEAN_FOR_RETRIEVAL.has(tierOf(attempt.reference)),
     friction_signature_ref: block ? frictionClusterKey(block) : null,
+    // v3.10-W0' persona PROVENANCE (top-level, outside both hashes, UNAUTHENTICATED — see above)
+    built_by: validatePersonaTag(attempt.built_by, 'built_by'),
+    graded_by: validateGraders(attempt.graded_by, 'graded_by'),
   });
 }
 
@@ -111,14 +159,24 @@ function populateRecallGraph(attempts, { provenance = PROVENANCE } = {}) {
   const list = Array.isArray(attempts) ? attempts : [];
   let n_eligible = 0;          // recall_eligible && reference present (pre-contamination)
   let n_dropped_contaminated = 0;
+  let n_dropped_malformed_persona = 0;
   const nodes = [];
   for (const a of list) {
     if (!a || a.recall_eligible !== true || a.reference == null) continue;
     n_eligible += 1;
     if (!CLEAN_FOR_RETRIEVAL.has(tierOf(a.reference))) { n_dropped_contaminated += 1; continue; }
-    nodes.push(buildWorkedExampleNode(a, { provenance }));
+    // VALIDATE-reviewer/hacker: a malformed built_by THROWS at the leaf (correct) but must NOT
+    // abort the whole batch -- drop THAT attempt + count, like the contamination drop above (one
+    // bad harness label can't zero a whole calibration run's retrieval nodes).
+    let node;
+    try { node = buildWorkedExampleNode(a, { provenance }); }
+    catch (e) {
+      if (e && e.code === PERSONA_ERR_CODE) { n_dropped_malformed_persona += 1; continue; } // drop ONLY a bad persona label
+      throw e;  // a structural failure (e.g. the canonical-depth guard) MUST surface -- never masquerade as persona-malformed
+    }
+    nodes.push(node);
   }
-  return { nodes, n_eligible, n_written: nodes.length, n_dropped_contaminated };
+  return { nodes, n_eligible, n_written: nodes.length, n_dropped_contaminated, n_dropped_malformed_persona };
 }
 
 // --------------------------------------------------------------------------
@@ -193,5 +251,6 @@ function computeJudgeAgreement(attempts, { minN = N_CLEAN_LARGE_MIN } = {}) {
 module.exports = {
   buildWorkedExampleNode, populateRecallGraph, aggregateFrictionMap, computeJudgeAgreement,
   deriveNodeId, computeContentHash, isEligibleForPopulation,
-  PROVENANCE, CLEAN_FOR_RETRIEVAL, NODE_TYPE,
+  validatePersonaTag, validateGraders,
+  PROVENANCE, CLEAN_FOR_RETRIEVAL, NODE_TYPE, UNATTRIBUTED, UNATTRIBUTED_GRADERS,
 };
