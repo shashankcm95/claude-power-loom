@@ -253,6 +253,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 
 ### `lab/persona-consumer/`
 
+- `packages/lab/persona-consumer/_spike/e7-live-dogfood.js` - v3.10-W1 E7 — the GATED live `claude -p` actor dogfood (existence-demo, run ONCE; OUT of CI).
 - `packages/lab/persona-consumer/hardening-signal-store.js` - v3.10-W1 — the MOCKED hardening-signal store (the consumer's MIRROR lane).
 - `packages/lab/persona-consumer/_spike/persona-consumer-round.js` - v3.10-W1 — the persona-consumer ROUND harness (a SPIKE, OUT of CI as a standalone; exercised by
 - `packages/lab/persona-consumer/recalibrate.js` - v3.10-W1 — the persona CONSUMER (pure).
