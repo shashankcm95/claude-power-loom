@@ -28,6 +28,11 @@
 
 const crypto = require('crypto');
 const { N_CLEAN_LARGE_MIN } = require('../issue-corpus/corpus');
+// v3.11 W1 — the closed-set key primitive now lives in a neutral _lib module shared
+// with the lesson key space (architect fold; a primitive feeding two one-way-door key
+// spaces must not live inside one of them). Behavior is byte-identical to the prior
+// local def (typeof-string guard before membership; off-enum -> INVALID).
+const { safeEnumKey } = require('../_lib/enum-key');
 
 const MAX_EMBEDDING_LEN = 4096;
 
@@ -305,7 +310,6 @@ function validateResolutionFriction(block) { return isValidResolutionFriction(bl
 // inject extra `|` separators via an object's toString or seat a poison token as a key
 // component. An off-enum/non-string field => the literal `INVALID` (a deterministic,
 // closed key component), never the attacker's bytes.
-function safeEnumKey(v, set) { return (typeof v === 'string' && set.includes(v)) ? v : 'INVALID'; }
 function frictionClusterKey(block) {
   return `${safeEnumKey(block.friction_class, FRICTION_CLASS)}|${safeEnumKey(block.friction_phase, FRICTION_PHASE)}|${safeEnumKey(block.detection_leg, DETECTION_LEG)}`;
 }

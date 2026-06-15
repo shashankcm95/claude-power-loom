@@ -36,6 +36,8 @@ const { ENUMS } = require('../issue-corpus/corpus');
 const { WORKED_EXAMPLE_FIELDS } = require('../causal-edge/calibration-issue');
 const { frictionClusterKey, clusterFriction, validateResolutionFriction } = require('../causal-edge/trajectory-friction');
 const { N_CLEAN_LARGE_MIN } = require('../issue-corpus/corpus');
+// v3.11 W1 — the FROZEN lesson key (Open/Closed; a NEW key, frictionClusterKey untouched).
+const { lessonClusterKey, TRIGGER_CLASS, GOTCHA_CLASS, CORRECTIVE_CLASS } = require('../causal-edge/lesson-signature');
 
 const PROVENANCE = ENUMS.provenance[0];                          // 'backtest' (W0 SHIPPED it; imported, never a literal)
 const NODE_TYPE = 'stochastic_sample';
@@ -136,11 +138,80 @@ function isEligibleForPopulation(attempt) {
   return CLEAN_FOR_RETRIEVAL.has(tierOf(attempt.reference));
 }
 
-function buildWorkedExampleNode(attempt, { provenance = PROVENANCE } = {}) {
+// --------------------------------------------------------------------------
+// v3.11 W1 — the LESSON layer (top-level node fields, OUTSIDE node_id + content_hash,
+// like built_by/recorded_at, so node_id stays PATCH-STABLE — a seedless `claude -p`
+// lesson_body must never change the node's identity or dedup breaks). The lesson layer
+// carries its OWN tamper-evidence: lesson_content_hash binds the leak-bearing fields,
+// and verifyNode re-derives lesson_signature from the block (a forged signature can not
+// outlive its body). The hash field-set is a SECOND one-way door — additive-only /
+// versioned (see lesson-taxonomy-freeze.md). friction_signature_ref is EXCLUDED
+// (re-derivable from the friction block). fail_to_pass is top-level but NOT hashed (the
+// W2 cross-run-join key, like recorded_at).
+// --------------------------------------------------------------------------
+
+const LESSON_HASH_FIELDS = Object.freeze(['lesson_signature', 'lesson_body', 'accepted_diff_ref', 'candidate_patch_sha']);
+const LESSON_ERR_CODE = 'LESSON_FIELDS_INVALID';
+function lessonError(msg) { const e = new Error(msg); e.code = LESSON_ERR_CODE; return e; }
+
+function computeLessonContentHash(node) {
+  const body = {};
+  for (const f of LESSON_HASH_FIELDS) body[f] = node[f] == null ? null : node[f];
+  return sha256hex(canonicalJsonSerialize(body));                 // canonical => key-order-independent
+}
+
+function lessonFieldsPresent(node) {
+  return node.lesson_signature != null || node.lesson_body != null
+    || node.accepted_diff_ref != null || node.candidate_patch_sha != null
+    || node.trigger_class != null || node.gotcha_class != null || node.corrective_class != null;
+}
+
+// 'absent' | 'valid' | 'invalid'. PRESENCE-CONDITIONAL (a lesson-LESS node must PASS).
+// "has a lesson layer" IFF lesson_content_hash present — so a strip-to-look-absent forge
+// (lesson fields present, hash stripped) is 'invalid', never silently downgraded to absent.
+function classifyLessonLayer(node) {
+  const hasHash = typeof node.lesson_content_hash === 'string' && /^[0-9a-f]{64}$/.test(node.lesson_content_hash);
+  if (!hasHash) return lessonFieldsPresent(node) ? 'invalid' : 'absent';
+  // ON-FLOOR assertion — the read-path analog of attachLesson's guard (VALIDATE-hacker H1):
+  // lessonClusterKey collapses an off-floor enum to INVALID, so a null/garbage block would
+  // otherwise forge a self-consistent 'lesson:INVALID|INVALID|INVALID' fixed point that the
+  // re-derive + hash both accept. The verifier MUST accept the SAME language as the minter.
+  if (!TRIGGER_CLASS.includes(node.trigger_class) || !GOTCHA_CLASS.includes(node.gotcha_class) || !CORRECTIVE_CLASS.includes(node.corrective_class)) return 'invalid';
+  // the closed-enum key can not be forged independent of its body: re-derive it.
+  const reSig = lessonClusterKey({ trigger_class: node.trigger_class, gotcha_class: node.gotcha_class, corrective_class: node.corrective_class });
+  if (reSig !== node.lesson_signature) return 'invalid';
+  if (computeLessonContentHash(node) !== node.lesson_content_hash) return 'invalid';
+  return 'valid';
+}
+
+function normalizeFailToPass(v) { return Array.isArray(v) ? Object.freeze(v.map(String)) : null; }
+
+// Mutate `node` to attach a VALIDATED lesson layer (called pre-freeze by the builder).
+// An off-floor enum THROWS (LESSON_ERR_CODE) so a batch caller drops THAT attempt rather
+// than mint an INVALID-keyed garbage lesson — never fail-soft a malformed lesson into the store.
+function attachLesson(node, lesson, { accepted_diff_ref = null, candidate_patch_sha = null, fail_to_pass = null } = {}) {
+  const trigger_class = lesson && lesson.trigger_class;
+  const gotcha_class = lesson && lesson.gotcha_class;
+  const corrective_class = lesson && lesson.corrective_class;
+  if (!TRIGGER_CLASS.includes(trigger_class) || !GOTCHA_CLASS.includes(gotcha_class) || !CORRECTIVE_CLASS.includes(corrective_class)) {
+    throw lessonError(`lesson enum off-floor: ${JSON.stringify({ trigger_class, gotcha_class, corrective_class })}`);
+  }
+  node.trigger_class = trigger_class;
+  node.gotcha_class = gotcha_class;
+  node.corrective_class = corrective_class;
+  node.lesson_signature = lessonClusterKey({ trigger_class, gotcha_class, corrective_class });
+  node.lesson_body = lesson.lesson_body == null ? null : String(lesson.lesson_body);
+  node.accepted_diff_ref = accepted_diff_ref == null ? null : String(accepted_diff_ref);
+  node.candidate_patch_sha = candidate_patch_sha == null ? null : String(candidate_patch_sha);
+  node.fail_to_pass = normalizeFailToPass(fail_to_pass);         // top-level, NOT hashed (W2 join key)
+  node.lesson_content_hash = computeLessonContentHash(node);     // AFTER the hashed fields are set
+}
+
+function buildWorkedExampleNode(attempt, { provenance = PROVENANCE, lesson = null, accepted_diff_ref = null, candidate_patch_sha = null, fail_to_pass = null } = {}) {
   const worked_example_ref = pickWorkedExample(attempt.reference);
   const node_id = deriveNodeId(worked_example_ref, provenance);
   const block = validateResolutionFriction(attempt.resolution_friction); // null unless a real closed-enum block rode along
-  return Object.freeze({
+  const node = {
     node_id,
     node_type: NODE_TYPE,
     content_hash: computeContentHash(worked_example_ref),
@@ -152,7 +223,10 @@ function buildWorkedExampleNode(attempt, { provenance = PROVENANCE } = {}) {
     // v3.10-W0' persona PROVENANCE (top-level, outside both hashes, UNAUTHENTICATED — see above)
     built_by: validatePersonaTag(attempt.built_by, 'built_by'),
     graded_by: validateGraders(attempt.graded_by, 'graded_by'),
-  });
+  };
+  // v3.11 W1 — attach the lesson layer iff one rode along (top-level, patch-stable id preserved).
+  if (lesson != null) attachLesson(node, lesson, { accepted_diff_ref, candidate_patch_sha, fail_to_pass });
+  return Object.freeze(node);
 }
 
 function populateRecallGraph(attempts, { provenance = PROVENANCE } = {}) {
@@ -252,5 +326,7 @@ module.exports = {
   buildWorkedExampleNode, populateRecallGraph, aggregateFrictionMap, computeJudgeAgreement,
   deriveNodeId, computeContentHash, isEligibleForPopulation,
   validatePersonaTag, validateGraders,
+  // v3.11 W1 — the lesson layer (top-level, presence-conditional, tamper-evident).
+  computeLessonContentHash, classifyLessonLayer, attachLesson, LESSON_HASH_FIELDS, LESSON_ERR_CODE,
   PROVENANCE, CLEAN_FOR_RETRIEVAL, NODE_TYPE, UNATTRIBUTED, UNATTRIBUTED_GRADERS,
 };

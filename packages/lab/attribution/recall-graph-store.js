@@ -33,7 +33,7 @@ const os = require('os');
 const path = require('path');
 const { writeAtomicString } = require('../../kernel/_lib/atomic-write');
 const { deepFreeze } = require('../../kernel/_lib/deep-freeze');
-const { deriveNodeId, computeContentHash, PROVENANCE } = require('./recall-graph');
+const { deriveNodeId, computeContentHash, PROVENANCE, classifyLessonLayer } = require('./recall-graph');
 
 const LAB_STATE_BASE = process.env.LOOM_LAB_STATE_DIR || path.join(os.homedir(), '.claude', 'lab-state');
 const DEFAULT_DIR = path.join(LAB_STATE_BASE, 'recall-graph-backtest');
@@ -59,6 +59,11 @@ function verifyNode(node, expectedId) {
   const reId = deriveNodeId(node.worked_example_ref, node.provenance);
   if (reId !== node.node_id) return null;                        // basis must derive the id
   if (computeContentHash(node.worked_example_ref) !== node.content_hash) return null; // body must hash to content_hash
+  // v3.11 W1 — presence-conditional lesson-layer integrity (#273 on a new artifact): a
+  // lesson-LESS node passes; a node WITH a lesson layer must carry a matching
+  // lesson_content_hash + a lesson_signature that re-derives from its block, else REJECT
+  // (incl. the strip-to-look-absent forge). The store is not a sandbox.
+  if (classifyLessonLayer(node) === 'invalid') return null;
   return node;
 }
 
