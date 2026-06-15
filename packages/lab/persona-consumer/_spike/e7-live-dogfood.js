@@ -98,27 +98,24 @@ function seedAndAssign(idStore) {
   return JSON.parse(json);
 }
 
-function finish(base, summary, code = 0) {
-  try { if (base) fs.rmSync(base, { recursive: true, force: true }); } catch { /* best-effort */ }
-  out('\n=== E7 SUMMARY (JSON) ===');
-  process.stdout.write(`${JSON.stringify(summary)}\n`);
-  process.exit(code);
-}
+// ONE temp base for all isolated state, cleaned ONCE at the top level. The IIFE never calls process.exit
+// inside the try -- it would short-circuit the actorDir `finally` (CodeRabbit #324, premise-probed: a
+// process.exit in a fn invoked from the try SKIPS the finally). Each branch RETURNS { summary, code }; the
+// .then() handler below does the base cleanup, prints the summary, and exits with the REAL code.
+const base = fs.mkdtempSync(path.join(os.tmpdir(), 'w1-e7-'));
+const idStore = path.join(base, 'agent-identities.json');
+const nodeDir = path.join(base, 'recall-graph-backtest');
+const signalDir = path.join(base, 'hardening-signals-mock');
 
 (async () => {
   out('=== v3.10-W1 E7 — live claude -p actor dogfood (existence-demo, AS 99-test-probe.t1) ===');
   out(`issue: ${record.id} @ ${record.base_sha.slice(0, 12)}\n`);
 
-  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'w1-e7-'));
-  const idStore = path.join(base, 'agent-identities.json');
-  const nodeDir = path.join(base, 'recall-graph-backtest');
-  const signalDir = path.join(base, 'hardening-signals-mock');
-
-  // --- pre-registered gate: tooling availability ---
+  // --- pre-registered gate: tooling availability (zero nodes is an EXPECTED non-failure -> code 0) ---
   const claudeBin = resolveClaude();
-  if (!claudeBin) return finish(base, { ok: true, branch: 'judge-unavailable', node_written: false });
+  if (!claudeBin) return { summary: { ok: true, branch: 'judge-unavailable', node_written: false }, code: 0 };
   const backend = createSandboxExecBackend({ resolveTestCommand: makePytestResolver() });
-  if (!backend.attest().attested) return finish(base, { ok: true, branch: 'sandbox-refused', node_written: false });
+  if (!backend.attest().attested) return { summary: { ok: true, branch: 'sandbox-refused', node_written: false }, code: 0 };
 
   // --- 1) a REAL runtime identity in the isolated store, then the declared built_by adapter ---
   const a1 = seedAndAssign(idStore);
@@ -140,7 +137,7 @@ function finish(base, summary, code = 0) {
 
     const candidate = git(['diff'], actorDir);
     if (!candidate || !candidate.trim()) {
-      return finish(base, { ok: true, branch: 'actor-empty', node_written: false, actor_ok: cap.ok, persona: personaKey });
+      return { summary: { ok: true, branch: 'actor-empty', node_written: false, actor_ok: cap.ok, persona: personaKey }, code: 0 };
     }
     out(`  candidate patch: ${candidate.split('\n').length} lines`);
 
@@ -173,10 +170,10 @@ function finish(base, summary, code = 0) {
       const branch = result.recall_eligible
         ? (pop.n_dropped_contaminated > 0 ? 'contaminated-dropped' : 'no-node-built')
         : 'not-eligible';
-      return finish(base, {
+      return { summary: {
         ok: true, branch, node_written: false, persona: personaKey,
         verdict: result.behavioral.verdict, recall_eligible: result.recall_eligible,
-      });
+      }, code: 0 };
     }
 
     const node = pop.nodes[0];
@@ -185,6 +182,11 @@ function finish(base, summary, code = 0) {
     // --- 5) a MOCK hardening signal about that node (isolated lane) ---
     const ws = signalStore.writeSignal({ node_id: node.node_id, outcome: 'support', source: 'mock', recorded_at: NOW }, { dir: signalDir });
     out(`  mock signal: ok=${ws.ok} id=${(ws.signal_id || '').slice(0, 12)}...`);
+    if (!ws.ok) {
+      // a node was produced but the signal write failed -> the credit path can't run; a REAL failure (code 1),
+      // NOT a pre-registered non-failure (CodeRabbit #324: enforce the ws.ok invariant, don't treat it as success).
+      return { summary: { ok: false, branch: 'signal-write-failed', node_written: true, signal_ok: false, persona: personaKey, reason: ws.reason || null }, code: 1 };
+    }
 
     // --- 6) recalibrate over the REAL persisted node + the mock signal ---
     const rep = recalibratePersonaReputation(
@@ -196,14 +198,28 @@ function finish(base, summary, code = 0) {
     out(`\n--- consumer recalibration ---`);
     out(`  per_persona[${personaKey}] = ${JSON.stringify(credited)}`);
 
+    // A node was produced: the credit invariant MUST hold (1 support -> posterior 2/3). If it does not,
+    // that is a REAL failure (code 1), NOT an existence-demo success (CodeRabbit #324: the prior
+    // `credited_ok ? 0 : 0` was tautological and could never signal a credit-invariant break).
     const credited_ok = !!credited && credited.n_support === 1 && credited.posterior === 2 / 3;
-    out(`\n=== E7 ${credited_ok ? 'GREEN — a REAL actor node flowed end-to-end; the consumer credited the persona' : 'COMPLETE — node produced; see credit above'} ===`);
-    return finish(base, {
-      ok: true, branch: 'node-credited', node_written: true, persona: personaKey,
+    out(`\n=== E7 ${credited_ok ? 'GREEN — a REAL actor node flowed end-to-end; the consumer credited the persona' : 'FAILED — node produced but the credit invariant did not hold'} ===`);
+    return { summary: {
+      ok: credited_ok, branch: 'node-credited', node_written: true, persona: personaKey,
       node_id: node.node_id, posterior: credited ? credited.posterior : null,
       credited_ok, actor_ok: cap.ok, behavioral_verdict: result.behavioral.verdict,
-    }, credited_ok ? 0 : 0);
+    }, code: credited_ok ? 0 : 1 };
   } finally {
     try { fs.rmSync(actorDir, { recursive: true, force: true }); } catch { /* best-effort */ }
   }
-})().catch((e) => { out(`E7 SPIKE THREW: ${e && e.stack ? e.stack : e}`); process.exit(1); });
+})().then(({ summary, code }) => {
+  // SINGLE exit point: the actorDir `finally` has run (we RETURNED, never process.exit'd inside the try);
+  // now clean the base, print the summary, and exit with the real code.
+  try { fs.rmSync(base, { recursive: true, force: true }); } catch { /* best-effort */ }
+  out('\n=== E7 SUMMARY (JSON) ===');
+  process.stdout.write(`${JSON.stringify(summary)}\n`);
+  process.exit(code);
+}).catch((e) => {
+  try { fs.rmSync(base, { recursive: true, force: true }); } catch { /* best-effort */ }
+  out(`E7 SPIKE THREW: ${e && e.stack ? e.stack : e}`);
+  process.exit(1);
+});
