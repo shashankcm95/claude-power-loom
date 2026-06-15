@@ -191,6 +191,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 ### `lab/attribution/`
 
 - `packages/lab/attribution/bootcamp-gates.js` - v3.9 W4 — the bootcamp's two closing GATES (RFC §3.4 wording-audit + §7 EC7).
+- `packages/lab/attribution/_spike/persona-read-wire.js` - v3.10-W0' Prototype-1 (a v3.10-retriever SPIKE, OUT of CI) -- the FIRST read that runs on the
 - `packages/lab/attribution/_spike/recall-graph-dogfood.js` - v3.9 W4 DOGFOOD — drives every NEW W4 path LIVE on the REAL filesystem + the REAL
 - `packages/lab/attribution/recall-graph-store.js` - v3.9 W4 — the per-node-file recall-graph store (the bootcamp's RETRIEVAL artifact
 - `packages/lab/attribution/recall-graph.js` - v3.9 W4 — the recall-graph populator.
