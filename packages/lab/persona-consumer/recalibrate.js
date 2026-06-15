@@ -67,7 +67,10 @@ function nowMsOf(now) {
 /**
  * @param {Array} nodes    recall-graph nodes (each with worked_example_ref + built_by)
  * @param {Array} signals  hardening-signal records ({ node_id, outcome, recorded_at, ... })
- * @param {object} [opts]  { now?: number|isoString, collisionNodeIds?: Iterable<string> }
+ * @param {object} [opts]  { now?: number|isoString, collisionNodeIds?: Iterable<string>,
+ *                           authorships?: Array<{node_id, built_by}> } -- W2: the verified authorship
+ *                           ledger (authorship-store.listAuthorships); a collision node credits its FULL
+ *                           author set (>=2 distinct) and credits NOBODY otherwise.
  * @returns {{ per_persona: object, dropped: object }}
  */
 function recalibratePersonaReputation(nodes, signals, opts = {}) {
@@ -82,6 +85,24 @@ function recalibratePersonaReputation(nodes, signals, opts = {}) {
     if (n && typeof n.node_id === 'string' && n.built_by != null) builtByOf.set(n.node_id, n.built_by);
   }
 
+  // v3.10-W2 -- the authorship LEDGER (node_id -> a SET of distinct personaKeys). A node_id collision
+  // (two personas built the same worked example -> same node_id) leaves the node store holding only the
+  // FIRST built_by; the ledger persists one edge per (node, author) so a shared node's FULL author set is
+  // recoverable. Keyed by the re-validated STRING node_id (a Map, never a plain object whose key
+  // string-coerces -- VERIFY-hacker HIGH). NOTE (source-blindness, mirror the `signals` NOTE above):
+  // `authorships` MUST originate from authorship-store.listAuthorships (verify-on-read re-derives the
+  // content address incl. node_id+built_by). personaKeyOf re-validates the token SHAPE only -- NOT edge
+  // AUTHENTICITY; a caller hand-feeding unverified edges bypasses the content-address gate (W3 authenticates
+  // credit). The key is ALWAYS re-derived from each edge's built_by FIELDS; a stored persona_key is never trusted.
+  const authorsByNode = new Map();
+  for (const e of (Array.isArray(opts.authorships) ? opts.authorships : [])) {
+    if (!e || typeof e.node_id !== 'string') continue;                   // strict string key (hacker HIGH)
+    const key = personaKeyOf(e.built_by);                                // re-derive; malformed -> dropped from the set
+    if (key == null) continue;
+    if (!authorsByNode.has(e.node_id)) authorsByNode.set(e.node_id, new Set());
+    authorsByNode.get(e.node_id).add(key);
+  }
+
   const acc = new Map(); // personaKey -> { n_support, n_refute, ts: [{ts}] }
   const dropped = { no_node: 0, collision: 0, no_persona: 0, bad_outcome: 0 };
 
@@ -89,13 +110,31 @@ function recalibratePersonaReputation(nodes, signals, opts = {}) {
     if (!s || typeof s.node_id !== 'string') { dropped.no_node += 1; continue; }
     if (!OUTCOMES.has(s.outcome)) { dropped.bad_outcome += 1; continue; }
     if (!builtByOf.has(s.node_id)) { dropped.no_node += 1; continue; }
-    if (collision.has(s.node_id)) { dropped.collision += 1; continue; } // confused-deputy guard
-    const key = personaKeyOf(builtByOf.get(s.node_id));
-    if (key == null) { dropped.no_persona += 1; continue; }              // unattributable node
-    if (!acc.has(key)) acc.set(key, { n_support: 0, n_refute: 0, ts: [] });
-    const a = acc.get(key);
-    if (s.outcome === 'support') a.n_support += 1; else a.n_refute += 1;
-    a.ts.push({ ts: s.recorded_at }); // E8: recorded_at -> {ts} adapter for computeRecencyDecayAt
+
+    // COLLISION-FIRST resolution (VERIFY-hacker CRITICAL + architect HIGH): the collision flag DOMINATES the
+    // ledger. A node where a collision was OBSERVED at write has a node tag holding only the FIRST of >=2 real
+    // authors, so it is NOT a trustworthy single-author source. Credit the ledger ONLY IF it AFFIRMATIVELY
+    // accounts for the collision -- >= 2 DISTINCT personaKeys; else credit NOBODY (a partial/empty/forged set
+    // stays un-attributable; a lone edge NEVER promotes -- the confused-deputy guard, completeness-checked).
+    // A legitimate collision always has >= 2 edges (the producer records both kept + incoming built_by).
+    let creditKeys;
+    if (collision.has(s.node_id)) {
+      const authors = authorsByNode.get(s.node_id);
+      if (!authors || authors.size < 2) { dropped.collision += 1; continue; }
+      creditKeys = [...authors];
+    } else {
+      // a genuinely SOLO node: credit node.built_by (the W1 source of truth). The ledger is NOT consulted
+      // for solo nodes, so a planted edge on a solo node is IGNORED.
+      const key = personaKeyOf(builtByOf.get(s.node_id));
+      if (key == null) { dropped.no_persona += 1; continue; }            // unattributable node
+      creditKeys = [key];
+    }
+    for (const key of creditKeys) {
+      if (!acc.has(key)) acc.set(key, { n_support: 0, n_refute: 0, ts: [] });
+      const a = acc.get(key);
+      if (s.outcome === 'support') a.n_support += 1; else a.n_refute += 1; // FULL +1 per co-author (UNWEIGHTED:
+      a.ts.push({ ts: s.recorded_at });   // replication, not split). E8: recorded_at -> {ts} for the recency scalar.
+    }
   }
 
   const perPersona = {};
