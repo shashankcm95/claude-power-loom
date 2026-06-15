@@ -35,6 +35,13 @@ test('writes a valid authorship edge; loadAuthorship round-trips it (deep-frozen
   assert.throws(() => { r.built_by.role = 'x'; }, 'read-back built_by is frozen');
 });
 
+test('deriveAuthorshipId is null-safe (CodeRabbit #325) — a null/empty arg hashes to a hex id, never throws', () => {
+  let id;
+  assert.doesNotThrow(() => { id = store.deriveAuthorshipId(null); }, 'a null rec must not throw');
+  assert.match(id, /^[0-9a-f]{64}$/, 'returns a stable hex hash of the all-empty basis');
+  assert.strictEqual(store.deriveAuthorshipId(null), store.deriveAuthorshipId({}), 'null and {} hash identically');
+});
+
 test('W2-E3 content-address — a flipped author perturbs authorship_id', () => {
   const a = store.deriveAuthorshipId(edge());
   const b = store.deriveAuthorshipId(edge({ built_by: { role: 'test-probe', roster_name: 't2', actor_kind: 'agent_spawn' } }));

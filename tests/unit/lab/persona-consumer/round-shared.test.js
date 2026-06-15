@@ -28,7 +28,10 @@ const env = {
   LOOM_SPAWN_STATE_DIR: path.join(base, 'spawn'),
 };
 
-const proc = spawnSync('node', [HARNESS, '--shared'], { env, encoding: 'utf8' });
+// timeout (CodeRabbit #325 Major): a blocking spawnSync with no bound can hang the whole suite if the
+// harness stalls. The shared round does real assigns + store writes (no LLM), so 120s is generous; on
+// timeout spawnSync sets status=null + a SIGTERM, which the status===0 assertion below catches loudly.
+const proc = spawnSync('node', [HARNESS, '--shared'], { env, encoding: 'utf8', timeout: 120000 });
 const result = (() => { try { return JSON.parse(proc.stdout.trim().split('\n').pop()); } catch { return null; } })();
 
 test('the SHARED round completes on the real stack: two real identities -> collided node -> credit both', () => {

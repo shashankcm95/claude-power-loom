@@ -63,9 +63,14 @@ function isValidBuiltBy(bb) {
 // authorship_id over the IDENTITY basis (node_id + the author fields). recorded_at is NOT in the basis
 // (so a different-time re-record dedups to the same file). A flipped author perturbs the id.
 function deriveAuthorshipId(rec) {
-  const bb = (rec && rec.built_by) || {};
+  // null-safe (CodeRabbit #325): the prior `rec && rec.node_id == null ? '' : String(rec.node_id)` form
+  // THREW on a null `rec` -- the `&&` short-circuits to null (falsy), so the false branch ran
+  // `String(rec.node_id)` on null. Normalize `rec`/`built_by` to {} up front so a null arg hashes to the
+  // all-empty basis instead of throwing (this is a pure, EXPORTED helper; internal callers already guard).
+  const r = rec || {};
+  const bb = r.built_by || {};
   return sha256hex(canonicalJsonSerialize([
-    rec && rec.node_id == null ? '' : String(rec.node_id),
+    r.node_id == null ? '' : String(r.node_id),
     bb.role == null ? '' : String(bb.role),
     bb.roster_name == null ? '' : String(bb.roster_name),
     bb.actor_kind == null ? '' : String(bb.actor_kind),

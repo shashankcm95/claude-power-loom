@@ -193,7 +193,7 @@ if (require.main === module) {
   process.stdout.write(JSON.stringify(result) + '\n');
   if (check) {
     const good = shared
-      ? (result.persona_collision && result.authorship_edge_count === 2 && result.both_credited)
+      ? (result.node1_written && result.signal_written && result.persona_collision && result.authorship_edge_count === 2 && result.both_credited)
       : (result.node_written && result.signal_written && result.posterior === 2 / 3 && result.e6_reassign_excluded_retired);
     process.exit(good ? 0 : 1);
   }
