@@ -55,7 +55,10 @@ function personaKeyOf(builtBy) {
 
 function nowMsOf(now) {
   if (now == null) return Date.now();
-  if (typeof now === 'number') return now;
+  if (typeof now === 'number') {
+    if (!Number.isFinite(now)) throw new Error(`recalibrate: invalid 'now': ${JSON.stringify(now)}`); // reject NaN/Infinity (CodeRabbit #323)
+    return now;
+  }
   const t = Date.parse(now);
   if (!Number.isFinite(t)) throw new Error(`recalibrate: invalid 'now': ${JSON.stringify(now)}`);
   return t;

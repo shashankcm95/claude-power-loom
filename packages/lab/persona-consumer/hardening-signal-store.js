@@ -62,6 +62,10 @@ function verifySignal(sig, expectedId) {
   if (!OUTCOMES.has(sig.outcome)) return null;
   if (typeof sig.node_id !== 'string' || sig.node_id.length === 0) return null;
   if (typeof sig.recorded_at !== 'string' || sig.recorded_at.length === 0) return null;
+  // READ/WRITE PARITY (CodeRabbit #323 Major): recorded_at is IN the content-address, so a hand-planted
+  // file with a recomputed signal_id + a bad-format ts would pass the re-derive check. Reject it on read
+  // too -- else loadSignal admits a record writeSignal would refuse, breaking eligibility parity.
+  if (!Number.isFinite(Date.parse(sig.recorded_at))) return null;
   if (!HEX64.test(String(sig.signal_id || ''))) return null;
   if (expectedId != null && sig.signal_id !== expectedId) return null; // filename == field
   if (deriveSignalId(sig) !== sig.signal_id) return null;       // body (incl source) hashes to id

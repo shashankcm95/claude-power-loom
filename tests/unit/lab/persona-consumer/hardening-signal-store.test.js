@@ -60,6 +60,13 @@ test('rejects an UNPARSEABLE recorded_at on write (the silent-null recency footg
   // a non-string / empty was already covered; this guards the parseable-ISO contract at the source
 });
 
+test('read/write PARITY — a hand-planted file with a bad-format recorded_at + recomputed signal_id is REJECTED on read (CodeRabbit #323)', () => {
+  const bad = { node_id: 'badts-read', outcome: 'support', source: 'mock', recorded_at: 'not-a-date' };
+  const sid = store.deriveSignalId(bad);                      // a self-consistent id over the bad ts
+  fs.writeFileSync(path.join(TMP, `${sid}.json`), `${JSON.stringify({ signal_id: sid, ...bad }, null, 2)}\n`);
+  assert.strictEqual(store.loadSignal(sid, OPTS), null, 'read must enforce the same recorded_at format as write');
+});
+
 test('dedup — the same signal written twice is first-eligible-wins', () => {
   const a = store.writeSignal(mock({ node_id: 'dup' }), OPTS);
   const b = store.writeSignal(mock({ node_id: 'dup' }), OPTS);

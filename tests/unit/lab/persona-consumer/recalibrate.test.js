@@ -96,6 +96,11 @@ test('E8: recency adapter WIRED — recorded_at -> {ts} yields a NON-null decay 
   assert.strictEqual(r.per_persona['test-probe.t1'].recency_decay_factor, 1, 'recorded_at == now -> age 0 -> factor 1');
 });
 
+test('VALIDATE-fold — a non-finite numeric `now` is REJECTED, not silently passed (CodeRabbit #323)', () => {
+  assert.throws(() => recalibratePersonaReputation([node('n1', NOOR)], [sig('n1', 'support')], { now: NaN }), /invalid 'now'/);
+  assert.throws(() => recalibratePersonaReputation([], [], { now: Infinity }), /invalid 'now'/);
+});
+
 test('determinism — same (nodes, signals, now) -> identical output', () => {
   const nodes = [node('n1', NOOR)]; const signals = [sig('n1', 'support')];
   assert.deepStrictEqual(
