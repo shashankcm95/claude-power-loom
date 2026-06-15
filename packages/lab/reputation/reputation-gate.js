@@ -56,8 +56,11 @@ function proceedAll(candidates, reason) {
  * @returns {Array<{candidate, recommendation, reason, evidence}>}
  */
 function recommendNarrowing(candidates, reputation, breakerOf, opts = {}) {
-  const minEvidence = coerceMinEvidence(opts.minEvidence);
-  const passFloor = coercePassFloor(opts.passFloor);
+  // coerce `opts` itself before any property read (CodeRabbit #326): `opts = {}` only catches `undefined`, so a
+  // `null`/non-object `opts` would crash on `opts.minEvidence`. A pure consumer falls back to defaults instead.
+  const o = (opts && typeof opts === 'object') ? opts : {};
+  const minEvidence = coerceMinEvidence(o.minEvidence);
+  const passFloor = coercePassFloor(o.passFloor);
   const cands = Array.isArray(candidates) ? candidates : [];
 
   // STRUCTURAL GUARD (the authenticated-lane MIS-WIRE marker): a mirror / mis-wire never narrows trust.

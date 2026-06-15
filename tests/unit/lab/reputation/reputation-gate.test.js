@@ -119,6 +119,10 @@ test('W3-E11 invalid opts fall back to DEFAULTS (cannot silently disable an axis
   assert.strictEqual(recOf(recommendNarrowing(['B'], rep([persona('B', 1, 0, 5)]), () => cleanBreaker(), { minEvidence: Infinity }), 'B').recommendation, 'down-weight', 'Infinity minEvidence -> default 5');
   // passFloor out of [0,1] -> default 0.5
   assert.strictEqual(recOf(recommendNarrowing(['B'], bad, () => cleanBreaker(), { passFloor: 99 }), 'B').recommendation, 'down-weight', 'out-of-range passFloor -> default 0.5');
+  // a null / non-object opts must NOT crash (CodeRabbit #326) -> falls back to defaults
+  assert.doesNotThrow(() => recommendNarrowing(['B'], bad, () => cleanBreaker(), null), 'null opts must not crash');
+  assert.strictEqual(recOf(recommendNarrowing(['B'], bad, () => cleanBreaker(), null), 'B').recommendation, 'down-weight', 'null opts -> defaults (minEvidence 5, passFloor 0.5)');
+  assert.doesNotThrow(() => recommendNarrowing(['B'], bad, () => cleanBreaker(), 'nope'), 'non-object opts must not crash');
 });
 
 test('W3-E7 __proto__/prototype-key safety — a candidate/persona key of __proto__ resolves via Map (no launder)', () => {
