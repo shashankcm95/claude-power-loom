@@ -251,6 +251,12 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/lab/negative-attestation/record-from-decompose.js` - E1 ingest (v3.3 Wave 0 — the capture half of the un-darkening).
 - `packages/lab/negative-attestation/store.js` - E1 — Negative-attestation store (v3.3 Wave 0/1).
 
+### `lab/persona-consumer/`
+
+- `packages/lab/persona-consumer/hardening-signal-store.js` - v3.10-W1 — the MOCKED hardening-signal store (the consumer's MIRROR lane).
+- `packages/lab/persona-consumer/_spike/persona-consumer-round.js` - v3.10-W1 — the persona-consumer ROUND harness (a SPIKE, OUT of CI as a standalone; exercised by
+- `packages/lab/persona-consumer/recalibrate.js` - v3.10-W1 — the persona CONSUMER (pure).
+
 ### `lab/reputation/`
 
 - `packages/lab/reputation/cli.js` - v3.4 Wave 2 — E4 reputation CLI: inspect the advisory-verdict DISTRIBUTION over kernel-attested
