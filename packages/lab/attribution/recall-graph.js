@@ -64,24 +64,30 @@ const UNATTRIBUTED_GRADERS = Object.freeze({ leg_b: null, leg_c: null });
 // coerces to 'true' and a boolean role/roster_name false-accepts (the stored node would carry a
 // non-string, violating the contract).
 const isRosterStr = (v) => typeof v === 'string' && ROSTER_TOKEN.test(v);
+// VALIDATE-fold (CodeRabbit #322 Major): persona-validation throws carry a discriminable CODE so
+// populateRecallGraph can drop ONLY malformed-persona attempts and let any OTHER throw (e.g. the
+// canonicalJsonSerialize depth-bound guard) propagate -- never mislabel a structural failure as a
+// persona error or silently swallow it. A `.code` tag is robust where message-prefix matching is not.
+const PERSONA_ERR_CODE = 'PERSONA_TAG_INVALID';
+function personaError(msg) { const e = new Error(msg); e.code = PERSONA_ERR_CODE; return e; }
 function validatePersonaTag(tag, label) {                       // absent -> UNATTRIBUTED; malformed -> THROW (M3)
   if (tag == null) return UNATTRIBUTED;
-  if (typeof tag !== 'object' || Array.isArray(tag)) throw new Error(`persona ${label}: must be a structured {role, roster_name, actor_kind}, got ${typeof tag}`);
-  if (!isRosterStr(tag.role)) throw new Error(`persona ${label}: bad role ${JSON.stringify(tag.role)}`);
-  if (!isRosterStr(tag.roster_name)) throw new Error(`persona ${label}: bad roster_name ${JSON.stringify(tag.roster_name)}`);
-  if (!ACTOR_KINDS.has(tag.actor_kind)) throw new Error(`persona ${label}: bad actor_kind ${JSON.stringify(tag.actor_kind)}`);
+  if (typeof tag !== 'object' || Array.isArray(tag)) throw personaError(`persona ${label}: must be a structured {role, roster_name, actor_kind}, got ${typeof tag}`);
+  if (!isRosterStr(tag.role)) throw personaError(`persona ${label}: bad role ${JSON.stringify(tag.role)}`);
+  if (!isRosterStr(tag.roster_name)) throw personaError(`persona ${label}: bad roster_name ${JSON.stringify(tag.roster_name)}`);
+  if (!ACTOR_KINDS.has(tag.actor_kind)) throw personaError(`persona ${label}: bad actor_kind ${JSON.stringify(tag.actor_kind)}`);
   return Object.freeze({ role: tag.role, roster_name: tag.roster_name, actor_kind: tag.actor_kind });
 }
 function validateGraderTag(g, label) {                          // a single judge identity, or null
   if (g == null) return null;
-  if (typeof g !== 'object' || Array.isArray(g)) throw new Error(`persona ${label}: grader must be {role, roster_name} or null`);
-  if (!isRosterStr(g.role)) throw new Error(`persona ${label}: bad grader role ${JSON.stringify(g.role)}`);
-  if (!isRosterStr(g.roster_name)) throw new Error(`persona ${label}: bad grader roster_name ${JSON.stringify(g.roster_name)}`);
+  if (typeof g !== 'object' || Array.isArray(g)) throw personaError(`persona ${label}: grader must be {role, roster_name} or null`);
+  if (!isRosterStr(g.role)) throw personaError(`persona ${label}: bad grader role ${JSON.stringify(g.role)}`);
+  if (!isRosterStr(g.roster_name)) throw personaError(`persona ${label}: bad grader roster_name ${JSON.stringify(g.roster_name)}`);
   return Object.freeze({ role: g.role, roster_name: g.roster_name });
 }
 function validateGraders(graded, label) {                       // absent -> UNATTRIBUTED_GRADERS; derived from the harness LEG-CONFIG (an OUTPUT label, never an input)
   if (graded == null) return UNATTRIBUTED_GRADERS;
-  if (typeof graded !== 'object' || Array.isArray(graded)) throw new Error(`persona ${label}: graded_by must be {leg_b, leg_c}`);
+  if (typeof graded !== 'object' || Array.isArray(graded)) throw personaError(`persona ${label}: graded_by must be {leg_b, leg_c}`);
   return Object.freeze({ leg_b: validateGraderTag(graded.leg_b, `${label}.leg_b`), leg_c: validateGraderTag(graded.leg_c, `${label}.leg_c`) });
 }
 
@@ -164,7 +170,10 @@ function populateRecallGraph(attempts, { provenance = PROVENANCE } = {}) {
     // bad harness label can't zero a whole calibration run's retrieval nodes).
     let node;
     try { node = buildWorkedExampleNode(a, { provenance }); }
-    catch { n_dropped_malformed_persona += 1; continue; }
+    catch (e) {
+      if (e && e.code === PERSONA_ERR_CODE) { n_dropped_malformed_persona += 1; continue; } // drop ONLY a bad persona label
+      throw e;  // a structural failure (e.g. the canonical-depth guard) MUST surface -- never masquerade as persona-malformed
+    }
     nodes.push(node);
   }
   return { nodes, n_eligible, n_written: nodes.length, n_dropped_contaminated, n_dropped_malformed_persona };

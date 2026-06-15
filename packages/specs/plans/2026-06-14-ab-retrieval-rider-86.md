@@ -6,14 +6,15 @@ lifecycle: ephemeral
 
 **Goal.** #78 proved the retriever and the harness but hit a **ceiling effect**: its target passed cold, so
 retrieval had no room to move the outcome. #78's close decision: the powered A/B needs a **failure-boundary**
-issue (fails cold, a sibling node exists) — which #80's corpus now supplies. #86 runs that A/B: **does
-retrieving a prior worked example help the blind actor solve a SIMILAR issue it failed cold?**
+issue (fails cold, a sibling node exists) — which #80's corpus is **proposed** to supply (this A/B is what
+TESTS whether it actually does). #86 runs that A/B on the current candidate: **does retrieving a prior worked
+example help the blind actor solve a SIMILAR issue it failed cold?**
 
 This is a v3.10-retriever SPIKE (OQ-7), bootcamp->bootcamp, `provenance=backtest`, OUT of CI. It reuses the
 #78 harness (`recall-retrieval-test.js` + `buildActorPrompt` extraContext + the W1 sandbox grade) plus the
 **#80 source-only-grade fix** (strip the actor's own test edits before grading — the dominant #80 bug).
 
-## The pair (both real, both post-cutoff, same subsystem, a TRUE failure-boundary)
+## The pair (both real, both post-cutoff, same subsystem, the failure-boundary CANDIDATE)
 
 | | SOURCE (node in store) | TARGET (to solve) |
 |---|---|---|
@@ -26,7 +27,8 @@ This is a v3.10-retriever SPIKE (OQ-7), bootcamp->bootcamp, `provenance=backtest
 
 The node `ec90174ff895` (virama-mc, BEHAVIORAL_PASS) is **live in the store** — verified. The target's
 RED/GREEN is **VERIFIED** in the #80 corpus (the accepted fix greens `fail_to_pass` on `c7fc868b95`; empty is
-red). This is the failure-boundary #78 lacked.
+red). This is the failure-boundary candidate #78 lacked (the smoke result below assesses whether it behaves
+as a clean floor — it did not, see the SMOKE RESULT section).
 
 ## The CENTRAL design question (the leak/transfer boundary — what the VERIFY board must arbitrate)
 

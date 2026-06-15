@@ -255,6 +255,19 @@ test('persona: a malformed built_by DROPS that attempt + counts it, does NOT abo
   assert.strictEqual(out.nodes.length, 2, 'the 2 valid attempts survive (one bad label cannot zero the batch)');
 });
 
+test('persona: a persona-validation throw carries the discriminable PERSONA_TAG_INVALID code (CodeRabbit #322)', () => {
+  assert.throws(() => buildWorkedExampleNode(attempt({ built_by: 'bad-string' })), (e) => e && e.code === 'PERSONA_TAG_INVALID', 'persona throws are coded, not matched by message text');
+});
+
+test('populate: a NON-persona structural throw PROPAGATES, never mislabeled as malformed_persona (CodeRabbit #322 Major)', () => {
+  // A worked-example field deep enough to trip the canonicalJsonSerialize depth guard is a STRUCTURAL
+  // failure, not a bad persona label. The narrowed catch must let it surface (the old broad catch
+  // swallowed it as n_dropped_malformed_persona, hiding the real fault).
+  let deep = {}; let cur = deep; for (let i = 0; i < 150; i += 1) { cur.x = {}; cur = cur.x; }
+  const bomb = attempt({ reference: ref({ problem_statement_digest: deep }) });
+  assert.throws(() => populateRecallGraph([bomb]), /max nesting depth/i, 'the depth throw propagates, not swallowed');
+});
+
 test('persona: validator rejects type-coerced non-strings (role:true is NOT a valid role)', () => {
   assert.throws(() => buildWorkedExampleNode(attempt({ built_by: { role: true, roster_name: 'noor', actor_kind: 'claude_p' } })), /persona/i, 'boolean role rejected (no String() coercion false-accept)');
 });
