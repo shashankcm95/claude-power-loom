@@ -41,6 +41,14 @@ const HEX64 = /^[0-9a-f]{64}$/;
 
 function storeDir(opts) { return (opts && opts.dir) || DEFAULT_DIR; }
 
+// v3.10-W0' — two built_by tags differ? FIELD-BY-FIELD (VALIDATE-reviewer: order-independent, so a
+// future producer with a different key order can't cause a false/missed collision). null -> absent.
+function personaTagsDiffer(a, b) {
+  if (a == null && b == null) return false;
+  if (a == null || b == null) return true;
+  return a.role !== b.role || a.roster_name !== b.roster_name || a.actor_kind !== b.actor_kind;
+}
+
 // Re-derive both addresses from the body + basis; a file that lies about either is
 // not a node we wrote (the store is not a sandbox). Returns the node or null.
 function verifyNode(node, expectedId) {
@@ -79,7 +87,17 @@ function writeNode(node, opts = {}) {
   // ORIGINAL recorded_at is kept — age = since FIRST populated); if it is unverifiable
   // garbage (a squat or a crash-truncated write), REPAIR by overwriting.
   if (fs.existsSync(file)) {
-    if (loadNode(node.node_id, opts) != null) return { ok: true, deduped: true, node_id: node.node_id };
+    const prior = loadNode(node.node_id, opts);                 // the kept (first-eligible) node, if valid
+    if (prior != null) {
+      // v3.10-W0' persona-collision (VERIFY-hacker H1): the worked example is SHARED (node_id
+      // excludes persona), but a DIFFERENT built_by means a 2nd persona produced the same example.
+      // First-eligible-wins, but SIGNAL it so the caller LOGS the erasure -- NEVER a silent drop.
+      // (Multi-author MERGE is the documented step-2 upgrade.)
+      if (personaTagsDiffer(prior.built_by, node.built_by)) {
+        return { ok: true, deduped: true, persona_collision: true, kept_built_by: prior.built_by || null, incoming_built_by: node.built_by || null, node_id: node.node_id };
+      }
+      return { ok: true, deduped: true, node_id: node.node_id };
+    }
     try { writeAtomicString(file, `${JSON.stringify(stored, null, 2)}\n`); }
     catch (e) { return { ok: false, reason: 'write-failed', error: e.message }; }
     return { ok: true, deduped: false, repaired: true, node_id: node.node_id };

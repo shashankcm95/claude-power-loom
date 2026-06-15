@@ -197,4 +197,66 @@ test('computeJudgeAgreement: below the floor reports INSUFFICIENT-N (never a sma
   assert.strictEqual(j.error_bar, 'UNKNOWN-until-measured');
 });
 
+// ============================================================================
+// v3.10-W0' Prototype-1 — persona PROVENANCE tagging (built_by/graded_by), additive
+// TOP-LEVEL fields OUTSIDE both hashes. (VERIFY-board folded: structured shape, node_id/
+// content_hash invariance, UNATTRIBUTED sentinel, producer validation, no-weight holds.)
+// ============================================================================
+const { UNATTRIBUTED, UNATTRIBUTED_GRADERS } = require('../../../../packages/lab/attribution/recall-graph');
+const NOOR = { role: 'backend', roster_name: 'noor', actor_kind: 'claude_p' };
+const GRADERS = { leg_b: { role: 'architect', roster_name: 'theo' }, leg_c: { role: 'code-reviewer', roster_name: 'nova' } };
+
+test('persona: node carries STRUCTURED built_by/graded_by from the attempt (top-level)', () => {
+  const n = buildWorkedExampleNode(attempt({ built_by: NOOR, graded_by: GRADERS }));
+  assert.deepStrictEqual(n.built_by, NOOR, 'built_by is the structured object, top-level');
+  assert.deepStrictEqual(n.graded_by, GRADERS, 'graded_by is the structured leg pair, top-level');
+  assert.ok(!('built_by' in n.worked_example_ref), 'persona must NOT ride inside the content-hashed ref');
+});
+
+test('persona: node_id is INVARIANT to built_by/graded_by (the worked example is shared)', () => {
+  const base = ref();
+  const a1 = buildWorkedExampleNode(attempt({ reference: base, built_by: NOOR }));
+  const a2 = buildWorkedExampleNode(attempt({ reference: base, built_by: { role: 'backend', roster_name: 'nova', actor_kind: 'claude_p' } }));
+  const a0 = buildWorkedExampleNode(attempt({ reference: base }));               // no persona
+  assert.strictEqual(a1.node_id, a2.node_id, 'different built_by -> SAME node_id');
+  assert.strictEqual(a1.node_id, a0.node_id, 'persona-tagged and untagged -> SAME node_id');
+});
+
+test('persona: content_hash is INVARIANT to built_by/graded_by (outside the hashed ref)', () => {
+  const base = ref();
+  const a1 = buildWorkedExampleNode(attempt({ reference: base, built_by: NOOR, graded_by: GRADERS }));
+  const a0 = buildWorkedExampleNode(attempt({ reference: base }));
+  assert.strictEqual(a1.content_hash, a0.content_hash, 'persona fields must not perturb content_hash');
+});
+
+test('persona: ABSENT built_by/graded_by -> a named UNATTRIBUTED sentinel, never undefined', () => {
+  const n = buildWorkedExampleNode(attempt());                                  // no persona fields
+  assert.deepStrictEqual(n.built_by, UNATTRIBUTED, 'absent built_by -> UNATTRIBUTED sentinel');
+  assert.deepStrictEqual(n.graded_by, UNATTRIBUTED_GRADERS, 'absent graded_by -> UNATTRIBUTED_GRADERS');
+  assert.notStrictEqual(n.built_by, undefined);
+  assert.strictEqual(UNATTRIBUTED.actor_kind, 'claude_p', 'sentinel is honest: a faceless claude_p actor');
+});
+
+test('persona: producer REJECTS a malformed persona tag at the boundary (every input is hostile)', () => {
+  assert.throws(() => buildWorkedExampleNode(attempt({ built_by: { role: 'backend', roster_name: 'noor evil', actor_kind: 'claude_p' } })), /persona/i, 'control-char/space roster_name rejected');
+  assert.throws(() => buildWorkedExampleNode(attempt({ built_by: { role: 'backend' } })), /persona/i, 'missing roster_name/actor_kind rejected');
+  assert.throws(() => buildWorkedExampleNode(attempt({ built_by: 'backend.noor' })), /persona/i, 'a bare STRING (not structured) is rejected');
+});
+
+test('persona: the no-weight/learned invariant still holds with persona fields present', () => {
+  const n = buildWorkedExampleNode(attempt({ built_by: NOOR, graded_by: GRADERS }));
+  const flat = JSON.stringify(n).toLowerCase();
+  assert.ok(!/\b\w*weight\b|gradient|learned_/.test(flat), 'persona tags are not weights');
+});
+
+test('persona: a malformed built_by DROPS that attempt + counts it, does NOT abort the batch (VALIDATE H1)', () => {
+  const out = populateRecallGraph([attempt(), attempt({ built_by: 'bad-string' }), attempt()]);
+  assert.strictEqual(out.n_dropped_malformed_persona, 1, 'the malformed attempt is counted');
+  assert.strictEqual(out.nodes.length, 2, 'the 2 valid attempts survive (one bad label cannot zero the batch)');
+});
+
+test('persona: validator rejects type-coerced non-strings (role:true is NOT a valid role)', () => {
+  assert.throws(() => buildWorkedExampleNode(attempt({ built_by: { role: true, roster_name: 'noor', actor_kind: 'claude_p' } })), /persona/i, 'boolean role rejected (no String() coercion false-accept)');
+});
+
 console.log(`recall-graph.test.js: ${passed} passed`);

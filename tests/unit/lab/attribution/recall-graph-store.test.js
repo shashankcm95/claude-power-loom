@@ -161,4 +161,28 @@ test('retireBacktestNodes — retire ALL, retire-by-date, and never touch a fore
   assert.ok(fs.existsSync(path.join(dir, 'foreign.json')), 'foreign file still untouched');
 });
 
+// v3.10-W0' — persona-collision must SIGNAL, never silently drop (VERIFY-hacker H1).
+test('persona-collision: same ref, DIFFERENT built_by -> deduped + persona_collision signal (no silent drop)', () => {
+  const dir = tmp();
+  const noor = buildWorkedExampleNode(attempt({ built_by: { role: 'backend', roster_name: 'noor', actor_kind: 'claude_p' } }));
+  const nova = buildWorkedExampleNode(attempt({ built_by: { role: 'backend', roster_name: 'nova', actor_kind: 'claude_p' } }));
+  assert.strictEqual(noor.node_id, nova.node_id, 'same worked example -> same node_id (persona is OUTSIDE the basis)');
+  assert.strictEqual(writeNode(noor, { dir }).deduped, false, 'first write stores');
+  const w2 = writeNode(nova, { dir });
+  assert.strictEqual(w2.ok, true);
+  assert.strictEqual(w2.deduped, true);
+  assert.strictEqual(w2.persona_collision, true, 'the 2nd persona is SIGNALLED, never silently dropped');
+  assert.deepStrictEqual(w2.kept_built_by, noor.built_by, 'first-eligible-wins: noor kept on disk');
+  assert.deepStrictEqual(w2.incoming_built_by, nova.built_by, 'nova surfaced as the colliding author');
+});
+
+test('persona-collision: SAME built_by re-write is plain dedup, NOT a collision (idempotent)', () => {
+  const dir = tmp();
+  const noor = buildWorkedExampleNode(attempt({ built_by: { role: 'backend', roster_name: 'noor', actor_kind: 'claude_p' } }));
+  writeNode(noor, { dir });
+  const w = writeNode(noor, { dir });
+  assert.strictEqual(w.deduped, true);
+  assert.ok(!w.persona_collision, 'identical built_by re-write -> no collision flag');
+});
+
 console.log(`recall-graph-store.test.js: ${passed} passed`);
