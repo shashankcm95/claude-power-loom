@@ -2,7 +2,7 @@
 
 Power Loom is a **deterministic state-management substrate for stochastic (LLM) agents** — an *agent runtime* that wraps non-deterministic agent execution in transaction boundaries and pure-function verification gates. This document is the canonical architecture reference. The full design record lives in [`packages/specs/`](../packages/specs/) (the v6 substrate synthesis RFC + ADRs 0008–0012).
 
-> **Reading note.** The v6 synthesis RFC is marked *LIVE-DRAFTING* (positioning, pillars, and axioms are at v6 quality; later sections carry earlier provenance). The **shipped code + ADRs 0008–0012** are the firm ground truth for what exists today. Where this doc states a primitive is "live", "dormant", "advisory", "dropped", or "deferred", that reflects the merged tree as of **v3.9** (the retrospective-calibration bootcamp added Lab-layer code only; the kernel/runtime surface is unchanged from v3.8; the §5 table's per-primitive notes carry their own phase stamps).
+> **Reading note.** The v6 synthesis RFC is marked *LIVE-DRAFTING* (positioning, pillars, and axioms are at v6 quality; later sections carry earlier provenance). The **shipped code + ADRs 0008–0012** are the firm ground truth for what exists today. Where this doc states a primitive is "live", "dormant", "advisory", "dropped", or "deferred", that reflects the merged tree as of **v3.10** (the persona-reputation arc added Lab-layer code only; the kernel/runtime surface is unchanged from v3.8; the §5 table's per-primitive notes carry their own phase stamps).
 
 ---
 

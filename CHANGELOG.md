@@ -8,6 +8,24 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [3.10.0] — 2026-06-15 — v3.10 Persona reputation over the recall graph (the WHO-built axis; shadow)
+
+**Minor release** (additive — new **Lab-layer persona-provenance + reputation** code; no kernel/runtime change, no breaking change. `.claude-plugin/plugin.json` `3.9.0 → 3.10.0`). Ships **v3.10** — phase-closed 2026-06-15 (3-lens unanimous CLOSEABLE-WITH-NOTES, 0 cross-PR drift; [`docs/ROADMAP.md`](docs/ROADMAP.md) + the `phase-close/v3.10-close` library volume).
+
+**What it is.** The **WHO-built axis** over v3.9's recall graph: tag each worked-example node with its building/grading persona, let a consumer *recalibrate* persona standing from outcomes, attribute a node built by *multiple* personas without laundering credit, and close a reputation *decision* loop — all **internally**, in **shadow**, before any live beta (OQ-NS-6: a backtest/mock signal only *narrows* confidence; only a world-anchored live merge *hardens* it).
+
+**The waves** (`#322`–`#326`; all **shadow/advisory**):
+
+- **W0' — persona provenance + the first real recall READ** (`#322`): attach `built_by`/`graded_by` to recall nodes **additively and outside the content-address** (a persona tag can never perturb node dedup or the OQ-7 firewall); wire the first real `retrieve()` over the live node store.
+- **W1 — the persona consumer** (`#323`): `recalibrate` persona standing from a hardening signal on the real stack — **source-blind** by construction, so the mock-vs-real swap needs no new validation (the consumer MIRROR).
+- **E7 — the live `claude -p` actor dogfood** (`#324`): a real blind actor → a real recall node → consumer credit, end-to-end (an N=1 existence-demo; the live leg of the empirical triple).
+- **W2 — shared memory / multi-author attribution** (`#325`): an authorship **ledger** of `(node_id, built_by)` edges + a **collision-first, ≥2-distinct-author** JOIN that closes a single-edge confused-deputy credit-laundering.
+- **W3 — the reputation decision loop** (`#326`): `reputation-gate.js`, a **pure-advisory** spawn-narrowing consumer — three **independent** axes (reputation distribution / breaker / evidence-sufficiency), combined **most-restrictive**, fail-safe to no-signal, reading only the **authenticated** verdict-attestation lane (never the unauthenticated mirror).
+
+**The phase-close.** 3-lens unanimous CLOSEABLE-WITH-NOTES, 0 cross-PR drift. The reputation **mechanism** is proven and closes internally — but the live diagnostic is honest that it does **not yet discriminate** (the seed lane is all-pass + key-fragmented): *mechanism proven, the DATA is the gap*. That gap is the open problem the v3.11 experience-layer reframe (lessons-not-actions) is chartered to address.
+
+---
+
 ## [3.9.0] — 2026-06-13 — v3.9 Retrospective-calibration bootcamp (diagnostic; shadow)
 
 **Minor release** (additive — a new **Lab-layer diagnostic harness**; no kernel/runtime change, no breaking change. `.claude-plugin/plugin.json` `3.8.0 → 3.9.0`). Ships **v3.9** — phase-closed 2026-06-13 (3-lens unanimous CLOSEABLE-WITH-NOTES, 0 cross-PR drift; [`docs/ROADMAP.md`](docs/ROADMAP.md) + the `phase-close/v3.9-close` library volume), plus a v3.9.x real-end-to-end proof.
