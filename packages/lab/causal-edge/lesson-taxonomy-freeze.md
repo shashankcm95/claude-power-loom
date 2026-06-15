@@ -142,11 +142,17 @@ forward-coupling invariant). Disciplines, frozen alongside the enums:
 - **Single content-address for the candidate patch:** the sidecar key (full `sha256(candidate_patch)`) and the
   `candidate_patch_sha` inside `lesson_content_hash` MUST be the identical digest of the identical bytes — a test
   asserts `sidecar_key === candidate_patch_sha` for the same patch (no silent two-site divergence).
-- **Presence defined by `lesson_content_hash`, fail-closed:** "a node HAS a lesson layer" iff `lesson_content_hash`
-  is present. If ANY lesson field (`lesson_signature`/`lesson_body`/`accepted_diff_ref`) is present but
-  `lesson_content_hash` is absent, `verifyNode` REJECTS (does not downgrade-to-lessonless). This closes the
-  strip-to-look-absent attack (a forged `lesson_signature`+`lesson_body` with the hash stripped) — the VALIDATE
-  hacker's likely target. A genuinely lesson-less worked-example node (no lesson fields at all) still PASSES.
+- **Presence defined by `lesson_content_hash`, fail-closed (BIDIRECTIONAL):** "a node HAS a lesson layer" iff
+  `lesson_content_hash` is present. The rule is symmetric, so neither half is a verifiable-only-on-one-side gap:
+  - **fields present, hash absent -> REJECT** — closes the strip-to-look-absent attack (a forged
+    `lesson_signature`+`lesson_body` with the hash stripped).
+  - **hash present, payload incomplete/off-floor/mismatched -> REJECT** — `classifyLessonLayer` asserts the
+    `trigger/gotcha/corrective` block is ON-FLOOR, re-derives `lesson_signature` from it, and re-hashes the full
+    `LESSON_HASH_FIELDS`; a hash with no on-floor block, a stripped hashed field, or a non-matching hash all fail.
+    (A hash can never validate an unverifiable payload — confirmed by probe: a hash-only node and a
+    hashed-field-stripped node both classify `invalid`.)
+
+  A genuinely lesson-less worked-example node (no lesson fields AND no hash) still PASSES.
 
 ## Value-set evolution protocol (append-only)
 
@@ -172,9 +178,12 @@ forward-coupling invariant). Disciplines, frozen alongside the enums:
   presence by `lesson_content_hash` + fail-closed on strip-to-look-absent; decompose into mechanism (freeze hard) +
   value-set (append-only floor); don't defer. ALL folded.
 - **Honesty (Grade C, OVERCLAIMS):** the prior draft claimed `lesson-signature.js` was committed when it did not
-  exist (now ships in-commit); `subset-not-exact-set`/`exact-set-equality` were single-sample over-reads on the
-  off-by-one bugs (re-classified to `unguarded-edge-case`/`fail-closed`); ~10/28 values were unreachable by the
-  W1 OSS data source (dropped to the floor + deferred). ALL folded; the floor is the honesty-recommended reachable
+  exist (now ships in-commit); the **seed-7 bugs' gotcha/corrective** had been mis-tagged `subset-not-exact-set`/
+  `exact-set-equality` (single-sample over-reads — those off-by-one bugs are `unguarded-edge-case`/`fail-closed`),
+  so the BUGS were re-classified off those two tags. **The two values themselves are NOT dropped — they remain
+  legitimate DEFERRED values** (real membership-vs-exact-set / set-equality code-bug classes, just not exercised by
+  the current seed-7); they re-enter the floor via the addition gate when the corpus first exhibits one.
+  ~10/28 values were unreachable by the W1 OSS data source (dropped to the floor + deferred). ALL folded; the floor is the honesty-recommended reachable
   set with the gotcha gap (`unguarded-edge-case`) added.
 
 ## Verdict
