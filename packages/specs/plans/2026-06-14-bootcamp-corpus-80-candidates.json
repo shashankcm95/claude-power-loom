@@ -1,0 +1,613 @@
+{
+  "status": "FINAL: 19 clean post-cutoff + RED/GREEN-verified; ready for pilot",
+  "model_cutoff": "2026-01-01",
+  "gradeable_repos": [
+    "more-itertools",
+    "wcwidth",
+    "parse",
+    "pyparsing",
+    "boltons"
+  ],
+  "count": 19,
+  "by_bucket": {
+    "lt1hr": 11,
+    "1to4hr": 7,
+    "gt4hr": 1
+  },
+  "by_repo": {
+    "more-itertools": 7,
+    "wcwidth": 8,
+    "pyparsing": 1,
+    "parse": 2,
+    "boltons": 1
+  },
+  "sibling_clusters": [
+    {
+      "cluster": "more-itertools:numeric_range",
+      "members": [
+        "edb3346f83",
+        "3bbe636e23"
+      ]
+    },
+    {
+      "cluster": "parse:parse.py",
+      "members": [
+        "ba6803d571",
+        "35b9ffb355"
+      ]
+    },
+    {
+      "cluster": "wcwidth:SequenceTextWrapper._wrap_chunks",
+      "members": [
+        "7de2e9b088",
+        "226d039335"
+      ]
+    }
+  ],
+  "drop_log": {
+    "66e1e08...": "DUPLICATE of c7fc868 (wcwidth virama #222 — same title, same base e7673ff)",
+    "8cbe868...": "trim dense virama chain (kept c7fc868 target + e4f76d5 source + 99e538b4 distinct gt4hr)",
+    "4a21756...(VS16)": "trim wcwidth to 8 (lower-priority lt1hr)",
+    "b0c9f0e...(parse zero-prec)": "fail_to_pass COLLISION with 35b9ffb (both test_parse.py::test_numbers)",
+    "99e8f248...(pyparsing)": "CONTRADICTION: first-mine agent found tests PASS-at-base (not RED); follow-up to d067348 (leak risk) -> defer to RED/GREEN gate",
+    "be5793a/06f3181/073d234/d9adeb4 (more-itertools)": "trim repeat/nth clusters to representatives (def2d82) for breadth/diversity"
+  },
+  "candidates": [
+    {
+      "repo": "more-itertools",
+      "repo_url": "https://github.com/more-itertools/more-itertools",
+      "fix_sha": "edb3346f835ca917efbfda5e2d6664ab952da369",
+      "base_sha": "247e15b3a489d5805375c95dfa79486c9bd0eb1b",
+      "real_title": "Fix empty ranges in numeric_range.__reversed__",
+      "source_files": [
+        "more_itertools/more.py"
+      ],
+      "test_files": [
+        "tests/test_more.py"
+      ],
+      "fail_to_pass": [
+        "tests/test_more.py::NumericRangeTests::test_empty_reversed"
+      ],
+      "bucket": "lt1hr",
+      "source_loc_added": 7,
+      "files_touched": 1,
+      "cluster_key": "numeric_range",
+      "rationale": "reversed() on an empty numeric_range crashed with IndexError (from _get_by_index(-1)) instead of returning an empty iterator; a guard was missing before constructing the reversed range.",
+      "redgreen": "VERIFIED",
+      "resolved_at": "2026-04-10T14:29:02-05:00",
+      "tier": "clean-pending-probe"
+    },
+    {
+      "repo": "more-itertools",
+      "repo_url": "https://github.com/more-itertools/more-itertools",
+      "fix_sha": "3bbe636e23bdfa359d80e6851e0c37abbc860d4c",
+      "base_sha": "1c21c3ae9c7991b73044fe16807b70d1cac61e0b",
+      "real_title": "Merge pull request #1128 from bysiber/fix/numeric-range-negative-step-slice",
+      "source_files": [
+        "more_itertools/more.py"
+      ],
+      "test_files": [
+        "tests/test_more.py"
+      ],
+      "fail_to_pass": [
+        "tests/test_more.py::NumericRangeTests::test_get_item_by_slice"
+      ],
+      "bucket": "1to4hr",
+      "source_loc_added": 6,
+      "files_touched": 1,
+      "cluster_key": "numeric_range",
+      "rationale": "numeric_range.__getitem__ with a negative-step slice (e.g. [::-1]) returned an empty range because it did not swap the start/stop defaults when step is negative; fix rewrites the index normalisation to use slice.indices() correctly.",
+      "redgreen": "VERIFIED",
+      "resolved_at": "2026-03-17T10:52:45-05:00",
+      "tier": "clean-pending-probe"
+    },
+    {
+      "repo": "more-itertools",
+      "repo_url": "https://github.com/more-itertools/more-itertools",
+      "fix_sha": "71b46b06fb48abcd2f7a26d74c148a650d340386",
+      "base_sha": "e4d2a4a2a97246a73856754b2c4866d7f41d4875",
+      "real_title": "Issue #1057: Raise exception for invalid size in windowed()",
+      "source_files": [
+        "more_itertools/more.py"
+      ],
+      "test_files": [
+        "tests/test_more.py"
+      ],
+      "fail_to_pass": [
+        "tests/test_more.py::WindowedTests::test_invalid_n"
+      ],
+      "bucket": "lt1hr",
+      "source_loc_added": 2,
+      "files_touched": 1,
+      "cluster_key": null,
+      "rationale": "windowed(seq, 0) silently yielded a single empty tuple instead of raising ValueError; the guard only caught n<0 but not n==0, so the zero-window case produced wrong output.",
+      "redgreen": "VERIFIED",
+      "resolved_at": "2026-03-31T23:06:52-05:00",
+      "tier": "clean-pending-probe"
+    },
+    {
+      "repo": "more-itertools",
+      "repo_url": "https://github.com/more-itertools/more-itertools",
+      "fix_sha": "def2d821c0a15ede86578660e7dc48e44bad9579",
+      "base_sha": "6b32fbfba127d6b4aaf57d6b254b2ab5fc80ae76",
+      "real_title": "Simplify nth_permutation. Fix incorrect exception.",
+      "source_files": [
+        "more_itertools/more.py"
+      ],
+      "test_files": [
+        "tests/test_recipes.py"
+      ],
+      "fail_to_pass": [
+        "tests/test_recipes.py::NthPermutationTests::test_invalid_index",
+        "tests/test_recipes.py::NthPermutationTests::test_invalid_r"
+      ],
+      "bucket": "lt1hr",
+      "source_loc_added": 4,
+      "files_touched": 1,
+      "cluster_key": "nth_combination_permutation",
+      "rationale": "nth_permutation raised ValueError for r > n (wrong exception type; r > n is a valid index-out-of-range, not an invalid r), and the fix makes nth_permutation(pool, r, index) raise IndexError when r > n and perm(n,r)==0 yields zero valid permutations.",
+      "redgreen": "VERIFIED",
+      "resolved_at": "2026-01-02T16:15:20-07:00",
+      "tier": "clean-pending-probe"
+    },
+    {
+      "repo": "wcwidth",
+      "repo_url": "https://github.com/jquast/wcwidth",
+      "fix_sha": "030b4b53a604e28553a677dcffd64d3f3cb6d64d",
+      "base_sha": "a1b9a8382ca4848bd2728b71e324d98e9d85747a",
+      "real_title": "Bugfix our center() padding algorithm (#188)",
+      "source_files": [
+        "wcwidth/wcwidth.py"
+      ],
+      "test_files": [
+        "tests/test_justify.py"
+      ],
+      "fail_to_pass": [
+        "tests/test_justify.py::test_center"
+      ],
+      "bucket": "lt1hr",
+      "source_loc_added": 2,
+      "files_touched": 1,
+      "cluster_key": null,
+      "rationale": "center() used floor-division for both left and right padding instead of matching CPython's eccentric algorithm (left_pad = total//2 + (total & width & 1)), producing wrong output for odd total_padding with odd dest_width, e.g. center('hi', 5) returned ' hi  ' instead of '  hi '.",
+      "redgreen": "VERIFIED",
+      "resolved_at": "2026-01-24T19:58:12-05:00",
+      "tier": "clean-pending-probe"
+    },
+    {
+      "repo": "wcwidth",
+      "repo_url": "https://github.com/jquast/wcwidth",
+      "fix_sha": "e4f76d5cc24c8dbd0e4f4be419deef06d2b36b7c",
+      "base_sha": "99e538b4b53ca01d1d1f3076394a5a089ad38a8f",
+      "real_title": "bugfix virama with mc width is capped at 2, also (#225)",
+      "source_files": [
+        "wcwidth/_wcswidth.py",
+        "wcwidth/_width.py"
+      ],
+      "test_files": [
+        "tests/test_core.py"
+      ],
+      "fail_to_pass": [
+        "tests/test_core.py::test_balinese_script"
+      ],
+      "bucket": "lt1hr",
+      "source_loc_added": 6,
+      "files_touched": 2,
+      "cluster_key": "wcwidth._wcswidth",
+      "rationale": "Six Virama codepoints classified as category Mc were processed by the Mc-width branch instead of the ISC virama branch, so they started a conjunct rather than capping the cluster; the fix inserts a priority check for _ISC_VIRAMA_SET before the _CATEGORY_MC_TABLE bisearch in both wcswidth() and width().",
+      "nodeid_note": "narrowed to the clean ASCII non-param nodeid (the mc_vowel param passed at base)",
+      "redgreen": "VERIFIED",
+      "resolved_at": "2026-06-05T02:38:13-04:00",
+      "tier": "clean-pending-probe"
+    },
+    {
+      "repo": "wcwidth",
+      "repo_url": "https://github.com/jquast/wcwidth",
+      "fix_sha": "b1cdbdf4ba4785e1cc949c1bb5eb33b404690718",
+      "base_sha": "c3310f9107791ec5b4cc9f314b7537451e648f45",
+      "real_title": "Bugfix: OSC Hyperlinks should not be broken by wrap() (#191)",
+      "source_files": [
+        "wcwidth/textwrap.py"
+      ],
+      "test_files": [
+        "tests/test_textwrap.py"
+      ],
+      "fail_to_pass": [
+        "tests/test_textwrap.py::test_wrap_hyperlink_word_boundary[\\x1b]8;;http://example.com\\x1b\\\\link\\x1b]8;;\\x1b\\\\more-5-expected0]",
+        "tests/test_textwrap.py::test_wrap_hyperlink_word_boundary[\\x1b]8;;http://example.com\\x07link\\x1b]8;;\\x07more-5-expected1]",
+        "tests/test_textwrap.py::test_wrap_hyperlink_word_boundary[prefix\\x1b]8;;http://example.com\\x1b\\\\link\\x1b]8;;\\x1b\\\\-6-expected2]",
+        "tests/test_textwrap.py::test_wrap_hyperlink_word_boundary[prefix\\x1b]8;;http://example.com\\x07link\\x1b]8;;\\x07-6-expected3]",
+        "tests/test_textwrap.py::test_wrap_hyperlink_word_boundary[prefix\\x1b]8;;http://example.com\\x1b\\\\link\\x1b]8;;\\x1b\\\\suffix-6-expected4]"
+      ],
+      "bucket": "1to4hr",
+      "source_loc_added": 32,
+      "files_touched": 1,
+      "cluster_key": "wcwidth.textwrap",
+      "rationale": "wrap() split text at any sequence boundary, including mid-hyperlink, because OSC hyperlink open/close sequences had no special word-boundary semantics; the fix inserts synthetic spaces before OSC-open sequences (but not before OSC-close sequences) in _split() so that hyperlink blocks are treated as atomic words.",
+      "redgreen": "VERIFIED",
+      "resolved_at": "2026-01-25T21:03:33-05:00",
+      "tier": "clean-pending-probe"
+    },
+    {
+      "repo": "wcwidth",
+      "repo_url": "https://github.com/jquast/wcwidth",
+      "fix_sha": "4b1bbd73a6c6e1c3214b5bdbf394914bf4ce37f6",
+      "base_sha": "e48109921916a6947c5a091b417d1730635e49ca",
+      "real_title": "Bugfix for Prepended_Concatenation_Mark characters (#176)",
+      "source_files": [
+        "wcwidth/table_zero.py"
+      ],
+      "test_files": [
+        "tests/test_core.py"
+      ],
+      "fail_to_pass": [
+        "tests/test_core.py::test_prepended_concatenation_mark_width[1536-ARABIC NUMBER SIGN]",
+        "tests/test_core.py::test_prepended_concatenation_mark_width[1757-ARABIC END OF AYAH]",
+        "tests/test_core.py::test_prepended_concatenation_mark_width[1807-SYRIAC ABBREVIATION MARK]",
+        "tests/test_core.py::test_prepended_concatenation_mark_width[2192-ARABIC POUND MARK ABOVE]",
+        "tests/test_core.py::test_prepended_concatenation_mark_width[69821-KAITHI NUMBER SIGN]"
+      ],
+      "bucket": "1to4hr",
+      "source_loc_added": 14,
+      "files_touched": 1,
+      "cluster_key": null,
+      "rationale": "Prepended_Concatenation_Mark characters (Arabic Number Sign U+0600, Arabic End of Ayah U+06DD, etc.) were erroneously included in the ZERO_WIDTH table because the code-generator did not exclude them when building the zero-width set, causing wcwidth() to return 0 for visible format characters that have mandatory display and should return 1.",
+      "redgreen": "VERIFIED",
+      "resolved_at": "2026-01-21T10:18:17-05:00",
+      "tier": "clean-pending-probe"
+    },
+    {
+      "repo": "pyparsing",
+      "repo_url": "https://github.com/pyparsing/pyparsing",
+      "fix_sha": "d0673488e389b36989f495d5006b78f0b9ff9527",
+      "base_sha": "77c50a89cd0b91005b570a1c926900f484ca4421",
+      "real_title": "fix issue #633",
+      "source_files": [
+        "pyparsing/helpers.py"
+      ],
+      "test_files": [
+        "tests/test_issue_633.py"
+      ],
+      "fail_to_pass": [
+        "tests/test_issue_633.py::test_issue_633_recursive_whitespace_bug"
+      ],
+      "bucket": "lt1hr",
+      "source_loc_added": 1,
+      "files_touched": 1,
+      "cluster_key": "match_previous_expr",
+      "rationale": "match_previous_expr() attached the must_match_these_tokens parse action to rep (the Forward wrapper) instead of e2 (the copy), so calling leave_whitespace(recursive=True) changed e2's parsing behavior but the action still ran against the original rep context, causing '1:2' to incorrectly match when it should fail; the 1-line fix changes rep.set_parse_action to e2.set_parse_action inside the closure.",
+      "redgreen": "VERIFIED",
+      "resolved_at": "2026-04-09T12:08:35-05:00",
+      "tier": "clean-pending-probe"
+    },
+    {
+      "repo": "parse",
+      "repo_url": "https://github.com/r1chardj0n3s/parse",
+      "fix_sha": "ba6803d57179a4b026c8ed51d970156653153b62",
+      "base_sha": "738447715c76f8ebc460b33320307faccafbc599",
+      "real_title": "Fix microsecond precision loss in timestamp parsing",
+      "source_files": [
+        "parse.py"
+      ],
+      "test_files": [
+        "tests/test_bugs.py"
+      ],
+      "fail_to_pass": [
+        "tests/test_bugs.py::test_microsecond_precision_issue162"
+      ],
+      "bucket": "lt1hr",
+      "source_loc_added": 1,
+      "files_touched": 1,
+      "cluster_key": "parse.py",
+      "rationale": "Floating-point rounding in `int(float('.' + u) * 1000000)` corrupted microsecond values (e.g. 501902 became 501901); replacing with string zero-padding and slicing is cleanly verifiable with exact microsecond assertions.",
+      "redgreen": "VERIFIED",
+      "resolved_at": "2026-02-18T20:51:19-05:00",
+      "tier": "clean-pending-probe"
+    },
+    {
+      "repo": "parse",
+      "repo_url": "https://github.com/r1chardj0n3s/parse",
+      "fix_sha": "35b9ffb355f94bc4cb781fbb3b0adff2232a5602",
+      "base_sha": "d50f48c4dcabbeaf738061c186314a1433572ae0",
+      "real_title": "Allow grouping char (,_) in decimal format string (#221)",
+      "source_files": [
+        "parse.py"
+      ],
+      "test_files": [
+        "tests/test_parse.py"
+      ],
+      "fail_to_pass": [
+        "tests/test_parse.py::test_numbers"
+      ],
+      "bucket": "1to4hr",
+      "source_loc_added": 12,
+      "files_touched": 1,
+      "cluster_key": "parse.py",
+      "rationale": "Using a Python grouping format spec (e.g. `'{:,d}'.format(1000000)`) then trying to parse it back with the same format string raises `ValueError: format spec ',d' not recognised`; the fix extends `extract_format` and the integer regex to handle `,` and `_` grouping characters, enabling round-trip use of Python's standard number formatting.",
+      "redgreen": "VERIFIED",
+      "resolved_at": "2026-02-05T12:17:59-06:00",
+      "tier": "clean-pending-probe"
+    },
+    {
+      "repo": "boltons",
+      "repo_url": "https://github.com/mahmoud/boltons",
+      "fix_sha": "17374731bcc404908726a65734f941d789f23a78",
+      "base_sha": "ce7c7d2b15ea189c1284a48d742a7862bfae8606",
+      "real_title": "Adds cache option to remap and use in research",
+      "source_files": [
+        "boltons/iterutils.py"
+      ],
+      "test_files": [
+        "tests/test_iterutils.py"
+      ],
+      "fail_to_pass": [
+        "tests/test_iterutils.py::test_research"
+      ],
+      "bucket": "1to4hr",
+      "source_loc_added": 14,
+      "files_touched": 1,
+      "cluster_key": "remap",
+      "rationale": "research() silently skipped traversing branches whose root objects shared a CPython object id (e.g. interned small tuples), returning incomplete results; fix adds cache=False to remap call inside research and guards the cache-hit path with the new bool flag.",
+      "redgreen": "VERIFIED",
+      "resolved_at": "2026-01-27T22:29:51-08:00",
+      "tier": "clean-pending-probe"
+    },
+    {
+      "repo": "wcwidth",
+      "repo_url": "https://github.com/jquast/wcwidth",
+      "fix_sha": "99e538b4b53ca01d1d1f3076394a5a089ad38a8f",
+      "base_sha": "c7fc868b95c5531839a4f5cd0b2b66dfd0021ccc",
+      "real_title": "Cap grapheme final width at 2 (foot, ghostty, terminal.exe) (#224)",
+      "source_files": [
+        "wcwidth/_wcswidth.py",
+        "wcwidth/_width.py",
+        "wcwidth/_clip.py"
+      ],
+      "test_files": [
+        "tests/test_core.py",
+        "tests/test_text_sizing.py",
+        "tests/test_width.py"
+      ],
+      "fail_to_pass": [
+        "tests/test_core.py::test_devanagari_script",
+        "tests/test_core.py::test_tamil_script",
+        "tests/test_core.py::test_virama_conjunct[\\u0999\\u09cd\\u0997\\u09c7-2]"
+      ],
+      "bucket": "gt4hr",
+      "source_loc_added": 76,
+      "files_touched": 3,
+      "cluster_key": "wcwidth/virama_conjunct",
+      "rationale": "ghostty/foot/Windows Terminal all cap grapheme cluster cursor advance at 2 cells; the fix introduces a cluster_width buffer in both wcswidth() and width() that defers committing a grapheme's width until the cluster is closed, requiring flush points at every control-character boundary (ESC, illegal ctrl, vertical ctrl, horizontal ctrl, zero-width ctrl) in _width.py and rewriting the VS16 and Mc accumulation logic in both files to cap at 2.",
+      "nodeid_note": "escaped non-ASCII param id (pytest ascii-escapes); fail_to_pass corrected from raw-glyph form",
+      "redgreen": "VERIFIED",
+      "resolved_at": "2026-06-05T01:17:20-04:00",
+      "tier": "clean-pending-probe"
+    },
+    {
+      "repo": "more-itertools",
+      "repo_url": "https://github.com/more-itertools/more-itertools",
+      "fix_sha": "8089263d2374e121ecb8cfdef0f5664bab7bafb1",
+      "base_sha": "e4d2a4a2a97246a73856754b2c4866d7f41d4875",
+      "real_title": "Issue #898: Sync recipe with main docs. Eliminate quadratic fallback.",
+      "source_files": [
+        "more_itertools/recipes.py"
+      ],
+      "test_files": [
+        "tests/test_more.py",
+        "tests/test_recipes.py"
+      ],
+      "fail_to_pass": [
+        "tests/test_recipes.py::UniqueEverseenTests::test_unhashable_dicts",
+        "tests/test_recipes.py::UniqueEverseenTests::test_unhashable_lists",
+        "tests/test_recipes.py::UniqueEverseenTests::test_unhashable_sets"
+      ],
+      "bucket": "1to4hr",
+      "source_loc_added": 23,
+      "files_touched": 3,
+      "cluster_key": "unique_everseen",
+      "rationale": "Drops the O(n^2) silent-fallback for unhashable items (seenlist linear scan) and switches to TypeError-on-unhashable; the behavioral contract change ripples into distinct_permutations whose test relied on the old fallback, making this a multi-site reasoning problem about the correct contract for set-based deduplication.",
+      "redgreen": "VERIFIED",
+      "resolved_at": "2026-03-31T20:39:43-05:00",
+      "tier": "clean-pending-probe"
+    },
+    {
+      "repo": "wcwidth",
+      "repo_url": "https://github.com/jquast/wcwidth",
+      "fix_sha": "7de2e9b0882c2494dc6a26d36f5f839314beed46",
+      "base_sha": "b297eaf5403a60dcc2275fecf8b6648de441c038",
+      "real_title": "Bugfix OSC Hyperlinks when broken mid-text by wrap() (#193)",
+      "source_files": [
+        "wcwidth/textwrap.py"
+      ],
+      "test_files": [
+        "tests/test_textwrap.py",
+        "tests/test_benchmarks.py"
+      ],
+      "fail_to_pass": [
+        "tests/test_textwrap.py::test_wrap_hyperlink_word_boundary[Go \\x1b]8;;http://example.com\\x1b\\\\Click here\\x1b]8;;\\x1b\\\\ now-5-expected10]",
+        "tests/test_textwrap.py::test_wrap_hyperlink_word_boundary[Go \\x1b]8;;http://example.com\\x07Click here\\x1b]8;;\\x07 now-5-expected11]",
+        "tests/test_textwrap.py::test_wrap_hyperlink_word_boundary[\\x1b]8;id=my-link;http://example.com\\x1b\\\\Click here\\x1b]8;;\\x1b\\\\-6-expected12]"
+      ],
+      "bucket": "1to4hr",
+      "cluster_key": "SequenceTextWrapper._wrap_chunks",
+      "rationale": "OSC 8 hyperlinks containing internal spaces were split mid-sequence by wrap(); the fix adds id-based continuation so each wrapped fragment gets correct open/close sequences.",
+      "tier": "clean-pending-probe",
+      "resolved_at": "2026-01-26T17:51:10-05:00",
+      "redgreen": "VERIFIED",
+      "source": "recovery"
+    },
+    {
+      "repo": "wcwidth",
+      "repo_url": "https://github.com/jquast/wcwidth",
+      "fix_sha": "226d03933595f8cfc1c26fa320d767f953d3b00f",
+      "base_sha": "c563bfb8ddffa88684c7c4ee92ab013d590e5a3f",
+      "real_title": "bugfix textwrap function like CPython #140627 (#170)",
+      "source_files": [
+        "wcwidth/textwrap.py",
+        "wcwidth/__init__.py"
+      ],
+      "test_files": [
+        "tests/test_textwrap.py"
+      ],
+      "fail_to_pass": [
+        "tests/test_textwrap.py::test_wrap_drops_trailing_whitespace"
+      ],
+      "bucket": "lt1hr",
+      "cluster_key": "SequenceTextWrapper._wrap_chunks",
+      "rationale": "wrap() left trailing whitespace on lines when drop_whitespace=True; the fix adds an rstrip() call matching CPython issue #140627 behaviour.",
+      "tier": "clean-pending-probe",
+      "resolved_at": "2026-01-17T21:37:12-05:00",
+      "redgreen": "VERIFIED",
+      "source": "recovery"
+    },
+    {
+      "repo": "wcwidth",
+      "repo_url": "https://github.com/jquast/wcwidth",
+      "fix_sha": "e48109921916a6947c5a091b417d1730635e49ca",
+      "base_sha": "a3cb5021927add656e7f497be78fca088fc21403",
+      "real_title": "Width 0 for Default_Ignorable_Code_Point characters (#174)",
+      "source_files": [
+        "wcwidth/wcwidth.py",
+        "wcwidth/table_zero.py",
+        "wcwidth/table_wide.py"
+      ],
+      "test_files": [
+        "tests/test_width.py"
+      ],
+      "fail_to_pass": [
+        "tests/test_width.py::test_default_ignorable_zero_width[12644-0]",
+        "tests/test_width.py::test_default_ignorable_zero_width[65440-0]",
+        "tests/test_width.py::test_default_ignorable_zero_width[8293-0]"
+      ],
+      "bucket": "lt1hr",
+      "cluster_key": "wcwidth.wcwidth",
+      "rationale": "Characters with the Unicode Default_Ignorable_Code_Point property (U+3164 HANGUL FILLER, U+FFA0, and ~3700 reserved codepoints) were incorrectly returning non-zero width instead of 0.",
+      "tier": "clean-pending-probe",
+      "resolved_at": "2026-01-20T11:38:01-05:00",
+      "redgreen": "VERIFIED",
+      "source": "recovery"
+    },
+    {
+      "repo": "more-itertools",
+      "repo_url": "https://github.com/more-itertools/more-itertools",
+      "fix_sha": "be5793a55f58ee29521d8cbc9f14019f5833454e",
+      "base_sha": "fdbd43c569feb4388302ddee0551d18edd39fadc",
+      "real_title": "Two fixes for repeat with iterator arguments",
+      "source_files": [
+        "more_itertools/more.py"
+      ],
+      "test_files": [
+        "tests/test_more.py"
+      ],
+      "fail_to_pass": [
+        "tests/test_more.py::GrayProductTests::test_repeat_with_iterators",
+        "tests/test_more.py::PartialProductTests::test_repeat_with_iterators"
+      ],
+      "bucket": "lt1hr",
+      "cluster_key": "GrayProductTests",
+      "rationale": "gray_product and partial_product prematurely consumed iterator arguments when repeat>1 because iterables*repeat multiplied the tuple before materializing each iterable; fix materializes each iterable into a tuple first then repeats.",
+      "tier": "clean-pending-probe",
+      "resolved_at": "2026-02-02T13:35:27-06:00",
+      "redgreen": "VERIFIED",
+      "source": "recovery"
+    },
+    {
+      "repo": "more-itertools",
+      "repo_url": "https://github.com/more-itertools/more-itertools",
+      "fix_sha": "06f31819121eb0620d3165fda73a44cbf71b140d",
+      "base_sha": "def2d821c0a15ede86578660e7dc48e44bad9579",
+      "real_title": "Simplify nth_combination_with_replacement. Fix incorrect exception.",
+      "source_files": [
+        "more_itertools/more.py"
+      ],
+      "test_files": [
+        "tests/test_more.py"
+      ],
+      "fail_to_pass": [
+        "tests/test_more.py::NthCombinationWithReplacementTests::test_basic",
+        "tests/test_more.py::NthCombinationWithReplacementTests::test_invalid_index"
+      ],
+      "bucket": "lt1hr",
+      "cluster_key": "NthCombinationWithReplacementTests",
+      "rationale": "nth_combination_with_replacement incorrectly raised ValueError when r > len(pool), but combinations_with_replacement allows r to exceed pool length; also failed to raise IndexError for out-of-range indices when n=0 or r>n due to incorrect comb() result.",
+      "tier": "clean-pending-probe",
+      "resolved_at": "2026-01-02T16:43:47-07:00",
+      "redgreen": "VERIFIED",
+      "source": "recovery"
+    }
+  ],
+  "redgreen_drops": {
+    "c7fc868 (wcwidth virama uucode gt4hr)": "RED=PASS even with correct escaped nodeids — the invisible_stacker params already pass at base; fix is real but does not regress these tests (no clean RED)",
+    "d71c4ad (more-itertools _marker 1to4hr)": "RED=PASS — fix only widened existing test lambdas (a,b,c,d,e -> *args); test_window_size_large passes at base"
+  },
+  "generation_method": {
+    "test_patch": "git diff <base> <fix> -- <test_files>",
+    "accepted_diff": "git diff <base> <fix> over the actual CHANGED .py files MINUS tests/conftest/test_*/bin/docs (NOT the agent-listed source_files, which omitted generated tables e.g. wcwidth/table_grapheme.py)",
+    "nodeid": "use the ACTUAL pytest-collected nodeid (non-ASCII params are \\uXXXX-escaped); raw-glyph ids silently MISS"
+  },
+  "contamination_drops": [
+    {
+      "repo": "wcwidth",
+      "fix": "8ed7f2c880",
+      "bucket": "1to4hr",
+      "tier": "stale",
+      "date": "2024-01-05"
+    },
+    {
+      "repo": "wcwidth",
+      "fix": "b1c16aaf29",
+      "bucket": "1to4hr",
+      "tier": "grey",
+      "date": "2025-09-18"
+    },
+    {
+      "repo": "more-itertools",
+      "fix": "adeda34bd1",
+      "bucket": "1to4hr",
+      "tier": "grey",
+      "date": "2025-10-28"
+    },
+    {
+      "repo": "more-itertools",
+      "fix": "120ee0a599",
+      "bucket": "lt1hr",
+      "tier": "grey",
+      "date": "2025-10-09"
+    },
+    {
+      "repo": "parse",
+      "fix": "9c9ec7fe88",
+      "bucket": "1to4hr",
+      "tier": "stale",
+      "date": "2024-06-10"
+    },
+    {
+      "repo": "parse",
+      "fix": "3cf6e15f83",
+      "bucket": "1to4hr",
+      "tier": "stale",
+      "date": "2020-09-11"
+    },
+    {
+      "repo": "boltons",
+      "fix": "8ba3a7fa0d",
+      "bucket": "lt1hr",
+      "tier": "stale",
+      "date": "2022-12-07"
+    },
+    {
+      "repo": "boltons",
+      "fix": "4815fc8dd1",
+      "bucket": "lt1hr",
+      "tier": "stale",
+      "date": "2023-10-29"
+    },
+    {
+      "repo": "pyparsing",
+      "fix": "f5bdb2deff",
+      "bucket": "lt1hr",
+      "tier": "grey",
+      "date": "2025-09-16"
+    }
+  ]
+}
