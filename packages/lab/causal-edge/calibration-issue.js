@@ -339,4 +339,8 @@ module.exports = {
   scoreAttempt, scoreIssueCalibration, passAtK,
   buildActorInput, parsePatchTouchedPaths, rubricLeaks,
   WORKED_EXAMPLE_FIELDS,
+  // v3.11 W1 — additive exports (no behavior change): the lesson leak-guard
+  // (lesson-signature.js lessonLeaks) reuses the SAME min-run length + the SAME
+  // normalizer so the two leak checks can never silently diverge. Never re-literal `12`.
+  RUBRIC_LEAK_MIN, normalizeAlnum,
 };
