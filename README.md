@@ -140,7 +140,7 @@ The value is concentrated in the enforced layer. The runtime adds *verifiable* m
 ## Documentation
 
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — the substrate model: layers, the Ten Axioms, the transaction loop, every kernel primitive, and the threat model.
-- **[docs/ROADMAP.md](docs/ROADMAP.md)** — the phase-by-phase record (Phase 0 → v3.7 ✓, each with its phase-close sign-off) and what comes next (v3.8 → v3.9 first live beta).
+- **[docs/ROADMAP.md](docs/ROADMAP.md)** — the phase-by-phase record (Phase 0 → v3.10 ✓, each with its phase-close sign-off) and what comes next (v3.11 → the first world-anchored live merges).
 - **[docs/ACTIVATION-LEDGER.md](docs/ACTIVATION-LEDGER.md)** — every built-but-dark / flag-gated capability, its consumer, and its activation fate. The honest inventory.
 - **[docs/delta-promote-walkthrough.md](docs/delta-promote-walkthrough.md)** — the human-gated promote workflow, end to end (with the runnable demo).
 - **[docs/README.md](docs/README.md)** — the full documentation index.
@@ -157,7 +157,7 @@ What this substrate does **not** do:
 - ❌ **Does not guarantee Claude follows the markdown rules.** Those are advisory text. *Specific* behaviors are hook-enforced and deterministic (read-before-edit, vague-prompt detection, config-guard, pre-compact checkpoint); the rest ride on best-effort instruction-following.
 - ❌ **Does not give agents continuous LLM memory across sessions.** Each spawn is a fresh call. The substrate maintains *per-identity reputation* on disk (trust scores, history) — that is persistence of a record, not of the model's memory.
 - ⚠️ **Is local-trust-anchored.** The v3.x line does **not** defend against hostile same-uid filesystem tampering (e.g. back-dating a record's mtime to hide it from a rate window) — those residuals are named in the [threat model](docs/ARCHITECTURE.md#threat-model--the-human-gated-delta-path) and close only at the Track-2 **ContainerAdapter** sandbox.
-- ⚠️ **Ships some code ahead of its consumer — deliberately, and tracked.** Producers may land one phase before the thing that reads them (e.g. the v3.7 reject-event ledger's breaker **source** landed in v3.8 as a shadow read; its fail-closed **gating** consumer arrives in v3.9). Every such edge is named in the [activation ledger](docs/ACTIVATION-LEDGER.md) rather than implied to be live.
+- ⚠️ **Ships some code ahead of its consumer — deliberately, and tracked.** Producers may land one phase before the thing that reads them (e.g. the v3.7 reject-event ledger's breaker **source** landed in v3.8 as a shadow read; its fail-closed **gating** consumer remains deferred — still shadow). Every such edge is named in the [activation ledger](docs/ACTIVATION-LEDGER.md) rather than implied to be live.
 
 These are intentional architecture decisions, not gaps to fix.
 
