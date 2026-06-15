@@ -34,6 +34,7 @@ const registry = require(path.join(REPO, 'packages', 'runtime', 'orchestration',
 const { populateRecallGraph } = require(path.join(REPO, 'packages', 'lab', 'attribution', 'recall-graph.js'));
 const nodeStore = require(path.join(REPO, 'packages', 'lab', 'attribution', 'recall-graph-store.js'));
 const signalStore = require(path.join(REPO, 'packages', 'lab', 'persona-consumer', 'hardening-signal-store.js'));
+const authorshipStore = require(path.join(REPO, 'packages', 'lab', 'persona-consumer', 'authorship-store.js'));
 const { recalibratePersonaReputation } = require(path.join(REPO, 'packages', 'lab', 'persona-consumer', 'recalibrate.js'));
 
 const TEST_PERSONA = '99-test-probe';          // a roster KEY (NN- convention; illegal as a role token)
@@ -119,15 +120,83 @@ function run() {
   };
 }
 
+// v3.10-W2 (E5) — the SHARED round: two real identities (t1, t2) build the SAME worked example -> a node_id
+// collision -> two authorship edges -> a signal credits BOTH. A SEPARATE entry from run() (solo) so the W1
+// solo assertions stay green; gated behind the `--shared` arg. The basis is held CONSTANT (seed 'shared' in
+// BOTH builds) so deriveNodeId collides; ONLY built_by varies.
+function runShared() {
+  // 1) two REAL identities, no retire (the P5 pre-build gate proved two assigns -> t1, t2)
+  seedRoster(['t1', 't2']);
+  const a1 = assign();
+  const a2 = assign();
+  const b1 = builtByFromAssign(a1.persona, a1.name);   // test-probe.t1
+  const b2 = builtByFromAssign(a2.persona, a2.name);   // test-probe.t2
+
+  // 2) BOTH build the SAME worked example (seed 'shared' held constant -> same node_id; only built_by differs)
+  const node1 = populateRecallGraph([eligibleAttempt(b1, 'shared')]).nodes[0];
+  const wn1 = nodeStore.writeNode(node1);                                       // first-eligible-wins keeps b1
+  authorshipStore.writeAuthorship({ node_id: node1.node_id, built_by: b1, recorded_at: NOW });
+
+  const node2 = populateRecallGraph([eligibleAttempt(b2, 'shared')]).nodes[0]; // SAME node_id as node1
+  const wn2 = nodeStore.writeNode(node2);                                       // COLLISION (persona differs)
+  authorshipStore.writeAuthorship({ node_id: node2.node_id, built_by: b2, recorded_at: NOW });
+
+  // 3) the collision is reported ONLY by the 2nd writeNode's return -> capture it (producer-side)
+  const collisionNodeIds = wn2.persona_collision ? [node2.node_id] : [];
+
+  // 4) one mock support signal about the SHARED node
+  const ws = signalStore.writeSignal({ node_id: node1.node_id, outcome: 'support', source: 'mock', recorded_at: NOW });
+
+  // 5) recalibrate over the REAL persisted stores (nodes + signals + the authorship ledger)
+  const rep = recalibratePersonaReputation(
+    nodeStore.listNodes(), signalStore.listSignals(),
+    { now: NOW, collisionNodeIds, authorships: authorshipStore.listAuthorships() },
+  );
+  const key1 = `${b1.role}.${b1.roster_name}`;
+  const key2 = `${b2.role}.${b2.roster_name}`;
+  const edges = authorshipStore.listAuthorships().filter((e) => e.node_id === node1.node_id);
+  const p1 = rep.per_persona[key1] || null;
+  const p2 = rep.per_persona[key2] || null;
+
+  return {
+    ok: true,
+    shared: true,
+    node_id: node1.node_id,
+    node1_written: wn1.ok === true,
+    signal_written: ws.ok === true,
+    persona_collision: wn2.persona_collision === true,     // W2-E5 assertion 1
+    authorship_edge_count: edges.length,                   // W2-E5 assertion 2 (== 2)
+    credited: { [key1]: p1, [key2]: p2 },                  // W2-E5 assertion 3 (BOTH, each 2/3)
+    both_credited: !!(p1 && p2 && p1.posterior === 2 / 3 && p2.posterior === 2 / 3),
+    store_dirs: {
+      nodes: nodeStore.DEFAULT_DIR, signals: signalStore.DEFAULT_DIR,
+      authorships: authorshipStore.DEFAULT_DIR, identities: registry.STORE_PATH,
+    },
+  };
+}
+
 if (require.main === module) {
+  // SAFETY (VALIDATE-hacker LOW): refuse a BARE invocation. Without the isolation seams set BEFORE node
+  // starts (the ENV-BEFORE-REQUIRE discipline), the lab stores + the registry resolve to the REAL
+  // ~/.claude lab-state + identity store -- a bare `node persona-consumer-round.js` would pollute the live
+  // lanes. The test harnesses set all seams; a manual run must too. (HOME is also required so the registry's
+  // homedir() fallback can't escape.)
+  if (!process.env.LOOM_LAB_STATE_DIR || !process.env.HETS_IDENTITY_STORE || !process.env.HOME) {
+    process.stderr.write('refusing to run: set HOME + LOOM_LAB_STATE_DIR + HETS_IDENTITY_STORE to an isolated '
+      + 'temp base BEFORE node starts (this harness writes real lab/identity state otherwise)\n');
+    process.exit(2);
+  }
   const check = process.argv.includes('--check');
+  const shared = process.argv.includes('--shared');
   let result;
-  try { result = run(); } catch (e) { process.stdout.write(JSON.stringify({ ok: false, error: e.message }) + '\n'); process.exit(1); }
+  try { result = shared ? runShared() : run(); } catch (e) { process.stdout.write(JSON.stringify({ ok: false, error: e.message }) + '\n'); process.exit(1); }
   process.stdout.write(JSON.stringify(result) + '\n');
   if (check) {
-    const good = result.node_written && result.signal_written && result.posterior === 2 / 3 && result.e6_reassign_excluded_retired;
+    const good = shared
+      ? (result.node1_written && result.signal_written && result.persona_collision && result.authorship_edge_count === 2 && result.both_credited)
+      : (result.node_written && result.signal_written && result.posterior === 2 / 3 && result.e6_reassign_excluded_retired);
     process.exit(good ? 0 : 1);
   }
 }
 
-module.exports = { run, builtByFromAssign };
+module.exports = { run, runShared, builtByFromAssign };
