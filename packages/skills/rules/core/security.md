@@ -23,6 +23,18 @@
 - **A content-addressed store must verify CONTENT on read, not just the key.** A
   filename-equals-field check alone is bypassable — re-derive the id from the body
   and reject a mismatch (the #273 record-store lesson). The store is not a sandbox.
+- **Integrity is NOT provenance — never derive TRUST from a record's mere existence in an
+  open-writable store.** Verify-on-read proves a record is *self-consistent* (integrity), NOT that
+  the *legitimate producer* made it (provenance): anyone who can write the store can CO-FORGE a
+  byte-indistinguishable record — a valid body plus a matching content-addressed key/sidecar
+  re-derived via the SAME exported function — so any weight / score / authorization that reads
+  "this record exists and verifies" is inflatable by an unauthorized writer. A trust input needs an
+  AUTHENTICATED minter (a signed record, or a kernel-owned writer the caller cannot invoke), never a
+  store re-hash. (The #273 family's THIRD face, after exact-set and verify-on-read: v3.11 W3 — a
+  forged `confirmed-by` edge minted via the exported `deriveEdgeId` + a matching sidecar inflated the
+  advisory confirmed-weight even though every store re-verified on read. Tolerable there ONLY because
+  the weight was shadow/advisory and never gated an action; the moment such a weight gates, the
+  authenticated writer is mandatory.)
 
 ## Secret Management
 
