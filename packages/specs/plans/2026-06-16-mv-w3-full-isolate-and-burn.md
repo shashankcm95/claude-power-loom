@@ -220,3 +220,57 @@ store, full 3-lens VALIDATE) → W3d (capstone rig). Each its own PR + USER merg
   private key) earns the token — the documented #273 residual, not a new bug.
 
 **Gate after folds:** 125/125 install · 67 lab files · item-source 11 + lesson-merge-lift 17 + weight-source-gate 16. eslint clean.
+
+---
+
+## SCOPE DECISION (USER, 2026-06-16, post-W3a): LIGHT composition capstone; W3b/W3c DEFERRED
+
+After W3a (#338), the USER chose the **light composition capstone (W3d-lite)** over Full W3. Rationale: the
+heavier seams (W3b forge-poller, W3c signed injection store) are 2 MORE security-sensitive surfaces that only
+NARROW (move trust zero); the live external-PR beta is the binding constraint, not more machinery. The light
+capstone closes W3a's one honest gap (the END-TO-END discharge of "zero new machinery") with **zero new
+security surface**.
+
+### W3d-lite — the light composition capstone (the NEXT wave, after #338 merges)
+- **Goal:** prove the FULL chain composes END-TO-END in isolation with the source DERIVED (not injected):
+  a signed edge for a valid lesson node → `deriveItemSource` → `'signed-lane'` → `buildRankingWeights` (rig's
+  INJECTED allow-set holds the signed-lane token) → `opts.weights` → the ACTUAL `retrieveBySignature` **flips
+  the ranking over isolated rig nodes**. And the negative: an UNSIGNED lesson → `deriveItemSource` → `'mock'`
+  → gated to 0 → **inert** (no flip). This discharges "a real signal needs zero new machinery" end-to-end
+  (W3a proved only the derivation half).
+- **No new modules, no new security seams** — composes W3a `deriveItemSource` + MV-W2 `buildRankingWeights` +
+  the existing `evaluateHardenGate` (SYNTHETIC armCounts — NO forge-poller) + the existing `retrieveBySignature`.
+- **Isolation (the corrected firewall, subset):** a **test** (`tests/unit/lab/causal-edge/`) that threads an
+  explicit temp `dir` at EVERY store write (belt+suspenders — sidesteps the env-capture CRIT entirely),
+  injects an EPHEMERAL keypair via `opts` only, **snapshots the real `recall-edge` DEFAULT_DIR before**,
+  asserts it byte-unchanged after, and `rm -rf` burns the temp dir. CI-safe (temp dirs; no network/LLM).
+- **VALIDATE:** focused — code-reviewer + a hacker re-probe (the ONE claim that matters: the real lab-state
+  dirs are untouched after a full isolated composition run). Honesty: the rig NARROWS (composition evidence),
+  it does not HARDEN.
+
+### DEFERRED to beta-time (NOT this phase)
+- **W3b** the fixture-fed forge-poller; **W3c** the signed `injection-edge-store` + injection-minter; the full
+  W3d rig that wires them. Revisit when the live external-PR beta makes them load-bearing (and when the real
+  forge API shape is known — building the poller now risks rework, honesty-lens noted).
+
+### W3d-lite VALIDATE result (2026-06-16, 3-lens board `wf_95dd3e3f-978` — code-reviewer + hacker + honesty)
+
+**Verdict: SHIP / SHIP-WITH-FOLDS / SHIP** (test-only wave — all folds are test-quality/honesty). Folded:
+- **HIGH (code-reviewer):** `gateOpts.lessonSignature` was hardcoded to a stale `api-shape` token (the nodes
+  are `boundary-contract`) -> the placebo-independence arm ran on unrelated sigs. **Fix:** derive
+  `lessonSignature`/`placeboSignature` from the real target/distractor nodes.
+- **MED (code-reviewer):** the real-dir isolation assertion sat OUTSIDE `finally` -> skipped on an inner
+  failure (when a breach matters most). **Fix:** moved INTO `finally`, after the burn (both tests).
+- **MED (hacker):** the snapshot covered only `recall-edge` (not edge+node+sidecar) and was blind to an
+  in-place overwrite. **Fix:** `digestLabState()` digests the WHOLE real lab-state tree as `relpath:size`
+  (catches an add OR overwrite in ANY store).
+- **LOW (honesty):** clarified the HARDEN magnitude is SYNTHETIC arm counts (the signed edge gates ADMISSION;
+  the forge->armCounts link is W3b, deferred) — so "the gate fires HARDEN" can't read as a real signal.
+- **Positive (hacker live-probe):** 0 writes under the real lab-state base; the snapshot catches a deliberate
+  leak; the ephemeral key is env-blind; the burn is complete.
+
+**Gate after folds:** 125/125 install · 68 lab files · w3d-lite 2/2. eslint clean. The MECHANICS-not-TRUST line
+holds: composition EVIDENCE, hardens NO trust.
+
+**MV-W3 status under the light-capstone scope: COMPLETE** (W3a #338 + W3d-lite). W3b/W3c remain deferred to
+beta-time; the live external-PR beta is the unchanged next real lever for TRUST.
