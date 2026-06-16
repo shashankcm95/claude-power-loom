@@ -33,6 +33,9 @@
 const { classifyLessonLayer } = require('../attribution/recall-graph');
 const { writeEdge, loadEdge } = require('../attribution/recall-edge-store');
 const { sidecarSha, writeCandidate } = require('../attribution/candidate-sidecar');
+// v-next C-W1: the ed25519 attestation primitive (kernel). The minter SIGNS here (it holds the
+// private key); the authenticated lane (authenticatedEdgeIds) VERIFIES. lab->kernel is legal.
+const { signEdgeId, verifyEdgeSig, hasVerifyKey, SIG_ALG } = require('../../kernel/_lib/edge-attestation');
 
 const HEX64 = /^[0-9a-f]{64}$/;
 const BEHAVIORAL_PASS = 'BEHAVIORAL_PASS';
@@ -97,6 +100,24 @@ function canEnterPredictorLane(node, ids) {
   return !!node && isHex64(node.node_id) && ids instanceof Set && ids.has(node.node_id);
 }
 
+// v-next C-W1 — the AUTHENTICATED lane. Like confirmedNodeIds, but it additionally requires the edge
+// to carry a VALID ed25519 signature (PROVENANCE, not just integrity). FAIL-CLOSED: with no loadable
+// verify key (opts.verifyKey || env LOOM_EDGE_VERIFY_KEY) NOTHING is authenticated -> empty set (never
+// accept-all). SHADOW-ONLY consumer surface — runConsolidationPass intentionally still uses
+// confirmedNodeIds (counts ALL valid edges); do NOT wire authenticatedEdgeIds into consolidation /
+// ranking until W2 re-mints the corpus + flips require-signed (phase cross-carry seam #1 / basis trap #4).
+function authenticatedEdgeIds(edges, opts = {}) {
+  const set = new Set();
+  const vk = opts && opts.verifyKey;
+  if (!hasVerifyKey({ publicKeyPem: vk })) return set;
+  for (const e of (Array.isArray(edges) ? edges : [])) {
+    if (!e || e.edge_type !== EDGE_TYPE || !isHex64(e.from_node_id) || !isHex64(e.edge_id)) continue;
+    if (e.sig_alg !== SIG_ALG || typeof e.edge_sig !== 'string') continue;
+    if (verifyEdgeSig(e.edge_id, e.edge_sig, { publicKeyPem: vk })) set.add(e.from_node_id);
+  }
+  return set;
+}
+
 // --------------------------------------------------------------------------
 // runConfirmationPass — join provisional nodes x verified confirming attempts; for each genuine
 // confirmation, sidecar the confirming candidate (so to_delta_ref is recoverable) then write the
@@ -111,7 +132,11 @@ function canEnterPredictorLane(node, ids) {
 // sync body here is a harmless no-op). dir-injectable; `now` injectable for deterministic tests.
 // --------------------------------------------------------------------------
 async function runConfirmationPass(provisionalNodes, confirmingAttempts, opts = {}) {
-  const { edgeDir, sidecarDir, now, requirementFor } = opts;
+  const { edgeDir, sidecarDir, now, requirementFor, signingKey } = opts;
+  // v-next C-W1: if a signing key is provided, the minter SIGNS each edge it mints (the authenticated
+  // path) — the ONLY legitimate signer. Absent -> unsigned (shadow default; zero behavior change). The
+  // store stays crypto-agnostic: it just persists the signer's opaque output (signEdgeId is fail-soft).
+  const signer = signingKey ? (id) => signEdgeId(id, { privateKeyPem: signingKey }) : undefined;
   const nodes = Array.isArray(provisionalNodes) ? provisionalNodes : [];
   const attempts = Array.isArray(confirmingAttempts) ? confirmingAttempts : [];
   const edges = [];
@@ -135,7 +160,7 @@ async function runConfirmationPass(provisionalNodes, confirmingAttempts, opts = 
         fail_to_pass: node.fail_to_pass,
         recorded_at: now || new Date().toISOString(),
       };
-      const w = writeEdge(rec, { dir: edgeDir });
+      const w = writeEdge(rec, { dir: edgeDir, signer });
       // confirmed_node_ids must NOT diverge from the persisted store (reviewer HIGH-1): add ONLY on a
       // successful write (fresh OR dedup-re-confirm); a write FAILURE leaves the node in the hazard lane.
       if (w.ok) {
@@ -154,6 +179,6 @@ async function runConfirmationPass(provisionalNodes, confirmingAttempts, opts = 
 }
 
 module.exports = {
-  sameRequirement, confirmsLesson, confirmedNodeIds, canEnterPredictorLane, runConfirmationPass,
+  sameRequirement, confirmsLesson, confirmedNodeIds, authenticatedEdgeIds, canEnterPredictorLane, runConfirmationPass,
   EDGE_TYPE, BEHAVIORAL_PASS,
 };

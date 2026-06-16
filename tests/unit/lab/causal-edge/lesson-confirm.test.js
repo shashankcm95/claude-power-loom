@@ -16,10 +16,16 @@ const os = require('os');
 const path = require('path');
 
 const REPO = path.join(__dirname, '..', '..', '..', '..');
-const { sameRequirement, confirmsLesson, confirmedNodeIds, canEnterPredictorLane, runConfirmationPass } = require(path.join(REPO, 'packages', 'lab', 'causal-edge', 'lesson-confirm.js'));
+const { sameRequirement, confirmsLesson, confirmedNodeIds, authenticatedEdgeIds, canEnterPredictorLane, runConfirmationPass } = require(path.join(REPO, 'packages', 'lab', 'causal-edge', 'lesson-confirm.js'));
 const { buildWorkedExampleNode } = require(path.join(REPO, 'packages', 'lab', 'attribution', 'recall-graph.js'));
 const { listEdges } = require(path.join(REPO, 'packages', 'lab', 'attribution', 'recall-edge-store.js'));
 const { sidecarSha, readCandidate } = require(path.join(REPO, 'packages', 'lab', 'attribution', 'candidate-sidecar.js'));
+const { generateEdgeKeypair } = require(path.join(REPO, 'packages', 'kernel', '_lib', 'edge-attestation.js'));
+
+// Hermetic (CodeRabbit #335): the authenticatedEdgeIds fail-closed assertions (opts `{}`) assume NO
+// ambient LOOM_EDGE_VERIFY_KEY. Each test file runs in its own node process -> a file-wide delete is isolated.
+delete process.env.LOOM_EDGE_SIGNING_KEY;
+delete process.env.LOOM_EDGE_VERIFY_KEY;
 
 let passed = 0; let failed = 0;
 const _tests = [];
@@ -194,6 +200,48 @@ test('EXIT-PROOF: the predictor lane is unreachable without a genuine same-requi
   // ONLY a genuine same-requirement, different-non-trivial, BEHAVIORAL_PASS confirm flips it
   await runConfirmationPass([n], [attempt()], opts);
   assert.strictEqual(lane(), true, 'predictor lane reached ONLY via a genuine confirming delta');
+});
+
+// --------------------------------------------------------------------------
+// v-next Carry C W1 — the authenticated lane (authenticatedEdgeIds) + the SIGNED confirm pass.
+// --------------------------------------------------------------------------
+test('SIGNED confirm pass: {signingKey} writes a SIGNED edge; authenticatedEdgeIds(verifyKey) includes it; fail-closed without a key', async () => {
+  const dir = tmp();
+  const { publicKeyPem, privateKeyPem } = generateEdgeKeypair();
+  const n = node();
+  const r = await runConfirmationPass([n], [attempt()], { edgeDir: path.join(dir, 'e'), sidecarDir: path.join(dir, 's'), now: '2026-06-15T00:00:00.000Z', requirementFor: () => FTP, signingKey: privateKeyPem });
+  assert.strictEqual(r.n_written, 1);
+  const edges = listEdges({ dir: path.join(dir, 'e'), verifyKey: publicKeyPem });
+  assert.strictEqual(edges.length, 1);
+  assert.strictEqual(edges[0].sig_alg, 'ed25519');
+  assert.strictEqual(authenticatedEdgeIds(edges, { verifyKey: publicKeyPem }).has(n.node_id), true);
+  assert.strictEqual(authenticatedEdgeIds(edges, {}).size, 0, 'fail-closed: no verify key -> nothing authenticated');
+});
+
+test('UNSIGNED confirm pass (shadow default): unsigned edge; confirmedNodeIds counts it (unchanged); authenticatedEdgeIds excludes it', async () => {
+  const dir = tmp();
+  const { publicKeyPem } = generateEdgeKeypair();
+  const n = node();
+  await runConfirmationPass([n], [attempt()], { edgeDir: path.join(dir, 'e'), sidecarDir: path.join(dir, 's'), now: '2026-06-15T00:00:00.000Z', requirementFor: () => FTP });
+  const edges = listEdges({ dir: path.join(dir, 'e') });
+  assert.strictEqual('edge_sig' in edges[0], false);
+  assert.strictEqual(confirmedNodeIds(edges).has(n.node_id), true);            // unchanged: still counts it
+  assert.strictEqual(authenticatedEdgeIds(edges, { verifyKey: publicKeyPem }).size, 0); // but not authenticated
+});
+
+test('RESIDUAL (hacker HIGH-1, PINNED): an UNSIGNED forged edge STILL inflates the lane via the unchanged confirmedNodeIds (open until W2)', () => {
+  // The live weight path (confirmedNodeIds) is UNCHANGED in W1 -> a hand-forged unsigned edge (zero
+  // gate runs) still promotes its victim. W1 closes only the SIGNED path; this PINS the shadow residual.
+  const victim = 'f'.repeat(64);
+  const forged = { edge_type: 'confirmed-by', from_node_id: victim };          // no sig, no gate run
+  assert.strictEqual(confirmedNodeIds([forged]).has(victim), true);            // STILL counted (by design, W1)
+  assert.strictEqual(authenticatedEdgeIds([forged], { verifyKey: generateEdgeKeypair().publicKeyPem }).has(victim), false); // but NOT authenticated
+});
+
+test('authenticatedEdgeIds: fail-closed (no key -> empty); a wrong-length/garbage sig is excluded', () => {
+  assert.strictEqual(authenticatedEdgeIds([{ edge_type: 'confirmed-by', from_node_id: 'a'.repeat(64), edge_id: 'b'.repeat(64), sig_alg: 'ed25519', edge_sig: 'AAAA' }], {}).size, 0);
+  const { publicKeyPem } = generateEdgeKeypair();
+  assert.strictEqual(authenticatedEdgeIds([{ edge_type: 'confirmed-by', from_node_id: 'a'.repeat(64), edge_id: 'b'.repeat(64), sig_alg: 'ed25519', edge_sig: 'AAAA' }], { verifyKey: publicKeyPem }).size, 0);
 });
 
 (async () => {
