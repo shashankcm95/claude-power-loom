@@ -1,0 +1,7 @@
+{
+  "id": "more-itertools__numeric-range-slice-negative-step",
+  "verified": true,
+  "fail_before": "FAIL",
+  "pass_after": "PASS",
+  "reason": null
+}

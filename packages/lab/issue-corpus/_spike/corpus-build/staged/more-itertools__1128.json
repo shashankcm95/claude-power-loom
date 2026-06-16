@@ -1,0 +1,16 @@
+{
+  "id": "more-itertools__numeric-range-slice-negative-step",
+  "repo": "https://github.com/more-itertools/more-itertools",
+  "base_sha": "1c21c3ae9c7991b73044fe16807b70d1cac61e0b",
+  "problem_statement": "numeric_range.__getitem__ returns an empty range when sliced with a negative step (e.g. [::-1]), even though reversed() works on the same range. With a negative step, the default None start/stop must be adjusted (start -> last index, stop -> before-first) so the slice walks backwards. Fix numeric_range slicing so a negative-step slice returns the correctly reversed sub-range.",
+  "accepted_diff": "diff --git a/more_itertools/more.py b/more_itertools/more.py\nindex 764e7201..b2042450 100755\n--- a/more_itertools/more.py\n+++ b/more_itertools/more.py\n@@ -2337,23 +2337,12 @@ def __getitem__(self, key):\n         if isinstance(key, int):\n             return self._get_by_index(key)\n         elif isinstance(key, slice):\n-            step = self._step if key.step is None else key.step * self._step\n-\n-            if key.start is None or key.start <= -self._len:\n-                start = self._start\n-            elif key.start >= self._len:\n-                start = self._stop\n-            else:  # -self._len < key.start < self._len\n-                start = self._get_by_index(key.start)\n-\n-            if key.stop is None or key.stop >= self._len:\n-                stop = self._stop\n-            elif key.stop <= -self._len:\n-                stop = self._start\n-            else:  # -self._len < key.stop < self._len\n-                stop = self._get_by_index(key.stop)\n-\n-            return numeric_range(start, stop, step)\n+            start_idx, stop_idx, step_idx = key.indices(self._len)\n+            return numeric_range(\n+                self._start + start_idx * self._step,\n+                self._start + stop_idx * self._step,\n+                self._step * step_idx,\n+            )\n         else:\n             raise TypeError(\n                 'numeric range indices must be '\n",
+  "test_patch": "diff --git a/tests/test_more.py b/tests/test_more.py\nindex 175d368e..2e0cc065 100644\n--- a/tests/test_more.py\n+++ b/tests/test_more.py\n@@ -2855,6 +2855,11 @@ def test_get_item_by_slice(self):\n             ((1.0, 9.0, 1.5), slice(-10, None, 3), (1.0, 9.0, 4.5)),\n             ((1.0, 9.0, 1.5), slice(None, -10, 3), (1.0, 1.0, 4.5)),\n             ((1.0, 9.0, 1.5), slice(None, 10, 3), (1.0, 9.0, 4.5)),\n+            (\n+                (10.0, 0.0, -2.0),\n+                slice(None, None, -1),\n+                (2.0, 12.0, 2.0),\n+            ),\n             (\n                 (Decimal(\"1.0\"), Decimal(\"9.0\"), Decimal(\"1.5\")),\n                 slice(1, -1, None),\n",
+  "fail_to_pass": [
+    "tests/test_more.py::NumericRangeTests::test_get_item_by_slice"
+  ],
+  "pass_to_pass": [],
+  "resolved_at": "2026-03-17T15:52:45Z",
+  "provenance": "backtest",
+  "contamination_tier": "clean-pending-probe",
+  "source_pr": "https://github.com/more-itertools/more-itertools/pull/1128"
+}
