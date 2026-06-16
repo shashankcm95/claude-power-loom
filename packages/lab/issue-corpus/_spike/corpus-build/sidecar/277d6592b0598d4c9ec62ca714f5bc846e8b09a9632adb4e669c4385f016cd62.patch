@@ -1,0 +1,32 @@
+diff --git a/tabulate/__init__.py b/tabulate/__init__.py
+index 249b3ff..1ada2ee 100644
+--- a/tabulate/__init__.py
++++ b/tabulate/__init__.py
+@@ -523,16 +523,6 @@ def escape_empty(val):
+         padding=1,
+         with_header_hide=None,
+     ),
+-    "github": TableFormat(
+-        lineabove=Line("|", "-", "|", "|"),
+-        linebelowheader=Line("|", "-", "|", "|"),
+-        linebetweenrows=None,
+-        linebelow=None,
+-        headerrow=DataRow("|", "|", "|"),
+-        datarow=DataRow("|", "|", "|"),
+-        padding=1,
+-        with_header_hide=["lineabove"],
+-    ),
+     "pipe": TableFormat(
+         lineabove=_pipe_line_with_colons,
+         linebelowheader=_pipe_line_with_colons,
+@@ -720,6 +710,10 @@ def escape_empty(val):
+     ),
+ }
+ 
++# "github" is an alias for "pipe": both produce GitHub-flavored Markdown with
++# alignment colons in the separator row.
++_table_formats["github"] = _table_formats["pipe"]
++
+ 
+ tabulate_formats = sorted(_table_formats.keys())
+ 

@@ -1,0 +1,40 @@
+{
+  "node_id": "c52157329ab4767093439bc6f8c614a7ba7c2bc0b8fccfd88256613feff30921",
+  "node_type": "stochastic_sample",
+  "content_hash": "281a86d835308b68c7f63492b76f1eda7861a5a33f96f29ef2daeb1618994a21",
+  "surface": "https://github.com/networkx/networkx",
+  "worked_example_ref": {
+    "issue_id": "networkx__sbm-sparse-diagonal-blocks",
+    "repo": "https://github.com/networkx/networkx",
+    "problem_statement_digest": "stochastic_block_model did not apply the sparse heuristic to diagonal (i==j) blocks; those blocks always took the dense path, so sparse=True and sparse=False produced identical RNG consumption for single-block graphs",
+    "candidate_patch_ref": "c2b219fdae8c419a",
+    "behavioral_verdict": "BEHAVIORAL_PASS",
+    "reference_divergence": 0,
+    "contamination_tier": "clean-pending-probe"
+  },
+  "provenance": "backtest",
+  "contaminated": false,
+  "friction_signature_ref": null,
+  "built_by": {
+    "role": "unattributed",
+    "roster_name": null,
+    "actor_kind": "claude_p"
+  },
+  "graded_by": {
+    "leg_b": null,
+    "leg_c": null
+  },
+  "trigger_class": "boundary-contract",
+  "gotcha_class": "unguarded-edge-case",
+  "corrective_class": "handle-edge-explicitly",
+  "lesson_signature": "lesson:boundary-contract|unguarded-edge-case|handle-edge-explicitly",
+  "lesson_body": "When a code path branches on a structural condition (e.g., diagonal vs. off-diagonal), every downstream sub-path that shares common post-processing logic must be routed through that same branching gate. Carving out a special structural case without also routing it into the shared downstream logic silently bypasses the feature the shared path implements.",
+  "accepted_diff_ref": "ced49d73f1a507e02ff96a013096590b5c6bbb9820f3c2883435e09d0e8d40b9",
+  "candidate_patch_sha": "ced49d73f1a507e02ff96a013096590b5c6bbb9820f3c2883435e09d0e8d40b9",
+  "fail_to_pass": [
+    "networkx/generators/tests/test_community.py::test_sbm_sparse_applies_to_diagonal_blocks"
+  ],
+  "failed_attempt_ref": null,
+  "lesson_content_hash": "40e468d86f55e9f16cca12ca9e5614676f003c8d27fde912fc73dae37697a760",
+  "recorded_at": "2026-06-16T12:22:40.389Z"
+}

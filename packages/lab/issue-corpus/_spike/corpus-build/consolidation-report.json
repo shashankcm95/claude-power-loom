@@ -1,0 +1,32 @@
+{
+  "schema": "lesson-consolidation-report/v1",
+  "confirmed": false,
+  "n_lessons": 2,
+  "n_signatures": 2,
+  "under_separation_signatures": [],
+  "per_signature": [
+    {
+      "lesson_signature": "lesson:api-shape|unguarded-edge-case|handle-edge-explicitly",
+      "recurrence_count_raw": 1,
+      "distinct_issues": 1,
+      "members": [
+        {
+          "node_id": "6bdee4f086405b098a4ce2f160fe0dc20f269507007f8f321df4c4c30df8cce2",
+          "issue_id": "parse__zero-precision-float-no-decimal"
+        }
+      ]
+    },
+    {
+      "lesson_signature": "lesson:boundary-contract|unguarded-edge-case|fail-closed",
+      "recurrence_count_raw": 1,
+      "distinct_issues": 1,
+      "members": [
+        {
+          "node_id": "929aa01d57db2372ed6fe8c4e3fabb8b0e1584bcee889f2473cd0a2a3658021b",
+          "issue_id": "more-itertools__numeric-range-reversed-empty"
+        }
+      ]
+    }
+  ],
+  "generated_at": "2026-06-16T12:24:34.961Z"
+}

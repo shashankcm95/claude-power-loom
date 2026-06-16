@@ -1,0 +1,24 @@
+{
+  "n_valid": 20,
+  "n_collision_signatures": 5,
+  "gate_check": {
+    "n_lessons": 20,
+    "min_n": 20,
+    "n_collision_signatures": 5,
+    "has_collisions": true,
+    "n_queries": 20,
+    "result": "MEASURED",
+    "signature_hit_rate": 0.6,
+    "lexical_hit_rate": 1,
+    "discrimination_margin": -0.4
+  },
+  "held_out": {
+    "n_cluster_members": 18,
+    "signature_hit_rate": 0.7222222222222222,
+    "lexical_hit_rate": 0.05555555555555555,
+    "n_xrepo_only": 18,
+    "signature_hit_rate_xrepo": 0.7222222222222222,
+    "lexical_hit_rate_xrepo": 0.05555555555555555
+  },
+  "note": "DIAGNOSTIC per OQ-NS-6: narrows (signature vs lexical retrieval), never hardens trust."
+}

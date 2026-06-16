@@ -1,0 +1,40 @@
+diff --git a/parse.py b/parse.py
+index 80242e1..ef1abf1 100644
+--- a/parse.py
++++ b/parse.py
+@@ -349,7 +349,7 @@ class RepeatedNameError(ValueError):
+ 
+ 
+ def extract_format(format, extra_types):
+-    """Pull apart the format [[fill]align][sign][0][width][.precision][type]"""
++    """Pull apart the format [[fill]align][sign][0][width][grouping][.precision][type]"""
+     fill = align = None
+     if format[0] in "<>=^":
+         align = format[0]
+@@ -374,6 +374,14 @@ def extract_format(format, extra_types):
+         width += format[0]
+         format = format[1:]
+ 
++    # Extract grouping option
++    if format.startswith(","):
++        format = format[1:]
++        grouping = ","
++    elif format.startswith("_"):
++        format = format[1:]
++        grouping = "_"
++
+     if format.startswith("."):
+         # Precision isn't needed but we need to capture it so that
+         # the ValueError isn't raised.
+@@ -736,8 +744,9 @@ def _handle_field(self, field):
+                 width = r"{1,%s}" % int(format["width"])
+             else:
+                 width = "+"
+-            s = r"\d{w}|[-+ ]?0[xX][0-9a-fA-F]{w}|[-+ ]?0[bB][01]{w}|[-+ ]?0[oO][0-7]{w}".format(
+-                w=width
++            s = r"[-+ ]?[0-9{g}]{w}|[-+ ]?0[xX][0-9a-fA-F{g}]{w}|[-+ ]?0[bB][01{g}]{w}|[-+ ]?0[oO][0-7{g}]{w}".format(
++                w=width,
++                g=format.get("grouping", ""),
+             )
+             conv[group] = int_convert()
+             # do not specify number base, determine it automatically

@@ -1,0 +1,18 @@
+diff --git a/parse/__init__.py b/parse/__init__.py
+index 8922db3..a0c4bbe 100644
+--- a/parse/__init__.py
++++ b/parse/__init__.py
+@@ -727,10 +727,11 @@ def _handle_field(self, field):
+             self._group_index += 1
+             conv[group] = percentage
+         elif type == "f":
+-            s = r"\d*\.\d+"
++            # precision 0 formats without a decimal point (e.g. format(20.0, ".0f") == "20")
++            s = r"\d+" if format.get("precision") == "0" else r"\d*\.\d+"
+             conv[group] = convert_first(float)
+         elif type == "F":
+-            s = r"\d*\.\d+"
++            s = r"\d+" if format.get("precision") == "0" else r"\d*\.\d+"
+             conv[group] = convert_first(Decimal)
+         elif type == "e":
+             s = r"\d*\.\d+[eE][-+]?\d+|nan|NAN|[-+]?inf|[-+]?INF"

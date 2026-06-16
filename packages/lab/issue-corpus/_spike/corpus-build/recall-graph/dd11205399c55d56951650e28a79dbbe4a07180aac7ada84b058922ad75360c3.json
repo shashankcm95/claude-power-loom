@@ -1,0 +1,41 @@
+{
+  "node_id": "dd11205399c55d56951650e28a79dbbe4a07180aac7ada84b058922ad75360c3",
+  "node_type": "stochastic_sample",
+  "content_hash": "6f564f37d03c319fc7cbe339b0ce74629add06c4428f6177d534ebd48d403ad9",
+  "surface": "https://github.com/more-itertools/more-itertools",
+  "worked_example_ref": {
+    "issue_id": "more-itertools__seekable-getitem",
+    "repo": "https://github.com/more-itertools/more-itertools",
+    "problem_statement_digest": "seekable had no __getitem__, so indexing into the already-consumed/cached portion (seekable[i]) raised TypeError instead of returning the cached element. Add seekable.__getitem__ to access the internal cache, raising IndexError past the cache.",
+    "candidate_patch_ref": "18d98893df45e001",
+    "behavioral_verdict": "BEHAVIORAL_PASS",
+    "reference_divergence": 0,
+    "contamination_tier": "clean-pending-probe"
+  },
+  "provenance": "backtest",
+  "contaminated": false,
+  "friction_signature_ref": null,
+  "built_by": {
+    "role": "unattributed",
+    "roster_name": null,
+    "actor_kind": "claude_p"
+  },
+  "graded_by": {
+    "leg_b": null,
+    "leg_c": null
+  },
+  "trigger_class": "api-shape",
+  "gotcha_class": "unguarded-edge-case",
+  "corrective_class": "handle-edge-explicitly",
+  "lesson_signature": "lesson:api-shape|unguarded-edge-case|handle-edge-explicitly",
+  "lesson_body": "When a class wraps a sequence-like internal buffer, it must expose the expected sequence protocol methods; omitting them causes callers to receive opaque errors instead of meaningful access. Implement the missing protocol method so the internal structure's natural error semantics (e.g., out-of-bounds) propagate cleanly to callers.",
+  "accepted_diff_ref": "2fd976bbafef10f1721dc86335e21638848dc0306fc0d2d67dafa9f93aeb0490",
+  "candidate_patch_sha": "2fd976bbafef10f1721dc86335e21638848dc0306fc0d2d67dafa9f93aeb0490",
+  "fail_to_pass": [
+    "tests/test_more.py::SeekableTest::test_getitem",
+    "tests/test_more.py::SeekableTest::test_getitem_maxlen"
+  ],
+  "failed_attempt_ref": null,
+  "lesson_content_hash": "3ff676879b417e7c3367fcf534dccdc540e5b40035bb269b1c152d423d985b6a",
+  "recorded_at": "2026-06-16T12:23:11.532Z"
+}

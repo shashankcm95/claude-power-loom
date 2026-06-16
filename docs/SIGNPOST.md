@@ -239,6 +239,8 @@ Auto-generated map of where things live, derived from the repo structure + each 
 ### `lab/issue-corpus/`
 
 - `packages/lab/issue-corpus/_spike/corpus-build/add-to-manifest.js` - v3.11 bootcamp Phase 1 — accrete VERIFIED staged records into bootcamp-manifest.json.
+- `packages/lab/issue-corpus/_spike/corpus-build/bootcamp-capture.js` - v3.11 bootcamp Phase 2b — REAL capture over the VERIFIED corpus.
+- `packages/lab/issue-corpus/_spike/corpus-build/bootcamp-measure.js` - v3.11 bootcamp Phase 3 — the DISCRIMINATION measurement over the minted lesson corpus.
 - `packages/lab/issue-corpus/container-adapter.js` - v3.9 W1 — the ContainerAdapter: PURE read-mostly sandbox orchestration.
 - `packages/lab/issue-corpus/_spike/containment-spike.js` - v3.9 W1 — sandbox-exec containment spike (macOS-only; green-or-block proof).
 - `packages/lab/issue-corpus/corpus.js` - v3.9 W0 — the issue-corpus forward contract.

@@ -1,0 +1,40 @@
+{
+  "node_id": "87c866d2eabc6651eb8e5eeac44a9875c368d78c06451702480f7af64cb216c6",
+  "node_type": "stochastic_sample",
+  "content_hash": "cf16a160cddb080d0030cebc73860decde699ad50f05be1264a2dd264297429b",
+  "surface": "https://github.com/networkx/networkx",
+  "worked_example_ref": {
+    "issue_id": "networkx__dominating-set-cost-already-dominated",
+    "repo": "https://github.com/networkx/networkx",
+    "problem_statement_digest": "min_weighted_dominating_set greedy cost only counted nodes inside the dominating set, ignoring nodes already dominated by neighbors, so it picked redundant nodes and returned a non-minimal set. Fix the cost function to account for already-dominated nodes.",
+    "candidate_patch_ref": "991fbe966a7af0eb",
+    "behavioral_verdict": "BEHAVIORAL_PASS",
+    "reference_divergence": 0,
+    "contamination_tier": "clean-pending-probe"
+  },
+  "provenance": "backtest",
+  "contaminated": false,
+  "friction_signature_ref": null,
+  "built_by": {
+    "role": "unattributed",
+    "roster_name": null,
+    "actor_kind": "claude_p"
+  },
+  "graded_by": {
+    "leg_b": null,
+    "leg_c": null
+  },
+  "trigger_class": "state-mutation",
+  "gotcha_class": "unguarded-edge-case",
+  "corrective_class": "handle-edge-explicitly",
+  "lesson_signature": "lesson:state-mutation|unguarded-edge-case|handle-edge-explicitly",
+  "lesson_body": "A greedy cost function must measure remaining work against the actual shared mutable state, not a proxy derived at initialization. When coverage state is tracked separately from membership state, the cost denominator must intersect with the live coverage set rather than subtract a related but distinct set.",
+  "accepted_diff_ref": "1225bd996a000ba2903445a6ff4fe288a3b3f05368b35c89f499fde12539f3ab",
+  "candidate_patch_sha": "1225bd996a000ba2903445a6ff4fe288a3b3f05368b35c89f499fde12539f3ab",
+  "fail_to_pass": [
+    "networkx/algorithms/approximation/tests/test_dominating_set.py::TestMinWeightDominatingSet::test_cost_accounts_for_already_dominated"
+  ],
+  "failed_attempt_ref": null,
+  "lesson_content_hash": "d8012f462b4da51c13e221ac4b062a0f51a75d38c6b0cf07d75ba6263b5f02d7",
+  "recorded_at": "2026-06-16T12:22:16.356Z"
+}

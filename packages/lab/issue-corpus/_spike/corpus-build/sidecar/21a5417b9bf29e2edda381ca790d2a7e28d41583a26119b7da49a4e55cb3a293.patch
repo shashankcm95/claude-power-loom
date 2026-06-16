@@ -1,0 +1,26 @@
+diff --git a/networkx/readwrite/graph6.py b/networkx/readwrite/graph6.py
+index 0b46b0a41da..54463c2a1ea 100644
+--- a/networkx/readwrite/graph6.py
++++ b/networkx/readwrite/graph6.py
+@@ -118,7 +118,7 @@ def bits():
+         bytes_in = bytes_in[10:]
+ 
+     data = [c - 63 for c in bytes_in]
+-    if any(c > 63 for c in data):
++    if any(c < 0 or c > 63 for c in data):
+         raise ValueError("each input character must be in range(63, 127)")
+ 
+     n, data = data_to_n(data)
+diff --git a/networkx/readwrite/sparse6.py b/networkx/readwrite/sparse6.py
+index 28143b93511..05d26799a79 100644
+--- a/networkx/readwrite/sparse6.py
++++ b/networkx/readwrite/sparse6.py
+@@ -141,6 +141,8 @@ def from_sparse6_bytes(string):
+         raise nx.NetworkXError("Expected leading colon in sparse6")
+ 
+     chars = [c - 63 for c in string[1:]]
++    if any(c < 0 or c > 63 for c in chars):
++        raise ValueError("each input character must be in range(63, 127)")
+     n, data = data_to_n(chars)
+     k = 1
+     while 1 << k < n:

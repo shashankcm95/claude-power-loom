@@ -1,0 +1,41 @@
+{
+  "node_id": "e5b9d86c9102d5cb0d1dc18a9b4bd0ac3d3dcd52160948bd59f7bbbde825f3c4",
+  "node_type": "stochastic_sample",
+  "content_hash": "fc026a170573c3c50f47e504f358f1a490d1d5e99ade2fb91e866b084cc24a89",
+  "surface": "https://github.com/astanin/python-tabulate",
+  "worked_example_ref": {
+    "issue_id": "tabulate__github-table-alignment",
+    "repo": "https://github.com/astanin/python-tabulate",
+    "problem_statement_digest": "GitHub-format tables ignored column alignment (colalign) and mis-rendered the alignment separator row, so the rendered table did not reflect the requested per-column alignment. Fix the github format to honor colalign.",
+    "candidate_patch_ref": "7c70bf451bc00ba6",
+    "behavioral_verdict": "BEHAVIORAL_PASS",
+    "reference_divergence": 0,
+    "contamination_tier": "clean-pending-probe"
+  },
+  "provenance": "backtest",
+  "contaminated": false,
+  "friction_signature_ref": null,
+  "built_by": {
+    "role": "unattributed",
+    "roster_name": null,
+    "actor_kind": "claude_p"
+  },
+  "graded_by": {
+    "leg_b": null,
+    "leg_c": null
+  },
+  "trigger_class": "api-shape",
+  "gotcha_class": "unguarded-edge-case",
+  "corrective_class": "handle-edge-explicitly",
+  "lesson_signature": "lesson:api-shape|unguarded-edge-case|handle-edge-explicitly",
+  "lesson_body": "When a named format variant is functionally identical to an existing format, aliasing it to the canonical implementation prevents silent divergence in behavior. Maintaining a separate definition with slightly different internals risks omitting features (like alignment support) that the canonical version handles correctly.",
+  "accepted_diff_ref": "277d6592b0598d4c9ec62ca714f5bc846e8b09a9632adb4e669c4385f016cd62",
+  "candidate_patch_sha": "277d6592b0598d4c9ec62ca714f5bc846e8b09a9632adb4e669c4385f016cd62",
+  "fail_to_pass": [
+    "test/test_output.py::test_github_with_colalign",
+    "test/test_output.py::test_github_no_alignment"
+  ],
+  "failed_attempt_ref": null,
+  "lesson_content_hash": "9d9294f70c024dab55431724257db03126fc2e4c819c5c9db36b386e1e00ebc3",
+  "recorded_at": "2026-06-16T12:20:51.877Z"
+}

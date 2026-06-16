@@ -1,0 +1,42 @@
+{
+  "node_id": "5a61c963802e2641787a56ea071fd2824540eca5af46c8d87ec2792761225edc",
+  "node_type": "stochastic_sample",
+  "content_hash": "5447735bce62b52dcca282d334ef4d53fc42c38440f5a5eeb17152590c5aab13",
+  "surface": "https://github.com/joke2k/faker",
+  "worked_example_ref": {
+    "issue_id": "faker__proxy-copy-rebind-locale",
+    "repo": "https://github.com/joke2k/faker",
+    "problem_statement_digest": "Copying a Faker proxy did not rebind its per-locale sub-generators and unique/optional helper bindings to the COPIED proxy: the deepcopy left helpers pointing at the ORIGINAL proxy's state, so mutations leaked across the copy. Rebind proxy bindings on copy.",
+    "candidate_patch_ref": "53314fc7d3fba03f",
+    "behavioral_verdict": "BEHAVIORAL_PASS",
+    "reference_divergence": 0,
+    "contamination_tier": "clean-pending-probe"
+  },
+  "provenance": "backtest",
+  "contaminated": false,
+  "friction_signature_ref": null,
+  "built_by": {
+    "role": "unattributed",
+    "roster_name": null,
+    "actor_kind": "claude_p"
+  },
+  "graded_by": {
+    "leg_b": null,
+    "leg_c": null
+  },
+  "trigger_class": "state-mutation",
+  "gotcha_class": "unguarded-edge-case",
+  "corrective_class": "handle-edge-explicitly",
+  "lesson_signature": "lesson:state-mutation|unguarded-edge-case|handle-edge-explicitly",
+  "lesson_body": "When implementing a custom deep-copy protocol for an object that owns auxiliary helpers or sub-proxies, each helper must be reconstructed bound to the NEW object — not the original. Failing to rebind causes the copy's helpers to silently share state with the source, so mutations on one leak into the other.",
+  "accepted_diff_ref": "838f8484c56edcd2cdc6b3362ddd6b8eb25ddffcc3bca9b6e0d4659138966ccd",
+  "candidate_patch_sha": "838f8484c56edcd2cdc6b3362ddd6b8eb25ddffcc3bca9b6e0d4659138966ccd",
+  "fail_to_pass": [
+    "tests/test_proxy.py::TestFakerProxyClass::test_copy_rebinds_single_locale_proxies",
+    "tests/test_proxy.py::TestFakerProxyClass::test_copy_rebinds_multiple_locale_proxies",
+    "tests/test_proxy.py::TestFakerProxyClass::test_copy_unique_uses_copied_proxy_state"
+  ],
+  "failed_attempt_ref": null,
+  "lesson_content_hash": "36fa9328d46c2867c78be770a073b5e039a811e9c68ce81751a9d46dee1eb90b",
+  "recorded_at": "2026-06-16T12:22:00.992Z"
+}

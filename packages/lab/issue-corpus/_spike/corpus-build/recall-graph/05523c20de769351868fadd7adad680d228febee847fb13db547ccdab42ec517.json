@@ -1,0 +1,41 @@
+{
+  "node_id": "05523c20de769351868fadd7adad680d228febee847fb13db547ccdab42ec517",
+  "node_type": "stochastic_sample",
+  "content_hash": "4dd5b7b0d3c3ed251578a5c560c05c200db6191e9a3c08d9fd3eacb5194ed6be",
+  "surface": "https://github.com/networkx/networkx",
+  "worked_example_ref": {
+    "issue_id": "networkx__graph6-sparse6-reject-out-of-range",
+    "repo": "https://github.com/networkx/networkx",
+    "problem_statement_digest": "The graph6/sparse6 byte decoders did not reject bytes below the valid printable range (< 63): an out-of-range byte was silently accepted and decoded into a malformed graph instead of being rejected. Validate each byte is in range and raise on out-of-range input.",
+    "candidate_patch_ref": "489d5e65af00cc61",
+    "behavioral_verdict": "BEHAVIORAL_PASS",
+    "reference_divergence": 0,
+    "contamination_tier": "clean-pending-probe"
+  },
+  "provenance": "backtest",
+  "contaminated": false,
+  "friction_signature_ref": null,
+  "built_by": {
+    "role": "unattributed",
+    "roster_name": null,
+    "actor_kind": "claude_p"
+  },
+  "graded_by": {
+    "leg_b": null,
+    "leg_c": null
+  },
+  "trigger_class": "boundary-contract",
+  "gotcha_class": "unguarded-edge-case",
+  "corrective_class": "fail-closed",
+  "lesson_signature": "lesson:boundary-contract|unguarded-edge-case|fail-closed",
+  "lesson_body": "When validating input against a bounded range after arithmetic transformation, check both ends of the range — a one-sided guard silently passes inputs that violate the lower bound. Reject out-of-range values at the boundary before any downstream decoding occurs.",
+  "accepted_diff_ref": "21a5417b9bf29e2edda381ca790d2a7e28d41583a26119b7da49a4e55cb3a293",
+  "candidate_patch_sha": "21a5417b9bf29e2edda381ca790d2a7e28d41583a26119b7da49a4e55cb3a293",
+  "fail_to_pass": [
+    "networkx/readwrite/tests/test_graph6.py::TestFromGraph6Bytes::test_from_graph6_bytes_rejects_below_range",
+    "networkx/readwrite/tests/test_sparse6.py::TestSparseGraph6::test_from_sparse6_bytes_rejects_out_of_range"
+  ],
+  "failed_attempt_ref": null,
+  "lesson_content_hash": "71bb10fa44fd021b52f977be70f6eb34aac6bdd2d69202a0c0bae7bb4a6c5f0b",
+  "recorded_at": "2026-06-16T12:21:44.643Z"
+}

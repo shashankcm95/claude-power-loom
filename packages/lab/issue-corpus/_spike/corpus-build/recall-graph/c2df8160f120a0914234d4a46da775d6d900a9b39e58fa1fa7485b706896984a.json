@@ -1,0 +1,40 @@
+{
+  "node_id": "c2df8160f120a0914234d4a46da775d6d900a9b39e58fa1fa7485b706896984a",
+  "node_type": "stochastic_sample",
+  "content_hash": "338dd194eef0dc970fc113f385800ed9665839709699417251316829fbb35d3d",
+  "surface": "https://github.com/Python-Markdown/markdown",
+  "worked_example_ref": {
+    "issue_id": "markdown__special-comment-regression",
+    "repo": "https://github.com/Python-Markdown/markdown",
+    "problem_statement_digest": "A regression caused special HTML comments (e.g. declarations / conditional comments) to be mis-parsed in block HTML. Restore correct handling of special comment syntax.",
+    "candidate_patch_ref": "e5fa5b86e8ec380c",
+    "behavioral_verdict": "BEHAVIORAL_PASS",
+    "reference_divergence": 0,
+    "contamination_tier": "clean-pending-probe"
+  },
+  "provenance": "backtest",
+  "contaminated": false,
+  "friction_signature_ref": null,
+  "built_by": {
+    "role": "unattributed",
+    "roster_name": null,
+    "actor_kind": "claude_p"
+  },
+  "graded_by": {
+    "leg_b": null,
+    "leg_c": null
+  },
+  "trigger_class": "data-parse",
+  "gotcha_class": "silent-coercion",
+  "corrective_class": "handle-edge-explicitly",
+  "lesson_signature": "lesson:data-parse|silent-coercion|handle-edge-explicitly",
+  "lesson_body": "When locating a substring's position within raw input, arithmetic on lengths assumes a fixed offset that breaks when the substring can appear at variable positions or when the input contains repeated patterns. Use an explicit search to find the actual offset rather than deriving it from size calculations.",
+  "accepted_diff_ref": "872afd1c94c0d83d1585bb0a776b8480d5114c71249c15f6b6d98b589ef29457",
+  "candidate_patch_sha": "872afd1c94c0d83d1585bb0a776b8480d5114c71249c15f6b6d98b589ef29457",
+  "fail_to_pass": [
+    "tests/test_syntax/blocks/test_html_blocks.py::TestHTMLBlocks::test_issue_1590"
+  ],
+  "failed_attempt_ref": null,
+  "lesson_content_hash": "02ce58a13578bd98f321155768a736ea8892dfa4a228e146e2fab8cadccb02df",
+  "recorded_at": "2026-06-16T12:21:30.199Z"
+}

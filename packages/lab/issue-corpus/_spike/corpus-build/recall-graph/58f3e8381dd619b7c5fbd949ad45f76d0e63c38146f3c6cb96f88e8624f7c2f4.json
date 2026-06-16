@@ -1,0 +1,40 @@
+{
+  "node_id": "58f3e8381dd619b7c5fbd949ad45f76d0e63c38146f3c6cb96f88e8624f7c2f4",
+  "node_type": "stochastic_sample",
+  "content_hash": "6e97cf140523971db03a2dbb9e7a764c7e04c7eb81f35fa9b68f929dfdd2c6a5",
+  "surface": "https://github.com/more-itertools/more-itertools",
+  "worked_example_ref": {
+    "issue_id": "more-itertools__numeric-range-slice-negative-step",
+    "repo": "https://github.com/more-itertools/more-itertools",
+    "problem_statement_digest": "numeric_range.__getitem__ returns an empty range when sliced with a negative step (e.g. [::-1]), even though reversed() works on the same range. With a negative step, the default None start/stop must be adjusted (start -> last index, stop -> before-first) so the slice walks backwards. Fix numeric_range slicing so a negative-step slice returns the correctly reversed sub-range.",
+    "candidate_patch_ref": "1c21c3ae9c7991b7",
+    "behavioral_verdict": "BEHAVIORAL_PASS",
+    "reference_divergence": 0,
+    "contamination_tier": "clean-pending-probe"
+  },
+  "provenance": "backtest",
+  "contaminated": false,
+  "friction_signature_ref": null,
+  "built_by": {
+    "role": "unattributed",
+    "roster_name": null,
+    "actor_kind": "claude_p"
+  },
+  "graded_by": {
+    "leg_b": null,
+    "leg_c": null
+  },
+  "trigger_class": "api-shape",
+  "gotcha_class": "unguarded-edge-case",
+  "corrective_class": "handle-edge-explicitly",
+  "lesson_signature": "lesson:api-shape|unguarded-edge-case|handle-edge-explicitly",
+  "lesson_body": "When implementing slice semantics on a custom sequence, None bounds have direction-dependent defaults: a negative step reverses which end is the implicit start and stop, so manual None-checks will always miss an edge. Delegate to the language's built-in slice normalization to get correct clamped, direction-aware indices before mapping them into the sequence's coordinate space.",
+  "accepted_diff_ref": "cb2b1160352c1e3ee67620319915ff7f0050ffe8a2e33f9dc5915f752d88e5e9",
+  "candidate_patch_sha": "cb2b1160352c1e3ee67620319915ff7f0050ffe8a2e33f9dc5915f752d88e5e9",
+  "fail_to_pass": [
+    "tests/test_more.py::NumericRangeTests::test_get_item_by_slice"
+  ],
+  "failed_attempt_ref": null,
+  "lesson_content_hash": "8aa1dd39f7f32e7513255e6bac1bf92c1b3aceeb8eae2c927c05ccd564925fc1",
+  "recorded_at": "2026-06-16T12:20:29.960Z"
+}

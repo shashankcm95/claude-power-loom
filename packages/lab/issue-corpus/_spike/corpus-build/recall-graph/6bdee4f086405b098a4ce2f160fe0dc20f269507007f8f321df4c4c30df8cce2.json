@@ -1,0 +1,40 @@
+{
+  "node_id": "6bdee4f086405b098a4ce2f160fe0dc20f269507007f8f321df4c4c30df8cce2",
+  "node_type": "stochastic_sample",
+  "content_hash": "7567e7fcbb6b4ccb6270ed84c2bab898c36d7a01aae11dee056b1ebc8f31b1a7",
+  "surface": "https://github.com/r1chardj0n3s/parse",
+  "worked_example_ref": {
+    "issue_id": "parse__zero-precision-float-no-decimal",
+    "repo": "https://github.com/r1chardj0n3s/parse",
+    "problem_statement_digest": "Float format with .0 precision (e.g. {:.0f}) formats without a decimal point, so parse fails to match integer-looking floats like '20'.",
+    "candidate_patch_ref": "71b443f4de2e9c82",
+    "behavioral_verdict": "BEHAVIORAL_PASS",
+    "reference_divergence": 0,
+    "contamination_tier": "clean-pending-probe"
+  },
+  "provenance": "backtest",
+  "contaminated": false,
+  "friction_signature_ref": null,
+  "built_by": {
+    "role": "unattributed",
+    "roster_name": null,
+    "actor_kind": "claude_p"
+  },
+  "graded_by": {
+    "leg_b": null,
+    "leg_c": null
+  },
+  "trigger_class": "api-shape",
+  "gotcha_class": "unguarded-edge-case",
+  "corrective_class": "handle-edge-explicitly",
+  "lesson_signature": "lesson:api-shape|unguarded-edge-case|handle-edge-explicitly",
+  "lesson_body": "Format specifiers can alter the output shape in ways that invalidate a generic regex pattern; precision zero for floating-point types suppresses the decimal separator entirely, producing integer-looking output. Parsers must inspect the format options and branch the matching pattern to cover all valid output shapes the formatter can produce.",
+  "accepted_diff_ref": "6c320b2704b9314d02e0ddf9f3b82b9b10f37545bc88cd0b5ac1948c2d5de074",
+  "candidate_patch_sha": "6c320b2704b9314d02e0ddf9f3b82b9b10f37545bc88cd0b5ac1948c2d5de074",
+  "fail_to_pass": [
+    "tests/test_parse.py::test_numbers"
+  ],
+  "failed_attempt_ref": null,
+  "lesson_content_hash": "30517fbd293dd5fd9ca425541bf1e9aa588fbd563e2921b5c39b92ae6784c97b",
+  "recorded_at": "2026-06-16T12:24:34.959Z"
+}

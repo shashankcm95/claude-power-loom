@@ -1,0 +1,40 @@
+{
+  "node_id": "fe53eb2f67d58d2c5860fc3ffc4676f8a42087bd467b8d220c72bc2c32e1f135",
+  "node_type": "stochastic_sample",
+  "content_hash": "8d4b2899b112bf9ef1df0fa4c9d7b8d1b068de68a1b9eff0377bf714aad75d8a",
+  "surface": "https://github.com/r1chardj0n3s/parse",
+  "worked_example_ref": {
+    "issue_id": "parse__microsecond-precision-loss",
+    "repo": "https://github.com/r1chardj0n3s/parse",
+    "problem_statement_digest": "Parsing fractional seconds in ISO timestamps loses microsecond precision due to float rounding; sub-6-digit fractions must zero-pad and >6 digits must truncate.",
+    "candidate_patch_ref": "738447715c76f8eb",
+    "behavioral_verdict": "BEHAVIORAL_PASS",
+    "reference_divergence": 0,
+    "contamination_tier": "clean-pending-probe"
+  },
+  "provenance": "backtest",
+  "contaminated": false,
+  "friction_signature_ref": null,
+  "built_by": {
+    "role": "unattributed",
+    "roster_name": null,
+    "actor_kind": "claude_p"
+  },
+  "graded_by": {
+    "leg_b": null,
+    "leg_c": null
+  },
+  "trigger_class": "data-parse",
+  "gotcha_class": "silent-coercion",
+  "corrective_class": "handle-edge-explicitly",
+  "lesson_signature": "lesson:data-parse|silent-coercion|handle-edge-explicitly",
+  "lesson_body": "Converting a fractional-seconds string through floating-point arithmetic silently loses precision at the sub-microsecond boundary due to rounding. Pad or truncate the raw digit string directly to the target precision instead of routing through float multiplication.",
+  "accepted_diff_ref": "840a64b3fb0ca45de49a312744cafbf04349a7356f1014d3e3c8e726c591d30d",
+  "candidate_patch_sha": "840a64b3fb0ca45de49a312744cafbf04349a7356f1014d3e3c8e726c591d30d",
+  "fail_to_pass": [
+    "tests/test_bugs.py::test_microsecond_precision_issue162"
+  ],
+  "failed_attempt_ref": null,
+  "lesson_content_hash": "206fce8d7d592a27dac13e8d8db6e2f4a2da33372315fd0dbfd32a951d5f3edc",
+  "recorded_at": "2026-06-16T12:22:55.525Z"
+}

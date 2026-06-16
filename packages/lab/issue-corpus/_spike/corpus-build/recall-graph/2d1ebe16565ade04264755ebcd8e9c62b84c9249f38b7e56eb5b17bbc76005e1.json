@@ -1,0 +1,40 @@
+{
+  "node_id": "2d1ebe16565ade04264755ebcd8e9c62b84c9249f38b7e56eb5b17bbc76005e1",
+  "node_type": "stochastic_sample",
+  "content_hash": "69b3b8beb84f62c966d278f14f09fe5e3484217ad934f1760df9cb951197bd72",
+  "surface": "https://github.com/networkx/networkx",
+  "worked_example_ref": {
+    "issue_id": "networkx__spanning-tree-iterator-next",
+    "repo": "https://github.com/networkx/networkx",
+    "problem_statement_digest": "SpanningTreeIterator raised an AttributeError when next() was called directly without first calling iter() — the iterator state (partition queue) was initialized in __iter__ rather than __init__, so a bare next() hit an uninitialized attribute. Initialize state so next() works without an explicit iter().",
+    "candidate_patch_ref": "5d160909eeb42e98",
+    "behavioral_verdict": "BEHAVIORAL_PASS",
+    "reference_divergence": 0,
+    "contamination_tier": "clean-pending-probe"
+  },
+  "provenance": "backtest",
+  "contaminated": false,
+  "friction_signature_ref": null,
+  "built_by": {
+    "role": "unattributed",
+    "roster_name": null,
+    "actor_kind": "claude_p"
+  },
+  "graded_by": {
+    "leg_b": null,
+    "leg_c": null
+  },
+  "trigger_class": "api-shape",
+  "gotcha_class": "unguarded-edge-case",
+  "corrective_class": "handle-edge-explicitly",
+  "lesson_signature": "lesson:api-shape|unguarded-edge-case|handle-edge-explicitly",
+  "lesson_body": "Iterator protocol does not require __iter__ to be called before __next__, so lazy initialization placed only in __iter__ leaves the object in an invalid state for direct next() calls. Initialize all mutable state to a sentinel value at construction, then perform lazy setup on first use inside __next__.",
+  "accepted_diff_ref": "69f860d32ad6ab1164c4a13df090f1dcf191480558dfb3493ecff53b17647fd4",
+  "candidate_patch_sha": "69f860d32ad6ab1164c4a13df090f1dcf191480558dfb3493ecff53b17647fd4",
+  "fail_to_pass": [
+    "networkx/algorithms/tree/tests/test_mst.py::TestSpanningTreeIterator::test_next_without_iter"
+  ],
+  "failed_attempt_ref": null,
+  "lesson_content_hash": "ff1447bd4888f794820622dc0f7f910dde2223552eb67235e3193105100d7aae",
+  "recorded_at": "2026-06-16T12:21:54.189Z"
+}
