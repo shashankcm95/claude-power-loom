@@ -106,4 +106,16 @@ function evaluateHardenGate(armCounts, edges, opts = {}) {
   return reasons.length === 0 ? { verdict: VERDICT.HARDEN, reasons: [] } : { verdict: VERDICT.WITHHOLD, reasons };
 }
 
-module.exports = { evaluateHardenGate, PER_ARM_FLOOR, VERDICT };
+// v-next MV-W2 — lessonTrustWeight(verdict) -> the ranking-weight MAGNITUDE (the verdict's immediate
+// downstream; same subject). PURE and source-FREE: a HARDEN verdict earns a positive tie-break weight; EVERY
+// other verdict (WITHHOLD / INSUFFICIENT-N / EXCLUDED / unknown / garbage) earns EXACTLY 0. It is a total
+// function and NEVER returns a negative (a negative weight is finite, survives the retriever's
+// nullProtoWeights, and would SUPPRESS a sibling node — a distinct failure mode). It takes NO `source`
+// argument by design: WHICH provenance lanes may move a real ranking is the weight-source-gate's policy
+// (SRP), and a source must never be a free arg here — a caller could otherwise hand it the live marker (the
+// #273 third face: trusting a self-asserted field over an authenticated minter).
+function lessonTrustWeight(verdict) {
+  return verdict === VERDICT.HARDEN ? 1 : 0;
+}
+
+module.exports = { evaluateHardenGate, lessonTrustWeight, PER_ARM_FLOOR, VERDICT };

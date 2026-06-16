@@ -232,6 +232,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/lab/causal-edge/trajectory-friction-run.js` - v3.9 W3 — the IMPURE real-capture + friction-label runner.
 - `packages/lab/causal-edge/trajectory-friction.js` - v3.9 W3 — trajectory capture + the resolution_friction friction map.
 - `packages/lab/causal-edge/walker.js` - v3.5 Wave 2 - the OQ-27 read-side walker (the CONSUMER of the graph loop).
+- `packages/lab/causal-edge/weight-source-gate.js` - v-next MV-W2 — the OQ-NS-6 source-admission FIREWALL for the lesson trust-weight wire.
 - `packages/lab/causal-edge/wilson.js` - v-next MV-W1 — the Wilson score interval (95%, NO continuity correction).
 
 ### `lab/circuit-breaker/`
