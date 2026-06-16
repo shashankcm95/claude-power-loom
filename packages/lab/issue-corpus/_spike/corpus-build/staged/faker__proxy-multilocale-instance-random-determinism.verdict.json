@@ -1,0 +1,7 @@
+{
+  "id": "faker__proxy-multilocale-instance-random-determinism",
+  "verified": true,
+  "fail_before": "FAIL",
+  "pass_after": "PASS",
+  "reason": null
+}

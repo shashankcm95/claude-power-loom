@@ -1,0 +1,16 @@
+{
+  "id": "parse__microsecond-precision-loss",
+  "repo": "https://github.com/r1chardj0n3s/parse",
+  "base_sha": "738447715c76f8ebc460b33320307faccafbc599",
+  "problem_statement": "Parsing fractional seconds in ISO timestamps loses microsecond precision due to float rounding; sub-6-digit fractions must zero-pad and >6 digits must truncate.",
+  "accepted_diff": "diff --git a/parse.py b/parse.py\nindex e3453c8..9b25920 100644\n--- a/parse.py\n+++ b/parse.py\n@@ -219,7 +219,7 @@ def date_convert(\n             H, M, S = t\n             if \".\" in S:\n                 S, u = S.split(\".\")\n-                u = int(float(\".\" + u) * 1000000)\n+                u = int(u.ljust(6, \"0\")[:6])\n             S = int(S)\n         H = int(H)\n         M = int(M)\n",
+  "test_patch": "diff --git a/tests/test_bugs.py b/tests/test_bugs.py\nindex 094d3f5..4655f44 100644\n--- a/tests/test_bugs.py\n+++ b/tests/test_bugs.py\n@@ -101,3 +101,21 @@ def test_unused_left_alignment_bug():\n def test_match_trailing_newline():\n     r = parse.parse(\"{}\", \"test\\n\")\n     assert r[0] == \"test\\n\"\n+\n+\n+def test_microsecond_precision_issue162():\n+    # fractional seconds that previously suffered floating-point rounding\n+    r = parse.parse(\"{:ti}\", \"2023-10-14T15:09:08.501902Z\")\n+    assert r[0].microsecond == 501902\n+\n+    # fewer than 6 fractional digits should be zero-padded\n+    r = parse.parse(\"{:ti}\", \"2023-10-14T15:09:08.1Z\")\n+    assert r[0].microsecond == 100000\n+\n+    # exactly 6 fractional digits\n+    r = parse.parse(\"{:ti}\", \"2023-10-14T15:09:08.123456Z\")\n+    assert r[0].microsecond == 123456\n+\n+    # more than 6 fractional digits should be truncated\n+    r = parse.parse(\"{:ti}\", \"2023-10-14T15:09:08.1234567Z\")\n+    assert r[0].microsecond == 123456\n",
+  "fail_to_pass": [
+    "tests/test_bugs.py::test_microsecond_precision_issue162"
+  ],
+  "pass_to_pass": [],
+  "resolved_at": "2026-02-19T02:14:54Z",
+  "provenance": "backtest",
+  "contamination_tier": "clean-pending-probe",
+  "source_pr": "https://github.com/r1chardj0n3s/parse/pull/223"
+}

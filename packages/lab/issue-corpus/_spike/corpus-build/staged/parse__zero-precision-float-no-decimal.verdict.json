@@ -1,0 +1,7 @@
+{
+  "id": "parse__zero-precision-float-no-decimal",
+  "verified": true,
+  "fail_before": "FAIL",
+  "pass_after": "PASS",
+  "reason": null
+}

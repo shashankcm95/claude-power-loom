@@ -1,5 +1,5 @@
 {
-  "id": "more-itertools__numeric-range-slice-negative-step",
+  "id": "networkx__maximal-independent-set-returns-set",
   "verified": true,
   "fail_before": "FAIL",
   "pass_after": "PASS",

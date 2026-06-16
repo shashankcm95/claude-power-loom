@@ -1,0 +1,17 @@
+{
+  "id": "more-itertools__seekable-getitem",
+  "repo": "https://github.com/more-itertools/more-itertools",
+  "base_sha": "18d98893df45e0014bf316ca7832d441dd94aa4f",
+  "problem_statement": "seekable had no __getitem__, so indexing into the already-consumed/cached portion (seekable[i]) raised TypeError instead of returning the cached element. Add seekable.__getitem__ to access the internal cache, raising IndexError past the cache.",
+  "accepted_diff": "diff --git a/more_itertools/more.py b/more_itertools/more.py\nindex 56e494c4..9d289433 100755\n--- a/more_itertools/more.py\n+++ b/more_itertools/more.py\n@@ -3007,6 +3007,17 @@ class seekable:\n         >>> elements\n         SequenceView(['0', '1', '2', '3'])\n \n+    Indexing the :class:`seekable` directly returns items from the cache,\n+    which is useful for inspecting the most recently produced item:\n+\n+        >>> it = seekable((str(n) for n in range(10)))\n+        >>> next(it), next(it), next(it)\n+        ('0', '1', '2')\n+        >>> it[-1]\n+        '2'\n+        >>> it[0]\n+        '0'\n+\n     By default, the cache grows as the source iterable progresses, so beware of\n     wrapping very large or infinite iterables. Supply *maxlen* to limit the\n     size of the cache (this of course limits how far back you can seek).\n@@ -3084,6 +3095,9 @@ def relative_seek(self, count):\n \n         self.seek(max(self._index + count, 0))\n \n+    def __getitem__(self, index):\n+        return self._cache[index]\n+\n \n class run_length:\n     \"\"\"\n",
+  "test_patch": "diff --git a/tests/test_more.py b/tests/test_more.py\nindex 1a4f6aff..a0196773 100644\n--- a/tests/test_more.py\n+++ b/tests/test_more.py\n@@ -3625,6 +3625,23 @@ def test_relative_seek(self):\n         s.relative_seek(10)  # Lower bound\n         self.assertEqual(list(s.elements()), [str(x) for x in range(5)])\n \n+    def test_getitem(self):\n+        s = mi.seekable(str(n) for n in range(10))\n+        with self.assertRaises(IndexError):\n+            s[0]\n+        mi.take(3, s)\n+        self.assertEqual(s[-1], '2')\n+        self.assertEqual(s[0], '0')\n+        self.assertEqual(s[2], '2')\n+        with self.assertRaises(IndexError):\n+            s[3]\n+\n+    def test_getitem_maxlen(self):\n+        s = mi.seekable((str(n) for n in range(10)), maxlen=2)\n+        mi.take(5, s)\n+        self.assertEqual(s[-1], '4')\n+        self.assertEqual(s[0], '3')\n+\n \n class SequenceViewTests(TestCase):\n     def test_init(self):\n",
+  "fail_to_pass": [
+    "tests/test_more.py::SeekableTest::test_getitem",
+    "tests/test_more.py::SeekableTest::test_getitem_maxlen"
+  ],
+  "pass_to_pass": [],
+  "resolved_at": "2026-05-13T19:37:38Z",
+  "provenance": "backtest",
+  "contamination_tier": "clean-pending-probe",
+  "source_pr": "https://github.com/more-itertools/more-itertools/pull/1158"
+}

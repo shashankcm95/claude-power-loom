@@ -1,0 +1,7 @@
+{
+  "id": "parse__grouping-char-in-decimal-format",
+  "verified": true,
+  "fail_before": "FAIL",
+  "pass_after": "PASS",
+  "reason": null
+}
