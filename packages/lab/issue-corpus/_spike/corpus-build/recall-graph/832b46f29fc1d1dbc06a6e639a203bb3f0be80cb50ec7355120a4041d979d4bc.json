@@ -1,0 +1,42 @@
+{
+  "node_id": "832b46f29fc1d1dbc06a6e639a203bb3f0be80cb50ec7355120a4041d979d4bc",
+  "node_type": "stochastic_sample",
+  "content_hash": "3303494bfb8342fbffb9cfe96aaeb2a62fd8e30fdb6970d2aa81ec9aa3da956c",
+  "surface": "https://github.com/Python-Markdown/markdown",
+  "worked_example_ref": {
+    "issue_id": "markdown__setext-mixed-chars-not-heading",
+    "repo": "https://github.com/Python-Markdown/markdown",
+    "problem_statement_digest": "The Setext-heading block processor matched an underline row containing MIXED = and - characters (e.g. '=-=-') as a valid heading, instead of requiring a homogeneous run of one underline char. A malformed/mixed underline was silently coerced into an h1/h2. Require the underline to be all '=' or all '-'.",
+    "candidate_patch_ref": "e7a0efb3a7c36d6b",
+    "behavioral_verdict": "BEHAVIORAL_PASS",
+    "reference_divergence": 0,
+    "contamination_tier": "clean-pending-probe"
+  },
+  "provenance": "backtest",
+  "contaminated": false,
+  "friction_signature_ref": null,
+  "built_by": {
+    "role": "unattributed",
+    "roster_name": null,
+    "actor_kind": "claude_p"
+  },
+  "graded_by": {
+    "leg_b": null,
+    "leg_c": null
+  },
+  "trigger_class": "data-parse",
+  "gotcha_class": "silent-coercion",
+  "corrective_class": "handle-edge-explicitly",
+  "lesson_signature": "lesson:data-parse|silent-coercion|handle-edge-explicitly",
+  "lesson_body": "A character-class pattern that allows alternation between valid characters will silently accept mixed inputs that violate the format's homogeneity requirement. Validate that a repeated-character delimiter consists entirely of one character type, not merely characters drawn from an allowed set.",
+  "accepted_diff_ref": "0289a3d996f9b6d0365000ccf66160020287db9e6f11831e83e6ed2732e21016",
+  "candidate_patch_sha": "0289a3d996f9b6d0365000ccf66160020287db9e6f11831e83e6ed2732e21016",
+  "fail_to_pass": [
+    "tests/test_syntax/blocks/test_headers.py::TestSetextHeaders::test_setext_mixed_chars_not_h1",
+    "tests/test_syntax/blocks/test_headers.py::TestSetextHeaders::test_setext_mixed_chars_not_h2",
+    "tests/test_syntax/blocks/test_headers.py::TestSetextHeaders::test_setext_mixed_multiple_chars"
+  ],
+  "failed_attempt_ref": null,
+  "lesson_content_hash": "bac33f7f97f76f9c093b34206578b998976f66098bbd06095bd632c2a1a49757",
+  "recorded_at": "2026-06-16T12:20:57.983Z"
+}

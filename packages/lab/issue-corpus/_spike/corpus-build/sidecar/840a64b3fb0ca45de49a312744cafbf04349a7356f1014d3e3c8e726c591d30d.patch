@@ -1,0 +1,13 @@
+diff --git a/parse.py b/parse.py
+index e3453c8..9b25920 100644
+--- a/parse.py
++++ b/parse.py
+@@ -219,7 +219,7 @@ def date_convert(
+             H, M, S = t
+             if "." in S:
+                 S, u = S.split(".")
+-                u = int(float("." + u) * 1000000)
++                u = int(u.ljust(6, "0")[:6])
+             S = int(S)
+         H = int(H)
+         M = int(M)

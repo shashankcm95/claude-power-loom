@@ -1,0 +1,41 @@
+{
+  "node_id": "5fbc7e2c9e806ad9bd5bbb86e1da6cada2d8f737a538ba6ebe37b049471f4c1f",
+  "node_type": "stochastic_sample",
+  "content_hash": "297fcb0f396b4993dd50b564b9c037ff00d1da78691b77871bded706e99a93b6",
+  "surface": "https://github.com/networkx/networkx",
+  "worked_example_ref": {
+    "issue_id": "networkx__gexf-mixed-type-attr-valueerror",
+    "repo": "https://github.com/networkx/networkx",
+    "problem_statement_digest": "write_gexf silently accepted an attribute whose values had inconsistent types across nodes/edges; it should raise ValueError when the same attribute key has mixed typed values",
+    "candidate_patch_ref": "3e6ed3b1e1fcba94",
+    "behavioral_verdict": "BEHAVIORAL_PASS",
+    "reference_divergence": 0,
+    "contamination_tier": "clean-pending-probe"
+  },
+  "provenance": "backtest",
+  "contaminated": false,
+  "friction_signature_ref": null,
+  "built_by": {
+    "role": "unattributed",
+    "roster_name": null,
+    "actor_kind": "claude_p"
+  },
+  "graded_by": {
+    "leg_b": null,
+    "leg_c": null
+  },
+  "trigger_class": "boundary-contract",
+  "gotcha_class": "unguarded-edge-case",
+  "corrective_class": "fail-closed",
+  "lesson_signature": "lesson:boundary-contract|unguarded-edge-case|fail-closed",
+  "lesson_body": "When a serialization boundary assigns a single schema type to a named attribute, encountering a second, differing type for the same name is a contract violation that should raise an error immediately rather than silently overwriting or ignoring the inconsistency. Fail closed at the point of detection so the caller learns about the mismatch before a malformed or ambiguous output is produced.",
+  "accepted_diff_ref": "4d718c6508468d2bde3d1be89a180d9576b3bfd22f340d82fcb7cdf7f99275df",
+  "candidate_patch_sha": "4d718c6508468d2bde3d1be89a180d9576b3bfd22f340d82fcb7cdf7f99275df",
+  "fail_to_pass": [
+    "networkx/readwrite/tests/test_gexf.py::TestGEXF::test_round_trip_mixed_type_float_to_string",
+    "networkx/readwrite/tests/test_gexf.py::TestGEXF::test_round_trip_mixed_type_int_to_string"
+  ],
+  "failed_attempt_ref": null,
+  "lesson_content_hash": "60837ec53d3e04053ede8a6371fbba1e204e20a5da9e74a5f7fab781ffdfc623",
+  "recorded_at": "2026-06-16T12:22:26.348Z"
+}

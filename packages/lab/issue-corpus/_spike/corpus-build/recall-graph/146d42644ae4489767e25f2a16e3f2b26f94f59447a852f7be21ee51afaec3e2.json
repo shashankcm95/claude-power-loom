@@ -1,0 +1,40 @@
+{
+  "node_id": "146d42644ae4489767e25f2a16e3f2b26f94f59447a852f7be21ee51afaec3e2",
+  "node_type": "stochastic_sample",
+  "content_hash": "df3b8a6d21fe6f2625824470551a9a7db2722fd22b743ea41828208782d1e3c8",
+  "surface": "https://github.com/joke2k/faker",
+  "worked_example_ref": {
+    "issue_id": "faker__proxy-multilocale-instance-random-determinism",
+    "repo": "https://github.com/joke2k/faker",
+    "problem_statement_digest": "multi-locale factory selection used the module-level shared random instead of the instance random, so seed_instance did not make multi-locale output deterministic",
+    "candidate_patch_ref": "4244b4e409202072",
+    "behavioral_verdict": "BEHAVIORAL_PASS",
+    "reference_divergence": 0,
+    "contamination_tier": "clean-pending-probe"
+  },
+  "provenance": "backtest",
+  "contaminated": false,
+  "friction_signature_ref": null,
+  "built_by": {
+    "role": "unattributed",
+    "roster_name": null,
+    "actor_kind": "claude_p"
+  },
+  "graded_by": {
+    "leg_b": null,
+    "leg_c": null
+  },
+  "trigger_class": "state-mutation",
+  "gotcha_class": "silent-coercion",
+  "corrective_class": "handle-edge-explicitly",
+  "lesson_signature": "lesson:state-mutation|silent-coercion|handle-edge-explicitly",
+  "lesson_body": "When a class exposes a seed or random-state API, every internal random draw must route through the instance's own random source, not a module-level singleton. Using a shared global silently ignores the instance seed, making reproducibility guarantees invisible failures rather than loud errors.",
+  "accepted_diff_ref": "9893714a29d9ce354221edbf6b80b57c52cc3788b0730d7c1f6d9dc5fef8c3f6",
+  "candidate_patch_sha": "9893714a29d9ce354221edbf6b80b57c52cc3788b0730d7c1f6d9dc5fef8c3f6",
+  "fail_to_pass": [
+    "tests/test_proxy.py::TestFakerProxyClass::test_seed_instance_deterministic_multi_locale_no_weights"
+  ],
+  "failed_attempt_ref": null,
+  "lesson_content_hash": "fa525f5e903a9aa212fafd8093004e5aed548e9c7c3d82c9c62b013709faa71d",
+  "recorded_at": "2026-06-16T12:22:08.143Z"
+}

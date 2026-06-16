@@ -1,0 +1,40 @@
+{
+  "node_id": "63722ea80fbb0172a7c39239b7355358ddf1f3959320abedb47391db74199a23",
+  "node_type": "stochastic_sample",
+  "content_hash": "f0e9476350c762b4ec138fdd198d0eb47e2f97c220e84bcff8d035920510704e",
+  "surface": "https://github.com/networkx/networkx",
+  "worked_example_ref": {
+    "issue_id": "networkx__maximal-independent-set-returns-set",
+    "repo": "https://github.com/networkx/networkx",
+    "problem_statement_digest": "maximal_independent_set returned a list, which made membership/equality semantics inconsistent for an inherently unordered result. Change it to return a set so equality and dedup behave correctly.",
+    "candidate_patch_ref": "802c0a2d8ea282d8",
+    "behavioral_verdict": "BEHAVIORAL_PASS",
+    "reference_divergence": 0,
+    "contamination_tier": "clean-pending-probe"
+  },
+  "provenance": "backtest",
+  "contaminated": false,
+  "friction_signature_ref": null,
+  "built_by": {
+    "role": "unattributed",
+    "roster_name": null,
+    "actor_kind": "claude_p"
+  },
+  "graded_by": {
+    "leg_b": null,
+    "leg_c": null
+  },
+  "trigger_class": "api-shape",
+  "gotcha_class": "silent-coercion",
+  "corrective_class": "handle-edge-explicitly",
+  "lesson_signature": "lesson:api-shape|silent-coercion|handle-edge-explicitly",
+  "lesson_body": "When a function computes an inherently unordered mathematical result, returning an ordered sequence type silently imposes semantics (ordering, duplicates) that the domain does not guarantee, causing equality checks and membership tests to behave incorrectly. Match the return type to the semantic contract of the result.",
+  "accepted_diff_ref": "aed7be09366048c2b32ec8efe4f747080e2e47b2f5d922c4d5d84af14d3ee1fb",
+  "candidate_patch_sha": "aed7be09366048c2b32ec8efe4f747080e2e47b2f5d922c4d5d84af14d3ee1fb",
+  "fail_to_pass": [
+    "networkx/algorithms/tests/test_mis.py::test_random_seed"
+  ],
+  "failed_attempt_ref": null,
+  "lesson_content_hash": "6fe8b23acc2d31c6669308bc0b1d13241e523b8978724a2102c031bbc654d031",
+  "recorded_at": "2026-06-16T12:22:33.565Z"
+}

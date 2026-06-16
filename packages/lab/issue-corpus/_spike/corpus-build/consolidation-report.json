@@ -1,0 +1,145 @@
+{
+  "schema": "lesson-consolidation-report/v1",
+  "confirmed": false,
+  "n_lessons": 20,
+  "n_signatures": 7,
+  "under_separation_signatures": [
+    "lesson:api-shape|unguarded-edge-case|handle-edge-explicitly",
+    "lesson:boundary-contract|unguarded-edge-case|fail-closed",
+    "lesson:boundary-contract|unguarded-edge-case|handle-edge-explicitly",
+    "lesson:data-parse|silent-coercion|handle-edge-explicitly",
+    "lesson:state-mutation|unguarded-edge-case|handle-edge-explicitly"
+  ],
+  "per_signature": [
+    {
+      "lesson_signature": "lesson:api-shape|silent-coercion|handle-edge-explicitly",
+      "recurrence_count_raw": 1,
+      "distinct_issues": 1,
+      "members": [
+        {
+          "node_id": "63722ea80fbb0172a7c39239b7355358ddf1f3959320abedb47391db74199a23",
+          "issue_id": "networkx__maximal-independent-set-returns-set"
+        }
+      ]
+    },
+    {
+      "lesson_signature": "lesson:api-shape|unguarded-edge-case|handle-edge-explicitly",
+      "recurrence_count_raw": 6,
+      "distinct_issues": 6,
+      "members": [
+        {
+          "node_id": "176eb0ecc3ed08903bcb50f964906c2b08b5e86d80cbcfac7b2bc832a2e81bfd",
+          "issue_id": "parse__grouping-char-in-decimal-format"
+        },
+        {
+          "node_id": "2d1ebe16565ade04264755ebcd8e9c62b84c9249f38b7e56eb5b17bbc76005e1",
+          "issue_id": "networkx__spanning-tree-iterator-next"
+        },
+        {
+          "node_id": "58f3e8381dd619b7c5fbd949ad45f76d0e63c38146f3c6cb96f88e8624f7c2f4",
+          "issue_id": "more-itertools__numeric-range-slice-negative-step"
+        },
+        {
+          "node_id": "6bdee4f086405b098a4ce2f160fe0dc20f269507007f8f321df4c4c30df8cce2",
+          "issue_id": "parse__zero-precision-float-no-decimal"
+        },
+        {
+          "node_id": "dd11205399c55d56951650e28a79dbbe4a07180aac7ada84b058922ad75360c3",
+          "issue_id": "more-itertools__seekable-getitem"
+        },
+        {
+          "node_id": "e5b9d86c9102d5cb0d1dc18a9b4bd0ac3d3dcd52160948bd59f7bbbde825f3c4",
+          "issue_id": "tabulate__github-table-alignment"
+        }
+      ]
+    },
+    {
+      "lesson_signature": "lesson:boundary-contract|unguarded-edge-case|fail-closed",
+      "recurrence_count_raw": 4,
+      "distinct_issues": 4,
+      "members": [
+        {
+          "node_id": "05523c20de769351868fadd7adad680d228febee847fb13db547ccdab42ec517",
+          "issue_id": "networkx__graph6-sparse6-reject-out-of-range"
+        },
+        {
+          "node_id": "5fbc7e2c9e806ad9bd5bbb86e1da6cada2d8f737a538ba6ebe37b049471f4c1f",
+          "issue_id": "networkx__gexf-mixed-type-attr-valueerror"
+        },
+        {
+          "node_id": "771fda781ee851b35b42b643821b515453c1108f10dc19f12ce048d4517a216a",
+          "issue_id": "more-itertools__windowed-invalid-n"
+        },
+        {
+          "node_id": "929aa01d57db2372ed6fe8c4e3fabb8b0e1584bcee889f2473cd0a2a3658021b",
+          "issue_id": "more-itertools__numeric-range-reversed-empty"
+        }
+      ]
+    },
+    {
+      "lesson_signature": "lesson:boundary-contract|unguarded-edge-case|handle-edge-explicitly",
+      "recurrence_count_raw": 2,
+      "distinct_issues": 2,
+      "members": [
+        {
+          "node_id": "ba85999d8807827b6957764f1fd8942584a41d0d1d5614822687a305c67a993d",
+          "issue_id": "pygments__html-escape-none-object"
+        },
+        {
+          "node_id": "c52157329ab4767093439bc6f8c614a7ba7c2bc0b8fccfd88256613feff30921",
+          "issue_id": "networkx__sbm-sparse-diagonal-blocks"
+        }
+      ]
+    },
+    {
+      "lesson_signature": "lesson:data-parse|silent-coercion|handle-edge-explicitly",
+      "recurrence_count_raw": 4,
+      "distinct_issues": 4,
+      "members": [
+        {
+          "node_id": "21269374cc8424c1d84d58aaa4ca05190242d667f46b9c86742344fcd24959cd",
+          "issue_id": "more-itertools__gray-partial-product-iterator-repeat"
+        },
+        {
+          "node_id": "832b46f29fc1d1dbc06a6e639a203bb3f0be80cb50ec7355120a4041d979d4bc",
+          "issue_id": "markdown__setext-mixed-chars-not-heading"
+        },
+        {
+          "node_id": "c2df8160f120a0914234d4a46da775d6d900a9b39e58fa1fa7485b706896984a",
+          "issue_id": "markdown__special-comment-regression"
+        },
+        {
+          "node_id": "fe53eb2f67d58d2c5860fc3ffc4676f8a42087bd467b8d220c72bc2c32e1f135",
+          "issue_id": "parse__microsecond-precision-loss"
+        }
+      ]
+    },
+    {
+      "lesson_signature": "lesson:state-mutation|silent-coercion|handle-edge-explicitly",
+      "recurrence_count_raw": 1,
+      "distinct_issues": 1,
+      "members": [
+        {
+          "node_id": "146d42644ae4489767e25f2a16e3f2b26f94f59447a852f7be21ee51afaec3e2",
+          "issue_id": "faker__proxy-multilocale-instance-random-determinism"
+        }
+      ]
+    },
+    {
+      "lesson_signature": "lesson:state-mutation|unguarded-edge-case|handle-edge-explicitly",
+      "recurrence_count_raw": 2,
+      "distinct_issues": 2,
+      "members": [
+        {
+          "node_id": "5a61c963802e2641787a56ea071fd2824540eca5af46c8d87ec2792761225edc",
+          "issue_id": "faker__proxy-copy-rebind-locale"
+        },
+        {
+          "node_id": "87c866d2eabc6651eb8e5eeac44a9875c368d78c06451702480f7af64cb216c6",
+          "issue_id": "networkx__dominating-set-cost-already-dominated"
+        }
+      ]
+    }
+  ],
+  "generated_at": "2026-06-16T13:51:03.138Z"
+}

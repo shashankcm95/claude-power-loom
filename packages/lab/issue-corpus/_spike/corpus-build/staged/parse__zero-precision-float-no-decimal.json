@@ -1,0 +1,16 @@
+{
+  "id": "parse__zero-precision-float-no-decimal",
+  "repo": "https://github.com/r1chardj0n3s/parse",
+  "base_sha": "71b443f4de2e9c82e117f935e347a1ab7fefdee1",
+  "problem_statement": "Float format with .0 precision (e.g. {:.0f}) formats without a decimal point, so parse fails to match integer-looking floats like '20'.",
+  "accepted_diff": "diff --git a/parse/__init__.py b/parse/__init__.py\nindex 8922db3..a0c4bbe 100644\n--- a/parse/__init__.py\n+++ b/parse/__init__.py\n@@ -727,10 +727,11 @@ def _handle_field(self, field):\n             self._group_index += 1\n             conv[group] = percentage\n         elif type == \"f\":\n-            s = r\"\\d*\\.\\d+\"\n+            # precision 0 formats without a decimal point (e.g. format(20.0, \".0f\") == \"20\")\n+            s = r\"\\d+\" if format.get(\"precision\") == \"0\" else r\"\\d*\\.\\d+\"\n             conv[group] = convert_first(float)\n         elif type == \"F\":\n-            s = r\"\\d*\\.\\d+\"\n+            s = r\"\\d+\" if format.get(\"precision\") == \"0\" else r\"\\d*\\.\\d+\"\n             conv[group] = convert_first(Decimal)\n         elif type == \"e\":\n             s = r\"\\d*\\.\\d+[eE][-+]?\\d+|nan|NAN|[-+]?inf|[-+]?INF\"\n",
+  "test_patch": "diff --git a/tests/test_parse.py b/tests/test_parse.py\nindex b1eacff..e8e5160 100644\n--- a/tests/test_parse.py\n+++ b/tests/test_parse.py\n@@ -278,6 +278,11 @@ def n(fmt, s, e):\n     y(\"a {:f} b\", \"a -.121 b\", -0.121)\n     n(\"a {:f} b\", \"a 12 b\", None)\n \n+    # precision 0 formats without a decimal point, so parse must accept it (issue #159)\n+    y(\"a {:.0f} b\", \"a 12 b\", 12.0)\n+    y(\"foo_{:02.0f}t\", \"foo_20t\", 20.0)\n+    n(\"a {:.0f} b\", \"a 12.0 b\", None)\n+\n     y(\"a {:e} b\", \"a 1.0e10 b\", 1.0e10)\n     y(\"a {:e} b\", \"a .0e10 b\", 0.0e10)\n     y(\"a {:e} b\", \"a 1.0E10 b\", 1.0e10)\n",
+  "fail_to_pass": [
+    "tests/test_parse.py::test_numbers"
+  ],
+  "pass_to_pass": [],
+  "resolved_at": "2026-05-26T03:39:49Z",
+  "provenance": "backtest",
+  "contamination_tier": "clean-pending-probe",
+  "source_pr": "https://github.com/r1chardj0n3s/parse/pull/227"
+}

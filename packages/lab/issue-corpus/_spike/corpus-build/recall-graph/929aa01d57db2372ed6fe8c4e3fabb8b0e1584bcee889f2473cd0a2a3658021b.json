@@ -1,0 +1,40 @@
+{
+  "node_id": "929aa01d57db2372ed6fe8c4e3fabb8b0e1584bcee889f2473cd0a2a3658021b",
+  "node_type": "stochastic_sample",
+  "content_hash": "b274580d7c0673ca81c9b9e8244c87907091679496d2a9580f1a0da17bc9a1de",
+  "surface": "https://github.com/more-itertools/more-itertools",
+  "worked_example_ref": {
+    "issue_id": "more-itertools__numeric-range-reversed-empty",
+    "repo": "https://github.com/more-itertools/more-itertools",
+    "problem_statement_digest": "numeric_range supports reversed(), but reversing an EMPTY numeric range raises IndexError instead of yielding an empty iterator. Fix numeric_range.__reversed__ so reversing an empty range returns an empty iterator.",
+    "candidate_patch_ref": "247e15b3a489d580",
+    "behavioral_verdict": "BEHAVIORAL_PASS",
+    "reference_divergence": 0,
+    "contamination_tier": "clean-pending-probe"
+  },
+  "provenance": "backtest",
+  "contaminated": false,
+  "friction_signature_ref": null,
+  "built_by": {
+    "role": "unattributed",
+    "roster_name": null,
+    "actor_kind": "claude_p"
+  },
+  "graded_by": {
+    "leg_b": null,
+    "leg_c": null
+  },
+  "trigger_class": "boundary-contract",
+  "gotcha_class": "unguarded-edge-case",
+  "corrective_class": "fail-closed",
+  "lesson_signature": "lesson:boundary-contract|unguarded-edge-case|fail-closed",
+  "lesson_body": "Reversible sequence protocols must handle the empty-collection case explicitly before computing bounds, since index-based lookups on an empty sequence raise rather than signal emptiness. Guard boundary access with a fail-closed early return so the iterator contract is satisfied regardless of collection size.",
+  "accepted_diff_ref": "9389f21d20822c4d0f4ac1e85c5cf69be8aebde4eda6afde2f1d3e10db289a92",
+  "candidate_patch_sha": "9389f21d20822c4d0f4ac1e85c5cf69be8aebde4eda6afde2f1d3e10db289a92",
+  "fail_to_pass": [
+    "tests/test_more.py::NumericRangeTests::test_empty_reversed"
+  ],
+  "failed_attempt_ref": null,
+  "lesson_content_hash": "2afcd05bfb23e266b2748c2b231b66a293338207d6f6abfeeb0687df6ef07c70",
+  "recorded_at": "2026-06-16T12:24:26.838Z"
+}

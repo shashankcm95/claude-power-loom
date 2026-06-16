@@ -1,0 +1,16 @@
+{
+  "id": "parse__grouping-char-in-decimal-format",
+  "repo": "https://github.com/r1chardj0n3s/parse",
+  "base_sha": "5bfb45d9f30890e85a5c440e14fc25a930a3faaf",
+  "problem_statement": "Decimal format strings with grouping chars (',' or '_', e.g. {:,d} / {:_d}) are not parsed; thousand-separated integers like '1,000,000' fail to match.",
+  "accepted_diff": "diff --git a/parse.py b/parse.py\nindex 80242e1..ef1abf1 100644\n--- a/parse.py\n+++ b/parse.py\n@@ -349,7 +349,7 @@ class RepeatedNameError(ValueError):\n \n \n def extract_format(format, extra_types):\n-    \"\"\"Pull apart the format [[fill]align][sign][0][width][.precision][type]\"\"\"\n+    \"\"\"Pull apart the format [[fill]align][sign][0][width][grouping][.precision][type]\"\"\"\n     fill = align = None\n     if format[0] in \"<>=^\":\n         align = format[0]\n@@ -374,6 +374,14 @@ def extract_format(format, extra_types):\n         width += format[0]\n         format = format[1:]\n \n+    # Extract grouping option\n+    if format.startswith(\",\"):\n+        format = format[1:]\n+        grouping = \",\"\n+    elif format.startswith(\"_\"):\n+        format = format[1:]\n+        grouping = \"_\"\n+\n     if format.startswith(\".\"):\n         # Precision isn't needed but we need to capture it so that\n         # the ValueError isn't raised.\n@@ -736,8 +744,9 @@ def _handle_field(self, field):\n                 width = r\"{1,%s}\" % int(format[\"width\"])\n             else:\n                 width = \"+\"\n-            s = r\"\\d{w}|[-+ ]?0[xX][0-9a-fA-F]{w}|[-+ ]?0[bB][01]{w}|[-+ ]?0[oO][0-7]{w}\".format(\n-                w=width\n+            s = r\"[-+ ]?[0-9{g}]{w}|[-+ ]?0[xX][0-9a-fA-F{g}]{w}|[-+ ]?0[bB][01{g}]{w}|[-+ ]?0[oO][0-7{g}]{w}\".format(\n+                w=width,\n+                g=format.get(\"grouping\", \"\"),\n             )\n             conv[group] = int_convert()\n             # do not specify number base, determine it automatically\n",
+  "test_patch": "diff --git a/tests/test_parse.py b/tests/test_parse.py\nindex d2ed073..b1eacff 100644\n--- a/tests/test_parse.py\n+++ b/tests/test_parse.py\n@@ -235,7 +235,7 @@ def test_numbers():\n     def y(fmt, s, e, str_equals=False):\n         p = parse.compile(fmt)\n         r = p.parse(s)\n-        assert r is not None\n+        assert r is not None, \"{!r} does not match {!r} ({!r})\".format(s, fmt, p._expression)\n         r = r.fixed[0]\n         if str_equals:\n             assert str(r) == str(e)\n@@ -338,6 +338,14 @@ def n(fmt, s, e):\n     y(\"a {:b} b\", \"a +1010 b\", 10)\n     y(\"a {:x} b\", \"a +1010 b\", 0x1010)\n \n+    # Test that grouping is handled correctly\n+    y(\"a {:,d} b\", \"a 1,000,000 b\", 1000000, str_equals=True)\n+    y(\"a {:,d} b\", \"a -1,000,000 b\", -1000000, str_equals=True)\n+\n+    # Py 3.6+ (https://peps.python.org/pep-0515/)\n+    y(\"a {:_d} b\", \"a 1_000_000 b\", 1000000, str_equals=True)\n+    y(\"a {:_d} b\", \"a -1_000_000 b\", -1000000, str_equals=True)\n+\n \n def test_two_datetimes():\n     r = parse.parse(\"a {:ti} {:ti} b\", \"a 1997-07-16 2012-08-01 b\")\n",
+  "fail_to_pass": [
+    "tests/test_parse.py::test_numbers"
+  ],
+  "pass_to_pass": [],
+  "resolved_at": "2026-02-05T18:17:59Z",
+  "provenance": "backtest",
+  "contamination_tier": "clean-pending-probe",
+  "source_pr": "https://github.com/r1chardj0n3s/parse/pull/221"
+}

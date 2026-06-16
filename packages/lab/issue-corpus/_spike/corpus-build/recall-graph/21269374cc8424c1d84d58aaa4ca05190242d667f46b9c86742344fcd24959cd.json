@@ -1,0 +1,41 @@
+{
+  "node_id": "21269374cc8424c1d84d58aaa4ca05190242d667f46b9c86742344fcd24959cd",
+  "node_type": "stochastic_sample",
+  "content_hash": "8ec1e492096c5d11602c34d6eef6fb81def3e620f933f503429ab910d87e8960",
+  "surface": "https://github.com/more-itertools/more-itertools",
+  "worked_example_ref": {
+    "issue_id": "more-itertools__gray-partial-product-iterator-repeat",
+    "repo": "https://github.com/more-itertools/more-itertools",
+    "problem_statement_digest": "gray_product/partial_product with iterator (not sequence) arguments and repeat>1 reused the SAME exhausted iterator object across repeats (iterables * repeat duplicated the iterator references), silently yielding wrong/empty output. Materialize each iterable to a tuple BEFORE repeating.",
+    "candidate_patch_ref": "fdbd43c569feb438",
+    "behavioral_verdict": "BEHAVIORAL_PASS",
+    "reference_divergence": 0,
+    "contamination_tier": "clean-pending-probe"
+  },
+  "provenance": "backtest",
+  "contaminated": false,
+  "friction_signature_ref": null,
+  "built_by": {
+    "role": "unattributed",
+    "roster_name": null,
+    "actor_kind": "claude_p"
+  },
+  "graded_by": {
+    "leg_b": null,
+    "leg_c": null
+  },
+  "trigger_class": "data-parse",
+  "gotcha_class": "silent-coercion",
+  "corrective_class": "handle-edge-explicitly",
+  "lesson_signature": "lesson:data-parse|silent-coercion|handle-edge-explicitly",
+  "lesson_body": "When an iterable is materialized lazily, duplicating the reference before exhausting it silently shares state across all copies. Eagerly convert each iterable to a concrete sequence first, then replicate the sequence references so each copy is independently traversable.",
+  "accepted_diff_ref": "8a234995747c58fe7864a8053e887856334dcb8a40f593a0535bca474ced9eef",
+  "candidate_patch_sha": "8a234995747c58fe7864a8053e887856334dcb8a40f593a0535bca474ced9eef",
+  "fail_to_pass": [
+    "tests/test_more.py::GrayProductTests::test_repeat_with_iterators",
+    "tests/test_more.py::PartialProductTests::test_repeat_with_iterators"
+  ],
+  "failed_attempt_ref": null,
+  "lesson_content_hash": "69117df10b6c869af09a005826ffe4fd28c52e63fa0feee194332b8a85eeb39d",
+  "recorded_at": "2026-06-16T12:20:44.184Z"
+}

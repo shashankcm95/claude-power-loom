@@ -1,0 +1,40 @@
+{
+  "node_id": "771fda781ee851b35b42b643821b515453c1108f10dc19f12ce048d4517a216a",
+  "node_type": "stochastic_sample",
+  "content_hash": "e68bb04cb6d00f042fb3950477b2c1c32e2ea7dfd3bf66a01fd1087105c65293",
+  "surface": "https://github.com/more-itertools/more-itertools",
+  "worked_example_ref": {
+    "issue_id": "more-itertools__windowed-invalid-n",
+    "repo": "https://github.com/more-itertools/more-itertools",
+    "problem_statement_digest": "windowed(seq, n) with n=0 silently yielded a single empty tuple () instead of rejecting the invalid size; n must be > 0. The guard let an out-of-contract size through as a degenerate result. Make windowed raise ValueError for n<=0.",
+    "candidate_patch_ref": "eaaa55d531cd53c8",
+    "behavioral_verdict": "BEHAVIORAL_PASS",
+    "reference_divergence": 0,
+    "contamination_tier": "clean-pending-probe"
+  },
+  "provenance": "backtest",
+  "contaminated": false,
+  "friction_signature_ref": null,
+  "built_by": {
+    "role": "unattributed",
+    "roster_name": null,
+    "actor_kind": "claude_p"
+  },
+  "graded_by": {
+    "leg_b": null,
+    "leg_c": null
+  },
+  "trigger_class": "boundary-contract",
+  "gotcha_class": "unguarded-edge-case",
+  "corrective_class": "fail-closed",
+  "lesson_signature": "lesson:boundary-contract|unguarded-edge-case|fail-closed",
+  "lesson_body": "A size or count parameter with a documented lower bound must be validated as a strict inequality at the entry point; treating a zero value as a degenerate-but-valid case silently violates the contract instead of surfacing it as an error. Reject the entire out-of-contract range eagerly so callers receive a clear signal rather than a nonsensical result.",
+  "accepted_diff_ref": "b2d529d22fdb4ee132be36afac648afe85c19d721398022e6bc34387432c8f7c",
+  "candidate_patch_sha": "b2d529d22fdb4ee132be36afac648afe85c19d721398022e6bc34387432c8f7c",
+  "fail_to_pass": [
+    "tests/test_more.py::WindowedTests::test_invalid_n"
+  ],
+  "failed_attempt_ref": null,
+  "lesson_content_hash": "7dd64274ecb9bb0fd7e0f38f565f8e2bfd2dd0b3167f33fcc387ce1242d1d2f0",
+  "recorded_at": "2026-06-16T12:20:37.841Z"
+}

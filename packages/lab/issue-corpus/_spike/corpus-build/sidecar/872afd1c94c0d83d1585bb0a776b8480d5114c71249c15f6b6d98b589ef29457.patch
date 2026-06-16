@@ -1,0 +1,13 @@
+diff --git a/markdown/htmlparser.py b/markdown/htmlparser.py
+index 74dbe25a..55d46345 100644
+--- a/markdown/htmlparser.py
++++ b/markdown/htmlparser.py
+@@ -276,7 +276,7 @@ def handle_entityref(self, name: str):
+ 
+     def handle_comment(self, data: str):
+         # Check if the comment is unclosed, if so, we need to override position
+-        j = len(self.rawdata) - len(data)
++        j = self.rawdata.find(data)
+         i = j - 2
+         if self.rawdata[i:j] == '</':
+             self.handle_data('<')

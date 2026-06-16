@@ -1,0 +1,18 @@
+{
+  "id": "markdown__setext-mixed-chars-not-heading",
+  "repo": "https://github.com/Python-Markdown/markdown",
+  "base_sha": "e7a0efb3a7c36d6b8005403122705662bc17c904",
+  "problem_statement": "The Setext-heading block processor matched an underline row containing MIXED = and - characters (e.g. '=-=-') as a valid heading, instead of requiring a homogeneous run of one underline char. A malformed/mixed underline was silently coerced into an h1/h2. Require the underline to be all '=' or all '-'.",
+  "accepted_diff": "diff --git a/markdown/blockprocessors.py b/markdown/blockprocessors.py\nindex 3ed4cf07..c2d20ddb 100644\n--- a/markdown/blockprocessors.py\n+++ b/markdown/blockprocessors.py\n@@ -494,7 +494,7 @@ class SetextHeaderProcessor(BlockProcessor):\n     \"\"\" Process Setext-style Headers. \"\"\"\n \n     # Detect Setext-style header. Must be first 2 lines of block.\n-    RE = re.compile(r'^.*?\\n[=-]+[ ]*(\\n|$)', re.MULTILINE)\n+    RE = re.compile(r'^.*?\\n(?:=+|-+)[ ]*(\\n|$)', re.MULTILINE)\n \n     def test(self, parent: etree.Element, block: str) -> bool:\n         return bool(self.RE.match(block))\n",
+  "test_patch": "diff --git a/tests/test_syntax/blocks/test_headers.py b/tests/test_syntax/blocks/test_headers.py\nindex da2ca14f..b1992ad3 100644\n--- a/tests/test_syntax/blocks/test_headers.py\n+++ b/tests/test_syntax/blocks/test_headers.py\n@@ -109,6 +109,58 @@ def test_setext_h2_followed_by_p(self):\n \n     # TODO: fix this\n     # see https://johnmacfarlane.net/babelmark2/?normalize=1&text=Paragraph%0AAn+H1%0A%3D%3D%3D%3D%3D\n+\n+    def test_setext_mixed_chars_not_h1(self):\n+        \"\"\"Mixed = and - chars should not form a valid H1.\"\"\"\n+        self.assertMarkdownRenders(\n+            self.dedent(\n+                \"\"\"\n+                This is not an H1\n+                =-\n+                \"\"\"\n+            ),\n+            self.dedent(\n+                \"\"\"\n+                <p>This is not an H1\n+                =-</p>\n+                \"\"\"\n+            )\n+        )\n+\n+    def test_setext_mixed_chars_not_h2(self):\n+        \"\"\"Mixed - and = chars should not form a valid H2.\"\"\"\n+        self.assertMarkdownRenders(\n+            self.dedent(\n+                \"\"\"\n+                This is not an H2\n+                -=\n+                \"\"\"\n+            ),\n+            self.dedent(\n+                \"\"\"\n+                <p>This is not an H2\n+                -=</p>\n+                \"\"\"\n+            )\n+        )\n+\n+    def test_setext_mixed_multiple_chars(self):\n+        \"\"\"Multiple mixed = and - chars should not form a valid H1/H2.\"\"\"\n+        self.assertMarkdownRenders(\n+            self.dedent(\n+                \"\"\"\n+                Not a Header\n+                =-=-\n+                \"\"\"\n+            ),\n+            self.dedent(\n+                \"\"\"\n+                <p>Not a Header\n+                =-=-</p>\n+                \"\"\"\n+            )\n+        )\n+\n     @unittest.skip('This is broken in Python-Markdown')\n     def test_p_followed_by_setext_h1(self):\n         self.assertMarkdownRenders(\n",
+  "fail_to_pass": [
+    "tests/test_syntax/blocks/test_headers.py::TestSetextHeaders::test_setext_mixed_chars_not_h1",
+    "tests/test_syntax/blocks/test_headers.py::TestSetextHeaders::test_setext_mixed_chars_not_h2",
+    "tests/test_syntax/blocks/test_headers.py::TestSetextHeaders::test_setext_mixed_multiple_chars"
+  ],
+  "pass_to_pass": [],
+  "resolved_at": "2026-05-26T13:19:16Z",
+  "provenance": "backtest",
+  "contamination_tier": "clean-pending-probe",
+  "source_pr": "https://github.com/Python-Markdown/markdown/pull/1606"
+}

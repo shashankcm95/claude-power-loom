@@ -1,0 +1,16 @@
+{
+  "id": "networkx__maximal-independent-set-returns-set",
+  "repo": "https://github.com/networkx/networkx",
+  "base_sha": "802c0a2d8ea282d8c7c1407a2a22717d7575355e",
+  "problem_statement": "maximal_independent_set returned a list, which made membership/equality semantics inconsistent for an inherently unordered result. Change it to return a set so equality and dedup behave correctly.",
+  "accepted_diff": "diff --git a/networkx/algorithms/mis.py b/networkx/algorithms/mis.py\nindex 1bf5b0a462b..d6d9cc0147b 100644\n--- a/networkx/algorithms/mis.py\n+++ b/networkx/algorithms/mis.py\n@@ -35,8 +35,8 @@ def maximal_independent_set(G, nodes=None, seed=None):\n \n     Returns\n     -------\n-    indep_nodes : list\n-       List of nodes that are part of a maximal independent set.\n+    indep_nodes : set\n+       Set of nodes that are part of a maximal independent set.\n \n     Raises\n     ------\n@@ -106,10 +106,10 @@ def maximal_independent_set(G, nodes=None, seed=None):\n     neighbors = set.union(*[set(G.adj[v]) for v in nodes])\n     if set.intersection(neighbors, nodes):\n         raise nx.NetworkXUnfeasible(f\"{nodes} is not an independent set of G\")\n-    indep_nodes = list(nodes)\n+    indep_nodes = set(nodes)\n     available_nodes = set(G.nodes()).difference(neighbors.union(nodes))\n     while available_nodes:\n         node = seed.choice(list(available_nodes))\n-        indep_nodes.append(node)\n+        indep_nodes.add(node)\n         available_nodes.difference_update(list(G.adj[node]) + [node])\n     return indep_nodes\n",
+  "test_patch": "diff --git a/networkx/algorithms/tests/test_mis.py b/networkx/algorithms/tests/test_mis.py\nindex 02be02d4c33..5a7b67ac7a8 100644\n--- a/networkx/algorithms/tests/test_mis.py\n+++ b/networkx/algorithms/tests/test_mis.py\n@@ -12,13 +12,13 @@\n \n def test_random_seed():\n     G = nx.empty_graph(5)\n-    assert nx.maximal_independent_set(G, seed=1) == [1, 0, 3, 2, 4]\n+    assert nx.maximal_independent_set(G, seed=1) == {1, 0, 3, 2, 4}\n \n \n @pytest.mark.parametrize(\"graph\", [nx.complete_graph(5), nx.complete_graph(55)])\n def test_K5(graph):\n     \"\"\"Maximal independent set for complete graphs\"\"\"\n-    assert all(nx.maximal_independent_set(graph, [n]) == [n] for n in graph)\n+    assert all(nx.maximal_independent_set(graph, [n]) == {n} for n in graph)\n \n \n def test_exceptions():\n",
+  "fail_to_pass": [
+    "networkx/algorithms/tests/test_mis.py::test_random_seed"
+  ],
+  "pass_to_pass": [],
+  "resolved_at": "2026-03-14T08:53:52Z",
+  "provenance": "backtest",
+  "contamination_tier": "clean-pending-probe",
+  "source_pr": "https://github.com/networkx/networkx/pull/8564"
+}

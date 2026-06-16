@@ -1,0 +1,40 @@
+{
+  "node_id": "176eb0ecc3ed08903bcb50f964906c2b08b5e86d80cbcfac7b2bc832a2e81bfd",
+  "node_type": "stochastic_sample",
+  "content_hash": "f590a9f6ea52d26f48bb2752a9f415f5e09241681e8a1b840a6327ad58439568",
+  "surface": "https://github.com/r1chardj0n3s/parse",
+  "worked_example_ref": {
+    "issue_id": "parse__grouping-char-in-decimal-format",
+    "repo": "https://github.com/r1chardj0n3s/parse",
+    "problem_statement_digest": "Decimal format strings with grouping chars (',' or '_', e.g. {:,d} / {:_d}) are not parsed; thousand-separated integers like '1,000,000' fail to match.",
+    "candidate_patch_ref": "5bfb45d9f30890e8",
+    "behavioral_verdict": "BEHAVIORAL_PASS",
+    "reference_divergence": 0,
+    "contamination_tier": "clean-pending-probe"
+  },
+  "provenance": "backtest",
+  "contaminated": false,
+  "friction_signature_ref": null,
+  "built_by": {
+    "role": "unattributed",
+    "roster_name": null,
+    "actor_kind": "claude_p"
+  },
+  "graded_by": {
+    "leg_b": null,
+    "leg_c": null
+  },
+  "trigger_class": "api-shape",
+  "gotcha_class": "unguarded-edge-case",
+  "corrective_class": "handle-edge-explicitly",
+  "lesson_signature": "lesson:api-shape|unguarded-edge-case|handle-edge-explicitly",
+  "lesson_body": "When parsing a format specification, every optional field defined by the format's grammar must be explicitly extracted before downstream pattern generation; silently skipping an unrecognized token causes subsequent stages to produce matchers that cannot accept the formatted output. Handle each grammar position in order and propagate the extracted option to wherever the matching pattern is constructed.",
+  "accepted_diff_ref": "9e0acf972569b70a131ba4473a5fa9efcd39e6303e133490d7096743c5d28f90",
+  "candidate_patch_sha": "9e0acf972569b70a131ba4473a5fa9efcd39e6303e133490d7096743c5d28f90",
+  "fail_to_pass": [
+    "tests/test_parse.py::test_numbers"
+  ],
+  "failed_attempt_ref": null,
+  "lesson_content_hash": "c3fee4f7350b6cb30fad25b100927a80a19d5513c5f5ff200e5f9d40b725e4be",
+  "recorded_at": "2026-06-16T12:22:47.853Z"
+}

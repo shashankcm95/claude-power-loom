@@ -1,0 +1,41 @@
+{
+  "node_id": "ba85999d8807827b6957764f1fd8942584a41d0d1d5614822687a305c67a993d",
+  "node_type": "stochastic_sample",
+  "content_hash": "51bc251b0fd3758c0db835c7a41118e0efe15a8b34b90c3f47d91c9fcdb30122",
+  "surface": "https://github.com/pygments/pygments",
+  "worked_example_ref": {
+    "issue_id": "pygments__html-escape-none-object",
+    "repo": "https://github.com/pygments/pygments",
+    "problem_statement_digest": "html_escape and HTML attribute escaping crashed on a None object: the escape path assumed a string and did not handle None before escaping, raising instead of coercing/handling. Handle the None object before HTML escaping.",
+    "candidate_patch_ref": "e14392faa7c8ce97",
+    "behavioral_verdict": "BEHAVIORAL_PASS",
+    "reference_divergence": 0,
+    "contamination_tier": "clean-pending-probe"
+  },
+  "provenance": "backtest",
+  "contaminated": false,
+  "friction_signature_ref": null,
+  "built_by": {
+    "role": "unattributed",
+    "roster_name": null,
+    "actor_kind": "claude_p"
+  },
+  "graded_by": {
+    "leg_b": null,
+    "leg_c": null
+  },
+  "trigger_class": "boundary-contract",
+  "gotcha_class": "unguarded-edge-case",
+  "corrective_class": "handle-edge-explicitly",
+  "lesson_signature": "lesson:boundary-contract|unguarded-edge-case|handle-edge-explicitly",
+  "lesson_body": "Standard library string-processing functions assume their input is already a valid string and will crash on null/None rather than treating it as empty. Wrap such calls in a guard that explicitly handles the null case before delegating to the underlying function.",
+  "accepted_diff_ref": "44c50cedc4c89acfffc9fc71c570042542a48b18e58db418b826f73626afff51",
+  "candidate_patch_sha": "44c50cedc4c89acfffc9fc71c570042542a48b18e58db418b826f73626afff51",
+  "fail_to_pass": [
+    "tests/test_html_formatter.py::test_html_escape_attributes",
+    "tests/test_util.py::test_html_escape"
+  ],
+  "failed_attempt_ref": null,
+  "lesson_content_hash": "f20c920899ae063f74b263a4fff05650d0734358233c429b0319d693d24cde47",
+  "recorded_at": "2026-06-16T12:21:38.492Z"
+}

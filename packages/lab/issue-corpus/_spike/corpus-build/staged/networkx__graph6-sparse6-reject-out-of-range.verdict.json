@@ -1,0 +1,7 @@
+{
+  "id": "networkx__graph6-sparse6-reject-out-of-range",
+  "verified": true,
+  "fail_before": "FAIL",
+  "pass_after": "PASS",
+  "reason": null
+}

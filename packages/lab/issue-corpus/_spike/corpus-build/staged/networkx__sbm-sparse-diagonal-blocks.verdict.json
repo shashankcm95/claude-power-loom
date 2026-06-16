@@ -1,0 +1,7 @@
+{
+  "id": "networkx__sbm-sparse-diagonal-blocks",
+  "verified": true,
+  "fail_before": "FAIL",
+  "pass_after": "PASS",
+  "reason": null
+}
