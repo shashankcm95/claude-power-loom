@@ -223,6 +223,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/lab/causal-edge/lesson-confirm.js` - v3.11 W2 — the CONFIRMATION GATE + the lane split + the confirm pass.
 - `packages/lab/causal-edge/lesson-consolidate.js` - v3.11 W1 — the consolidation pass (DEF-3): roll lesson nodes up by lesson_signature
 - `packages/lab/causal-edge/lesson-derive.js` - v3.11 W1 — the lesson DERIVATION leg.
+- `packages/lab/causal-edge/lesson-merge-lift.js` - v-next MV-W1 — the FORK-6 `lesson_merge_lift` HARDEN-gate.
 - `packages/lab/causal-edge/lesson-signature.js` - v3.11 W1 — the FROZEN lesson signature + the lesson-key machinery.
 - `packages/lab/causal-edge/manage-ops.js` - v3.5 Wave 3a - the Manage-Layer's first WRITE op: flag-conflict (the SECOND producer->consumer loop of
 - `packages/lab/causal-edge/projections.js` - v3.5 Wave 3a - the `conflicted` projection (D2): a PURE Lab projection over the causal-edge set.
@@ -231,6 +232,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/lab/causal-edge/trajectory-friction-run.js` - v3.9 W3 — the IMPURE real-capture + friction-label runner.
 - `packages/lab/causal-edge/trajectory-friction.js` - v3.9 W3 — trajectory capture + the resolution_friction friction map.
 - `packages/lab/causal-edge/walker.js` - v3.5 Wave 2 - the OQ-27 read-side walker (the CONSUMER of the graph loop).
+- `packages/lab/causal-edge/wilson.js` - v-next MV-W1 — the Wilson score interval (95%, NO continuity correction).
 
 ### `lab/circuit-breaker/`
 
