@@ -8,6 +8,20 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [3.11.0] — 2026-06-16 — v3.11 Experience layer (lessons-not-actions; shadow)
+
+**Minor release** (additive — new **Lab-layer experience/lesson** code; no kernel/runtime change, no breaking change. `.claude-plugin/plugin.json` `3.10.0 → 3.11.0`). Ships **v3.11** — phase-closed 2026-06-16 (3-lens gate; after folding the gate's findings: CLOSEABLE; [`docs/ROADMAP.md`](docs/ROADMAP.md) + the `phase-close/v3.11-close` library volume).
+
+**What it is.** The recall node reframed from an *action log* into a **derived lesson**: a FROZEN closed-enum signature (`lesson:trigger | gotcha | corrective` — the 24-cell D1 floor) + a leak-guarded principle body, carried top-level + patch-stable (outside both `node_id` and `content_hash`, with its own `lesson_content_hash`). A same-`fail_to_pass` **confirmation gate** ensures a lesson *provably cannot* enter the predictor lane without a same-requirement confirming delta (unconfirmed sits in a hazard lane), and the first `(failure)--confirmed-by-->(delta)` edge + the **trap seam** (`failed_attempt_ref` + a confirmed trust-weight + a signature retriever) complete the organ. All **shadow** (OQ-NS-6: a backtest only *narrows* confidence; only a world-anchored live merge *hardens* it).
+
+**The waves** (`#330`–`#332`; all **shadow/advisory**):
+
+- **W1 — the organ** (`#330`): the lesson-node schema + the `claude -p` derive leg (advisory contrast on a re-run's captured candidate vs accepted) + the string-variant leak-guard + `lessonClusterKey` + exact-match merge with a raw recurrence count.
+- **W2 — the confirmation gate + the first edge** (`#331`): the same-`fail_to_pass` cross-run join (`lesson-confirm.js`) + the `confirmed-by` edge ledger (`recall-edge-store.js`), composed at the call site (not merged into the contamination gate).
+- **W3 — the trap seam** (`#332`): `failed_attempt_ref` (top-level, unhashed, content-addressed sidecar) → `contrast(wrong-diff, accepted-fix)` + the confirmed trust-weight consolidation pass + the collision-gated signature retriever.
+
+**Validation — the full bootcamp re-run** (a manual `_spike`, OUT of CI, under `packages/lab/issue-corpus/_spike/corpus-build/`): 20 verified real OSS bugs (7 flat-layout pure-Python repos) → 20 real `claude`-derived on-floor lessons → the discrimination measurement returned **MEASURED** (N=20≥floor, 5 cross-repo collision clusters): held-out cross-repo sibling retrieval **signature hit-rate 0.722 vs the repo-gated lexical floor 0.056** (margin +0.667). **DIAGNOSTIC, not a trust score** — the corpus was *engineered* for cross-repo collisions, so the measurement NARROWS (the frozen signature reaches a generalizable sibling the repo-gated floor structurally cannot); it does not estimate base rates and does not harden trust. Standing residual: a content-addressed store proves *integrity, not provenance* — signed/kernel-writer edges (the #273 close) are owed to a later phase.
+
 ## [3.10.0] — 2026-06-15 — v3.10 Persona reputation over the recall graph (the WHO-built axis; shadow)
 
 **Minor release** (additive — new **Lab-layer persona-provenance + reputation** code; no kernel/runtime change, no breaking change. `.claude-plugin/plugin.json` `3.9.0 → 3.10.0`). Ships **v3.10** — phase-closed 2026-06-15 (3-lens unanimous CLOSEABLE-WITH-NOTES, 0 cross-PR drift; [`docs/ROADMAP.md`](docs/ROADMAP.md) + the `phase-close/v3.10-close` library volume).

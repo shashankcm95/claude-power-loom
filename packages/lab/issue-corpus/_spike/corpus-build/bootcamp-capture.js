@@ -17,7 +17,9 @@
 
 const fs = require('fs');
 const path = require('path');
-const { runCaptureRerun } = require(path.join(__dirname, '..', '..', '..', 'causal-edge', '_spike', 'lesson-capture-rerun'));
+// Static relative require (NOT require(path.join(...)) — the EC7 DYNAMIC_IMPORT gate flags non-literal
+// require args). corpus-build -> _spike -> issue-corpus -> lab, then into causal-edge/_spike.
+const { runCaptureRerun } = require('../../../causal-edge/_spike/lesson-capture-rerun');
 
 const DIR = __dirname;
 const manifest = JSON.parse(fs.readFileSync(path.join(DIR, 'bootcamp-manifest.json'), 'utf8'));

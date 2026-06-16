@@ -12,13 +12,22 @@
     "lexical_hit_rate": 1,
     "discrimination_margin": -0.4
   },
+  "gate_check_framing": "gate_check uses a SELF-retrieval framing (expected = the query node itself); the lexical floor has the query's EXACT title-slug (Jaccard 1) so it trivially wins (margin -0.4). This run only confirms the data-gate OPENS (N>=floor AND collisions => MEASURED); it is NOT the discrimination headline. The headline is held_out (B).",
   "held_out": {
     "n_cluster_members": 18,
     "signature_hit_rate": 0.7222222222222222,
     "lexical_hit_rate": 0.05555555555555555,
     "n_xrepo_only": 18,
     "signature_hit_rate_xrepo": 0.7222222222222222,
-    "lexical_hit_rate_xrepo": 0.05555555555555555
+    "lexical_hit_rate_xrepo": 0.05555555555555555,
+    "misses": [
+      "networkx:api-shape|unguarded-edge-case|handle-edge-explicitly",
+      "joke2k:state-mutation|unguarded-edge-case|handle-edge-explicitly",
+      "networkx:state-mutation|unguarded-edge-case|handle-edge-explicitly",
+      "pygments:boundary-contract|unguarded-edge-case|handle-edge-explicitly",
+      "networkx:boundary-contract|unguarded-edge-case|handle-edge-explicitly"
+    ],
+    "def3_note": "5/18 signature misses are DEF-3 under-separation — the trigger-class tie-break topped a same-trigger / different-gotcha node (the floor's grow-signal: append a trigger value), NOT a ranker flaw."
   },
-  "note": "DIAGNOSTIC per OQ-NS-6: narrows (signature vs lexical retrieval), never hardens trust."
+  "note": "DIAGNOSTIC per OQ-NS-6: this NARROWS (the frozen signature retrieves a generalizable cross-repo sibling the repo-HARD-gated lexical floor structurally cannot reach), it NEVER hardens trust (no world-anchored merge). The corpus was ENGINEERED to contain same-signature cross-repo collisions, so the held_out hit-rate is CONDITIONAL on a collision existing and does NOT estimate the base rate of same-signature siblings in real recall traffic. The +0.667 margin must never travel without this frame (and the gate_check shows the lexical floor WINS at same-repo self-retrieval, -0.4)."
 }

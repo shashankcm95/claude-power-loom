@@ -19,6 +19,7 @@ const { listNodes } = require('../../../attribution/recall-graph-store');
 const { classifyLessonLayer } = require('../../../attribution/recall-graph');
 const { retrieveBySignature, collisionSignatures, measureDiscrimination } = require('../../../attribution/_spike/retrieve-signature');
 const { retrieve: lexicalRetrieve, issueTitleSlug } = require('../../../attribution/_spike/retrieve');
+const { consolidateLessons, writeConsolidationReport } = require('../../../causal-edge/lesson-consolidate');
 
 const DIR = __dirname;
 const recallGraphDir = path.join(DIR, 'recall-graph');
@@ -31,6 +32,11 @@ const issueOf = (n) => (n.worked_example_ref || {}).issue_id || '';
 const shortRepo = (r) => String(r).replace('https://github.com/', '');
 
 out(`=== v3.11 bootcamp Phase 3 — discrimination measurement (N_valid=${valid.length}) ===\n`);
+
+// PM-HIGH fix: regenerate consolidation-report.json over the FULL valid corpus (the per-batch artifact
+// from the last capture run was stale — showed only that batch's minted lessons). consolidateLessons
+// re-filters classifyLessonLayer==='valid' itself, so this is the integrated-corpus recurrence tally.
+writeConsolidationReport(consolidateLessons(valid), { file: path.join(DIR, 'consolidation-report.json') });
 
 // --- signature distribution + collision structure ------------------------
 const bySig = {};
@@ -92,9 +98,19 @@ out(`      cross-repo margin = ${nXrepo ? (sigHitXrepo / nXrepo - lexHitXrepo / 
 const report = {
   n_valid: valid.length, n_collision_signatures: collisions.length,
   gate_check: gate,
+  gate_check_framing: 'gate_check uses a SELF-retrieval framing (expected = the query node itself); the '
+    + 'lexical floor has the query\'s EXACT title-slug (Jaccard 1) so it trivially wins (margin -0.4). '
+    + 'This run only confirms the data-gate OPENS (N>=floor AND collisions => MEASURED); it is NOT the '
+    + 'discrimination headline. The headline is held_out (B).',
   held_out: { n_cluster_members: n, signature_hit_rate: n ? sigHit / n : null, lexical_hit_rate: n ? lexHit / n : null,
-    n_xrepo_only: nXrepo, signature_hit_rate_xrepo: nXrepo ? sigHitXrepo / nXrepo : null, lexical_hit_rate_xrepo: nXrepo ? lexHitXrepo / nXrepo : null },
-  note: 'DIAGNOSTIC per OQ-NS-6: narrows (signature vs lexical retrieval), never hardens trust.',
+    n_xrepo_only: nXrepo, signature_hit_rate_xrepo: nXrepo ? sigHitXrepo / nXrepo : null, lexical_hit_rate_xrepo: nXrepo ? lexHitXrepo / nXrepo : null,
+    misses: misses, def3_note: `${misses.length}/${n} signature misses are DEF-3 under-separation — the trigger-class tie-break topped a same-trigger / different-gotcha node (the floor's grow-signal: append a trigger value), NOT a ranker flaw.` },
+  note: 'DIAGNOSTIC per OQ-NS-6: this NARROWS (the frozen signature retrieves a generalizable cross-repo '
+    + 'sibling the repo-HARD-gated lexical floor structurally cannot reach), it NEVER hardens trust (no '
+    + 'world-anchored merge). The corpus was ENGINEERED to contain same-signature cross-repo collisions, '
+    + 'so the held_out hit-rate is CONDITIONAL on a collision existing and does NOT estimate the base rate '
+    + 'of same-signature siblings in real recall traffic. The +0.667 margin must never travel without this '
+    + 'frame (and the gate_check shows the lexical floor WINS at same-repo self-retrieval, -0.4).',
 };
 fs.writeFileSync(path.join(DIR, 'measurement-report.json'), `${JSON.stringify(report, null, 2)}\n`);
 out(`\nwrote -> ${path.join(DIR, 'measurement-report.json')}`);

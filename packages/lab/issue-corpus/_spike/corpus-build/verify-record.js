@@ -16,11 +16,12 @@
 'use strict';
 
 const fs = require('fs');
-const path = require('path');
-const REPO = path.join(__dirname, '..', '..', '..', '..', '..');
-const { createSandboxExecBackend } = require(path.join(REPO, 'packages/lab/issue-corpus/sandbox-exec-backend'));
-const { makePytestResolver } = require(path.join(REPO, 'packages/lab/issue-corpus/pytest-runner'));
-const { makeBehavioralFn } = require(path.join(REPO, 'packages/lab/causal-edge/calibration-issue-run'));
+// Static relative requires (NOT require(path.join(...))) — the EC7 bootcamp-gates DYNAMIC_IMPORT
+// gate flags any require() whose argument is not a string literal. corpus-build/ -> _spike ->
+// issue-corpus is `../..`; the causal-edge sibling is `../../../causal-edge`.
+const { createSandboxExecBackend } = require('../../sandbox-exec-backend');
+const { makePytestResolver } = require('../../pytest-runner');
+const { makeBehavioralFn } = require('../../../causal-edge/calibration-issue-run');
 
 const recPath = process.argv[2];
 if (!recPath) { console.log('usage: node verify-record.js <record.json>'); process.exit(2); }

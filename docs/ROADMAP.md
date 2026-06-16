@@ -433,6 +433,40 @@ Durable record: the `toolkit/phase-close/v3.10-close` library volume.
 
 ---
 
+## ✅ v3.11 — Experience layer (lessons-not-actions, SHADOW) — phase-closed 2026-06-16
+
+The recall node reframed from an *action log* into a **derived lesson** — the content pivot v3.10's diagnostic chartered (*mechanism proven, the DATA is the gap*). Three merged PRs, all **shadow/advisory** (RFC [`2026-06-15-v3.11-experience-layer.md`](../packages/specs/rfcs/2026-06-15-v3.11-experience-layer.md), #329):
+
+- **W1 #330 — the organ.** The lesson-node schema + the advisory `claude -p` derive leg (contrast on a re-run's captured candidate vs accepted) + the string-variant leak-guard + `lessonClusterKey` + exact-match merge with a raw recurrence count. The lesson rides **top-level + outside both `node_id` and `content_hash`** (patch-stable identity) with its own `lesson_content_hash`; `classifyLessonLayer` re-derives the signature + re-hashes the body on read (the #273 verify-on-read lesson, a third time). **Exit MET:** `derive → lessonClusterKey → leak-guard → store` runs end-to-end on captured nodes; same-signature lessons merge.
+- **W2 #331 — the confirmation gate + the first edge.** The same-`fail_to_pass` cross-run join (`lesson-confirm.js`) + the `(failure)--confirmed-by-->(delta)` edge ledger (`recall-edge-store.js`), evidence-backed (corpus-trusted requirement, exact-SET match both sides, self-confirm + ground-truth-as-confirm rejected), composed at the call site. **Exit MET:** a lesson *provably cannot* enter the predictor lane without a same-requirement confirming delta; unconfirmed sits in a hazard lane.
+- **W3 #332 — the trap seam.** `failed_attempt_ref` (top-level, unhashed, content-addressed sidecar) → `contrast(wrong-diff, accepted-fix)` + the confirmed trust-weight consolidation pass + the collision-gated signature retriever (`attribution/_spike/retrieve-signature.js`). **Exit MET (validated by the bootcamp):** trigger-retrieval *measurably* beats the lexical floor on a corpus with real same-signature collisions.
+
+**The validating bootcamp re-run** (a manual `_spike`, OUT of CI, `packages/lab/issue-corpus/_spike/corpus-build/`): 20 verified real OSS bugs (7 flat-layout pure-Python repos; each sandbox-proven fail-before/pass-after) → 20 real `claude`-derived on-floor lessons (7 distinct signatures, 5 **cross-repo** collision clusters) → the discrimination measurement returned **MEASURED** (N=20 ≥ floor, collisions present): held-out cross-repo sibling retrieval **signature hit-rate 0.722 (13/18) vs the repo-gated lexical floor 0.056 (1/18)**, margin **+0.667**. The documented gate-check's self-retrieval arm is **−0.4** (the lexical floor has the exact title-slug → Jaccard 1, and trivially wins; that arm only confirms the data-gate opens). 5/18 signature misses are DEF-3 under-separation (the trigger-class tie-break — the floor's grow-signal, not a ranker flaw).
+
+## Phase-close sign-off (v3.11, 2026-06-16)
+
+`/phase-close v3.11` — three independent full-context lenses (PM=honesty-auditor + Principal-SDE=code-reviewer-at-phase-altitude + Architect) reviewed the INTEGRATED phase (#330–#332 + the bootcamp) against the RFC #329 exit criteria + the cross-PR seams. **Verdict: CLOSEABLE — after folding the gate's findings** (the gate did its job: it caught a CI-blocker I introduced + disclosure/record gaps, all resolved this session). **0 cross-PR contract drift.**
+
+**The honest framing (all three lenses):** v3.11 delivers all three exit criteria and the bootcamp demonstrates the discrimination claim the RFC said could not be declared on machinery alone — BUT the corpus was **engineered for cross-repo collisions**, so the measurement **NARROWS** (the frozen signature reaches a generalizable sibling the repo-gated lexical floor structurally cannot) and does **not** estimate base rates in real recall traffic; per OQ-NS-6 a backtest never **hardens** trust. The `+0.667` margin must never travel without that frame (the report carries the losing `−0.4` self-retrieval arm to keep it honest).
+
+- **PM (honesty)** — all exit criteria MET on firsthand evidence; the 20 nodes are real-leg (not the dry stub) + on-floor; the measurement reproduces. No load-bearing overclaim. **Gaps folded:** the stale `consolidation-report.json` (showed 2 lessons, not 20) regenerated over the full corpus; the DEF-3 miss list + the engineered-corpus base-rate disclaimer added to `measurement-report.json`.
+- **Principal-SDE (phase-altitude)** — the W1→W2→W3 contract chain coheres (the lesson hash-field-set, the unhashed `fail_to_pass`/`failed_attempt_ref`, the mint/read `classifyLessonLayer` parity, the evidence-backed gate, the verify-on-read consolidation I/O — no seam drift). The bootcamp spike drives the real substrate (no reimplementation). **MUST-FIX folded:** the EC7 `bootcamp-gates` CI-blocker (4 `require(path.join(...))` dynamic requires in the corpus-build scripts → static relative requires; `bootcamp-gates.test.js` now 19/19) + the release-surface bump (below).
+- **Architect** — a **clean ADDITIVE layer** (lesson fields outside both hashes; the import allow-list points inward; the live K4 recall-CLI untouched; no laundering interaction with the v3.10 reputation lane — the key is persona-agnostic). The FROZEN 24-cell freeze is **sound** (append-only, one-way-door); the under-separation is **acceptable known-coarseness** (the DEF-3 grow-signal), and trigger-class ranking is correct (the gotcha is the *answer*, not the query — do NOT "fix" the ranker to the full tuple). Forward contract **READY-WITH-NOTES**.
+
+**Empirical basis:** integ (kernel 72 + runtime 17 + lab 62 suites) + e2e (the bootcamp's sandbox fail-before/pass-after gate over 20 issues + the MEASURED discrimination run); **NO live-dogfood** — v3.11 is a backtest on an engineered corpus (NARROWS only). Release surface bumped 3.10.0 → 3.11.0 (`validate-release-surface.js --phase v3.11` clean).
+
+**Carry-list for v-next** (named; no silent drop):
+
+- **(C1) the live signature retriever / OQ-7** — the retriever is a `_spike`, out of the live path + does NOT yet filter by provenance; any live retriever must be **empirically probed** (Runtime-Claim) to filter `provenance=backtest` before it touches a live spawn.
+- **(C2) the A6 lesson-bridge to a live spawn** — not built (the graph needs edges first; now has the first edge type). ADR-0012 makes per-spawn injection structurally inert, so the bridge cannot become an accidental live-injection path.
+- **(C3) signed / kernel-writer edges — the standing #273 provenance close.** A content-addressed store proves **integrity, not provenance**: a byte-writer calling the exported `deriveEdgeId` + writing a matching sidecar can co-forge a self-consistent edge that inflates the SHADOW/ADVISORY confirmed-weight. Acceptable for close (the weight only NARROWS an advisory ranker; never gates a merge), but the consolidation→retriever weight path is the consumer to re-probe the moment signed edges land.
+- **(C4) base-rate measurement** — the bootcamp NARROWS on an engineered corpus; the world-anchored question (how often does a real recall query have a same-signature sibling?) is owed to a live phase.
+- **(C5) G-AGNOSTIC** (a model-portability check for lesson content) + **DEF-1/DEF-2** (suppression view / epsilon-floor baseline) — reversible, deferred.
+
+Durable record: the `toolkit/phase-close/v3.11-close` library volume.
+
+---
+
 ## ⬜ Deferred / field-survey debt (v3.5+)
 
 Explicitly out of v3.0-alpha scope, tracked for later:
