@@ -130,7 +130,7 @@ async function runConfirmationPass(provisionalNodes, confirmingAttempts, opts = 
       if (!sc.ok) { n_sidecar_failed += 1; continue; }
       const rec = {
         from_node_id: node.node_id,
-        to_delta_ref: sidecarSha(att.candidate_patch),
+        to_delta_ref: sc.sha,                                     // writeCandidate already computed it (no redundant re-hash; single-sourced)
         edge_type: EDGE_TYPE,
         fail_to_pass: node.fail_to_pass,
         recorded_at: now || new Date().toISOString(),
