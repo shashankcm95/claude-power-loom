@@ -99,6 +99,7 @@ const record = {
 };
 
 const outPath = path.join(__dirname, 'staged', `${id}.json`);
+fs.mkdirSync(path.dirname(outPath), { recursive: true });   // CodeRabbit #333: a fresh/manual workspace may lack staged/
 fs.writeFileSync(outPath, `${JSON.stringify(record, null, 2)}\n`);
 
 console.log(`staged -> ${outPath}`);

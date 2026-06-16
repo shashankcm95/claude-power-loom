@@ -25,6 +25,11 @@ const { makeBehavioralFn } = require('../../../causal-edge/calibration-issue-run
 
 const recPath = process.argv[2];
 if (!recPath) { console.log('usage: node verify-record.js <record.json>'); process.exit(2); }
+// CodeRabbit #333: the verdict path is recPath with .json -> .verdict.json; a non-.json (or already
+// .verdict.json) input would make that a no-op and overwrite the INPUT file. Reject it up front.
+if (!/\.json$/i.test(recPath) || /\.verdict\.json$/i.test(recPath)) {
+  console.log(`invalid input: ${recPath} (expected a staged <id>.json, not a .verdict.json)`); process.exit(2);
+}
 const record = JSON.parse(fs.readFileSync(recPath, 'utf8'));
 const out = (s) => process.stdout.write(`${s}\n`);
 

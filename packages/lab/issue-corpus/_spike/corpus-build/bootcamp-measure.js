@@ -73,24 +73,31 @@ const misses = [];
 for (const x of clusterMembers) {
   const candidates = valid.filter((n) => n.node_id !== x.node_id);              // hold X out
   const sib = candidates.filter((n) => n.lesson_signature === x.lesson_signature);
-  const hasXrepoSib = sib.some((n) => repoOf(n) !== repoOf(x));
+  // "pure cross-repo" cohort = EVERY sibling is in another repo, so the repo-HARD-gated lexical floor
+  // can reach NONE of them. (CodeRabbit #333: `.some` would also count a member that HAS a same-repo
+  // sibling — which the floor CAN reach — overstating the cohort. Use `.every`.)
+  const onlyXrepoSib = sib.length > 0 && sib.every((n) => repoOf(n) !== repoOf(x));
   const sg = retrieveBySignature({ repo: repoOf(x), trigger_class: x.trigger_class }, candidates);
   const lx = lexicalRetrieve({ repo: repoOf(x), title: issueTitleSlug(issueOf(x)) }, candidates);
   const sgHit = !!(sg.top && sg.top.node.lesson_signature === x.lesson_signature);
   const lxHit = !!(lx.top && lx.top.node.lesson_signature === x.lesson_signature);
   if (sgHit) sigHit += 1; if (lxHit) lexHit += 1;
-  if (hasXrepoSib) { nXrepo += 1; if (sgHit) sigHitXrepo += 1; if (lxHit) lexHitXrepo += 1; }
+  if (onlyXrepoSib) { nXrepo += 1; if (sgHit) sigHitXrepo += 1; if (lxHit) lexHitXrepo += 1; }
   if (!sgHit) misses.push(`${shortRepo(repoOf(x)).split('/')[0]}:${x.lesson_signature.replace('lesson:', '')}`);
 }
 const n = clusterMembers.length;
 const rate = (h) => (n ? (h / n).toFixed(3) : 'n/a');
 const rateX = (h) => (nXrepo ? (h / nXrepo).toFixed(3) : 'n/a');
+// CodeRabbit #333: compute the margins (do NOT hard-code -0.4 / +0.667 into the persisted framing —
+// they would drift from the metrics on a rerun with different data).
+const heldOutMargin = n ? (sigHit / n - lexHit / n).toFixed(3) : 'n/a';
+const gateMargin = (gate && typeof gate.discrimination_margin === 'number') ? gate.discrimination_margin.toFixed(3) : 'n/a';
 out('(B) HEADLINE held-out sibling retrieval (top hit shares X full lesson_signature):');
 out(`    over all ${n} collision-cluster members:`);
 out(`      signature hit-rate@1 = ${rate(sigHit)}   (${sigHit}/${n})`);
 out(`      lexical   hit-rate@1 = ${rate(lexHit)}   (${lexHit}/${n})`);
-out(`      discrimination margin = ${(sigHit / n - lexHit / n).toFixed(3)}`);
-out(`    over the ${nXrepo} members whose ONLY siblings are cross-repo (lexical structurally cannot reach):`);
+out(`      discrimination margin = ${heldOutMargin}`);
+out(`    over the ${nXrepo} members whose ONLY siblings are cross-repo (every sibling in another repo — lexical structurally cannot reach):`);
 out(`      signature hit-rate@1 = ${rateX(sigHitXrepo)}   (${sigHitXrepo}/${nXrepo})`);
 out(`      lexical   hit-rate@1 = ${rateX(lexHitXrepo)}   (${lexHitXrepo}/${nXrepo})`);
 out(`      cross-repo margin = ${nXrepo ? (sigHitXrepo / nXrepo - lexHitXrepo / nXrepo).toFixed(3) : 'n/a'}`);
@@ -99,7 +106,7 @@ const report = {
   n_valid: valid.length, n_collision_signatures: collisions.length,
   gate_check: gate,
   gate_check_framing: 'gate_check uses a SELF-retrieval framing (expected = the query node itself); the '
-    + 'lexical floor has the query\'s EXACT title-slug (Jaccard 1) so it trivially wins (margin -0.4). '
+    + 'lexical floor has the query\'s EXACT title-slug (Jaccard 1) so it trivially wins (margin ' + gateMargin + '). '
     + 'This run only confirms the data-gate OPENS (N>=floor AND collisions => MEASURED); it is NOT the '
     + 'discrimination headline. The headline is held_out (B).',
   held_out: { n_cluster_members: n, signature_hit_rate: n ? sigHit / n : null, lexical_hit_rate: n ? lexHit / n : null,
@@ -109,8 +116,8 @@ const report = {
     + 'sibling the repo-HARD-gated lexical floor structurally cannot reach), it NEVER hardens trust (no '
     + 'world-anchored merge). The corpus was ENGINEERED to contain same-signature cross-repo collisions, '
     + 'so the held_out hit-rate is CONDITIONAL on a collision existing and does NOT estimate the base rate '
-    + 'of same-signature siblings in real recall traffic. The +0.667 margin must never travel without this '
-    + 'frame (and the gate_check shows the lexical floor WINS at same-repo self-retrieval, -0.4).',
+    + 'of same-signature siblings in real recall traffic. The held-out margin (' + heldOutMargin + ') must never '
+    + 'travel without this frame (and the gate_check shows the lexical floor WINS at same-repo self-retrieval, ' + gateMargin + ').',
 };
 fs.writeFileSync(path.join(DIR, 'measurement-report.json'), `${JSON.stringify(report, null, 2)}\n`);
 out(`\nwrote -> ${path.join(DIR, 'measurement-report.json')}`);
