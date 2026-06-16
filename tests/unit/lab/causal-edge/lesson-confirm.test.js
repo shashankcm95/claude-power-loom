@@ -22,6 +22,11 @@ const { listEdges } = require(path.join(REPO, 'packages', 'lab', 'attribution', 
 const { sidecarSha, readCandidate } = require(path.join(REPO, 'packages', 'lab', 'attribution', 'candidate-sidecar.js'));
 const { generateEdgeKeypair } = require(path.join(REPO, 'packages', 'kernel', '_lib', 'edge-attestation.js'));
 
+// Hermetic (CodeRabbit #335): the authenticatedEdgeIds fail-closed assertions (opts `{}`) assume NO
+// ambient LOOM_EDGE_VERIFY_KEY. Each test file runs in its own node process -> a file-wide delete is isolated.
+delete process.env.LOOM_EDGE_SIGNING_KEY;
+delete process.env.LOOM_EDGE_VERIFY_KEY;
+
 let passed = 0; let failed = 0;
 const _tests = [];
 function test(name, fn) { _tests.push({ name, fn }); }

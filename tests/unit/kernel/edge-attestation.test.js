@@ -19,6 +19,13 @@ const {
   generateEdgeKeypair, signEdgeId, verifyEdgeSig, hasVerifyKey, SIG_ALG,
 } = require(path.join(REPO, 'packages', 'kernel', '_lib', 'edge-attestation.js'));
 
+// Hermetic (CodeRabbit #335): the fail-soft/fail-closed assertions assume NO ambient edge keys —
+// signEdgeId/verifyEdgeSig/hasVerifyKey fall back to LOOM_EDGE_SIGNING_KEY/LOOM_EDGE_VERIFY_KEY when
+// opts is empty, so a dev/CI shell with them set would flip the expectations. Each test file runs in
+// its own node process, so a file-wide delete is isolated (no restore needed).
+delete process.env.LOOM_EDGE_SIGNING_KEY;
+delete process.env.LOOM_EDGE_VERIFY_KEY;
+
 let passed = 0; let failed = 0;
 const _tests = [];
 function test(name, fn) { _tests.push({ name, fn }); }
