@@ -32,14 +32,22 @@ function acceptedDiffRef(accepted) {
   return crypto.createHash('sha256').update(String(accepted == null ? '' : accepted)).digest('hex');
 }
 
-// items: [{ attempt, candidate_patch, accepted_diff, fail_to_pass }]. deriveFn: injected
-// (real claude -p in the spike; mock in tests). All dirs/file injectable for CI temp dirs.
+// v3.11 W3 — a generous upper bound on the NEW untrusted contrast input (failed_patch). An
+// oversize failed_patch is treated as ABSENT (no trap) rather than fed to the leg / sidecared
+// (VALIDATE-hacker M1: bound the new input surface). A real diff is far under this; the W1
+// candidate/accepted surfaces stay W1-unbounded (a consistent all-input bound is deferred, R-W3-5).
+const MAX_CONTRAST_PATCH = 1000000;
+
+// items: [{ attempt, candidate_patch, accepted_diff, fail_to_pass, failed_patch? }]. deriveFn:
+// injected (real claude -p in the spike; mock in tests). All dirs/file injectable for CI temp dirs.
+// `failed_patch` (optional, W3): the FAILED attempt's wrong-diff — contrast fuel for the leg +
+// persisted to the sidecar as the additive `failed_attempt_ref` evidence pointer.
 async function captureLessons(items, deriveFn, opts = {}) {
   const { recallGraphDir, sidecarDir, reportFile, provenance, now } = opts;
   const list = Array.isArray(items) ? items : [];
   const minted = [];
   let n_eligible = 0; let n_derive_fallback = 0; let n_off_floor = 0; let n_leak = 0; let n_written = 0;
-  let n_sidecar_failed = 0; let n_deduped = 0;
+  let n_sidecar_failed = 0; let n_deduped = 0; let n_failed_sidecar_failed = 0;
 
   for (const it of list) {
     const attempt = it && it.attempt;
@@ -48,9 +56,12 @@ async function captureLessons(items, deriveFn, opts = {}) {
 
     const candidate_patch = it.candidate_patch;
     const accepted_diff = it.accepted_diff;
+    // W3 trap seam: a length-bounded failed-attempt wrong-diff (absent/oversize -> no trap, M1).
+    const fp = it.failed_patch;
+    const usableFailed = (typeof fp === 'string' && fp.length > 0 && fp.length <= MAX_CONTRAST_PATCH) ? fp : null;
     const d = await deriveLesson({
       problem_statement_digest: attempt.reference.problem_statement_digest,
-      candidate_patch, accepted_diff,
+      candidate_patch, accepted_diff, failed_patch: usableFailed,
     }, deriveFn);
     if (!d.ok) {
       if (d.fallback_reason === 'lesson-leak') n_leak += 1;
@@ -65,12 +76,20 @@ async function captureLessons(items, deriveFn, opts = {}) {
     const candidate_patch_sha = sidecarSha(candidate_patch);
     const cw = writeCandidate(candidate_patch, { dir: sidecarDir });
     if (!cw.ok) { n_sidecar_failed += 1; continue; }
+    // W3 trap seam (M2): the ref comes ONLY from a confirmed-OK write (never sidecarSha-before-write,
+    // which could dangle). A failed-patch write FAILURE degrades to a trap-less-but-valid lesson
+    // (failed_attempt_ref=null) — the PASSING node still anchors the lesson and is valuable alone.
+    let failed_attempt_ref = null;
+    if (usableFailed != null) {
+      const fw = writeCandidate(usableFailed, { dir: sidecarDir });
+      if (fw.ok) failed_attempt_ref = fw.sha; else n_failed_sidecar_failed += 1;
+    }
     let node;
     try {
       node = buildWorkedExampleNode(attempt, {
         provenance, lesson: d.lesson,
         accepted_diff_ref: acceptedDiffRef(accepted_diff),
-        candidate_patch_sha, fail_to_pass: it.fail_to_pass,
+        candidate_patch_sha, fail_to_pass: it.fail_to_pass, failed_attempt_ref,
       });
     } catch (e) {
       // narrow the catch (VALIDATE-reviewer HIGH-1 / LOW-2): an off-floor lesson is the ONLY
@@ -90,7 +109,7 @@ async function captureLessons(items, deriveFn, opts = {}) {
   // do NOT clobber the global default report path on an empty run (VALIDATE-reviewer MEDIUM-2):
   // write only when there is something to report OR an explicit destination was given.
   const report_written = (minted.length > 0 || reportFile) ? writeConsolidationReport(report, { file: reportFile, now }) : { ok: true, skipped: true };
-  return { n_eligible, n_written, n_deduped, n_sidecar_failed, n_derive_fallback, n_off_floor, n_leak, minted, report, report_written };
+  return { n_eligible, n_written, n_deduped, n_sidecar_failed, n_failed_sidecar_failed, n_derive_fallback, n_off_floor, n_leak, minted, report, report_written };
 }
 
 module.exports = { captureLessons, acceptedDiffRef };

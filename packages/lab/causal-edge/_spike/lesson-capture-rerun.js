@@ -13,6 +13,14 @@
 // call mirrors calibration-issue-run.js claudeOnce: STDIN prompt (ARG_MAX-robust),
 // WHOLE-OUTPUT fence-strip (anchored, never embedded), --model PINNED (the child does not
 // inherit the parent model), fail-closed to null on any refuse (-> deriveLesson harness_fallback).
+//
+// v3.11 W3 — the TRAP SEAM: when an item carries a `failed_patch` (a WRONG attempt that did NOT
+// pass), it rides into the prompt as the primary contrast — `contrast(wrong-diff, accepted-fix)`
+// makes the gotcha legible. DISCIPLINE (architect VERIFY fold): the driver MUST only pass a
+// failed_patch that a REAL runner verified as non-PASS (a "wrong" diff that actually passes is a
+// second valid approach, not a trap). The FULL real corpus trap-seam re-run (verify-the-failure
+// via pytest-runner over N>=floor issues engineered for same-signature collisions) is the DATA-GATED
+// carry-forward (R-W3-1) — this spike wires the seam + a --dry smoke; it is NOT the N-floor re-run.
 
 'use strict';
 
@@ -51,6 +59,14 @@ function claudeOnce(bin, prompt, timeout) {
 // { trigger_class, gotcha_class, corrective_class, lesson_body } or null (fail-closed).
 function makeLessonDeriver({ bin = resolveClaude(), timeout = 60000 } = {}) {
   return function deriveFn(contrastInput) {
+    const failed = String(contrastInput.failed_patch || '');
+    // W3 trap seam: the failed attempt is the gotcha made concrete (contrast it against the accepted
+    // fix). It is UNSEALED (a wrong attempt, not the answer key) — deriveLesson leak-guards the OUTPUT
+    // body against the accepted_diff only, so quoting the failed patch is safe by construction.
+    const trapContrast = failed
+      ? '\n\nFAILED ATTEMPT (a WRONG diff that did NOT pass the tests — the trap made concrete; contrast '
+        + 'it against the accepted fix to name the gotcha):\n' + failed
+      : '';
     const prompt = 'You classify the LESSON behind a fixed bug into a FROZEN taxonomy, then write a short '
       + 'principle. You MAY read the accepted fix to understand the bug, but your lesson_body MUST NOT quote it '
       + 'verbatim (no copied identifiers/lines). Reply STRICT JSON only: '
@@ -59,7 +75,8 @@ function makeLessonDeriver({ bin = resolveClaude(), timeout = 60000 } = {}) {
       + '"corrective_class": one of ' + JSON.stringify(CORRECTIVE_CLASS) + ', '
       + '"lesson_body": "1-2 sentences, general principle, no verbatim quotes"}.\n\n'
       + 'PROBLEM (digest): ' + String(contrastInput.problem_statement_digest || '') + '\n\n'
-      + 'CANDIDATE PATCH (the attempt):\n' + String(contrastInput.candidate_patch || '') + '\n\n'
+      + 'CANDIDATE PATCH (the passing attempt):\n' + String(contrastInput.candidate_patch || '')
+      + trapContrast + '\n\n'
       + 'ACCEPTED FIX (reference — do NOT quote):\n' + String(contrastInput.accepted_diff || '');
     const r = claudeOnce(bin, prompt, timeout);
     if (!r.ok || !r.obj || typeof r.obj !== 'object') return null;  // -> deriveLesson harness_fallback

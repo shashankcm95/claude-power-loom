@@ -37,7 +37,7 @@ const { WORKED_EXAMPLE_FIELDS } = require('../causal-edge/calibration-issue');
 const { frictionClusterKey, clusterFriction, validateResolutionFriction } = require('../causal-edge/trajectory-friction');
 const { N_CLEAN_LARGE_MIN } = require('../issue-corpus/corpus');
 // v3.11 W1 — the FROZEN lesson key (Open/Closed; a NEW key, frictionClusterKey untouched).
-const { lessonClusterKey, TRIGGER_CLASS, GOTCHA_CLASS, CORRECTIVE_CLASS } = require('../causal-edge/lesson-signature');
+const { lessonClusterKey, TRIGGER_CLASS, GOTCHA_CLASS, CORRECTIVE_CLASS, LESSON_BODY_MAX } = require('../causal-edge/lesson-signature');
 
 const PROVENANCE = ENUMS.provenance[0];                          // 'backtest' (W0 SHIPPED it; imported, never a literal)
 const NODE_TYPE = 'stochastic_sample';
@@ -172,6 +172,11 @@ function lessonFieldsPresent(node) {
 function classifyLessonLayer(node) {
   const hasHash = typeof node.lesson_content_hash === 'string' && /^[0-9a-f]{64}$/.test(node.lesson_content_hash);
   if (!hasHash) return lessonFieldsPresent(node) ? 'invalid' : 'absent';
+  // bound the model/attacker-controlled body on the READ path too (VALIDATE-hacker M-c): the mint path
+  // caps it (lesson-derive), but verifyNode/consolidate RE-HASH the body on EVERY read, so a giant
+  // forged body would DoS the read path. Reject BEFORE computeLessonContentHash so the giant body is
+  // never hashed. A legit body is 1-2 sentences (<= LESSON_BODY_MAX); an over-bound body is a forge.
+  if (typeof node.lesson_body === 'string' && node.lesson_body.length > LESSON_BODY_MAX) return 'invalid';
   // ON-FLOOR assertion — the read-path analog of attachLesson's guard (VALIDATE-hacker H1):
   // lessonClusterKey collapses an off-floor enum to INVALID, so a null/garbage block would
   // otherwise forge a self-consistent 'lesson:INVALID|INVALID|INVALID' fixed point that the
@@ -189,7 +194,7 @@ function normalizeFailToPass(v) { return Array.isArray(v) ? Object.freeze(v.map(
 // Mutate `node` to attach a VALIDATED lesson layer (called pre-freeze by the builder).
 // An off-floor enum THROWS (LESSON_ERR_CODE) so a batch caller drops THAT attempt rather
 // than mint an INVALID-keyed garbage lesson — never fail-soft a malformed lesson into the store.
-function attachLesson(node, lesson, { accepted_diff_ref = null, candidate_patch_sha = null, fail_to_pass = null } = {}) {
+function attachLesson(node, lesson, { accepted_diff_ref = null, candidate_patch_sha = null, fail_to_pass = null, failed_attempt_ref = null } = {}) {
   const trigger_class = lesson && lesson.trigger_class;
   const gotcha_class = lesson && lesson.gotcha_class;
   const corrective_class = lesson && lesson.corrective_class;
@@ -204,10 +209,17 @@ function attachLesson(node, lesson, { accepted_diff_ref = null, candidate_patch_
   node.accepted_diff_ref = accepted_diff_ref == null ? null : String(accepted_diff_ref);
   node.candidate_patch_sha = candidate_patch_sha == null ? null : String(candidate_patch_sha);
   node.fail_to_pass = normalizeFailToPass(fail_to_pass);         // top-level, NOT hashed (W2 join key)
+  // v3.11 W3 — failed_attempt_ref (the trap seam): a content-address pointer to the FAILED attempt's
+  // wrong-diff sidecar. TOP-LEVEL + UNHASHED, EXACTLY like fail_to_pass: it is NOT in LESSON_HASH_FIELDS
+  // (adding it would orphan every W1 node — freeze-doc:140; a future inclusion needs a VERSIONED hash,
+  // never an in-place add). It is EVIDENCE / contrast-fuel, NEVER a gate or trust input — confirmsLesson
+  // and consolidateLessons MUST NOT read it (its integrity is the content-addressed sidecar's
+  // verify-on-read, not this node's hash). DO NOT add it to a trust decision without the versioned hash.
+  node.failed_attempt_ref = failed_attempt_ref == null ? null : String(failed_attempt_ref);
   node.lesson_content_hash = computeLessonContentHash(node);     // AFTER the hashed fields are set
 }
 
-function buildWorkedExampleNode(attempt, { provenance = PROVENANCE, lesson = null, accepted_diff_ref = null, candidate_patch_sha = null, fail_to_pass = null } = {}) {
+function buildWorkedExampleNode(attempt, { provenance = PROVENANCE, lesson = null, accepted_diff_ref = null, candidate_patch_sha = null, fail_to_pass = null, failed_attempt_ref = null } = {}) {
   const worked_example_ref = pickWorkedExample(attempt.reference);
   const node_id = deriveNodeId(worked_example_ref, provenance);
   const block = validateResolutionFriction(attempt.resolution_friction); // null unless a real closed-enum block rode along
@@ -225,7 +237,8 @@ function buildWorkedExampleNode(attempt, { provenance = PROVENANCE, lesson = nul
     graded_by: validateGraders(attempt.graded_by, 'graded_by'),
   };
   // v3.11 W1 — attach the lesson layer iff one rode along (top-level, patch-stable id preserved).
-  if (lesson != null) attachLesson(node, lesson, { accepted_diff_ref, candidate_patch_sha, fail_to_pass });
+  // v3.11 W3 — failed_attempt_ref rides through as additive evidence (unhashed; see attachLesson).
+  if (lesson != null) attachLesson(node, lesson, { accepted_diff_ref, candidate_patch_sha, fail_to_pass, failed_attempt_ref });
   return Object.freeze(node);
 }
 

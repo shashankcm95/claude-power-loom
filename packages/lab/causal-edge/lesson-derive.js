@@ -14,21 +14,31 @@
 // WHOLE leg output is suspect and we fail-closed (do NOT trust its classification either).
 // The closed-enum classification is validated against the FROZEN floor; an off-floor leg
 // output is a malfunction -> harness_fallback (never mint an INVALID-keyed garbage lesson).
+//
+// v3.11 W3 — the trap seam: contrastInput MAY carry an OPTIONAL `failed_patch` (a FAILED
+// attempt's wrong-diff). It makes the gotcha legible (`contrast(wrong-diff, accepted-fix)`)
+// and is FORWARDED to the leg verbatim. It is UNSEALED (a wrong attempt is not the answer
+// key), so it is NOT added to the leak-guard needle — the OUTPUT body is still scanned ONLY
+// against `accepted_diff` (a body echoing a run that happens to live in BOTH the failed patch
+// and the accepted diff is still caught, since the guard scans body-vs-accepted regardless of
+// which input inspired it). The caller (lesson-capture) length-bounds `failed_patch` (the new
+// untrusted input surface) before it reaches here.
 
 'use strict';
 
-const { TRIGGER_CLASS, GOTCHA_CLASS, CORRECTIVE_CLASS, lessonClusterKey, lessonLeaks } = require('./lesson-signature');
+const { TRIGGER_CLASS, GOTCHA_CLASS, CORRECTIVE_CLASS, lessonClusterKey, lessonLeaks, LESSON_BODY_MAX } = require('./lesson-signature');
 
-// A derived lesson is 1-2 sentences; an oversize body is abnormal (a malfunctioning or
-// adversarial leg). Cap it BEFORE the O(body x accepted) lessonLeaks scan (VALIDATE-hacker
-// M1: bound the model-controlled needle so a giant body can not DoS the leak check).
-const LESSON_BODY_MAX = 4096;
+// LESSON_BODY_MAX (imported) is the SHARED mint+read bound: a derived lesson is 1-2 sentences; an
+// oversize body is abnormal (a malfunctioning or adversarial leg). Cap it BEFORE the O(body x accepted)
+// lessonLeaks scan (VALIDATE-hacker M1: bound the model-controlled needle so a giant body can not DoS
+// the leak check). recall-graph's classifyLessonLayer enforces the SAME bound on the read path (M-c).
 
 function harnessFallback(reason) {
   return { ok: false, outcome_source: 'harness_fallback', fallback_reason: reason, lesson: null };
 }
 
-// contrastInput: { problem_statement_digest, candidate_patch, accepted_diff }.
+// contrastInput: { problem_statement_digest, candidate_patch, accepted_diff, failed_patch? }.
+// (`failed_patch` optional — the W3 trap seam; forwarded to the leg, not leak-guarded; see above.)
 // deriveFn: injected; may be sync or async; may throw. Returns the validated result:
 //   { ok:true, outcome_source:'model', lesson:{trigger_class,gotcha_class,corrective_class,lesson_body,lesson_signature} }
 //   | { ok:false, outcome_source:'harness_fallback', fallback_reason, lesson:null }
