@@ -73,7 +73,11 @@ function evaluateHardenGate(armCounts, edges, opts = {}) {
   const reasons = [];
 
   // Placebo independence: a placebo that IS the treatment lesson collapses the presence-control.
-  if (o.placeboSignature == null || o.placeboSignature === o.lessonSignature) reasons.push('placebo not independent of treatment');
+  // Fail-CLOSED if EITHER signature is missing (CodeRabbit #336): a missing treatment lessonSignature
+  // cannot be asserted independent of the placebo, so it must not slip past this guard into HARDEN.
+  if (o.lessonSignature == null || o.placeboSignature == null || o.placeboSignature === o.lessonSignature) {
+    reasons.push('placebo not independent of treatment');
+  }
 
   // 1. Disjoint Wilson95 (strict >): treatment.lower > control.upper AND > placebo.upper.
   const wT = wilson(armCounts.treatment.merged, armCounts.treatment.n);

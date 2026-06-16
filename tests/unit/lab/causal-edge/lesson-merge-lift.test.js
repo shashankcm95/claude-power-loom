@@ -102,6 +102,12 @@ test('NON-INDEPENDENT PLACEBO (placeboSignature == lessonSignature) -> WITHHOLD 
   assert.strictEqual(r.verdict, VERDICT.WITHHOLD);
 });
 
+test('MISSING signature fails CLOSED (CodeRabbit #336): a null/absent lessonSignature OR placeboSignature -> WITHHOLD, never HARDEN', () => {
+  assert.strictEqual(run(tmp(), { opts: { lessonSignature: undefined, placeboSignature: 'x' } }).verdict, VERDICT.WITHHOLD, 'missing treatment signature');
+  assert.strictEqual(run(tmp(), { opts: { lessonSignature: 'x', placeboSignature: undefined } }).verdict, VERDICT.WITHHOLD, 'missing placebo signature');
+  assert.strictEqual(run(tmp(), { opts: { lessonSignature: undefined, placeboSignature: undefined } }).verdict, VERDICT.WITHHOLD, 'both missing');
+});
+
 test('GOTCHA PRESENT (avoided=false) -> WITHHOLD', () => {
   assert.strictEqual(run(tmp(), { opts: { avoided: false } }).verdict, VERDICT.WITHHOLD);
 });
