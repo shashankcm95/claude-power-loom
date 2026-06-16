@@ -197,6 +197,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/lab/attribution/bootcamp-gates.js` - v3.9 W4 — the bootcamp's two closing GATES (RFC §3.4 wording-audit + §7 EC7).
 - `packages/lab/attribution/candidate-sidecar.js` - v3.11 W1 — the candidate-patch SIDECAR.
 - `packages/lab/attribution/_spike/persona-read-wire.js` - v3.10-W0' Prototype-1 (a v3.10-retriever SPIKE, OUT of CI) -- the FIRST read that runs on the
+- `packages/lab/attribution/recall-edge-store.js` - v3.11 W2 — the recall-graph's FIRST edge: a content-addressed `confirmed-by` ledger.
 - `packages/lab/attribution/_spike/recall-graph-dogfood.js` - v3.9 W4 DOGFOOD — drives every NEW W4 path LIVE on the REAL filesystem + the REAL
 - `packages/lab/attribution/recall-graph-store.js` - v3.9 W4 — the per-node-file recall-graph store (the bootcamp's RETRIEVAL artifact
 - `packages/lab/attribution/recall-graph.js` - v3.9 W4 — the recall-graph populator.
@@ -217,6 +218,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/lab/causal-edge/faithfulness.js` - v3.5 Wave 2 - the faithfulness rung-2 advisory check (Spike C).
 - `packages/lab/causal-edge/_spike/lesson-capture-rerun.js` - v3.11 W1 — the capture re-run SPIKE: the IMPURE real-claude derive leg + a manual
 - `packages/lab/causal-edge/lesson-capture.js` - v3.11 W1 — the CAPTURE RE-RUN orchestration (the re-plumb).
+- `packages/lab/causal-edge/lesson-confirm.js` - v3.11 W2 — the CONFIRMATION GATE + the lane split + the confirm pass.
 - `packages/lab/causal-edge/lesson-consolidate.js` - v3.11 W1 — the consolidation pass (DEF-3): roll lesson nodes up by lesson_signature
 - `packages/lab/causal-edge/lesson-derive.js` - v3.11 W1 — the lesson DERIVATION leg.
 - `packages/lab/causal-edge/lesson-signature.js` - v3.11 W1 — the FROZEN lesson signature + the lesson-key machinery.
