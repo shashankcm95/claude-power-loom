@@ -218,6 +218,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/lab/causal-edge/_spike/dogfood-derive-sample.js` - v3.11 W1 — the Rule-2a-corollary DOGFOOD driver (reproducible).
 - `packages/lab/causal-edge/enums.js` - v3.5 Wave 2 - shared causal-edge enums + the R4 validation re-export.
 - `packages/lab/causal-edge/faithfulness.js` - v3.5 Wave 2 - the faithfulness rung-2 advisory check (Spike C).
+- `packages/lab/causal-edge/item-source.js` - v-next MV-W3a — deriveItemSource: map a lesson node to its trust-weight SOURCE by membership in the C-W1
 - `packages/lab/causal-edge/_spike/lesson-capture-rerun.js` - v3.11 W1 — the capture re-run SPIKE: the IMPURE real-claude derive leg + a manual
 - `packages/lab/causal-edge/lesson-capture.js` - v3.11 W1 — the CAPTURE RE-RUN orchestration (the re-plumb).
 - `packages/lab/causal-edge/lesson-confirm.js` - v3.11 W2 — the CONFIRMATION GATE + the lane split + the confirm pass.

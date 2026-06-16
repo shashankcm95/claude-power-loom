@@ -17,7 +17,8 @@
 //   - ADMISSION is the C-W1 authenticatedEdgeIds (signed) lane, the SOLE eligibility filter — an
 //     unsigned-but-confirmed lesson (co-forgeable confirmedNodeIds) is EXCLUDED structurally, never
 //     late-ANDed. A missing/unloadable verify key -> authenticatedEdgeIds is fail-closed empty ->
-//     EXCLUDED (never "skip the condition"). The verify key is caller-injected (opts), never env.
+//     EXCLUDED (never "skip the condition"). The verify key is caller-injected (opts) ONLY — a missing key
+//     short-circuits to an empty lane (ENV-BLIND), so an ambient LOOM_EDGE_VERIFY_KEY cannot admit (W3a).
 //   - The caller MUST pass mock edges from a SEPARATE recall-edge-mock dir and MUST NOT consolidate
 //     them against the real edge dir (the trust-weight lane) — this gate reads edges for admission
 //     ONLY; it never writes or consolidates (the mock->real laundering path stays severed).
@@ -63,8 +64,12 @@ function evaluateHardenGate(armCounts, edges, opts = {}) {
     if (armN(armCounts, a) < PER_ARM_FLOOR) return { verdict: VERDICT.INSUFFICIENT, reasons: [`arm ${a} below floor (${PER_ARM_FLOOR})`] };
   }
 
-  // Admission — the signed lane is the SOLE eligibility filter (fail-closed without a key).
-  const admitted = authenticatedEdgeIds(Array.isArray(edges) ? edges : [], { verifyKey: o.verifyKey });
+  // Admission — the signed lane is the SOLE eligibility filter (fail-closed without a key). opts-ONLY /
+  // env-blind (W3a VALIDATE HIGH): a missing/empty verifyKey must NOT fall through to the delegate's env
+  // fallback (loadPublicKey -> LOOM_EDGE_VERIFY_KEY) -> treat it as an empty lane, so an ambient
+  // LOOM_EDGE_VERIFY_KEY can never admit a keyless caller (the "never env" contract ENFORCED, not asserted).
+  const vk = (typeof o.verifyKey === 'string' && o.verifyKey.length > 0) ? o.verifyKey : null;
+  const admitted = vk ? authenticatedEdgeIds(Array.isArray(edges) ? edges : [], { verifyKey: vk }) : new Set();
   if (typeof o.nodeId !== 'string' || !admitted.has(o.nodeId)) {
     return { verdict: VERDICT.EXCLUDED, reasons: ['not admitted to the authenticated (signed) lane'] };
   }

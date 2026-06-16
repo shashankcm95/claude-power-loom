@@ -126,6 +126,16 @@ test('NO VERIFY KEY -> EXCLUDED (fail-closed; never HARDEN, never error)', () =>
   assert.strictEqual(r.verdict, VERDICT.EXCLUDED);
 });
 
+test('ENV-BLIND (W3a VALIDATE HIGH): keyless -> EXCLUDED even when LOOM_EDGE_VERIFY_KEY is set in env', () => {
+  const dir = tmp();
+  const q = qualifying({ opts: { verifyKey: undefined } });
+  const edges = signedEdges(dir);
+  process.env.LOOM_EDGE_VERIFY_KEY = KEYS.publicKeyPem;     // an ambient key the delegate would otherwise resolve
+  try {
+    assert.strictEqual(evaluateHardenGate(q.armCounts, edges, q.opts).verdict, VERDICT.EXCLUDED, 'ambient env key must not admit a keyless caller');
+  } finally { delete process.env.LOOM_EDGE_VERIFY_KEY; }
+});
+
 test('MOCK-EDGE ISOLATION (hacker CRITICAL-1): a signed mock edge in recall-edge-mock/ is UNREACHABLE from a real-dir consolidation', () => {
   const mockDir = path.join(tmp(), 'recall-edge-mock'); const realDir = path.join(tmp(), 'recall-edge');
   signedEdges(mockDir);                                  // a mock confirmed-by edge for NODE in the MOCK dir
