@@ -18,9 +18,20 @@
 //
 // THE STORE STAYS LESSON-AGNOSTIC (VERIFY-arch MED-3): it validates ONLY the edge's own shape
 // (structural) — it NEVER imports classifyLessonLayer / persona. The lesson classification is
-// the GATE's job (lesson-confirm.js). The store proves INTEGRITY (a self-consistent edge),
-// NOT PROVENANCE (that the gate actually accepted it) — a hand-written self-consistent edge is
-// the #273 standing residual every lab store shares; the gate is the only legitimate writer.
+// the GATE's job (lesson-confirm.js).
+//
+// v-next C-W1 keeps the store an INTEGRITY store (the original ethos): it proves a self-consistent
+// edge AND, for a SIGNED edge, that the signature is WELL-FORMED (sig_alg ed25519 + canonical base64).
+// It does NOT crypto-verify — PROVENANCE (only a private-key holder could mint it) is proven solely by
+// the authenticated lane (authenticatedEdgeIds, lesson-confirm.js, fail-closed). This split is
+// deliberate (VALIDATE hacker MED): the key-free store never drops an integrity-valid edge on a key
+// rotation/mismatch, and confirmedNodeIds is identical regardless of any verify-key config. W1 makes
+// edges admitted to the AUTHENTICATED LANE unforgeable by a writer lacking the private key; the
+// UNSIGNED path (and a shape-valid-but-lying sig, equally powerless) still inflates the integrity-only
+// confirmedNodeIds count — the #273 co-forge survives there until W2 wires the authenticated lane into
+// the live weight. This NARROWS, it does not HARDEN (OQ-NS-6): the weight gates nothing, and the
+// in-process key-possession boundary is itself a forward deployment property (no production minter
+// exists yet). The gate (runConfirmationPass) is the only legitimate signer.
 //
 // ONE-WAY DOORS (additive-only, mirror W1's LESSON_HASH_FIELDS): EDGE_TYPE is a FROZEN
 // APPEND-ONLY set (it is in the edge_id basis — rename/remove orphans every edge keyed on it);
@@ -36,6 +47,13 @@ const crypto = require('crypto');
 const { writeAtomicString } = require('../../kernel/_lib/atomic-write');
 const { deepFreeze } = require('../../kernel/_lib/deep-freeze');
 const { canonicalJsonSerialize } = require('../../kernel/_lib/canonical-json');
+// v-next Carry C W1: the ed25519 attestation primitive (kernel-layer, pure crypto). lab->kernel is
+// the legal direction. The store SHAPE-checks a present signature (alg + canonical base64) but does
+// NOT crypto-verify it — crypto PROVENANCE is the authenticated lane's sole job (authenticatedEdgeIds
+// in lesson-confirm.js). So the store stays KEY-FREE: an integrity-valid edge is never dropped on a
+// key mismatch (no data-loss/un-prunability — VALIDATE hacker MED), and "zero downstream change" is
+// absolute. The store stays crypto-agnostic on WRITE too (persists the injected signer's opaque output).
+const { isCanonicalBase64, SIG_ALG } = require('../../kernel/_lib/edge-attestation');
 
 const LAB_STATE_BASE = process.env.LOOM_LAB_STATE_DIR || path.join(os.homedir(), '.claude', 'lab-state');
 const DEFAULT_DIR = path.join(LAB_STATE_BASE, 'recall-edge');
@@ -74,6 +92,17 @@ function deriveEdgeId(rec) {
 
 // Re-derive the address + re-apply the SAME strict shape guards on read (read/write parity). A file
 // that lies (coerced endpoint, bad type, empty/absent ftp, bad ts, forged id) is not one we wrote.
+// v-next C-W1: + a signature SHAPE layer (NOT crypto-verification). An edge with NO sig is accepted
+// (legacy/unsigned, shadow). An edge that CLAIMS a sig must be well-formed: sig_alg PINNED to ed25519
+// (a reject-filter, never an alg selector) + canonical base64 (a malleability defense). It is NOT
+// crypto-verified HERE — the store proves INTEGRITY + sig-well-formedness; crypto PROVENANCE is the
+// authenticated lane's sole job (authenticatedEdgeIds in lesson-confirm.js, fail-closed). Rationale
+// (VALIDATE hacker MED): keeping crypto OUT of the store means an integrity-valid edge is NEVER
+// dropped on a key mismatch/rotation (no data-loss, stays prunable), and the store is key-free so
+// confirmedNodeIds is identical regardless of any verify-key config ("zero downstream change" is
+// absolute). A shape-valid but cryptographically-lying sig is thus accepted as an UNAUTHENTICATED
+// edge — exactly as powerless as an unsigned forged edge (the known shadow residual): counted by
+// confirmedNodeIds, NEVER admitted to the authenticated lane.
 function verifyEdge(rec, expectedId) {
   if (!rec || typeof rec !== 'object' || Array.isArray(rec)) return null;
   if (!isHex64(rec.from_node_id)) return null;
@@ -85,12 +114,20 @@ function verifyEdge(rec, expectedId) {
   if (!isHex64(rec.edge_id)) return null;
   if (expectedId != null && rec.edge_id !== expectedId) return null;     // filename == field
   if (deriveEdgeId(rec) !== rec.edge_id) return null;                    // body hashes to id
+  const hasSig = rec.edge_sig != null || rec.sig_alg != null;
+  if (hasSig) {
+    if (rec.sig_alg !== SIG_ALG) return null;                           // alg PIN (reject-filter only)
+    if (!isCanonicalBase64(rec.edge_sig)) return null;                  // no malleated/non-canonical sig
+  }
   return rec;
 }
 
 // Normalize to the stored shape: a frozen, sorted, String-mapped fail_to_pass + the derived id.
+// v-next C-W1: carry edge_sig/sig_alg through IF present (additive, OUTSIDE the edge_id basis — like
+// recorded_at; a signed edge shares the SAME edge_id as its unsigned twin -> no orphaning). When
+// absent, the stored JSON is byte-identical to the pre-W1 shape (no edge_sig key) -> shadow-clean.
 function normalize(rec) {
-  return {
+  const out = {
     edge_id: deriveEdgeId(rec),
     from_node_id: rec.from_node_id,
     to_delta_ref: rec.to_delta_ref,
@@ -98,6 +135,11 @@ function normalize(rec) {
     fail_to_pass: normFtp(rec.fail_to_pass),
     recorded_at: rec.recorded_at,
   };
+  if (rec.edge_sig != null || rec.sig_alg != null) {
+    out.sig_alg = rec.sig_alg;
+    out.edge_sig = rec.edge_sig;
+  }
+  return out;
 }
 
 // --------------------------------------------------------------------------
@@ -111,7 +153,17 @@ function writeEdge(rec, opts = {}) {
   if (!isValidFtp(rec.fail_to_pass)) return { ok: false, reason: 'bad-fail-to-pass' };
   if (typeof rec.recorded_at !== 'string' || rec.recorded_at.length === 0) return { ok: false, reason: 'bad-recorded-at' };
   if (!Number.isFinite(Date.parse(rec.recorded_at))) return { ok: false, reason: 'bad-recorded-at-format' };
-  const stored = normalize(rec);
+  let stored = normalize(rec);
+  // v-next C-W1: if a signer is injected and the edge is not already signed, sign the DERIVED
+  // edge_id (the minter holds the private key; the store stays crypto-agnostic on WRITE — it just
+  // persists the signer's opaque output). A signer that throws / returns non-string -> unsigned.
+  if (typeof opts.signer === 'function' && stored.edge_sig == null) {
+    let sig = null;
+    try { sig = opts.signer(stored.edge_id); } catch { sig = null; }
+    if (typeof sig === 'string' && sig.length > 0) stored = { ...stored, sig_alg: SIG_ALG, edge_sig: sig };
+  }
+  // verifyEdge is shape-only (no crypto) -> a freshly-signed edge self-checks without needing the
+  // verify key on the write path (crypto adjudication is the authenticated lane's job on read).
   if (!verifyEdge(stored, stored.edge_id)) return { ok: false, reason: 'self-inconsistent' };
   const dir = storeDir(opts);
   const file = path.join(dir, `${stored.edge_id}.json`);
