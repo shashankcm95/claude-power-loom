@@ -32,7 +32,15 @@ const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const crypto = require('crypto');
 const REPO = path.join(__dirname, '..', '..', '..', '..');
+
+// Hermetic, BEFORE any lab require (CodeRabbit #339: env-cleanup before env-sensitive imports). NOTE: the
+// LOOM_EDGE_* reads are actually call-time (edge-attestation loadPublicKey/loadPrivateKey) and
+// deriveItemSource / evaluateHardenGate are env-blind (opts-only), so this is DEFENSIVE hygiene, not a
+// live-bug fix — but cleaning before requires future-proofs against a module that captures at require-time.
+delete process.env.LOOM_EDGE_SIGNING_KEY;
+delete process.env.LOOM_EDGE_VERIFY_KEY;
 
 const { deriveItemSource, SIGNED_LANE_SOURCE, MOCK_SOURCE } = require(path.join(REPO, 'packages', 'lab', 'causal-edge', 'item-source.js'));
 const { evaluateHardenGate, VERDICT } = require(path.join(REPO, 'packages', 'lab', 'causal-edge', 'lesson-merge-lift.js'));
@@ -41,10 +49,6 @@ const { retrieveBySignature } = require(path.join(REPO, 'packages', 'lab', 'attr
 const { writeEdge, listEdges, DEFAULT_DIR: REAL_EDGE_DIR } = require(path.join(REPO, 'packages', 'lab', 'attribution', 'recall-edge-store.js'));
 const { buildWorkedExampleNode } = require(path.join(REPO, 'packages', 'lab', 'attribution', 'recall-graph.js'));
 const { generateEdgeKeypair, signEdgeId } = require(path.join(REPO, 'packages', 'kernel', '_lib', 'edge-attestation.js'));
-
-// Hermetic: never let an ambient key flip the lane (the C-W1 lesson; belt + suspenders with opts-injection).
-delete process.env.LOOM_EDGE_SIGNING_KEY;
-delete process.env.LOOM_EDGE_VERIFY_KEY;
 
 const KEYS = generateEdgeKeypair();            // EPHEMERAL throwaway keypair, injected via opts ONLY
 const FLOOR = 20;
@@ -78,8 +82,9 @@ function gateOpts(nodeId, lessonSignature, placeboSignature) {
 }
 const QUAL_ARMS = { treatment: { merged: 19, n: FLOOR }, control: { merged: 2, n: FLOOR }, placebo: { merged: 3, n: FLOOR } };
 
-// digest the WHOLE real lab-state tree as sorted "relpath:size" (catches an add OR an in-place overwrite in
-// ANY store, not just recall-edge — hacker MED). Absent base -> [] (env-dependent baseline; the delta is what matters).
+// digest the WHOLE real lab-state tree as sorted "relpath:sha256(content)" — TRUE byte-integrity (CodeRabbit
+// #339: a relpath:size digest would MISS a same-size in-place overwrite). Catches an add OR a content
+// overwrite in ANY store, not just recall-edge. Absent base -> [] (env-dependent baseline; the delta is what matters).
 function digestLabState() {
   const out = [];
   const walk = (dir, rel) => {
@@ -89,9 +94,9 @@ function digestLabState() {
       const full = path.join(dir, e.name);
       const r = rel ? `${rel}/${e.name}` : e.name;
       if (e.isDirectory()) { walk(full, r); continue; }
-      let size = -1;
-      try { size = fs.statSync(full).size; } catch { size = -1; }
-      out.push(`${r}:${size}`);
+      let hash = 'ERR';
+      try { hash = crypto.createHash('sha256').update(fs.readFileSync(full)).digest('hex'); } catch { hash = 'ERR'; }
+      out.push(`${r}:${hash}`);
     }
   };
   walk(LAB_STATE_BASE, '');
