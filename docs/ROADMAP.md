@@ -467,6 +467,49 @@ Durable record: the `toolkit/phase-close/v3.11-close` library volume.
 
 ---
 
+## ✅ v-next (post-v3.11) — Mock-verified trust-hardening MECHANICS (C-W1 + MV-W1/2/3, SHADOW) — phase-closed 2026-06-16
+
+The **mock-verified mechanics** arc toward the live external-PR beta: build + prove (internally, in shadow) the
+machinery that will carry a real hardening signal — without hardening anything yet. **MECHANICS not TRUST
+(OQ-NS-6): the whole arc moves trust ZERO** — `LIVE_SOURCES` is frozen-empty, no production consumer imports any
+new surface, the retriever is a `_spike` off the live K4 path. Five merged PRs, all SHADOW (plans
+`2026-06-16-{mv-w2-verdict-to-advisory-wire,mv-w3-full-isolate-and-burn}.md`; snapshots `2026-06-16-{vnext-carry-c-w1,fork6-mvw1,mvw2-advisory-wire,mv-w3-isolate-and-burn}`):
+
+- **C-W1 #335** — authenticated ed25519 `confirmed-by` edges; the `authenticatedEdgeIds` SIGNED lane (re-derive defeats the replay-forge; fail-closed without a key). Store stays crypto-free (integrity, not provenance).
+- **MV-W1 #336** — the pure harden-gate `evaluateHardenGate`: a total 4-valued verdict lattice (INSUFFICIENT-N > EXCLUDED > {HARDEN|WITHHOLD}), never throws.
+- **MV-W2 #337** — `lessonTrustWeight(verdict)->number` + `weight-source-gate.js` (the OQ-NS-6 source-admission firewall: `LIVE_SOURCES=Object.freeze([])` a frozen ARRAY not a fake-immutable frozen Set; `buildRankingWeights` the SOLE constructor) → the lesson retriever's `opts.weights`. A mock weight is **structurally inert** in prod.
+- **MV-W3a #338** — `deriveItemSource`: the trust-weight SOURCE DERIVED from real signed-lane provenance, **env-blind/fail-closed** (the same fix mirrored into `evaluateHardenGate`).
+- **MV-W3d-lite #339** — an isolated composition capstone proving the FULL chain end-to-end (signed edge → derive → HARDEN → weight → `retrieveBySignature` flips; unsigned → mock → inert), with a whole-tree sha256 byte-integrity isolation assertion + burn. (Full-W3's forge-poller W3b + signed injection store W3c **DEFERRED to beta-time** — USER scope decision.)
+
+| EC | Delivery (all three lenses: CONFIRMED) |
+|---|---|
+| E1 — a signed authenticated edge lane, fail-closed without a key | **CONFIRMED.** `authenticatedEdgeIds` re-derives `edge_id` + verifies ed25519 + empty-set without a key; algorithm-confusion pinned. |
+| E2 — a pure, total harden-gate verdict lattice | **CONFIRMED.** `evaluateHardenGate` pure, never-throws, total over the 4-valued lattice; `lessonTrustWeight` total + ≥0. |
+| E3 — verdict→source-gated weight→advisory; mock STRUCTURALLY inert in prod | **CONFIRMED.** frozen-empty allow-set + sole-constructor; mock-inert proven against the ACTUAL retriever. |
+| E4 — the weight source DERIVED from real signed provenance, env-blind | **CONFIRMED.** `deriveItemSource` short-circuits unless `opts.verifyKey` present (env fallback can't admit a keyless caller). |
+| E5 — the full chain composes end-to-end IN ISOLATION, no real-state contamination | **CONFIRMED.** the composition test threads the chain in an ephemeral, key-injected, sha256-asserted, burned rig. |
+
+## Phase-close sign-off (v-next mock-mechanics, 2026-06-16)
+
+`/phase-close` — three independent full-context lenses (PM=honesty-auditor + Principal-SDE=code-reviewer-at-phase-altitude + Architect) reviewed the INTEGRATED arc (#335–#339) against the five synthesized exit criteria + the cross-PR seams. **Verdict: CLOSEABLE (all three lenses unanimous; all 5 ECs CONFIRMED by each); 0 cross-PR contract drift.** The gate DID surface fresh BETA-PREREQUISITE debt (below) that no single PR's review could see — but the producer→consumer contracts held end-to-end.
+
+**The headline honest framing (all three lenses):** the arc delivers the **mock-verified mechanics fully** and the OQ-NS-6 frame ("NARROWS, hardens no trust; trust moved ZERO") is held **consistently** across all 5 PRs + plans + tests (the PM independently re-derived inert-in-prod by grep: the live consolidation path still uses the co-forgeable `confirmedNodeIds`, NOT the authenticated lane; zero production consumers of any new surface; `LIVE_SOURCES` frozen-empty). This is the rare case where the honest framing is load-bearing + consistent, not decorative.
+
+- **PM (honesty)** — all 5 ECs CONFIRMED on file:line evidence; the #273 residual is correctly scoped (raises the bar to a key-holder, does NOT close the co-forge), deferred scope is labeled DEFERRED-not-done, no overclaim.
+- **Principal-SDE (phase-altitude)** — 0 material cross-PR drift; the signed-lane producer→consumer seams + the env-blind fix that straddles #338→#336 held end-to-end. Carries (forward, non-blocking): `authenticatedEdgeIds` lacks its OWN env-blind guard (callers guard, the function doesn't — make it self-enforcing before new callers); the two-axis weight ambiguity; a plan/code doc nit (`relpath:size` recorded, `sha256` shipped).
+- **Architect** — the arc coheres as a design unit (shadow-first / firewall / fail-closed); the forward contract is **READY-WITH-PRECONDITIONS** for the live beta.
+
+**Carry-list for the live-beta phase (the must-resolve-BEFORE-going-live set; all named, no silent drop):**
+
+- **(HIGH) the two-axis weight collision** — `retrieveBySignature.opts.weights` is source-BLIND and has TWO producers: MV-W2's source-gated binary `buildRankingWeights` AND the pre-existing NON-source-gated `recurrence_count_confirmed` (the co-forgeable `confirmedNodeIds` lane). The beta could wire the co-forgeable axis into the retriever and **silently bypass the entire source firewall**. Before any live retriever weight: make the sole-constructor invariant ENFORCEABLE (a fitness-function test, or fold the source-gate into the retriever boundary), decide the two-axis combination semantics (replace / add / supersede) in an ADR, and route `recurrence_count_confirmed` through the same source gate.
+- **(MEDIUM) the #273 minter precondition** — admitting the signed-lane token to `LIVE_SOURCES` makes the unbuilt authenticated-minter gap load-bearing. "Zero new machinery" is true for the WIRE, NOT for TRUST: a multi-writer/external-contributor beta needs a **kernel-owned authenticated minter the caller cannot invoke** FIRST. Keep machinery-for-wire vs machinery-for-trust separate in every beta artifact.
+- **(MEDIUM) self-enforce `authenticatedEdgeIds`** — add the opts-only env-blind guard inside the function (symmetric with `deriveItemSource`/`evaluateHardenGate`) before W3b/W3c add new callers.
+- **(carried) W3b forge-poller + W3c signed injection store** — deferred to beta-time; and the `'mock'` source-token dual-definition → promote to a shared frozen-enum when a 3rd module needs it.
+
+**Release surface:** the arc shipped only SHADOW/inert code (no production consumer; `LIVE_SOURCES` frozen-empty), so it is a **CHECKPOINT, not a release** — the version correctly holds at **3.11** (`validate-release-surface.js --check` clean; the deliberate no-bump N/A, pending USER ratification of cut-3.12.0-vs-hold). Durable record: the `toolkit/phase-close/v-next-mock-mechanics-close` library volume.
+
+---
+
 ## ⬜ Deferred / field-survey debt (v3.5+)
 
 Explicitly out of v3.0-alpha scope, tracked for later:
