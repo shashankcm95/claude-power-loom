@@ -1,0 +1,16 @@
+{
+  "id": "markdown__special-comment-regression",
+  "repo": "https://github.com/Python-Markdown/markdown",
+  "base_sha": "e5fa5b86e8ec380cbc520cfc637d72c779e5c601",
+  "problem_statement": "A regression caused special HTML comments (e.g. declarations / conditional comments) to be mis-parsed in block HTML. Restore correct handling of special comment syntax.",
+  "accepted_diff": "diff --git a/markdown/htmlparser.py b/markdown/htmlparser.py\nindex 74dbe25a..55d46345 100644\n--- a/markdown/htmlparser.py\n+++ b/markdown/htmlparser.py\n@@ -276,7 +276,7 @@ def handle_entityref(self, name: str):\n \n     def handle_comment(self, data: str):\n         # Check if the comment is unclosed, if so, we need to override position\n-        j = len(self.rawdata) - len(data)\n+        j = self.rawdata.find(data)\n         i = j - 2\n         if self.rawdata[i:j] == '</':\n             self.handle_data('<')\n",
+  "test_patch": "diff --git a/tests/test_syntax/blocks/test_html_blocks.py b/tests/test_syntax/blocks/test_html_blocks.py\nindex 406de997..87d4dc0b 100644\n--- a/tests/test_syntax/blocks/test_html_blocks.py\n+++ b/tests/test_syntax/blocks/test_html_blocks.py\n@@ -1706,3 +1706,29 @@ def test_no_hang_issue_1586(self):\n             'Test `<!--[if mso]>` and `<!--[if !mso]>`',\n             '<p>Test <code>&lt;!--[if mso]&gt;</code> and <code>&lt;!--[if !mso]&gt;</code></p>'\n         )\n+\n+    def test_issue_1590(self):\n+        \"\"\"Test case with comments in table for issue #1590.\"\"\"\n+\n+        self.assertMarkdownRenders(\n+            self.dedent(\n+                '''\n+                <table>\n+                <!--[if mso]>-->\n+                <td>foo</td>\n+                <!--<!endif]-->\n+                <td>bar</td>\n+                </table>\n+                '''\n+            ),\n+            self.dedent(\n+                '''\n+                <table>\n+                <!--[if mso]>-->\n+                <td>foo</td>\n+                <!--<!endif]-->\n+                <td>bar</td>\n+                </table>\n+                '''\n+            )\n+        )\n",
+  "fail_to_pass": [
+    "tests/test_syntax/blocks/test_html_blocks.py::TestHTMLBlocks::test_issue_1590"
+  ],
+  "pass_to_pass": [],
+  "resolved_at": "2026-02-02T18:12:43Z",
+  "provenance": "backtest",
+  "contamination_tier": "clean-pending-probe",
+  "source_pr": "https://github.com/Python-Markdown/markdown/pull/1592"
+}

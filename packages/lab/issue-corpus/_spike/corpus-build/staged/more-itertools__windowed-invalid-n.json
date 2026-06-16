@@ -1,0 +1,16 @@
+{
+  "id": "more-itertools__windowed-invalid-n",
+  "repo": "https://github.com/more-itertools/more-itertools",
+  "base_sha": "eaaa55d531cd53c835f7470cdc9fb6610464ee94",
+  "problem_statement": "windowed(seq, n) with n=0 silently yielded a single empty tuple () instead of rejecting the invalid size; n must be > 0. The guard let an out-of-contract size through as a degenerate result. Make windowed raise ValueError for n<=0.",
+  "accepted_diff": "diff --git a/more_itertools/more.py b/more_itertools/more.py\nindex 6b0360e0..da4ea5e6 100755\n--- a/more_itertools/more.py\n+++ b/more_itertools/more.py\n@@ -1045,11 +1045,8 @@ def windowed(seq, n, fillvalue=None, step=1):\n         >>> list(windowed(chain(padding, iterable), 3))\n         [(None, None, 1), (None, 1, 2), (1, 2, 3), (2, 3, 4)]\n     \"\"\"\n-    if n < 0:\n-        raise ValueError('n must be >= 0')\n-    if n == 0:\n-        yield ()\n-        return\n+    if n <= 0:\n+        raise ValueError('n must be > 0')\n     if step < 1:\n         raise ValueError('step must be >= 1')\n \n",
+  "test_patch": "diff --git a/tests/test_more.py b/tests/test_more.py\nindex f80f4e41..ae045011 100644\n--- a/tests/test_more.py\n+++ b/tests/test_more.py\n@@ -829,7 +829,6 @@ def test_basic(self):\n             (3, [(1, 2, 3), (2, 3, 4), (3, 4, 5)]),\n             (2, [(1, 2), (2, 3), (3, 4), (4, 5)]),\n             (1, [(1,), (2,), (3,), (4,), (5,)]),\n-            (0, [()]),\n         ):\n             with self.subTest(n=n):\n                 actual = list(mi.windowed(iterable, n))\n@@ -865,9 +864,11 @@ def test_fillvalue_step(self):\n         expected = [(1, 2, 3), (4, 5, '!')]\n         self.assertEqual(actual, expected)\n \n-    def test_negative(self):\n+    def test_invalid_n(self):\n+        with self.assertRaises(ValueError):\n+            list(mi.windowed([1, 2, 3, 4, 5], 0))  # n is zero\n         with self.assertRaises(ValueError):\n-            list(mi.windowed([1, 2, 3, 4, 5], -1))\n+            list(mi.windowed([1, 2, 3, 4, 5], -1))  # n is negative\n \n     def test_empty_seq(self):\n         actual = list(mi.windowed([], 3))\n",
+  "fail_to_pass": [
+    "tests/test_more.py::WindowedTests::test_invalid_n"
+  ],
+  "pass_to_pass": [],
+  "resolved_at": "2026-04-01T16:17:16Z",
+  "provenance": "backtest",
+  "contamination_tier": "clean-pending-probe",
+  "source_pr": "https://github.com/more-itertools/more-itertools/pull/1139"
+}

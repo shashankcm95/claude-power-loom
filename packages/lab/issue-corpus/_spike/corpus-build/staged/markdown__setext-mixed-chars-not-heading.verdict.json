@@ -1,0 +1,7 @@
+{
+  "id": "markdown__setext-mixed-chars-not-heading",
+  "verified": true,
+  "fail_before": "FAIL",
+  "pass_after": "PASS",
+  "reason": null
+}

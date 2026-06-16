@@ -1,0 +1,17 @@
+{
+  "id": "more-itertools__gray-partial-product-iterator-repeat",
+  "repo": "https://github.com/more-itertools/more-itertools",
+  "base_sha": "fdbd43c569feb4388302ddee0551d18edd39fadc",
+  "problem_statement": "gray_product/partial_product with iterator (not sequence) arguments and repeat>1 reused the SAME exhausted iterator object across repeats (iterables * repeat duplicated the iterator references), silently yielding wrong/empty output. Materialize each iterable to a tuple BEFORE repeating.",
+  "accepted_diff": "diff --git a/more_itertools/more.py b/more_itertools/more.py\nindex af04d533..764e7201 100755\n--- a/more_itertools/more.py\n+++ b/more_itertools/more.py\n@@ -4897,7 +4897,7 @@ def gray_product(*iterables, repeat=1):\n     `this section <https://www-cs-faculty.stanford.edu/~knuth/fasc2a.ps.gz>`__\n     of Donald Knuth's *The Art of Computer Programming*.\n     \"\"\"\n-    all_iterables = tuple(map(tuple, iterables * repeat))\n+    all_iterables = tuple(map(tuple, iterables)) * repeat\n     iterable_count = len(all_iterables)\n     for iterable in all_iterables:\n         if len(iterable) < 2:\n@@ -4939,7 +4939,8 @@ def partial_product(*iterables, repeat=1):\n     equivalent to ``partial_product('AB', 'AB', 'AB')``.\n     \"\"\"\n \n-    iterators = tuple(map(iter, iterables * repeat))\n+    all_iterables = tuple(map(tuple, iterables)) * repeat\n+    iterators = tuple(map(iter, all_iterables))\n \n     try:\n         prod = [next(it) for it in iterators]\n",
+  "test_patch": "diff --git a/tests/test_more.py b/tests/test_more.py\nindex 0041ff1a..175d368e 100644\n--- a/tests/test_more.py\n+++ b/tests/test_more.py\n@@ -6025,6 +6025,12 @@ def test_repeat(self):\n             ),\n         )\n \n+    def test_repeat_with_iterators(self):\n+        self.assertEqual(\n+            list(mi.gray_product(iter('abc'), iter('def'), repeat=2)),\n+            list(mi.gray_product('abc', 'def', repeat=2)),\n+        )\n+\n \n class PartialProductTests(TestCase):\n     def test_no_iterables(self):\n@@ -6116,6 +6122,12 @@ def test_repeat(self):\n             ),\n         )\n \n+    def test_repeat_with_iterators(self):\n+        self.assertEqual(\n+            list(mi.partial_product(iter('abc'), iter('def'), repeat=2)),\n+            list(mi.partial_product('abc', 'def', repeat=2)),\n+        )\n+\n \n class IterateTests(TestCase):\n     def test_basic(self) -> None:\n",
+  "fail_to_pass": [
+    "tests/test_more.py::GrayProductTests::test_repeat_with_iterators",
+    "tests/test_more.py::PartialProductTests::test_repeat_with_iterators"
+  ],
+  "pass_to_pass": [],
+  "resolved_at": "2026-02-02T20:04:28Z",
+  "provenance": "backtest",
+  "contamination_tier": "clean-pending-probe",
+  "source_pr": "https://github.com/more-itertools/more-itertools/pull/1125"
+}
