@@ -31,7 +31,7 @@
 'use strict';
 
 const { classifyLessonLayer } = require('../attribution/recall-graph');
-const { writeEdge, loadEdge } = require('../attribution/recall-edge-store');
+const { writeEdge, loadEdge, deriveEdgeId } = require('../attribution/recall-edge-store');
 const { sidecarSha, writeCandidate } = require('../attribution/candidate-sidecar');
 // v-next C-W1: the ed25519 attestation primitive (kernel). The minter SIGNS here (it holds the
 // private key); the authenticated lane (authenticatedEdgeIds) VERIFIES. lab->kernel is legal.
@@ -113,6 +113,12 @@ function authenticatedEdgeIds(edges, opts = {}) {
   for (const e of (Array.isArray(edges) ? edges : [])) {
     if (!e || e.edge_type !== EDGE_TYPE || !isHex64(e.from_node_id) || !isHex64(e.edge_id)) continue;
     if (e.sig_alg !== SIG_ALG || typeof e.edge_sig !== 'string') continue;
+    // RE-DERIVE before trusting from_node_id (MV-W1 VALIDATE hacker CRITICAL): the signature is over
+    // edge_id; from_node_id IS in the edge_id basis, but we must re-derive HERE so a hand-built edge
+    // that keeps a real {edge_id, edge_sig} pair while SWAPPING from_node_id (a signature-replay forge)
+    // is rejected — else one genuine signature laundered an arbitrary target into the signed lane. The
+    // store's verifyEdge re-derives on read, but this lane accepts raw arrays, so it must self-defend.
+    if (deriveEdgeId(e) !== e.edge_id) continue;
     if (verifyEdgeSig(e.edge_id, e.edge_sig, { publicKeyPem: vk })) set.add(e.from_node_id);
   }
   return set;

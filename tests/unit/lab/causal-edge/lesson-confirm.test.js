@@ -18,9 +18,9 @@ const path = require('path');
 const REPO = path.join(__dirname, '..', '..', '..', '..');
 const { sameRequirement, confirmsLesson, confirmedNodeIds, authenticatedEdgeIds, canEnterPredictorLane, runConfirmationPass } = require(path.join(REPO, 'packages', 'lab', 'causal-edge', 'lesson-confirm.js'));
 const { buildWorkedExampleNode } = require(path.join(REPO, 'packages', 'lab', 'attribution', 'recall-graph.js'));
-const { listEdges } = require(path.join(REPO, 'packages', 'lab', 'attribution', 'recall-edge-store.js'));
+const { listEdges, writeEdge, loadEdge } = require(path.join(REPO, 'packages', 'lab', 'attribution', 'recall-edge-store.js'));
 const { sidecarSha, readCandidate } = require(path.join(REPO, 'packages', 'lab', 'attribution', 'candidate-sidecar.js'));
-const { generateEdgeKeypair } = require(path.join(REPO, 'packages', 'kernel', '_lib', 'edge-attestation.js'));
+const { generateEdgeKeypair, signEdgeId } = require(path.join(REPO, 'packages', 'kernel', '_lib', 'edge-attestation.js'));
 
 // Hermetic (CodeRabbit #335): the authenticatedEdgeIds fail-closed assertions (opts `{}`) assume NO
 // ambient LOOM_EDGE_VERIFY_KEY. Each test file runs in its own node process -> a file-wide delete is isolated.
@@ -242,6 +242,21 @@ test('authenticatedEdgeIds: fail-closed (no key -> empty); a wrong-length/garbag
   assert.strictEqual(authenticatedEdgeIds([{ edge_type: 'confirmed-by', from_node_id: 'a'.repeat(64), edge_id: 'b'.repeat(64), sig_alg: 'ed25519', edge_sig: 'AAAA' }], {}).size, 0);
   const { publicKeyPem } = generateEdgeKeypair();
   assert.strictEqual(authenticatedEdgeIds([{ edge_type: 'confirmed-by', from_node_id: 'a'.repeat(64), edge_id: 'b'.repeat(64), sig_alg: 'ed25519', edge_sig: 'AAAA' }], { verifyKey: publicKeyPem }).size, 0);
+});
+
+test('authenticatedEdgeIds RE-DERIVES (MV-W1 hacker CRITICAL): a signature-replay (valid {edge_id,edge_sig}, SWAPPED from_node_id) is REJECTED', () => {
+  const dir = tmp();
+  const { publicKeyPem, privateKeyPem } = generateEdgeKeypair();
+  const A = '1'.repeat(64); const B = '2'.repeat(64);
+  const w = writeEdge({ from_node_id: A, to_delta_ref: 'c'.repeat(64), edge_type: 'confirmed-by', fail_to_pass: ['t'], recorded_at: '2026-06-16T00:00:00.000Z' }, { dir, signer: (id) => signEdgeId(id, { privateKeyPem }) });
+  const real = loadEdge(w.edge_id, { dir });
+  // sanity: the REAL signed edge is admitted for A
+  assert.strictEqual(authenticatedEdgeIds([real], { verifyKey: publicKeyPem }).has(A), true);
+  // FORGE: keep the valid edge_id + edge_sig, SWAP from_node_id to B (a replay of one genuine signature)
+  const forged = { ...real, from_node_id: B };
+  const admitted = authenticatedEdgeIds([forged], { verifyKey: publicKeyPem });
+  assert.strictEqual(admitted.has(B), false, 'swapped from_node_id must NOT be admitted (the re-derive guard binds it)');
+  assert.strictEqual(admitted.has(A), false);
 });
 
 (async () => {
