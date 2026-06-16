@@ -30,6 +30,12 @@ const { RUBRIC_LEAK_MIN, normalizeAlnum } = require('./calibration-issue');
 
 const LESSON_PREFIX = 'lesson:';
 
+// The max lesson_body length (a derived lesson is 1-2 sentences). The SINGLE source of truth shared by
+// the MINT path (lesson-derive bounds the leak-scan needle) AND the READ path (recall-graph's
+// classifyLessonLayer bounds the re-hash so a giant forged body can not DoS verify-on-read —
+// VALIDATE-hacker M-c). A legit body is far under this; an over-bound body is a malfunction/forge.
+const LESSON_BODY_MAX = 4096;
+
 // --------------------------------------------------------------------------
 // Artifact (1) — the FROZEN floor (4 / 3 / 2). Append-only; see the audit record.
 // --------------------------------------------------------------------------
@@ -131,6 +137,6 @@ function groupByKey(blocks, keyFn) {
 }
 
 module.exports = {
-  TRIGGER_CLASS, GOTCHA_CLASS, CORRECTIVE_CLASS, LESSON_PREFIX,
+  TRIGGER_CLASS, GOTCHA_CLASS, CORRECTIVE_CLASS, LESSON_PREFIX, LESSON_BODY_MAX,
   lessonClusterKey, assertEnumDelimiterSafe, lessonLeaks, groupByKey,
 };

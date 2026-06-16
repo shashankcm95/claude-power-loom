@@ -18,7 +18,7 @@ const path = require('path');
 
 const REPO = path.join(__dirname, '..', '..', '..', '..');
 const RG = require(path.join(REPO, 'packages', 'lab', 'attribution', 'recall-graph.js'));
-const { buildWorkedExampleNode, classifyLessonLayer, LESSON_ERR_CODE, computeLessonContentHash } = RG;
+const { buildWorkedExampleNode, classifyLessonLayer, LESSON_ERR_CODE, computeLessonContentHash, LESSON_HASH_FIELDS } = RG;
 const { writeNode, loadNode } = require(path.join(REPO, 'packages', 'lab', 'attribution', 'recall-graph-store.js'));
 const { sidecarSha } = require(path.join(REPO, 'packages', 'lab', 'attribution', 'candidate-sidecar.js'));
 
@@ -175,6 +175,58 @@ test('MEDIUM-1: a tampered fail_to_pass survives verifyNode (intentional — W2 
   const back = loadNode(n.node_id, { dir });
   assert.ok(back, 'loads (fail_to_pass is outside lesson_content_hash by design)');
   assert.deepStrictEqual(back.fail_to_pass, ['test_injected'], 'the tamper is NOT detected — documented, not a sandbox');
+});
+
+// --------------------------------------------------------------------------
+// v3.11 W3 — failed_attempt_ref (the trap seam): additive, top-level, UNHASHED evidence.
+// Same class as fail_to_pass (MEDIUM-1): NOT in LESSON_HASH_FIELDS (no orphaning of W1 nodes),
+// a tampered value survives verifyNode (it is evidence/contrast-fuel, NEVER a trust input — its
+// integrity is the content-addressed sidecar's verify-on-read), and it never enters node identity.
+// --------------------------------------------------------------------------
+
+const FAILED_SHA = sidecarSha('diff --git a/foo.py b/foo.py\n-  wrong\n');
+
+test('W3: failed_attempt_ref rides top-level + does NOT change lesson_content_hash (no orphaning)', () => {
+  const without = lessonNode();
+  const withRef = lessonNode({ failed_attempt_ref: FAILED_SHA });
+  assert.strictEqual(withRef.failed_attempt_ref, FAILED_SHA);
+  assert.strictEqual(without.failed_attempt_ref, null, 'absent -> null (W1-shape node)');
+  // the hash basis EXCLUDES failed_attempt_ref -> a W1 node and a W3 node-with-ref hash identically
+  assert.strictEqual(withRef.lesson_content_hash, without.lesson_content_hash, 'failed_attempt_ref is outside LESSON_HASH_FIELDS');
+  assert.strictEqual(withRef.node_id, without.node_id, 'identity unchanged');
+  assert.strictEqual(classifyLessonLayer(withRef), 'valid');
+});
+
+test('W3: failed_attempt_ref is NOT in LESSON_HASH_FIELDS (the freeze versioning rule, hacker H2)', () => {
+  assert.ok(!LESSON_HASH_FIELDS.includes('failed_attempt_ref'), 'an in-place add would orphan every W1 node; a trust use needs a VERSIONED hash');
+});
+
+test('W3: a tampered failed_attempt_ref SURVIVES verifyNode (intentional — evidence, not a trust input)', () => {
+  const dir = tmp();
+  const n = lessonNode({ failed_attempt_ref: FAILED_SHA });
+  writeNode(n, { dir });
+  const f = path.join(dir, `${n.node_id}.json`);
+  const t = JSON.parse(fs.readFileSync(f, 'utf8'));
+  t.failed_attempt_ref = 'c'.repeat(64); // swap to a different sidecar address
+  fs.writeFileSync(f, JSON.stringify(t));
+  const back = loadNode(n.node_id, { dir });
+  assert.ok(back, 'loads (failed_attempt_ref is outside lesson_content_hash by design)');
+  assert.strictEqual(back.failed_attempt_ref, 'c'.repeat(64), 'tamper NOT detected on the node — integrity is the sidecar content-address; a trust use is forbidden (see capture/confirm)');
+});
+
+test('W3: a pre-W3 lesson node (no failed_attempt_ref) is unaffected — defaults null, still valid', () => {
+  const n = lessonNode();
+  assert.strictEqual(n.failed_attempt_ref, null);
+  assert.strictEqual(classifyLessonLayer(n), 'valid', 'no orphaning of pre-W3 nodes');
+});
+
+// VALIDATE-hacker M-c: classifyLessonLayer bounds the body on the READ path (the mint path already caps
+// it) so a giant forged lesson_body can not DoS verify-on-read (which re-hashes the body on every read).
+test('M-c: a giant lesson_body is REJECTED by classifyLessonLayer (read-path DoS bound)', () => {
+  const n = lessonNode();
+  const giant = { ...n, lesson_body: 'x'.repeat(4097) };          // > LESSON_BODY_MAX (4096)
+  giant.lesson_content_hash = computeLessonContentHash(giant);    // a self-consistent hash over the giant body
+  assert.strictEqual(classifyLessonLayer(giant), 'invalid', 'an over-bound body fails the read-path ceiling before any bulk re-hash');
 });
 
 (async () => {

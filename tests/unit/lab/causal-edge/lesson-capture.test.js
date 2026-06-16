@@ -39,6 +39,7 @@ function item(over = {}) {
     candidate_patch: over.candidate_patch || 'diff --git a/f.py b/f.py\n+    raise ValueError\n',
     accepted_diff: over.accepted_diff || 'def f(x):\n    if x == 0: raise ValueError',
     fail_to_pass: over.fail_to_pass || ['test_zero'],
+    failed_patch: over.failed_patch,                              // W3 — optional trap-seam wrong-diff
   };
 }
 const VALID = { trigger_class: 'boundary-contract', gotcha_class: 'unguarded-edge-case', corrective_class: 'fail-closed', lesson_body: 'Raise on the zero edge rather than yield.' };
@@ -119,6 +120,57 @@ test('MEDIUM-2: an empty run with no reportFile skips the (global) report write'
   const r = await captureLessons([], () => ({ ...VALID }), {}); // no dirs, no reportFile
   assert.strictEqual(r.n_eligible, 0);
   assert.strictEqual(r.report_written.skipped, true, 'no global-path clobber on an empty run');
+});
+
+// --------------------------------------------------------------------------
+// v3.11 W3 — the trap seam: an optional failed-attempt wrong-diff threads through capture as
+// contrast fuel (to the leg) + the additive `failed_attempt_ref` evidence pointer (the sidecar).
+// --------------------------------------------------------------------------
+
+test('W3: a failed_patch sidecars the wrong-diff + stores a recoverable failed_attempt_ref; the leg SEES it', async () => {
+  const d = dirs();
+  const failed_patch = 'diff --git a/w.py b/w.py\n-    return None\n';
+  let sawFailed = 'unset';
+  const it = item({ failed_patch });
+  const r = await captureLessons([it], (ci) => { sawFailed = ci.failed_patch; return { ...VALID }; }, d);
+  assert.strictEqual(r.n_written, 1);
+  const node = r.minted[0];
+  assert.strictEqual(node.failed_attempt_ref, sidecarSha(failed_patch));
+  assert.strictEqual(readCandidate(node.failed_attempt_ref, { dir: d.sidecarDir }), failed_patch, 'the ref resolves — never dangling');
+  assert.strictEqual(sawFailed, failed_patch, 'the derive leg received failed_patch as contrast fuel');
+});
+
+test('W3: an item with NO failed_patch is backward-compatible (failed_attempt_ref null; leg sees null)', async () => {
+  const d = dirs();
+  let sawFailed = 'unset';
+  const r = await captureLessons([item()], (ci) => { sawFailed = ci.failed_patch; return { ...VALID }; }, d);
+  assert.strictEqual(r.minted[0].failed_attempt_ref, null);
+  assert.strictEqual(r.n_failed_sidecar_failed, 0);
+  assert.strictEqual(sawFailed, null, 'absent failed_patch forwards as null');
+});
+
+test('M1: an oversize failed_patch is treated as ABSENT (no trap, never reaches the leg)', async () => {
+  const d = dirs();
+  let sawFailed = 'unset';
+  const big = 'x'.repeat(1000001);                                // > MAX_CONTRAST_PATCH (1e6)
+  const r = await captureLessons([item({ failed_patch: big })], (ci) => { sawFailed = ci.failed_patch; return { ...VALID }; }, d);
+  assert.strictEqual(r.n_written, 1);
+  assert.strictEqual(r.minted[0].failed_attempt_ref, null);
+  assert.strictEqual(sawFailed, null, 'an oversize failed_patch never reaches the leg');
+});
+
+// M2: a failed-patch sidecar-write FAILURE must degrade to a trap-less-but-valid node (failed_attempt_ref
+// null), NEVER a dangling ref. Force the failure deterministically: pre-create a DIRECTORY at the
+// failed-patch's sidecar file path so its write fails, while the candidate write (a different sha) succeeds.
+test('M2: a failed-patch sidecar-write failure mints failed_attempt_ref=null + counts (no dangling ref)', async () => {
+  const d = dirs();
+  const failed_patch = 'diff --git a/w.py b/w.py\n-    wrong\n';
+  const failedSha = sidecarSha(failed_patch);
+  fs.mkdirSync(path.join(d.sidecarDir, `${failedSha}.patch`), { recursive: true }); // block only the failed write
+  const r = await captureLessons([item({ failed_patch })], () => ({ ...VALID }), d);
+  assert.strictEqual(r.n_written, 1, 'the node is still minted — degrade to trap-less, the passing node is valuable');
+  assert.strictEqual(r.n_failed_sidecar_failed, 1);
+  assert.strictEqual(r.minted[0].failed_attempt_ref, null, 'no dangling ref — degraded to null on a failed write');
 });
 
 (async () => {
