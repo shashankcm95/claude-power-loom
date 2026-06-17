@@ -58,6 +58,9 @@
   # exercised by tests/unit/hooks/session-reset.test.js; here we only smoke the contract.
   local tmpdir sr_rc
   tmpdir=$(node -e "process.stdout.write(require('os').tmpdir())")
+  # Pre-clean any leftover (e.g. from the pre-③.1-W1 smoke test, which CREATED this
+  # file) so the no-write assertion tests the hook's behavior, not stale local state.
+  rm -f "$tmpdir/claude-read-tracker-smoke-test.json"
   CLAUDE_SESSION_ID="smoke-test" node "$CLAUDE_DIR/packages/kernel/hooks/lifecycle/session-reset.js" 2>/dev/null
   sr_rc=$?
   if [ $sr_rc -eq 0 ] && [ ! -f "$tmpdir/claude-read-tracker-smoke-test.json" ]; then
