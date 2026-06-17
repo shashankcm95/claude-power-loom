@@ -24,7 +24,7 @@ const path = require('path');
 
 // Static relative requires (EC7 darkness gate: no dynamic require(<var>) in a
 // bootcamp module — matches the sandbox spike's convention).
-const { classifyRun } = require('../container-adapter.js');
+const { classifyRun, selectBackend } = require('../container-adapter.js');
 const {
   runInContainer, attestDocker, createDockerBackend, assertSafeMountPath,
   buildDockerRunArgs, dockerDaemonUp, dockerImageExists, reapOrphans, hostUser, DEFAULT_IMAGE,
@@ -137,21 +137,26 @@ async function caseExfil(ws) {
 async function caseFsEscape(ws) {
   const SECRET = 'TOPSECRET_DO_NOT_LEAK_' + process.pid;
   const homeReadCanary = path.join(HOME, '.loom_dspike_secret_DELETEME');
+  // Probe the ACTUAL host HOME (os.homedir()), not a hard-coded /Users — else on
+  // Linux the oracle passes without testing the real host home path (VALIDATE CodeRabbit).
+  const homeDirJson = JSON.stringify(HOME);
+  const homeCanaryJson = JSON.stringify(homeReadCanary);
+  const homeCanaryBaseJson = JSON.stringify(path.basename(homeReadCanary));
   fs.writeFileSync(homeReadCanary, SECRET);
   try {
     const { run, report } = await runPy(ws, [
-      "rec('listUsers', lambda: str(os.listdir('/Users')))",
-      "rec('readHostSecret', lambda: open(os.path.join('/Users', os.environ.get('LOOM_HOST_USER','x'), '.loom_dspike_secret_DELETEME')).read())",
-      // a symlink CREATED in the writable mount -> an absolute host-ish path, read THROUGH.
-      "rec('symlinkThrough', lambda: (os.symlink('/Users', '/work/evil-link'), open('/work/evil-link/x').read())[1])",
+      `rec('listHostHome', lambda: str(os.listdir(${homeDirJson})))`,
+      `rec('readHostSecret', lambda: open(${homeCanaryJson}).read())`,
+      // a symlink CREATED in the writable mount -> the ACTUAL host HOME path, read THROUGH.
+      `rec('symlinkThrough', lambda: (os.symlink(${homeDirJson}, '/work/evil-link'), open(os.path.join('/work/evil-link', ${homeCanaryBaseJson})).read())[1])`,
       "rec('etcWrite', lambda: (open('/etc/loom_pwn','w').write('x'), 'wrote')[1])",
     ]);
-    const usersBlocked = !report || String(report.listUsers).startsWith('ERR'); // /Users not mounted
+    const homeBlocked = !report || String(report.listHostHome).startsWith('ERR'); // host HOME not mounted
     const secretNotLeaked = !report || typeof report.readHostSecret !== 'string' || !report.readHostSecret.includes('TOPSECRET');
     const etcBlocked = !report || String(report.etcWrite).startsWith('ERR'); // --read-only root
-    const pass = run.result_class === 'CONTAINED_RESULT' && usersBlocked && secretNotLeaked && etcBlocked;
-    record('5', 'fs-escape blocked (/Users unreachable, host secret not leaked, symlink->host dead, /etc read-only)',
-      pass, `usersBlocked=${usersBlocked} secretNotLeaked=${secretNotLeaked} etcBlocked=${etcBlocked} report=${JSON.stringify(report)}`);
+    const pass = run.result_class === 'CONTAINED_RESULT' && homeBlocked && secretNotLeaked && etcBlocked;
+    record('5', 'fs-escape blocked (host HOME unreachable, host secret not leaked, symlink->host dead, /etc read-only)',
+      pass, `homeBlocked=${homeBlocked} secretNotLeaked=${secretNotLeaked} etcBlocked=${etcBlocked} report=${JSON.stringify(report)}`);
     return pass;
   } finally { try { fs.rmSync(homeReadCanary); } catch { /* absent */ } }
 }
@@ -252,7 +257,9 @@ async function caseFailClosed() {
   const absentSentinel = classifyRun({ spawnThrew: false, timedOut: false, sentinelSeen: false, exitCode: 0 }) === 'SETUP_FAILURE';
   // an un-attested docker backend is skipped by sync selection (cached-boolean getter false).
   const be = createDockerBackend({ env: {} });
-  const unattestedSkipped = be.containmentAttested === false;
+  // Validate the SELECTOR GATE, not only the getter — a selectBackend regression
+  // would otherwise pass this spike (VALIDATE CodeRabbit).
+  const unattestedSkipped = be.containmentAttested === false && selectBackend({ backends: [be] }) === null;
   // attest against a guaranteed-absent image returns a fail-closed reason.
   const absent = await attestDocker({ image: 'loom-sandbox-does-not-exist:nope' });
   const imageAbsentFailClosed = absent.attested === false && /image-absent/.test(absent.reason);
@@ -282,8 +289,13 @@ async function caseGitLifecycle(ws) {
     try { const r = await backend.prepareClone(args); inj[k] = 'ACCEPTED'; try { safeDiscard(r.workDir); } catch { /* none */ } }
     catch { inj[k] = 'rejected'; }
   }
+  // Effective clone-hook hardening test (VALIDATE CodeRabbit + git semantics: a
+  // SOURCE-repo .git/hooks hook is NEVER transferred on clone -> that was vacuous;
+  // a git TEMPLATE-dir hook DOES fire at clone checkout -> the REAL vector).
   const hookCanary = path.join(os.tmpdir(), `loom-dspike-hook-${process.pid}`);
-  try { fs.rmSync(hookCanary); } catch { /* absent */ }
+  const tmplDir = path.join(ws.workDir, 'hook-tmpl');
+  fs.mkdirSync(path.join(tmplDir, 'hooks'), { recursive: true });
+  fs.writeFileSync(path.join(tmplDir, 'hooks', 'post-checkout'), `#!/bin/sh\ntouch ${hookCanary}\n`, { mode: 0o755 });
   const hostile = path.join(ws.workDir, 'hostile-src');
   fs.mkdirSync(hostile, { recursive: true });
   const g = (a) => execFileSync('git', a, { cwd: hostile, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -291,16 +303,28 @@ async function caseGitLifecycle(ws) {
   g(['init', '--quiet']); g(['config', 'user.email', 's@l']); g(['config', 'user.name', 's']);
   g(['add', '.']); g(['commit', '--quiet', '-m', 'x']);
   const hostileSha = g(['rev-parse', 'HEAD']).toString().trim();
-  fs.writeFileSync(path.join(hostile, '.git', 'hooks', 'post-checkout'), `#!/bin/sh\ntouch ${hookCanary}\n`, { mode: 0o755 });
+  // CONTROL: a plain clone WITH the template fires the hook (proves the vector is real).
+  try { fs.rmSync(hookCanary); } catch { /* absent */ }
+  const ctrlClone = path.join(ws.workDir, 'ctrl-clone');
+  try { execFileSync('git', ['clone', '--quiet', hostile, ctrlClone], { env: { ...process.env, GIT_TEMPLATE_DIR: tmplDir }, stdio: ['ignore', 'pipe', 'pipe'] }); } catch { /* none */ }
+  const ctrlHookFired = fs.existsSync(hookCanary);
+  try { safeDiscard(ctrlClone); } catch { /* none */ }
+  // HARDENED: prepareClone (GIT_HARDEN core.hooksPath=/dev/null) with the SAME template env -> neutralized.
+  try { fs.rmSync(hookCanary); } catch { /* absent */ }
+  const prevTmpl = process.env.GIT_TEMPLATE_DIR;
+  process.env.GIT_TEMPLATE_DIR = tmplDir;
   let cloned = null;
   try { const r = await be.prepareClone({ repo: hostile, base_sha: hostileSha }); cloned = r.workDir; } catch { /* may fail */ }
-  const hookFired = fs.existsSync(hookCanary);
+  if (prevTmpl === undefined) delete process.env.GIT_TEMPLATE_DIR; else process.env.GIT_TEMPLATE_DIR = prevTmpl;
+  const hardenedHookFired = fs.existsSync(hookCanary);
   if (cloned) { try { safeDiscard(cloned); } catch { /* none */ } }
   try { fs.rmSync(hookCanary); } catch { /* absent */ }
   const allRejected = Object.values(inj).every((v) => v === 'rejected');
-  const pass = allRejected && cloned !== null && !hookFired;
-  record('9', 'git-lifecycle hardening (shared module): arg-injection rejected; clone OK + hook neutralized',
-    pass, `${JSON.stringify(inj)} cloneSucceeded=${cloned !== null} hookFired=${hookFired}`);
+  // pass: arg-injection rejected + the hardened clone SUCCEEDED + the template hook
+  // FIRED in the control (vector real) but was NEUTRALIZED by the hardened clone.
+  const pass = allRejected && cloned !== null && ctrlHookFired && !hardenedHookFired;
+  record('9', 'git-lifecycle hardening: arg-injection rejected; template-hook fires in control but NEUTRALIZED by core.hooksPath=/dev/null',
+    pass, `${JSON.stringify(inj)} cloneSucceeded=${cloned !== null} ctrlHookFired=${ctrlHookFired} hardenedHookFired=${hardenedHookFired}`);
   return pass;
 }
 
@@ -365,7 +389,7 @@ function caseReapOrphans() {
   const exists = (name) => {
     try { return execFileSync('docker', ['ps', '-aq', '--filter', `name=${name}`], { encoding: 'utf8' }).trim().length > 0; } catch { return false; }
   };
-  run(999999, deadName);            // 999999 > PID_MAX -> structurally dead owner
+  run(99999999, deadName);          // above Linux pid_max's documented max (2^22) -> structurally dead owner
   run(process.pid, liveName);       // owned by THIS live process
   const reaped = reapOrphans({ dockerBin: 'docker' });
   const deadGone = !exists(deadName);

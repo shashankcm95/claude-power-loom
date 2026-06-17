@@ -26,6 +26,11 @@ const { canonicalize, isWithinRoot } = require('../../kernel/_lib/path-canonical
 
 const TEMP_ROOT = canonicalize(os.tmpdir());
 
+// A patch is written UNSANDBOXED to host temp before `git apply`; bound its size +
+// type so an oversized/non-string candidate cannot fill temp disk or burn the git
+// timeout (VALIDATE CodeRabbit). 5 MB is far above any real diff.
+const MAX_PATCH_BYTES = 5 * 1024 * 1024;
+
 function mkScoped(prefix) { return fs.mkdtempSync(path.join(os.tmpdir(), prefix)); }
 
 // HARDEN neutralizes repo-side hooks + ext-transport + fsmonitor, and the env
@@ -93,6 +98,10 @@ async function prepareClone({ repo, base_sha, allowLocalRepo = false }) {
     // a commit. assertSafeSha already guarantees base_sha is [0-9a-f]{7,40}
     // (can't be a flag), so the positional is safe without the separator.
     git(['checkout', '--quiet', base_sha], workDir);
+    // Verify HEAD resolved to the intended COMMIT, not a hex-looking branch/tag
+    // (git name resolution can match a ref). Reproducibility guard (VALIDATE CodeRabbit).
+    const head = git(['rev-parse', '--verify', 'HEAD'], workDir).trim();
+    if (!head.startsWith(base_sha)) throw new Error(`prepareClone: checkout resolved ${head}, expected base_sha ${base_sha}`);
   } catch (e) {
     safeDiscard(workDir); // don't leak the scoped temp on a partial-clone failure
     throw e;
@@ -105,6 +114,9 @@ async function prepareClone({ repo, base_sha, allowLocalRepo = false }) {
 // from flag-injection; label -> basename-safe slug (no ../ host write).
 async function applyPatch({ workDir, patch, label }) {
   if (!patch) return { ok: true, skipped: true };
+  if (typeof patch !== 'string' && !Buffer.isBuffer(patch)) throw new Error('applyPatch: patch must be a string or Buffer');
+  const patchBytes = Buffer.isBuffer(patch) ? patch.length : Buffer.byteLength(patch, 'utf8');
+  if (patchBytes > MAX_PATCH_BYTES) throw new Error(`applyPatch: patch exceeds ${MAX_PATCH_BYTES} bytes (${patchBytes})`);
   const pdir = path.join(workDir, '.loom-patches');
   fs.mkdirSync(pdir, { recursive: true });
   const pfile = path.join(pdir, `${assertSafeLabel(label)}.diff`);

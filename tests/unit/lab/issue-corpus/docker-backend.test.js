@@ -189,6 +189,15 @@ test('ARCH-2 assertSafeRepo denies a local path by default, allows with allowLoc
 });
 test('ARCH-2 assertSafeLabel rejects ../ traversal', () => throws(() => CL.assertSafeLabel('../evil')));
 
+// VALIDATE #2 — the patch-size/type guard (rejects BEFORE the host-side write).
+atest('VALIDATE#2 applyPatch rejects a non-string patch', async () => {
+  await assert.rejects(() => CL.applyPatch({ workDir: '/tmp/loom-no-such-dir', patch: 12345, label: 'x' }));
+});
+atest('VALIDATE#2 applyPatch rejects an oversized patch', async () => {
+  await assert.rejects(() => CL.applyPatch({ workDir: '/tmp/loom-no-such-dir', patch: 'x'.repeat(6 * 1024 * 1024), label: 'x' }));
+});
+test('VALIDATE#11 docker-backend exports reapOrphans', () => assert.strictEqual(typeof D.reapOrphans, 'function'));
+
 Promise.all(_asyncTests).then(() => {
   process.stdout.write(`\ndocker-backend pure: ${passed} passed, ${failed} failed\n`);
   process.exit(failed ? 1 : 0);

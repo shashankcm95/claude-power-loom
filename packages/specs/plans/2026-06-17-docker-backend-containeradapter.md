@@ -50,7 +50,7 @@ Pre-build VERIFY = read-only personas (architect + hacker + honesty-auditor). Th
 `buildDockerRunArgs({ image, workDir, command, argv, memory, pidsLimit, cpus, user, name, network='none' })` is **PURE** (returns the argv array) -> unit-testable on Linux CI with no daemon. The security floor (every flag load-bearing, default-deny). Closure verbs below are **conditional-PENDING the green-or-block spike (D6)** — the flags are DESIGNED to close the named residual; "closed" is earned only when P-NET/P-MEM/P-PIDS pass live (honesty H1):
 
 ```
-docker run --rm --init                 # --init (H3): tini as PID 1 reaps orphaned subprocesses (else zombies eat --pids-limit)
+docker run --init                      # --init (H3): tini as PID 1 reaps orphaned subprocesses (else zombies eat --pids-limit). NO --rm — the OOMKilled inspect needs the container post-exit; cleanup() / reapOrphans() remove it.
   --network none                       # designed to deny egress at the empty netns (R13 for THIS surface; PENDING P-NET)
   --memory <M> --memory-swap <M>       # designed HARD mem bound (the macOS RLIMIT_AS residual; PENDING P-MEM); swap==mem => no swap escape
   --pids-limit <P>                     # designed cgroup fork-bomb bound, not the per-UID ulimit (PENDING P-PIDS)

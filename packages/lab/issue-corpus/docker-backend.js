@@ -39,6 +39,10 @@ const {
 
 const DEFAULT_IMAGE = 'loom-sandbox:latest';
 
+// Every synchronous `docker` CLI call is bounded so a stalled daemon cannot wedge
+// the adapter process (VALIDATE CodeRabbit) — matches dockerDaemonUp's existing 8s.
+const DOCKER_SYNC_TIMEOUT_MS = 8000;
+
 // The grading path always denies network; the param exists for a future explicit
 // opt-in, but the builder allow-lists it (L1 — never silently accept `--network host`).
 const ALLOWED_NETWORKS = Object.freeze(new Set(['none']));
@@ -139,7 +143,7 @@ function buildDockerRunArgs({
 // --------------------------------------------------------------------------
 
 function dockerImageExists(dockerBin, image) {
-  try { return spawnSync(dockerBin, ['image', 'inspect', image], { stdio: 'ignore' }).status === 0; }
+  try { return spawnSync(dockerBin, ['image', 'inspect', image], { stdio: 'ignore', timeout: DOCKER_SYNC_TIMEOUT_MS }).status === 0; }
   catch { return false; }
 }
 
@@ -152,7 +156,7 @@ function dockerDaemonUp(dockerBin) {
 // a shell, so read State.OOMKilled before the container is removed.
 function inspectOOMKilled(dockerBin, name) {
   try {
-    const r = spawnSync(dockerBin, ['inspect', '--format', '{{.State.OOMKilled}}', name], { encoding: 'utf8' });
+    const r = spawnSync(dockerBin, ['inspect', '--format', '{{.State.OOMKilled}}', name], { encoding: 'utf8', timeout: DOCKER_SYNC_TIMEOUT_MS });
     return r.status === 0 && /true/.test((r.stdout || '').trim());
   } catch { return false; }
 }
@@ -172,7 +176,7 @@ let _reaperInstalled = false;
 function installReaper(dockerBin) {
   if (_reaperInstalled) return;
   _reaperInstalled = true;
-  const sweep = () => { for (const n of _inflight) { try { spawnSync(dockerBin, ['rm', '-f', n], { stdio: 'ignore' }); } catch { /* gone */ } } };
+  const sweep = () => { for (const n of _inflight) { try { spawnSync(dockerBin, ['rm', '-f', n], { stdio: 'ignore', timeout: DOCKER_SYNC_TIMEOUT_MS }); } catch { /* gone */ } } };
   process.once('exit', sweep); // fires on normal exit + an uncaughtException-induced exit
   const onSignal = () => { sweep(); process.exit(130); };
   process.once('SIGINT', onSignal);
@@ -187,14 +191,14 @@ function reapOrphans({ dockerBin = 'docker' } = {}) {
   let reaped = 0;
   try {
     // NOTE: no -q — `docker ps` ignores --format when --quiet is also set.
-    const out = spawnSync(dockerBin, ['ps', '-a', '--filter', 'label=loom-owner', '--format', '{{.ID}} {{.Label "loom-owner"}}'], { encoding: 'utf8' });
+    const out = spawnSync(dockerBin, ['ps', '-a', '--filter', 'label=loom-owner', '--format', '{{.ID}} {{.Label "loom-owner"}}'], { encoding: 'utf8', timeout: DOCKER_SYNC_TIMEOUT_MS });
     if (out.status !== 0) return 0;
     for (const line of String(out.stdout || '').trim().split('\n').filter(Boolean)) {
       const [id, ownerPid] = line.trim().split(/\s+/);
       const pid = parseInt(ownerPid, 10);
       let alive = false;
       try { process.kill(pid, 0); alive = true; } catch (e) { alive = !!e && e.code === 'EPERM'; } // ESRCH => dead; EPERM => alive (not ours)
-      if (Number.isInteger(pid) && !alive) { try { spawnSync(dockerBin, ['rm', '-f', id], { stdio: 'ignore' }); reaped++; } catch { /* gone */ } }
+      if (Number.isInteger(pid) && !alive) { try { spawnSync(dockerBin, ['rm', '-f', id], { stdio: 'ignore', timeout: DOCKER_SYNC_TIMEOUT_MS }); reaped++; } catch { /* gone */ } }
     }
   } catch { /* docker unavailable */ }
   return reaped;
@@ -209,7 +213,11 @@ function reapOrphans({ dockerBin = 'docker' } = {}) {
 // sequential dry-run path (the caller awaits the Promise), revisit if ③.2 adds concurrency.
 function runInContainer({ dockerBin = 'docker', image, workDir, command, argv = [], limits = {}, user, name = dockerName() }) {
   return new Promise((resolve) => {
-    const L = { ...DEFAULT_LIMITS, ...limits };
+    // Filter undefined overrides so a resolver/caller omitting a field cannot
+    // overwrite a DEFAULT_LIMITS value with undefined (e.g. wallClockMs=undefined
+    // -> setTimeout(fn, undefined) fires immediately). VALIDATE CodeRabbit.
+    const cleanLimits = Object.fromEntries(Object.entries(limits || {}).filter(([, v]) => v !== undefined));
+    const L = { ...DEFAULT_LIMITS, ...cleanLimits };
     let runArgs;
     try {
       runArgs = buildDockerRunArgs({
@@ -219,7 +227,7 @@ function runInContainer({ dockerBin = 'docker', image, workDir, command, argv = 
     } catch (e) {
       return resolve({ spawnThrew: true, error: String(e), stdout: '', stderr: '', sentinelSeen: false });
     }
-    const cleanup = () => { _inflight.delete(name); try { spawnSync(dockerBin, ['rm', '-f', name], { stdio: 'ignore' }); } catch { /* gone */ } };
+    const cleanup = () => { _inflight.delete(name); try { spawnSync(dockerBin, ['rm', '-f', name], { stdio: 'ignore', timeout: DOCKER_SYNC_TIMEOUT_MS }); } catch { /* gone */ } };
     installReaper(dockerBin);
     let child;
     try { child = spawn(dockerBin, runArgs, { stdio: ['ignore', 'pipe', 'pipe'] }); _inflight.add(name); }
@@ -233,7 +241,7 @@ function runInContainer({ dockerBin = 'docker', image, workDir, command, argv = 
     // `timedOut = true` is captured in the shared closure + read by the close handler.
     const timer = setTimeout(() => {
       timedOut = true;
-      try { spawnSync(dockerBin, ['kill', name], { stdio: 'ignore' }); } catch { /* already gone */ }
+      try { spawnSync(dockerBin, ['kill', name], { stdio: 'ignore', timeout: DOCKER_SYNC_TIMEOUT_MS }); } catch { /* already gone */ }
     }, L.wallClockMs);
     child.on('error', (e) => {
       if (settled) return; settled = true; clearTimeout(timer); cleanup();
@@ -376,7 +384,11 @@ function createDockerBackend({
       // inside the container, so the resolver's maxPids would be a no-op here.
       return runInContainer({
         dockerBin, image, workDir, command: cmd.command, argv: cmd.argv, user,
-        limits: { ...limits, wallClockMs: cmd.wallClockMs || limits.wallClockMs, cpuSec: cmd.cpuSec || limits.cpuSec },
+        limits: {
+          ...limits,
+          ...(cmd.wallClockMs !== undefined ? { wallClockMs: cmd.wallClockMs } : {}),
+          ...(cmd.cpuSec !== undefined ? { cpuSec: cmd.cpuSec } : {}),
+        },
       });
     },
 
