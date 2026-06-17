@@ -147,6 +147,29 @@ test('F22.new: password-in-URL pattern is scrubbed (https://user:pw@host)', () =
   assert.ok(!out.includes(password), 'raw password must not survive scrub');
 });
 
+test('W2: the beta credential classes are redacted by the REAL scrubSecrets (canonical wired)', () => {
+  // End-to-end: the actual exported scrubSecrets (canonical classes + scrubber extras) must
+  // redact the classes the old hand-list MISSED — the beta mints/handles these. Split-literal
+  // fixtures so this test file does not self-trip the validate-no-bare-secrets PreToolUse gate.
+  const scrubSecrets = getScrubSecrets();
+  const A = 'a'.repeat(90);
+  const samples = {
+    'github_pat_ fine-grained': 'github' + '_pat_' + A.slice(0, 82),
+    'ghs_ App/Actions token':   'ghs_' + A.slice(0, 36),
+    'ghr_ refresh token':       'ghr_' + A.slice(0, 36),
+    'ghu_ user-to-server':      'ghu_' + A.slice(0, 36),
+    'glpat- GitLab (>20 body)': 'glpat-' + A.slice(0, 26),
+    'AIza Google API key':      'AIza' + A.slice(0, 35),
+    'PEM private key':          '-----BEGIN ' + 'OPENSSH PRIVATE KEY' + '-----',
+  };
+  for (const [label, token] of Object.entries(samples)) {
+    const out = scrubSecrets('lead ' + token + ' trail');
+    assert.ok(out.includes('[REDACTED]'), `${label} must be redacted by scrubSecrets`);
+    assert.ok(!out.includes(token), `${label}: raw token must not survive (no partial-redaction tail)`);
+    assert.ok(out.startsWith('lead ') && out.endsWith(' trail'), `${label}: surrounding text preserved`);
+  }
+});
+
 test('F22.new: password-in-URL does not over-match plain URLs', () => {
   const scrubSecrets = getScrubSecrets();
   const plainUrl = 'See https://example.com/path for docs';

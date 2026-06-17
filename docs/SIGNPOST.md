@@ -55,6 +55,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/kernel/_lib/safe-exec.js` - safe-exec.js — H.8.4 shared helper: safe subprocess invocation without shell.
 - `packages/kernel/_lib/safe-resolve.js` - safe-resolve.js — choose a script candidate that is SAFE to hand to
 - `packages/kernel/_lib/sanitize.js` - JSONL hygiene primitives — per post-compact PR-1 R1 F-2 resolution.
+- `packages/kernel/_lib/secret-patterns.js` - ③.0-W2 (2026-06-17): the SINGLE source of truth for the HIGH-PRECISION,
 - `packages/kernel/_lib/settings-resolution.js` - K2.b settings.json resolution walk per v6 §6.5 In-Scope.
 - `packages/kernel/_lib/synthid.js` - HETS-SynthId — content-addressed agent identifier (v2.8.0 — Shape A only).
 - `packages/kernel/_lib/toolkit-root.js` - Shared canonical-toolkit-root resolution.
