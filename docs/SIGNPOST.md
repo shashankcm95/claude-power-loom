@@ -296,6 +296,13 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/lab/reputation/_spike/reputation-gate-diagnostic.js` - v3.10-W3 E3 — the LIVE diagnostic: run the reputation-gate advisory over the REAL projectReputation output +
 - `packages/lab/reputation/reputation-gate.js` - v3.10-W3 — the reputation-gate ADVISORY consumer: the spawn-narrowing decision that closes the reputation
 
+### `lab/trace-emitter/`
+
+- `packages/lab/trace-emitter/index.js` - ③.1-W2a — the F7 trace-emitter public API.
+- `packages/lab/trace-emitter/_spike/trace-emit-dogfood.js` - ③.1-W2a dogfood — the Rule-2a-corollary real-path proof: a green unit suite is a
+- `packages/lab/trace-emitter/trace-schema.js` - ③.1-W2a — the F7 trace-emitter's FROZEN schema (an append-only contract; modeled on the
+- `packages/lab/trace-emitter/trace-store.js` - ③.1-W2a — the per-run JSONL timeline store for the F7 trace-emitter.
+
 ### `lab/verdict-attestation/`
 
 - `packages/lab/verdict-attestation/cli.js` - v3.4 Wave 1 — verdict-attestation CLI: the dogfood vehicle + the entry point an orchestrator uses
