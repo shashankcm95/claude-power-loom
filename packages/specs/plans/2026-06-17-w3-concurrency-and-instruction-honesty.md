@@ -55,10 +55,13 @@ full gate -> PR -> CodeRabbit gate -> USER merge.
 - **Move** the `SESSION_ID` + `TRACKER_PATH` derivation OUT of module-load (lines 23-24) INTO the
   stdin `end` handler, AFTER `data` is parsed. New resolution order (fallback chain, fail-never):
   `data.session_id || data.sessionId || process.env.CLAUDE_SESSION_ID || process.env.CLAUDE_CONVERSATION_ID || String(process.ppid || 'default')`.
-- **Sanitize** the key into the filename (it now comes from external payload): restrict to
-  `[A-Za-z0-9_-]`, replace others, cap length — so a hostile `session_id` ("../../etc/x", path
-  separators, 10MB string) cannot escape `os.tmpdir()` or DoS the path. (This is a NEW attack
-  surface the env-only path did not have — env is operator-controlled; payload is not.)
+- **Sanitize** the key into the filename (it now comes from external payload — a NEW attack surface
+  the env-only path did not have; env is operator-controlled, payload is not). **[Folded at VERIFY
+  H1/W3-A3 — the FINAL approach is `sha256(resolvedKey).slice(0,16)`, NOT char-restrict+cap; see the
+  "Item 1 final key resolution" + VALIDATE sections below.]** A hostile `session_id` ("../../etc/x",
+  path separators, 10MB string) must not escape `os.tmpdir()` or DoS the path; the sha256 hash is
+  hex-only (no separators -> no escape), fixed-width (no `ENAMETOOLONG`), and collision-resistant
+  (a char-restrict+drop sanitizer would collapse distinct hostile ids to one empty key).
 - `loadTracker`/`saveTracker`/`normalizePath` take the resolved `TRACKER_PATH` as a param (no more
   module-scope const). KISS: pass it through; do not introduce a class.
 - Fail-open contract preserved: any error -> `{decision:'approve'}` (line 171-174 unchanged shape).
@@ -69,7 +72,14 @@ full gate -> PR -> CodeRabbit gate -> USER merge.
   hacker must weigh whether payload-session-id is per-spawn-distinct; if uncertain, the fix still
   dominates the status quo and the residual is logged, not blocking.
 
-### Item 2 — implement validate-markdown-emphasis.js (new advisory PostToolUse hook)
+### Item 2 — markdown-emphasis honesty (docs-only) — the "implement a hook" design below was REJECTED at VERIFY W3-H1
+
+**[SUPERSEDED — NOT what was built.]** The "implement a new hook" design below was the plan's FIRST
+approach. The VERIFY honesty lens (fold W3-H1) found it would REVERSE the deliberate H.7.27 retirement
+of `validate-markdown-emphasis.js` (CI markdownlint MD037 already absorbs the detection — re-adding
+~230 LoC of intentionally-deleted code). The wave INSTEAD **rewrites the stale `workflow.md` +
+`validator-conventions.md` references** to reflect the retirement — NO new hook, NO `hooks.json`
+change. The rejected design is retained below only for the decision trail:
 
 - New file `packages/kernel/validators/validate-markdown-emphasis.js`. Contract (from the
   `workflow.md:174` spec it must satisfy): PostToolUse, only acts on `.md`/`.mdx` files, detects the
