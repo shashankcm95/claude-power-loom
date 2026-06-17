@@ -20,6 +20,12 @@ const logger = log('session-reset');
 // pattern to shared helper. Cross-tree relative require mirrors HT.2.3 Part B
 // + session-self-improve-prompt.js precedents.
 const { writeAtomic } = require('../../_lib/atomic-write');
+// ③.0-W4: the fact-force-gate writes read-trackers into a per-uid 0700 subdir
+// (claude-loom-<uid>); reuse its trackerDir() so this SessionStart cleanup sweeps
+// the SAME location. Without it, W4 relocated the trackers out of the flat-readdir
+// sweep below and they would accumulate unbounded. Requiring the gate is side-effect
+// free (its stdin runtime is guarded by `require.main === module`).
+const { trackerDir } = require('../pre/fact-force-gate');
 
 const SESSION_ID = process.env.CLAUDE_SESSION_ID || process.env.CLAUDE_CONVERSATION_ID || String(process.ppid || 'default');
 const TRACKER_PATH = path.join(os.tmpdir(), `claude-read-tracker-${SESSION_ID}.json`);
@@ -157,22 +163,31 @@ try {
   }
 
   const tmpDir = os.tmpdir();
-  const files = fs.readdirSync(tmpDir);
   const now = Date.now();
   const ONE_DAY = 24 * 60 * 60 * 1000;
-  let cleaned = 0;
 
-  for (const file of files) {
-    if (!/^claude-read-tracker-.*\.json$/.test(file)) continue;
-    const filePath = path.join(tmpDir, file);
-    try {
-      const stat = fs.statSync(filePath);
-      if (now - stat.mtimeMs > ONE_DAY) {
-        fs.unlinkSync(filePath);
-        cleaned++;
-      }
-    } catch { /* ignore stale file cleanup errors */ }
-  }
+  // Sweep stale (>1 day) read-tracker files in ONE directory; returns the count removed.
+  const sweepStaleTrackers = (dir) => {
+    let removed = 0;
+    let entries;
+    try { entries = fs.readdirSync(dir); } catch { return 0; }
+    for (const file of entries) {
+      if (!/^claude-read-tracker-.*\.json$/.test(file)) continue;
+      const filePath = path.join(dir, file);
+      try {
+        if (now - fs.statSync(filePath).mtimeMs > ONE_DAY) { fs.unlinkSync(filePath); removed++; }
+      } catch { /* ignore stale file cleanup errors */ }
+    }
+    return removed;
+  };
+
+  // Flat tmpdir (legacy + fallback trackers) PLUS the ③.0-W4 per-uid subdir the gate
+  // now writes into. trackerDir() returns the flat base when the subdir is unsafe, so
+  // guard against double-sweeping the same dir.
+  let cleaned = sweepStaleTrackers(tmpDir);
+  let subdir;
+  try { subdir = trackerDir(); } catch { subdir = tmpDir; }
+  if (subdir !== tmpDir) cleaned += sweepStaleTrackers(subdir);
 
   if (cleaned > 0) logger('cleanup', { staleFilesRemoved: cleaned });
 

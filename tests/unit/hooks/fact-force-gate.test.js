@@ -57,6 +57,13 @@ function runHookPayloadSession(toolName, toolInput, payloadSessionId) {
   catch { return { decision: 'parse-error', stdout: result.stdout, stderr: result.stderr }; }
 }
 
+// W4 helpers: throwaway base dirs (avoid polluting the real tmpdir / cross-test races).
+const UID = (typeof process.getuid === 'function') ? process.getuid() : null;
+const POSIX = UID !== null;
+function mkBase() { return fs.mkdtempSync(path.join(os.tmpdir(), 'ffg-w4-')); }
+function rmBase(b) { try { fs.rmSync(b, { recursive: true, force: true }); } catch { /* best-effort */ } }
+function subdirName() { return 'claude-loom-' + (UID === null ? 'default' : UID); }
+
 process.stdout.write('\n[FIX-H5] fact-force-gate Write satisfies fact-knowledge\n');
 
 // T1: Write to new file → approve + record in tracker
@@ -203,6 +210,136 @@ process.stdout.write('\n[W3] payload session_id keying + sha256 sanitization\n')
   assert(r1.decision === 'approve', 'W3-2a: Read in session ONE -> approve');
   assert(r2.decision === 'block', 'W3-2b: Edit in session TWO (different payload session) -> BLOCK (cross-session isolation)');
   fs.unlinkSync(file);
+}
+
+process.stdout.write('\n[W4] per-uid 0700 tracker subdir (foreign-uid TOCTOU hardening)\n');
+
+// W4-1: trackerDir creates <base>/claude-loom-<uid> as a real 0700 directory.
+{
+  const base = mkBase();
+  const dir = gate.trackerDir(base);
+  assert(dir === path.join(base, subdirName()), 'W4-1a: trackerDir returns the per-uid subdir');
+  const st = fs.lstatSync(dir);
+  assert(st.isDirectory() && !st.isSymbolicLink(), 'W4-1b: subdir is a real directory');
+  if (POSIX) assert((st.mode & 0o777) === 0o700, 'W4-1c: subdir created at 0700 (got ' + (st.mode & 0o777).toString(8) + ')');
+  rmBase(base);
+}
+
+// W4-2: resolveTrackerPath(data, base) lands the tracker INSIDE the subdir.
+{
+  const base = mkBase();
+  const tp = gate.resolveTrackerPath({ session_id: 'w4-2' }, base);
+  assert(tp.startsWith(path.join(base, subdirName()) + path.sep), 'W4-2a: tracker path is inside the per-uid subdir');
+  assert(/claude-read-tracker-[0-9a-f]{16}\.json$/.test(tp), 'W4-2b: tracker filename shape preserved');
+  rmBase(base);
+}
+
+// W4-3: a SYMLINK pre-planted at the subdir path -> fallback to flat base (NOT followed).
+{
+  const base = mkBase();
+  fs.symlinkSync(path.join(base, 'evil-target'), path.join(base, subdirName()));
+  const dir = gate.trackerDir(base);
+  assert(dir === base, 'W4-3: symlink at subdir path -> trackerDir falls back to flat base (does not follow it)');
+  rmBase(base);
+}
+
+// W4-3b (VALIDATE H-LOW-1): the forced fallback EMITS the observability log
+// (`tracker_subdir_unsafe_fallback`) — proving "observable, not silent", not just wired.
+{
+  const base = mkBase();
+  const logDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ffg-w4-log-'));
+  const prevLogDir = process.env.LOOM_LOG_DIR;
+  const prevQuiet = process.env.CLAUDE_HOOKS_QUIET;
+  process.env.LOOM_LOG_DIR = logDir;          // _log.js resolves the dir PER-CALL -> redirected
+  delete process.env.CLAUDE_HOOKS_QUIET;       // ensure logging is not globally muted
+  fs.symlinkSync(path.join(base, 'evil'), path.join(base, subdirName())); // force the unsafe fallback
+  const dir = gate.trackerDir(base);
+  if (prevLogDir === undefined) delete process.env.LOOM_LOG_DIR; else process.env.LOOM_LOG_DIR = prevLogDir;
+  if (prevQuiet !== undefined) process.env.CLAUDE_HOOKS_QUIET = prevQuiet;
+  assert(dir === base, 'W4-3b precondition: the symlink forces the fallback');
+  let logged = '';
+  try { logged = fs.readFileSync(path.join(logDir, 'fact-force-gate.log'), 'utf8'); } catch { /* no log file */ }
+  assert(/tracker_subdir_unsafe_fallback/.test(logged), 'W4-3b: forced fallback emits tracker_subdir_unsafe_fallback (observable, not silent)');
+  rmBase(base); rmBase(logDir);
+}
+
+// W4-4: a LOOSE-PERMS (group/other) dir pre-planted at the subdir path -> fallback.
+{
+  const base = mkBase();
+  const planted = path.join(base, subdirName());
+  fs.mkdirSync(planted);
+  if (POSIX) fs.chmodSync(planted, 0o777); // force loose perms (umask-proof)
+  const dir = gate.trackerDir(base);
+  if (POSIX) assert(dir === base, 'W4-4: group/other-perm dir at subdir path -> fallback (not owner-only)');
+  else assert(dir === planted, 'W4-4(win): no POSIX perms -> dir reused');
+  rmBase(base);
+}
+
+// W4-5: a pre-existing SAFE 0700 dir is reused (EEXIST verify passes), not fallback.
+{
+  const base = mkBase();
+  const dir1 = gate.trackerDir(base);   // creates it
+  const dir2 = gate.trackerDir(base);   // EEXIST -> verify -> reuse
+  assert(dir2 === dir1 && dir2 === path.join(base, subdirName()), 'W4-5: pre-existing safe 0700 dir is reused');
+  rmBase(base);
+}
+
+// W4-6 (ARCH-3 + CodeRabbit #345): a non-EEXIST mkdir error (base is a regular FILE)
+// -> returns base, NEVER throws, AND emits the fallback log with reason=mkdir_failed.
+{
+  const base = mkBase();
+  const fileBase = path.join(base, 'a-file');
+  fs.writeFileSync(fileBase, 'x'); // mkdir of <fileBase>/claude-loom-<uid> -> ENOTDIR (non-EEXIST)
+  const logDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ffg-w4-log6-'));
+  const prevLogDir = process.env.LOOM_LOG_DIR;
+  const prevQuiet = process.env.CLAUDE_HOOKS_QUIET;
+  process.env.LOOM_LOG_DIR = logDir;
+  delete process.env.CLAUDE_HOOKS_QUIET;
+  let threw = false; let dir;
+  try { dir = gate.trackerDir(fileBase); } catch { threw = true; }
+  if (prevLogDir === undefined) delete process.env.LOOM_LOG_DIR; else process.env.LOOM_LOG_DIR = prevLogDir;
+  if (prevQuiet !== undefined) process.env.CLAUDE_HOOKS_QUIET = prevQuiet;
+  assert(!threw, 'W4-6a: trackerDir never throws on a non-EEXIST mkdir error');
+  assert(dir === fileBase, 'W4-6b: non-EEXIST mkdir error -> returns the flat base (status quo)');
+  let logged = '';
+  try { logged = fs.readFileSync(path.join(logDir, 'fact-force-gate.log'), 'utf8'); } catch { /* no log */ }
+  assert(
+    /tracker_subdir_unsafe_fallback/.test(logged)
+      && /"reason":"mkdir_failed"/.test(logged)
+      && /"code":"[A-Z]{2,}"/.test(logged), // a real errno (e.g. ENOTDIR), not the 'UNKNOWN' floor
+    'W4-6c: non-EEXIST fallback logs the event + reason=mkdir_failed + the specific errno code (CodeRabbit #345)',
+  );
+  rmBase(base); rmBase(logDir);
+}
+
+// W4-7 (H4-2): dir removed after trackerDir -> saveTracker recreates it at 0700, not 0755.
+{
+  const base = mkBase();
+  const tp = gate.resolveTrackerPath({ session_id: 'w4-7' }, base); // establishes the 0700 dir
+  const dir = path.dirname(tp);
+  fs.rmSync(dir, { recursive: true, force: true });                 // remove-race window
+  gate.saveTracker(tp, { files: {}, sessionStart: 1 });             // must recreate at 0700 + write
+  const st = fs.lstatSync(dir);
+  assert(st.isDirectory(), 'W4-7a: saveTracker recreated the tracker dir after a remove-race');
+  if (POSIX) assert((st.mode & 0o777) === 0o700, 'W4-7b: recreated dir is 0700, NOT writeAtomic default 0755 (got ' + (st.mode & 0o777).toString(8) + ')');
+  assert(fs.existsSync(tp), 'W4-7c: the tracker file was written');
+  rmBase(base);
+}
+
+// U-W4: isSafeTrackerDirStat pure policy (mirrors safe-resolve.js isSafeExecStat, dir variant).
+{
+  const me = UID === null ? 0 : UID;
+  const realDir = { isSymbolicLink: () => false, isDirectory: () => true, uid: me, mode: 0o40700 };
+  const sym = { isSymbolicLink: () => true, isDirectory: () => false, uid: me, mode: 0o40700 };
+  const foreign = { isSymbolicLink: () => false, isDirectory: () => true, uid: me + 12345, mode: 0o40700 };
+  const loose = { isSymbolicLink: () => false, isDirectory: () => true, uid: me, mode: 0o40777 };
+  assert(gate.isSafeTrackerDirStat(realDir, UID) === true, 'U-W4a: owner-only real dir -> safe');
+  assert(gate.isSafeTrackerDirStat(sym, UID) === false, 'U-W4b: symlink -> unsafe');
+  assert(gate.isSafeTrackerDirStat(null, UID) === false, 'U-W4c: null stat -> unsafe');
+  if (POSIX) {
+    assert(gate.isSafeTrackerDirStat(foreign, UID) === false, 'U-W4d: foreign-owned -> unsafe');
+    assert(gate.isSafeTrackerDirStat(loose, UID) === false, 'U-W4e: group/other perms -> unsafe');
+  }
 }
 
 process.stdout.write('\n=== Summary ===\n');
