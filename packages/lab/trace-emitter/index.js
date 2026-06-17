@@ -26,14 +26,16 @@ function traceEmit(partial, opts = {}) {
   const record = {
     schema_version: SCHEMA_VERSION,
     run_id: partial.run_id,
-    ts: partial.ts || new Date().toISOString(),
+    // Default ONLY on undefined (not `||`) — an explicit falsy/invalid input ('', null) must
+    // reach validation + surface as a caller bug, not be silently masked (CodeRabbit Major).
+    ts: partial.ts === undefined ? new Date().toISOString() : partial.ts,
     component: partial.component,
     event: partial.event,
     dur_ms: partial.dur_ms === undefined ? null : partial.dur_ms,
     inputs_digest: partial.inputs_digest === undefined ? null : partial.inputs_digest,
     outputs_digest: partial.outputs_digest === undefined ? null : partial.outputs_digest,
-    state_delta: partial.state_delta || {},
-    attrs: partial.attrs || {},
+    state_delta: partial.state_delta === undefined ? {} : partial.state_delta,
+    attrs: partial.attrs === undefined ? {} : partial.attrs,
   };
   // store.appendTrace assigns seq + validates against the frozen schema + appends.
   return store.appendTrace(record, opts);

@@ -94,7 +94,9 @@ function appendTrace(record, opts = {}) {
   // VALIDATE M3: mkdir does NOT tighten a pre-existing loose dir — chmod to 0700 so the
   // containment holds even if the base/subdir pre-existed group/world-traversable.
   try { fs.chmodSync(dir, DIR_MODE); } catch { /* best-effort tighten */ }
-  const seq = Number.isInteger(record.seq) ? record.seq : nextSeq(file);
+  // The store ALWAYS owns seq — a caller-supplied seq could duplicate / break the monotonic
+  // per-run contract (CodeRabbit Major). The spread below overrides any incoming record.seq.
+  const seq = nextSeq(file);
   const full = { ...record, seq };
   const v = validateTraceRecord(full);
   if (!v.ok) {
