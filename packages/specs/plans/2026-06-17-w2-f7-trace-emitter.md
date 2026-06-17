@@ -55,7 +55,7 @@ retrieval → solve → grade → learning-graph write) emits into it. SHADOW; t
    the journal → zero kernel edit, K12-clean, decoupled (the kernel journals; the lab
    assembles the trace). The alternative (a kernel-tier observability bus the lab
    subscribes to) is over-engineering for one consumer (YAGNI). Correlation key (`agentId`)
-   + `runId` (in the journal path) both confirmed present.
+   plus `runId` (in the journal path) — both confirmed present.
 2. **Store shape: per-run JSONL timeline (RECOMMENDED) vs content-addressed per-record.**
    A trace is an ordered append stream → JSONL per `run_id` (replay = read-in-order; diff =
    two-file compare). Content-addressing (the recall-graph idiom) is for dedup'd nodes, not
@@ -195,7 +195,7 @@ actually exists.
    digest-fields-only until then.
 2. **[H2] strict seq monotonicity under concurrent emitters** (atomic counter / per-run lock)
    once W4's batch-runner concurrency model is decided; until then seq is single-writer-monotonic
-   + append-order is the canonical replay order.
+   and append-order is the canonical replay order.
 
 ## Runtime Probes — resolved (no open premises into build)
 
