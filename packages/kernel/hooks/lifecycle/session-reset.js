@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 
-// SessionStart hook: resets the fact-forcing gate tracker.
-// Each new session starts with a clean slate — you must Read before Edit/Write.
-// Also cleans up stale tracker files from previous sessions.
+// SessionStart hook: sweeps the fact-forcing gate's stale tracker files + emits
+// operator diagnostics. Each new session starts with a clean slate automatically —
+// the gate keys its tracker per-session, so a new session_id has no prior tracker
+// and loadTracker yields {files:{}}; you must Read before Edit/Write. (③.1-W1
+// removed the old dead reset-write that targeted a path the gate no longer reads.)
 //
 // Forcing-instruction class: 2 (operator notice) — emits [MARKETPLACE-STALE]
 // when mirror clone HEAD is older than CLAUDE_MARKETPLACE_STALE_DAYS (default
@@ -15,11 +17,6 @@ const path = require('path');
 const os = require('os');
 const { log } = require('../_lib/_log.js');
 const logger = log('session-reset');
-// H.9.8: migrated tracker write (Class C hook fail-soft; outer try at L35
-// preserved as fail-soft envelope per ADR-0001/0003) from inline atomic-write
-// pattern to shared helper. Cross-tree relative require mirrors HT.2.3 Part B
-// + session-self-improve-prompt.js precedents.
-const { writeAtomic } = require('../../_lib/atomic-write');
 // ③.0-W4: the fact-force-gate writes read-trackers into a per-uid 0700 subdir
 // (claude-loom-<uid>); reuse its trackerDir() so this SessionStart cleanup sweeps
 // the SAME location. Without it, W4 relocated the trackers out of the flat-readdir
@@ -27,8 +24,9 @@ const { writeAtomic } = require('../../_lib/atomic-write');
 // free (its stdin runtime is guarded by `require.main === module`).
 const { trackerDir } = require('../pre/fact-force-gate');
 
+// SESSION_ID is retained for the diagnostic logger only — ③.1-W1 removed the dead
+// reset-write; the fact-force-gate owns its per-session tracker lifecycle.
 const SESSION_ID = process.env.CLAUDE_SESSION_ID || process.env.CLAUDE_CONVERSATION_ID || String(process.ppid || 'default');
-const TRACKER_PATH = path.join(os.tmpdir(), `claude-read-tracker-${SESSION_ID}.json`);
 
 // H.5.4 (CS-3 hacker.kai H-4): probe whether the harness expands
 // ${CLAUDE_PLUGIN_ROOT} in hook commands. If we're running from a plugin
@@ -44,14 +42,9 @@ const looksLikePluginInstall = SCRIPT_DIR.includes('/plugins/') || SCRIPT_DIR.in
 const placeholderUnexpanded = PLUGIN_ROOT.includes('${') || PLUGIN_ROOT === '';
 
 try {
-  // H.9.8: migrated to writeAtomic (writers + readers must be consistent or
-  // readers see partial JSON; fact-force-gate.js also migrated as part of
-  // H.9.8 — both now use the shared atomic-write helper).
-  writeAtomic(TRACKER_PATH, {
-    files: {},
-    sessionStart: Date.now(),
-  });
-  logger('reset', {
+  // SessionStart only sweeps stale trackers + emits diagnostics (see file header;
+  // ③.1-W1 removed the old dead reset-write).
+  logger('session_start', {
     sessionId: SESSION_ID,
     pluginRoot: PLUGIN_ROOT || '(unset)',
     scriptDir: SCRIPT_DIR,

@@ -91,7 +91,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/kernel/hooks/pre/redirect-plan-mode-in-headless.js` - PreToolUse:EnterPlanMode hook — DETERMINISTIC redirect to TodoWrite when
 - `packages/kernel/hooks/pre/route-decide-on-agent-spawn.js` - PreToolUse:Agent|Task hook — enforces the route-decide gate from workflow.md.
 - `packages/kernel/hooks/lifecycle/session-end-nudge.js` - Stop hook: counts assistant responses (Stop events) per session.
-- `packages/kernel/hooks/lifecycle/session-reset.js` - SessionStart hook: resets the fact-forcing gate tracker.
+- `packages/kernel/hooks/lifecycle/session-reset.js` - SessionStart hook: sweeps the fact-forcing gate's stale tracker files + emits
 - `packages/kernel/hooks/lifecycle/session-self-improve-prompt.js` - UserPromptSubmit hook (H.4.1): on the first user prompt of each session,
 - `packages/kernel/hooks/_lib/settings-reader.js` - H.7.22 — DRY shared settings.json reader.
 - `packages/kernel/hooks/post/spawn-close-resolver.js` - PR-3b — the SHADOW spawn-close resolver.

@@ -510,6 +510,82 @@ new surface, the retriever is a `_spike` off the live K4 path. Five merged PRs, 
 
 ---
 
+## ✅ ③.0 — Foundation-hardening for the live external-PR beta (W1–W4, SHADOW) — phase-closed 2026-06-17
+
+The prerequisite hardening sub-phase for phase ③ (the live external-PR beta — the only
+trust unlock; everything prior NARROWS, OQ-NS-6). Four merged PRs against the charter's
+hardening exit-criteria (`packages/specs/plans/2026-06-16-test-phase-live-beta-charter.md`).
+**All SHADOW; trust moves ZERO; the plugin version is deliberately HELD at 3.11** (the
+MECHANICS-FREEZE-pre-live checkpoint — ③.0 is a sub-phase of ③, not a version bump):
+
+- **③.0-W1 #342** — kernel close-path latency (the beta breaches the 10s hook timeout
+  otherwise): soft-fail lock (replacing the `process.exit(2)` `withLock`), one-walk
+  `git status --porcelain -z` collapsing two tree-walks, iterative `deepFreeze`. W1(b)
+  in-memory index SCOPED-OUT-HONESTLY (probed YAGNI, 0.3% of budget; resurrection trigger
+  documented).
+- **③.0-W2 #343** — secret-scrub for the beta's OWN credential classes: a canonical
+  secret-patterns factory (`github_pat_`, `ghs_/ghr_`, routable-`glpat`, `AIza`),
+  DRY-ing the two drifting lists across `spawn-record.js` and `validate-no-bare-secrets.js`.
+- **③.0-W3 #344** — fact-force-gate per-session tracker key from the payload `session_id`
+  (sha256; NARROWS-not-fixes concurrency, fail-OPEN residual) + three instruction-layer
+  honesty fixes (validate-markdown-emphasis RETIRED→CI-MD037; ARCHITECTURE K1 Live→Dormant;
+  stability-commitment→v2.x-historical).
+- **③.0-W4 #345** — per-uid 0700 tracker subdir closing the FOREIGN-uid symlink-TOCTOU;
+  same-uid CONCEDED (container-tier). A follow-up to W3's VALIDATE finding H-LOW-1.
+
+The hardening exit-criteria below are SYNTHESIZED from the charter's W1–W4 (lines 44-59)
+and the `v3.0-foundation-close` volume's criterion-by-criterion — not a verbatim source table:
+
+| Exit criterion | Delivery (all 3 lenses) |
+|---|---|
+| close-path within the beta's hook-timeout budget | DELIVERED — soft-fail lock + one-walk + iterative deepFreeze. Concurrent-load measurement deferred INTO the ③.1 F7 trace-emitter (ARCH-PC-4). |
+| the beta's own credential classes are scrubbed | DELIVERED — canonical factory across both consumers; coarse defense-in-depth (base64/entropy decode deferred to the ③.2 PR-egress kernel, ARCH-PC-5). |
+| per-session + per-uid tracker isolation; instruction-layer honesty | DELIVERED — payload-session_id key (a probed improvement over the charter's env-first wording) + per-uid 0700 subdir; all four honesty fixes landed. |
+| no cross-PR drift; integrated suite green | DELIVERED — 2282 PASS / 0 FAIL on main; W2 factory + W4 require-coupling sound. |
+
+## Phase-close sign-off (③.0, 2026-06-17)
+
+`/phase-close` — three independent full-context lenses (PM=honesty-auditor + Principal-SDE=
+code-reviewer-at-phase-altitude + Architect) reviewed the INTEGRATED W1–W4 against the
+charter's hardening exit-criteria + the cross-PR seams. **Verdict: CLOSEABLE-WITH-NOTES
+(all three lenses agree; NO NEEDS-WORK). Release-surface gate (3a): CLEAN at v3.11** (all
+surfaces consistent; version held by design).
+
+- **PM (honesty)** — Grade A / NO-OVERCLAIM; criterion-by-criterion delivered, every
+  "narrows" labeled, every concession in caps in-code, no "fixed" dressed over a "narrowed."
+- **Principal-SDE (phase-altitude)** — all 4 waves compose cleanly; full integrated suite
+  passes; W2 factory contract clean across both consumers; the W4 session-reset→fact-force-gate
+  require coupling is side-effect-free + sound.
+- **Architect (design + forward-contract)** — the 4 waves cohere as ONE foundation; the
+  conceded residuals share one root cause (no kernel-owned process/FS boundary at the JS
+  layer); ③.0 is a sound base to START ③.1.
+
+**Findings + dispositions:**
+
+- **SEAM-W3W4-DEAD-RESET-WRITE** (MED) — `session-reset.js` wrote its initial reset to the
+  OLD flat env-keyed path the gate no longer reads (after W3 sha256 + W4 subdir). Carried to
+  ③.1-W1 and **RESOLVED there** (removed the dead+redundant write — per-session keying +
+  `loadTracker` clean-on-missing already give every session a clean slate).
+- **ARCH-PC-4** (LOW, ③.1 obligation) — W1 close-path latency measured at REST; the F7
+  trace-emitter MUST capture wall-time + lock-soft-fail drop-rate under the dry-run's real
+  concurrent load.
+- **ARCH-PC-5** (LOW, ③.2 obligation) — the PR-egress kernel must add base64/encoded-secret
+  decode + entropy normalization BEFORE the first real token mint.
+- **ARCH-PC-3** (NOTE) — the conceded residuals (same-uid TOCTOU + remove-then-symlink +
+  symlinked-ancestor-of-tmpdir + network R13) share ONE root cause → the Docker/ContainerAdapter
+  closes them as ONE acceptance cluster. (Realized post-close: the Docker backend merged #346.)
+- **PM-1** (LOW, v-next) — the charter's OPTIONAL LOWs bucket (config-guard stdin cap,
+  integrator `isSafeRunId`, `recordStoreDir` export, `LOOM_LAB_STATE_DIR` DENY_READ_TREES) is
+  carried to v-next opportunistic-hardening, not lost.
+
+**Why ③.1 is not gated:** the dry-run is clone→apply→test→discard producing a DRAFT artifact
+— it emits NOTHING externally and mints no token; on the single-user dev box the foreign-uid
+vector W4 closes is already OS-closed, and the MED dead-write was fail-open-correct (now
+removed). No finding blocks the start of ③.1. Durable record: the
+`toolkit/phase-close/v3.0-foundation-close` library volume.
+
+---
+
 ## ⬜ Deferred / field-survey debt (v3.5+)
 
 Explicitly out of v3.0-alpha scope, tracked for later:
