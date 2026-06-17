@@ -411,18 +411,20 @@ function makeGuardedRunGit(cwd) {
  * "the full delta was scanned" — documented so the empirical anchor is honest
  * about what K14 actually saw.
  *
+ * W1-B (2026-06-17): PURE builder — the git walk moved UP into resolveAndJournal's single
+ * `status --porcelain -z` (readWorktreeStatus), and the parsed tracked-name set is threaded
+ * in. The first (already SORTED, order-stable) tracked name is attributed as targetPath
+ * (in-tree by construction; canonicalization in buildK14Ctx is defense-in-depth).
+ *
  * @param {string} worktreeRoot  the spawn's own root (envelope.worktree_root).
- * @param {function} runGit      the guarded read-only runner.
+ * @param {string[]} trackedNames the sorted tracked-changed paths (parseStatusZ).
  * @returns {object}  a boundary-validated k14_ctx (possibly {}).
  */
-function buildK14CtxFromWorktree(worktreeRoot, runGit) {
-  const diff = runGit(['diff', '--name-only', 'HEAD']);
-  const names = (diff && typeof diff.stdout === 'string' ? diff.stdout : '')
-    .split('\n')
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0);
+function buildK14CtxFromNames(worktreeRoot, trackedNames) {
   const raw = { worktreeRoot, spawnCloseWallMs: Date.now() };
-  if (names.length > 0) raw.targetPath = path.join(worktreeRoot, names[0]);
+  if (Array.isArray(trackedNames) && trackedNames.length > 0) {
+    raw.targetPath = path.join(worktreeRoot, trackedNames[0]);
+  }
   return buildK14Ctx(raw, worktreeRoot);
 }
 
@@ -438,6 +440,65 @@ function buildK14CtxFromWorktree(worktreeRoot, runGit) {
  */
 function okStdout(r) {
   return r && r.ok && typeof r.stdout === 'string' ? r.stdout.trim() : null;
+}
+
+/**
+ * W1-B (2026-06-17) — parse `git status --porcelain -z` into the dirty bit AND the
+ * tracked-changed name set, so ONE working-tree walk feeds both the K14 scope-detection
+ * targetPath and the provenance dirty-gate (was TWO walks: `diff --name-only HEAD` +
+ * `status --porcelain`). `-z` is load-bearing: NUL framing means paths are NEVER quoted
+ * (a path with spaces/non-ASCII is byte-exact) and a rename is `XY DST\0SRC\0` (two
+ * separate tokens) so a literal ' -> ' inside a filename is just data — closing the
+ * line-mode parser-differential the VERIFY hacker proved (quoting + ' -> ' mis-split).
+ * Empirically validated against real git (plan Runtime Probes / VERIFY folds).
+ *
+ *   - dirty  = any entry present (incl. ?? untracked / !! ignored) — untracked-aware,
+ *              matching the prior `status --porcelain` producer semantics exactly.
+ *   - trackedNames = entries EXCLUDING ?? / !! (the `diff --name-only HEAD` tracked set),
+ *              destination path for a rename/copy, SORTED so targetPath = [0] is
+ *              order-stable (the two git commands share no ordering contract — H3).
+ *
+ * @param {string} stdout the raw (un-trimmed) NUL-framed status output.
+ * @returns {{dirty: boolean, trackedNames: string[]}}
+ */
+function parseStatusZ(stdout) {
+  const tokens = String(stdout).split('\0');
+  let dirty = false;
+  const tracked = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const entry = tokens[i];
+    if (entry.length === 0) continue;            // trailing empty token after the final \0
+    dirty = true;                                // any entry means the tree changed
+    const xy = entry.slice(0, 2);                // 2 status chars
+    const pathStr = entry.slice(3);              // skip "XY " (2 chars + 1 separator space)
+    if (entry[0] === 'R' || entry[0] === 'C') {  // index-side rename/copy: DST is pathStr,
+      i++;                                        //   the NEXT token is the SOURCE — consume + skip it
+    }
+    if (xy === '??' || xy === '!!') continue;    // untracked/ignored excluded from the K14 tracked set
+    if (pathStr.length === 0) continue;          // defensive: a malformed <3-char token has no path -> not a K14 name
+    tracked.push(pathStr);
+  }
+  tracked.sort();                                // order-stable targetPath = trackedNames[0]
+  return { dirty, trackedNames: tracked };
+}
+
+/**
+ * W1-B — the SINGLE close-path working-tree read. Runs `git status --porcelain -z` once
+ * and parses it. Fail-CLOSED (honesty H1): a non-ok / timed-out / refused read returns
+ * `{ ok:false, dirty:true, trackedNames:[] }` — an UNKNOWN tree is treated as DIRTY (never
+ * coerced to clean), and K14 goes target-less (the same fail-open-for-detection the prior
+ * `diff HEAD` path had, which read `.stdout` without an `.ok` check). This preserves the
+ * prior fail-directions: dirty fails-CLOSED, K14 detection fails-OPEN.
+ *
+ * @param {function} runGit the guarded read-only runner.
+ * @returns {{ok: boolean, dirty: boolean, trackedNames: string[]}}
+ */
+function readWorktreeStatus(runGit) {
+  const res = runGit(['status', '--porcelain', '-z']);
+  if (!res || !res.ok || typeof res.stdout !== 'string') {
+    return { ok: false, dirty: true, trackedNames: [] };
+  }
+  return { ok: true, ...parseStatusZ(res.stdout) };
 }
 
 /**
@@ -461,9 +522,16 @@ function okStdout(r) {
  * recording the worktree HEAD would store a value contradicting the field's
  * declared meaning — null mirrors the post_state_hash discipline; P3 computes it.
  *
+ * W1-B (2026-06-17): `dirty` is now computed ONCE upstream (resolveAndJournal's single
+ * `status --porcelain -z` via readWorktreeStatus) and threaded in — this producer no
+ * longer runs its own status walk (the two-walk collapse). `producer_git_ms` therefore
+ * times the rev-parse ONLY; the shared status walk is `status_git_ms` on the verdict entry.
+ *
  * @param {Object} args
  * @param {Object} args.envelope   the shadow decision envelope (carries commit_outcome).
  * @param {function} args.runGit    the SAME guarded read-only runner resolveAndJournal built.
+ * @param {boolean} args.dirty      the worktree-dirty bit from the single shared status walk
+ *   (fail-CLOSED: an unknown/failed read is treated as dirty=true upstream).
  * @param {string} args.stateDir   the spawn-state base (LOOM_SPAWN_STATE_DIR).
  * @param {string} args.runId      the per-run subdir id (store key).
  * @param {string} args.agentId    the harness agentId (writer_spawn_id + journal key).
@@ -471,7 +539,7 @@ function okStdout(r) {
  * @param {string} args.journalFile the per-spawn journal path (shared with the verdict).
  * @returns {void}
  */
-function recordSpawnProvenance({ envelope, runGit, stateDir, runId, agentId, personaId, journalFile }) {
+function recordSpawnProvenance({ envelope, runGit, dirty, stateDir, runId, agentId, personaId, journalFile }) {
   try {
     // Completed-only gate (AD-3 — resolves OQ-P2b-2): a non-completed close plants
     // no record (else the store would hold a COMMITTED record contradicting the
@@ -490,15 +558,16 @@ function recordSpawnProvenance({ envelope, runGit, stateDir, runId, agentId, per
       return;
     }
 
-    // PR-P2b.1 — measure the producer's git wall-time (status + rev-parse) for the
-    // producer_git_ms telemetry. The K14 diff is timed separately (k14_git_ms on the
-    // verdict entry); together they cover the completed-close git latency.
+    // PR-P2b.1 / W1-B — measure ONLY the rev-parse here (the status walk moved upstream
+    // into the single shared `status --porcelain -z`, timed as status_git_ms). `dirty`
+    // is the threaded-in shared bit (fail-CLOSED upstream — an unknown read => dirty).
     const gitStart = Date.now();
-    // Dirty-gate via status --porcelain (untracked-aware — Probe #7). okStdout
-    // fails CLOSED: a failed read -> null -> (null !== '') -> DIRTY (AD-4).
-    const dirty = okStdout(runGit(['status', '--porcelain'])) !== '';
     let postStateHash = null;
-    if (!dirty) {
+    // Fail-CLOSED default (W1-B): ONLY an EXPLICITLY-verified-clean tree (dirty === false)
+    // proceeds to rev-parse. A missing/unknown/true dirty bit (e.g. a caller that forgot to
+    // thread it, or the upstream readWorktreeStatus fail-closing a failed read to dirty=true)
+    // never hashes an unverified tree — "I couldn't verify clean" must never become a hash.
+    if (dirty === false) {
       // The committed post-state tree. GIT_SHA_RE gates a failed rev-parse (e.g.
       // an empty repo with no HEAD) + any non-hex output -> null, never a throw
       // (computePostStateHash itself throws on non-hex; the gate keeps the producer
@@ -533,7 +602,7 @@ function recordSpawnProvenance({ envelope, runGit, stateDir, runId, agentId, per
       record_appended: appended.ok,
       record_reason: appended.ok ? null : appended.reason,
       uncommitted: dirty,
-      producer_git_ms: producerGitMs, // PR-P2b.1 — the producer's status+rev-parse wall-time
+      producer_git_ms: producerGitMs, // W1-B — rev-parse-only wall-time (the status walk is status_git_ms on the verdict entry)
       observed_status: envelope.observed_status,
       mode: 'shadow',
       note: 'SHADOW provenance: read-only post_state_hash (committed HEAD tree, null if dirty); head_anchor deferred to P3; record-store live-fed.',
@@ -578,11 +647,16 @@ function resolveAndJournal({ envelope, stateDir, runId, agentId, personaId }) {
   try {
     const worktreeRoot = envelope && envelope.worktree_root;
     const runGit = makeGuardedRunGit(worktreeRoot);
-    // PR-P2b.1 — time the K14 diff (the first, equally-slow tree-walk on the close
-    // path) for the k14_git_ms verdict telemetry. ~0 when there's no worktreeRoot.
-    const k14Start = Date.now();
-    const k14Ctx = worktreeRoot ? buildK14CtxFromWorktree(worktreeRoot, runGit) : {};
-    const k14GitMs = Date.now() - k14Start;
+    // W1-B — the SINGLE close-path working-tree walk. One `status --porcelain -z`
+    // (readWorktreeStatus) feeds BOTH the K14 targetPath (parsed tracked-name set) and
+    // the provenance dirty-gate (threaded into recordSpawnProvenance) — was two walks
+    // (diff --name-only HEAD + status --porcelain). Timed as status_git_ms. A
+    // refused/no-worktreeRoot runner fails-CLOSED to dirty=true + empty names (preserving
+    // both prior fail-directions: dirty fails-closed, K14 detection fails-open).
+    const statusStart = Date.now();
+    const status = readWorktreeStatus(runGit);
+    const statusGitMs = Date.now() - statusStart;
+    const k14Ctx = worktreeRoot ? buildK14CtxFromNames(worktreeRoot, status.trackedNames) : {};
     const decisionEnvelope = envelope
       ? { ...envelope, k14_ctx: k14Ctx }
       : envelope; // null/undefined preserved so resolve() throws (fault test path)
@@ -627,7 +701,7 @@ function resolveAndJournal({ envelope, stateDir, runId, agentId, personaId }) {
       outcome: verdict.outcome,
       observed_status: envelope ? envelope.observed_status : null,
       marker_released: verdict.markerReleased,
-      k14_git_ms: k14GitMs, // PR-P2b.1 — the K14 diff wall-time (the first close-path tree-walk)
+      status_git_ms: statusGitMs, // W1-B — the ONE shared close-path working-tree walk (replaces k14_git_ms; the K14 diff + dirty status were collapsed into this single `status --porcelain -z`)
       k13_skipped: true,
       would_be: true,
       dry_run: true,
@@ -644,7 +718,7 @@ function resolveAndJournal({ envelope, stateDir, runId, agentId, personaId }) {
     // is journaled (shadow-provenance-error) and NEVER reaches this outer catch or
     // changes the {ok:true} verdict return below. Additive — the shadow-resolver-
     // verdict journaling above is unchanged.
-    recordSpawnProvenance({ envelope, runGit, stateDir, runId, agentId, personaId, journalFile });
+    recordSpawnProvenance({ envelope, runGit, dirty: status.dirty, stateDir, runId, agentId, personaId, journalFile });
 
     return { ok: true, action: verdict.action, outcome: verdict.outcome };
   } catch (err) {
@@ -791,4 +865,10 @@ module.exports = {
   // fail-SAFE validation (default / valid override / 0-negative-1e100 rejection)
   // directly, independently of a real-git timeout.
   gitTimeoutMs,
+  // W1-B — the `status --porcelain -z` parser + the single fail-closed status reader.
+  // Exported so the spec can pin the quoting/rename/ordering/untracked + fail-direction
+  // behavior of the two-walk collapse DIRECTLY (the load-bearing parser-differential the
+  // VERIFY hacker proved against line-mode), independently of a real-git end-to-end run.
+  parseStatusZ,
+  readWorktreeStatus,
 };

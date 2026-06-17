@@ -19,12 +19,19 @@
  * - Primitives / null / functions pass through unchanged.
  * - Plain objects and arrays are frozen, then every own-enumerable property
  *   value is frozen recursively.
- * - Cycle-safe: an already-frozen node is skipped (the node is frozen BEFORE
- *   recursing into its children, so a child referencing an ancestor terminates).
- *   NOTE: a consequence is that if `value` is ALREADY frozen on entry, it is
- *   returned as-is and its children are NOT examined (they may be unfrozen).
- *   Irrelevant for the record-store use (JSON.parse output is always unfrozen);
- *   matters only if a caller passes a pre-frozen parent with unfrozen children.
+ * - Cycle-safe via a WeakSet of visited nodes (W1-C, 2026-06-17): termination is
+ *   keyed on "already visited THIS call", NOT on Object.isFrozen. This closes the
+ *   #266 recurrence class the prior guard left latent: the old `Object.isFrozen ->
+ *   return` short-circuited on an ALREADY-frozen parent and never examined its
+ *   (possibly unfrozen) children. Now an already-frozen node still has its children
+ *   frozen, while a true cycle still terminates (a node is marked BEFORE its children
+ *   are queued). Object.freeze on an already-frozen node is a harmless no-op.
+ * - Depth-SAFE (W1-B VALIDATE H-W1-1): an EXPLICIT-STACK iterative walk, NOT
+ *   recursion — an arbitrarily deep graph (JSON.parse can build one from a hostile
+ *   record file) is frozen without a `RangeError: Maximum call stack size exceeded`.
+ *   The primitive self-defends on depth rather than relying on every caller to run a
+ *   depth-bounded verify-on-read first (the pattern the current 6 consumers happen to
+ *   follow, but a future caller might not).
  * - No clone: the SAME references are frozen. A caller needing a fresh mutable
  *   copy must clone before calling.
  *
@@ -33,10 +40,24 @@
  */
 function deepFreeze(value) {
   if (value === null || typeof value !== 'object') return value;
-  if (Object.isFrozen(value)) return value; // cycle / already-frozen guard
-  Object.freeze(value);                       // freeze BEFORE recursing (cycle termination)
-  for (const key of Object.keys(value)) {
-    deepFreeze(value[key]);                    // arrays: Object.keys yields indices
+  // The WeakSet is BOTH the cycle guard (a node referencing an ancestor is skipped)
+  // and the #266 fix (an already-frozen node is still visited so its unfrozen children
+  // get frozen). Fresh per call so an independent graph in a later call is never
+  // falsely skipped; the heap-backed `stack` replaces the call stack so depth is bounded
+  // by memory, not by the ~10K JS recursion limit.
+  const seen = new WeakSet();
+  const stack = [value];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (node === null || typeof node !== 'object' || seen.has(node)) continue;
+    seen.add(node);                            // mark BEFORE queuing children (cycle termination)
+    Object.freeze(node);                       // no-op if already frozen
+    for (const key of Object.keys(node)) {     // arrays: Object.keys yields indices
+      const child = node[key];
+      if (child !== null && typeof child === 'object' && !seen.has(child)) {
+        stack.push(child);
+      }
+    }
   }
   return value;
 }

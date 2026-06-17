@@ -297,6 +297,10 @@ function upsertVolumeByPath(absPath) {
   if (!loc) return false;
   const entry = buildEntryFromFile(loc.dir, loc.name, loc.sectionId, loc.stackId);
   if (!entry) return false;
+  // W1-A: upsertEntry now returns {ok,reason} and soft-fails under lock contention
+  // instead of process.exit(2). We INTENTIONALLY ignore it here: the catalog index is
+  // best-effort + re-derivable by `library reconcile`, and a drop is logged to stderr by
+  // softCatalogWrite. Aggregate drop-rate observability is owned by the ③.1 trace-emitter.
   catalog.upsertEntry(loc.sectionId, loc.stackId, entry);
   return true;
 }

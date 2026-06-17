@@ -196,4 +196,22 @@ function withLock(lockPath, fn, opts) {
   try { return fn(); } finally { releaseLock(lockPath); }
 }
 
-module.exports = { acquireLock, releaseLock, withLock };
+// W1-A (2026-06-17): the SOFT-FAIL sibling of withLock. Identical acquire/run/release,
+// EXCEPT a failed acquisition returns { ok:false, reason:'lock-timeout' } instead of
+// process.exit(2). Use this in any HOOK context (synchronous PostToolUse/close/Edit
+// hooks) where a lock-timeout exit would kill the hook process — the established
+// soft-fail posture of error-critic.js / pre-compact-save.js, packaged as a wrapper.
+// The "soft" applies ONLY to acquisition: on a successful acquire, fn() runs in
+// try/finally(release) and an fn() THROW still releases the lock and PROPAGATES
+// (matching withLock's fn-error posture — soft-fail is not error-swallowing).
+//   success:      { ok: true, value: fn() }   (lock released)
+//   acquire-fail: { ok: false, reason: 'lock-timeout' }   (no exit, no throw)
+//   fn() throws:  lock released, throw propagates
+function withLockSoft(lockPath, fn, opts) {
+  if (!acquireLock(lockPath, opts)) {
+    return { ok: false, reason: 'lock-timeout' };
+  }
+  try { return { ok: true, value: fn() }; } finally { releaseLock(lockPath); }
+}
+
+module.exports = { acquireLock, releaseLock, withLock, withLockSoft };

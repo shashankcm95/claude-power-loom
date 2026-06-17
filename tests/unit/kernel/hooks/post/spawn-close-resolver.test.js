@@ -1234,35 +1234,41 @@ test('[real git] P2b #10: end-to-end live-feed -> spawnSync the hook on a comple
   }
 });
 
-// #11 — okStdout fail-closed contract: a non-ok git result -> okStdout returns
-// null -> the dirty-gate reads dirty (null !== '') -> post_state_hash null.
-// Drive recordSpawnProvenance directly with an INJECTED runGit that fails status.
-test('[real git] P2b #11: okStdout fails CLOSED -> a non-ok status read -> dirty-gate reads dirty -> post_state_hash null (never a hash on an unverified tree)', () => {
-  if (!gitAvailable()) { process.stdout.write('    (skipped: git unavailable)\n'); return; }
+// #11 (W1-B) — recordSpawnProvenance's fail-closed DEFAULT. W1-B moved the single status
+// walk UPSTREAM (resolveAndJournal -> readWorktreeStatus), so the producer no longer reads
+// status itself; it trusts the threaded `dirty` bit and gates rev-parse on `dirty === false`.
+// This test pins the STRICT default: a missing/unknown dirty (undefined) must NOT hash —
+// even with a runGit present, the producer makes no status call of its own, so rev-parse is
+// never reached. (The failed-status-read -> dirty fail-closed path now lives in
+// readWorktreeStatus — see "W1-B readWorktreeStatus: a FAILED status read fails CLOSED".)
+test('P2b #11 (W1-B): recordSpawnProvenance with NO dirty arg defaults fail-closed -> no rev-parse, post_state_hash null', () => {
   assert.strictEqual(typeof hook.recordSpawnProvenance, 'function', 'hook must export recordSpawnProvenance');
   const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'p2b-failclosed-'));
   const stateDir = path.join(baseDir, 'spawn-state');
   try {
     const journalFile = path.join(stateDir, 'r-fc', 'resolver-journal-fc01.jsonl');
-    // An injected runner that REPORTS A FAILED status read (ok:false). A correct
-    // fail-closed okStdout returns null -> dirty -> NEVER calls rev-parse / records null.
+    // A spy runGit: if the producer were to call rev-parse, this records it. The point
+    // of the test is that with NO dirty arg, the producer NEVER reaches rev-parse (the
+    // strict `dirty === false` default treats undefined as not-clean -> no hash). The
+    // runner deliberately returns a (would-be valid) rev-parse so the only thing keeping
+    // post_state_hash null is the gate, not a failed rev-parse.
     let revParseCalled = false;
-    const failingRunGit = (args) => {
+    const spyRunGit = (args) => {
       const sub = (args || []).find((a) => typeof a === 'string' && !a.startsWith('-'));
       if (sub === 'rev-parse') { revParseCalled = true; return { ok: true, code: 0, stdout: 'a'.repeat(40), stderr: '' }; }
-      // status (and anything else) FAILS — the unverified-cleanliness case.
-      return { ok: false, code: 1, stdout: '', stderr: 'simulated git failure' };
+      return { ok: false, code: 1, stdout: '', stderr: 'should-not-be-reached' };
     };
     const envelope = { spawn_id: 'fc01', commit_outcome: 'COMMITTED', worktree_root: '/tmp/whatever', is_genesis_position: true, observed_status: 'completed', mode: 'shadow', shadow: true };
 
-    hook.recordSpawnProvenance({ envelope, runGit: failingRunGit, stateDir, runId: 'r-fc', agentId: 'fc01', personaId: 'general-purpose', journalFile });
+    // NOTE: no `dirty` passed -> undefined -> `dirty === false` is false -> fail-closed.
+    hook.recordSpawnProvenance({ envelope, runGit: spyRunGit, stateDir, runId: 'r-fc', agentId: 'fc01', personaId: 'general-purpose', journalFile });
 
     assert.strictEqual(revParseCalled, false,
-      'a fail-closed dirty-gate must NOT proceed to rev-parse when status could not be verified');
+      'a missing/unknown dirty bit must NOT proceed to rev-parse (strict dirty === false default; fail-closed)');
     const records = listByRun({ runId: 'r-fc', stateDir });
     assert.strictEqual(records.length, 1, 'a record is still appended (completed gate passed)');
     assert.strictEqual(records[0].post_state_hash, null,
-      'an unverifiable status -> okStdout null -> dirty -> post_state_hash null (fail CLOSED, never coerced to clean)');
+      'undefined dirty -> no rev-parse -> post_state_hash null (never a hash on an unverified tree)');
   } finally {
     fs.rmSync(baseDir, { recursive: true, force: true });
   }
@@ -1376,7 +1382,7 @@ test('P2b.1 #5: a clean completed spawn journals a numeric producer_git_ms on th
     assert.strictEqual(out.status, 0, `clean spawn must exit 0 (stderr=${out.stderr})`);
     const provEntry = readJournalRecords(findJournalFiles(stateDir, 'prodms01')[0]).find((r) => r.kind === 'shadow-provenance-record');
     assert.ok(provEntry, 'a shadow-provenance-record entry must exist');
-    assert.strictEqual(typeof provEntry.producer_git_ms, 'number', 'producer_git_ms must be a number (the producer status+rev-parse wall-time)');
+    assert.strictEqual(typeof provEntry.producer_git_ms, 'number', 'producer_git_ms must be a number (W1-B: the rev-parse-only wall-time)');
     assert.ok(Number.isFinite(provEntry.producer_git_ms) && provEntry.producer_git_ms >= 0, 'producer_git_ms must be finite and >= 0');
     g(['worktree', 'remove', '--force', wtPath]);
   } finally {
@@ -1384,20 +1390,129 @@ test('P2b.1 #5: a clean completed spawn journals a numeric producer_git_ms on th
   }
 });
 
-test('P2b.1 #6: a shadow close journals a numeric k14_git_ms on the shadow-resolver-verdict entry (the K14 diff latency, the first/equal spike)', () => {
+test('P2b.1 #6 (W1-B): a shadow close journals a numeric status_git_ms on the shadow-resolver-verdict entry (the ONE collapsed close-path tree-walk; k14_git_ms retired)', () => {
   if (!gitAvailable()) { process.stdout.write('    (skipped: git unavailable)\n'); return; }
-  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'p2b1-k14ms-'));
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'p2b1-statusms-'));
   const repo = path.join(baseDir, 'parent');
   const stateDir = path.join(baseDir, 'spawn-state');
   try {
     const { g } = initRepo(repo);
-    const { wtPath } = addWorktreeWithCommit(repo, g, 'k14ms01');
-    const out = runHook(makeInput({ sessionId: 'sess-p2b1-k14ms', toolResponse: syntheticWorktreeResponse({ worktreePath: wtPath, agentId: 'k14ms01' }) }), stateDir);
+    const { wtPath } = addWorktreeWithCommit(repo, g, 'statusms01');
+    const out = runHook(makeInput({ sessionId: 'sess-p2b1-statusms', toolResponse: syntheticWorktreeResponse({ worktreePath: wtPath, agentId: 'statusms01' }) }), stateDir);
     assert.strictEqual(out.status, 0, `shadow close must exit 0 (stderr=${out.stderr})`);
-    const verdictEntry = readJournalRecords(findJournalFiles(stateDir, 'k14ms01')[0]).find((r) => r.kind === 'shadow-resolver-verdict');
+    const verdictEntry = readJournalRecords(findJournalFiles(stateDir, 'statusms01')[0]).find((r) => r.kind === 'shadow-resolver-verdict');
     assert.ok(verdictEntry, 'a shadow-resolver-verdict entry must exist');
-    assert.strictEqual(typeof verdictEntry.k14_git_ms, 'number', 'k14_git_ms must be a number (the K14 diff wall-time)');
-    assert.ok(Number.isFinite(verdictEntry.k14_git_ms) && verdictEntry.k14_git_ms >= 0, 'k14_git_ms must be finite and >= 0');
+    assert.strictEqual(typeof verdictEntry.status_git_ms, 'number', 'status_git_ms must be a number (the one shared status --porcelain -z walk)');
+    assert.ok(Number.isFinite(verdictEntry.status_git_ms) && verdictEntry.status_git_ms >= 0, 'status_git_ms must be finite and >= 0');
+    assert.strictEqual(verdictEntry.k14_git_ms, undefined, 'k14_git_ms is RETIRED (collapsed into status_git_ms) — no misleading zero');
+    g(['worktree', 'remove', '--force', wtPath]);
+  } finally {
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  }
+});
+
+// ── W1-B: the two-walk collapse (status --porcelain -z) — the parser-differential
+// cases the VERIFY hacker proved against line-mode + the honesty fail-direction. The
+// pre-existing suite uses ASCII single-file fixtures, so NONE of these were covered;
+// these make the "behavior-preserving" claim falsifiable rather than asserted. ─────
+
+test('W1-B parseStatusZ: a path with SPACES is byte-exact (no quoting — the H1 line-mode bug)', () => {
+  // -z framing: " M has space.txt\0". slice(3) = the raw, UNQUOTED path.
+  const { dirty, trackedNames } = hook.parseStatusZ(' M has space.txt\0');
+  assert.strictEqual(dirty, true);
+  assert.deepStrictEqual(trackedNames, ['has space.txt'], 'spaced path must be byte-exact, NOT "\\"has space.txt\\""');
+});
+
+test('W1-B parseStatusZ: a literal " -> " in a NON-renamed filename is just data (the H2 mis-split)', () => {
+  const { trackedNames } = hook.parseStatusZ(' M weird -> arrow.txt\0');
+  assert.deepStrictEqual(trackedNames, ['weird -> arrow.txt'], 'a modified file with a literal arrow must NOT be truncated');
+});
+
+test('W1-B parseStatusZ: a rename takes the DESTINATION + consumes the SOURCE token (matches diff)', () => {
+  // "R  renamed dst.txt\0a.txt\0" — dst is the entry path; "a.txt" is the next (source) token.
+  const { dirty, trackedNames } = hook.parseStatusZ('R  renamed dst.txt\0a.txt\0');
+  assert.strictEqual(dirty, true);
+  assert.deepStrictEqual(trackedNames, ['renamed dst.txt'], 'rename -> destination only; source token consumed/skipped');
+});
+
+test('W1-B parseStatusZ: untracked/ignored set dirty but are EXCLUDED from the K14 tracked set', () => {
+  const out = hook.parseStatusZ('?? untracked.txt\0!! ignored.txt\0 M tracked.txt\0');
+  assert.strictEqual(out.dirty, true, '?? / !! still make the tree dirty');
+  assert.deepStrictEqual(out.trackedNames, ['tracked.txt'], 'only the tracked entry is a K14 name (matches diff --name-only HEAD)');
+});
+
+test('W1-B parseStatusZ: trackedNames are SORTED so targetPath = [0] is order-stable (the H3 ordering)', () => {
+  const { trackedNames } = hook.parseStatusZ(' M zeta.txt\0 M alpha.txt\0 M mid.txt\0');
+  assert.deepStrictEqual(trackedNames, ['alpha.txt', 'mid.txt', 'zeta.txt'], 'sorted regardless of git emit order');
+});
+
+test('W1-B parseStatusZ: a clean tree (empty output) -> not dirty, no names', () => {
+  assert.deepStrictEqual(hook.parseStatusZ(''), { dirty: false, trackedNames: [] });
+});
+
+test('W1-B parseStatusZ: a malformed <3-char token sets dirty but yields no (empty) tracked name', () => {
+  // Defensive: git never emits a <3-char porcelain entry for a real change, but a
+  // truncated/garbage token must not push an empty path (-> targetPath = worktreeRoot).
+  const out = hook.parseStatusZ(' M\0 M real.txt\0');
+  assert.strictEqual(out.dirty, true, 'a non-empty token still marks dirty');
+  assert.deepStrictEqual(out.trackedNames, ['real.txt'], 'the empty-path token is skipped; only the real name survives');
+});
+
+test('W1-B readWorktreeStatus: a FAILED status read fails CLOSED -> dirty:true, no names (honesty H1)', () => {
+  const failingRunGit = () => ({ ok: false, code: 1, stdout: '', stderr: 'simulated failure' });
+  const out = hook.readWorktreeStatus(failingRunGit);
+  assert.strictEqual(out.ok, false);
+  assert.strictEqual(out.dirty, true, 'unverifiable tree => DIRTY (never coerced clean)');
+  assert.deepStrictEqual(out.trackedNames, [], 'K14 goes target-less on a failed read (fail-open for detection)');
+});
+
+test('W1-B [real git] the collapse uses ONE status --porcelain -z walk and NO diff --name-only (the latency win)', () => {
+  if (!gitAvailable()) { process.stdout.write('    (skipped: git unavailable)\n'); return; }
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'w1b-onewalk-'));
+  const repo = path.join(baseDir, 'parent');
+  try {
+    const { g } = initRepo(repo);
+    const { wtPath } = addWorktreeWithCommit(repo, g, 'onewalk01');
+    // Spy on the guarded runner to assert the command SHAPE of the single shared walk.
+    const real = hook.makeGuardedRunGit(wtPath);
+    const calls = [];
+    const spy = (args) => { calls.push((args || []).join(' ')); return real(args); };
+    const out = hook.readWorktreeStatus(spy);
+    assert.ok(calls.some((c) => c.includes('status --porcelain -z')), 'must run status --porcelain -z');
+    assert.ok(!calls.some((c) => c.includes('diff --name-only')), 'must NOT run diff --name-only (collapsed away)');
+    assert.strictEqual(out.dirty, false, 'a committed clean worktree is not dirty');
+    assert.deepStrictEqual(out.trackedNames, [], 'clean worktree -> no tracked names');
+    g(['worktree', 'remove', '--force', wtPath]);
+  } finally {
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  }
+});
+
+test('W1-B [real git] multi-file (rename + 2 modifies + untracked + spaced) -> parsed tracked set == diff --name-only HEAD', () => {
+  if (!gitAvailable()) { process.stdout.write('    (skipped: git unavailable)\n'); return; }
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'w1b-multi-'));
+  const repo = path.join(baseDir, 'parent');
+  try {
+    const { g } = initRepo(repo);
+    const { wtPath } = addWorktreeWithCommit(repo, g, 'multi01');
+    const wg = (args) => execFileSync('git', args, { cwd: wtPath, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' });
+    // Seed a baseline of tracked files, commit, then make a varied set of changes.
+    fs.writeFileSync(path.join(wtPath, 'a.txt'), 'A\n');
+    fs.writeFileSync(path.join(wtPath, 'zeta name.txt'), 'Z\n'); // spaced
+    fs.writeFileSync(path.join(wtPath, 'mid.txt'), 'M\n');
+    wg(['add', '-A']); wg(['commit', '-m', 'seed']);
+    wg(['mv', 'a.txt', 'renamed dst.txt']);            // staged rename (spaced dest)
+    fs.appendFileSync(path.join(wtPath, 'mid.txt'), 'x\n'); // modify
+    fs.appendFileSync(path.join(wtPath, 'zeta name.txt'), 'x\n'); // modify (spaced)
+    fs.writeFileSync(path.join(wtPath, 'untracked.txt'), 'U\n'); // untracked (excluded)
+
+    const real = hook.makeGuardedRunGit(wtPath);
+    const parsed = hook.readWorktreeStatus(real).trackedNames;
+    // Ground truth: diff --name-only HEAD (the OLD K14 source), sorted.
+    const diffNames = wg(['diff', '--name-only', 'HEAD']).split('\n').map((l) => l.trim()).filter(Boolean).sort();
+    assert.deepStrictEqual(parsed, diffNames, 'the -z parsed tracked set must equal diff --name-only HEAD (sorted)');
+    assert.ok(!parsed.includes('untracked.txt'), 'untracked excluded');
+    assert.ok(parsed.includes('renamed dst.txt'), 'rename destination present');
     g(['worktree', 'remove', '--force', wtPath]);
   } finally {
     fs.rmSync(baseDir, { recursive: true, force: true });
