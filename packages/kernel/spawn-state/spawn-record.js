@@ -72,6 +72,10 @@ const { log } = require('../hooks/_lib/_log.js');
 // best-effort cleanup-on-error per H.9.8) — closes torn-read race + simplifies
 // audit trail.
 const { writeAtomicString } = require('../_lib/atomic-write.js');
+// ③.0-W2: the shared canonical secret classes (high-precision, prefix-anchored; no FP).
+// Factory call (NOT a shared const) so the scrubber owns FRESH RegExp instances — no
+// /g lastIndex bleed with the validator's copy. The scrubber adds its own COARSE extras below.
+const { getCanonicalSecretClasses } = require('../_lib/secret-patterns.js');
 // v3.4 Wave 3 (A6): the kernel reads the lab-materialized reputation snapshot AS A FILE (K12-clean —
 // no lab import; the §3.6 Lab→Kernel mediation). The reader is bounded + fail-open + self-verifying;
 // it NEVER throws and NEVER reads the ledger (O(1)) — fits the <50ms p99 close-hook budget.
@@ -107,17 +111,29 @@ const MAX_INLINE_SNAPSHOT_BYTES = 64 * 1024;
 // F22 (post-compact PR-1 R1) — extended pattern enumeration per ADR-0011 §F22.
 // The plan + ADR explicitly enumerate the additions; impl MUST match the
 // ADR's enumeration (no more, no less) — rationale-before-code discipline.
+// ③.0-W2: SCRUBBER-ONLY coarse extras — patterns the shared CANONICAL set does NOT carry
+// because they are too FP-prone for the BLOCKING validator but harmless for coarse redaction
+// (over-match in a redaction net is safe; over-match in an edit gate blocks a legit edit).
+const SCRUBBER_ONLY_PATTERNS = [
+  /aws_secret_access_key\s*[:=]\s*['"]?[A-Za-z0-9/+=]{40}['"]?/gi,  // AWS secret value assignment
+  /sk-[a-zA-Z0-9\-_]{20,}/g,                                        // coarse OpenAI/Anthropic sk- prefix (canonical sk-ant- is precise; this over-matches, fine for scrub)
+  /sk_test_[A-Za-z0-9]{20,}/g,                                      // Stripe TEST secret (canonical carries sk_live_)
+  /rk_test_[A-Za-z0-9]{20,}/g,                                      // Stripe TEST restricted (canonical carries rk_live_)
+  /(https?|ftp):\/\/[^:/\s@]+:[^@\s/]+@/g,                          // password embedded in URL (`://user:pw@host`)
+];
+
+// ③.0-W2: the scrub set = the shared CANONICAL classes (gh*, github_pat_, glpat-, AIza,
+// sk-ant-, slack, stripe-live, AKIA, JWT, PEM — gaining github_pat_/ghs_/ghr_/ghu_/glpat-/
+// AIza/PEM the old hand-list missed) PLUS the coarse scrubber-only extras above. getCanonical-
+// SecretClasses() is called ONCE here so this module owns its own RegExp instances.
+// NOTE (W2 VALIDATE reviewer LOW-1): canonical AKIA (\bAKIA…\b) + JWT ({20,} segment floors)
+// are marginally NARROWER than this scrubber's old hand-list (bare /AKIA…/ and floorless JWT).
+// INTENTIONAL: a real AWS key / JWT never appears mid-word or with <20-char segments, so the
+// canonical (validator-precise) forms still redact every real token; the shared set is worth
+// the negligible coarseness loss.
 const SECRET_PATTERNS = [
-  /AKIA[0-9A-Z]{16}/g,                                              // AWS access key id
-  /aws_secret_access_key\s*[:=]\s*['"]?[A-Za-z0-9/+=]{40}['"]?/gi,  // AWS secret
-  /sk-[a-zA-Z0-9\-_]{20,}/g,                                        // OpenAI / Anthropic key prefix
-  /eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+/g,             // JWT
-  /ghp_[a-zA-Z0-9]{36}/g,                                           // GitHub personal access token
-  /gho_[a-zA-Z0-9]{36}/g,                                           // GitHub OAuth token
-  /xox[abprs]-[a-zA-Z0-9-]{10,}/g,                                  // Slack token family
-  /sk_(live|test)_[A-Za-z0-9]{24,}/g,                               // F22: Stripe live + test secret keys
-  /rk_(live|test)_[A-Za-z0-9]{24,}/g,                               // F22: Stripe restricted-permission keys
-  /(https?|ftp):\/\/[^:/\s@]+:[^@\s/]+@/g,                          // F22: password embedded in URL (`://user:pw@host`)
+  ...getCanonicalSecretClasses().map((c) => c.regex),
+  ...SCRUBBER_ONLY_PATTERNS,
 ];
 // F22 regex edge-case notes (code-review Phase-10 FLAG #10):
 //   - Empty password (`://user:@host`) is NOT matched — `[^@\s/]+` requires
@@ -320,13 +336,23 @@ function buildEnvelope({ input, toolName, toolInput, toolResponse, evolutionSnap
     captured_at: new Date().toISOString(),
     axioms: {
       tool_name: toolName,
-      subagent_type: subagentBase,
-      subagent_type_raw: String(rawSubagentType),
+      // ③.0-W2 (post-VALIDATE leak-trace, Gemini-premise-2 sharp version): scrubSecrets is
+      // applied to EVERY caller/model-influenceable FREE-FORM string persisted to this
+      // world-readable (umask, ~0644) envelope — not just the completion excerpt (:321). A
+      // probe planted a token in description/subagent_type/cwd and saw it survive these axiom
+      // fields UNSCRUBBED. input_description (model-authored free text) is the highest-realism
+      // vector. Scrub is a no-op for every real value (a persona id / path / type never matches
+      // a secret pattern), so legit records are byte-unchanged; only a token-bearing (already
+      // malformed) value is redacted. session_id is DELIBERATELY left unscrubbed: it is a
+      // harness-controlled identifier + correlation key (a uuid, never secret-shaped) — scrubbing
+      // an id risks corrupting the key for zero real gain. sha256/chars carry no secret.
+      subagent_type: scrubSecrets(subagentBase),
+      subagent_type_raw: scrubSecrets(String(rawSubagentType)),
       input_prompt_sha256: promptText ? sha256(promptText) : null,
       input_prompt_chars: promptText.length,
-      input_description: description,
+      input_description: scrubSecrets(description),
       session_id: input.session_id || input.sessionId || null,
-      cwd: input.cwd || input.workspace || null,
+      cwd: scrubSecrets(input.cwd || input.workspace || null),
       // A6 (v3.4 Wave 3): the reputation derived-view promoted to an axiom-class attestation (v6:179
       // carve-out). Namespaced under .reputation; INV-23's prev_state_hash MVCC pin is a deferred
       // sibling. The kernel RECORDS this (it cannot inject it into the spawn — ADR-0012); the snapshot

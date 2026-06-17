@@ -147,6 +147,29 @@ test('F22.new: password-in-URL pattern is scrubbed (https://user:pw@host)', () =
   assert.ok(!out.includes(password), 'raw password must not survive scrub');
 });
 
+test('W2: the beta credential classes are redacted by the REAL scrubSecrets (canonical wired)', () => {
+  // End-to-end: the actual exported scrubSecrets (canonical classes + scrubber extras) must
+  // redact the classes the old hand-list MISSED — the beta mints/handles these. Split-literal
+  // fixtures so this test file does not self-trip the validate-no-bare-secrets PreToolUse gate.
+  const scrubSecrets = getScrubSecrets();
+  const A = 'a'.repeat(90);
+  const samples = {
+    'github_pat_ fine-grained': 'github' + '_pat_' + A.slice(0, 82),
+    'ghs_ App/Actions token':   'ghs_' + A.slice(0, 36),
+    'ghr_ refresh token':       'ghr_' + A.slice(0, 36),
+    'ghu_ user-to-server':      'ghu_' + A.slice(0, 36),
+    'glpat- GitLab routable':   'glpat-' + A.slice(0, 27) + '.01.6z70tqjnm',
+    'AIza Google API key':      'AIza' + A.slice(0, 35),
+    'PEM private key':          '-----BEGIN ' + 'OPENSSH PRIVATE KEY' + '-----',
+  };
+  for (const [label, token] of Object.entries(samples)) {
+    const out = scrubSecrets('lead ' + token + ' trail');
+    assert.ok(out.includes('[REDACTED]'), `${label} must be redacted by scrubSecrets`);
+    assert.ok(!out.includes(token), `${label}: raw token must not survive (no partial-redaction tail)`);
+    assert.ok(out.startsWith('lead ') && out.endsWith(' trail'), `${label}: surrounding text preserved`);
+  }
+});
+
 test('F22.new: password-in-URL does not over-match plain URLs', () => {
   const scrubSecrets = getScrubSecrets();
   const plainUrl = 'See https://example.com/path for docs';
@@ -353,6 +376,41 @@ test('write_scope_violations: buildEnvelope carries the field, defaulting to an 
   );
   assert.ok(Array.isArray(env.write_scope_violations), 'field is an array');
   assert.strictEqual(env.write_scope_violations.length, 0, 'default is empty (clean spawn) []');
+});
+
+test('W2 leak-trace: scrubSecrets is applied to EVERY free-form persisted axiom field (not just the completion excerpt)', () => {
+  // Gemini-premise-2 sharp version (probed): a token planted in description / subagent_type /
+  // cwd survived these axiom fields UNSCRUBBED into the world-readable envelope; only the
+  // completion excerpt was scrubbed. Assert the leak is closed across all free-form fields.
+  const buildEnvelope = getBuildEnvelope();
+  const TOK = 'ghp_' + 'a'.repeat(36); // a canonical github-classic token shape
+  const env = buildEnvelope({
+    input: { session_id: 'sess-leak', cwd: '/home/u/proj-' + TOK },
+    toolName: 'Agent',
+    toolInput: { subagent_type: 'node-backend ' + TOK, description: 'token is ' + TOK + ' here', prompt: 'use ' + TOK },
+    toolResponse: { result: 'done with ' + TOK },
+  });
+  const ax = env.axioms;
+  for (const f of ['subagent_type', 'subagent_type_raw', 'input_description', 'cwd']) {
+    assert.ok(typeof ax[f] === 'string' && !ax[f].includes(TOK), `axioms.${f} must NOT carry the raw token (scrubbed); got "${ax[f]}"`);
+    assert.ok(ax[f].includes('[REDACTED]'), `axioms.${f} must show [REDACTED]`);
+  }
+  // prompt is sha-only (never persisted raw); the whole envelope must not carry the token anywhere.
+  assert.ok(!JSON.stringify(env).includes(TOK), 'NO persisted field anywhere may carry the raw token');
+});
+
+test('W2 leak-trace: scrubbing is a NO-OP for legit (token-free) axiom values (no false redaction)', () => {
+  const buildEnvelope = getBuildEnvelope();
+  const env = buildEnvelope({
+    input: { session_id: 'sess-xyz', cwd: '/home/u/myproject' },
+    toolName: 'Agent',
+    toolInput: { subagent_type: 'node-backend', description: 'fix the parser', prompt: 'p' },
+    toolResponse: 'done',
+  });
+  assert.strictEqual(env.axioms.subagent_type, 'node-backend', 'legit persona id byte-unchanged');
+  assert.strictEqual(env.axioms.input_description, 'fix the parser', 'legit description byte-unchanged');
+  assert.strictEqual(env.axioms.cwd, '/home/u/myproject', 'legit cwd byte-unchanged');
+  assert.strictEqual(env.axioms.session_id, 'sess-xyz', 'session_id (identifier) NOT scrubbed — correlation key intact');
 });
 
 test('write_scope_violations: the default-[] field does NOT regress existing envelope fields', () => {

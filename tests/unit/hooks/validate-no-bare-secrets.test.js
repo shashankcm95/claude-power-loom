@@ -124,6 +124,29 @@ process.stdout.write('\n[FIX-E] documentation-context carve-out\n');
   assert(r.decision === 'block', 'T11: inline backtick (not fenced) -> still block');
 }
 
+process.stdout.write('\n[W2] beta credential classes (glpat- / AIza) block end-to-end\n');
+
+// W2-1: GitLab routable PAT (17.x dotted suffix) blocks via the hook (the canonical gitlab-pat class).
+{
+  const tok = 'glpat-' + 'a'.repeat(27) + '.01.6z70tqjnm';
+  const r = runHook('Write', { file_path: '/tmp/x.txt', content: 'token: ' + tok });
+  assert(r.decision === 'block', 'W2-1: glpat- GitLab routable token -> block');
+}
+
+// W2-2: Google API key (AIza + 35) blocks via the hook (the canonical google-api-key class).
+{
+  const tok = 'AIza' + 'a'.repeat(35);
+  const r = runHook('Write', { file_path: '/tmp/x.txt', content: 'key=' + tok });
+  assert(r.decision === 'block', 'W2-2: AIza Google API key -> block');
+}
+
+// W2-3: a github_pat_ fine-grained token blocks (the beta's modern gh-auth class).
+{
+  const tok = 'github' + '_pat_' + 'a'.repeat(82);
+  const r = runHook('Write', { file_path: '/tmp/x.txt', content: 'pat ' + tok });
+  assert(r.decision === 'block', 'W2-3: github_pat_ fine-grained -> block');
+}
+
 process.stdout.write('\n=== Summary ===\n');
 process.stdout.write('  Passed: ' + passed + '\n');
 process.stdout.write('  Failed: ' + failed + '\n');
