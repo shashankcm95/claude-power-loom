@@ -298,7 +298,11 @@ Auto-generated map of where things live, derived from the repo structure + each 
 
 ### `lab/trace-emitter/`
 
+- `packages/lab/trace-emitter/cli.js` - ③.1-W2b — the F7 trace-emitter CLI: fold close-path timings into a timeline + query it.
 - `packages/lab/trace-emitter/index.js` - ③.1-W2a — the F7 trace-emitter public API.
+- `packages/lab/trace-emitter/_spike/ingest-cli-dogfood.js` - ③.1-W2b dogfood — the Rule-2a-corollary real-path proof for the ingester + CLI: plant a
+- `packages/lab/trace-emitter/ingest-close-path.js` - ③.1-W2b — the close-path INGESTER (the F7 consumer; ARCH-PC-4 capture mechanism).
+- `packages/lab/trace-emitter/query.js` - ③.1-W2b — pure query helpers over an F7 timeline (replay/summary/diff).
 - `packages/lab/trace-emitter/_spike/trace-emit-dogfood.js` - ③.1-W2a dogfood — the Rule-2a-corollary real-path proof: a green unit suite is a
 - `packages/lab/trace-emitter/trace-schema.js` - ③.1-W2a — the F7 trace-emitter's FROZEN schema (an append-only contract; modeled on the
 - `packages/lab/trace-emitter/trace-store.js` - ③.1-W2a — the per-run JSONL timeline store for the F7 trace-emitter.
