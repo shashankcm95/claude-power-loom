@@ -52,16 +52,20 @@
     failed=$((failed + 1))
   fi
 
-  # Test 5: session-reset creates tracker (use node to resolve tmpdir)
-  local tmpdir
+  # Test 5: session-reset runs clean and writes NO tracker. ③.1-W1 removed the old
+  # reset-write — the fact-force-gate owns its per-session tracker (loadTracker's
+  # clean-on-missing already yields a fresh slate per session_id). The sweep is
+  # exercised by tests/unit/hooks/session-reset.test.js; here we only smoke the contract.
+  local tmpdir sr_rc
   tmpdir=$(node -e "process.stdout.write(require('os').tmpdir())")
   CLAUDE_SESSION_ID="smoke-test" node "$CLAUDE_DIR/packages/kernel/hooks/lifecycle/session-reset.js" 2>/dev/null
-  if [ -f "$tmpdir/claude-read-tracker-smoke-test.json" ]; then
-    echo "  ✓ session-reset: creates tracker file"
-    rm -f "$tmpdir/claude-read-tracker-smoke-test.json"
+  sr_rc=$?
+  if [ $sr_rc -eq 0 ] && [ ! -f "$tmpdir/claude-read-tracker-smoke-test.json" ]; then
+    echo "  ✓ session-reset: runs clean, writes no tracker (③.1-W1)"
     passed=$((passed + 1))
   else
-    echo "  ✗ session-reset: FAILED to create tracker"
+    echo "  ✗ session-reset: expected exit 0 + no tracker write (rc=$sr_rc)"
+    rm -f "$tmpdir/claude-read-tracker-smoke-test.json"
     failed=$((failed + 1))
   fi
 
