@@ -54,6 +54,14 @@ const { currentUid } = require('../../_lib/safe-resolve');
 // mode is strictly fail-OPEN (it over-approves a read-before-edit; it never
 // produces a false block that would brick an edit) and strictly dominates the
 // ppid floor (which collides on EVERY same-parent spawn). Not "fixed" — narrowed.
+/**
+ * Derive the 16-hex session key for the tracker filename. Resolution order
+ * (most session-distinct first): payload `session_id` -> env -> `process.ppid`
+ * floor; the resolved value is sha256'd so an external/hostile `session_id` is
+ * path-safe. See the comment block above for the rationale + concurrency residual.
+ * @param {object|null} data the parsed PreToolUse payload
+ * @returns {string} a 16-char lowercase-hex key
+ */
 function deriveSessionKey(data) {
   const d = data || {};
   const raw = d.session_id || d.sessionId
@@ -147,6 +155,13 @@ function trackerDir(base) {
   }
 }
 
+/**
+ * Compose the absolute tracker path for this payload:
+ * `<trackerDir>/claude-read-tracker-<key>.json`.
+ * @param {object|null} data the parsed PreToolUse payload (-> session key)
+ * @param {string} [base] container-root override (default os.tmpdir(); a test seam)
+ * @returns {string} the absolute tracker file path
+ */
 function resolveTrackerPath(data, base) {
   return path.join(trackerDir(base), `claude-read-tracker-${deriveSessionKey(data)}.json`);
 }

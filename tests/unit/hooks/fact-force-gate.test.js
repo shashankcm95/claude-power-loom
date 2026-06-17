@@ -303,8 +303,12 @@ process.stdout.write('\n[W4] per-uid 0700 tracker subdir (foreign-uid TOCTOU har
   assert(dir === fileBase, 'W4-6b: non-EEXIST mkdir error -> returns the flat base (status quo)');
   let logged = '';
   try { logged = fs.readFileSync(path.join(logDir, 'fact-force-gate.log'), 'utf8'); } catch { /* no log */ }
-  assert(/tracker_subdir_unsafe_fallback/.test(logged) && /mkdir_failed/.test(logged),
-    'W4-6c: non-EEXIST fallback emits the fallback log with reason=mkdir_failed (CodeRabbit #345)');
+  assert(
+    /tracker_subdir_unsafe_fallback/.test(logged)
+      && /"reason":"mkdir_failed"/.test(logged)
+      && /"code":"[A-Z]{2,}"/.test(logged), // a real errno (e.g. ENOTDIR), not the 'UNKNOWN' floor
+    'W4-6c: non-EEXIST fallback logs the event + reason=mkdir_failed + the specific errno code (CodeRabbit #345)',
+  );
   rmBase(base); rmBase(logDir);
 }
 
