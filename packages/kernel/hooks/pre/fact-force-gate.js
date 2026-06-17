@@ -17,6 +17,10 @@ const { writeAtomic } = require('../../_lib/atomic-write');
 // realpath helper (DRY). K7 additionally resolves symlinked ancestors of a
 // not-yet-existing leaf, which only strengthens the read-tracker keying.
 const { canonicalize } = require('../../_lib/path-canonicalize');
+// ③.0-W4: reuse the canonical Windows-null uid discipline (do NOT hand-roll
+// `typeof process.getuid`). currentUid() returns null on Windows -> POSIX
+// ownership checks are skipped. Sibling of safe-resolve.js:79-88 isSafeExecStat.
+const { currentUid } = require('../../_lib/safe-resolve');
 
 // Session-scoped tracker key resolution (③.0-W3).
 //
@@ -59,8 +63,86 @@ function deriveSessionKey(data) {
   return crypto.createHash('sha256').update(coerced).digest('hex').slice(0, 16);
 }
 
-function resolveTrackerPath(data) {
-  return path.join(os.tmpdir(), `claude-read-tracker-${deriveSessionKey(data)}.json`);
+// ③.0-W4 — per-uid 0700 subdir for the tracker (TOCTOU hardening; W3 VALIDATE H-LOW-1 follow-up).
+//
+// THREAT (the only IN-MODEL one): a FOREIGN uid on a world-writable tmpdir (Linux
+// /tmp = 1777) pre-plants a symlink at the predictable tracker path; writeAtomic's
+// _resolveForAtomicWrite refuses a foreign-uid redirect to an EXISTING target but
+// FOLLOWS a symlink to a NON-EXISTENT one (atomic-write.js:121-125), a foreign-uid
+// file-create primitive. Containing the tracker in a 0700 subdir a foreign uid
+// cannot enter removes the plant surface WHEN the subdir is established (a foreign
+// uid that pre-plants `claude-loom-<uid>` itself forces the fallback — see below).
+// macOS tmpdir is ALREADY per-user 0700 -> there this is defense-in-depth + Linux
+// portability.
+//
+// SAME-uid is NOT closed (conceded, container-tier): a same-uid process owns the
+// 0700 dir and could write the target file directly — no privilege boundary to
+// cross (the atomic-write.js:120 concession). And the closure is CONDITIONAL: a
+// foreign uid can pre-plant `claude-loom-<uid>` itself (predictable name) to FORCE
+// the fallback-to-flat; we LOG that fallback (observable, not silent), and the
+// fallback is status-quo (never worse). NO rand-suffix retry — the Read process and
+// the Edit process are SEPARATE processes that must derive the SAME dir, so the dir
+// name must be deterministic (a per-process random suffix would brick the gate).
+
+/**
+ * PURE policy: is `stat` (an lstat result) a tracker DIRECTORY safe to use as our
+ * private container? Rejects a symlink, a non-directory, a foreign-owned dir, and
+ * any dir carrying group/other permission bits. Mirrors safe-resolve.js:79-88
+ * (isSafeExecStat) but for a DIRECTORY: isDirectory + 0o077 (owner-ONLY for a
+ * private dir) vs the exec variant's isFile + 0o022 (no group/other WRITE for a
+ * script). selfUid===null (Windows) skips the POSIX checks. Pure -> unit-testable.
+ * @param {fs.Stats|null} stat result of an lstat (NOT a follow stat)
+ * @param {number|null} selfUid current uid, or null to skip (Windows)
+ * @returns {boolean}
+ */
+function isSafeTrackerDirStat(stat, selfUid) {
+  if (!stat) return false;
+  if (stat.isSymbolicLink()) return false;       // belt-and-suspenders: isDirectory already excludes a symlink-to-dir on an lstat; documents intent
+  if (!stat.isDirectory()) return false;
+  if (selfUid !== null) {                          // POSIX checks (skipped on Windows — uid unknowable)
+    if (stat.uid !== selfUid) return false;         // foreign-owned -> untrusted
+    if ((stat.mode & 0o077) !== 0) return false;    // any group/other bit -> not owner-only
+  }
+  return true;
+}
+
+/**
+ * Resolve (and best-effort establish) the per-uid 0700 tracker directory under
+ * `base` (default os.tmpdir()). NEVER THROWS: on any failure — an unsafe
+ * pre-existing entry (symlink / foreign-owned / loose perms), a TOCTOU race, or any
+ * mkdir error (ENOSPC/EACCES/EROFS) — it returns the flat `base` (status quo, no
+ * regression). The `base` param is a test seam; production omits it.
+ * @param {string} [base] container root (default os.tmpdir())
+ * @returns {string} the per-uid subdir if safely established, else the flat base
+ */
+function trackerDir(base) {
+  const root = base || os.tmpdir();
+  const uid = currentUid();
+  const dir = path.join(root, `claude-loom-${uid === null ? 'default' : uid}`);
+  try {
+    // mkdir is atomic (fails EEXIST if present). mode 0o700 is BEST-EFFORT — umask
+    // can NARROW it but never loosen (0o700 has no group/other bits, so a sane umask
+    // leaves 0700); the lstat-verify on the reuse path below is the ACTUAL 0700
+    // enforcement, not the create mode.
+    fs.mkdirSync(dir, { mode: 0o700 });
+    return dir;                                     // freshly created -> owned by us
+  } catch (err) {
+    if (err && err.code === 'EEXIST') {
+      try {
+        if (isSafeTrackerDirStat(fs.lstatSync(dir), uid)) return dir; // safe pre-existing per-uid dir
+      } catch { /* lstat race -> fall through to flat */ }
+      // Unsafe pre-existing entry OR a race -> flat fallback (status quo). Log so a
+      // FORCED fallback (an active foreign-plant on a world-writable tmpdir, which
+      // permanently disables the subdir hardening until cleanup) is OBSERVABLE.
+      logger('tracker_subdir_unsafe_fallback', { dir });
+      return root;
+    }
+    return root;                                    // any other mkdir error -> flat fallback; never throw
+  }
+}
+
+function resolveTrackerPath(data, base) {
+  return path.join(trackerDir(base), `claude-read-tracker-${deriveSessionKey(data)}.json`);
 }
 
 /**
@@ -96,6 +178,20 @@ function saveTracker(trackerPath, tracker) {
   // inline unlinkSync + tmpFile bookkeeping; log event preserved as
   // test-surface (hook fail-soft contract).
   try {
+    // ③.0-W4 (H4-2): re-assert the parent dir at 0700 right before the write, so a
+    // plain remove-race in the window after trackerDir() does not let writeAtomic's
+    // mode-LESS recursive mkdir (atomic-write.js:148 -> 0755) recreate the tracker
+    // dir group/other-traversable. recursive:true is a no-op on an existing dir (it
+    // does NOT chmod), so a live 0700 dir stays 0700 and a removed one is recreated
+    // at 0700. Best-effort: a failure here still lets writeAtomic do its own mkdir.
+    // SCOPE (VALIDATE M1): this closes the remove-WITHOUT-replant case only. A remove
+    // -THEN-symlink-plant in the same window is NOT closed (recursive mkdir follows a
+    // planted symlink-to-dir) — but its precondition is same-uid OR a non-sticky
+    // world-writable tmpdir (sticky /tmp blocks a foreign rm of our owned 0700 dir;
+    // _foreignOwned refuses a foreign redirect target), so it stays the conceded
+    // same-uid container-tier residual. Still strictly safer than the pre-W4 flat path.
+    try { fs.mkdirSync(path.dirname(trackerPath), { recursive: true, mode: 0o700 }); }
+    catch { /* best-effort 0700 pre-ensure; writeAtomic mkdirs as fallback */ }
     writeAtomic(trackerPath, tracker);
   } catch (err) {
     logger('atomic_write_failed', { error: err.message });
@@ -224,4 +320,4 @@ if (require.main === module) {
   process.stdin.on('end', () => handleEnd(input));
 }
 
-module.exports = { deriveSessionKey, resolveTrackerPath, loadTracker, saveTracker, normalizePath };
+module.exports = { deriveSessionKey, trackerDir, isSafeTrackerDirStat, resolveTrackerPath, loadTracker, saveTracker, normalizePath };
