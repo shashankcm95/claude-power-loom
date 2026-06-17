@@ -39,7 +39,7 @@ const FIXTURES = {
   'anthropic-api-key':       'sk-ant-' + 'api03-' + A.slice(0, 40),
   'github-pat-classic':      'ghs_' + A.slice(0, 36),
   'github-pat-fine-grained': 'github' + '_pat_' + A.slice(0, 82),
-  'gitlab-pat':              'glpat-' + A.slice(0, 26),
+  'gitlab-pat':              'glpat-' + A.slice(0, 27) + '.01.6z70tqjnm', // 17.x routable (dotted tail)
   'google-api-key':          'AIza' + A.slice(0, 35),
   'slack-token':             'xoxb-' + A.slice(0, 20),
   'stripe-live-key':         'sk' + '_live_' + A.slice(0, 24),

@@ -90,6 +90,17 @@ test('glpat- floor consumes the WHOLE >20-char body (H1: no token tail survives 
   assert.strictEqual(redacted, 'lead [REDACTED] trail', 'the entire glpat- token must be replaced, no tail');
 });
 
+test('glpat- ROUTABLE format: the dotted routing suffix is fully consumed (no .XX.YYYYYYY tail survives)', () => {
+  // GitLab 17.x+ routable PAT: glpat-<base>.XX.YYYYYYY. The `.` separators are not in the base
+  // charset, so without the optional suffix group the dotted tail would survive .replace().
+  const c = classById('gitlab-pat');
+  for (const final of ['6z70tqj', '6z70tqjnm']) { // GitLab's {7} AND a longer observed run
+    const token = 'glpat-' + A.slice(0, 27) + '.01.' + final;
+    const out = ('use ' + token + ' here').replace(c.regex, '[REDACTED]');
+    assert.strictEqual(out, 'use [REDACTED] here', `routable token (final="${final}") must redact whole; got "${out}"`);
+  }
+});
+
 test('high-precision classes do NOT match obvious non-secrets', () => {
   const c = classById('google-api-key');
   c.regex.lastIndex = 0;

@@ -1,6 +1,7 @@
 # ③.0-W2 — secret-scrub for the beta's own credential classes
 
-**Phase:** ③.0 (foundation-hardening) · **Date:** 2026-06-17 · **Status:** PLAN (pre-VERIFY) ·
+**Phase:** ③.0 (foundation-hardening) · **Date:** 2026-06-17 · **Status:** BUILT — VERIFY + VALIDATE
+done; PR #343 (post-VALIDATE routable-PAT fold applied; unmerged) ·
 **Charter:** `2026-06-16-test-phase-live-beta-charter.md` ③.0-W2 · **Follows:** ③.0-W1 (#342, merged)
 
 ## Goal
@@ -198,6 +199,24 @@ LOW/MED, all folded:
 
 Post-fold gate: tests/unit 188/0; install.sh --hooks --test 125/0 (SIGNPOST regenerated for the new
 module); the FP scan re-run clean. Build was orchestrator-direct (not delegated) → no Rule-4 subject.
+
+## Post-VALIDATE fold — GitLab routable-PAT suffix (2026-06-17, USER side-finding)
+
+After the VALIDATE board + green CI/CodeRabbit (PR not yet merged), the USER flagged that the
+`gitlab-pat` regex `\bglpat-[A-Za-z0-9_-]{20,}` MISSES GitLab's 17.x+ routable PAT format
+(`glpat-<base>.XX.YYYYYYY`, e.g. `…BD.01.6z70tqjnm`): `.` is not in `[A-Za-z0-9_-]`, so the base
+redacts but the dotted routing tail SURVIVES `.replace()` into the world-readable envelope — an
+EXTENSION of the H1 tail-leak class this wave exists to close. PROBED + confirmed
+(`lead [REDACTED].01.6z70tqjnm trail`). **Fix:** widen to
+`\bglpat-[A-Za-z0-9_-]{20,}(?:\.[a-z0-9]{2}\.[a-z0-9]{7,})?` — mirrors GitLab's own secret-detection
+rule `glpat-[A-Za-z0-9_-]{27,300}(\.[a-z0-9]{2}\.[a-z0-9]{7})?` but keeps the looser `{20,}` base floor
++ a `{7,}` final-segment FLOOR (the observed example's final run is 9 chars > GitLab's documented 7) +
+an unbounded upper, so a redaction net NEVER leaves a partial token. Suffix is OPTIONAL → legacy
+non-routable tokens still match. Re-verified: routable (7- and 9-char finals) + legacy all fully
+redacted; FP re-scan 0 new across 1144 files; tests/unit 188/0; install 125/0. Tests updated
+(secret-patterns + cross-test + spawn-record + validator now use the routable fixture). Reusable: a
+prefix-anchored secret class with `.`-delimited structure needs the structured suffix in the regex, or
+the dot-separated tail survives a charset-only match.
 
 ## Honest frame
 

@@ -50,7 +50,16 @@ const CANONICAL_SECRET_CLASS_DEFS = Object.freeze([
   // GitLab PAT. FLOOR {20,} (NOT exact {20}) — a >20-char token's tail would otherwise
   // survive .replace() into the world-readable spawn-record envelope (VERIFY hacker H1,
   // proven). \b cuts a mid-base64 collision without breaking `KEY=glpat-…`.
-  { id: 'gitlab-pat',              source: '\\bglpat-[A-Za-z0-9_-]{20,}',        flags: 'g', description: 'GitLab personal/project access token' },
+  // ROUTABLE-FORMAT tail (W2 post-VALIDATE user finding): GitLab 17.x+ routable PATs append
+  // a dotted routing suffix `glpat-<base>.XX.YYYYYYY` (e.g. ...BD.01.6z70tqjnm). `.` is NOT in
+  // [A-Za-z0-9_-], so without the optional `(?:\.[a-z0-9]{2}\.[a-z0-9]{7})?` group the base
+  // redacts but the dotted tail SURVIVES into the envelope. Mirrors GitLab's own secret-detection
+  // rule `glpat-[A-Za-z0-9_-]{27,300}(\.[a-z0-9]{2}\.[a-z0-9]{7})?` (we keep the looser {20,}
+  // floor + unbounded upper so a redaction net never leaves a tail; suffix is OPTIONAL so legacy
+  // non-routable tokens still match). The final segment is `{7,}` (FLOOR, not GitLab's exact {7}):
+  // the observed routable example's final run is 9 chars, so a floor consumes the WHOLE tail
+  // regardless of segment length — never leaving a partial token (the redaction-net invariant).
+  { id: 'gitlab-pat',              source: '\\bglpat-[A-Za-z0-9_-]{20,}(?:\\.[a-z0-9]{2}\\.[a-z0-9]{7,})?', flags: 'g', description: 'GitLab personal/project access token (incl. 17.x routable suffix)' },
   // Google API key (Gemini etc.): AIza + 35. \b + floor reduces the mid-base64 FP the
   // validator's SEC-5 base64 policy already chose not to fight (documented at the spread site).
   { id: 'google-api-key',          source: '\\bAIza[A-Za-z0-9_-]{35,}',          flags: 'g', description: 'Google API key' },

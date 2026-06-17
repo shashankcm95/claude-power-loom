@@ -126,11 +126,11 @@ process.stdout.write('\n[FIX-E] documentation-context carve-out\n');
 
 process.stdout.write('\n[W2] beta credential classes (glpat- / AIza) block end-to-end\n');
 
-// W2-1: GitLab PAT (>20 body) blocks via the hook (the canonical gitlab-pat class).
+// W2-1: GitLab routable PAT (17.x dotted suffix) blocks via the hook (the canonical gitlab-pat class).
 {
-  const tok = 'glpat-' + 'a'.repeat(26);
+  const tok = 'glpat-' + 'a'.repeat(27) + '.01.6z70tqjnm';
   const r = runHook('Write', { file_path: '/tmp/x.txt', content: 'token: ' + tok });
-  assert(r.decision === 'block', 'W2-1: glpat- GitLab token -> block');
+  assert(r.decision === 'block', 'W2-1: glpat- GitLab routable token -> block');
 }
 
 // W2-2: Google API key (AIza + 35) blocks via the hook (the canonical google-api-key class).

@@ -158,7 +158,7 @@ test('W2: the beta credential classes are redacted by the REAL scrubSecrets (can
     'ghs_ App/Actions token':   'ghs_' + A.slice(0, 36),
     'ghr_ refresh token':       'ghr_' + A.slice(0, 36),
     'ghu_ user-to-server':      'ghu_' + A.slice(0, 36),
-    'glpat- GitLab (>20 body)': 'glpat-' + A.slice(0, 26),
+    'glpat- GitLab routable':   'glpat-' + A.slice(0, 27) + '.01.6z70tqjnm',
     'AIza Google API key':      'AIza' + A.slice(0, 35),
     'PEM private key':          '-----BEGIN ' + 'OPENSSH PRIVATE KEY' + '-----',
   };
