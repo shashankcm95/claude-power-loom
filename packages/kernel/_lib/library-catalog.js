@@ -39,8 +39,27 @@
 
 const fs = require('fs');
 const { writeAtomic } = require('./atomic-write');
-const { withLock } = require('./lock');
+const { withLockSoft } = require('./lock');
 const paths = require('./library-paths');
+
+// W1-A (2026-06-17): SOFT-FAIL the lock-protected catalog write. These writers are
+// reached from catalog-reconcile-write.js (PostToolUse:Edit|Write), so a lock-timeout
+// process.exit(2) (the old withLock posture) would KILL the hook process under
+// concurrent Edit closes at beta volume. withLockSoft returns {ok:false,reason} on a
+// timeout instead — the catalog index is best-effort (a dropped entry is re-derivable
+// by `library reconcile`), so a drop degrades search, never corrupts state or the hook.
+// On a drop we emit one stderr line for direct-CLI visibility; aggregate drop-rate
+// telemetry is the ③.1 trace-emitter's job (it instruments every seam), not a counter
+// wired into this leaf module.
+function softCatalogWrite(lockPath, op, stackId, fn, lockTimeoutMs) {
+  const r = withLockSoft(lockPath, fn, { maxWaitMs: lockTimeoutMs });
+  if (!r.ok) {
+    try {
+      process.stderr.write(`[library-catalog] dropped ${op} on stack "${stackId}": ${r.reason}\n`);
+    } catch { /* stderr write failed; ignore */ }
+  }
+  return r;
+}
 
 // H.9.21.3.1 v2.1.4: REVERTED to original 3000ms. The prior bumps to 10000ms
 // (v2.1.2) and 30000ms (v2.1.3) were predicated on a wrong "lock-acquisition-
@@ -121,15 +140,17 @@ function findEntry(sectionId, stackId, volumeId) {
  * @param {string} stackId
  * @param {object} catalog - full catalog object to write
  * @param {{lockTimeoutMs?: number}} [opts]
+ * @returns {{ok: boolean, reason?: string}} ok:false (reason:'lock-timeout') if the
+ *   lock could not be acquired — a soft-failed best-effort write, NOT an exit.
  */
 function writeCatalog(sectionId, stackId, catalog, opts) {
   const lockTimeoutMs = (opts && opts.lockTimeoutMs) || DEFAULT_LOCK_TIMEOUT_MS;
   const lockPath = paths.catalogLockPath(sectionId, stackId);
   const catPath = paths.catalogPath(sectionId, stackId);
-  withLock(lockPath, () => {
+  return softCatalogWrite(lockPath, 'writeCatalog', stackId, () => {
     const stamped = stampCatalog(catalog, stackId);
     writeAtomic(catPath, stamped);
-  }, { maxWaitMs: lockTimeoutMs });
+  }, lockTimeoutMs);
 }
 
 /**
@@ -143,6 +164,8 @@ function writeCatalog(sectionId, stackId, catalog, opts) {
  * @param {string} stackId
  * @param {object} entry - must include volume_id; should include form, topic, entities, last_modified, content_hash
  * @param {{lockTimeoutMs?: number}} [opts]
+ * @returns {{ok: boolean, reason?: string}} ok:false (reason:'lock-timeout') on a
+ *   soft-failed best-effort write under lock contention (NOT an exit).
  */
 function upsertEntry(sectionId, stackId, entry, opts) {
   if (!entry || !entry.volume_id) {
@@ -151,7 +174,7 @@ function upsertEntry(sectionId, stackId, entry, opts) {
   const lockTimeoutMs = (opts && opts.lockTimeoutMs) || DEFAULT_LOCK_TIMEOUT_MS;
   const lockPath = paths.catalogLockPath(sectionId, stackId);
   const catPath = paths.catalogPath(sectionId, stackId);
-  withLock(lockPath, () => {
+  return softCatalogWrite(lockPath, 'upsertEntry', stackId, () => {
     const catalog = fs.existsSync(catPath)
       ? readCatalog(sectionId, stackId)
       : emptyCatalog(stackId);
@@ -162,7 +185,7 @@ function upsertEntry(sectionId, stackId, entry, opts) {
       catalog.entries.push(entry);
     }
     writeAtomic(catPath, stampCatalog(catalog, stackId));
-  }, { maxWaitMs: lockTimeoutMs });
+  }, lockTimeoutMs);
 }
 
 /**
@@ -172,20 +195,22 @@ function upsertEntry(sectionId, stackId, entry, opts) {
  * @param {string} stackId
  * @param {string} volumeId
  * @param {{lockTimeoutMs?: number}} [opts]
+ * @returns {{ok: boolean, reason?: string}} ok:true on success or an absent-catalog
+ *   no-op; ok:false (reason:'lock-timeout') on a soft-failed write (NOT an exit).
  */
 function removeEntry(sectionId, stackId, volumeId, opts) {
   const lockTimeoutMs = (opts && opts.lockTimeoutMs) || DEFAULT_LOCK_TIMEOUT_MS;
   const lockPath = paths.catalogLockPath(sectionId, stackId);
   const catPath = paths.catalogPath(sectionId, stackId);
-  if (!fs.existsSync(catPath)) return;
-  withLock(lockPath, () => {
+  if (!fs.existsSync(catPath)) return { ok: true };
+  return softCatalogWrite(lockPath, 'removeEntry', stackId, () => {
     const catalog = readCatalog(sectionId, stackId);
     const before = catalog.entries.length;
     catalog.entries = catalog.entries.filter(e => e.volume_id !== volumeId);
     if (catalog.entries.length !== before) {
       writeAtomic(catPath, stampCatalog(catalog, stackId));
     }
-  }, { maxWaitMs: lockTimeoutMs });
+  }, lockTimeoutMs);
 }
 
 // ---------------------------------------------------------------------------

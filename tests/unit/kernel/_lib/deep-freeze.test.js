@@ -67,5 +67,42 @@ test('cycle-safe (no infinite recursion)', () => {
   assert.throws(() => { a.name = 'z'; }, TypeError);
 });
 
+test('W1-C: a pre-frozen parent with an UNFROZEN child freezes the child (WeakSet cycle-guard, not isFrozen short-circuit)', () => {
+  // The #266 recurrence class the deep-freeze header documents as latent: the old
+  // `Object.isFrozen(value) -> return` termination short-circuits on an already-frozen
+  // parent and NEVER examines its children. The WeakSet cycle-guard freezes the child
+  // while still terminating real cycles.
+  const child = { mutable: 1 };
+  const parent = Object.freeze({ child }); // parent frozen, child NOT
+  assert.ok(Object.isFrozen(parent) && !Object.isFrozen(child), 'precondition: parent frozen, child not');
+  deepFreeze(parent);
+  assert.ok(Object.isFrozen(child), 'the unfrozen child of a pre-frozen parent must be frozen');
+  assert.throws(() => { child.mutable = 2; }, TypeError, 'child write must throw after deepFreeze');
+});
+
+test('W1-C: a cycle THROUGH an already-frozen node still terminates', () => {
+  // Defense: a frozen node that is also part of a cycle must not loop forever.
+  const a = { name: 'a' };
+  const b = { name: 'b', back: a };
+  a.fwd = b;
+  Object.freeze(a); // a frozen, b not, cycle a<->b
+  const out = deepFreeze(a); // must terminate AND freeze b
+  assert.strictEqual(out, a);
+  assert.ok(Object.isFrozen(b), 'unfrozen cycle member must be frozen');
+});
+
+test('W1-B H-W1-1: a >10K-deep graph freezes without a RangeError (iterative, not recursive)', () => {
+  // JSON.parse can build a graph deeper than the ~10K JS recursion limit; the OLD
+  // recursive deepFreeze stack-overflowed on it. The iterative explicit-stack walk
+  // must handle it. Build 20000-deep nested objects, then arrays.
+  const deepObj = JSON.parse('{"a":'.repeat(20000) + '1' + '}'.repeat(20000));
+  let frozen;
+  assert.doesNotThrow(() => { frozen = deepFreeze(deepObj); }, 'deep object must not RangeError');
+  assert.ok(Object.isFrozen(frozen), 'the top of a deep object is frozen');
+  const deepArr = JSON.parse('['.repeat(20000) + ']'.repeat(20000));
+  assert.doesNotThrow(() => deepFreeze(deepArr), 'deep array must not RangeError');
+  assert.ok(Object.isFrozen(deepArr), 'the top of a deep array is frozen');
+});
+
 process.stdout.write(`\ndeep-freeze.test.js: ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
