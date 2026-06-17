@@ -6,6 +6,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const crypto = require('crypto');
 const { log } = require('../_lib/_log.js');
 const logger = log('fact-force-gate');
 // H.9.8: migrated saveTracker (Class C hook fail-soft; function-scoped try-
@@ -17,22 +18,62 @@ const { writeAtomic } = require('../../_lib/atomic-write');
 // not-yet-existing leaf, which only strengthens the read-tracker keying.
 const { canonicalize } = require('../../_lib/path-canonicalize');
 
-// Session-scoped tracker. PPID is the key: child hook processes spawned
-// from the same Claude Code parent share the parent's PPID, so reads
-// and subsequent edits hit the same tracker file.
-const SESSION_ID = process.env.CLAUDE_SESSION_ID || process.env.CLAUDE_CONVERSATION_ID || String(process.ppid || 'default');
-const TRACKER_PATH = path.join(os.tmpdir(), `claude-read-tracker-${SESSION_ID}.json`);
+// Session-scoped tracker key resolution (③.0-W3).
+//
+// The tracker must use a key that is STABLE across the two separate hook
+// processes a single Read-then-Edit produces (else the gate bricks — the Read
+// records under key A, the Edit looks under key B, finds nothing, blocks every
+// edit). It should ALSO be as session-DISTINCT as the harness allows, so a Read
+// in one session does not authorize an Edit in another.
+//
+// Resolution order, most-distinct first (firsthand-probed ③.0-W3 — a `claude -p`
+// Read+Edit confirmed `session_id` is PRESENT on the Read|Edit|Write PreToolUse
+// payload and BYTE-IDENTICAL across the two separate processes; only snake_case
+// is sent, camel `sessionId` is always null but kept as a defensive fallback):
+//   data.session_id  (payload — session-distinct + cross-process stable)
+//     -> CLAUDE_SESSION_ID / CLAUDE_CONVERSATION_ID env  (operator-set)
+//       -> process.ppid  (the floor: same-parent spawns share it)
+//         -> 'default'
+//
+// The resolved value is then sha256'd to a 16-hex key before going into the
+// tmp filename. This is the spawn-record.js:228 precedent and it makes the key
+// (now derived from an EXTERNAL payload field) inherently safe: hex-only (no
+// path separators -> no os.tmpdir() escape), fixed-width (no ENAMETOOLONG from a
+// hostile multi-MB session_id), and collision-resistant (two distinct ids never
+// collapse to one tracker — a 'drop disallowed chars' sanitizer would collapse
+// '/' and '@@@' both to '', re-opening the very cross-contamination this fixes).
+//
+// RESIDUAL (honest, ③.0-W3): whether the harness gives CONCURRENT same-parent
+// sub-agents DISTINCT session_id values is an unverified harness assumption (it
+// cannot be probed without spawning concurrent agents). If they share one
+// session_id the cross-contamination is NARROWED, not closed — but the failure
+// mode is strictly fail-OPEN (it over-approves a read-before-edit; it never
+// produces a false block that would brick an edit) and strictly dominates the
+// ppid floor (which collides on EVERY same-parent spawn). Not "fixed" — narrowed.
+function deriveSessionKey(data) {
+  const d = data || {};
+  const raw = d.session_id || d.sessionId
+    || process.env.CLAUDE_SESSION_ID || process.env.CLAUDE_CONVERSATION_ID
+    || String(process.ppid || 'default');
+  const coerced = String(raw) || 'default';
+  return crypto.createHash('sha256').update(coerced).digest('hex').slice(0, 16);
+}
+
+function resolveTrackerPath(data) {
+  return path.join(os.tmpdir(), `claude-read-tracker-${deriveSessionKey(data)}.json`);
+}
 
 /**
  * Load the per-session read tracker from disk. Returns a fresh tracker on
  * any error (missing file, parse failure) — first-run case is the common
  * path. Tracker shape: `{ files: { [absPath]: <readTimestamp> }, sessionStart: <ts> }`.
  *
+ * @param {string} trackerPath Resolved tracker path for this session (W3: was a module-scope const)
  * @returns {{files: Object<string, number>, sessionStart: number}}
  */
-function loadTracker() {
+function loadTracker(trackerPath) {
   try {
-    const raw = fs.readFileSync(TRACKER_PATH, 'utf8');
+    const raw = fs.readFileSync(trackerPath, 'utf8');
     return JSON.parse(raw);
   } catch {
     return { files: {}, sessionStart: Date.now() };
@@ -46,15 +87,16 @@ function loadTracker() {
  * is best-effort; the gate proceeds on errors via the surrounding
  * try/catch fail-open path.
  *
+ * @param {string} trackerPath Resolved tracker path for this session
  * @param {{files: Object<string, number>, sessionStart: number}} tracker State to persist
  * @returns {void}
  */
-function saveTracker(tracker) {
+function saveTracker(trackerPath, tracker) {
   // H.9.8: migrated to writeAtomic; helper cleanup-on-error absorbed the
   // inline unlinkSync + tmpFile bookkeeping; log event preserved as
   // test-surface (hook fail-soft contract).
   try {
-    writeAtomic(TRACKER_PATH, tracker);
+    writeAtomic(trackerPath, tracker);
   } catch (err) {
     logger('atomic_write_failed', { error: err.message });
   }
@@ -77,10 +119,7 @@ function normalizePath(filePath) {
   return canonicalize(filePath);
 }
 
-let input = '';
-process.stdin.setEncoding('utf8');
-process.stdin.on('data', (chunk) => { input += chunk; });
-process.stdin.on('end', () => {
+function handleEnd(input) {
   try {
     const data = JSON.parse(input);
     const toolName = data.tool_name || '';
@@ -93,11 +132,15 @@ process.stdin.on('end', () => {
       return;
     }
 
-    const tracker = loadTracker();
+    // W3: derive the per-session tracker path from THIS payload (session_id-first
+    // — see deriveSessionKey). Inside the fail-open try/catch so a malformed
+    // payload still fail-opens to approve.
+    const trackerPath = resolveTrackerPath(data);
+    const tracker = loadTracker(trackerPath);
 
     if (toolName === 'Read') {
       tracker.files[filePath] = Date.now();
-      saveTracker(tracker);
+      saveTracker(trackerPath, tracker);
       logger('read_recorded', { filePath });
       process.stdout.write(JSON.stringify({ decision: 'approve' }));
       return;
@@ -141,7 +184,7 @@ process.stdin.on('end', () => {
         }
         // Record the Write so subsequent Edit to this path passes.
         tracker.files[filePath] = Date.now();
-        saveTracker(tracker);
+        saveTracker(trackerPath, tracker);
         logger('approve', {
           toolName,
           filePath,
@@ -172,4 +215,13 @@ process.stdin.on('end', () => {
     logger('error', { error: err.message });
     process.stdout.write(JSON.stringify({ decision: 'approve' }));
   }
-});
+}
+
+if (require.main === module) {
+  let input = '';
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', (chunk) => { input += chunk; });
+  process.stdin.on('end', () => handleEnd(input));
+}
+
+module.exports = { deriveSessionKey, resolveTrackerPath, loadTracker, saveTracker, normalizePath };

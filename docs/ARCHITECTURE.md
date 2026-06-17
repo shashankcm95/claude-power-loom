@@ -63,7 +63,7 @@ A1–A7 specify the kernel transaction loop; A8–A10 (added in v6) specify the 
 
 ## 4. The kernel transaction loop in detail
 
-1. **Allocate** an isolated git worktree for the spawn (K1), under serial-only admission (K13 — one spawn at a time, with crash-orphan lock recovery).
+1. The **harness** allocates an isolated git worktree for an `isolation:"worktree"` spawn; the kernel **observes** it at spawn-close via `tool_response.worktreePath` (K1 is dormant — the kernel cannot inject its own worktree, OQ-21/[ADR-0012](../packages/specs/adrs/0012-capability-enforcement-is-static-not-runtime-injected.md)), under serial-only admission (K13 — one spawn at a time, with crash-orphan lock recovery).
 2. The spawn runs; the substrate records a **spawn-record envelope** (K2) capturing its lineage (`parent_state_id`), settings resolution (K2.b), and — at close — its write-scope snapshot.
 3. **K14** snapshots the filesystem after the spawn and records any out-of-scope writes in `write_scope_violations[]` (detected post-hoc — A7 is *detection*, not write-time prevention).
 4. The **post-spawn resolver** maps the spawn's terminal state through a canonical transition table to one outcome (promote / reject-conflict / hard-reset / etc.).
@@ -87,7 +87,7 @@ The "K1–K14" numbering spans the **whole kernel roadmap**. Phase 1-alpha (v3.0
 
 | K# | What it does | Status | Where |
 |---|---|---|---|
-| **K1** | Worktree allocation for `isolation:"worktree"` spawns (retry + cleanup, no-shell git runner). | Live | `worktree/worktree-allocator.js` |
+| **K1** | Worktree allocation for `isolation:"worktree"` spawns (retry + cleanup, no-shell git runner). | **Dormant** (superseded — the harness owns worktree creation; the kernel OBSERVES via `tool_response.worktreePath` at spawn-close rather than allocating, so K1 gains no production importer — OQ-21/ADR-0012; the `dormancy-assertion-k1` CI gate enforces it) | `worktree/worktree-allocator.js` |
 | **K2** | Spawn-record envelope (v2 schema) — `PostToolUse:Agent\|Task` capture with `parent_state_id` + forward-compat tolerance. **K2.b** settings-resolution shipped; **K2.c** per-tool-call observability deferred → v3.3. | Live | `spawn-state/spawn-record.js` |
 | **K3** | Lineage — pure-function `parent_state_id` chain DAG / acyclicity check. | Live | `_lib/lineage.js` |
 | **K3.b** | Context envelope — schema + validator for cross-spawn context propagation (`schemaVersion: 1.0.0-provisional`). | **Dormant** (its intended consumer K8 was dropped — ADR-0012; awaits a v3.2+ injection channel) | `_lib/context-envelope.js` |

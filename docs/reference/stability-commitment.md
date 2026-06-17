@@ -1,11 +1,12 @@
-# Stability Commitment (v2.x)
+# Stability Commitment (v2.x — historical record)
 
 > Returns to README: [../../README.md](../../README.md)
 
+> **Historical record (v2.x era).** This documents the stability commitments power-loom made *within the v2.x line* (v2.0.0, 2026-05-12). The substrate has since moved to **v3.x** (currently **v3.11**, released) — the v3 major bump that the "v3 trigger conditions" section below anticipated as future has happened. The commitments below were accurate for v2.x and are preserved as a historical record; they are **not** the live v3.x stability surface. For current state see [`ROADMAP.md`](../ROADMAP.md) and [`CHANGELOG.md`](../../CHANGELOG.md).
 
-power-loom shipped **v2.0.0 on 2026-05-12** after the H.9.x substrate-hardening track (chaos findings closure at H.9.15 + drift-notes resolution at H.9.16 + release-ceremony at H.9.17). Within v2.x, the substrate commits to:
+power-loom shipped **v2.0.0 on 2026-05-12** after the H.9.x substrate-hardening track (chaos findings closure at H.9.15 + drift-notes resolution at H.9.16 + release-ceremony at H.9.17). Within the v2.x line, the substrate committed to:
 
-**Stable (frozen — no breaking changes):**
+**Stable within v2.x (was frozen — no breaking changes):**
 
 - Plugin manifest schema (`.claude-plugin/plugin.json`)
 - Hook contracts (input JSON shape from Claude Code; output `decision: approve|block` shape per ADR-0001 fail-soft hook invariants)
@@ -16,14 +17,14 @@ power-loom shipped **v2.0.0 on 2026-05-12** after the H.9.x substrate-hardening 
 - ADR-0006 fix-don't-suppress invariant 5 (0 `eslint-disable` directives across substrate; suppression-detection active in CI)
 - drift-note 80 vigilance (HT-state.md surgical Python cutover pattern; 0 duplicate top-level YAML keys enforced via PreToolUse `validate-yaml-frontmatter.js` since H.9.11)
 
-**Evolving (under explicit version fields):**
+**Evolving within v2.x (under explicit version fields):**
 
-- Trust formula weights (`WEIGHT_PROFILE_VERSION`; today `"h7.0-multi-axis-v1"`; refit triggers when sample size justifies)
+- Trust formula weights (`WEIGHT_PROFILE_VERSION`; as of v2.0.0 `"h7.0-multi-axis-v1"`; refit triggers when sample size justifies)
 - Persona contracts (schema-additive only; never delete fields; `_backfillSchema` handles legacy reads)
-- Route-decide thresholds (`weights_version`; today `"v1.1-context-aware-2026-05-07"`; calibration ongoing)
+- Route-decide thresholds (`weights_version`; as of v2.0.0 `"v1.1-context-aware-2026-05-07"`; calibration ongoing — now `"v1.3-dict-expanded-2026-06-12"` at v3.11)
 - Validator extensions (HARD-block + SOFT-advisory checks may be added additively; existing checks may not weaken without ADR amendment per ADR-0006)
 
-**Experimental (explicitly not stable):**
+**Experimental within v2.x (explicitly not stable):**
 
 - Breeding mechanics (`agent-identity breed`) — manual subcommand today; auto-mode deferred to H.7.5+
 - Drift triggers (recalibration thresholds) — theory-driven defaults, refit when ≥3 high-trust identities have ≥30 verdicts
