@@ -128,7 +128,7 @@ Convention A defines WHEN a validator should skip a check; Convention B defines 
 
 ## Convention C — Tiered enforcement matches actual writing variance (H.7.18 reinforcement)
 
-Originated in H.7.12 (`validate-plan-schema.js`); reinforced in H.7.18 (`validate-markdown-emphasis.js`).
+Originated in H.7.12 (`validate-plan-schema.js`); reinforced in H.7.18 (`validate-markdown-emphasis.js`, **retired H.7.27** — detection absorbed by CI markdownlint `MD037`; the tiered-enforcement *design* lesson below still stands as a worked example).
 
 When the validator's universe (e.g., "all markdown files" or "all plan files") is heterogeneous in author/intent, **single-strict-tier enforcement causes false positives** that erode trust. The fix is tiered enforcement: separate "definitely a problem" from "style suggestion" from "informational hint" so the validator's noise level matches the user's risk tolerance.
 
@@ -139,7 +139,7 @@ When the validator's universe (e.g., "all markdown files" or "all plan files") i
 - **Tier 2 (conditional)**: Routing Decision, HETS Spawn Plan — fires only if "Routing Decision" string detected (signals new-style plan)
 - **Tier 3 (aspirational)**: Out of Scope, Drift Notes — stderr informational only
 
-`validate-markdown-emphasis.js` (H.7.18):
+`validate-markdown-emphasis.js` (H.7.18 — **RETIRED H.7.27**; kept here as a worked tiered-design example. The runtime detection now lives in CI markdownlint `MD037`, which made the edit-time hook redundant):
 - **Tier 1 (likely-MD037-triggering)**: 2+ unbackticked underscore-bearing tokens in same paragraph → forcing instruction
 - **Tier 2 (style suggestion)**: 1 isolated unbackticked token → stderr informational only
 
@@ -197,13 +197,14 @@ Q: Does the bad operation cause silent failure or security violation?
 | `validators/validate-no-bare-secrets` | Edit\|Write | Security gate — blocks writes containing bare API keys/tokens. Per H.5.2: fail-CLOSED on parse error. H.7.21 extension: Edit scans post-edit result (existing file + applied edit), not just `new_string` — see Convention E. |
 | `validators/validate-frontmatter-on-skills` | Edit\|Write | Silent-failure-prevention — blocks Write/Edit of skill files without YAML frontmatter (skill silently doesn't load). H.7.20 extension: Edit reads file + applies proposed edit + checks result — see Convention E. |
 
-**PostToolUse advisory** (3 hooks):
+**PostToolUse advisory** (2 hooks):
 
 | Hook | Scope | Purpose |
 |------|-------|---------|
 | `error-critic` | Bash | Repeat-failure consolidation; emits `[FAILURE-REPEATED]` at threshold |
 | `validators/validate-plan-schema` | Edit\|Write | Tiered enforcement of plan-template schema (H.7.12 + H.7.17 migrated from PreToolUse) |
-| `validators/validate-markdown-emphasis` | Edit\|Write | MD037 catch via underscore-emphasis detection (H.7.18) |
+
+> A 3rd advisory hook, `validators/validate-markdown-emphasis` (Edit\|Write, `MD037` catch — H.7.18), was **retired at H.7.27**: the detection migrated to CI markdownlint `MD037`, which absorbs the same cluster pattern at PR time, so the edit-time hook was redundant.
 
 ### Common deviation pattern (H.7.12 → H.7.17 lesson)
 

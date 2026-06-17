@@ -171,7 +171,7 @@ Examples:
 ✓  tests passed: 41/41 `_h70-test`; 0 contract violations
 ```
 
-The H.7.18 `validate-markdown-emphasis.js` PostToolUse hook detects this pattern and emits `[MARKDOWN-EMPHASIS-DRIFT]` for awareness. The hook is forward-looking; it doesn't auto-fix existing markdown.
+This discipline is enforced by **CI markdownlint `MD037`** (`no-space-in-emphasis`), which runs `markdownlint-cli2` over `**/*.md` (`.github/workflows/ci.yml`) and fires on exactly this cluster pattern. A dedicated `validate-markdown-emphasis.js` PostToolUse hook originally flagged it at edit-time (H.7.18, emitting `[MARKDOWN-EMPHASIS-DRIFT]`), but it was **retired at H.7.27** once an empirical check confirmed `MD037` catches the same pattern — the lint pipeline absorbs the detection at PR time, so the hook was redundant (YAGNI). The discipline is forward-looking: wrap the tokens as you write; CI catches a miss.
 
 </important>
 
