@@ -24,7 +24,11 @@ function fail(msg) { process.stderr.write(`error: ${msg}\n`); process.exit(1); }
 
 function getFlag(args, name) {
   const i = args.indexOf(name);
-  return i >= 0 && i + 1 < args.length ? args[i + 1] : undefined;
+  if (i < 0 || i + 1 >= args.length) return undefined;
+  const v = args[i + 1];
+  // a `--next-flag` is NOT a value — return undefined so the missing-value usage error
+  // surfaces instead of silently running with the wrong id (VALIDATE cli:27).
+  return v.startsWith('--') ? undefined : v;
 }
 
 function main(argv) {
@@ -47,7 +51,14 @@ function main(argv) {
     return;
   }
 
-  if (cmd === 'list') { process.stdout.write(`${JSON.stringify(listRuns())}\n`); return; }
+  if (cmd === 'list') {
+    // listRuns is internally fail-soft (returns [] on a readdir error), so this can't throw
+    // today — the try/catch matches the other subcommands' error contract (defense-in-depth
+    // against a future listRuns contract change; VALIDATE cli:50, premise-probed false-positive).
+    let runs; try { runs = listRuns(); } catch (e) { fail(e.message); }
+    process.stdout.write(`${JSON.stringify(runs)}\n`);
+    return;
+  }
 
   if (cmd === 'replay') {
     const runId = args[0];

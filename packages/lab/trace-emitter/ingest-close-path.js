@@ -84,7 +84,9 @@ function ingestClosePath({ kernelRunId, traceRunId, spawnStateDir, dir } = {}) {
 
   const runDir = path.join(spawnStateDir || SPAWN_STATE_BASE, kernelRunId);
   let files;
-  try { files = fs.readdirSync(runDir).filter((n) => JOURNAL_RE.test(n)); }
+  // .sort() — readdirSync order is not guaranteed; sort so cross-file ingestion order (and
+  // thus the assigned seq) is deterministic across environments (VALIDATE ingest:87).
+  try { files = fs.readdirSync(runDir).filter((n) => JOURNAL_RE.test(n)).sort(); }
   catch { return { emitted: 0, skipped: 0, entriesSeen: 0, files: 0 }; }
 
   let emitted = 0;
@@ -93,7 +95,9 @@ function ingestClosePath({ kernelRunId, traceRunId, spawnStateDir, dir } = {}) {
 
   for (const name of files) {
     let raw;
-    try { raw = fs.readFileSync(path.join(runDir, name), 'utf8'); } catch { continue; }
+    // An unreadable journal file (perms/race) is SILENT data loss — surface it as a skip
+    // (the loud signal) rather than silently dropping the whole file (VALIDATE ingest:97).
+    try { raw = fs.readFileSync(path.join(runDir, name), 'utf8'); } catch { skipped += 1; continue; }
     for (const line of raw.split('\n')) {
       if (!line) continue;
       entriesSeen += 1;

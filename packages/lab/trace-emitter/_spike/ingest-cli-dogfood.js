@@ -23,6 +23,12 @@ function out(s) { process.stdout.write(s + '\n'); }
 function cli(args) { return spawnSync('node', [CLI, ...args], { encoding: 'utf8', env: ENV }); }
 let ok = true;
 function check(cond, label) { out(`  ${cond ? 'OK  ' : 'BAD '} ${label}`); if (!cond) ok = false; }
+// Parse JSON stdout only after a clean exit — a failed subprocess yields empty/error stdout,
+// so an unguarded JSON.parse would throw + kill the dogfood instead of a clean BAD (CodeRabbit).
+function parseJson(res, label) {
+  if (res.status !== 0) { check(false, `${label} exited non-zero (${res.status})`); return null; }
+  try { return JSON.parse(res.stdout); } catch (e) { check(false, `${label} invalid JSON: ${e.message}`); return null; }
+}
 
 // Plant a real-shaped journal: krun-A has one COMMITTED spawn (verdict + provenance-record);
 // krun-B (the "next run") has the same plus a 2nd spawn — to show a cross-run delta.
@@ -53,27 +59,30 @@ check(list.status === 0 && JSON.parse(list.stdout).sort().join(',') === 'run-A,r
 
 // replay A (ordered close-path records)
 const replay = cli(['replay', 'run-A']);
-const recs = replay.stdout.trim().split('\n').map((l) => JSON.parse(l));
+if (replay.status !== 0) check(false, `replay run-A exited non-zero (${replay.status})`);
+const recs = (replay.status === 0 && replay.stdout.trim()) ? replay.stdout.trim().split('\n').map((l) => JSON.parse(l)) : [];
 out('--- replay run-A: ' + recs.map((r) => `${r.event}=${r.dur_ms}ms`).join(' '));
 check(recs.length === 2 && recs.every((r) => r.component === 'close-path'), 'replay run-A → 2 close-path records, ordered');
-check(recs.find((r) => r.event === 'status-git').dur_ms === 40, 'status-git dur_ms = 40 (from the verdict entry)');
+const statusRec = recs.find((r) => r.event === 'status-git');
+check(!!statusRec && statusRec.dur_ms === 40, 'status-git dur_ms = 40 (from the verdict entry)');
 
 // diff (run-B vs run-A): B has an extra spawn → more close-path records
 const d = cli(['diff', 'run-A', 'run-B']);
-const diffObj = JSON.parse(d.stdout);
-out('--- diff close-path counts: A=' + (diffObj.summaryA.byComponent['close-path'] || 0) + ' B=' + (diffObj.summaryB.byComponent['close-path'] || 0));
-check(d.status === 0 && diffObj.summaryB.byComponent['close-path'] === 4 && diffObj.summaryA.byComponent['close-path'] === 2, 'diff shows B accrued more close-path records than A');
+const diffObj = parseJson(d, 'diff');
+if (diffObj) out('--- diff close-path counts: A=' + (diffObj.summaryA.byComponent['close-path'] || 0) + ' B=' + (diffObj.summaryB.byComponent['close-path'] || 0));
+check(!!diffObj && diffObj.summaryB.byComponent['close-path'] === 4 && diffObj.summaryA.byComponent['close-path'] === 2, 'diff shows B accrued more close-path records than A');
 
 // summary (F2 — exercise the real-process CLI path, not just the pure query fn)
 const sum = cli(['summary', 'run-A']);
-const sumObj = JSON.parse(sum.stdout);
-out('--- summary run-A: total=' + sumObj.total + ' close-path=' + (sumObj.byComponent['close-path'] || 0));
-check(sum.status === 0 && sumObj.total === 2 && sumObj.durMs['status-git'].n === 1, 'summary run-A → total + dur stats (status-git n=1)');
+const sumObj = parseJson(sum, 'summary');
+if (sumObj) out('--- summary run-A: total=' + sumObj.total + ' close-path=' + (sumObj.byComponent['close-path'] || 0));
+check(!!sumObj && sumObj.total === 2 && sumObj.durMs['status-git'].n === 1, 'summary run-A → total + dur stats (status-git n=1)');
 
 // coupling-anomaly surfacing: a journal whose verdict lost its duration field
 plant('krun-bad', 'spX', [{ kind: 'shadow-resolver-verdict', event: 'spawn-close-shadow', spawn_id: 'spX', mode: 'shadow', resolved_at: '2026-06-17T00:00:00.000Z' }]);
 const bad = cli(['ingest', '--kernel-run', 'krun-bad', '--trace-run', 'run-bad']);
-check(JSON.parse(bad.stdout).skipped >= 1 && /anomaly/.test(bad.stderr), 'a duration-less verdict surfaces a LOUD coupling-anomaly warning (Finding 2)');
+const badObj = parseJson(bad, 'ingest bad');
+check(!!badObj && badObj.skipped >= 1 && /anomaly/.test(bad.stderr), 'a duration-less verdict surfaces a LOUD coupling-anomaly warning (Finding 2)');
 
 // CWE-22 on the CLI path
 const evil = cli(['replay', '../evil']);

@@ -26,8 +26,9 @@ new field-rename the coupling guard already covers). SHADOW; trust ZERO; version
    loud signal, never a silent empty timeline). Document the coupled kernel fields in the
    module header as a known cross-tier contract.
 3. **The query/replay/diff CLI** (`cli.js`, matching the lab CLI convention): `ingest`,
-   `list` (runs), `replay <run_id>` (ordered timeline), `diff <runA> <runB>` (added /
-   removed / changed across runs — the accrual question).
+   `list` (runs), `replay <run_id>` (ordered timeline), `summary <run_id>` (counts +
+   dur stats), `diff <runA> <runB>` (added / removed / changed across runs — the accrual
+   question).
 
 ## Runtime Probes (firsthand, against main @ `0ec324a` — source AND real on-disk data)
 
