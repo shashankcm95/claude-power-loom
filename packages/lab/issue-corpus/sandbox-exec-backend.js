@@ -26,16 +26,19 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { spawn, spawnSync, execFileSync } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const {
   buildSandboxProfile, STARTUP_SENTINEL, LOOM_TEST_RESULT_PREFIX,
 } = require('./container-adapter');
-const { canonicalize, isWithinRoot } = require('../../kernel/_lib/path-canonicalize');
+const { canonicalize } = require('../../kernel/_lib/path-canonicalize');
+// The hardened host-side git lifecycle is shared with docker-backend.js (ARCH-2).
+const {
+  mkScoped, safeDiscard, prepareClone: cloneRepo, applyPatch: applyPatchInto,
+} = require('./_clone-lifecycle');
 
 const SANDBOX_EXEC = '/usr/bin/sandbox-exec';
 const NODE_BIN = process.execPath;
 const NODE_PREFIX = canonicalize(path.dirname(path.dirname(NODE_BIN)));
-const TEMP_ROOT = canonicalize(os.tmpdir());
 
 // --------------------------------------------------------------------------
 // runContained — the proven primitive (sandbox-exec + ulimit-under-sandbox +
@@ -81,64 +84,6 @@ function runContained({ profilePath, cwd, command, argv = [], wallClockMs = 1200
       });
     });
   });
-}
-
-// --------------------------------------------------------------------------
-// Helpers — scoped temp, git, fixtures.
-// --------------------------------------------------------------------------
-
-function mkScoped(prefix) { return fs.mkdtempSync(path.join(os.tmpdir(), prefix)); }
-
-// The git lifecycle (clone/checkout/apply) runs UNSANDBOXED on the host before
-// the sandbox exists, on attacker-influenced inputs (the corpus repo + patches).
-// HARDEN neutralizes repo-side hooks + ext-transport + fsmonitor, and the env
-// drops system/global config + the credential prompt, for every git call here.
-const GIT_HARDEN = ['-c', 'core.hooksPath=/dev/null', '-c', 'protocol.ext.allow=never', '-c', 'core.fsmonitor=false'];
-const GIT_ENV = {
-  ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null',
-  GIT_TERMINAL_PROMPT: '0', GIT_ALLOW_PROTOCOL: 'file:https:http',
-};
-
-function git(args, cwd) {
-  return execFileSync('git', [...GIT_HARDEN, ...args], { cwd, env: GIT_ENV, stdio: ['ignore', 'pipe', 'pipe'], timeout: 120000 }).toString();
-}
-
-// A corpus-author-controlled repo / base_sha crosses into the host git flag
-// parser; without a `--` separator a value like `-q` or `--upload-pack=...` is
-// consumed as a FLAG (CWE-88 arg-injection on the UNSANDBOXED git). Validate
-// the shape AND pass `--` at every call site. A host-LOCAL repo is denied by
-// default (the prod path ingests remote URLs; a local path copies host files
-// into a sandbox-readable dir) — opt in via createSandboxExecBackend({allowLocalRepo}).
-function assertSafeRepo(repo, { allowLocal = false } = {}) {
-  if (typeof repo !== 'string' || repo.length === 0) throw new Error('prepareClone: repo required');
-  if (repo.startsWith('-')) throw new Error(`prepareClone: repo may not start with "-" (arg-injection): ${repo}`);
-  if (/^https?:\/\//.test(repo)) return repo;                       // remote URL — always allowed
-  const isLocal = path.isAbsolute(repo) || /^file:\/\//.test(repo);
-  if (!isLocal) throw new Error(`prepareClone: repo must be http(s):// (or, with allowLocalRepo, an absolute path / file:// URL): ${repo}`);
-  if (!allowLocal) throw new Error('prepareClone: host-local repo requires allowLocalRepo (default off — remote URL expected)');
-  return repo;
-}
-// base_sha is REQUIRED: a backtest must pin clone@base (never the remote's
-// default HEAD), else the run is a non-reproducible moving target.
-function assertSafeSha(sha) {
-  if (typeof sha !== 'string' || !/^[0-9a-f]{7,40}$/.test(sha)) throw new Error(`prepareClone: base_sha required, must be 7-40 lowercase hex: ${sha}`);
-  return sha;
-}
-// `label` becomes a host filename BEFORE sandboxing — a `../` would escape
-// .loom-patches into an arbitrary host write. Clamp to a basename-safe slug.
-function assertSafeLabel(label) {
-  const s = String(label == null ? 'patch' : label);
-  if (!/^[a-zA-Z0-9_-]{1,40}$/.test(s)) throw new Error(`applyPatch: label must be a basename-safe slug [A-Za-z0-9_-]{1,40}: ${label}`);
-  return s;
-}
-
-// Only ever rm -rf a path that canonicalizes strictly within the OS temp root —
-// a discard must never be coerced into deleting outside the scoped sandbox tree.
-function safeDiscard(target) {
-  const real = canonicalize(target);
-  if (!real || !isWithinRoot(real, TEMP_ROOT) || real === TEMP_ROOT) return false;
-  fs.rmSync(real, { recursive: true, force: true });
-  return true;
 }
 
 // --------------------------------------------------------------------------
@@ -235,36 +180,14 @@ function createSandboxExecBackend({ env = process.env, resolveTestCommand, allow
     // exposed so the spike / dogfood can force a fresh attestation + read the why.
     attest() { const r = attestOnce(); _attested = r.attested; return r; },
 
+    // The hardened clone/apply now lives in _clone-lifecycle.js (shared with the
+    // docker backend); the method threads this backend's allowLocalRepo through.
     async prepareClone({ repo, base_sha }) {
-      assertSafeRepo(repo, { allowLocal: allowLocalRepo });
-      assertSafeSha(base_sha); // REQUIRED — pin clone@base, never the remote default HEAD
-      const workDir = mkScoped('loom-clone-');
-      try {
-        // --no-hardlinks: a fresh standalone object store (never share the user's),
-        // so the sandboxed test can't read the user's whole history. `--` ends
-        // option parsing so repo can't be consumed as a flag (H1).
-        git(['clone', '--no-hardlinks', '--quiet', '--', repo, workDir], os.tmpdir());
-        // NO `--` for checkout: `git checkout -- <x>` treats <x> as a PATHSPEC, not
-        // a commit. assertSafeSha already guarantees base_sha is [0-9a-f]{7,40}
-        // (can't be a flag), so the positional is safe without the separator.
-        git(['checkout', '--quiet', base_sha], workDir);
-      } catch (e) {
-        safeDiscard(workDir); // don't leak the scoped temp on a partial-clone failure
-        throw e;
-      }
-      return { workDir };
+      return cloneRepo({ repo, base_sha, allowLocalRepo });
     },
 
     async applyPatch({ workDir, patch, label }) {
-      if (!patch) return { ok: true, skipped: true };
-      const pdir = path.join(workDir, '.loom-patches');
-      fs.mkdirSync(pdir, { recursive: true });
-      const pfile = path.join(pdir, `${assertSafeLabel(label)}.diff`); // label -> basename-safe slug (no ../ host write)
-      fs.writeFileSync(pfile, patch);
-      // git apply refuses `..`/symlink-through writes (VALIDATE-hacker-confirmed);
-      // `--` guards the patch-path positional from flag-injection.
-      git(['apply', '--', pfile], workDir);
-      return { ok: true };
+      return applyPatchInto({ workDir, patch, label });
     },
 
     async runTests({ workDir, test_ids }) {

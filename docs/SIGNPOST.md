@@ -244,12 +244,16 @@ Auto-generated map of where things live, derived from the repo structure + each 
 
 ### `lab/issue-corpus/`
 
+- `packages/lab/issue-corpus/_clone-lifecycle.js` - The SHARED hardened git clone/apply lifecycle, extracted (v3.0 Docker wave,
 - `packages/lab/issue-corpus/_spike/corpus-build/add-to-manifest.js` - v3.11 bootcamp Phase 1 — accrete VERIFIED staged records into bootcamp-manifest.json.
 - `packages/lab/issue-corpus/_spike/corpus-build/bootcamp-capture.js` - v3.11 bootcamp Phase 2b — REAL capture over the VERIFIED corpus.
 - `packages/lab/issue-corpus/_spike/corpus-build/bootcamp-measure.js` - v3.11 bootcamp Phase 3 — the DISCRIMINATION measurement over the minted lesson corpus.
 - `packages/lab/issue-corpus/container-adapter.js` - v3.9 W1 — the ContainerAdapter: PURE read-mostly sandbox orchestration.
 - `packages/lab/issue-corpus/_spike/containment-spike.js` - v3.9 W1 — sandbox-exec containment spike (macOS-only; green-or-block proof).
 - `packages/lab/issue-corpus/corpus.js` - v3.9 W0 — the issue-corpus forward contract.
+- `packages/lab/issue-corpus/docker-backend.js` - v3.0 (the live-beta Docker wave) — the IMPURE Docker containment backend behind
+- `packages/lab/issue-corpus/_spike/docker-containment-spike.js` - v3.0 (Docker wave) — docker containment spike (green-or-block proof).
+- `packages/lab/issue-corpus/_spike/docker-dogfood.js` - v3.0 (Docker wave) — ContainerAdapter end-to-end dogfood on the DOCKER backend.
 - `packages/lab/issue-corpus/_spike/dogfood.js` - v3.9 W1 — ContainerAdapter end-to-end dogfood (macOS-only verification probe).
 - `packages/lab/issue-corpus/pytest-runner.js` - v3.9.x (real-E2E spike) — the pytest test-runner adapter.
 - `packages/lab/issue-corpus/_spike/real-e2e-actor-dogfood.js` - v3.9.x real-E2E spike — STEP B: the REAL attempt.
