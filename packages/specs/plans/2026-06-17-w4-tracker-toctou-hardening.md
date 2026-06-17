@@ -173,3 +173,14 @@ disposition.
 scoped "WHEN the subdir is established / on a clean tmpdir", the same-uid case is conceded in caps, and
 the fallback is honest status-quo. The board confirmed the wave is portable hardening, not theater.
 Cleared to PR for the USER merge gate.
+
+### CodeRabbit gate (#345) — 1 actionable (Major), folded
+
+CodeRabbit (re-reviewed to completion; check `pass`) flagged ONE Major quick-win, premise-probed valid
+and folded: `trackerDir`'s catch logged the EEXIST-unsafe fallback but **silently** returned `root` for
+non-EEXIST mkdir errors (`EACCES`/`ENOSPC`/`EROFS`) — so the per-uid hardening could be disabled by an
+ENVIRONMENTAL fault with no signal, inconsistent with the ARCH-1 observability intent. Fold: the
+non-EEXIST fallback now logs the same greppable `tracker_subdir_unsafe_fallback` event with a `reason`
+discriminator (`unsafe_entry` = possible foreign-plant vs `mkdir_failed` + `code` = environmental
+fault) so an operator can tell a security signal from a disk/perms fault. Test W4-6 extended to assert
+the `mkdir_failed` log fires (suite now 49 asserts/0).

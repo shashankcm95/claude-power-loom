@@ -134,10 +134,16 @@ function trackerDir(base) {
       // Unsafe pre-existing entry OR a race -> flat fallback (status quo). Log so a
       // FORCED fallback (an active foreign-plant on a world-writable tmpdir, which
       // permanently disables the subdir hardening until cleanup) is OBSERVABLE.
-      logger('tracker_subdir_unsafe_fallback', { dir });
+      logger('tracker_subdir_unsafe_fallback', { dir, reason: 'unsafe_entry' });
       return root;
     }
-    return root;                                    // any other mkdir error -> flat fallback; never throw
+    // Any other mkdir error (EACCES/ENOSPC/EROFS/...) -> flat fallback; never throw.
+    // Log it too (CodeRabbit #345): a non-EEXIST failure ALSO disables the subdir
+    // hardening, just from an ENVIRONMENTAL cause rather than a hostile plant. Same
+    // event name (greppable: "the per-uid hardening fell back") with a `reason`
+    // discriminator so an operator can tell a security signal from a disk/perms fault.
+    logger('tracker_subdir_unsafe_fallback', { dir, reason: 'mkdir_failed', code: (err && err.code) || 'UNKNOWN' });
+    return root;
   }
 }
 

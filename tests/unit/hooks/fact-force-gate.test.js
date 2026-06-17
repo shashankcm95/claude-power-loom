@@ -284,16 +284,28 @@ process.stdout.write('\n[W4] per-uid 0700 tracker subdir (foreign-uid TOCTOU har
   rmBase(base);
 }
 
-// W4-6 (ARCH-3): a non-EEXIST mkdir error (base is a regular FILE) -> returns base, NEVER throws.
+// W4-6 (ARCH-3 + CodeRabbit #345): a non-EEXIST mkdir error (base is a regular FILE)
+// -> returns base, NEVER throws, AND emits the fallback log with reason=mkdir_failed.
 {
   const base = mkBase();
   const fileBase = path.join(base, 'a-file');
-  fs.writeFileSync(fileBase, 'x');
+  fs.writeFileSync(fileBase, 'x'); // mkdir of <fileBase>/claude-loom-<uid> -> ENOTDIR (non-EEXIST)
+  const logDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ffg-w4-log6-'));
+  const prevLogDir = process.env.LOOM_LOG_DIR;
+  const prevQuiet = process.env.CLAUDE_HOOKS_QUIET;
+  process.env.LOOM_LOG_DIR = logDir;
+  delete process.env.CLAUDE_HOOKS_QUIET;
   let threw = false; let dir;
   try { dir = gate.trackerDir(fileBase); } catch { threw = true; }
+  if (prevLogDir === undefined) delete process.env.LOOM_LOG_DIR; else process.env.LOOM_LOG_DIR = prevLogDir;
+  if (prevQuiet !== undefined) process.env.CLAUDE_HOOKS_QUIET = prevQuiet;
   assert(!threw, 'W4-6a: trackerDir never throws on a non-EEXIST mkdir error');
   assert(dir === fileBase, 'W4-6b: non-EEXIST mkdir error -> returns the flat base (status quo)');
-  rmBase(base);
+  let logged = '';
+  try { logged = fs.readFileSync(path.join(logDir, 'fact-force-gate.log'), 'utf8'); } catch { /* no log */ }
+  assert(/tracker_subdir_unsafe_fallback/.test(logged) && /mkdir_failed/.test(logged),
+    'W4-6c: non-EEXIST fallback emits the fallback log with reason=mkdir_failed (CodeRabbit #345)');
+  rmBase(base); rmBase(logDir);
 }
 
 // W4-7 (H4-2): dir removed after trackerDir -> saveTracker recreates it at 0700, not 0755.
