@@ -336,13 +336,23 @@ function buildEnvelope({ input, toolName, toolInput, toolResponse, evolutionSnap
     captured_at: new Date().toISOString(),
     axioms: {
       tool_name: toolName,
-      subagent_type: subagentBase,
-      subagent_type_raw: String(rawSubagentType),
+      // ③.0-W2 (post-VALIDATE leak-trace, Gemini-premise-2 sharp version): scrubSecrets is
+      // applied to EVERY caller/model-influenceable FREE-FORM string persisted to this
+      // world-readable (umask, ~0644) envelope — not just the completion excerpt (:321). A
+      // probe planted a token in description/subagent_type/cwd and saw it survive these axiom
+      // fields UNSCRUBBED. input_description (model-authored free text) is the highest-realism
+      // vector. Scrub is a no-op for every real value (a persona id / path / type never matches
+      // a secret pattern), so legit records are byte-unchanged; only a token-bearing (already
+      // malformed) value is redacted. session_id is DELIBERATELY left unscrubbed: it is a
+      // harness-controlled identifier + correlation key (a uuid, never secret-shaped) — scrubbing
+      // an id risks corrupting the key for zero real gain. sha256/chars carry no secret.
+      subagent_type: scrubSecrets(subagentBase),
+      subagent_type_raw: scrubSecrets(String(rawSubagentType)),
       input_prompt_sha256: promptText ? sha256(promptText) : null,
       input_prompt_chars: promptText.length,
-      input_description: description,
+      input_description: scrubSecrets(description),
       session_id: input.session_id || input.sessionId || null,
-      cwd: input.cwd || input.workspace || null,
+      cwd: scrubSecrets(input.cwd || input.workspace || null),
       // A6 (v3.4 Wave 3): the reputation derived-view promoted to an axiom-class attestation (v6:179
       // carve-out). Namespaced under .reputation; INV-23's prev_state_hash MVCC pin is a deferred
       // sibling. The kernel RECORDS this (it cannot inject it into the spawn — ADR-0012); the snapshot

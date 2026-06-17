@@ -218,6 +218,43 @@ redacted; FP re-scan 0 new across 1144 files; tests/unit 188/0; install 125/0. T
 prefix-anchored secret class with `.`-delimited structure needs the structured suffix in the regex, or
 the dot-separated tail survives a charset-only match.
 
+## Post-VALIDATE fold #2 — envelope-field leak (2026-06-17, external Gemini review → firsthand probe)
+
+A Gemini review of #343 raised 4 premises; we probed all 4 FIRSTHAND against the code (board
+`wf_dc0646e5-7bc`, hacker + honesty). Dispositions:
+
+- **P1 (base64/encoded secrets bypass)** — CARRY-TO-BETA-EGRESS. Real (a base64'd token / `Basic`
+  auth header passes the scrubber) but ALREADY a documented-deliberate gap (`validate-no-bare-secrets.js`
+  SEC-5: FP-cost > TP-benefit; user-side gitleaks/truffleHog) and the scrubber is explicitly coarse-
+  not-primary; a decode/normalization layer belongs at the ③.2 PR-egress pre-scrubber, not the
+  per-write/scrub wave. No W2 action.
+- **P2 (scope) — REAL MISS, FOLDED.** The literal "env/.env/memory" claim is INVALID (a real `.env`
+  write IS scanned + blocked; `.env.example`-only skips; env-vars are an egress/container concern). BUT
+  the SHARP version surfaced a genuine leak: `buildEnvelope` scrubbed ONLY the completion excerpt
+  (:321), while FOUR free-form persisted axiom fields — `subagent_type`, `subagent_type_raw`,
+  `input_description` (model-authored free text, highest realism), `cwd` — carried a planted token
+  UNSCRUBBED into the world-readable (~0644) envelope, with no test covering them. **Probed + confirmed
+  firsthand** (4 leaks → 0 after fix; legit values byte-unchanged). **Fix:** `scrubSecrets` applied to
+  all four at persist (`spawn-record.js` axioms); `session_id` deliberately NOT scrubbed (harness
+  identifier / correlation key — a uuid, never secret-shaped; scrubbing an id risks the key); prompt is
+  sha-only (already safe). 2 regression tests added (leak-closed + legit-no-op).
+- **P3 (single-point-of-failure / Shannon-entropy fallback)** — INVALID-PREMISE. Centralization is a
+  de-DRIFT fix guarded by the cross-test (fails on coverage loss), one layer of a documented
+  defense-in-depth stack (coarse scrubber + blocking validator + ③.2 egress + user-side tooling), and a
+  coarse over-matching net already exists (broad `sk-`/URL-pw/AWS-assign). Entropy matching was
+  effectively declined upstream (SEC-5 hex/base64 FP-cost) and would erode the per-write gate's trust
+  (the v2.8.4 FIX-E lesson); an entropy WARNING legitimately belongs at the human-gated ③.2 egress.
+  No W2 action; noted for ③.2.
+- **P4 (docstring 33%)** — INVALID-PREMISE/noise. The `{20,}`/`{7,}`/`{82,}` floor rationales + the
+  factory-not-shared-array reasoning ARE documented (block comments, not JSDoc); the 33% metric is
+  dominated by test-helpers the repo never docstrings. (Optional 1-line JSDoc on `scanContent` noted,
+  non-blocking — not folded.)
+
+Net: 1 real miss (P2 envelope-field leak) folded; 1 carry-to-egress (P1); 2 invalid premises (P3/P4).
+Reusable: **scrub at EVERY persisted free-form field, not just the obvious one** — a per-field leak
+trace (not a single-field check) is the right audit; an external review's wrong literal framing can
+still point at a real gap one level over. Re-gate: spawn-record 20/20; tests/unit 188/0; install 125/0.
+
 ## Honest frame
 
 Pure defensive hardening of the secret surface. No shadow→live flip, no weight change. The scrubber
