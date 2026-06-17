@@ -59,7 +59,8 @@ retrieval → solve → grade → learning-graph write) emits into it. SHADOW; t
 2. **Store shape: per-run JSONL timeline (RECOMMENDED) vs content-addressed per-record.**
    A trace is an ordered append stream → JSONL per `run_id` (replay = read-in-order; diff =
    two-file compare). Content-addressing (the recall-graph idiom) is for dedup'd nodes, not
-   a timeline. Keep `writeAtomicString` for the append's durability.
+   a timeline. Keep `fs.appendFileSync` for O(1) append durability (NOT `writeAtomicString`,
+   which rewrites the whole file — see the VALIDATE M2 correction below).
 3. **Wave size / split.** W2 = spine (schema + store + emit) + close-path ingester +
    query/replay/diff CLI + tests (~400-460 LoC). If VERIFY judges it over the
    reviewable-in-one-sitting bar, split: **W2a** = schema + store + emit + tests; **W2b** =
@@ -87,7 +88,7 @@ Write `tests/unit/lab/trace-emitter/*.test.js` FIRST (red), then impl:
    a half-line (atomic); read-back replays in `seq` order; `LOOM_LAB_STATE_DIR` honored
    (sandbox the dir per test); read-back is `deepFreeze`'d (the #266 read-path immutability
    lesson — test the read/list return, not just the constructed record).
-3. **ingester**: given a fixture `spawn-close-resolver.log` (planted JSONL), folds
+3. **ingester** (W2b): given a fixture `resolver-journal-<agentId>.jsonl` (planted JSONL), folds
    `spawnCloseWallMs`/`producer_git_ms`/`status_git_ms`/drop events into `component:
    close-path` records with correct `dur_ms`; idempotent (re-ingest doesn't double-count —
    track a high-water mark); a malformed log line is skipped, not fatal.
@@ -97,7 +98,8 @@ Write `tests/unit/lab/trace-emitter/*.test.js` FIRST (red), then impl:
   (planted files, real append/read), platform-independent, sandboxed dir.
 - Dogfood (`_spike/`): emit a synthetic run + ingest a real close-path log + replay + diff
   two runs → prove the timeline is real (a green unit suite is a hypothesis; the dogfood
-  is the real-path check, Rule-2a-corollary).
+  is the real-path check, Rule-2a-corollary; the close-path source is the spawn-state journal,
+  not `.log`).
 
 ## VALIDATE (post-build, lens by need)
 
