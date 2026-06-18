@@ -137,7 +137,7 @@ async function runActorSolve({ record, claudeBin, backend, prompt, model, timeou
   // LAZY-require the heavy deps INSIDE the closure (FLAG-1) -- only reached on a real run.
   const { execFileSync } = require('child_process');
   const { runActorTrajectory } = require('../causal-edge/trajectory-friction-run');
-  const { assertSafeRepo } = require('../issue-corpus/_clone-lifecycle');
+  const { assertSafeRepo, assertSafeSha } = require('../issue-corpus/_clone-lifecycle');
   // grader is injectable (test seam); default = the proven makeBehavioralFn (sealed-field grade + the
   // C1 test-tree-rehash that bare ContainerAdapter.run drops).
   const makeGrader = behavioralFnFactory
@@ -146,16 +146,19 @@ async function runActorSolve({ record, claudeBin, backend, prompt, model, timeou
   // check (hacker M-1) instead of ENOBUFS at execFileSync's default 1MiB.
   const git = (args, cwd) => execFileSync('git', args, { cwd, encoding: 'utf8', timeout: 120000, maxBuffer: MAX_PATCH_BYTES + 65536 });
 
-  // M-2: validate the repo on the ACTOR path too (no weaker than the grader) -- rejects a '-'-lead
-  // arg-injection + a non-http(s) host before clone. Committed corpus is github.com-only (H2 / W4c).
+  // M-2 + CodeRabbit: validate repo + base_sha on the ACTOR path (no weaker than the grader's
+  // prepareClone) -- assertSafeRepo rejects '-'-lead arg-injection + non-http(s) host; assertSafeSha
+  // requires [0-9a-f]{7,40} so the checkout pins an IMMUTABLE commit, never a mutable ref (a branch/tag
+  // would skew grading across runs). Committed corpus is github.com-only (H2 / W4c).
   assertSafeRepo(record.repo);
+  assertSafeSha(record.base_sha);
   let actorDir = null;
   try {
     // clone @ base_sha for the actor to edit (unsandboxed -- it only produces a patch; the stranger's
     // CODE runs later, contained, in the grader sandbox).
     actorDir = fs.mkdtempSync(path.join(os.tmpdir(), 'loom-arm-actor-'));
     git(['clone', '--quiet', record.repo, actorDir]);
-    git(['checkout', '--quiet', record.base_sha], actorDir);
+    git(['checkout', '--quiet', '--detach', record.base_sha], actorDir);
     // run the actor. §2b: the PROBLEM rides in `record` (buildActorPrompt, blind+graded); `prompt` is
     // the persona-framing DELTA -> extraContext VERBATIM (W3a fence-as-DATA applied). Bash DROPPED.
     const cap = runActorTrajectory({ record, extraContext: prompt, claudeBin, model, cwd: actorDir, allowedTools: ACTOR_TOOLS, ...(timeout ? { timeout } : {}) });
