@@ -23,9 +23,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
-const CONTRACTS_DIR = path.join(REPO_ROOT, 'swarm', 'personas-contracts');
-const SKILLS_DIR = path.join(REPO_ROOT, 'skills');
-const COMMANDS_DIR = path.join(REPO_ROOT, 'commands');
+// v4 (ADR-0008) workspace layout — the pre-Phase-0 flat dirs (swarm/personas-contracts,
+// skills/, commands/) were moved under packages/* and this script crashed on the dead paths.
+const CONTRACTS_DIR = path.join(REPO_ROOT, 'packages', 'runtime', 'contracts');
+const SKILLS_DIR = path.join(REPO_ROOT, 'packages', 'skills', 'library');
+const COMMANDS_DIR = path.join(REPO_ROOT, 'packages', 'skills', 'commands');
 
 function listAuthoredSkills() {
   const authored = new Set();
@@ -86,6 +88,10 @@ function refreshContract(contractPath, authored, isCheck) {
 function main() {
   const isCheck = process.argv.includes('--check');
   const authored = listAuthoredSkills();
+  if (!fs.existsSync(CONTRACTS_DIR)) {
+    console.error(`refresh-skill-status: contracts dir not found: ${CONTRACTS_DIR}`);
+    process.exit(isCheck ? 0 : 1);
+  }
   const contracts = fs.readdirSync(CONTRACTS_DIR)
     .filter((f) => f.endsWith('.contract.json'))
     .map((f) => path.join(CONTRACTS_DIR, f));
