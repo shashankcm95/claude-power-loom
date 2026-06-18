@@ -298,6 +298,8 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/lab/persona-experiment/_spike/dogfood-arms.js` - 3.1-W3a DOGFOOD (_spike) -- the Rule-2a-corollary REAL-PATH proof.
 - `packages/lab/persona-experiment/_spike/dogfood-run.js` - 3.1-W3b DOGFOOD (_spike) -- the Rule-2a-corollary REAL-PATH proof for the run+measure layer.
 - `packages/lab/persona-experiment/grounding-slice.js` - 3.1-W3a -- the grounding-slice builder (arm C's "earned instincts").
+- `packages/lab/persona-experiment/_spike/real-solve-spike.js` - 3.1-W4b SPIKE (_spike, OUTSIDE tests/unit/**) -- the Rule-2a-corollary REAL-PATH proof for the
+- `packages/lab/persona-experiment/real-solve.js` - 3.1-W4b -- the REAL `claude -p` solve+grade driver: the injectable async `solveFn` the arm-loop
 
 ### `lab/reputation/`
 

@@ -57,8 +57,12 @@ plant('df-1', 'A retried webhook must dedup on the delivery id before mutating, 
 plant('df-2', 'Validate the request body at ingress with a schema before the handler trusts it.');
 
 // --- run the REAL 3-arm experiment with a deterministic stub solveFn ------------------------
+// W4b: runExperiment is ASYNC -- AWAIT it inside an async IIFE (the stub is sync; await tolerates a
+// non-thenable, so the stub needs no change).
 function stubSolve({ arm }) { return { patch: `${SOLVE_MARKER} [arm=${arm}]`, verdict: 'BEHAVIORAL_PASS' }; }
-const res = runExperiment({ run_id: RUN_ID, persona: PERSONA, task: TASK, solveFn: stubSolve });
+
+(async () => {
+const res = await runExperiment({ run_id: RUN_ID, persona: PERSONA, task: TASK, solveFn: stubSolve });
 
 // --- arm-query the cross-arm delta off the REAL timeline ------------------------------------
 const cmp = compareArms(RUN_ID);
@@ -105,3 +109,4 @@ out(ok
 
 try { fs.rmSync(TMP, { recursive: true, force: true }); } catch { /* best-effort */ }
 process.exit(ok ? 0 : 1);
+})().catch((e) => { out(`DOGFOOD THREW: ${e && e.stack}`); process.exit(1); });

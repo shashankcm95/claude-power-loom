@@ -54,7 +54,10 @@ function resolveSolveFn(modPath) {
   return fn;
 }
 
-function cmdRun(args) {
+// W4b: runExperiment is ASYNC -- cmdRun awaits it (and so returns a promise). main() returns the
+// cmdRun promise so a caller (and the test harness) can await completion; a runtime fault is caught
+// and turned into a clean fail() (never a stack dump), mirroring the sync version's catch.
+async function cmdRun(args) {
   const runId = getFlag(args, '--run');
   const persona = getFlag(args, '--persona');
   const task = getFlag(args, '--task');
@@ -63,7 +66,7 @@ function cmdRun(args) {
   try { assertSafeRunId(runId); } catch (e) { fail(e.message); }
   const solveFn = resolveSolveFn(solvePath);
   let res;
-  try { res = runExperiment({ run_id: runId, persona, task, solveFn }); } catch (e) { fail(e.message); }
+  try { res = await runExperiment({ run_id: runId, persona, task, solveFn }); } catch (e) { fail(e.message); }
   process.stdout.write(`${JSON.stringify(res)}\n`);
   if (res.skipped > 0) {
     process.stderr.write(`warning: ${res.skipped} seam emit(s) were skipped (a schema-rejected emit degraded to a logged skip; the run completed)\n`);
@@ -86,6 +89,10 @@ function main(argv) {
   return fail(`unknown subcommand: ${cmd || '(none)'} -- use run|summarize|compare`);
 }
 
-if (require.main === module) main(process.argv.slice(2));
+if (require.main === module) {
+  // main may return a promise (the async `run` path); a top-level rejection becomes a clean exit-1
+  // (never an unhandled rejection / stack dump). The query paths return undefined -> Promise.resolve.
+  Promise.resolve(main(process.argv.slice(2))).catch((e) => { process.stderr.write(`error: ${e && e.message}\n`); process.exit(1); });
+}
 
 module.exports = { main, defaultStubSolve, resolveSolveFn };

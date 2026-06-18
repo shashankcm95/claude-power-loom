@@ -179,7 +179,7 @@ atest('selectAttestedBackend returns null when attest leaves it un-attested', as
 // --------------------------------------------------------------------------
 
 test('ARCH-2 assertSafeSha rejects a flag-shaped sha', () => throws(() => CL.assertSafeSha('-q')));
-test('ARCH-2 assertSafeSha rejects too-short / requires hex', () => { throws(() => CL.assertSafeSha('abc')); assert.ok(CL.assertSafeSha('a'.repeat(40))); });
+test('ARCH-2 assertSafeSha requires a FULL 40-char hex commit (tightened from 7-40)', () => { throws(() => CL.assertSafeSha('abc')); throws(() => CL.assertSafeSha('a'.repeat(7))); throws(() => CL.assertSafeSha('a'.repeat(39))); assert.ok(CL.assertSafeSha('a'.repeat(40))); });
 test('ARCH-2 assertSafeRepo rejects a leading-dash (--upload-pack) repo', () => throws(() => CL.assertSafeRepo('--upload-pack=touch /tmp/pwn')));
 test('ARCH-2 assertSafeRepo rejects ext:: transport', () => throws(() => CL.assertSafeRepo('ext::sh -c touch /tmp/pwn')));
 test('ARCH-2 assertSafeRepo denies a local path by default, allows with allowLocal', () => {

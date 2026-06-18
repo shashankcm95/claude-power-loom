@@ -43,8 +43,14 @@ const ATTRS_STR_CAP = 128;
 // The CLOSED enum of legal behavioral verdicts a subject's solveFn may yield (hacker MED). Any
 // value outside this set -- including a control-char / terminal-escape / log-injection string --
 // collapses to 'unknown' (observedVerdict), so a hostile solveFn can never steer a verdict slot
-// into a terminal-escape sink. 'error' is the thrown-solveFn path; the rest are observed grades.
-const VERDICT_SET = new Set(['BEHAVIORAL_PASS', 'BEHAVIORAL_FAIL', 'error', 'unknown']);
+// into a terminal-escape sink. 'error' is the thrown/rejected-solveFn path; the rest are observed
+// grades. W4b (architect HIGH-1): BEHAVIORAL_UNAVAILABLE is the THIRD harness grade -- "the grade
+// could not be computed" (actor failed / not-contained / fallback). It is ADDITIVE (Open/Closed)
+// and a FIXED literal emitted ONLY by trusted harness code (real-solve.js), never subject-steerable,
+// so the W3b "no subject can steer a slot" invariant holds. It must NEVER map to BEHAVIORAL_FAIL (a
+// false-FAIL pollutes the A/B/C discrimination as badly as a false-PASS) and does NOT count as a
+// pass in arm-query's pass_grade_count (only BEHAVIORAL_PASS increments that numerator).
+const VERDICT_SET = new Set(['BEHAVIORAL_PASS', 'BEHAVIORAL_FAIL', 'BEHAVIORAL_UNAVAILABLE', 'error', 'unknown']);
 
 // Clamp a value destined for an attrs/state_delta bag: numbers/booleans pass; a string is bounded
 // to ATTRS_STR_CAP (so a stray identifier can never balloon a record). Anything else -> null.
@@ -79,9 +85,11 @@ function emitSeam(emitFn, partial) {
 }
 
 // Drive one arm through the five seams; emits one record per seam. PURE of network: the only
-// outside effect is the injected solveFn (the W4 claude -p driver) + the emit seam. Returns the
-// arm's outcome summary. `count` is mutated locally for the skip tally and returned to the caller.
-function runArm({ run_id, arm, persona, task, solveFn, knownPersonas, emitFn }) {
+// outside effect is the injected solveFn (the W4b claude -p driver) + the emit seam. ASYNC (W4b):
+// the solve seam now AWAITS the injected solveFn (the real driver is async); the validation prelude
+// stays SYNCHRONOUS so a caller bug throws (not a rejected promise) at the boundary. Returns the
+// arm's outcome summary. `skipped` is tallied locally and returned to the caller.
+async function runArm({ run_id, arm, persona, task, solveFn, knownPersonas, emitFn }) {
   assertSafeRunId(run_id);
   if (!ARMS.includes(arm)) throw new Error(`runArm: unknown arm ${JSON.stringify(arm)}`);
   // runArm is exported + reachable directly (not only via runExperiment), so it guards emitFn too
@@ -103,7 +111,7 @@ function runArm({ run_id, arm, persona, task, solveFn, knownPersonas, emitFn }) 
   seam({ component: 'recall-retrieval', event: 'end', attrs: boundedAttrs(arm, { lesson_count: lessonCount }) });
 
   // 3) solve: the INJECTED solveFn; dur_ms = wall-time; outputs_digest = digest(result) NEVER raw.
-  const verdict = runSolveSeam({ seam, arm, prompt, task, solveFn });
+  const verdict = await runSolveSeam({ seam, arm, prompt, task, solveFn });
 
   // 4) grade: the OBSERVED verdict (not optimized). 5) graph-write: the accrued node ids (array).
   seam({ component: 'grade', event: 'end', attrs: boundedAttrs(arm, { behavioral_verdict: verdict }) });
@@ -112,31 +120,29 @@ function runArm({ run_id, arm, persona, task, solveFn, knownPersonas, emitFn }) 
   return { arm, verdict, lesson_count: lessonCount, skipped };
 }
 
-// The solve seam, factored out (SRP, < 50 LoC, double catch-isolation). Returns the behavioral
-// verdict ('error' when solveFn throws). The grade record for the error path is emitted by the
-// caller's catch-isolated seam, so a schema-rejecting grade emit also degrades to a skip.
-function runSolveSeam({ seam, arm, prompt, task, solveFn }) {
+// The solve seam, factored out (SRP, < 50 LoC, double catch-isolation). ASYNC (W4b): it AWAITS the
+// injected solveFn (the real claude -p driver is async). The single try/catch now isolates BOTH a
+// SYNC throw AND a rejected Promise (await re-raises a rejection into the same catch) -> grade
+// 'error' on either. The Date.now() brackets wrap the await, so dur_ms is the REAL wall-time of the
+// solve (including the error path: startedAt is captured before the await). The W3b thenable
+// tripwire is DELETED -- a thenable is now the EXPECTED shape (the awaited value is digested/observed,
+// never the Promise). The grade record for the error path is emitted by the caller's catch-isolated
+// seam, so a schema-rejecting grade emit also degrades to a skip.
+async function runSolveSeam({ seam, arm, prompt, task, solveFn }) {
   const startedAt = Date.now();
   let result;
   try {
-    result = solveFn({ arm, prompt, task });
+    result = await solveFn({ arm, prompt, task });
   } catch {
-    // FLAG-1: a thrown solveFn -> a traced grade:'error'; never persist the error/prompt content.
+    // FLAG-1: a thrown OR rejected solveFn -> a traced grade:'error'; never persist the error/prompt
+    // content. dur_ms is the wall-time up to the failure (>= 0 -- the bracket wraps the await).
     seam({ component: 'solve', event: 'error', dur_ms: Date.now() - startedAt, attrs: boundedAttrs(arm) });
     return 'error';
   }
-  // SYNC CONTRACT (CodeRabbit Major): W3b's seam is synchronous (the stub is sync). A thenable means
-  // an ASYNC solveFn (the W4 claude -p driver) -- digesting/observing a Promise would silently
-  // mis-measure, and a rejected Promise would ESCAPE the catch above. This is a CONTRACT violation
-  // (a programming error), NOT a runtime solve failure, so it PROPAGATES (fail loud) rather than
-  // degrading to a grade:'error'. W4 makes the whole seam async (await) -- tracked as a carry.
-  if (result && typeof result.then === 'function') {
-    throw new Error('runSolveSeam: solveFn must be synchronous in W3b (the async claude -p driver is W4)');
-  }
   const durMs = Date.now() - startedAt;
-  // digest the WHOLE result object (content -> 64-hex); raw content never enters a record. attrs
-  // carries ONLY the arm (so the record is arm-attributable for the per-arm rollup) -- the content
-  // is in the digest, never the bag (fold F8).
+  // digest the WHOLE (awaited) result object (content -> 64-hex); raw content never enters a record.
+  // attrs carries ONLY the arm (so the record is arm-attributable for the per-arm rollup) -- the
+  // content is in the digest, never the bag (fold F8).
   seam({ component: 'solve', event: 'end', dur_ms: durMs, inputs_digest: digest(prompt), outputs_digest: digest(result), attrs: boundedAttrs(arm) });
   return observedVerdict(result);
 }
@@ -173,12 +179,16 @@ function lessonIds(grounding) {
  * @param {string} opts.run_id    the F7 run_id (CWE-22 guarded).
  * @param {string} opts.persona   the bare agentType (loaded for arms B/C; sliced for C).
  * @param {string} opts.task      the test-repo task context (identical across arms).
- * @param {(o:{arm,prompt,task})=>any} opts.solveFn  the INJECTED solve seam (stub in W3b).
+ * @param {(o:{arm,prompt,task})=>(any|Promise<any>)} opts.solveFn  the INJECTED solve seam
+ *   (a deterministic stub in tests/CI; the real async claude -p driver in W4b -- awaited either way).
  * @param {string[]|Set<string>} [opts.knownPersonas] the canonical-key validation set.
  * @param {(partial:object)=>any} [opts.emitFn]       the emit seam (defaults to traceEmit).
- * @returns {{run_id:string, arms:object[], skipped:number}}
+ * @returns {Promise<{run_id:string, arms:object[], skipped:number}>}
  */
-function runExperiment(opts = {}) {
+async function runExperiment(opts = {}) {
+  // The validation prelude throws synchronously BEFORE any `await`, so the rejection is immediate.
+  // Because runExperiment is async, that throw surfaces as a REJECTED promise -- boundary-validation
+  // tests must use `assert.rejects` (or await + try/catch), NOT `assert.throws`, to catch it.
   const { run_id, persona, task, solveFn, knownPersonas, emitFn } = opts;
   if (typeof run_id !== 'string' || run_id.length === 0) throw new Error('runExperiment: a non-empty run_id is required');
   assertSafeRunId(run_id);
@@ -189,8 +199,10 @@ function runExperiment(opts = {}) {
 
   const arms = [];
   let skipped = 0;
+  // SEQUENTIAL await (not Promise.all): the arms share the single F7 timeline + a real claude -p
+  // actor is heavy, so run them in order rather than racing concurrent clones/subprocesses.
   for (const arm of ARMS) {
-    const r = runArm({ run_id, arm, persona, task, solveFn, knownPersonas, emitFn });
+    const r = await runArm({ run_id, arm, persona, task, solveFn, knownPersonas, emitFn });
     skipped += r.skipped;
     arms.push(r);
   }
