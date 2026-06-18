@@ -173,6 +173,14 @@ Examples:
 
 This discipline is enforced by **CI markdownlint `MD037`** (`no-space-in-emphasis`), which runs `markdownlint-cli2` over `**/*.md` (`.github/workflows/ci.yml`) and fires on exactly this cluster pattern. A dedicated `validate-markdown-emphasis.js` PostToolUse hook originally flagged it at edit-time (H.7.18, emitting `[MARKDOWN-EMPHASIS-DRIFT]`), but it was **retired at H.7.27** once an empirical check confirmed `MD037` catches the same pattern — the lint pipeline absorbs the detection at PR time, so the hook was redundant (YAGNI). The discipline is forward-looking: wrap the tokens as you write; CI catches a miss.
 
+## Markdown list-marker discipline (MD004 — the wrapped `+`/`-` trap)
+
+A wrapped prose line whose continuation BEGINS with a bare list marker (`+`, `-`, or a digit-dot `N.`) plus a space is parsed by markdownlint as a list item. When such a stray marker appears in a doc that otherwise uses one bullet style, `MD004` (`ul-style`, "consistent") takes the FIRST marker as canonical and fails CI on every other bullet (`Expected: plus; Actual: dash`, or the reverse). The trap is invisible while authoring: it only bites when a sentence like "confirm the direction + that X" wraps so `+ that X` lands at the start of the next line.
+
+Avoid it: when a `+`/`-`/digit-dot token would fall at the start of a wrapped line, reword (`+` to "and"/"plus"; `-` to "minus"/"to"), keep the token mid-line, or wrap it in backticks (a code span never parses as a marker).
+
+Enforced by **CI markdownlint `MD004`** (same `markdownlint-cli2` over `**/*.md` pipeline as `MD037`). Forward-looking, exactly like the emphasis discipline above: write the prose so no wrapped line opens with a bare list marker; CI catches a miss. Recurred 3x in v3.x plan/ROADMAP authoring (the W1/W2a/W3a dry-run plans) before codification.
+
 </important>
 
 <important if "task involves CI workflow or install.sh changes">
