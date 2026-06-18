@@ -175,9 +175,17 @@ function validateJournalEntry(entry) {
  * bytes are never rewritten; the entry is JSON.stringify'd onto a new line.
  * Durable via the atomic tmp+rename primitive (read-existing + concat + rewrite).
  *
+ * The read-modify-rewrite is serialized under the kernel file-lock so concurrent
+ * appends can never lose an entry (without it, two appenders both read the same
+ * prior bytes and the slower writer's atomic rename clobbers the faster one's —
+ * a silently-dropped undo record makes a promotion un-rollbackable). Same lock
+ * discipline appendSnapshotWitness uses. Fail-SOFT on contention: a contended
+ * lock returns { appended: false, reason: 'lock-contended' } rather than
+ * throwing, so a caller never crashes on a transient collision.
+ *
  * @param {string} journalPath
  * @param {object} entry
- * @returns {{appended: boolean, lineCount: number}}
+ * @returns {{appended: boolean, lineCount?: number, reason?: string}}
  */
 function appendJournalEntry(journalPath, entry) {
   if (typeof journalPath !== 'string' || journalPath.length === 0) {
@@ -187,21 +195,32 @@ function appendJournalEntry(journalPath, entry) {
   if (!validation.valid) {
     throw new Error('K9 appendJournalEntry: invalid entry — ' + validation.errors.join('; '));
   }
-  let prior = '';
-  try {
-    prior = fs.readFileSync(journalPath, 'utf8');
-  } catch {
-    prior = ''; // first write — file does not exist yet
+  // Writer-side lock dep is LAZY (matches appendSnapshotWitness): the validate /
+  // build path must not pay the lock module's load tax on a non-writing caller.
+  const { acquireLock, releaseLock } = require('./lock');
+  const lockPath = journalPath + '.lock';
+  if (!acquireLock(lockPath, { maxWaitMs: 2000 })) {
+    return { appended: false, reason: 'lock-contended' };
   }
-  // Guard the INV-19 byte-prefix invariant: if a prior crash left an
-  // un-terminated tail, normalize to a newline boundary before appending so the
-  // new entry is a clean line (the torn fragment is preserved as bytes but the
-  // append never splices INTO it).
-  const base = prior.length > 0 && !prior.endsWith('\n') ? prior + '\n' : prior;
-  const next = base + JSON.stringify(entry) + '\n';
-  writeAtomicString(journalPath, next);
-  const lineCount = next.length === 0 ? 0 : next.split('\n').filter((l) => l.length > 0).length;
-  return { appended: true, lineCount };
+  try {
+    let prior = '';
+    try {
+      prior = fs.readFileSync(journalPath, 'utf8');
+    } catch {
+      prior = ''; // first write — file does not exist yet
+    }
+    // Guard the INV-19 byte-prefix invariant: if a prior crash left an
+    // un-terminated tail, normalize to a newline boundary before appending so the
+    // new entry is a clean line (the torn fragment is preserved as bytes but the
+    // append never splices INTO it).
+    const base = prior.length > 0 && !prior.endsWith('\n') ? prior + '\n' : prior;
+    const next = base + JSON.stringify(entry) + '\n';
+    writeAtomicString(journalPath, next);
+    const lineCount = next.length === 0 ? 0 : next.split('\n').filter((l) => l.length > 0).length;
+    return { appended: true, lineCount };
+  } finally {
+    releaseLock(lockPath);
+  }
 }
 
 /**

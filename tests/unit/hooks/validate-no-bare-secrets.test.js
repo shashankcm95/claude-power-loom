@@ -147,6 +147,48 @@ process.stdout.write('\n[W2] beta credential classes (glpat- / AIza) block end-t
   assert(r.decision === 'block', 'W2-3: github_pat_ fine-grained -> block');
 }
 
+process.stdout.write('\n[$-sanitize] Edit post-image reconstructs $-bearing replacement verbatim\n');
+
+// D1: An Edit whose new_string carries literal `$$` pairs introduces a bare secret.
+// The edit tool writes new_string VERBATIM to disk, so the post-image value has 20
+// literal `$` + suffix (>=16 chars) and matches literal-secret-assignment. The pre-fix
+// code did `result.replace(old, new_string)`, where String.replace collapses each `$$`
+// to a single `$` — shrinking the reconstructed value below the 16-char floor so the
+// secret slipped past the scanner. This case FAILS (approve) against the old code.
+{
+  const existing = writeTmpFile('DATABASE_URL=__FILL__\n', 'env');
+  // Build the var name via concat so the test source doesn't trip its own gate.
+  const newStr = 'DB_PASS' + 'WORD=' + '$'.repeat(20) + 'ab12';
+  const r = runHook('Edit', { file_path: existing, old_string: '__FILL__', new_string: newStr });
+  fs.unlinkSync(existing);
+  assert(r.decision === 'block', 'D1: $-bearing Edit replacement introducing a bare secret -> block');
+}
+
+// D2: the boundary case. The disk-literal value is exactly at the 16-char floor (12 `$`
+// + a 4-char suffix, so it is not an all-identical repeated-char placeholder either), so it
+// matches; the buggy `$$`-collapse halved the `$` run, dropping the value to 10 chars (below
+// the floor) and missing it. Confirms the fix scans the verbatim post-image, not the
+// JS-reinterpreted one.
+{
+  const existing = writeTmpFile('CFG=__SLOT__\n', 'env');
+  const newStr = 'APP_SECRET=' + '$'.repeat(12) + 'ab12';
+  const r = runHook('Edit', { file_path: existing, old_string: '__SLOT__', new_string: newStr });
+  fs.unlinkSync(existing);
+  assert(r.decision === 'block', 'D2: $-bearing Edit at the 16-char value floor -> block');
+}
+
+// D3: MultiEdit non-replace_all path applies the same sanitization.
+{
+  const existing = writeTmpFile('LINE1=__A__\n', 'env');
+  const newStr = 'SERVICE_TOK' + 'EN=' + '$'.repeat(20) + 'cd34';
+  const r = runHook('Edit', {
+    file_path: existing,
+    edits: [{ old_string: '__A__', new_string: newStr }],
+  });
+  fs.unlinkSync(existing);
+  assert(r.decision === 'block', 'D3: MultiEdit $-bearing replacement introducing a bare secret -> block');
+}
+
 process.stdout.write('\n=== Summary ===\n');
 process.stdout.write('  Passed: ' + passed + '\n');
 process.stdout.write('  Failed: ' + failed + '\n');

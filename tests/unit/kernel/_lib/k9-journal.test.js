@@ -282,6 +282,80 @@ test('PROBE: grep reverse_op in k9-journal.js finds ZERO bare reverse_op occurre
     `every reverse_op site must be renamed to reverse_op_description; found ${bare.length} bare occurrence(s)`);
 });
 
+// ── CONCURRENCY: lock prevents lost-update on parallel appends ───────────────
+// The read-modify-rewrite (read prior bytes -> concat -> atomic rewrite) is a
+// classic lost-update hazard: two appenders that read the SAME prior bytes each
+// rewrite the whole file, and the slower rename clobbers the faster one's entry.
+// A lost K9 entry = an un-rollbackable promotion (INV-19 audit hole). This test
+// launches N OS-level-parallel appenders and asserts every distinct entry
+// survives. It FAILS against the pre-fix lock-free appendJournalEntry (entries
+// are silently dropped) and PASSES once the kernel file-lock serializes the RMW.
+
+test('CONCURRENCY: parallel appends never lose an entry (lock serializes the RMW)', (tmp) => {
+  const { spawnSync } = require('child_process');
+  const jp = path.join(tmp.path, 'reverse-cherrypick.jsonl');
+  const journalModule = path.join(
+    __dirname, '..', '..', '..', '..', 'packages', 'kernel', '_lib', 'k9-journal.js'
+  );
+  const N = 8;
+  // A distinct, valid 40-char lowercase-hex promoted_sha per appender (the index
+  // as a hex digit 0-9a-f, repeated). 'g'..'z' are NOT hex, so derive from the
+  // hex alphabet, not String.fromCharCode arithmetic.
+  const HEX = '0123456789abcdef';
+  // An appender script reads its index from argv and appends one distinct entry.
+  // Writing it to disk (vs an -e one-liner) keeps the quoting trivially correct.
+  const appenderJs = path.join(tmp.path, 'appender.js');
+  fs.writeFileSync(appenderJs, [
+    'const j = require(' + JSON.stringify(journalModule) + ');',
+    'const sha = ' + JSON.stringify(HEX) + '[Number(process.argv[2]) % 16].repeat(40);',
+    'j.appendJournalEntry(' + JSON.stringify(jp) + ', j.buildJournalEntry({',
+    '  promoted_sha: sha, pre_state_hash: "b".repeat(64), post_state_hash: "c".repeat(64),',
+    '  worktree_root: "/tmp/k9-race", outcome: "PROMOTED" }));',
+  ].join('\n'));
+  // A driver forks all N appenders TRUE-parallel (real OS overlap on the SAME
+  // journal opens the read-modify-rewrite window the lock must close), then exits
+  // non-zero if any child crashed. The test reaps exactly this one driver.
+  const driverJs = path.join(tmp.path, 'driver.js');
+  fs.writeFileSync(driverJs, [
+    'const { spawn } = require("child_process");',
+    'const N = ' + N + ', script = ' + JSON.stringify(appenderJs) + ';',
+    'let done = 0, bad = 0;',
+    'for (let i = 0; i < N; i++) {',
+    '  const k = spawn(process.execPath, [script, String(i)], { stdio: "inherit" });',
+    '  k.on("exit", (c) => { if (c !== 0) bad++; if (++done === N) process.exit(bad ? 3 : 0); });',
+    '}',
+  ].join('\n'));
+
+  const run = spawnSync(process.execPath, [driverJs], { encoding: 'utf8', timeout: 30000 });
+  assert.strictEqual(run.status, 0,
+    'all parallel appenders must exit clean; stderr: ' + (run.stderr || ''));
+
+  const entries = journal.readJournal(jp);
+  const shas = new Set(entries.map((e) => e.promoted_sha));
+  assert.strictEqual(entries.length, N,
+    'every parallel append must survive (lost-update means < ' + N + '); got ' + entries.length);
+  assert.strictEqual(shas.size, N, 'each appender wrote a distinct entry; none clobbered');
+});
+
+test('FAIL-SOFT: a contended lock returns {appended:false, reason:lock-contended} (never throws)', (tmp) => {
+  const { spawn } = require('child_process');
+  const jp = path.join(tmp.path, 'reverse-cherrypick.jsonl');
+  const lockPath = jp + '.lock';
+  // A long-lived child WE own holds the lock -> acquireLock sees a live, non-self
+  // pid -> waits to the (2000ms) timeout -> appendJournalEntry must SOFT-fail.
+  const holder = spawn(process.execPath, ['-e', 'setTimeout(()=>{}, 60000)'], { stdio: 'ignore' });
+  try {
+    fs.writeFileSync(lockPath, String(holder.pid));
+    const res = journal.appendJournalEntry(jp, journal.buildJournalEntry(promotedFields()));
+    assert.strictEqual(res.appended, false, 'a contended append must not claim success');
+    assert.strictEqual(res.reason, 'lock-contended');
+    assert.strictEqual(fs.existsSync(jp), false, 'the journal must not have been written under contention');
+  } finally {
+    holder.kill();
+    try { fs.unlinkSync(lockPath); } catch { /* ignore */ }
+  }
+});
+
 // ── DAG / acyclicity guard (PASSES on stub) ─────────────────────────────────
 
 test('DAG: k9-journal does NOT import k9-promote-deltas (no back-edge)', () => {

@@ -303,6 +303,43 @@ test('buildGenesisRecord T-H: an agentId with illegal chars (agent.123:x) -> san
   assert.strictEqual(v.valid, true, `the sanitized record must validate at genesis, errors: ${JSON.stringify(v.errors)}`);
 });
 
+// -- sanitizeAgentId: distinct RAW ids must NOT collide to one safeId --
+//
+// The collision bug: a bare [^A-Za-z0-9_-]->'_' replace is NOT injective, so
+// "agent.001" and "agent-001" BOTH mapped to "agent_001" - two distinct producers
+// collapsed to one `loom-promote/<safeId>` ref, silently overwriting the first.
+// The fix suffixes a short sha256(raw) digest when (and only when) sanitize altered
+// the input, so distinct raw ids stay distinct. This test FAILS against the old code
+// (both ids returned "agent_001"); it passes once the digest disambiguates them.
+
+test('sanitizeAgentId: two distinct raw ids that share a sanitized base map to DISTINCT safeIds (collision fix)', () => {
+  const a = qp.sanitizeAgentId('agent.001');
+  const b = qp.sanitizeAgentId('agent-001');
+  assert.notStrictEqual(a, b,
+    `distinct raw ids "agent.001" / "agent-001" must NOT collapse to one safeId, got ${JSON.stringify(a)} and ${JSON.stringify(b)}`);
+  // Both must still be valid ROOT_TASK_RECORD sentinel charset (the safe-charset guarantee).
+  for (const safe of [a, b]) {
+    assert.ok(/^[A-Za-z0-9_-]+$/.test(safe), `safeId must stay in the sentinel charset, got ${JSON.stringify(safe)}`);
+    assert.ok(isBootstrapSentinel(`ROOT_TASK_RECORD:${safe}`),
+      `ROOT_TASK_RECORD:${safe} must be a valid bootstrap sentinel`);
+  }
+  // Determinism: the same raw id always yields the same safeId (writer/reader symmetry).
+  assert.strictEqual(qp.sanitizeAgentId('agent.001'), a, 'sanitizeAgentId must be deterministic for a given raw id');
+});
+
+test('sanitizeAgentId: an ALREADY-safe id passes through UNCHANGED (no suffix; preserves the clean-id ref contract)', () => {
+  for (const safe of ['c2enforce01', 'arch-0001', 'agent_001', 'A-z_0-9']) {
+    assert.strictEqual(qp.sanitizeAgentId(safe), safe,
+      `an already-safe id ${JSON.stringify(safe)} must pass through unchanged (no digest suffix)`);
+  }
+  // A non-string -> '' (unchanged contract).
+  assert.strictEqual(qp.sanitizeAgentId(42), '', 'a non-string agentId must sanitize to ""');
+  // The altered-vs-unaltered cross case: "agent.001" (altered) must NOT collide with
+  // the already-safe "agent_001" (unaltered) - the suffix only lands on the altered one.
+  assert.notStrictEqual(qp.sanitizeAgentId('agent.001'), qp.sanitizeAgentId('agent_001'),
+    'an altered id must not collide with an already-safe id sharing the same replaced base');
+});
+
 // ── buildGenesisRecord: the happy path (REUSE the transaction-record builders) ──
 
 test('buildGenesisRecord happy path: a valid agentId -> a genesis-valid record with a correct transaction_id', () => {

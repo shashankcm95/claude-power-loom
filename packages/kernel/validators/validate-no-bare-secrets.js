@@ -133,6 +133,20 @@ function shouldSkipPath(filePath) {
   return SKIP_PATH_PATTERNS.some((p) => p.test(filePath || ''));
 }
 
+// Apply a single first-occurrence replacement to `existing`, mirroring the
+// canonical applyEdit in validate-frontmatter-on-skills.js (H.9.19). The edit
+// tool writes `new_string` to disk VERBATIM, but String.prototype.replace
+// interprets `$$`, `$&`, `$\``, `$'` in the replacement string as special
+// patterns — so a raw `existing.replace(old, new_string)` diverges from the
+// real post-image whenever the replacement carries a `$`. Without the sanitize
+// step a secret introduced via a `$`-bearing replacement is reconstructed
+// wrong and slips past the scanner. `$$` escapes a literal `$`, reproducing the
+// verbatim disk content the scanner must see.
+function applyFirstOccurrence(existing, oldStr, newStr) {
+  const safeNewStr = newStr.replace(/\$/g, '$$$$');
+  return existing.replace(oldStr, safeNewStr);
+}
+
 function isPlaceholder(value) {
   if (!value) return false;
   const v = value.toLowerCase();
@@ -320,7 +334,7 @@ if (require.main === module) {
                 if (e.replace_all === true) {
                   result = result.split(e.old_string).join(e.new_string);
                 } else {
-                  result = result.replace(e.old_string, e.new_string);
+                  result = applyFirstOccurrence(result, e.old_string, e.new_string);
                 }
               }
             }
@@ -330,7 +344,7 @@ if (require.main === module) {
             if (toolInput.replace_all === true) {
               result = result.split(oldStr).join(newStr);
             } else {
-              result = result.replace(oldStr, newStr);
+              result = applyFirstOccurrence(result, oldStr, newStr);
             }
           }
           scanText = result;

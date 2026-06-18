@@ -501,12 +501,15 @@ test('[real git] T11 empty/non-array orderedIds -> invalid-args; a post-sanitize
     assert.strictEqual(integrate(repo, []).reason, 'invalid-args', 'empty list -> invalid-args');
     assert.strictEqual(integrate(repo, 'not-an-array').reason, 'invalid-args', 'non-array -> invalid-args');
 
-    // Two RAW ids that sanitize to the SAME safeId ('.' and '_' both map to '_').
-    // The producer already coalesced them to one ref; naming both -> dedup-to-first.
-    assert.strictEqual(sanitizeAgentId('agent.dup'), sanitizeAgentId('agent_dup'), 'precondition: the two raw ids collide post-sanitize');
+    // The SAME raw id named twice -> dedup-to-first (the `seen` Set is keyed on the
+    // deterministic safeId, so a literal duplicate coalesces to one integration).
+    // NOTE: sanitizeAgentId is now injective for DISTINCT raw ids ("agent.dup" and
+    // "agent_dup" no longer collide - that collision was the sanitizeAgentId bug);
+    // a genuine duplicate is the same RAW id, which still hits dedup-to-first.
+    assert.strictEqual(sanitizeAgentId('agent.dup'), sanitizeAgentId('agent.dup'), 'precondition: sanitizeAgentId is deterministic (same raw -> same safeId)');
     makeCandidate(repo, 'agent.dup', A, { 'x.txt': 'x\n' });
-    const resDup = integrate(repo, ['agent.dup', 'agent_dup']);
-    assert.ok(resDup.integrated, 'a coalesced-duplicate list still integrates (not refused)');
+    const resDup = integrate(repo, ['agent.dup', 'agent.dup']);
+    assert.ok(resDup.integrated, 'a duplicate-id list still integrates (not refused)');
     assert.deepStrictEqual(resDup.integratedIds, ['agent.dup'], 'dedup-to-first-occurrence: the candidate integrates once');
 
     // An absent candidate ref -> skipped, not a whole-run refuse.
