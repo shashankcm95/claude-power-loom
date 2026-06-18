@@ -173,7 +173,7 @@ test-run INTEGRITY (not proof-of-fix), the spike proves the REAL path (not a moc
 precondition/deferrals are stated, not over-claimed. **M2** (grounding-slice → `extraContext`
 prompt-injection) is ACCEPTABLE-DEFERRED: the W3a fence-as-DATA + control-strip CONTROL still
 applies (confirm `real-solve` passes the slice through `composeArm` verbatim, no raw re-concat); the
-#273-EDGE provenance residual is documented + gates nothing.
+`#273`-EDGE provenance residual is documented + gates nothing.
 
 ## HETS Spawn Plan
 
