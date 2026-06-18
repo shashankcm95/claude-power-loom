@@ -113,7 +113,7 @@ function renderLesson(node) {
  * @param {object} [opts]
  * @param {string[]|Set<string>} [opts.knownPersonas] - the canonical-key validation set
  * @param {number} [opts.maxLessons] - top-N cap (default 8)
- * @param {number} [opts.maxBytes]   - hard byte cap on the rendered block (default 4096)
+ * @param {number} [opts.maxBytes]   - hard byte cap on the rendered block (default 8192)
  * @param {string} [opts.dir]        - node-store dir override (sandbox); edge dir via edgeDir
  * @param {string} [opts.edgeDir]    - edge-store dir override (sandbox)
  * @returns {string} the rendered block, or '' for an empty-experience / unknown persona
