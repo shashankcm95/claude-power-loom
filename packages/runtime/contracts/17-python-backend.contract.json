@@ -1,0 +1,236 @@
+{
+  "agentId": "actor-python-backend",
+  "persona": "17-python-backend",
+  "role": "actor",
+  "skills": {
+    "required": [
+      "python-backend-development"
+    ],
+    "recommended": [
+      "fastapi",
+      "pydantic",
+      "pytest",
+      "postgres-engineering",
+      "engineering:debug",
+      "engineering:testing-strategy",
+      "engineering:deploy-checklist",
+      "engineering:code-review",
+      "engineering:system-design"
+    ],
+    "skill_status": {
+      "python-backend-development": "not-yet-authored",
+      "fastapi": "not-yet-authored",
+      "pydantic": "not-yet-authored",
+      "pytest": "not-yet-authored",
+      "postgres-engineering": "available",
+      "engineering:debug": "marketplace:knowledge-work-plugins/engineering",
+      "engineering:testing-strategy": "marketplace:knowledge-work-plugins/engineering",
+      "engineering:deploy-checklist": "marketplace:knowledge-work-plugins/engineering",
+      "engineering:code-review": "marketplace:knowledge-work-plugins/engineering",
+      "engineering:system-design": "marketplace:knowledge-work-plugins/engineering"
+    }
+  },
+  "kb_scope": {
+    "default": [
+      "kb:backend-dev/type-safety-at-the-boundary",
+      "kb:architecture/discipline/error-handling-discipline",
+      "kb:hets/spawn-conventions"
+    ]
+  },
+  "budget": {
+    "tokens": 35000,
+    "extensible": true,
+    "maxExtensions": 1,
+    "extensionAmount": 15000
+  },
+  "interface": {
+    "traits": [
+      "read_repo",
+      "worktree_writable",
+      "bash_test_runner",
+      "recall_global"
+    ],
+    "declared_capabilities": {
+      "read": [
+        "repo://**"
+      ],
+      "isolation": "worktree",
+      "write": [
+        "sandbox://**"
+      ],
+      "subprocess": [
+        "npm test",
+        "vitest",
+        "pytest",
+        "tsc --noEmit"
+      ],
+      "read_recall": [
+        "@library/*",
+        "@thoughts/*"
+      ]
+    },
+    "declared_scope": [
+      "Python backend (FastAPI/Flask/Django) services",
+      "type-safe boundaries + parse-don't-validate",
+      "pytest discipline + test isolation",
+      "data-layer code + packaging hygiene"
+    ],
+    "output_schema": {
+      "type": "implementation",
+      "required": [
+        "findings",
+        "file_citations"
+      ]
+    },
+    "decomposition_discipline": {
+      "primary": "spec-driven",
+      "fallback_when_code_producing": "tdd"
+    },
+    "instincts": [
+      "type-hints-at-the-edge",
+      "explicit-over-implicit",
+      "fail-closed-at-boundaries",
+      "no-mutable-default-args",
+      "exception-specificity",
+      "dependency-pinning",
+      "pytest-discipline",
+      "generator-laziness",
+      "protocol-and-dunder-correctness",
+      "import-and-packaging-hygiene"
+    ]
+  },
+  "defaults": {
+    "timeout": 1800,
+    "retention": {
+      "pre_snapshot_lifetime_hours": 24,
+      "delta_lifetime_days": 30
+    },
+    "budget": {
+      "tokens": 35000,
+      "extensible": true,
+      "maxExtensions": 1,
+      "extensionAmount": 15000
+    }
+  },
+  "functional": [
+    {
+      "id": "F1",
+      "check": "outputContainsFrontmatter",
+      "required": true
+    },
+    {
+      "id": "F2",
+      "check": "frontmatterHasFields",
+      "args": {
+        "fields": [
+          "id",
+          "role",
+          "depth",
+          "parent",
+          "persona",
+          "identity"
+        ]
+      },
+      "required": true
+    },
+    {
+      "id": "F3",
+      "check": "minFindings",
+      "args": {
+        "min": 2
+      },
+      "required": true
+    },
+    {
+      "id": "F4",
+      "check": "hasFileCitations",
+      "args": {
+        "min": 4
+      },
+      "required": true
+    },
+    {
+      "id": "F5",
+      "check": "hasSeveritySections",
+      "args": {
+        "severities": [
+          "CRITICAL",
+          "HIGH",
+          "MEDIUM",
+          "LOW"
+        ]
+      },
+      "required": true
+    },
+    {
+      "id": "F6",
+      "check": "containsKeywords",
+      "args": {
+        "keywords": [
+          "python",
+          "type"
+        ]
+      },
+      "required": false
+    },
+    {
+      "id": "F7",
+      "check": "noUnrolledLoops",
+      "args": {
+        "maxRepetitions": 5
+      },
+      "required": true
+    },
+    {
+      "id": "F8",
+      "check": "noExcessiveNesting",
+      "args": {
+        "maxDepth": 4
+      },
+      "required": true
+    },
+    {
+      "id": "F9",
+      "check": "kb_scope_consumed",
+      "required": true
+    }
+  ],
+  "antiPattern": [
+    {
+      "id": "A1",
+      "check": "claimsHaveEvidence",
+      "severity": "fail"
+    },
+    {
+      "id": "A2",
+      "check": "noTextSimilarityToPriorRun",
+      "args": {
+        "threshold": 0.6
+      },
+      "severity": "warn"
+    },
+    {
+      "id": "A3",
+      "check": "noTemplateRepetition",
+      "args": {
+        "minVariation": 0.3
+      },
+      "severity": "warn"
+    },
+    {
+      "id": "A4",
+      "check": "noPaddingPhrases",
+      "severity": "fail"
+    },
+    {
+      "id": "A5",
+      "check": "acknowledgesFallback",
+      "severity": "warn"
+    }
+  ],
+  "fallbackAcceptable": [
+    "No live service runtime → reasoning from source + traces is acceptable",
+    "Required skill (python-backend-development) not-yet-authored → proceed with KB + recommended skills; surface gap in Notes"
+  ],
+  "_format": "Findings format + frontmatter contract: see packages/runtime/schema/_format-spec.md (v2.9.0 Phase B.1)"
+}

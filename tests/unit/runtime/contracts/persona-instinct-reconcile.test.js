@@ -293,9 +293,9 @@ test('numbered contract whose brief EXISTS but is unreadable => brief-unreadable
   assert.ok(v, 'an existing-but-unreadable brief must surface, not silently skip');
 });
 
-// ---------- regression gate: ALL 16 REAL contracts => 0 reconciliation violations ----------
+// ---------- regression gate: ALL 17 REAL contracts => 0 reconciliation violations ----------
 
-test('(real) all 16 real contracts reconcile with their role-brief instincts (0 violations)', () => {
+test('(real) all 17 real contracts reconcile with their role-brief instincts (0 violations)', () => {
   const report = runValidator(null);
   assert.strictEqual(
     report.totalViolations, 0,

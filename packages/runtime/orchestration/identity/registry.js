@@ -101,6 +101,10 @@ const DEFAULT_ROSTERS = {
   '11-data-engineer': ['fin', 'niko', 'rae'],
   '12-security-engineer': ['vlad', 'mio', 'eli'],
   '13-node-backend': ['noor', 'evan', 'kira'],
+  // 17 (not 14-16): a late-added BUILDER, grouped with the builder family above
+  // rather than by number. Forged at the ③.1-W4 persona experiment (the documentary
+  // family 14-16 below stays contiguous).
+  '17-python-backend': ['rhea', 'devi', 'tomas'],
   // Documentary family (research-focused, H.8.6+ via /research; HT.1.6 — closes
   // drift-note 60 sub-decision 3 + drift-note 65 option-axis-conflation finding:
   // contracts ship at H.8.6 with `persona: <fixed>` shape but DEFAULT_ROSTERS

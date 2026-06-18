@@ -27,8 +27,8 @@
 //
 // Strategy mirrors contracts-validate.test.js: NEGATIVE paths run against a
 // SYNTHETIC toolkit root (HETS_TOOLKIT_DIR override) so a malformed agent/
-// contract pair can be presented without touching the real 18; the final test
-// runs against the REAL repo and asserts 0 violations (the 18 were
+// contract pair can be presented without touching the real 19; the final test
+// runs against the REAL repo and asserts 0 violations (the 19 were
 // security-audited consistent in PR-1).
 //
 // At PR-2a-author time the synthetic-fixture tests FAIL until the validator is
@@ -268,9 +268,9 @@ test('12-security-engineer aliases to security-auditor.md (write-floor now BOUND
   assert.ok(v, 'alias must bind 12-security-engineer to security-auditor.md (else it is silently skipped)');
 });
 
-// --- regression gate: ALL 18 REAL contracts => 0 reconciliation violations ---
+// --- regression gate: ALL 19 REAL contracts => 0 reconciliation violations ---
 
-test('(real) all 18 real contracts reconcile cleanly with their agent.md floors (0 violations)', () => {
+test('(real) all 19 real contracts reconcile cleanly with their agent.md floors (0 violations)', () => {
   const report = runValidator(null);
   assert.strictEqual(
     report.totalViolations, 0,
