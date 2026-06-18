@@ -761,9 +761,16 @@ if (frontmatter.identity && args.identity && frontmatter.identity !== args.ident
 // (verification-policy.js's priority-2.5 trigger consumes it).
 // agentMd wired through post-pair-run MEDIUM-1: persona .md changes now
 // participate in drift detection. Best-effort read — falls back to null.
+// Phase 0 (ADR-0008) moved this validator kernel-side while lifecycle-spawn
+// stays runtime-side; resolve via toolkit-root to span the cross-layer hop
+// (same pattern as pattern-recorder below). The prior sibling-relative
+// require('./identity/lifecycle-spawn') always threw MODULE_NOT_FOUND, leaving
+// _agentMd permanently null and silently dead-coding the persona-.md drift signal.
 const _agentMd = (() => {
   try {
-    const { _readPersonaMd } = require('./identity/lifecycle-spawn');
+    const { findToolkitRoot: _findRoot } = require('../_lib/toolkit-root');
+    const _lifecyclePath = path.join(_findRoot(), 'packages', 'runtime', 'orchestration', 'identity', 'lifecycle-spawn.js');
+    const { _readPersonaMd } = require(_lifecyclePath);
     return _readPersonaMd(contract.persona);
   } catch { return null; }
 })();

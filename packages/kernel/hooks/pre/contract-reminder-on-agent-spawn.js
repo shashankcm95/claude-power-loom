@@ -1,47 +1,34 @@
 #!/usr/bin/env node
 
-// PreToolUse:Agent|Task hook — DETERMINISTIC contract enforcement via prompt
-// mutation. Closes GAP-E (bench harness 2026-05-21).
+// PreToolUse:Agent|Task hook — OBSERVABILITY ONLY (records which contract
+// reminder WOULD apply to each persona spawn). It does NOT enforce anything.
 //
-// CONTEXT (GAP-A → GAP-D → GAP-E lineage):
-//   GAP-A (v2.3.0) added a `## KB Sources Consulted` output contract to
-//   agents/architect.md. Bench showed ~50/50 compliance — instruction-following
-//   is probabilistic.
+// HISTORY + WHY THIS IS NOT AN ENFORCER (ADR-0012):
+//   This hook was authored (GAP-E, 2026-05-21) to deterministically enforce
+//   per-persona output contracts by mutating the sub-agent prompt via
+//   `hookSpecificOutput.updatedInput.prompt`. ADR-0012 (accepted 2026-05-31)
+//   then proved EMPIRICALLY (two `claude -p` probes) that a PreToolUse hook's
+//   `updatedInput` is INERT on Agent/Task spawns — the sub-agent runs its
+//   ORIGINAL prompt; the rewrite is never honored. Capability/prompt injection
+//   at spawn time does not exist; enforcement is STATIC (the persona's
+//   `agents/<name>.md` body + the reconciliation validator). The sibling
+//   `pre-spawn-tool-mask` hook was unregistered for exactly this reason.
 //
-//   GAP-D (v2.3.0) added a PostToolUse:Agent hook (kb-citation-gate.js) that
-//   was meant to detect non-compliance + emit `decision: block` with a forcing
-//   instruction. Bench 3-run characterization (D in v2.4.1) proved this WAS
-//   NOT WORKING — the block decision's `reason` does NOT propagate to the
-//   parent in headless `-p` mode; architect tool_result has is_error=false
-//   despite the hook's block.
+//   So this hook no longer emits `updatedInput` (it would be a no-op that also
+//   writes a misleading "new_prompt_len" audit line implying a mutation took
+//   effect). It now passes through (`emit({})`) and only appends an
+//   observability record of which reminder maps to the spawned persona.
 //
-//   GAP-E (THIS) — research via claude-code-guide confirmed PreToolUse hooks
-//   CAN mutate tool_input via `hookSpecificOutput.updatedInput`. Move
-//   enforcement to spawn-time: prepend a [CONTRACT-REMINDER] block to the
-//   Agent's prompt BEFORE the sub-agent spawns. The sub-agent literally sees
-//   the reminder as part of its initial task — deterministic compliance, no
-//   reliance on PostToolUse decision propagation.
+//   Compliance is actually observed post-hoc by kb-citation-gate.js
+//   (PostToolUse:Agent → ~/.claude/checkpoints/kb-citation-log.jsonl). This
+//   hook is therefore a candidate for full removal (its CONTRACT_REMINDERS map
+//   could move to documentation); it is kept for now as a low-cost spawn-time
+//   observability signal. Removing it also requires de-registering it in
+//   packages/kernel/hooks.json.
 //
-// FIELD SHAPE (per Claude Code Agent SDK hooks.md):
-//   {
-//     "hookSpecificOutput": {
-//       "hookEventName": "PreToolUse",
-//       "permissionDecision": "allow",
-//       "updatedInput": { "prompt": "[CONTRACT-REMINDER] ...\n\n<original>" }
-//     }
-//   }
-//
-// SEPARATION OF CONCERNS:
-//   This hook is concerned ONLY with prompt-mutation for contract enforcement.
-//   route-decide-on-agent-spawn.js (also PreToolUse:Agent) handles route-decide
-//   consultation + logging. They co-exist on the same matcher; Claude Code
-//   fires both in registration order.
-//
-//   kb-citation-gate.js (PostToolUse:Agent) is RETAINED but now serves an
-//   observability-only role — it logs (non-)compliance to
-//   ~/.claude/checkpoints/kb-citation-log.jsonl for cross-run analysis. The
-//   `decision: block` it emits doesn't propagate (confirmed in v2.4.1 D), so
-//   enforcement has moved here.
+// SEPARATION OF CONCERNS: route-decide-on-agent-spawn.js (also PreToolUse:Agent)
+//   handles route-decide consultation + logging; both co-exist on the matcher
+//   and fire in registration order.
 //
 // FAIL-SOFT per ADR-0001: any error path passes through with no mutation.
 
@@ -250,7 +237,6 @@ function main() {
 
   const toolName = input.tool_name || input.toolName;
   const toolInput = input.tool_input || input.toolInput || {};
-  const hookEventName = input.hook_event_name || input.hookEventName || 'PreToolUse';
 
   // Only act on sub-agent spawn tools (Agent in v2.x; Task in v1.x for compat).
   if (toolName !== 'Agent' && toolName !== 'Task') {
@@ -273,8 +259,11 @@ function main() {
   }
 
   const originalPrompt = toolInput.prompt || '';
-  const newPrompt = reminder + originalPrompt;
 
+  // Observability only: record which contract reminder maps to this persona
+  // spawn. We do NOT mutate the prompt — `updatedInput` is inert on Agent/Task
+  // spawns (ADR-0012), so emitting it would be a no-op plus a misleading audit
+  // trail. Post-hoc compliance is observed by kb-citation-gate.js.
   appendLog({
     timestamp: new Date().toISOString(),
     session_id: input.session_id || input.sessionId || null,
@@ -283,21 +272,12 @@ function main() {
     subagent_base: subagentBase,
     original_prompt_len: originalPrompt.length,
     reminder_len: reminder.length,
-    new_prompt_len: newPrompt.length,
+    applied: false,
+    reason: 'updatedInput-inert-on-agent-spawn (ADR-0012); observability-only',
   });
 
-  // Emit the PreToolUse-shaped output that mutates tool_input.
-  // Per Claude Code Agent SDK hooks.md: hookSpecificOutput.updatedInput merges
-  // with the original tool_input, so we only set the field we change (`prompt`).
-  emit({
-    hookSpecificOutput: {
-      hookEventName,
-      permissionDecision: 'allow',
-      updatedInput: {
-        prompt: newPrompt,
-      },
-    },
-  });
+  // Pass through unchanged (no inert mutation).
+  emit({});
 }
 
 main();
