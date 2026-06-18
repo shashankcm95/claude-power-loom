@@ -288,6 +288,13 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/lab/persona-consumer/_spike/persona-consumer-round.js` - v3.10-W1 — the persona-consumer ROUND harness (a SPIKE, OUT of CI as a standalone; exercised by
 - `packages/lab/persona-consumer/recalibrate.js` - v3.10-W1 — the persona CONSUMER (pure).
 
+### `lab/persona-experiment/`
+
+- `packages/lab/persona-experiment/arm-compose.js` - 3.1-W3a -- the per-arm prompt composer (the experiment's controlled variable).
+- `packages/lab/persona-experiment/canonical-persona-key.js` - 3.1-W3a -- the C2 read-side persona-key normalizer (fork 1).
+- `packages/lab/persona-experiment/_spike/dogfood-arms.js` - 3.1-W3a DOGFOOD (_spike) -- the Rule-2a-corollary REAL-PATH proof.
+- `packages/lab/persona-experiment/grounding-slice.js` - 3.1-W3a -- the grounding-slice builder (arm C's "earned instincts").
+
 ### `lab/reputation/`
 
 - `packages/lab/reputation/cli.js` - v3.4 Wave 2 — E4 reputation CLI: inspect the advisory-verdict DISTRIBUTION over kernel-attested
