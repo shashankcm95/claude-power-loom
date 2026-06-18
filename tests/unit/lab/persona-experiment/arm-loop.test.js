@@ -242,6 +242,16 @@ test('does not MUTATE the caller opts object (immutability)', () => {
   assert.doesNotThrow(() => runExperiment(opts), 'must not mutate a frozen opts object');
 });
 
+test('runArm (standalone, exported) rejects a non-function emitFn — no silent all-seam skip (CodeRabbit Major)', () => {
+  assert.throws(() => runArm({ run_id: freshRunId('rae'), arm: 'C', persona: PERSONA, task: TASK, solveFn: stubSolve, knownPersonas: KNOWN, emitFn: null }), /emitFn/);
+  assert.throws(() => runArm({ run_id: freshRunId('rae'), arm: 'C', persona: PERSONA, task: TASK, solveFn: stubSolve, knownPersonas: KNOWN, emitFn: 7 }), /emitFn/);
+});
+
+test('an ASYNC solveFn (Promise return) is rejected LOUD, never silently mis-measured (CodeRabbit Major; W4 makes the seam async)', () => {
+  const asyncSolve = async () => ({ patch: 'p', verdict: 'BEHAVIORAL_PASS' });
+  assert.throws(() => runExperiment({ run_id: freshRunId('async'), persona: PERSONA, task: TASK, solveFn: asyncSolve, knownPersonas: KNOWN }), /synchronous/);
+});
+
 try { fs.rmSync(TMP, { recursive: true, force: true }); } catch { /* best-effort */ }
 
 process.stdout.write('\n=== arm-loop.test.js Summary ===\n');

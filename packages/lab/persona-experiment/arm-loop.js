@@ -81,11 +81,16 @@ function emitSeam(emitFn, partial) {
 // Drive one arm through the five seams; emits one record per seam. PURE of network: the only
 // outside effect is the injected solveFn (the W4 claude -p driver) + the emit seam. Returns the
 // arm's outcome summary. `count` is mutated locally for the skip tally and returned to the caller.
-function runArm({ run_id, arm, persona, task, solveFn, knownPersonas, emitFn = (p) => traceEmit(p) }) {
+function runArm({ run_id, arm, persona, task, solveFn, knownPersonas, emitFn }) {
   assertSafeRunId(run_id);
   if (!ARMS.includes(arm)) throw new Error(`runArm: unknown arm ${JSON.stringify(arm)}`);
+  // runArm is exported + reachable directly (not only via runExperiment), so it guards emitFn too
+  // (CodeRabbit Major): a null/non-function emitFn would make EVERY seam skip silently -> a
+  // "successful" run with zero records, hiding the caller bug. Fail loud when provided, else default.
+  if (emitFn !== undefined && typeof emitFn !== 'function') throw new Error('runArm: emitFn must be a function when provided');
+  const resolvedEmitFn = emitFn === undefined ? (p) => traceEmit(p) : emitFn;
   let skipped = 0;
-  const seam = (partial) => { if (!emitSeam(emitFn, { run_id, ...partial })) skipped += 1; };
+  const seam = (partial) => { if (!emitSeam(resolvedEmitFn, { run_id, ...partial })) skipped += 1; };
 
   // 1) persona-spawn: the arm + persona only. The prompt is composed but NOT stored. (The planned
   //    agent-agent convergence is a W4 trace signal -- NOT delivered in W3b, so no placeholder here.)
@@ -119,6 +124,14 @@ function runSolveSeam({ seam, arm, prompt, task, solveFn }) {
     // FLAG-1: a thrown solveFn -> a traced grade:'error'; never persist the error/prompt content.
     seam({ component: 'solve', event: 'error', dur_ms: Date.now() - startedAt, attrs: boundedAttrs(arm) });
     return 'error';
+  }
+  // SYNC CONTRACT (CodeRabbit Major): W3b's seam is synchronous (the stub is sync). A thenable means
+  // an ASYNC solveFn (the W4 claude -p driver) -- digesting/observing a Promise would silently
+  // mis-measure, and a rejected Promise would ESCAPE the catch above. This is a CONTRACT violation
+  // (a programming error), NOT a runtime solve failure, so it PROPAGATES (fail loud) rather than
+  // degrading to a grade:'error'. W4 makes the whole seam async (await) -- tracked as a carry.
+  if (result && typeof result.then === 'function') {
+    throw new Error('runSolveSeam: solveFn must be synchronous in W3b (the async claude -p driver is W4)');
   }
   const durMs = Date.now() - startedAt;
   // digest the WHOLE result object (content -> 64-hex); raw content never enters a record. attrs

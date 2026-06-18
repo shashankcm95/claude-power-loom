@@ -106,6 +106,14 @@ Delegated `node-backend` TDD build: 6 modules + **GREEN suites** (persona-experi
 
 **Net: SHIP.** 2 security MEDIUMs (verdict-injection sink + object-key injection) + the convergence-honesty rename + the emitFn data-loss guard, all folded; the 2 security fixes re-probed firsthand on the built code.
 
+### CodeRabbit gate (post-PR, 2026-06-18) — 3 findings, all folded
+
+CI all-green; CodeRabbit check `pass 0` despite 3 actionable inline comments (the status-check-lies pattern). All 3 premise-probed TRUE + folded:
+
+- **(Major) `runArm` `emitFn` guard** — `runArm` is exported + reachable directly; only `runExperiment` had the guard, so a direct caller with `emitFn:null` got silent all-seam skips. Folded: same guard in `runArm` + a standalone test.
+- **(Major) sync `solveFn` contract** — an async `solveFn` (a Promise) would be digested verbatim + a rejection would escape the catch. Folded: a thenable result is rejected LOUD (PROPAGATES — a contract violation, not a degraded `error` grade, refining CodeRabbit's in-`try` placement) + a test; the async seam is a W4 carry.
+- **(Minor) ROADMAP Router-v2 clarity** — added an explicit *current state (shipped)* vs *planned v2 (not yet shipped)* split so the bullet isn't read as already-implemented.
+
 ## Verification Probes
 
 | Probe | Pass criterion |
@@ -129,6 +137,7 @@ Delegated `node-backend` TDD build: 6 modules + **GREEN suites** (persona-experi
 - **arm-query trusts unbounded forged metrics from the open-writable store** (integrity≠provenance — a same-uid writer can plant a `recall-retrieval`/`graph-write` record inflating the cross-arm delta) → carry (W3b hacker; shadow-tolerable, the metric gates nothing). Before any arm-query metric GATES (W4+), the feeding records need an authenticated minter, not a store re-read — same conclusion as the W3a #273 carry.
 - **`cli --solve <path>` require()s + executes an arbitrary local module at load** (operator-trust ACE surface) → carry. Fine for an operator-run CLI in W3b; if `--solve` is ever automation/config-fed at W4, confine resolution to a `solvers/` dir (`checkWithinRoot`) + an explicit opt-in.
 - **W4 grade provenance:** in W3b the stub `solveFn` SELF-ASSERTS its `verdict` (the subject controls the grade). At W4 the behavioral grade MUST be HARNESS-computed (run the tests), NOT read from the subject's self-asserted verdict — the closed `VERDICT_SET` only bounds the injection surface, it does not make a self-asserted grade trustworthy.
+- **W4 async solve seam:** the W3b seam is SYNCHRONOUS (the stub is sync); a thenable `solveFn` is rejected LOUD (CodeRabbit Major). The real `claude -p` driver is async, so W4 makes `runSolveSeam`/`runArm`/`runExperiment` (+ `cli`) async (`await solveFn`). Contained refactor; `arm-query` is unaffected (it reads the persisted timeline).
 - **O(1) seq-counter** (the W2a→W4 trace-store carry) — unchanged here.
 
 ## Drift Notes
