@@ -27,8 +27,17 @@ const { recordAttestation } = require('./store');
 // huge-but-under-ceiling file would still spike RSS before JSON.parse. The real outbox is a small
 // admitted/rejected leaf list — 16MB is far above any legitimate run. Env-overridable (the
 // ENV-BEFORE-REQUIRE discipline) so a test can exercise the oversize path without a 16MB fixture.
-const MAX_OUTBOX_BYTES = Number(process.env.LOOM_LAB_MAX_OUTBOX_BYTES) > 0
-  ? Number(process.env.LOOM_LAB_MAX_OUTBOX_BYTES) : 16 * 1024 * 1024;
+const DEFAULT_MAX_OUTBOX_BYTES = 16 * 1024 * 1024;
+// Resolve the cap from a raw env value. Require a FINITE positive number —
+// Number('Infinity') passes a bare `> 0` check and would set the cap to Infinity,
+// silently disabling the guard and reintroducing the unbounded read (CodeRabbit
+// #355). An operator wanting a larger cap passes a large finite number; anything
+// non-finite / <= 0 / NaN / missing falls back to the default.
+function resolveMaxOutboxBytes(raw) {
+  const n = Number(raw);
+  return (Number.isFinite(n) && n > 0) ? n : DEFAULT_MAX_OUTBOX_BYTES;
+}
+const MAX_OUTBOX_BYTES = resolveMaxOutboxBytes(process.env.LOOM_LAB_MAX_OUTBOX_BYTES);
 
 // A well-formed failure_signature is the frozen ADR-0015 block: 8 FLAT scalar fields (string-or-null),
 // depth-1 (the schema is additionalProperties:false, all-scalar). The C1 ingest is untrusted (a
@@ -115,4 +124,4 @@ function recordFromDecompose(opts) {
   return { runId: o.runId, persona, rejectedCount: rejected.length, recorded, deduped, skipped };
 }
 
-module.exports = { recordFromDecompose, readOutbox };
+module.exports = { recordFromDecompose, readOutbox, resolveMaxOutboxBytes };

@@ -29,7 +29,7 @@ process.env.LOOM_LAB_MAX_OUTBOX_BYTES = String(2 * 1024 * 1024);
 fs.mkdirSync(TMP, { recursive: true });
 
 const REPO_ROOT = path.join(__dirname, '..', '..', '..', '..');
-const { recordFromDecompose } = require(path.join(REPO_ROOT, 'packages', 'lab', 'negative-attestation', 'record-from-decompose.js'));
+const { recordFromDecompose, resolveMaxOutboxBytes } = require(path.join(REPO_ROOT, 'packages', 'lab', 'negative-attestation', 'record-from-decompose.js'));
 const { listAttestations } = require(path.join(REPO_ROOT, 'packages', 'lab', 'negative-attestation', 'store.js'));
 const { runStateDir } = require(path.join(REPO_ROOT, 'packages', 'kernel', '_lib', 'runState.js'));
 const { buildFailureSignature } = require(path.join(REPO_ROOT, 'packages', 'runtime', 'verify', 'failure-signature.js'));
@@ -192,6 +192,20 @@ test('★ outbox byte-cap: an oversized decompose-result.json is refused before 
   });
   const summary = recordFromDecompose({ runId: 'run-small' });
   assert.strictEqual(summary.recorded, 1, 'an in-bounds outbox reads + records normally');
+});
+
+// ── 7. ★ cap-resolution guard (CodeRabbit #355): a non-finite env override must NOT disable the
+//        byte cap. Number('Infinity') > 0 is true, so a bare `> 0` check would set the cap to
+//        Infinity (unbounded read reintroduced). resolveMaxOutboxBytes requires a FINITE positive.
+test('★ resolveMaxOutboxBytes: non-finite / invalid overrides fall back to the 16MB default', () => {
+  const DEFAULT = 16 * 1024 * 1024;
+  assert.strictEqual(resolveMaxOutboxBytes('Infinity'), DEFAULT, 'Infinity must NOT disable the cap');
+  assert.strictEqual(resolveMaxOutboxBytes('-Infinity'), DEFAULT, '-Infinity falls back');
+  assert.strictEqual(resolveMaxOutboxBytes('not-a-number'), DEFAULT, 'NaN falls back');
+  assert.strictEqual(resolveMaxOutboxBytes(undefined), DEFAULT, 'missing falls back');
+  assert.strictEqual(resolveMaxOutboxBytes('0'), DEFAULT, 'zero falls back');
+  assert.strictEqual(resolveMaxOutboxBytes('-5'), DEFAULT, 'negative falls back');
+  assert.strictEqual(resolveMaxOutboxBytes(String(2 * 1024 * 1024)), 2 * 1024 * 1024, 'finite positive honored');
 });
 
 process.stdout.write(`\nrecord-from-decompose.test.js: ${passed} passed, ${failed} failed\n`);
