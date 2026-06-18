@@ -33,9 +33,16 @@ const { summarizeByArm, compareArms } = require(path.join(REPO_ROOT, 'packages',
 
 let passed = 0;
 let failed = 0;
-function test(name, fn) {
-  try { fn(); process.stdout.write(`  PASS ${name}\n`); passed++; }
-  catch (err) { process.stdout.write(`  FAIL ${name}: ${err.message}\n`); failed++; }
+// W4b: runExperiment is ASYNC. ORDERING INVARIANT -- the FULL seed (below) must be AWAITED before
+// any summarize test reads the timeline, else a summarize races an unfinished seed. The harness
+// registers tests, then an async runner awaits the seed FIRST, then runs each registered test.
+const tests = [];
+function test(name, fn) { tests.push({ name, fn }); }
+async function runAll() {
+  for (const { name, fn } of tests) {
+    try { await fn(); process.stdout.write(`  PASS ${name}\n`); passed++; }
+    catch (err) { process.stdout.write(`  FAIL ${name}: ${err.message}\n`); failed++; }
+  }
 }
 
 const KNOWN = ['node-backend', 'architect', 'code-reviewer', 'hacker'];
@@ -62,9 +69,12 @@ function stubSolve({ arm }) { return { patch: `${SOLVE_MARKER} [${arm}]`, verdic
 let n = 0;
 function freshRunId(tag) { n += 1; return `q-${tag}-${n}`; }
 
-// A REAL 3-arm run to aggregate over.
+// A REAL 3-arm run to aggregate over. The run-id is fixed here; the async run is AWAITED in runAll
+// BEFORE any test executes (the ordering invariant above).
 const FULL = freshRunId('full');
-runExperiment({ run_id: FULL, persona: PERSONA, task: TASK, solveFn: stubSolve, knownPersonas: KNOWN });
+async function seed() {
+  await runExperiment({ run_id: FULL, persona: PERSONA, task: TASK, solveFn: stubSolve, knownPersonas: KNOWN });
+}
 
 // =================================== TESTS ==================================================
 
@@ -137,8 +147,10 @@ test('summarizeByArm does NOT import the frozen query.js (additive contract)', (
   assert.ok(!/require\([^)]*trace-emitter\/query/.test(src), 'arm-query must not import trace-emitter/query.js');
 });
 
-try { fs.rmSync(TMP, { recursive: true, force: true }); } catch { /* best-effort */ }
-
-process.stdout.write('\n=== arm-query.test.js Summary ===\n');
-process.stdout.write(`  Passed: ${passed}\n  Failed: ${failed}\n`);
-if (failed > 0) process.exit(1);
+// AWAIT the seed FIRST (the ordering invariant), then run the registered tests.
+seed().then(runAll).then(() => {
+  try { fs.rmSync(TMP, { recursive: true, force: true }); } catch { /* best-effort */ }
+  process.stdout.write('\n=== arm-query.test.js Summary ===\n');
+  process.stdout.write(`  Passed: ${passed}\n  Failed: ${failed}\n`);
+  if (failed > 0) process.exit(1);
+}).catch((err) => { process.stderr.write(`arm-query.test harness threw: ${err && err.stack}\n`); process.exit(1); });
