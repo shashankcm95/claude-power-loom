@@ -204,5 +204,26 @@ test('★ canonicalSigBasis is total: normal → sorted-canonical; bound-trippin
   assert.notStrictEqual(store.canonicalSigBasis(deep), store.canonicalSigBasis(deep), 'sentinel is unique per call');
 });
 
+// ── 11. ★ #266 read-back immutability: listAttestations() rows are DEEP-frozen (top level AND nested
+//        failure_signature / identity / identity.tags), so a consumer can't mutate the witness view.
+//        The write path already freezes recordAttestation's return; this asserts the READ path matches.
+//        Would FAIL against the old code, which returned raw JSON.parse rows with no freeze. Seed the
+//        ledger on disk so listAttestations parses fresh rows (the read-back path, not the construct one).
+test('★ #266: listAttestations() returns DEEP-frozen rows (nested failure_signature / identity / tags too)', () => {
+  store.recordAttestation({ failureSignature: sig(), identity: ident({ tags: ['review', 'pr'] }), runId: 'frozen-1', leafRef: 'L', now: T0 });
+  const [row] = store.listAttestations({ now: T0 });
+  assert.ok(Object.isFrozen(row), 'the row itself is frozen');
+  assert.ok(Object.isFrozen(row.failure_signature), 'nested failure_signature is frozen (the shallow-freeze leak class)');
+  assert.ok(Object.isFrozen(row.identity), 'nested identity is frozen');
+  assert.ok(Object.isFrozen(row.identity.tags), 'deeply-nested identity.tags array is frozen');
+  // A real mutation attempt: silently ignored (frozen, non-strict) or throws (strict) — assert the
+  // value is UNCHANGED rather than relying on a throw, so the test is mode-agnostic.
+  try { row.failure_signature.failed_criterion_id = 'TAMPERED'; } catch { /* strict throws — fine */ }
+  try { row.identity.tags.push('TAMPERED'); } catch { /* idem */ }
+  const after = store.listAttestations({ now: T0 })[0];
+  assert.strictEqual(after.failure_signature.failed_criterion_id, 'interface-clean', 'a mutation attempt did not corrupt the stored signature');
+  assert.deepStrictEqual(after.identity.tags, ['review', 'pr'], 'nested tags array unchanged');
+});
+
 process.stdout.write(`\nstore.test.js: ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);

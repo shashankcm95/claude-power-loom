@@ -259,5 +259,32 @@ test('★ M-1: a path-hostile agentId (traversal / separator) → reject, never 
   assert.strictEqual(store.listVerdicts({ now: T0 }).length, 0, 'no path-hostile agentId stored');
 });
 
+// ── 16. ★ #266 read-back immutability: listVerdicts() rows are DEEP-frozen (top level AND nested
+//        subject / verifier / evidence_refs), so a consumer can't mutate the ledger view. The write
+//        path already freezes recordVerdict's return; this asserts the READ path matches. Would FAIL
+//        against the old code, which returned raw JSON.parse rows with no freeze. Seed the ledger on
+//        disk so listVerdicts parses fresh rows (the read-back path, not the cached construct object).
+test('★ #266: listVerdicts() returns DEEP-frozen rows (nested subject/verifier/evidence_refs too)', () => {
+  const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
+  fs.mkdirSync(store.STORE_DIR, { recursive: true });
+  fs.writeFileSync(store.LEDGER_PATH, JSON.stringify({
+    attestation_id: sha('seed-frozen'), schema_version: 'v3.4', verdict: 'pass',
+    subject: { persona: 'node-backend' }, verifier: { identity: '03-code-reviewer.nova', kind: 'structural' },
+    evidence_refs: { agent_id: AGENT, run_id: null, transaction_id: null, record_status: null },
+    recorded_at: T0, expires_after_days: 365,
+  }) + '\n');
+  const [row] = store.listVerdicts({ now: T0 });
+  assert.ok(Object.isFrozen(row), 'the row itself is frozen');
+  assert.ok(Object.isFrozen(row.subject), 'nested subject is frozen (the shallow-freeze leak class)');
+  assert.ok(Object.isFrozen(row.verifier), 'nested verifier is frozen');
+  assert.ok(Object.isFrozen(row.evidence_refs), 'nested evidence_refs is frozen');
+  // A real mutation attempt: silently ignored (frozen, non-strict) or throws (strict) — assert the
+  // value is UNCHANGED rather than relying on a throw, so the test is mode-agnostic.
+  try { row.evidence_refs.agent_id = 'TAMPERED'; } catch { /* strict mode throws — fine */ }
+  try { row.subject.persona = 'TAMPERED'; } catch { /* idem */ }
+  assert.strictEqual(store.listVerdicts({ now: T0 })[0].evidence_refs.agent_id, AGENT, 'a mutation attempt did not corrupt the stored view');
+  assert.strictEqual(store.listVerdicts({ now: T0 })[0].subject.persona, 'node-backend', 'nested persona unchanged');
+});
+
 process.stdout.write(`\nstore.test.js (verdict-attestation): ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);

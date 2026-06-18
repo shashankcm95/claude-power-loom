@@ -22,6 +22,14 @@ const { runStateDir } = require('../../kernel/_lib/runState');
 const { isSafePathSegment } = require('../../kernel/_lib/path-canonicalize'); // C1 — runId path-guard
 const { recordAttestation } = require('./store');
 
+// A BYTE cap on the outbox read: a hand-crafted / flooded decompose-result.json past V8's ~512MB
+// single-string ceiling would make fs.readFileSync(path,'utf8') THROW (an unbounded read), and a
+// huge-but-under-ceiling file would still spike RSS before JSON.parse. The real outbox is a small
+// admitted/rejected leaf list — 16MB is far above any legitimate run. Env-overridable (the
+// ENV-BEFORE-REQUIRE discipline) so a test can exercise the oversize path without a 16MB fixture.
+const MAX_OUTBOX_BYTES = Number(process.env.LOOM_LAB_MAX_OUTBOX_BYTES) > 0
+  ? Number(process.env.LOOM_LAB_MAX_OUTBOX_BYTES) : 16 * 1024 * 1024;
+
 // A well-formed failure_signature is the frozen ADR-0015 block: 8 FLAT scalar fields (string-or-null),
 // depth-1 (the schema is additionalProperties:false, all-scalar). The C1 ingest is untrusted (a
 // hand-crafted outbox), so reject any signature carrying a nested object/array value BEFORE recording.
@@ -51,6 +59,13 @@ function readOutbox(runId) {
     throw new Error(`record-from-decompose: runId ${JSON.stringify(runId)} is not a safe path segment — no separators or '..' allowed`);
   }
   const outboxPath = path.join(runStateDir(runId), 'decompose-result.json');
+  // Bound the read by bytes BEFORE materializing the file as a string (fail-soft, never reads a
+  // >MAX_OUTBOX_BYTES blob): stat first; an oversized outbox throws a clean Error (the CLI converts
+  // throws into a clean exit) rather than spiking RSS / hitting V8's single-string ceiling.
+  const size = fs.statSync(outboxPath).size;
+  if (size > MAX_OUTBOX_BYTES) {
+    throw new Error(`record-from-decompose: outbox for run ${JSON.stringify(runId)} is ${size} bytes, exceeding the ${MAX_OUTBOX_BYTES}-byte read cap — refusing to read (advisory)`);
+  }
   return JSON.parse(fs.readFileSync(outboxPath, 'utf8'));
 }
 

@@ -22,6 +22,10 @@ const RUN_STATE = path.join(TMP, 'run-state');
 const LAB_STATE = path.join(TMP, 'lab-state');
 process.env.HETS_RUN_STATE_DIR = RUN_STATE; // BEFORE requires
 process.env.LOOM_LAB_STATE_DIR = LAB_STATE;
+// Shrink the outbox byte cap so the oversize-read test can exercise it without a 16MB fixture
+// (ENV-BEFORE-REQUIRE: record-from-decompose.js reads MAX_OUTBOX_BYTES at module-load). Kept above
+// the test-5b DoS fixture's size (~736KB) so that legitimate case still reads.
+process.env.LOOM_LAB_MAX_OUTBOX_BYTES = String(2 * 1024 * 1024);
 fs.mkdirSync(TMP, { recursive: true });
 
 const REPO_ROOT = path.join(__dirname, '..', '..', '..', '..');
@@ -167,6 +171,27 @@ test('★ a non-flat (nested) failure_signature is skipped at the ingest boundar
   assert.strictEqual(summary.recorded, 2, 'both FLAT siblings recorded (good-1, good-2)');
   assert.strictEqual(summary.skipped, 2, 'the deep + wide non-flat signatures skipped');
   assert.strictEqual(listAttestations().length, 2, 'only the well-formed witnesses landed');
+});
+
+// ── 6. ★ outbox byte-cap (the unbounded-read fix): a decompose-result.json larger than the
+//        MAX_OUTBOX_BYTES cap is REFUSED before fs.readFileSync materializes it as a string — so a
+//        hand-crafted / flooded outbox can't spike RSS or hit V8's ~512MB single-string ceiling. The
+//        cap is shrunk to 2KB for this test (env, set at the top); a small in-bounds outbox still reads.
+test('★ outbox byte-cap: an oversized decompose-result.json is refused before the readFileSync', () => {
+  // an outbox padded past the 2MB test cap (a long task string inflates the file > cap)
+  writeOutbox('run-huge', {
+    run_id: 'run-huge', persona: 'code-reviewer', task: 'x'.repeat(3 * 1024 * 1024),
+    admitted: [], rejected: [{ id: 'L', failure_signature: sig('cost-justified') }], all_rejected: true,
+  });
+  assert.throws(() => recordFromDecompose({ runId: 'run-huge' }), /read cap|exceeding/i, 'oversize outbox refused');
+  assert.strictEqual(listAttestations().length, 0, 'nothing recorded from the refused outbox');
+  // a small in-bounds outbox still reads + records normally (the cap is not over-tight)
+  writeOutbox('run-small', {
+    run_id: 'run-small', persona: 'code-reviewer', task: 't',
+    admitted: [], rejected: [{ id: 'L', failure_signature: sig('cost-justified') }], all_rejected: true,
+  });
+  const summary = recordFromDecompose({ runId: 'run-small' });
+  assert.strictEqual(summary.recorded, 1, 'an in-bounds outbox reads + records normally');
 });
 
 process.stdout.write(`\nrecord-from-decompose.test.js: ${passed} passed, ${failed} failed\n`);

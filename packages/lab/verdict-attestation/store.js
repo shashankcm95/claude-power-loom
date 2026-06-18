@@ -43,6 +43,7 @@ const { writeAtomicString } = require('../../kernel/_lib/atomic-write');
 const { acquireLock, releaseLock } = require('../../kernel/_lib/lock');
 const { canonicalJsonSerialize } = require('../../kernel/_lib/canonical-json');
 const { readJsonlBounded } = require('../../kernel/_lib/jsonl-read');
+const { deepFreeze } = require('../../kernel/_lib/deep-freeze'); // #266 — freeze read-back rows (nested too)
 const { isSafePathSegment } = require('../../kernel/_lib/path-canonicalize'); // M-1: agentId path-safety
 
 // Resolved ONCE at module-load (the ENV-BEFORE-REQUIRE discipline; tests set LOOM_LAB_STATE_DIR first).
@@ -93,11 +94,16 @@ function withLabLock(fn, onContended) {
 // "Newest" = by FILE POSITION (== by time for this append-only single-writer ledger; for an
 // out-of-order/hand-written file the tail is positional, not recorded_at-sorted — honesty F2).
 function readLedger() {
+  // #266 read-back immutability: deep-freeze each parsed row (its nested subject / verifier /
+  // evidence_refs too) so a listVerdicts() consumer can't mutate the ledger view. The write path
+  // already Object.freezes the record it returns; this closes the same leak on the READ path
+  // (matches the recall-edge-store loadEdge -> deepFreeze convention). Enrich/prune build NEW
+  // frozen records from these rows, so a frozen input is harmless to them.
   return readJsonlBounded(LEDGER_PATH, {
     maxRecords: MAX_LEDGER_RECORDS,
     maxBytes: MAX_LEDGER_BYTES,
     name: 'verdict-attestation',
-  });
+  }).map((r) => deepFreeze(r));
 }
 
 // Atomic whole-ledger write (never a raw append). writeAtomicString creates STORE_DIR as needed.
