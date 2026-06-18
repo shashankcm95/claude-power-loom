@@ -258,3 +258,25 @@ gating W4c blocker, surfaced ONLY by the real-engine dogfood (the mock suite can
 
 Gates after folds: persona-experiment suite **100/0**; eslint clean; `contracts-validate` 0;
 `install.sh --hooks --test` **125/0**.
+
+## CodeRabbit + review-feedback gate (post-PR #354)
+
+Two review folds on `record.base_sha` reproducibility (both probed firsthand before folding):
+
+1. **base_sha pin (CodeRabbit Major, `2771025`)** — the factory only truthiness-checked `base_sha`,
+   so the actor clone could `checkout` a mutable ref. Folded via the project's OWN `assertSafeSha`
+   (the same validator the grader's `prepareClone` applies to the same field) + `--detach`, kept in
+   `runActorSolve` (lazy) to preserve the `claudeBin=null` no-child_process boundary. CodeRabbit
+   accepted ("Good call reusing `assertSafeSha`").
+2. **Full-40 SHA tighten (review feedback)** — `assertSafeSha` permitted `7-40` hex; tightened the
+   SHARED validator to exactly `[0-9a-f]{40}` (full immutable commit). Blast-radius probed: all 18
+   corpus base_shas are 40-char; the only `assertSafeSha` test asserts `'abc'`→reject + 40→accept
+   (both hold); the `'deadbeef'` causal-edge fixture never reaches it. Hardens BOTH the actor path
+   and the grader's `prepareClone` (which also checks out `base_sha`). Suites: issue-corpus 4/4,
+   causal-edge 22/22, persona-experiment 7/7, eslint clean.
+
+NOTE (local-only): `install.sh --hooks --test` Test 80 (markdownlint over `**/*.md`) reports a local
+FAIL caused SOLELY by the **untracked, generated-today `docs/system-report/`** dir (99 pre-existing
+md errors) — NOT this wave's diff. T80 scope MINUS `docs/system-report` → 0 errors; 0 tracked
+`system-report` files; the untracked dir is absent on a clean CI checkout, so CI T80 passes. The
+W4b substrate is gate-clean.

@@ -148,8 +148,8 @@ async function runActorSolve({ record, claudeBin, backend, prompt, model, timeou
 
   // M-2 + CodeRabbit: validate repo + base_sha on the ACTOR path (no weaker than the grader's
   // prepareClone) -- assertSafeRepo rejects '-'-lead arg-injection + non-http(s) host; assertSafeSha
-  // requires [0-9a-f]{7,40} so the checkout pins an IMMUTABLE commit, never a mutable ref (a branch/tag
-  // would skew grading across runs). Committed corpus is github.com-only (H2 / W4c).
+  // requires a FULL 40-char commit so the checkout pins an IMMUTABLE commit, never a mutable ref (a
+  // branch/tag would skew grading across runs). Committed corpus is github.com-only (H2 / W4c).
   assertSafeRepo(record.repo);
   assertSafeSha(record.base_sha);
   let actorDir = null;

@@ -63,7 +63,11 @@ function assertSafeRepo(repo, { allowLocal = false } = {}) {
 // base_sha is REQUIRED: a backtest must pin clone@base (never the remote's
 // default HEAD), else the run is a non-reproducible moving target.
 function assertSafeSha(sha) {
-  if (typeof sha !== 'string' || !/^[0-9a-f]{7,40}$/.test(sha)) throw new Error(`prepareClone: base_sha required, must be 7-40 lowercase hex: ${sha}`);
+  // FULL 40-char commit only (tightened from 7-40 — review feedback): the grading harness pins
+  // clone@base for reproducibility, and an abbreviated sha grows ambiguous as a repo gains commits.
+  // The committed corpus is all 40-char (probed); both the grader (prepareClone) and the actor clone
+  // (real-solve) require this. (prepareClone ALSO post-verifies HEAD resolved to the commit, below.)
+  if (typeof sha !== 'string' || !/^[0-9a-f]{40}$/.test(sha)) throw new Error(`assertSafeSha: base_sha must be a full 40-char lowercase hex commit: ${sha}`);
   return sha;
 }
 // `label` becomes a host filename BEFORE sandboxing — a `../` would escape
@@ -95,7 +99,7 @@ async function prepareClone({ repo, base_sha, allowLocalRepo = false }) {
   try {
     git(['clone', '--no-hardlinks', '--quiet', '--', repo, workDir], os.tmpdir());
     // NO `--` for checkout: `git checkout -- <x>` treats <x> as a PATHSPEC, not
-    // a commit. assertSafeSha already guarantees base_sha is [0-9a-f]{7,40}
+    // a commit. assertSafeSha already guarantees base_sha is [0-9a-f]{40}
     // (can't be a flag), so the positional is safe without the separator.
     git(['checkout', '--quiet', base_sha], workDir);
     // Verify HEAD resolved to the intended COMMIT, not a hex-looking branch/tag
