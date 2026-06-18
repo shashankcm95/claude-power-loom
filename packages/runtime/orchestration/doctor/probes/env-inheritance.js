@@ -89,7 +89,9 @@ function run(args) {
       status = 'warn';  // Not set at all — degraded but explicit.
       anyWarn = true;
     }
-    checks.push({ var: v, status, truthy_bash_guard: truthy, length: lengthClaim, isPlaceholder, valueSample: value ? value.slice(0, 3) + '...' : null });
+    // SECURITY: never emit any characters of the value (secrets/tokens leak
+    // through diagnostics). Report presence + length only — no `valueSample`.
+    checks.push({ var: v, status, truthy_bash_guard: truthy, length: lengthClaim, isPlaceholder, set: typeof value === 'string', valueLength: typeof value === 'string' ? value.length : 0 });
   }
 
   const overall = anyFail ? 'fail' : (anyWarn ? 'warn' : 'pass');

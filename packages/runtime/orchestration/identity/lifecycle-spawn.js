@@ -144,11 +144,13 @@ function cmdAssign(args) {
       }
     }
     if (!name) {
+      // Round-robin path only: pick at the current index AND advance it.
+      // The specialization branch above intentionally does NOT advance
+      // nextIndex (it reads the index to break ties but the pick is not a
+      // round-robin consumption); advancing it there skewed the round-robin
+      // distribution on subsequent assignments.
       const idx = store.nextIndex[args.persona];
       name = liveRoster[idx % liveRoster.length];
-    }
-    {
-      const idx = store.nextIndex[args.persona];
       store.nextIndex[args.persona] = (idx + 1) % liveRoster.length;
     }
 

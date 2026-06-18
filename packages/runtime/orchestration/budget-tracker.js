@@ -264,23 +264,37 @@ function cmdExtend(args) {
     }, null, 2));
     process.exit(1);
   }
-  entry.extensionsUsed += 1;
-  entry.extensionsLog.push({
-    extendedAt: new Date().toISOString(),
-    reason,
-    extensionAmount: entry.extensionAmount,
+  // Lock the WHOLE read-modify-write cycle (same idiom as cmdRecord +
+  // enterDepth/exitDepth). The pre-lock load above is only an existence/policy
+  // pre-check; the authoritative read+increment+write must be atomic across
+  // processes, else a concurrent extender's increment is clobbered (last
+  // writer wins, the other's extension lost).
+  let extensionsUsed, maxExtensions, extensionAmount, newAllowance, totalTokens;
+  withBudgetLock(runId, () => {
+    const fresh = loadBudgets(runId);
+    const freshEntry = (fresh && fresh.spawns[args.identity]) || entry;
+    freshEntry.extensionsUsed += 1;
+    freshEntry.extensionsLog.push({
+      extendedAt: new Date().toISOString(),
+      reason,
+      extensionAmount: freshEntry.extensionAmount,
+    });
+    writeBudgetsAtomic(runId, fresh || budgets);
+    extensionsUsed = freshEntry.extensionsUsed;
+    maxExtensions = freshEntry.maxExtensions;
+    extensionAmount = freshEntry.extensionAmount;
+    totalTokens = freshEntry.totalTokens;
+    newAllowance = (freshEntry.budgetTokens || 0) + freshEntry.extensionsUsed * freshEntry.extensionAmount;
   });
-  writeBudgetsAtomic(runId, budgets);
-  const newAllowance = (entry.budgetTokens || 0) + entry.extensionsUsed * entry.extensionAmount;
   console.log(JSON.stringify({
     action: 'extend',
     decision: 'approve',
     identity: args.identity,
-    extensionsUsed: entry.extensionsUsed,
-    maxExtensions: entry.maxExtensions,
-    extensionAmount: entry.extensionAmount,
+    extensionsUsed,
+    maxExtensions,
+    extensionAmount,
     newAllowance,
-    remainingTokens: newAllowance - entry.totalTokens,
+    remainingTokens: newAllowance - totalTokens,
     requestReason: reason,
   }, null, 2));
 }

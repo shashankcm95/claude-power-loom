@@ -14,12 +14,15 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const libraryPaths = require('../../../../kernel/_lib/library-paths');
 
 function run(_args) {
   if (process.env.AGENT_TEAM_DOCTOR_TEST === '1') {
     return { status: 'pass', details: { mode: 'test-fixture', notes: 'Test-mode synthetic check.' } };
   }
-  const sentinel = path.join(os.homedir(), '.claude', 'library', 'sections', 'agents', 'stacks', 'identities', '.partition-complete');
+  // Canonical sentinel path: same source registry.js / pattern-recorder.js read
+  // (libraryPaths.partitionSentinelPath() = <library-root>/.partition-complete).
+  const sentinel = libraryPaths.partitionSentinelPath();
   const consolidated = path.join(os.homedir(), '.claude', 'agent-patterns.json');
   const sentinelExists = fs.existsSync(sentinel);
   const consolidatedExists = fs.existsSync(consolidated);
