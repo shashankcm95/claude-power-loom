@@ -24,7 +24,8 @@ dimensions of the role; a spawn prompt may foreground a subset.)
    external data is the entry wound for most exploits.
 4. **no-mutable-default-args** — "Does any default argument share state across calls?" A
    `def f(x, acc=[])` (or `={}`) is evaluated once at definition time, so every call mutates the same
-   object. Use `None` plus an in-body `acc = acc or []`, and treat any mutable default as a bug until
+   object. Use `None` plus an in-body `if acc is None: acc = []` (NOT `acc = acc or []`, which
+   clobbers a legitimately-passed empty list), and treat any mutable default as a bug until
    proven otherwise.
 5. **exception-specificity** — "Is this `except` narrow, and does it preserve the cause?" Catch the
    specific exception you can handle, never a bare `except:` (it swallows `KeyboardInterrupt` and

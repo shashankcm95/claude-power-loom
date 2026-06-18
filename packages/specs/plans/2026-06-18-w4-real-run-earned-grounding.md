@@ -124,8 +124,12 @@ bump both count assertions (19 + 17) in the same diff. `_format` → `packages/r
   attempts WITH NO `built_by` field — which is exactly why all 20 committed nodes are
   `unattributed`. The W4c driver MUST explicitly inject
   `built_by: {role:'python-backend', roster_name:<a W4a roster name>, actor_kind:'claude_p'}`
-  onto the attempt BEFORE `buildWorkedExampleNode` (`recall-graph.js:236`; shape per
-  `arm-loop.test.js:53-59`). Without this, arm C's slice is empty and the thesis is untested.
+  onto the attempt object in the CALLER (where the attempt is constructed), BEFORE
+  `buildWorkedExampleNode` reads+validates it — `packages/lab/attribution/recall-graph.js:236` is
+  the VALIDATION/read site (`validatePersonaTag(attempt.built_by)`), NOT the injection point;
+  inject upstream per the `plantConfirmedLesson` shape in
+  `tests/unit/lab/persona-experiment/arm-loop.test.js:53-59`. Without this, arm C's slice is empty
+  and the thesis is untested.
   `roster_name` MUST be one of the three names W4a registers (validated by `ROSTER_TOKEN`);
   `role` is validated against `canonicalPersonaKey` (the `agents/*.md` glob) — both satisfied
   only once W4a ships. The `built_by.role` label is UNAUTHENTICATED provenance
