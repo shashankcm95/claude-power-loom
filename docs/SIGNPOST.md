@@ -291,8 +291,12 @@ Auto-generated map of where things live, derived from the repo structure + each 
 ### `lab/persona-experiment/`
 
 - `packages/lab/persona-experiment/arm-compose.js` - 3.1-W3a -- the per-arm prompt composer (the experiment's controlled variable).
+- `packages/lab/persona-experiment/arm-loop.js` - 3.1-W3b -- the subject-agnostic run scaffold.
+- `packages/lab/persona-experiment/arm-query.js` - 3.1-W3b -- arm-aware aggregation over an F7 timeline.
 - `packages/lab/persona-experiment/canonical-persona-key.js` - 3.1-W3a -- the C2 read-side persona-key normalizer (fork 1).
+- `packages/lab/persona-experiment/cli.js` - 3.1-W3b -- the persona-experiment CLI: run a 3-arm experiment + query the emitted timeline.
 - `packages/lab/persona-experiment/_spike/dogfood-arms.js` - 3.1-W3a DOGFOOD (_spike) -- the Rule-2a-corollary REAL-PATH proof.
+- `packages/lab/persona-experiment/_spike/dogfood-run.js` - 3.1-W3b DOGFOOD (_spike) -- the Rule-2a-corollary REAL-PATH proof for the run+measure layer.
 - `packages/lab/persona-experiment/grounding-slice.js` - 3.1-W3a -- the grounding-slice builder (arm C's "earned instincts").
 
 ### `lab/reputation/`
