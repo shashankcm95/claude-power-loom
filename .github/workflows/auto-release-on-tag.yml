@@ -79,11 +79,16 @@ jobs:
 
       - name: Determine release title
         id: title
+        # SECURITY (script-injection): TAG/FILE derive from a freeform git tag
+        # annotation. Pass them via env: and reference "$TAG"/"$FILE" in run: —
+        # NEVER inline ${{ }} into the shell, or a crafted annotation can break
+        # out of the quoted assignment and run arbitrary commands (CWE-94).
+        env:
+          TAG: ${{ steps.tag.outputs.tag_name }}
+          FILE: ${{ steps.tag.outputs.annotation_file }}
         run: |
           # First non-empty line of annotation (typically a summary line)
-          # if no annotation, fallback to "Release $TAG_NAME"
-          TAG="${{ steps.tag.outputs.tag_name }}"
-          FILE="${{ steps.tag.outputs.annotation_file }}"
+          # if no annotation, fallback to "Release $TAG"
           FIRST_LINE=$(grep -m1 -v '^[[:space:]]*$' "$FILE" || echo "")
           if [ -z "$FIRST_LINE" ]; then
             TITLE="Release $TAG"
@@ -95,13 +100,16 @@ jobs:
           echo "Release title: $TITLE"
 
       - name: Create GitHub Release
+        # SECURITY (script-injection): TITLE derives from the freeform tag
+        # annotation; pass TAG/FILE/TITLE via env: and reference "$VAR" in run:
+        # (never inline ${{ }} into the shell — CWE-94).
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag_name }}
+          FILE: ${{ steps.tag.outputs.annotation_file }}
+          TITLE: ${{ steps.title.outputs.title }}
         run: |
           set -e
-          TAG="${{ steps.tag.outputs.tag_name }}"
-          FILE="${{ steps.tag.outputs.annotation_file }}"
-          TITLE="${{ steps.title.outputs.title }}"
 
           # If a Release for this tag already exists (e.g., manually created
           # before this workflow shipped), skip rather than fail.
