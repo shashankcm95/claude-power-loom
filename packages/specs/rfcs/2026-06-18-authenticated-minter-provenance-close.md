@@ -104,3 +104,11 @@ Everything else (the full reputation distribution, lesson confirmed-weights, the
 - `docs/system-report/README.md` §3 (trust model), §5.3 (the substrate finding), §7 (next steps).
 - `~/.claude/.../memory/MEMORY.md` — `[[beta-internal-verification-mandate]]`, OQ-NS-6, the `#273` family.
 - ADRs [0010](../adrs/0010-write-scope-enforcement.md), [0012](../adrs/0012-capability-enforcement-is-static-not-runtime-injected.md); the `docs/ARCHITECTURE.md` threat-model section.
+
+## Erratum — 2026-06-19 (P0 build, VERIFY board)
+
+**§5.3 signature basis correction.** The interface says `sig = signRecordId(basis_digest)`. The P0 VERIFY board (architect + hacker) proved this is a **value-swap forgery**: `basis_digest` does not commit the `value` field, so a writer keeps a genuine `basis_digest`+`sig` and swaps `value` — and a verifier checking only the sig-over-`basis_digest` accepts the forged value (hacker `/tmp/probe3.js`). The signature MUST commit the full minted tuple.
+
+**Corrected basis:** `minted_id = sha256(canonical({kind, subject, value, basis_digest, minted_at, key_id}))`, `sig = signRecordId(minted_id, opts)`. `basis_digest` stays in the body so a (P2) verifier can optionally re-run the policy. `verifyMintedWeight` re-derives `minted_id` from an explicit field allowlist and verifies the sig over it; it does **not** re-run the policy in P0 (the oracle defense lives on the mint side, §5.2). These two decisions are joined: sig-sufficient verify is safe **only because** `minted_id` binds `value`.
+
+**P2 obligation added (replay):** `minted_at` is signed but unchecked in P0 — a genuine mint verifies forever (inert in SHADOW, exploitable once a value gates). The P2 consumer flip MUST enforce a freshness window OR policy re-run. See plan `packages/specs/plans/2026-06-19-vnext-authenticated-minter-p0.md` (INV-MINT, F1/H-1, M-1).

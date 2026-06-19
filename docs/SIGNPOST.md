@@ -61,6 +61,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/kernel/_lib/toolkit-root.js` - Shared canonical-toolkit-root resolution.
 - `packages/kernel/_lib/transaction-record.js` - K2 envelope transaction-record helper per v6 §4.2.
 - `packages/kernel/_lib/wal-append.js` - Shared append-only JSONL-WAL append primitive.
+- `packages/kernel/_lib/weight-minter.js` - v-next Authenticated Minter — P0 (RFC 2026-06-18-authenticated-minter-provenance-close, Option B).
 
 ### `kernel/algorithms/`
 
