@@ -29,6 +29,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
 const { writeAtomic } = require('../../_lib/atomic-write');
+const { withRegularFileFd } = require('../../_lib/safe-read');
 const { log } = require('../_lib/_log.js');
 
 const logger = log('ghost-heartbeat-stop');
@@ -77,18 +78,15 @@ function statFile(p) {
 // a missing/corrupt marker means "go ahead" (fail TOWARD auditing).
 function shouldSpawn(transcriptPath, now) {
   const debounceMs = envInt('GHOST_HEARTBEAT_DEBOUNCE_MS', DEFAULT_DEBOUNCE_MS);
-  const mp = markerPathFor(transcriptPath);
-  // statFile() FIRST: a non-regular file at the marker path (e.g. an adversarial
-  // FIFO planted in the user-owned marker dir) would make the readFileSync below
-  // BLOCK — and a blocking read is NOT caught by the try/catch. Treat any
-  // non-regular marker as missing (fail toward auditing). Symmetric with the
-  // transcript-side statFile guard.
-  if (!statFile(mp)) return true;
-  let last = 0;
-  try {
-    const m = JSON.parse(fs.readFileSync(mp, 'utf8'));
-    if (m && typeof m.lastSpawnAt === 'number') last = m.lastSpawnAt;
-  } catch { /* corrupt marker -> last stays 0 -> spawn */ }
+  // TOCTOU-safe (CodeRabbit #371): read the marker FROM a pinned fd — a name-based
+  // statFile()-then-readFileSync(path) leaves a swap window where the marker can be
+  // replaced with a FIFO and the read BLOCKS the turn. withRegularFileFd opens
+  // O_NONBLOCK, fstats the bound fd, rejects non-regular, and reads from THAT fd.
+  // Absent / non-regular / corrupt -> fallback 0 -> spawn (fail toward auditing).
+  const last = withRegularFileFd(markerPathFor(transcriptPath), (fd) => {
+    const m = JSON.parse(fs.readFileSync(fd, 'utf8'));
+    return (m && typeof m.lastSpawnAt === 'number') ? m.lastSpawnAt : 0;
+  }, 0);
   return now - last >= debounceMs;
 }
 

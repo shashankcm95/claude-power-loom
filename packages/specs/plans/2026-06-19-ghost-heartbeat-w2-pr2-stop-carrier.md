@@ -249,6 +249,20 @@ turn-end hot path, and an auto-firing detached child that survives the session.
 
 All board folds applied; carrier 13/13 + producer 17/17 (incl. the now-real T-isfile-fifo) green.
 
+### CodeRabbit (round 1, all 3 valid → folded)
+
+- **Major (inline) — carrier `shouldSpawn` marker-read TOCTOU.** `statFile(mp)` then
+  `readFileSync(mp)` re-reads by path → a swap to a FIFO between check and read
+  blocks the turn. FOLDED via a new shared `_lib/safe-read.js` `withRegularFileFd`
+  (open `O_NONBLOCK` + `fstat` the bound fd + read-from-fd), matching the repo's
+  established fix (`evolution-snapshot-read.js`).
+- **Major (outside-diff) — producer `readTranscriptText` TOCTOU** (the residual I'd
+  deferred). Same fix via `withRegularFileFd` — UPGRADED from deferred to closed
+  (CodeRabbit showed a cheap established pattern exists). 5 helper tests (safe-read).
+- **Major (outside-diff) — RFC §5.2 still described the retired design** (MIN_TURNS /
+  synchronous `spawnSync` / session-close). FOLDED (§5.2 now matches the landed
+  detached/debounced contract; §5.5 + OQ-W2-2 were already corrected).
+
 ## Drift Notes
 
 - The arc dogfooded its own motive AGAIN (twice): (1) the plan's "Stop = session
