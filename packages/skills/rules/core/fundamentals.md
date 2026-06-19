@@ -60,6 +60,17 @@ If a non-ASCII character is intentional in a string, prefer the escaped form (`\
 
 **Origin**: recurred 3× (latest: a literal BOM inside a regex tripped `no-irregular-whitespace`). Promoted from memory via `/self-improve` 2026-06-07. (Kept always-on rather than predicate-gated: applies to nearly every code edit, and the core-rules predicate-block count is at the T76 ceiling of 14.)
 
+## Symbol resolution — navigate by binding, not grep-and-guess
+
+When locating *where* to change a symbol, `grep` returns **text matches** — every same-named binding across the tree, plus hits in comments and strings. Picking "which one" by reading around each hit is the error-prone step; a wrong pick edits the wrong binding. Resolve by **binding**, not by text:
+
+- **`grep` / `workspaceSymbol` LOCATES; the `LSP` tool RESOLVES.** Use a text or symbol search to find a candidate position, then `goToDefinition` / `findReferences` on it to get the exact binding — scope-aware, shadow-aware, and following imports **across files**. The cross-file case (the same name defined in several modules) is the one a text search cannot disambiguate and the one most likely to mis-edit.
+- **Confirm before editing a non-unique symbol.** If a name has more than one definition, run `findReferences` (or `goToDefinition`) to confirm the binding you intend to change *before* the `Edit`.
+- **For "who calls this", use `incomingCalls` / `outgoingCalls`** rather than a text search over the call-site spelling.
+- The `LSP` tool needs a language server configured for the file type (live for the JS substrate here). When none is available it errors — fall back to `grep` plus reading enough surrounding context to be sure of the binding.
+
+**Origin**: recurring grep-and-guess mis-targeting; `grep` is a *locator*, never a *binding resolver*. Kept always-on (not predicate-gated) for the same reason as the ASCII rule above — it applies to nearly every code edit, and the core-rules predicate-block count is at the T76 ceiling of 14.
+
 <important if "task involves multi-file changes (≥2 distinct files) or task is at completion">
 
 ## Pre-Completion Checklist
