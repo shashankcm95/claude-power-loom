@@ -158,6 +158,10 @@ registerWeightPolicy(KERNEL_RECORD_KIND, makeKernelRecordPolicy());
  *
  * @param {{kind:string, subject:string}} spec  kind + subject ONLY; any extra field (value/key_id) is IGNORED.
  * @param {object} [opts] { privateKeyPem?, now?, context?:{runId,stateDir}, policies?:Map }
+ *   NOTE: opts.signer is NOT honored here (VALIDATE hacker H1) — the minter's signer is KERNEL-OWNED, so
+ *   a caller cannot inject a signer to downgrade the trusted key; only opts.privateKeyPem (the env/PEM
+ *   default key) is forwarded to the crypto. The ③.2 trust-domain vehicle is wired via a trusted kernel
+ *   mechanism, not this public opts.
  * @returns {object|null} { kind, subject, value, basis_digest, minted_at, key_id, sig } or null.
  */
 function mintWeight(spec, opts = {}) {
@@ -206,7 +210,13 @@ function mintWeight(spec, opts = {}) {
   try { mintedId = computeMintedId(weight); }
   catch { return null; }
 
-  const sig = signRecordId(mintedId, opts);
+  // ALLOWLIST the opts forwarded to the signer (VALIDATE hacker H1): the P1 seam made opts.signer the
+  // highest-precedence signer in resolveSigner, and mintWeight previously forwarded opts WHOLE — letting
+  // an untrusted caller inject opts.signer to DOWNGRADE the trusted env/PEM key to a key it controls (a
+  // provenance forge). The minter's signer is KERNEL-OWNED: forward ONLY the legitimate signing key, NEVER
+  // a caller-supplied signer. Symmetric with F3 (key_id minter-set) + F2 (value never from opts). The
+  // ③.2 trust-domain vehicle is wired into the minter via a trusted kernel mechanism, not this opts.
+  const sig = signRecordId(mintedId, { privateKeyPem: opts.privateKeyPem });
   if (!sig) return null; // SHADOW default: no key -> mint nothing (fail-closed)
   return { ...weight, sig };
 }

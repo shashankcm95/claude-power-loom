@@ -18,7 +18,7 @@ const REPO = path.join(__dirname, '..', '..', '..');
 const ATTEST = require(path.join(REPO, 'packages', 'kernel', '_lib', 'edge-attestation.js'));
 const {
   generateEdgeKeypair, signEdgeId, verifyEdgeSig, hasVerifyKey, SIG_ALG,
-  signRecordId, verifyRecordSig,
+  signRecordId, verifyRecordSig, resolveSigner,
 } = ATTEST;
 
 // Hermetic (CodeRabbit #335): the fail-soft/fail-closed assertions assume NO ambient edge keys —
@@ -132,6 +132,99 @@ test('signRecordId carries the alg-pinning + fail-closed contract verbatim', () 
   const sig = signRecordId(ID, { privateKeyPem });
   assert.strictEqual(verifyRecordSig(ID, sig, {}), false);            // no verify key -> fail-closed
   assert.strictEqual(verifyRecordSig('not-hex', sig, { publicKeyPem }), false);
+});
+
+// ── v-next minter P1 (step 1) — the signer-resolution seam (RFC §5.1/§7) ──────────────────────────
+// Widen the sign seam from "resolve a PEM into the host" to "resolve a SIGNER FUNCTION": opts.signer
+// (the injected trust-domain vehicle — a broker / namespace at ③.2) OVERRIDES the env-PEM default, so
+// the host process need never hold the key (Option B). SHADOW: the default path is byte-unchanged.
+// A "broker" stub = a function that holds the key + signs (simulating a separate-uid/namespace signer).
+const brokerSigner = (privateKeyPem) => (id) =>
+  crypto.sign(null, Buffer.from(id, 'utf8'), crypto.createPrivateKey(privateKeyPem)).toString('base64');
+
+test('P1 seam: opts.signer is USED + its sig verifies (the injected trust-domain signer)', () => {
+  const broker = generateEdgeKeypair();
+  const sig = signRecordId(ID, { signer: brokerSigner(broker.privateKeyPem) });
+  assert.strictEqual(typeof sig, 'string');
+  assert.strictEqual(verifyRecordSig(ID, sig, { publicKeyPem: broker.publicKeyPem }), true);
+});
+
+test('P1 seam: opts.signer takes PRECEDENCE over opts.privateKeyPem (host key never used)', () => {
+  const broker = generateEdgeKeypair();
+  const hostKey = generateEdgeKeypair(); // a DIFFERENT key the host would have used
+  const sig = signRecordId(ID, { signer: brokerSigner(broker.privateKeyPem), privateKeyPem: hostKey.privateKeyPem });
+  assert.strictEqual(verifyRecordSig(ID, sig, { publicKeyPem: broker.publicKeyPem }), true, 'signed by the broker');
+  assert.strictEqual(verifyRecordSig(ID, sig, { publicKeyPem: hostKey.publicKeyPem }), false, 'NOT signed by the host key');
+});
+
+test('P1 seam: opts.signer receives the VALIDATED recordId (never an unchecked id)', () => {
+  let captured = 'UNSET';
+  const broker = generateEdgeKeypair();
+  signRecordId(ID, { signer: (id) => { captured = id; return brokerSigner(broker.privateKeyPem)(id); } });
+  assert.strictEqual(captured, ID, 'the signer sees the HEX64-validated id');
+  // a NON-HEX64 id is rejected BEFORE the signer is ever called (input gate preserved).
+  captured = 'UNSET';
+  assert.strictEqual(signRecordId('not-hex', { signer: () => { captured = 'CALLED'; return 'x'; } }), null);
+  assert.strictEqual(captured, 'UNSET', 'the signer is NOT called for an invalid id');
+});
+
+test('P1 seam fail-CLOSED: an injected signer returning a malformed sig -> null (output is validated)', () => {
+  assert.strictEqual(signRecordId(ID, { signer: () => 'not!base64!' }), null, 'non-base64 output rejected');
+  assert.strictEqual(signRecordId(ID, { signer: () => '' }), null, 'empty output rejected');
+  assert.strictEqual(signRecordId(ID, { signer: () => 123 }), null, 'non-string output rejected');
+  assert.strictEqual(signRecordId(ID, { signer: () => null }), null, 'null output (no sig) rejected');
+  // a non-canonical (whitespace-injected) base64 is rejected (the malleability gate applies to the seam too).
+  const broker = generateEdgeKeypair();
+  const good = brokerSigner(broker.privateKeyPem)(ID);
+  const mangled = `${good.slice(0, 8)}\n${good.slice(8)}`;
+  assert.strictEqual(signRecordId(ID, { signer: () => mangled }), null, 'non-canonical base64 rejected');
+  // M1: a CANONICAL base64 that is NOT the 64-byte ed25519 shape is rejected at MINT (emit↔verify symmetry,
+  // so a malformed injected-signer output cannot persist as a dead "signed" record).
+  assert.strictEqual(signRecordId(ID, { signer: () => Buffer.from('short').toString('base64') }), null, 'canonical-but-5-byte output rejected');
+  assert.strictEqual(signRecordId(ID, { signer: () => Buffer.alloc(100, 7).toString('base64') }), null, 'canonical-but-100-byte output rejected');
+});
+
+test('P1 seam fail-SOFT: a throwing injected signer -> null, never throws', () => {
+  assert.strictEqual(signRecordId(ID, { signer: () => { throw new Error('broker down'); } }), null);
+});
+
+test('P1 seam: a NON-function opts.signer falls through to the PEM default (fail-safe)', () => {
+  const host = generateEdgeKeypair();
+  const sig = signRecordId(ID, { signer: 'not-a-function', privateKeyPem: host.privateKeyPem });
+  assert.strictEqual(verifyRecordSig(ID, sig, { publicKeyPem: host.publicKeyPem }), true, 'used the PEM default');
+});
+
+test('P1 seam: the env-PEM DEFAULT path signs + verifies (closes the recon untested-fallback gap)', () => {
+  const kp = generateEdgeKeypair();
+  const prev = process.env.LOOM_EDGE_SIGNING_KEY; // CodeRabbit: restore-prev (this is the only test that SETS it)
+  process.env.LOOM_EDGE_SIGNING_KEY = kp.privateKeyPem; // the reserved deployment key source
+  try {
+    const sig = signRecordId(ID, {}); // no opts.signer, no opts.privateKeyPem -> env fallback
+    assert.strictEqual(typeof sig, 'string', 'the env signing key is used by default');
+    assert.strictEqual(verifyRecordSig(ID, sig, { publicKeyPem: kp.publicKeyPem }), true);
+  } finally {
+    if (prev === undefined) delete process.env.LOOM_EDGE_SIGNING_KEY;
+    else process.env.LOOM_EDGE_SIGNING_KEY = prev; // restore the pre-test state, not just delete
+  }
+});
+
+test('P1 seam: signEdgeId alias honors opts.signer (the edge lane gets the seam too)', () => {
+  const broker = generateEdgeKeypair();
+  const sig = signEdgeId(ID, { signer: brokerSigner(broker.privateKeyPem) });
+  assert.strictEqual(verifyEdgeSig(ID, sig, { publicKeyPem: broker.publicKeyPem }), true);
+});
+
+test('P1 seam: resolveSigner is exported + returns the injected fn / a PEM closure / null', () => {
+  const fn = () => 'x';
+  assert.strictEqual(resolveSigner({ signer: fn }), fn, 'an injected function is returned verbatim');
+  const { privateKeyPem } = generateEdgeKeypair();
+  assert.strictEqual(typeof resolveSigner({ privateKeyPem }), 'function', 'a PEM resolves a default signer closure');
+  assert.strictEqual(resolveSigner({}), null, 'no signer + no key -> null');
+  assert.strictEqual(typeof resolveSigner({ signer: 'not-fn', privateKeyPem }), 'function', 'non-fn signer falls through to PEM');
+  // F1: the exported default closure SELF-GUARDS isHex64 (a direct caller bypasses signRecordId's input gate).
+  const closure = resolveSigner({ privateKeyPem });
+  assert.strictEqual(closure('not-hex'), null, 'the default closure refuses a non-HEX64 id directly');
+  assert.strictEqual(typeof closure(ID), 'string', 'the default closure signs a valid HEX64 id');
 });
 
 (async () => {
