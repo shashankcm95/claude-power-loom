@@ -80,7 +80,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/kernel/hooks/pre/config-guard.js` - PreToolUse hook: blocks edits to linter/formatter/build/test config files.
 - `packages/kernel/hooks/lifecycle/console-log-check.js` - Stop hook: warns about console.log statements in recently edited files.
 - `packages/kernel/hooks/lifecycle/context-size-warn-stop.js` - Stop hook — DETERMINISTIC context-size warning.
-- `packages/kernel/hooks/pre/contract-reminder-on-agent-spawn.js` - PreToolUse:Agent|Task hook — DETERMINISTIC contract enforcement via prompt
+- `packages/kernel/hooks/pre/contract-reminder-on-agent-spawn.js` - PreToolUse:Agent|Task hook — OBSERVABILITY ONLY (records which contract
 - `packages/kernel/hooks/post/error-critic.js` - PostToolUse hook (H.7.7): Critic→Refiner failure consolidation.
 - `packages/kernel/hooks/pre/fact-force-gate.js` - PreToolUse hook: fact-forcing gate
 - `packages/kernel/hooks/_lib/file-path-pattern.js` - Shared file-path extraction primitive for hook scripts that scan response

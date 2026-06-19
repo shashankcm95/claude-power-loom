@@ -211,7 +211,10 @@ function analyzeConvergence(paired, theoryWeight) {
   const slope = linRegSlope(xs, ys);
   const sd = stddev(xs);
   const proposedRaw = normalizeToWeightScale(slope, sd, 1);
-  const proposedEmpirical = proposedRaw === null ? theoryWeight : Math.abs(proposedRaw); // convergence_agree_pct is positive by construction
+  // Preserve the empirical sign: a negative slope (convergence-agree correlating
+  // with FAILURE) is a real signal, not noise. Math.abs() here silently flipped a
+  // negative empirical weight to positive, corrupting the convergence signal.
+  const proposedEmpirical = proposedRaw === null ? theoryWeight : proposedRaw;
   const delta = proposedEmpirical - theoryWeight;
   const conf = classifyConfidence(n, r);
   return {
@@ -305,4 +308,8 @@ function main() {
   console.log(JSON.stringify(result, null, 2));
 }
 
-main();
+if (require.main === module) {
+  main();
+}
+
+module.exports = { analyzeConvergence };

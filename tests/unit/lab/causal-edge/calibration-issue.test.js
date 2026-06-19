@@ -319,6 +319,40 @@ test('runIssueCalibration: AWAITs the async scorer -> a NON-empty result + pinne
   assert.ok(!JSON.stringify(record).includes('"result":{}'), 'the serialized record must not have an empty {} result');
 });
 
+// runIssueCalibration must THREAD cloneRoot through to scoreIssueCalibration so
+// detectRecallSmell strips the actor's ABSOLUTE clone-prefixed reads to repo-
+// relative before the relevant-files compare. The runner formerly dropped the
+// option, so the scorer ran on a default/undefined root. Spy on the scorer via the
+// require cache (the runner destructures its binding at require-time, so patch the
+// cached calibration-issue export THEN load the runner fresh) and assert the value
+// reaches the scorer's opts (== undefined against the old, un-threaded runner).
+test('runIssueCalibration: cloneRoot is THREADED through to scoreIssueCalibration (not dropped)', async () => {
+  const ciPath = path.join(REPO, 'packages', 'lab', 'causal-edge', 'calibration-issue.js');
+  const runPath = path.join(REPO, 'packages', 'lab', 'causal-edge', 'calibration-issue-run.js');
+  const ciMod = require(ciPath);
+  const realScore = ciMod.scoreIssueCalibration;
+  let capturedOpts = null;
+  ciMod.scoreIssueCalibration = async function spy(records, k, legs, opts) { capturedOpts = opts; return realScore(records, k, legs, opts); };
+  try {
+    delete require.cache[require.resolve(runPath)];
+    const { runIssueCalibration } = require(runPath);
+    const mockBackend = {
+      containmentAttested: true,
+      async prepareClone() { return { workDir: '/tmp/__loom_cloneroot_thread_nonexistent__' }; },
+      async applyPatch() { return { ok: true }; },
+      async runTests() { return { spawnThrew: false, timedOut: false, sentinelSeen: true, exitCode: 0, stdout: '__LOOM_TEST_RESULT__{"test_x":"pass","test_y":"pass"}' }; },
+      async discard() { /* noop */ },
+    };
+    const CLONE_ROOT = '/private/var/loom/clone-abc/';
+    await runIssueCalibration([validRecord()], 1, { backend: mockBackend, patchFor: () => CLEAN_PATCH, claudeBin: null, cloneRoot: CLONE_ROOT });
+    assert.ok(capturedOpts, 'scoreIssueCalibration must have been called');
+    assert.strictEqual(capturedOpts.cloneRoot, CLONE_ROOT, 'cloneRoot must reach the scorer (undefined against the un-threaded runner)');
+  } finally {
+    ciMod.scoreIssueCalibration = realScore;                       // restore so later tests use the real scorer
+    delete require.cache[require.resolve(runPath)];                // drop the spy-bound runner so a later require is clean
+  }
+});
+
 // --------------------------------------------------------------------------
 // W3 — the trajectory + resolution_friction wiring + the never-blend firewall.
 // A synthetic stream-json log shaped like the firsthand probe (plan RP-1).

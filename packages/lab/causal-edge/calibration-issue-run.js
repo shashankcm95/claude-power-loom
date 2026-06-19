@@ -180,7 +180,7 @@ function makeReferenceTeacher({ bin = resolveClaude(), timeout = 60000 } = {}) {
 // the un-gated Path-1 record (no evidence-link precondition).
 // --------------------------------------------------------------------------
 
-async function runIssueCalibration(records, attemptsPerIssue, { backend, patchFor, tierOf, outDir, claudeBin, recallGraphDir, trajectoryFor, frictionFn } = {}) {
+async function runIssueCalibration(records, attemptsPerIssue, { backend, patchFor, tierOf, outDir, claudeBin, recallGraphDir, trajectoryFor, frictionFn, cloneRoot } = {}) {
   // claudeBin: undefined => resolve the real binary (live run); null => disable
   // the LLM legs (fail-closed) for a deterministic/CI-safe run.
   const bin = claudeBin === undefined ? resolveClaude() : claudeBin;
@@ -199,7 +199,10 @@ async function runIssueCalibration(records, attemptsPerIssue, { backend, patchFo
   const trajFor = trajectoryFor || ((record) => runActorTrajectory({ record, claudeBin: bin }).events);
   // AWAIT — scoreIssueCalibration is async; without this the record's `result`
   // is a pending Promise that JSON.stringify renders as {} (VALIDATE consensus).
-  const result = await scoreIssueCalibration(records, attemptsPerIssue, legs, { patchFor, tierOf, trajectoryFor: trajFor });
+  // cloneRoot threads through to detectRecallSmell so the actor's ABSOLUTE reads
+  // are stripped to repo-relative before the relevant-files compare (without it
+  // the recall-smell detector compares absolute reads vs repo-relative paths).
+  const result = await scoreIssueCalibration(records, attemptsPerIssue, legs, { patchFor, tierOf, trajectoryFor: trajFor, cloneRoot });
   // FAIL-CLOSED — a calibration record without its manifest hash is not
   // reproducible; records are pre-validated, so this throws only on a real fault
   // (CodeRabbit #1: don't write a best-effort null-hash record).

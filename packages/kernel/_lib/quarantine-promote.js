@@ -243,19 +243,31 @@ function materializeDelta(opts) {
  * replacing every other char with '_'. Keeps a dotted/colon'd agentId (e.g.
  * "agent.123:x") from producing an evidence_ref the A10 sentinel regex rejects.
  *
- * NOT collision-free / NOT injective: "agent.001" and "agent-001" both map to
- * "agent_001". The result is a STRUCTURAL bootstrap anchor (it makes the genesis
- * record's A10 gate pass), NOT a unique spawn identifier — the unique id is the
- * raw agentId, carried verbatim in writer_spawn_id. PR-3c-b's downstream K9 chain
- * MUST NOT key uniqueness off evidence_refs[0]; use writer_spawn_id / the
- * content-addressed transaction_id for that.
+ * COLLISION DISAMBIGUATION: a bare char-class replace is NOT injective -
+ * "agent.001" and "agent-001" would both map to "agent_001", and two DISTINCT raw
+ * ids collapsing to one safeId let quarantineCandidate's `loom-promote/<safeId>`
+ * ref (and the integrator's per-safeId dedup) silently overwrite / drop the first
+ * producer. To keep distinct raw ids distinct, when (and ONLY when) the char-class
+ * replace ALTERED the input, we suffix a short hex digest of the RAW id
+ * (`<sanitized>-<sha256(raw)[:8]>`). The suffix is pure [a-f0-9-], so the
+ * ROOT_TASK_RECORD sentinel charset [A-Za-z0-9_-] is preserved. An already-safe id
+ * (raw === replaced) passes through UNCHANGED - already-safe ids are mutually
+ * distinct and need no suffix, so the ref-name contract for clean ids is preserved.
+ *
+ * The result remains a STRUCTURAL bootstrap anchor (it makes the genesis record's
+ * A10 gate pass); the unique id is still the raw agentId, carried verbatim in
+ * writer_spawn_id. PR-3c-b's downstream K9 chain MUST NOT key uniqueness off
+ * evidence_refs[0]; use writer_spawn_id / the content-addressed transaction_id.
  *
  * @param {string} agentId
  * @returns {string} sanitized id (>=1 char), or '' for a non-string.
  */
 function sanitizeAgentId(agentId) {
   if (typeof agentId !== 'string') return '';
-  return agentId.replace(/[^A-Za-z0-9_-]/g, '_');
+  const replaced = agentId.replace(/[^A-Za-z0-9_-]/g, '_');
+  if (replaced === agentId) return replaced;
+  const digest = crypto.createHash('sha256').update(agentId, 'utf8').digest('hex').slice(0, 8);
+  return `${replaced}-${digest}`;
 }
 
 /**

@@ -22,6 +22,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { writeAtomicString } = require('../../kernel/_lib/atomic-write');
 
 const PRE_APPROVAL_HEADER = '## Pre-Approval Verification';
 
@@ -103,7 +104,10 @@ function appendSection(planPath, section) {
       updated = existing + '\n' + section.trim() + '\n';
     }
   }
-  fs.writeFileSync(planPath, updated);
+  // verifyplan-atomic-write: write via tmp+rename so a crash mid-write cannot
+  // leave a truncated plan file (the prior fs.writeFileSync exposed a partial
+  // write window). Shared kernel _lib primitive (tmp + hrtime + crypto nonce).
+  writeAtomicString(planPath, updated);
 }
 
 function main() {
@@ -128,9 +132,8 @@ function main() {
 
 if (require.main === module) main();
 
-// HT.1.9: dropped speculative module.exports block (3 named exports —
-// buildSection, appendSection, PRE_APPROVAL_HEADER — verified empirically as
-// 0-consumer per HT.1.9 pre-validation; all used internally only by main()).
-// Per backlog Decision (b): delete genuinely unused. Function/constant
-// definitions remain as module-scope for internal CLI use; CLI surface
-// `node verify-plan-spawn.js <plan-path>` unchanged.
+// HT.1.9 dropped a speculative 0-consumer exports block. verifyplan-atomic-write
+// re-introduces a single export: `appendSection` now HAS a consumer - the unit
+// test that pins the atomic (tmp+rename) plan-file write. Kept minimal (one
+// named export, not the prior speculative three); CLI surface unchanged.
+module.exports = { appendSection };
