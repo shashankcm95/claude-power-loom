@@ -38,14 +38,24 @@ ROUTE_DECISION=$(echo "$ROUTE_OUTPUT" | jq -r '.recommendation')
 ROUTE_SCORE=$(echo "$ROUTE_OUTPUT" | jq -r '.score_total')
 ROUTE_REASONING=$(echo "$ROUTE_OUTPUT" | jq -r '.reasoning')
 ROUTE_UNCERTAIN=$(echo "$ROUTE_OUTPUT" | jq -r '.uncertain // false')
+
+# Router-V2 W2 — the runtime borderline-seam resolver. On the scorer-borderline band
+# OR the zero-signal uncertain case, escalate to route (HETS) as a NUDGE with a demote-
+# if-trivial valve (the USER directive: borderline escalates to HETS, not root).
+# Advisory only; the resolver fail-opens to route. route/root pass through untouched
+# (W2 never escalates the root class — that is W3's lexicon-curation scope).
+if [ "$ROUTE_DECISION" = "borderline" ] || [ "$ROUTE_UNCERTAIN" = "true" ]; then
+  W2_RESOLUTION=$(echo "$ROUTE_OUTPUT" | bash ${CLAUDE_PLUGIN_ROOT}/packages/runtime/orchestration/build-team-helpers.sh borderline-resolve)
+  ROUTE_DECISION=$(echo "$W2_RESOLUTION" | jq -r '.resolved_recommendation')
+  W2_REASONING=$(echo "$W2_RESOLUTION" | jq -r '.reasoning')
+fi
 ```
 
 Then dispatch on `$ROUTE_DECISION` (chat-agent followed; emit user-facing messages and wait for reply where applicable):
 
-- **`route`** — proceed to Step 1 (tech-stack-analyzer). No user gate here; the existing Step 5 USER GATE 1 is where the team plan gets reviewed.
-- **`borderline`** — surface the score + reasoning to the user with a 3-option menu (route / root / cancel) and wait for reply. The borderline band is the cost-benefit-ambiguous case — root has no information advantage here.
-- **`root`** — hand back to root with skip-orchestration message; no team spawn. If user disagrees, they re-invoke with `--force-route` or describe constraints more explicitly.
-- **`uncertain` (H.7.5 forcing instruction)** — fired when score≤0.05 AND no `--context` was supplied AND wordCount≥4. Do NOT silently default to root. Either re-invoke with `PRIOR_TURN_EXCERPT` set, or surface to user for explicit `--force-route` / `--force-root` disambiguation.
+- **`route`** — proceed to Step 1 (tech-stack-analyzer). No user gate here; the existing Step 5 USER GATE 1 is where the team plan gets reviewed. **When W2 escalated a borderline/uncertain task here**, surface `$W2_REASONING` (the demote-if-trivial valve) first: proceed as route UNLESS you judge the FULL task genuinely trivial — then demote to root. This replaces the prior borderline user-menu pause with a route-default nudge; the valve preserves the demote path (advisory, never a block).
+- **`root`** — hand back to root with skip-orchestration message; no team spawn. (After W2, a `root` here means the scorer said route/root directly — W2 never demotes; only the orchestrator's trivial-task judgment does.) If user disagrees, they re-invoke with `--force-route` or describe constraints more explicitly.
+- **`borderline` / `uncertain`** — should not reach the dispatch as-is once W2 ran (both resolve to `route` above). If `$W2_RESOLUTION` was fail-open, treat as `route` with the valve surfaced. The kernel's `[ROUTE-DECISION-UNCERTAIN]` / `[ROUTE-META-UNCERTAIN]` instructions (if present in `$ROUTE_OUTPUT`) still apply and compose with — they are not restated by — the W2 escalation.
 
 ### 1. Pre-flight check
 Verify the HETS substrate is ready:

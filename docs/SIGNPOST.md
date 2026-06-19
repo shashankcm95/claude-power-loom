@@ -153,6 +153,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/runtime/orchestration/agent-identity.js` - agent-identity.js — thin dispatcher for the identity registry CLI.
 - `packages/runtime/orchestration/aggregate/aggregate.js` - Swarm aggregator — combines per-persona findings into a unified report.
 - `packages/runtime/orchestration/architecture-relevance-detector.js` - architecture-relevance-detector — H.8.1 substrate primitive.
+- `packages/runtime/orchestration/borderline-resolver.js` - Router-V2 W2 — the Runtime inference layer at the borderline seam.
 - `packages/runtime/orchestration/budget-tracker.js` - Budget tracker — per-spawn token-usage tracking + on-demand budget
 - `packages/runtime/orchestration/build-spawn-context.js` - build-spawn-context.js — H.8.3 substrate primitive composing the H.8.x trilogy.
 - `packages/runtime/orchestration/contracts-validate.js` - Contracts validator — cross-checks the 4 sources of truth that drift
@@ -354,6 +355,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/specs/bench/scenarios/03-library-substrate/validate.js` - CLI-driven scenario.
 - `packages/specs/bench/scenarios/04-hets-routed-plan/validate.js`
 - `packages/specs/bench/scenarios/05-error-recovery/validate.js`
+- `packages/specs/bench/router-v2/w2-borderline-backtest.js` - Router-V2 W2 — a THIN, descriptive, NARROWS-ONLY backtest of the borderline->route
 
 ### `specs/spikes/`
 

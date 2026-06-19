@@ -28,6 +28,8 @@ set -e
 TOOLKIT_ROOT="$HOME/Documents/claude-toolkit"
 # Phase 0 (v3.0-alpha) workspace restructure: scripts moved kernel→runtime; persona contracts moved.
 ROUTE_DECIDE_SCRIPT="$TOOLKIT_ROOT/packages/kernel/algorithms/route-decide.js"
+# Router-V2 W2 — the runtime borderline-seam resolver (reads route-decide JSON, emits the escalation).
+BORDERLINE_RESOLVER_SCRIPT="$TOOLKIT_ROOT/packages/runtime/orchestration/borderline-resolver.js"
 BUILD_SPAWN_CONTEXT_SCRIPT="$TOOLKIT_ROOT/packages/runtime/orchestration/build-spawn-context.js"
 CONTRACT_VERIFIER_SCRIPT="$TOOLKIT_ROOT/packages/kernel/validators/contract-verifier.js"
 AGENT_IDENTITY_SCRIPT="$TOOLKIT_ROOT/packages/runtime/orchestration/agent-identity.js"
@@ -49,6 +51,13 @@ Subcommands:
       recommendation + score + reasoning + uncertain. Empty prior-turn-excerpt
       skips --context. Defaults to {recommendation:"route"} if route-decide.js
       missing (fail-open per ADR-0001).
+
+  borderline-resolve  (reads route-decide JSON on STDIN)
+      Router-V2 W2 — the runtime borderline-seam resolver. Emits
+      {resolved_recommendation, escalated, policy, reasoning}. The scorer-borderline
+      band + the zero-signal uncertain case escalate to route (HETS) as a NUDGE with a
+      demote-if-trivial valve; route/root pass through (W2 never touches the root
+      class). Advisory; fail-opens to route if the resolver/JSON is missing.
 
   build-spawn-context <task> [target-files]
       H.8.5 spawn-context auto-extension. Emits SPAWN_CONTEXT block to stdout.
@@ -97,6 +106,21 @@ cmd_route_decide_gate() {
   else
     node "$ROUTE_DECIDE_SCRIPT" --task "$task_description"
   fi
+}
+
+# ---------- subcommand: borderline-resolve (Router-V2 W2) ----------
+# Reads a route-decide JSON object on STDIN and emits the W2 resolution
+# ({resolved_recommendation, escalated, policy, reasoning}). The scorer-borderline
+# band (and the zero-signal uncertain case) escalates to route (HETS) as a NUDGE with
+# a demote-if-trivial valve; route/root are passed through (W2 never touches the root
+# class — that is W3). Advisory only; fail-opens to route if the resolver is missing or
+# the JSON is unparseable (mirrors route-decide-gate's fail-open).
+cmd_borderline_resolve() {
+  if [ ! -f "$BORDERLINE_RESOLVER_SCRIPT" ]; then
+    echo '{"resolved_recommendation":"route","escalated":false,"policy":"fail-open","reasoning":"borderline-resolver.js missing; defaulting to route (fail-open)"}'
+    return 0
+  fi
+  node "$BORDERLINE_RESOLVER_SCRIPT"
 }
 
 # ---------- subcommand: build-spawn-context ----------
@@ -261,6 +285,10 @@ case "$1" in
   route-decide-gate)
     shift
     cmd_route_decide_gate "$@"
+    ;;
+  borderline-resolve)
+    shift
+    cmd_borderline_resolve "$@"
     ;;
   build-spawn-context)
     shift
