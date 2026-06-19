@@ -101,5 +101,39 @@ test('emitEscapeHatchAudit is a no-op when action is allow', () => {
   assert.strictEqual(fs.existsSync(log), false);
 });
 
+// --- Dead-code consumption-status regression (kernel-deadcode unit) ---
+// Pins the documented fact that the combined-bypass machinery
+// (combinedBypass / denyCombinedInCi / outOfScopeAllowed / action:'deny') is
+// COMPUTED-BUT-UNCONSUMED at the enforcement layer. The only production caller
+// (worktree-allocator) branches on `worktreeDisabled` + audits `severity`; it
+// NEVER blocks on the `deny` verdict. If a future wave wires the deny path into
+// enforcement, this test will (correctly) fail and force a header/doc update.
+
+test('only worktreeDisabled + severity are consumed; deny verdict is computed but NOT enforced by the allocator', () => {
+  const { allocateWorktree } = require('../../../../packages/kernel/worktree/worktree-allocator');
+  const log = tmpLog();
+  let gitCalled = false;
+  // The "deny" verdict: combined bypass + CI deny var set.
+  const denyEnv = {
+    LOOM_DISABLE_WORKTREE: '1',
+    LOOM_ALLOW_OUT_OF_SCOPE_WRITES: '1',
+    LOOM_CI_DENY_COMBINED_BYPASS: '1',
+  };
+  assert.strictEqual(evaluateEscapeHatches(denyEnv).action, 'deny', 'precondition: env yields the deny verdict');
+  const res = allocateWorktree({
+    repoRoot: '/tmp/does-not-matter',
+    worktreePath: '/tmp/wt-does-not-matter',
+    env: denyEnv,
+    runGitFn: () => { gitCalled = true; return { ok: false, stderr: 'unreached' }; },
+    auditLogPath: log,
+  });
+  // The allocator honored worktreeDisabled (escape-hatch-disabled) and did NOT
+  // touch git — proving the spawn is NOT blocked by the unconsumed deny verdict.
+  assert.strictEqual(res.mode, 'escape-hatch-disabled', 'deny verdict is unconsumed: allocator falls through worktreeDisabled, not a deny-block');
+  assert.strictEqual(res.allocated, false);
+  assert.strictEqual(gitCalled, false, 'git must not be invoked when worktree is disabled');
+  fs.rmSync(log, { force: true });
+});
+
 process.stdout.write(`\nk10-escape-hatch.test.js: ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
