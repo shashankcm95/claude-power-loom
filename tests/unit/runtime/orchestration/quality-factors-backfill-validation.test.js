@@ -146,6 +146,20 @@ test('well-formed store still backfills from spawn history', () => {
   });
 });
 
+// CodeRabbit #358: the store-level guard admits the map, but a malformed per-identity
+// record (e.g. `identities: { bad: null }`) would throw on `identity.quality_factors_history`.
+// The per-record guard must skip it fail-soft, never crash.
+test('malformed per-identity record (null value) is skipped fail-soft, not thrown', () => {
+  const store = JSON.stringify({ version: 1, identities: { good: { quality_factors_history: [] }, bad: null } });
+  withTmpHome(store, ({ home, storePath }) => {
+    const res = runBackfill({ home, storePath, dryRun: true });
+    assert.strictEqual(res.status, 0, `expected exit 0 (no crash), got ${res.status} (stderr: ${res.stderr})`);
+    const out = JSON.parse(res.stdout);
+    assert.strictEqual(out.summary.perIdentity.bad.action, 'skipped (malformed identity record)', 'malformed record skipped');
+    assert.strictEqual(/TypeError|Cannot convert/.test(res.stderr), false, 'no dereference crash on stderr');
+  });
+});
+
 if (failed > 0) {
   process.stdout.write(`\n${passed} passed, ${failed} failed\n`);
   process.exit(1);

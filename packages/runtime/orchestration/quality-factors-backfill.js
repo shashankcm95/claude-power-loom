@@ -118,6 +118,14 @@ function main() {
     console.error('Store has no valid `identities` map - nothing to backfill');
   }
   for (const [identityId, identity] of Object.entries(identities)) {
+    // Per-record guard (CodeRabbit #358): the store-level guard admits the map,
+    // but a malformed entry value (e.g. `identities: { "x": null }`) would throw
+    // on `identity.quality_factors_history`. Skip it fail-soft.
+    if (!identity || typeof identity !== 'object' || Array.isArray(identity)) {
+      summary.skipped += 1;
+      summary.perIdentity[identityId] = { action: 'skipped (malformed identity record)' };
+      continue;
+    }
     if (!Array.isArray(identity.quality_factors_history)) {
       identity.quality_factors_history = [];
     }
