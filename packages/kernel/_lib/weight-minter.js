@@ -35,9 +35,10 @@
 //   - F5: basis_digest + minted_id use the depth- AND width-bounded canonicalJsonSerialize
 //     (MAX_CANONICAL_DEPTH / MAX_CANONICAL_NODES); a controlled-throw on a pathological basis/value ->
 //     mintWeight returns null (fail-soft) / verifyMintedWeight returns false (fail-closed). NEVER throws.
-//   - M-1 (named P2 obligation, inert in SHADOW): minted_at is signed but UNCHECKED here — a genuine
-//     mint verifies forever (stale-replay). The P2 consumer flip MUST add a freshness window OR a
-//     policy re-run before any value gates.
+//   - M-1 (stale-replay defense — opt-in, default-off): minted_at is signed (tamper-evident). A
+//     freshness window is available via verifyMintedWeight's opts.maxAgeMs — DEFAULT-OFF keeps SHADOW
+//     (no caller passes it yet, so a genuine mint still verifies regardless of age; inert — nothing
+//     gates). The P2 consumer flip turns it on (or adds a policy re-run) before any value gates.
 //
 // DEPENDENCY DIRECTION (OQ-D): kernel-owned; imports ONLY ./canonical-json, ./edge-attestation, and
 // (lazily) ./record-store — all kernel. NEVER a lab/runtime import (that would invert the legal
@@ -63,6 +64,17 @@ const KERNEL_RECORD_KIND = 'kernel-record-attestation';
 // per-policy shape gate (e.g. HEX64) is stricter and lives in the policy.
 function isValidSubjectScalar(s) {
   return typeof s === 'string' && s.length > 0 && s.length <= MAX_SUBJECT_LEN;
+}
+
+// A CANONICAL UTC ISO-8601 timestamp round-trips through Date.parse + toISOString (the
+// `new Date().toISOString()` form, e.g. 2026-06-19T12:00:00.000Z). Requiring it makes the freshness
+// comparison TIMEZONE-UNAMBIGUOUS (hacker H1): a tz-less string like '2026-06-19T12:00:00' is parsed
+// by Date.parse in the verifier's LOCAL zone, silently swinging the window by hours across hosts.
+function isCanonicalUtcIso(s) {
+  if (typeof s !== 'string' || s.length === 0) return false;
+  const ms = Date.parse(s);
+  if (!Number.isFinite(ms)) return false;
+  return new Date(ms).toISOString() === s;
 }
 
 // The EXPLICIT 6-field allowlist (H-2). The signed basis is EXACTLY these fields, in this set, derived
@@ -177,9 +189,10 @@ function mintWeight(spec, opts = {}) {
   try { basisDigest = sha256CanonicalHex(out.basis); }
   catch { return null; } // depth-overflow basis -> fail-soft (F5)
 
-  // .trim() (CR-3): a whitespace-only opts.now must fall back to a real timestamp, not become a
-  // blank minted_at that would NaN-crash the P2 freshness check (M-1).
-  const mintedAt = (typeof opts.now === 'string' && opts.now.trim().length > 0) ? opts.now : new Date().toISOString();
+  // opts.now must be a CANONICAL UTC ISO (round-trips through toISOString) — else fall back to real
+  // now. This blocks a timezone-ambiguous now from ever being SIGNED (hacker H1) and subsumes the
+  // CR-3 whitespace guard. The minter's own auto-stamp (new Date().toISOString()) is already canonical.
+  const mintedAt = (typeof opts.now === 'string' && isCanonicalUtcIso(opts.now)) ? opts.now : new Date().toISOString();
   const weight = {
     kind,
     subject,
@@ -205,7 +218,13 @@ function mintWeight(spec, opts = {}) {
  * NEVER throws.
  *
  * @param {object} weight a minted weight
- * @param {object} [opts] { publicKeyPem? }
+ * @param {object} [opts] { publicKeyPem?, maxAgeMs?, nowMs? } — maxAgeMs (opt-in) enforces a
+ *   freshness window on the signed minted_at (default-off preserves SHADOW); fail-closed on a
+ *   non-positive/non-finite maxAgeMs, a non-canonical-UTC / unparseable minted_at, or a non-finite
+ *   nowMs. The window is SYMMETRIC + INCLUSIVE: |nowMs - mintedMs| <= maxAgeMs — so the effective
+ *   acceptance span is 2*maxAgeMs (a P2 caller sizing a one-sided "max age" must account for that;
+ *   symmetric is deliberate — it also rejects an implausibly-FUTURE mint, which a one-sided
+ *   [0,maxAge] bound would silently accept). nowMs is injectable for tests.
  * @returns {boolean}
  */
 function verifyMintedWeight(weight, opts = {}) {
@@ -236,7 +255,24 @@ function verifyMintedWeight(weight, opts = {}) {
   let mintedId;
   try { mintedId = computeMintedId(weight); }
   catch { return false; } // depth-overflow value -> fail-closed (F5)
-  return verifyRecordSig(mintedId, sig, opts);
+  if (!verifyRecordSig(mintedId, sig, opts)) return false;
+
+  // M-1 — opt-in freshness window (default-off keeps SHADOW: no maxAgeMs -> no check). Applied ONLY
+  // to an authentic weight (the sig above passed), so minted_at is the signed, tamper-evident value.
+  // Fail-CLOSED: a garbage maxAgeMs must NOT silently disable the check (RFC §5.5 no-silent-downgrade);
+  // an unparseable minted_at or a non-finite nowMs -> false. The SYMMETRIC window rejects a STALE
+  // replay AND an implausibly-FUTURE mint (a clock-skew bound), tolerating small skew either way.
+  if (opts.maxAgeMs === undefined) return true;
+  const { maxAgeMs } = opts;
+  if (typeof maxAgeMs !== 'number' || !Number.isFinite(maxAgeMs) || maxAgeMs <= 0) return false;
+  const nowMs = (opts.nowMs !== undefined) ? opts.nowMs : Date.now();
+  if (typeof nowMs !== 'number' || !Number.isFinite(nowMs)) return false;
+  // The signed minted_at MUST be a canonical UTC ISO so the comparison is timezone-unambiguous across
+  // verifying hosts (hacker H1). A tz-less / non-canonical value -> fail-closed (an honest mint is
+  // always canonical; this also rejects a key-holder who signed a timezone-ambiguous time).
+  if (!isCanonicalUtcIso(mintedAt)) return false;
+  const mintedMs = Date.parse(mintedAt);
+  return Math.abs(nowMs - mintedMs) <= maxAgeMs;
 }
 
 module.exports = {
