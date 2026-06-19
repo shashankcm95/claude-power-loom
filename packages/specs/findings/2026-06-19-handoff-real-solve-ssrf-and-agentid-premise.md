@@ -2,7 +2,11 @@
 
 - **Date:** 2026-06-19
 - **Origin:** the full-system audit (`docs/system-report/`). These two findings were **deliberately excluded** from the bug-fix PR (#355) and the cleanup PR (#358) and were **not touched** by either — one lives in the actively-developed ③.1-W4 `persona-experiment` cluster, the other is a kernel `INV-22` design decision. This doc is a **cold-readable handoff** so the owning session can act without the audit conversation's context.
-- **Status of each:** UNSTARTED. No code changed. Verified against `main` at the time of writing.
+- **Status of each:** UNSTARTED at the time of writing. No code changed; verified against `main` then.
+- **Routing / disposition (updated 2026-06-19, ③.1-W4d):**
+  - **A1** (`real-solve` SSRF) — **IMPLEMENTED in ③.1-W4d** (this wave; plan Item 3: the `github.com` host-allowlist + parser-differential guard landed in the shared `assertSafeRepo`, with `assertGithubRepo` delegating).
+  - **A2** (`--solve` operator-trust) — **ACCEPTED as-is** (no code change; documented decision = plan Item 4 — operator-typed, not attacker-influenced).
+  - **B** (`computeContentHash` `agentId`-uniqueness premise) — **DEFERRED / re-routed to a future kernel session** (a MAJOR-version-protected kernel arc; probe-first, NOT this wave).
 
 ---
 

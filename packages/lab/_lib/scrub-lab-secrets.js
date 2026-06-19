@@ -41,7 +41,9 @@ const REGEXES = [...getCanonicalSecretClasses(), ...getScrubberOnlyClasses()].ma
  * @returns {*} the scrubbed string, or the original empty/nullish value unchanged.
  */
 function scrubLabSecrets(text) {
-  if (!text) return text;
+  // Short-circuit ONLY nullish/empty (CodeRabbit): a falsy `0`/`false` is a real value that the
+  // contract coerces + scrubs (a no-op for them, but the return type must be the scrubbed string).
+  if (text === null || text === undefined || text === '') return text;
   let out = String(text);
   for (const p of REGEXES) out = out.replace(p, '[REDACTED]');
   return out;

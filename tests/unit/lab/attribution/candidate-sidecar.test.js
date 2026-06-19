@@ -75,13 +75,21 @@ test('readCandidate refuses a non-hex / missing key (no throw)', () => {
   assert.strictEqual(readCandidate('a'.repeat(64), { dir }), null); // well-formed but absent
 });
 
-test('W4d Item 2d (hacker H1): a pre-existing loose (0755) leaf dir is tightened to 0700 on write', () => {
+test('W4d Item 2d (hacker H1 + CodeRabbit Major): a loose leaf dir is tightened on BOTH the create AND dedup write paths', () => {
   if (process.platform === 'win32') return; // POSIX modes are meaningless on Windows
   const dir = tmp();
+  // create path: a pre-existing loose dir is tightened on the first (non-dedup) write
   fs.chmodSync(dir, 0o755); // simulate an out-of-band loose pre-create (mkdirSync mode is create-only)
-  const w = writeCandidate(PATCH, { dir });
-  assert.strictEqual(w.ok, true);
-  assert.strictEqual(fs.statSync(dir).mode & 0o777, 0o700, 'the leaf is chmod-tightened to 0700, not left at the pre-existing 0755');
+  const w1 = writeCandidate(PATCH, { dir });
+  assert.strictEqual(w1.deduped, false);
+  assert.strictEqual(fs.statSync(dir).mode & 0o777, 0o700, 'create path tightens the leaf to 0700');
+  // dedup path: loosen again out-of-band, then a DEDUP re-write must STILL re-tighten — the early
+  // return on the existing-file path used to skip the chmod (CodeRabbit Major); the fix hoists the
+  // hardening above the existsSync check so every write path tightens.
+  fs.chmodSync(dir, 0o755);
+  const w2 = writeCandidate(PATCH, { dir });
+  assert.strictEqual(w2.deduped, true, 'a second write of the same patch is a dedup (early-return path)');
+  assert.strictEqual(fs.statSync(dir).mode & 0o777, 0o700, 'the DEDUP path also re-tightens the leaf to 0700 (not skipped)');
 });
 
 (async () => {

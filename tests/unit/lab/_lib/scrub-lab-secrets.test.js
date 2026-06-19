@@ -42,6 +42,13 @@ test('coerces a non-string to a scrubbed string (never mutates, returns new)', (
   assert.strictEqual(scrubLabSecrets(42), '42');
 });
 
+test('coerces falsy non-nullish 0 / false per the contract (CodeRabbit: guard is nullish/empty only)', () => {
+  // a bare `!text` guard would short-circuit these and return the raw number/boolean; the contract
+  // coerces every non-nullish value to a (scrubbed) string. No secret in either -> stringified verbatim.
+  assert.strictEqual(scrubLabSecrets(0), '0');
+  assert.strictEqual(scrubLabSecrets(false), 'false');
+});
+
 test('redacts an Anthropic API key (canonical class)', () => {
   const token = 'sk-ant-' + 'api03-' + A.slice(0, 40);
   const out = scrubLabSecrets('lead ' + token + ' trail');
