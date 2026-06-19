@@ -11,6 +11,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 
 - `packages/kernel/_lib/atomic-write.js` - _lib/atomic-write.js — shared hardened atomic file-write primitive.
 - `packages/kernel/_lib/canonical-json.js` - Pure, stateless canonical JSON serialization (sorted keys, no whitespace).
+- `packages/kernel/_lib/capability-free-claude.js` - Ghost Heartbeat W2-PR1.
 - `packages/kernel/_lib/context-envelope.js` - K3.b context envelope validator — DORMANT in v3.0-alpha.
 - `packages/kernel/_lib/deep-freeze.js` - _lib/deep-freeze.js — pure recursive Object.freeze.
 - `packages/kernel/_lib/edge-attestation.js` - v-next Carry C W1 — the ed25519 EDGE-ATTESTATION primitive.
@@ -110,6 +111,8 @@ Auto-generated map of where things live, derived from the repo structure + each 
 ### `kernel/spawn-state/`
 
 - `packages/kernel/spawn-state/_stage-helpers.js` - Shared close-path staging helpers, extracted from the two spawn-close staging
+- `packages/kernel/spawn-state/drift-audit.js` - Ghost Heartbeat W2-PR1.
+- `packages/kernel/spawn-state/ghost-heartbeat-state.js` - Ghost Heartbeat W2-PR1.
 - `packages/kernel/spawn-state/integrate-cli.js` - PR-P3c-b — the thin composition root for the ordered integrator.
 - `packages/kernel/spawn-state/integrator.js` - PR-P3c-b — the ORDERED INTEGRATOR (the consumer half of the P3 enforcing arc).
 - `packages/kernel/spawn-state/post-spawn-resolver.js` - PR-4b INTEGRATION — the post-spawn-resolver: the FIRST production importer of
