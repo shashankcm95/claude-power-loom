@@ -40,7 +40,7 @@ const {
   mintWeight, verifyMintedWeight, registerWeightPolicy, makeKernelRecordPolicy, mintedIdBasis,
   KERNEL_RECORD_KIND, KEY_ID_V0,
 } = minter;
-const { generateEdgeKeypair } = require(path.join(REPO, 'packages', 'kernel', '_lib', 'edge-attestation.js'));
+const { generateEdgeKeypair, signRecordId } = require(path.join(REPO, 'packages', 'kernel', '_lib', 'edge-attestation.js'));
 const store = require(path.join(REPO, 'packages', 'kernel', '_lib', 'record-store.js'));
 const { computeTransactionId } = require(path.join(REPO, 'packages', 'kernel', '_lib', 'transaction-record.js'));
 
@@ -345,6 +345,79 @@ test('SHADOW: no file under packages/ require()s weight-minter.js (no gating con
   } catch { out = ''; }
   const offenders = out.split('\n').map((s) => s.trim()).filter(Boolean);
   assert.deepStrictEqual(offenders, [], `weight-minter must have NO production caller in P0; found:\n${out}`);
+});
+
+// ── 10. M-1 — opt-in freshness window (default-off keeps SHADOW) ─────────────────────────────────
+
+const FRESH_POLICIES = new Map([['fresh', () => ({ value: 1, basis: { x: 1 } })]]);
+const T0 = '2026-06-19T12:00:00.000Z';
+const T0_MS = Date.parse(T0);
+function mintAt(nowIso) {
+  return mintWeight({ kind: 'fresh', subject: 'a'.repeat(64) }, { ...SIGN, policies: FRESH_POLICIES, now: nowIso });
+}
+// Forge a weight with a VALID signature over an arbitrary body (the defense-in-depth path: a
+// key-holder — or a future key-compromise — signing a non-canonical minted_at). computeMintedId is
+// the SAME derivation verifyMintedWeight uses, so the sig verifies — isolating the freshness guards
+// from the sig gate (M1-T1: the bad-sig 'AAAA' weight never reached them).
+function signWeight(body) {
+  return { ...body, sig: signRecordId(minter.computeMintedId(body), SIGN) };
+}
+
+test('default (no maxAgeMs): a freshly-minted weight still verifies — no behavior change [M-1]', () => {
+  assert.strictEqual(verifyMintedWeight(mintAt(T0), VERIFY), true);
+});
+
+test('maxAgeMs: fresh/within-window -> true; stale -> false; implausibly-future -> false [M-1]', () => {
+  const w = mintAt(T0);
+  const maxAgeMs = 60000; // 60s
+  assert.strictEqual(verifyMintedWeight(w, { ...VERIFY, maxAgeMs, nowMs: T0_MS }), true, 'exactly fresh');
+  assert.strictEqual(verifyMintedWeight(w, { ...VERIFY, maxAgeMs, nowMs: T0_MS + 30000 }), true, 'within window');
+  assert.strictEqual(verifyMintedWeight(w, { ...VERIFY, maxAgeMs, nowMs: T0_MS + 120000 }), false, 'stale (2x window old)');
+  assert.strictEqual(verifyMintedWeight(w, { ...VERIFY, maxAgeMs, nowMs: T0_MS - 120000 }), false, 'implausibly future');
+  assert.strictEqual(verifyMintedWeight(w, { ...VERIFY, maxAgeMs, nowMs: T0_MS + maxAgeMs }), true, 'exactly at maxAgeMs is inclusive [M1-N1]');
+  assert.strictEqual(verifyMintedWeight(w, { ...VERIFY, maxAgeMs, nowMs: T0_MS + maxAgeMs + 1 }), false, 'one ms past the boundary [M1-N1]');
+});
+
+test('garbage maxAgeMs does NOT silently disable the check -> false [M-1 / no silent downgrade]', () => {
+  const w = mintAt(T0);
+  for (const bad of [0, -1, NaN, '60000', null]) {
+    assert.strictEqual(
+      verifyMintedWeight(w, { ...VERIFY, maxAgeMs: bad, nowMs: T0_MS }), false,
+      `maxAgeMs=${String(bad)} must fail-closed, not disable freshness`,
+    );
+  }
+});
+
+test('VALID-sig weight over an unparseable / tz-ambiguous minted_at -> freshness fail-closed [M-1 / M1-T1 / H1]', () => {
+  const base = { kind: 'fresh', subject: 'a'.repeat(64), value: 1, basis_digest: 'd'.repeat(64), key_id: KEY_ID_V0 };
+  // garbage minted_at + a GENUINE sig -> reaches the canonical/Date.parse guard, NOT the sig gate (M1-T1)
+  const badDate = signWeight({ ...base, minted_at: 'not-a-date' });
+  assert.strictEqual(verifyMintedWeight(badDate, VERIFY), true, 'no maxAgeMs -> no freshness check -> sig valid -> true');
+  assert.strictEqual(verifyMintedWeight(badDate, { ...VERIFY, maxAgeMs: 60000, nowMs: T0_MS }), false, 'unparseable minted_at -> fail-closed');
+  // tz-AMBIGUOUS (parseable but no offset) minted_at + a GENUINE sig -> rejected by the canonical guard (H1)
+  const tzless = signWeight({ ...base, minted_at: '2026-06-19T12:00:00' });
+  assert.strictEqual(verifyMintedWeight(tzless, VERIFY), true, 'no maxAgeMs -> still true');
+  assert.strictEqual(
+    verifyMintedWeight(tzless, { ...VERIFY, maxAgeMs: 60000, nowMs: Date.parse('2026-06-19T12:00:00.000Z') }), false,
+    'non-canonical (tz-ambiguous) minted_at -> fail-closed regardless of host TZ [H1]',
+  );
+  // non-finite nowMs -> false
+  const w = mintAt(T0);
+  assert.strictEqual(verifyMintedWeight(w, { ...VERIFY, maxAgeMs: 60000, nowMs: NaN }), false);
+  assert.strictEqual(verifyMintedWeight(w, { ...VERIFY, maxAgeMs: 60000, nowMs: 'soon' }), false);
+});
+
+test('mint never SIGNS a timezone-ambiguous opts.now -> falls back to canonical UTC [H1]', () => {
+  const w = mintWeight({ kind: 'fresh', subject: 'a'.repeat(64) }, { ...SIGN, policies: FRESH_POLICIES, now: '2026-06-19T12:00:00' });
+  assert.ok(w, 'still mints');
+  assert.notStrictEqual(w.minted_at, '2026-06-19T12:00:00', 'a tz-less now must NOT be signed verbatim');
+  assert.ok(/Z$/.test(w.minted_at), 'minted_at falls back to a canonical UTC (Z) timestamp');
+  assert.strictEqual(verifyMintedWeight(w, VERIFY), true);
+});
+
+test('freshness never rescues a bad sig (stale window irrelevant if sig invalid) [M-1]', () => {
+  const forged = { ...mintAt(T0), value: 999 }; // breaks the sig
+  assert.strictEqual(verifyMintedWeight(forged, { ...VERIFY, maxAgeMs: 60000, nowMs: T0_MS }), false);
 });
 
 process.stdout.write(`\nweight-minter: ${passed} passed, ${failed} failed\n`);
