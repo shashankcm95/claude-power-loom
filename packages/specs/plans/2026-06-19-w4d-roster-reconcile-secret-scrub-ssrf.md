@@ -1,9 +1,9 @@
 # ③.1-W4d — final dry-run-closing wave: roster reconcile + secret-scrub + SSRF allowlist + phase-close
 
-- **Status:** PLANNED — pre-build VERIFY pending (architect + 3-lens)
+- **Status:** VALIDATED — built + 3-lens VALIDATE PASS + CodeRabbit folded (re-review clean); [PR #362](https://github.com/shashankcm95/claude-power-loom/pull/362) awaiting USER merge → `/phase-close ③.1`. (See `## Build + VALIDATE result` below.)
 - **Wave:** ③.1-W4d (the FINAL ③.1 sub-wave; closes the LIVE-EXTERNAL-PR-BETA dry-run → produces the Router-V2 corpus)
 - **Track:** SHADOW / DRAFT-only / trust ZERO (OQ-NS-6 — the apparatus NARROWS, it does not harden trust)
-- **Branch:** `feat/w4d-roster-reconcile-secret-scrub-ssrf` (off current `main` @ `2757654`)
+- **Branch:** `feat/w4d-roster-reconcile-secret-scrub-ssrf` (built off `origin/main` @ `98ae2cc` after rebase)
 
 ## Context / Goal
 
