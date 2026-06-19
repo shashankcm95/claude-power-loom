@@ -153,3 +153,102 @@ A labeling Workflow over `candidates-blind.jsonl`. Load-bearing mitigations (eac
 | C-3 | code-reviewer | LOW | the unlabelable threshold (150) was tuned for 200-char rows | DEFERRED to PR-2 (revisit when 1000-char rows accumulate; disclosed). |
 
 **Board conclusion:** no CRITICAL / no exploit (the git-loader code-exec is by-design + bounded to operator-run + now ref-validated). The honesty board called the dogfood disclosure "exemplary." PR-1 ready for the USER merge gate.
+
+## PR-2 build plan — the blind labeling pass (2026-06-19)
+
+Branch `feat/router-v2-corpus-aug-pr2` off `main` (2b94b79, post-#368). The deterministic aggregation tooling is TDD'd; the labeling judgment runs as a Workflow fan-out; the USER adjudicates the contested rows (OQ-CA1 = b).
+
+### Runtime Probes (re-counted at build — the log is append-only + growing)
+
+| Claim | Probe | Result |
+|---|---|---|
+| "the candidate count is ~706" | `node prep-corpus.js --out /tmp/...` on the live log | **774 raw -> 712 candidates** (1 dup, 2 unlabelable, 53 bench, 5 smoke/dev, 1 degenerate). |
+| "the route axis is dark on the 200-char corpus" | band cross-tab of `candidates-scored.jsonl` | **687 root / 25 borderline / 0 route.** Confirmed at scale. 260/712 reproduce the live band. |
+| "the excerpts are truncated prefixes" | length histogram of `candidates-blind.jsonl` | **708/712 at the 200-char cap;** only 4 are short/complete. The labeler reads a truncated prefix (same text the band snapshot scored). |
+| "the blinding files exist + carry no band" | `head candidates-blind.jsonl` | confirmed `{id, task_excerpt}` only; the ALLOWLIST validator (`_schema.validateBlindRow`) rejects any extra key. |
+| "kappa + majorityLabel already exist" | `kappa.js` read | confirmed (PR-1); `label-aggregate.js` consumes them — no re-implement. |
+
+### Scope decision — label ALL 712 (no sampling)
+
+OQ-CA4 anticipated a budget that forced sampling ("label all anchors + borderline-first within budget"). **Batching removes that constraint:** N=3 labelers x ~36 batches of 20 = ~108 spawns (well under the Workflow 1000-agent cap), so the whole candidate set is labeled — no sampling bias to disclose. The minority bands (borderline=25, route=0-by-scorer) are covered in full by construction.
+
+### The DEEPER circularity (NEW disclosure — beyond PR-1's anchoring + shared-prior)
+
+The labeler reads the **same 200-char prefix the band snapshot scored.** This is NOT total circularity — the labeler applies *semantic* judgment over the visible prefix while the scorer applies *lexicon* matching over the same text, so they **diverge where semantics beats the lexicon** (a prefix opening "Architect ... " / "Review ... design" reads route-shaped to a human even when the scorer's lexicon under-scores it — that divergence is exactly the under-scoring signal the eval set wants). The residual circle is only on prefixes with **no visible route signal** (genuinely trivial prefixes): there both the labeler and the scorer default to root, so a "root" label there is "what a 200-char-reading Claude guesses," correlated-by-construction with the scorer, NOT independent ground truth. **Honest claim:** the eval set is a guardrail against a W3/W4 change flipping rows a blind Claude-reading-the-prefix calls root/route — strictly narrower than "genuinely correct routing." Disclosed in the report + per-row provenance; the human spot-check (also prefix-limited) is the only break in the circle. This is layered ON the same-family shared-prior (HON-HIGH-2) and the truncation bias (S1 disclosure), not a replacement.
+
+### Build — `label-aggregate.js` (pure + a thin CLI; TDD against fixtures)
+
+- `aggregateLabels(labelerRuns, blindIds)` -> per-id `{id, ratings:[l1,l2,l3], majority, consensus, status}` where `status` in `consensus`(3/3) / `majority`(2/3) / `contested`(1-1-1, no majority) / `incomplete`(<3 ratings — a labeler dropped/hallucinated the id; counted, never silently 2-rater). Ignores ratings for ids not in `blindIds` (anti-hallucination); requires exactly the 3 labeler keys.
+- `computeAgreement(aggregated)` -> Fleiss' kappa over the COMPLETE items only (via `kappa.js`); discloses the dropped-incomplete count.
+- `assembleEvalSet({aggregated, scoredById, adjudications})` -> join by id; `correct_route` = the consensus/majority label, OR the human adjudication for a contested/over-ridden row; `label_provenance` = `model-blind-N3` (3/3 or 2/3) / `human-adjudicated` (contested -> user) / `human-spotcheck-confirmed` (gold sample the user confirmed); carries `labeler_kappa` + the joined scored fields; every row `validateEvalRow`-checked (fail-closed throw on a bad row).
+- `splitContested(aggregated)` -> `contested.jsonl` (the rows needing the USER); `sampleSpotcheck(aggregated, n, seed)` -> a DETERMINISTIC (id-hash-seeded, no `Math.random`) sample of consensus rows -> `spotcheck-sample.jsonl` for the gold check.
+- CLI: reads the 3 labeler-output files + `candidates-scored.jsonl` (+ an optional `adjudications.jsonl`), writes the eval set + contested + spotcheck + a kappa report. Per-run intermediates git-ignored; `route-eval-set.jsonl` committed.
+
+### Run — the labeling Workflow (fan-out) + the user pause
+
+1. `prep-corpus.js` -> the real `candidates-blind.jsonl` / `candidates-scored.jsonl` (git-ignored).
+2. Workflow: 3 independent labeler agents (distinct framings/effort for partial de-correlation — disclosed still same-family) x ~36 batches of 20; each returns `{id, label}` per the schema (compact). The script joins to per-id ratings + returns them.
+3. `label-aggregate.js` -> kappa report + `contested.jsonl` + `spotcheck-sample.jsonl`.
+4. **PAUSE — surface `contested.jsonl` + `spotcheck-sample.jsonl` to the USER** (OQ-CA1 = b): they adjudicate the contested rows + confirm the gold sample.
+5. Fold the adjudications -> the committed `route-eval-set.jsonl`; dogfood `shadow-eval.js` against it (expected verdict: `UNDER-POWERED`, route anchors still thin — the honest, non-green result).
+
+### VALIDATE (post-build) — honesty-auditor LEAD + code-reviewer
+
+The methodology + the agreement statistic + the narrows-only/circularity claims are the honesty lead's surface; the aggregation edge-cases (incomplete ratings, ties, the join, determinism) + the CLI are the code-reviewer's. No kernel/security mutation here (offline `bench/` tooling, A4-firewalled) -> the 2-lens tier, not the full 3-lens (no new adversarial attack surface beyond PR-1's already-validated git-loader).
+
+## PR-2 VERIFY board result (2026-06-19)
+
+Focused 2-lens board (read-only) on the PR-2 build plan BEFORE the labeling spawns. **architect READY-WITH-NOTES + honesty-auditor READY-WITH-NOTES (LEAD)** — no CRITICAL/HIGH; both clustered on two seams (the labeler-ingest join contract + the claim/statistic honesty). All folded below.
+
+| ID | Lens | Sev | Finding | Resolution (folded into the build contract) |
+|---|---|---|---|---|
+| A1 | architect | MED | `incomplete` (<3 ratings) has no stated disposition + interacts with kappa's complete-only denominator; at 108 spawns a dropped id is HIGH-volume, not rare | An `incomplete` row can NEVER be `model-blind-N3`: it goes to an `incomplete.jsonl` sidecar (counted in the report, never silent), is EXCLUDED from the eval set + the kappa item-set. The RUN re-labels the missing (labeler,id) pairs once to fill before final aggregate. |
+| A2 | architect | MED | the per-id ingest must guarantee EXACTLY nRaters per COMPLETE item or `fleissKappa` (kappa.js:32-33) THROWS — silent on dup-id-in-batch / out-of-order / cross-batch id / out-of-enum label | Ingest contract: assemble per-id ratings into a Map keyed by id (order-independent); accept AT MOST ONE rating per (labeler,id) — same-label dup collapses, CONFLICTING dup drops that labeler's vote (-> incomplete); reject a non-`ROUTE_VALUES` label AT INGEST (-> no vote); a complete item has exactly 3 ratings by construction. TDD each of (a)-(d). |
+| A3 | architect | LOW | `sampleSpotcheck` determinism: a top-N-by-hash rank reshuffles under the append-only corpus | Per-id predicate: select iff `parseInt(sha256(id+seed)[:8],16)/0xffffffff < fraction` (each id independently in/out — stable under corpus growth); output sorted by id asc; same seed -> byte-identical file. No `Math.random`/`Date.now`. |
+| A4 | architect | LOW | `majorityLabel` returns an iteration-order-dependent `.label` on a 1-1-1 tie — must never reach the oracle | `aggregateLabels` sets `majority=null` for a contested item; `assembleEvalSet` THROWS (fail-closed) if a contested id reaches the join with no matching adjudication entry. |
+| A5 / HON-PR2-1 | both | MED | `label_provenance` collapses 3/3 and 2/3 into one `model-blind-N3` tag (evidence-laundering); + `labeler_kappa` disposition per provenance unstated | Add `model-blind-N3-majority` to the enum (3/3 -> `model-blind-N3`, 2/3 -> `model-blind-N3-majority`); also carry `consensus_fraction` per eval row. `labeler_kappa` = the pooled Fleiss value for model-blind rows, `null` for `human-adjudicated` (the ensemble disagreed). |
+| HON-PR2-2 | honesty | MED | the deeper-circularity disclosure UNDER-STATES magnitude — the high-correlation regime is the MAJORITY (687/712 root-band, 452 non-reproducing), not an edge | Attach the firsthand numbers to the disclosure (below); state the discriminating signal lives in the ~25 borderline rows, NOT the 687 root rows; independence is strongest where rows are fewest (borderline) and absent where there are none (route). |
+| HON-PR2-3 | honesty | MED | a single pooled kappa on a ~96%-root corpus is near-tautological (root-on-root); reads as "high agreement => high label quality" | `computeAgreement` reports kappa PER-BAND (partition complete items by majority band) alongside the pooled value; the report captions the pooled kappa "dominated by root-band agreement; the borderline-band figure is the meaningful one." |
+| HON-PR2-4 | honesty | LOW | "the spot-check is the only break in the circle" over-promises — the human reads the same 200-char prefix (breaks the same-family circle, NOT the truncation circle) | Reworded (below): the spot-check breaks the same-family shared-prior circle but is itself prefix-limited; the truncation circle resolves only as 1000-char rows accumulate. |
+| HON-PR2-5 | honesty | LOW | "the minority bands are covered in full by construction" — "in full" of 0 route anchors = zero discriminating power | Reworded (below): labeled in full, but route=0 / borderline=25 means near-zero power on the discriminating axis; the harness will (and should) return UNDER-POWERED per the route-anchor floor — foregrounded in the REPORT, not only the dogfood verdict. |
+
+**Folded contract corrections (supersede the build-plan bullets above where they conflict):**
+
+- **Magnitude-honest circularity (HON-PR2-2):** the high-correlation regime (labeler-defaults-root == scorer-defaults-root) covers the root-band MAJORITY (687/712 scorer-root; 260/712 reproduce the live band; 708/712 truncated at the cap). The eval set's independence-from-the-scorer is strongest precisely where it has fewest rows (borderline=25) and absent where it has none (route=0). The maximally honest claim: **a regression guardrail against a change flipping rows a prefix-reading Claude calls root** — the discriminating signal lives in the ~25 borderline rows, not the 687 root rows.
+- **Spot-check scope (HON-PR2-4):** the human spot-check breaks the same-family shared-prior circle but is **itself prefix-limited**, so it does NOT break the truncation circle; that circle resolves only as 1000-char rows accumulate (the PR-1 producer widening).
+- **Dark-axis foregrounding (HON-PR2-5):** the minority bands are labeled in full, but route=0 / borderline=25 = near-zero power on the discriminating axis; the harness returns **UNDER-POWERED** (the honest, non-green result) per the route-anchor floor — stated in the report itself.
+- **Provenance granularity (A5/HON-PR2-1):** `LABEL_PROVENANCE_VALUES` gains `model-blind-N3-majority`; every eval row carries `consensus_fraction`; `labeler_kappa` is the pooled value for model-blind rows, `null` for `human-adjudicated`.
+- **Ingest invariant (A1/A2):** the join keys by id (order-independent), accepts at most one rating per (labeler,id), drops conflicting-dup + out-of-enum votes to `incomplete`, and guarantees every complete item has exactly 3 ratings; `incomplete` -> sidecar (counted), excluded from the eval set + kappa, re-labeled once in the RUN.
+- **Determinism (A3/A4):** contested `majority=null`; `assembleEvalSet` fail-closed-throws on a contested id with no adjudication. (A3 spotcheck REVISED at build — see the dogfood below: the real run flipped route from minority to majority, so the always-include-discriminating-bands design flooded; replaced by a deterministic STRATIFIED per-band cap.)
+
+## PR-2 build result (2026-06-19) — labeling complete, eval set committed
+
+**The label FLIP (the headline).** The N=3 cross-tier blind labelers (opus/sonnet/haiku, 108 spawns) reading the SAME 200-char prefixes the scorer scored call the **majority `route`** — the OPPOSITE of the scorer's 687-root bands. Cross-tab: **555 rows scored `root` but labeled `route`** (post the 3 haiku-drop re-labels). PR-1's "root-class guardrail / UNDER-POWERED route axis" prediction is SUPERSEDED: the eval set is an **under-scoring-class anchor set** (the corpus is the substrate's own board spawns the lexicon under-scores). This is honest GOOD news — it directly measures the bug W3/W4 fix.
+
+**Aggregation:** 514 consensus / 175 majority / 23 contested / 0 incomplete (3 incomplete from a haiku drop were re-labeled to fill — all route). Pooled Fleiss κ **0.464**; per-band κ: route ≈ 0 (route-default near-tautology), root −0.18, **borderline −0.33** (the genuine disagreement zone). Final `route-eval-set.jsonl`: **712 rows, 0 invalid** — correct_route 575 route / 67 borderline / 70 root; provenance 514 `model-blind-N3` / 175 `model-blind-N3-majority` / 23 `human-adjudicated`.
+
+**Contested resolution (USER, OQ-CA1=b):** all 23 contested (1-1-1 splits — tutorial-chapter critiques, Feature-B' component builds, recon/verify tasks) adjudicated -> `borderline` (a 1-1-1 split across three capable labelers IS the definition of borderline). **USER directive captured for W2:** *"ensure that borderline tasks are sent to HETS rather than route... rather than root"* — at runtime, borderline should ESCALATE to HETS, not default to root. This is the W2 (runtime-inference-@-borderline) routing-policy input; the cross-family check independently supports it (GPT calls the 23 contested 9 route / 13 borderline / **1 root** — almost never root).
+
+**Cross-family independence check (USER-requested; `cross-family-check.json`).** A different model FAMILY (GPT-4o, via the TB_to_Tutorial OpenAI key — operator-run, key from env, never committed; a home-path scrub on vendor-sent text) labeled all 712 with the same rubric. Claude-ensemble-vs-GPT: **82% overall agreement, Cohen κ 0.466**, and **89% on the route labels (510/575)** — the under-scoring signal is **family-robust**, not a same-family shared-prior artifact (narrows HON-HIGH-2). Disagreement concentrates in the contested zone (root 47%, borderline 50%; GPT escalates MORE than Claude). Cross-family agreement does NOT close the corpus-bias (own board spawns) or the truncation circle.
+
+**Dogfood (shadow-eval vs the committed eval set, old=new=main).** 0 regressions; NOT under-powered (route=575, root=70, borderline=67 ≥ floors); VERDICT NO REGRESSION (exit 0). Per-band accuracy of the CURRENT scorer: **route 0/575, borderline 0/67, root 65/70** — quantifies the under-routing W3/W4 must close (move route-band up from 0 WITHOUT breaking the 65 root anchors the regression gate protects).
+
+**Committed:** `route-eval-set.jsonl` (the deliverable) · `label-aggregate.js` + its 25 tests · `_schema.js` (provenance enum split + `consensus_fraction`) · `cross-family-check.json` · README + this plan. **Git-ignored per-run intermediates:** `candidates-*`, `labels-{L1,L2,L3,GPT}.jsonl`, `label-report.json`, `contested.jsonl`, `incomplete.jsonl`, `spotcheck-sample.jsonl`, `adjudications.jsonl`.
+
+## PR-2 VALIDATE board result (2026-06-19)
+
+3-lens board (the eval set is an ORACLE a future W3/W4 gate will trust + a new cross-family vendor interaction). **honesty-auditor PASS-WITH-NOTES (B+) · code-reviewer PASS-WITH-NOTES · hacker PASS-WITH-NOTES (7 live probes, 0 exploit).** No CRITICAL; the core integrity boundary (fail-closed ingest, exact-3-rater guarantee, contested-throw, validateEvalRow on every row) passed all probes. All findings folded; gate re-green (84 bench tests, eslint 0, scrub band-invariant 0/712).
+
+| ID | Lens | Sev | Finding | Resolution (folded) |
+|---|---|---|---|---|
+| H1 | hacker | HIGH | the committed `route-eval-set.jsonl` carried the absolute home path (OS username = PII) in **281/712** excerpts, and the GPT-egress scrub was UNVERIFIABLE from the diff (the labeling script is /tmp, git-ignored) | NEW committed `scrub.js` (`/Users/<name>/` → `~`) + its test; scrubbed the committed corpus (281 → 0 home paths) + PROVED routing-neutral (re-score all 712 scrubbed → identical band, 0 changed); the SAME scrub.js scrubs the vendor-bound text so the egress claim is now verifiable; `cross-family-check.json` caveat + README tightened. |
+| M1 | hacker | MED | `candidates-scored.jsonl` re-read on the join WITHOUT `validateScoredRow`; `validateEvalRow` did not cross-check `label_provenance` ↔ `consensus_fraction` (a forged `model-blind-N3` costume on a 2/3 row passed) | CLI re-validates scored rows on READ (fail-closed, verify-on-read); `validateEvalRow` now enforces N3⟹cf=1, N3-majority⟹cf∈(0,1), human-adjudicated⟹cf=null ∧ kappa=null (4 new schema tests). |
+| LOW-1 | code-reviewer | LOW | `assembleEvalSet` API footgun: a contested id in `spotcheckConfirmations` bypassed the adjudication throw + got the wrong kappa | extracted `resolveLabel`; a contested id in spotcheck now THROWS (tested). |
+| L1 | hacker | LOW | provenance `N3` hardcoded regardless of rater count — a 2-labeler run would stamp `model-blind-N3` | `resolveLabel` asserts a model-blind item has EXACTLY 3 ratings before the N3 tag (tested). |
+| HON-PR2-A-1 / L1 | both | LOW | the headline cross-tab "552" is actually **555** in the committed deliverable (post the 3 re-labels) — favorable-direction drift | corrected 552 → 555 in README + plan, with the re-label lineage noted. |
+| HON-PR2-A-2 | honesty | LOW | `human-spotcheck-confirmed` listed inline with populated categories but carries 0 committed rows | README notes it is SUPPORTED-but-unused this build (0 rows; the spot-check produced no folded-back overrides). |
+| LOW-2 | code-reviewer | LOW | `MODEL_BLIND_PROVENANCE` exported but unused (YAGNI) | removed. |
+| LOW-3 | code-reviewer | LOW | `hashFraction` divisor `0xffffffff` could return exactly 1.0 (test asserted < 1) | divisor → `0x100000000` (range [0,1)); 500-iter range test added. |
+| LOW-4 | code-reviewer | LOW | `assembleEvalSet` 55 lines (> the 50-line guideline) | the `resolveLabel` extraction brought it under. |
+
+**Board conclusion:** no CRITICAL / 0 exploit. The single most important thing the wave got right (per the honesty lead): the build explicitly REFUSES the most damaging potential overclaim — it does NOT assert the route labels are independent routing-correctness ground truth, pinning them to "what a prefix-reading LLM calls route." Ready for the USER merge gate.

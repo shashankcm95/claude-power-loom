@@ -7,3 +7,11 @@ unlabelable.jsonl
 prep-report.json
 contested.jsonl
 spotcheck-sample.jsonl
+labels-L1.jsonl
+labels-L2.jsonl
+labels-L3.jsonl
+labels-GPT.jsonl
+label-report.json
+adjudications.jsonl
+spotcheck-confirmations.jsonl
+incomplete.jsonl

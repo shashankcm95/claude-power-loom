@@ -1,0 +1,25 @@
+{
+  "generated": "router-v2 PR-2 cross-family check, 2026-06-19",
+  "purpose": "Cross-family (different model FAMILY) independence check on the Router-V2 blind labeling, hardening the same-family shared-prior residual (HON-HIGH-2 / HON-PR2). NOT folded into the N=3 Claude ensemble; a separate disclosed metric.",
+  "cross_family_model": "gpt-4o (gpt-4o-2024-08-06)",
+  "claude_ensemble": "opus + sonnet + haiku, N=3 blind",
+  "n_compared": 689,
+  "overall_agreement": 0.82,
+  "cohen_kappa": 0.4658,
+  "per_band_agreement": {
+    "route": "510/575",
+    "borderline": "22/44",
+    "root": "33/70"
+  },
+  "gpt_on_contested": {
+    "route": 9,
+    "borderline": 13,
+    "root": 1
+  },
+  "finding": "route labels are 89% family-independent (a different model family confirms them); root/borderline are the contested zone where GPT escalates MORE than Claude (root->borderline). Both families are route-heavy => the under-scoring signal is robust across families, not a same-family artifact. The corpus-bias (substrate own board spawns) remains; cross-family agreement narrows the shared-prior residual, it does not close the corpus-bias.",
+  "caveats": [
+    "Vendor-bound text was redacted by the committed scrub.js (the absolute /Users/<name>/ home path -> ~, dropping the OS username; temp roots -> <tmp>). VERIFIABLE: the same scrub.js scrubs the committed route-eval-set.jsonl, which carries zero home paths (grep -c /Users/ -> 0); no secret-shaped tokens were present in the corpus, only the username-in-path PII.",
+    "GPT and the Claude ensemble share neither weights nor vendor, but both are LLM labelers reading the same truncated prefixes (the truncation circle is NOT broken by cross-family).",
+    "contested rows excluded from the agreement (no Claude majority)."
+  ]
+}

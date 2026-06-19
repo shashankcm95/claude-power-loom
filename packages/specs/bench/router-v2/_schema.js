@@ -17,8 +17,14 @@
 'use strict';
 
 const ROUTE_VALUES = Object.freeze(['route', 'borderline', 'root']);
+// `model-blind-N3` = unanimous 3/3 ensemble; `model-blind-N3-majority` = a 2/3
+// split decision (one same-family labeler dissented) — kept DISTINCT so a consumer
+// can down-rate the weaker rows (VERIFY A5 / HON-PR2-1: collapsing them launders a
+// split decision into a unanimous costume). `human-adjudicated` = a 1-1-1 contested
+// row the USER resolved; `human-spotcheck-confirmed` = a gold-sample row the USER
+// confirmed/overrode.
 const LABEL_PROVENANCE_VALUES = Object.freeze([
-  'model-blind-N3', 'human-adjudicated', 'human-spotcheck-confirmed',
+  'model-blind-N3', 'model-blind-N3-majority', 'human-adjudicated', 'human-spotcheck-confirmed',
 ]);
 
 function isRouteValue(v) {
@@ -87,8 +93,8 @@ function validateScoredRow(row) {
 // --- route-eval-set.jsonl: the labeled eval row (input + oracle kept distinct) ---
 const EVAL_FIELDS = Object.freeze([
   'id', 'task_excerpt', 'correct_route', 'label_provenance', 'labeler_kappa',
-  'scorer_route', 'scorer_score', 'score_reproduces_live', 'band', 'dup_count',
-  'scorer_lexicon_version', 'scorer_weights_version',
+  'consensus_fraction', 'scorer_route', 'scorer_score', 'score_reproduces_live',
+  'band', 'dup_count', 'scorer_lexicon_version', 'scorer_weights_version',
 ]);
 
 function validateEvalRow(row) {
@@ -103,6 +109,31 @@ function validateEvalRow(row) {
   // labeler_kappa may be null (e.g. a human-adjudicated row with no labeler ensemble) but if present numeric in [-1,1].
   if (row.labeler_kappa !== null && (!isFiniteNumber(row.labeler_kappa) || row.labeler_kappa < -1 || row.labeler_kappa > 1)) {
     errors.push('labeler_kappa must be a number in [-1,1] or null');
+  }
+  // consensus_fraction (VERIFY A5/HON-PR2-1): the per-row ensemble agreement fraction
+  // (1 for 3/3, ~0.667 for 2/3). OPTIONAL for back-compat with PR-1 fixtures; null for
+  // a human-adjudicated row (the ensemble did not reach consensus). When present it is
+  // a number in (0,1].
+  if ('consensus_fraction' in row && row.consensus_fraction !== null &&
+      (!isFiniteNumber(row.consensus_fraction) || row.consensus_fraction <= 0 || row.consensus_fraction > 1)) {
+    errors.push('consensus_fraction must be a number in (0,1] or null when present');
+  }
+  // provenance <-> agreement-field consistency (VALIDATE M1): a row cannot wear a
+  // stronger provenance costume than its agreement fields support. Enforced only when
+  // consensus_fraction is present (PR-1 fixtures predate the field and stay valid).
+  // A forged `model-blind-N3` (authoritative/unanimous) on a 2/3 row, or a
+  // `human-adjudicated` row illegally carrying a non-null kappa, is rejected on read.
+  if ('consensus_fraction' in row) {
+    const p = row.label_provenance; const cf = row.consensus_fraction;
+    if (p === 'model-blind-N3' && cf !== 1) {
+      errors.push('model-blind-N3 requires consensus_fraction === 1 (unanimous)');
+    }
+    if (p === 'model-blind-N3-majority' && !(isFiniteNumber(cf) && cf > 0 && cf < 1)) {
+      errors.push('model-blind-N3-majority requires consensus_fraction in (0,1)');
+    }
+    if (p === 'human-adjudicated' && (cf !== null || row.labeler_kappa !== null)) {
+      errors.push('human-adjudicated requires consensus_fraction === null and labeler_kappa === null (the ensemble disagreed)');
+    }
   }
   if (!isRouteValue(row.scorer_route)) errors.push('scorer_route must be route|borderline|root');
   if (!isFiniteNumber(row.scorer_score)) errors.push('scorer_score must be a finite number');

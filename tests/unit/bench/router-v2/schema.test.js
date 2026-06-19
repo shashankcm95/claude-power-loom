@@ -65,5 +65,23 @@ test('validateEvalRow: an unknown label_provenance is rejected', () => {
   assert.ok(S.validateEvalRow({ ...validEval, label_provenance: 'guessed' }).length > 0);
 });
 
+// --- VALIDATE M1: provenance <-> consensus_fraction consistency (anti-costume) ---
+test('M1: model-blind-N3 + consensus_fraction 1 passes; cf != 1 rejected', () => {
+  assert.deepStrictEqual(S.validateEvalRow({ ...validEval, label_provenance: 'model-blind-N3', consensus_fraction: 1 }), []);
+  assert.ok(S.validateEvalRow({ ...validEval, label_provenance: 'model-blind-N3', consensus_fraction: 2 / 3 }).length > 0);
+});
+test('M1: model-blind-N3-majority needs cf in (0,1); cf === 1 (unanimous costume) rejected', () => {
+  assert.deepStrictEqual(S.validateEvalRow({ ...validEval, label_provenance: 'model-blind-N3-majority', consensus_fraction: 2 / 3 }), []);
+  assert.ok(S.validateEvalRow({ ...validEval, label_provenance: 'model-blind-N3-majority', consensus_fraction: 1 }).length > 0);
+});
+test('M1: human-adjudicated requires cf === null AND labeler_kappa === null', () => {
+  assert.deepStrictEqual(S.validateEvalRow({ ...validEval, label_provenance: 'human-adjudicated', labeler_kappa: null, consensus_fraction: null }), []);
+  assert.ok(S.validateEvalRow({ ...validEval, label_provenance: 'human-adjudicated', labeler_kappa: null, consensus_fraction: 1 }).length > 0);
+  assert.ok(S.validateEvalRow({ ...validEval, label_provenance: 'human-adjudicated', labeler_kappa: 0.9, consensus_fraction: null }).length > 0);
+});
+test('M1: a row WITHOUT consensus_fraction (PR-1 fixture style) still passes (back-compat)', () => {
+  assert.deepStrictEqual(S.validateEvalRow(validEval), []);   // no consensus_fraction key -> cross-check skipped
+});
+
 process.stdout.write(`\nschema.test.js: ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
