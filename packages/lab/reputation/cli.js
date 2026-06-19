@@ -23,6 +23,15 @@
 const { projectReputation } = require('./project');
 const { materializeSnapshot } = require('./materialize');
 const { readEvolutionSnapshot, resolveSnapshotPath } = require('../../kernel/_lib/evolution-snapshot-read');
+const { canonicalPersonaKey } = require('../persona-experiment/canonical-persona-key');
+
+// W4d Item 1d (CLI symmetry, folds architect-A4): the projection now emits the CANONICAL bare key
+// (1a) even for a record made under the numbered form, so a --persona/--personas filter token is
+// canonicalized too — a `--persona 13-node-backend` query still matches the now-canonical emitted
+// rows. `|| raw` (NOT 'unknown') keeps an off-roster token raw (it then matches only a raw-keyed row).
+function canonToken(tok) {
+  return canonicalPersonaKey(tok) || tok;
+}
 
 function parseArgs(argv) {
   const args = {};
@@ -44,9 +53,9 @@ function parseArgs(argv) {
 function collectPersonas(args) {
   const names = [];
   if (typeof args.personas === 'string') {
-    for (const tok of args.personas.split(',')) { const n = tok.trim(); if (n) names.push(n); }
+    for (const tok of args.personas.split(',')) { const n = tok.trim(); if (n) names.push(canonToken(n)); }
   }
-  if (typeof args.persona === 'string') { const n = args.persona.trim(); if (n) names.push(n); }
+  if (typeof args.persona === 'string') { const n = args.persona.trim(); if (n) names.push(canonToken(n)); }
   return [...new Set(names)];
 }
 
@@ -69,7 +78,8 @@ function main(argv) {
     try {
       const out = projectReputation();
       if (typeof args.persona === 'string') {
-        out.personas = out.personas.filter((p) => p.persona === args.persona);
+        const want = canonToken(args.persona);
+        out.personas = out.personas.filter((p) => p.persona === want);
       }
       process.stdout.write(`${JSON.stringify(out, null, 2)}\n`);
     } catch (e) {

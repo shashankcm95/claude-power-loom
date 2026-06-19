@@ -74,8 +74,11 @@ const { log } = require('../hooks/_lib/_log.js');
 const { writeAtomicString } = require('../_lib/atomic-write.js');
 // ③.0-W2: the shared canonical secret classes (high-precision, prefix-anchored; no FP).
 // Factory call (NOT a shared const) so the scrubber owns FRESH RegExp instances — no
-// /g lastIndex bleed with the validator's copy. The scrubber adds its own COARSE extras below.
-const { getCanonicalSecretClasses } = require('../_lib/secret-patterns.js');
+// /g lastIndex bleed with the validator's copy.
+// ③.1-W4d Item 2a: the COARSE scrubber-only extras are now ALSO hoisted into the SSOT
+// (getScrubberOnlyClasses) so the lab scrubber (scrub-lab-secrets.js) reaches the same
+// full surface. Both factories hand out fresh /g instances — this module owns its copies.
+const { getCanonicalSecretClasses, getScrubberOnlyClasses } = require('../_lib/secret-patterns.js');
 // v3.4 Wave 3 (A6): the kernel reads the lab-materialized reputation snapshot AS A FILE (K12-clean —
 // no lab import; the §3.6 Lab→Kernel mediation). The reader is bounded + fail-open + self-verifying;
 // it NEVER throws and NEVER reads the ledger (O(1)) — fits the <50ms p99 close-hook budget.
@@ -111,21 +114,15 @@ const MAX_INLINE_SNAPSHOT_BYTES = 64 * 1024;
 // F22 (post-compact PR-1 R1) — extended pattern enumeration per ADR-0011 §F22.
 // The plan + ADR explicitly enumerate the additions; impl MUST match the
 // ADR's enumeration (no more, no less) — rationale-before-code discipline.
-// ③.0-W2: SCRUBBER-ONLY coarse extras — patterns the shared CANONICAL set does NOT carry
-// because they are too FP-prone for the BLOCKING validator but harmless for coarse redaction
-// (over-match in a redaction net is safe; over-match in an edit gate blocks a legit edit).
-const SCRUBBER_ONLY_PATTERNS = [
-  /aws_secret_access_key\s*[:=]\s*['"]?[A-Za-z0-9/+=]{40}['"]?/gi,  // AWS secret value assignment
-  /sk-[a-zA-Z0-9\-_]{20,}/g,                                        // coarse OpenAI/Anthropic sk- prefix (canonical sk-ant- is precise; this over-matches, fine for scrub)
-  /sk_test_[A-Za-z0-9]{20,}/g,                                      // Stripe TEST secret (canonical carries sk_live_)
-  /rk_test_[A-Za-z0-9]{20,}/g,                                      // Stripe TEST restricted (canonical carries rk_live_)
-  /(https?|ftp):\/\/[^:/\s@]+:[^@\s/]+@/g,                          // password embedded in URL (`://user:pw@host`)
-];
-
 // ③.0-W2: the scrub set = the shared CANONICAL classes (gh*, github_pat_, glpat-, AIza,
 // sk-ant-, slack, stripe-live, AKIA, JWT, PEM — gaining github_pat_/ghs_/ghr_/ghu_/glpat-/
-// AIza/PEM the old hand-list missed) PLUS the coarse scrubber-only extras above. getCanonical-
-// SecretClasses() is called ONCE here so this module owns its own RegExp instances.
+// AIza/PEM the old hand-list missed) PLUS the coarse SCRUBBER-ONLY extras (URL-embedded
+// password, coarse sk-, Stripe TEST sk_test_/rk_test_, AWS-secret assignment) — patterns the
+// CANONICAL set does NOT carry because they are too FP-prone for the BLOCKING validator but
+// harmless for coarse redaction (over-match in a redaction net is safe). ③.1-W4d Item 2a:
+// the scrubber-only extras moved into the SSOT (getScrubberOnlyClasses) so the lab scrubber
+// reaches the SAME full surface — this is behavior-preserving here (same classes, same /g).
+// Both factories are called ONCE so this module owns its own fresh RegExp instances.
 // NOTE (W2 VALIDATE reviewer LOW-1): canonical AKIA (\bAKIA…\b) + JWT ({20,} segment floors)
 // are marginally NARROWER than this scrubber's old hand-list (bare /AKIA…/ and floorless JWT).
 // INTENTIONAL: a real AWS key / JWT never appears mid-word or with <20-char segments, so the
@@ -133,7 +130,7 @@ const SCRUBBER_ONLY_PATTERNS = [
 // the negligible coarseness loss.
 const SECRET_PATTERNS = [
   ...getCanonicalSecretClasses().map((c) => c.regex),
-  ...SCRUBBER_ONLY_PATTERNS,
+  ...getScrubberOnlyClasses().map((c) => c.regex),
 ];
 // F22 regex edge-case notes (code-review Phase-10 FLAG #10):
 //   - Empty password (`://user:@host`) is NOT matched — `[^@\s/]+` requires

@@ -17,7 +17,11 @@
 // into attrs/state_delta -- its CONTENT goes through digest() into outputs_digest only. A string
 // value in attrs/state_delta is capped at ATTRS_STR_CAP. The schema only checks attrs is a plain
 // object; the scalar-only invariant is held by this call-site construction + the negative oracle
-// (the W3b defense). REAL-content secret-scrub is W4.
+// (the W3b defense). arm-loop itself is already leak-safe: solveFn output goes through digest()
+// (-> outputs_digest, :146), never spread into attrs/state_delta. The REAL-content secret-scrub
+// for persisted free text lives on the lesson-capture path (causal-edge/lesson-capture.js +
+// _lib/scrub-lab-secrets.js, W4d Item 2) — that is where candidate-patch bytes + the LLM
+// lesson_body reach a lab-state dir, NOT here.
 //
 // CATCH-ISOLATION (fold F4 -- mirrors ingest-close-path.js): every emit is wrapped (emitSeam) ->
 // a schema-rejected emit degrades to a counted/logged skip, NEVER aborts the run. DOUBLE isolation

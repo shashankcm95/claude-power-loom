@@ -75,6 +75,15 @@ test('readCandidate refuses a non-hex / missing key (no throw)', () => {
   assert.strictEqual(readCandidate('a'.repeat(64), { dir }), null); // well-formed but absent
 });
 
+test('W4d Item 2d (hacker H1): a pre-existing loose (0755) leaf dir is tightened to 0700 on write', () => {
+  if (process.platform === 'win32') return; // POSIX modes are meaningless on Windows
+  const dir = tmp();
+  fs.chmodSync(dir, 0o755); // simulate an out-of-band loose pre-create (mkdirSync mode is create-only)
+  const w = writeCandidate(PATCH, { dir });
+  assert.strictEqual(w.ok, true);
+  assert.strictEqual(fs.statSync(dir).mode & 0o777, 0o700, 'the leaf is chmod-tightened to 0700, not left at the pre-existing 0755');
+});
+
 (async () => {
   for (const t of _tests) {
     try { await t.fn(); passed += 1; }

@@ -59,7 +59,12 @@ function writeCandidate(patch, opts = {}) {
     return { ok: true, deduped: false, repaired: true, sha };
   }
   try {
-    fs.mkdirSync(dir, { recursive: true });
+    // W4d Item 2d: 0700 — these patch bytes can carry a (scrubbed-best-effort) secret;
+    // a world-readable lab-state dir is the threat the scrub amplifies against (no-op on Windows).
+    // mkdirSync's mode applies ONLY on create (and is umask-subject), so an already-existing loose
+    // leaf would stay 0755 — chmod after every write tightens it unconditionally (VALIDATE hacker H1).
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    try { fs.chmodSync(dir, 0o700); } catch { /* best-effort; no-op on Windows / non-owner */ }
     writeAtomicString(file, String(patch == null ? '' : patch));
   } catch (e) { return { ok: false, reason: 'write-failed', error: e.message }; }
   return { ok: true, deduped: false, sha };

@@ -27,6 +27,7 @@
 const verdictStore = require('../verdict-attestation/store');
 const { VALID_VERDICTS } = verdictStore;
 const { computeRecencyDecayAt } = require('../../kernel/_lib/recency-decay');
+const { canonicalPersonaKey } = require('../persona-experiment/canonical-persona-key');
 
 const SOURCE = 'verdict-attestation';
 const LABEL = 'advisory-verdict distribution over kernel-attested spawns — NOT a quality score';
@@ -48,13 +49,21 @@ function emptyVerdictCounts() {
   return { pass: 0, partial: 0, fail: 0 };
 }
 
+// W4d Item 1a (C2 roster reconcile): canonicalize the numbered/bare persona pair so a slice over a
+// persona's experience is NOT a disjoint subgraph (the `13-node-backend` vs `node-backend` laundering
+// lever). canonicalPersonaKey strips a leading numbered prefix + validates vs agents/*.md; it returns
+// null for an unknown/off-roster/non-string name → fall back to `raw` (NOT 'unknown', which would
+// COLLAPSE unrelated off-roster personas + break the synthetic-persona test fixtures). READ-ONLY:
+// `personaOf` only reads `r.subject.persona` (rows are deep-frozen) — never assigns.
 function personaOf(r) {
-  return (r.subject && typeof r.subject.persona === 'string' && r.subject.persona) || 'unknown';
+  const raw = (r.subject && typeof r.subject.persona === 'string' && r.subject.persona) || 'unknown';
+  return canonicalPersonaKey(raw) || raw;
 }
 
 /**
  * Project the verdict-attestation store into a per-subject-persona advisory-verdict distribution.
- * PURE: one ledger read, no writes, no other I/O; deterministic given (ledger, now).
+ * PURE: one ledger read + (W4d 1a) a single MEMOIZED readdirSync(agents/) inside canonicalPersonaKey
+ * for the roster-reconcile, no writes; deterministic given (ledger, now, agents/ basenames).
  *
  * @param {object} [opts] { now?: number|string } injected wall-clock (determinism)
  * @returns {object} the distribution

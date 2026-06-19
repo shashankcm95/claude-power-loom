@@ -25,6 +25,11 @@ const { consolidateLessons, writeConsolidationReport } = require('./lesson-conso
 const { buildWorkedExampleNode, isEligibleForPopulation, LESSON_ERR_CODE } = require('../attribution/recall-graph');
 const { writeNode } = require('../attribution/recall-graph-store');
 const { writeCandidate, sidecarSha } = require('../attribution/candidate-sidecar');
+// ③.1-W4d Item 2 — coarse secret-scrub on the persistence path. The candidate patch bytes
+// (-> sidecar), the failed-attempt bytes (-> sidecar), and the LLM lesson_body (-> the
+// hashed node) are all caller/model-influenceable free text persisted to a lab-state dir;
+// scrub each BEFORE it is contrasted, sidecared, or folded into a content hash.
+const { scrubLabSecrets } = require('../_lib/scrub-lab-secrets');
 
 // A content-address POINTER to the accepted diff (the body stays in git/corpus — never
 // re-stored; storing the answer key is the contamination we are guarding against).
@@ -56,12 +61,23 @@ async function captureLessons(items, deriveFn, opts = {}) {
 
     const candidate_patch = it.candidate_patch;
     const accepted_diff = it.accepted_diff;
+    // W4d Item 2b: scrub the candidate ONCE into a single const fed to ALL THREE downstream
+    // sites (deriveLesson contrast + sidecarSha + writeCandidate). A single source structurally
+    // GUARANTEES the two-site-sha equality (sidecar filename sha == node candidate_patch_sha) on
+    // the SCRUBBED bytes — never a convention that could drift. Scrub before the LLM contrast:
+    // the derive input is the most privacy-sensitive path. accepted_diff is a ref-only POINTER
+    // (never re-stored), so it needs no scrub.
+    const scrubbedCandidate = scrubLabSecrets(candidate_patch);
     // W3 trap seam: a length-bounded failed-attempt wrong-diff (absent/oversize -> no trap, M1).
     const fp = it.failed_patch;
-    const usableFailed = (typeof fp === 'string' && fp.length > 0 && fp.length <= MAX_CONTRAST_PATCH) ? fp : null;
+    let usableFailed = (typeof fp === 'string' && fp.length > 0 && fp.length <= MAX_CONTRAST_PATCH) ? fp : null;
+    // W4d Item 2b: scrub the failed-attempt bytes right after the bound check, before BOTH the
+    // LLM contrast and the (one-site) sidecar write below. Bounded-then-scrubbed: scrubbing
+    // an absent (null) failed_patch is a no-op (scrubLabSecrets passes null through).
+    usableFailed = scrubLabSecrets(usableFailed);
     const d = await deriveLesson({
       problem_statement_digest: attempt.reference.problem_statement_digest,
-      candidate_patch, accepted_diff, failed_patch: usableFailed,
+      candidate_patch: scrubbedCandidate, accepted_diff, failed_patch: usableFailed,
     }, deriveFn);
     if (!d.ok) {
       if (d.fallback_reason === 'lesson-leak') n_leak += 1;
@@ -73,8 +89,8 @@ async function captureLessons(items, deriveFn, opts = {}) {
     // re-plumb: persist the candidate BYTES (recoverable) keyed by the SAME full sha the
     // node carries; the accepted diff stays a ref-only pointer. A sidecar write FAILURE must
     // not mint a node pointing at a missing patch (VALIDATE-reviewer HIGH-2) — count + skip.
-    const candidate_patch_sha = sidecarSha(candidate_patch);
-    const cw = writeCandidate(candidate_patch, { dir: sidecarDir });
+    const candidate_patch_sha = sidecarSha(scrubbedCandidate);
+    const cw = writeCandidate(scrubbedCandidate, { dir: sidecarDir });
     if (!cw.ok) { n_sidecar_failed += 1; continue; }
     // W3 trap seam (M2): the ref comes ONLY from a confirmed-OK write (never sidecarSha-before-write,
     // which could dangle). A failed-patch write FAILURE degrades to a trap-less-but-valid lesson
@@ -84,10 +100,17 @@ async function captureLessons(items, deriveFn, opts = {}) {
       const fw = writeCandidate(usableFailed, { dir: sidecarDir });
       if (fw.ok) failed_attempt_ref = fw.sha; else n_failed_sidecar_failed += 1;
     }
+    // W4d Item 2c: scrub the LLM-derived lesson_body into a NEW lesson object BEFORE the
+    // node build. lesson_body is in LESSON_HASH_FIELDS -> folded into lesson_content_hash, so
+    // scrubbing MUST precede the build (scrubbing after would bind the hash to the unscrubbed
+    // body, and verify-on-read would still expose it). The enum classes (trigger/gotcha/
+    // corrective) drive lesson_signature/node_id and are untouched, so node identity stays
+    // patch-stable. Spread into a NEW object — never mutate d.lesson.
+    const safeLesson = { ...d.lesson, lesson_body: scrubLabSecrets(d.lesson.lesson_body) };
     let node;
     try {
       node = buildWorkedExampleNode(attempt, {
-        provenance, lesson: d.lesson,
+        provenance, lesson: safeLesson,
         accepted_diff_ref: acceptedDiffRef(accepted_diff),
         candidate_patch_sha, fail_to_pass: it.fail_to_pass, failed_attempt_ref,
       });

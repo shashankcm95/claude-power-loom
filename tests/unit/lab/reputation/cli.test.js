@@ -164,5 +164,39 @@ test('snapshot --personas with present:true but EMPTY value (materialize, no rec
   assert.deepStrictEqual(j.value.map((p) => p.status), ['no-data', 'no-data'], 'empty value → every requested persona is no-data');
 });
 
+// ── W4d Item 1d (CLI symmetry, folds architect-A4): after 1a, the projection emits the CANONICAL bare
+//    key (`node-backend`) even for a record made under the numbered form (`13-node-backend`). The CLI
+//    --persona / --personas filter token is canonicalized too, so a numbered-form query still matches
+//    the now-canonical emitted rows (the read/query path stays coherent with the emitted rows).
+
+test('W4d 1d: show --persona 13-node-backend matches the canonical node-backend row', () => {
+  seedEnriched('node-backend', 'aCanon1', 'txCanon1');
+  const r = run(['show', '--persona', '13-node-backend']);
+  assert.strictEqual(r.code, 0, `exit 0 (stderr=${r.err})`);
+  assert.ok(/"persona": "node-backend"/.test(r.out), 'a numbered query matches the canonical emitted row');
+});
+
+test('W4d 1d: snapshot --personas 13-node-backend matches the canonical node-backend distribution', () => {
+  seedEnriched('node-backend', 'aCanon2', 'txCanon2');
+  run(['materialize']);
+  const r = run(['snapshot', '--personas', '13-node-backend']);
+  assert.strictEqual(r.code, 0, `exit 0 (stderr=${r.err})`);
+  const j = JSON.parse(r.out);
+  // the canonical token resolves to the node-backend distribution (NOT a no-data marker).
+  assert.deepStrictEqual(j.value.map((p) => p.persona), ['node-backend'], 'numbered token canonicalized to the emitted bare key');
+  assert.ok(j.value[0].by_verdict, 'present distribution, not a no-data marker');
+});
+
+test('W4d 1d residual: off-roster numbered token stays raw (13-alpha does NOT match alpha)', () => {
+  // alpha is off-roster → canonicalPersonaKey returns null → the token stays raw → no match (no-data).
+  seedEnriched('alpha', 'aCanon3', 'txCanon3');
+  run(['materialize']);
+  const r = run(['snapshot', '--personas', '13-alpha']);
+  assert.strictEqual(r.code, 0, `exit 0 (stderr=${r.err})`);
+  const j = JSON.parse(r.out);
+  assert.deepStrictEqual(j.value.map((p) => p.persona), ['13-alpha'], 'off-roster numbered token stays raw');
+  assert.strictEqual(j.value[0].status, 'no-data', 'off-roster numbered token does not collapse onto the bare row');
+});
+
 process.stdout.write(`\ncli.test.js (E4 reputation): ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);

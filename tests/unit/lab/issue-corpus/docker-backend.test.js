@@ -185,7 +185,45 @@ test('ARCH-2 assertSafeRepo rejects ext:: transport', () => throws(() => CL.asse
 test('ARCH-2 assertSafeRepo denies a local path by default, allows with allowLocal', () => {
   throws(() => CL.assertSafeRepo('/tmp/x'));
   assert.ok(CL.assertSafeRepo('/tmp/x', { allowLocal: true }));
-  assert.ok(CL.assertSafeRepo('https://example.com/r.git'));
+});
+
+// W4d A1 — the SSRF host-allowlist (github.com default; https-only; parser-differential guard).
+const allow = (repo, opts) => assert.ok(CL.assertSafeRepo(repo, opts) === repo, `${repo} must be allowed`);
+const deny = (repo, opts) => throws(() => CL.assertSafeRepo(repo, opts));
+test('W4d A1 assertSafeRepo allows an https github.com remote (the corpus host)', () => {
+  allow('https://github.com/o/r.git');
+});
+test('W4d A1 assertSafeRepo DENIES a non-allowlisted host (example.com)', () => {
+  deny('https://example.com/r');
+});
+test('W4d A1 assertSafeRepo DENIES a non-https scheme (http github.com)', () => {
+  deny('http://github.com/o/r');
+});
+test('W4d A1 assertSafeRepo DENIES a suffix-host smuggle (github.com.evil.com)', () => {
+  deny('https://github.com.evil.com/r');
+});
+test('W4d A1 assertSafeRepo DENIES the backslash-@ parser differential (host=github.com under WHATWG, libcurl resolves evil)', () => {
+  deny('https://github.com\\@evil.com/r');
+});
+test('W4d A1 assertSafeRepo honors LOOM_CLONE_HOST_ALLOWLIST (env override widens to example.com)', () => {
+  const prev = process.env.LOOM_CLONE_HOST_ALLOWLIST;
+  process.env.LOOM_CLONE_HOST_ALLOWLIST = 'example.com';
+  try { allow('https://example.com/r.git'); deny('https://github.com/o/r.git'); }
+  finally { if (prev === undefined) delete process.env.LOOM_CLONE_HOST_ALLOWLIST; else process.env.LOOM_CLONE_HOST_ALLOWLIST = prev; }
+});
+test('W4d A1 assertSafeRepo fails SAFE to github.com-only on a malformed (empty/whitespace) env', () => {
+  for (const bad of ['', '   ', ',,,']) {
+    const prev = process.env.LOOM_CLONE_HOST_ALLOWLIST;
+    process.env.LOOM_CLONE_HOST_ALLOWLIST = bad;
+    try { allow('https://github.com/o/r.git'); deny('https://example.com/r'); }
+    finally { if (prev === undefined) delete process.env.LOOM_CLONE_HOST_ALLOWLIST; else process.env.LOOM_CLONE_HOST_ALLOWLIST = prev; }
+  }
+});
+test('W4d A1 assertSafeRepo opts.hostAllowlist OVERRIDES the env (caller-injected precedence)', () => {
+  const prev = process.env.LOOM_CLONE_HOST_ALLOWLIST;
+  process.env.LOOM_CLONE_HOST_ALLOWLIST = 'example.com';
+  try { allow('https://github.com/o/r.git', { hostAllowlist: ['github.com'] }); deny('https://example.com/r', { hostAllowlist: ['github.com'] }); }
+  finally { if (prev === undefined) delete process.env.LOOM_CLONE_HOST_ALLOWLIST; else process.env.LOOM_CLONE_HOST_ALLOWLIST = prev; }
 });
 test('ARCH-2 assertSafeLabel rejects ../ traversal', () => throws(() => CL.assertSafeLabel('../evil')));
 

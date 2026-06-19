@@ -45,6 +45,7 @@ const { canonicalJsonSerialize } = require('../../kernel/_lib/canonical-json');
 const { readJsonlBounded } = require('../../kernel/_lib/jsonl-read');
 const { deepFreeze } = require('../../kernel/_lib/deep-freeze'); // #266 — freeze read-back rows (nested too)
 const { isSafePathSegment } = require('../../kernel/_lib/path-canonicalize'); // M-1: agentId path-safety
+const { canonicalPersonaKey } = require('../persona-experiment/canonical-persona-key'); // W4d 1c: H-1 guard roster-reconcile
 
 // Resolved ONCE at module-load (the ENV-BEFORE-REQUIRE discipline; tests set LOOM_LAB_STATE_DIR first).
 const LAB_STATE_BASE = process.env.LOOM_LAB_STATE_DIR || path.join(os.homedir(), '.claude', 'lab-state');
@@ -240,8 +241,15 @@ function recordVerdict(input) {
     // agentId with a DIFFERENT subject.persona is a MISLABEL (a false "one spawn = two personas" state
     // that would silently dedup-drop or split E4). Fail LOUD rather than corrupt the reputation view.
     // (Scanned against LIVE records only — an aged-out persona is forgotten; reuses this read, O(live).)
+    // W4d 1c (C2 roster reconcile, folds F1): NORMALIZE BOTH SIDES of the comparison so a legacy
+    // `13-node-backend` row + a `node-backend` input for one agentId are recognized as the SAME persona
+    // (no FALSE mislabel-throw on a numbered/bare collision). The stored value is unchanged below
+    // (recordVerdict writes the raw input verbatim → disk byte-stable). attestation_id basis excludes
+    // persona, so dedup is unaffected. canonicalPersonaKey returns null for an off-roster name → `|| raw`
+    // keeps two genuinely-distinct personas (e.g. node-backend vs ml-engineer) tripping the guard.
+    const inputKey = canonicalPersonaKey(subject.persona) || subject.persona;
     const mislabel = live.find((r) => r.evidence_refs && r.evidence_refs.agent_id === o.agentId
-      && r.subject && r.subject.persona !== subject.persona);
+      && r.subject && (canonicalPersonaKey(r.subject.persona) || r.subject.persona) !== inputKey);
     if (mislabel) {
       throw new Error(`recordVerdict: agentId ${JSON.stringify(o.agentId)} is already attested under subject.persona ${JSON.stringify(mislabel.subject.persona)} — refusing to record it under ${JSON.stringify(subject.persona)} (one spawn = one persona; this is a mislabel)`);
     }
