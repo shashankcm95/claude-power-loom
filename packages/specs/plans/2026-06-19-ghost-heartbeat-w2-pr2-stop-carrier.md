@@ -277,6 +277,6 @@ All board folds applied; carrier 13/13 + producer 17/17 (incl. the now-real T-is
 - [x] Carrier unit tests green (C1–C12) + producer T-isfile + T-isfile-fifo (13/13 + 17/17).
 - [x] Full kernel suite green + `bash install.sh --hooks --test` (the only 2 fails are the documented local-stale-cache `contract-plugin-hook-deployment` artifact — auto-passes in CI — and a pre-existing untracked unrelated `.md`'s yaml-lint; SIGNPOST regenerated → Test 121 OK).
 - [x] R1 dogfood recorded as a PROXY (OS-level P1 + a Bash-tool-harness probe both show the detached child survives `ppid:1`); the definitive Stop-hook dogfood is gated post-`claude plugin update` (proxy is the Bash tool, not a hook). Cron backstop = PR-3.
-- [ ] CodeRabbit gate: inline-comments + reviews surfaces (NOT the status-check), premise-probe each, fold. (PENDING — post-push.)
+- [x] CodeRabbit gate CLEAN (polled the inline + reviews surfaces, NOT the status-check): round 1 = 3 valid Majors (2× TOCTOU + RFC §5.2 drift) → all folded (shared `withRegularFileFd` O_NONBLOCK primitive); round 2 = 1 nitpick (`execFileSync` for mkfifo) → folded; re-review of the final commit `c0727b8` posted NO new actionable findings; the marker-TOCTOU thread is `resolved + outdated`.
 - [x] SIGNPOST regenerated (drifted by the new `.js`; Test 121 now OK).
-- [ ] PR opened for the USER merge gate (never auto-merge). (PENDING.)
+- [x] PR opened: #371 — awaiting the USER merge gate (never auto-merge).
