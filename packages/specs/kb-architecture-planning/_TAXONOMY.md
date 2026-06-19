@@ -1,6 +1,6 @@
 # Target Taxonomy
 
-Target structure for `skills/agent-team/kb/architecture/`. Each leaf is a single pattern doc; each branch is a domain category. Authoring fills slots; status tracks progress.
+Target structure for `packages/skills/library/agent-team/kb/architecture/`. Each leaf is a single pattern doc; each branch is a domain category. Authoring fills slots; status tracks progress.
 
 ## Top-level structure
 

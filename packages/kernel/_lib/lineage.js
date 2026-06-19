@@ -8,9 +8,19 @@
 // NOT read prior state from disk. The DAG-acyclicity check is a linear scan
 // (O(n)) over the passed-in chain.
 //
-// Used by: K9 pre-commit (PR 3) to verify chain integrity before promoting
-// deltas; K8 updatedInput payload assembly to build lineage entries for
-// spawned actors.
+// Status (2026-06-19): NO production consumer. This module is DORMANT-by-design
+// — it ships with full unit coverage (tests/unit/kernel/_lib/lineage.test.js)
+// but no kernel path imports it. An earlier header asserted a K9/K8 dependency;
+// that claim was stale and FALSE:
+//   - The K8 updatedInput payload-assembly consumer was CANCELLED per ADR-0012
+//     (`updatedInput` is inert on Agent/Task spawns), so no K8 lineage
+//     assembly exists to call buildLineageEntry.
+//   - The K9 pre-commit path / the integrator / quarantine-promote use their
+//     OWN chain gate (post_state_hash content-addressing via provenance-walk +
+//     transaction-record); none of them require('./lineage') or call
+//     isAcyclicChain.
+// Retained (not deleted) as a tested pure primitive for a future chain-integrity
+// consumer; do NOT cite it as a live dependency of the K9/K8 paths.
 
 'use strict';
 

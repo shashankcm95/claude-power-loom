@@ -128,7 +128,7 @@ Files read for context but NOT modified. Helps reviewers understand the blast ra
 
 ## Schema validation (H.7.12 — tiered enforcement live; H.7.17 — migrated to PostToolUse)
 
-Schema conformance is enforced by `hooks/scripts/validators/validate-plan-schema.js`. **H.7.17 migration**: hook now fires on PostToolUse:Edit|Write (was PreToolUse in H.7.12). H.7.12's PreToolUse choice was a conservative deviation from theo's H.7.9 Section C original spec — H.7.17 restored the original architectural intent after `claude-code-guide` confirmed PostToolUse:Write is supported by Claude Code. Hook fires AFTER `~/.claude/plans/*.md`, `.claude/plans/*.md`, or `$CLAUDE_PLAN_DIR/*.md` (drift-note 12) is written. Validation is **tiered** to match actual plan-writing variance — strict on truly load-bearing sections, conditional on new-style plans, hint-only on aspirational sections.
+Schema conformance is enforced by `packages/kernel/validators/validate-plan-schema.js`. **H.7.17 migration**: hook now fires on PostToolUse:Edit|Write (was PreToolUse in H.7.12). H.7.12's PreToolUse choice was a conservative deviation from theo's H.7.9 Section C original spec — H.7.17 restored the original architectural intent after `claude-code-guide` confirmed PostToolUse:Write is supported by Claude Code. Hook fires AFTER `~/.claude/plans/*.md`, `.claude/plans/*.md`, or `$CLAUDE_PLAN_DIR/*.md` (drift-note 12) is written. Validation is **tiered** to match actual plan-writing variance — strict on truly load-bearing sections, conditional on new-style plans, hint-only on aspirational sections.
 
 ### Tier 1 — truly mandatory (always enforced; missing → `[PLAN-SCHEMA-DRIFT]`)
 
@@ -175,11 +175,11 @@ If hook fires `[PLAN-SCHEMA-DRIFT]`, iterate the plan before approval.
 
 ## Cross-references
 
-- [`commands/build-plan.md`](../commands/build-plan.md) — the slash command that produces plans matching this template
-- [`skills/build-plan/SKILL.md`](../skills/build-plan/SKILL.md) — the skill body
-- [`skills/agent-team/patterns/plan-mode-hets-injection.md`](../skills/agent-team/patterns/plan-mode-hets-injection.md) — the underlying pattern
-- [`agents/planner.md`](../agents/planner.md) — original plan template (lines 57-93); this template is an explicit superset
-- [`rules/core/workflow.md`](../rules/core/workflow.md) — soft-norm rules this template makes self-documenting
+- [`packages/skills/commands/build-plan.md`](../../skills/commands/build-plan.md) — the slash command that produces plans matching this template
+- [`packages/skills/library/build-plan/SKILL.md`](../../skills/library/build-plan/SKILL.md) — the skill body
+- [`packages/skills/library/agent-team/patterns/plan-mode-hets-injection.md`](../../skills/library/agent-team/patterns/plan-mode-hets-injection.md) — the underlying pattern
+- [`agents/planner.md`](../../../agents/planner.md) — original plan template (lines 57-93); this template is an explicit superset
+- [`packages/skills/rules/core/workflow.md`](../../skills/rules/core/workflow.md) — soft-norm rules this template makes self-documenting
 
 ## Phase
 

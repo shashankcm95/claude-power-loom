@@ -180,7 +180,7 @@ test('T1.2: transcript usage tokens above WARN_TOKENS → emits [CONTEXT-SIZE-WA
   if (!stdout.includes('[CONTEXT-SIZE-WARN]')) {
     throw new Error(`expected [CONTEXT-SIZE-WARN] at 110K tokens, got: ${stdout.slice(-300)}`);
   }
-  if (!stdout.includes('library.js write')) {
+  if (!stdout.includes('library write')) {
     throw new Error('forcing instruction missing library snapshot command');
   }
   const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
@@ -543,6 +543,28 @@ test('T7.2: forcing instruction includes 11th-in-family attribution + class', ()
   }
   if (!stdout.includes('Class 1')) {
     throw new Error('forcing instruction should declare Class 1 (advisory)');
+  }
+  cleanup(transcript);
+});
+
+test('T7.3: forcing instruction is portable — no author-specific absolute path', () => {
+  // The emitted instruction must not hardcode the author's machine path
+  // (e.g. ~/Documents/claude-toolkit/...) — installs land in arbitrary
+  // locations, so a hardcoded author path is a dead reference on every
+  // non-author machine. The snapshot command uses the portable `library`
+  // CLI alias instead.
+  const transcript = makeUsageTranscript({ cacheRead: 110000 });
+  const { stdout } = runHook({ transcript_path: transcript });
+  if (!stdout.includes('[CONTEXT-SIZE-WARN]')) {
+    throw new Error(`expected WARN to emit the forcing instruction, got: ${stdout.slice(-300)}`);
+  }
+  // Guard the specific author path the cleanup targeted, plus the broader
+  // "any absolute path under a Documents/ home dir" shape.
+  if (stdout.includes('Documents/claude-toolkit')) {
+    throw new Error(`forcing instruction leaks author path 'Documents/claude-toolkit': ${stdout.slice(-400)}`);
+  }
+  if (/\/(Users|home)\/[^/\s]+\/Documents\//.test(stdout)) {
+    throw new Error(`forcing instruction contains an author-specific absolute home path: ${stdout.slice(-400)}`);
   }
   cleanup(transcript);
 });

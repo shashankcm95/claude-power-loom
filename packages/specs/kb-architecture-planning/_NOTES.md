@@ -353,7 +353,7 @@ When v2.1+ kb-resolver gets tier-aware loading, we should also implement:
 
 ## Done log
 
-Patterns shipped to `skills/agent-team/kb/architecture/`. Move entries here from authoring queue when PR merges.
+Patterns shipped to `packages/skills/library/agent-team/kb/architecture/`. Move entries here from authoring queue when PR merges.
 
 | Pattern | Path | Shipped phase | manifest.json updated? |
 |---------|------|---------------|------------------------|

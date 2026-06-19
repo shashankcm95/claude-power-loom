@@ -243,6 +243,35 @@ function cmdMigrate(args) {
     return;
   }
 
+  // STEP 1.5 — VERIFY pre-existing symlinks (from a partial prior run).
+  // These were enumerated above (need verification, not backup/re-copy). Fail
+  // closed if any does not resolve to its expected library target — a wrong or
+  // dangling symlink means a prior run left the legacy path in a corrupt state
+  // that re-running migrate must NOT silently paper over. Both sides are run
+  // through realpathSync so the comparison is canonical (macOS /var vs
+  // /private/var, symlinked parent dirs) rather than a raw string compare.
+  for (const entry of symlinked) {
+    const tgt = resolveTargetPath(entry);
+    let actual;
+    try {
+      actual = fs.realpathSync(entry.legacy);
+    } catch (err) {
+      throw new Error(`library-migrate: pre-existing symlink unresolvable: ${entry.legacy} (${err.message})`);
+    }
+    let expected;
+    try {
+      expected = fs.realpathSync(tgt);
+    } catch (err) {
+      throw new Error(`library-migrate: pre-existing symlink target missing: ${entry.legacy} → ${actual} (expected library volume ${tgt} does not exist: ${err.message})`);
+    }
+    if (actual !== expected) {
+      throw new Error(`library-migrate: pre-existing symlink points to wrong target: ${entry.legacy} → ${actual} (expected ${expected})`);
+    }
+  }
+  if (symlinked.length > 0) {
+    process.stdout.write(`library-migrate: verified ${symlinked.length} pre-existing symlink(s)\n`);
+  }
+
   // STEP 2 — BACKUP (atomic; lands BEFORE first write per CRITICAL #1)
   const bDir = paths.backupDir(runId);
   fs.mkdirSync(bDir, { recursive: true });
@@ -815,8 +844,9 @@ function cmdFixSymlinks(args) {
 
     // (b) Ensure library volume dir + write legacy content to library target.
     //     This overwrites whatever stale state was at the library target.
-    fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-    fs.writeFileSync(targetPath, legacyContent);
+    //     Use the atomic tmp+rename primitive (matches the migrate saga) so a
+    //     crash mid-write can never leave a torn library target.
+    writeAtomicString(targetPath, legacyContent.toString('utf8'));
 
     // (c) Replace legacy file with symlink → library target.
     //     Use a tmp + rename pattern to keep the swap atomic on the legacy

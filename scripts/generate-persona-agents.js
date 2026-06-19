@@ -107,6 +107,13 @@ const PERSONAS = [
     kbDefaults: ['kb:backend-dev/node-runtime-basics', 'kb:backend-dev/express-essentials'],
   },
   {
+    id: '17-python-backend', agent: 'python-backend', color: 'blue',
+    tools: ['Read', 'Grep', 'Glob', 'Bash', 'Edit', 'Write'],
+    description: 'Python backend specialist — idiomatic Python, type-hinted boundaries, pytest discipline. Builds type-safe services, fails closed at edges, narrow exception handling. Invoke for Python API/service work, data-layer code, packaging.',
+    summary: 'Type hints at the edge; trust the interior. Explicit over implicit. Fail closed at boundaries. Narrow `except` clauses, never bare. No mutable default args. Pin dependencies. Iterate lazily, don\'t materialize. `pytest` discipline is non-negotiable.',
+    kbDefaults: ['kb:backend-dev/type-safety-at-the-boundary', 'kb:architecture/discipline/error-handling-discipline'],
+  },
+  {
     id: '14-codebase-locator', agent: 'codebase-locator', color: 'gray',
     tools: ['Read', 'Grep', 'Glob'],
     description: 'File + symbol + reference finder. Answers "where is X?" / "which files touch Y?" Read-only. Invoke for fast targeted lookups in unfamiliar codebases.',

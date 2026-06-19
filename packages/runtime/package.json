@@ -4,7 +4,7 @@
   "private": true,
   "description": "Loom Runtime layer (v4 §2 Layer 2). HETS orchestration, persona contracts + briefs, decomposition + verify (v3.2). Per-RFC semver. Depends on @power-loom/kernel via workspace:*.",
   "scripts": {
-    "test": "echo '(runtime tests TBD)' && exit 0"
+    "test": "bash \"${PROJECT_CWD:-$(git rev-parse --show-toplevel)}/tests/run-pkg-unit.sh\" runtime"
   },
   "dependencies": {
     "@power-loom/kernel": "workspace:*"

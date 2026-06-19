@@ -9,8 +9,8 @@ $ARGUMENTS — description of the agent/skill to create (e.g., "stripe payment i
 
 ### 1. Gap Detection
 Check what already exists in the SOURCE tree (the canonical roster — the installed `~/.claude/` copies are build artifacts):
-- `ls ~/Documents/claude-toolkit/agents/` — existing agents
-- `ls ~/Documents/claude-toolkit/packages/skills/library/` — existing skills
+- `ls ${CLAUDE_PLUGIN_ROOT}/agents/` — existing agents
+- `ls ${CLAUDE_PLUGIN_ROOT}/packages/skills/library/` — existing skills
 - Determine if any existing agent/skill already covers this domain
 - If overlap exists, suggest extending rather than creating new (use `/evolve`)
 
@@ -24,9 +24,9 @@ Based on the description, determine:
 
 ### 3. Create (SOURCE only — never the installed copy)
 
-**For agents** — write the source: `~/Documents/claude-toolkit/agents/{name}.md`
+**For agents** — write the source: `${CLAUDE_PLUGIN_ROOT}/agents/{name}.md`
 
-**For skills** — write the source: `~/Documents/claude-toolkit/packages/skills/library/{name}/SKILL.md`
+**For skills** — write the source: `${CLAUDE_PLUGIN_ROOT}/packages/skills/library/{name}/SKILL.md`
 
 Do NOT also write the installed `~/.claude/agents/` / `~/.claude/skills/` copy. That is the dual-write hotfix trap (#275 removed the same step from `/evolve`): the installed copy is a build artifact that `install.sh` / `claude plugin update` clobbers, and a hand-written one silently drifts from source. The forged file goes live through the normal ship path (Step 5).
 
@@ -37,7 +37,7 @@ Write a forge-provenance volume to the library so future sessions can reconstruc
 - Initial design decisions and rationale
 
 ```bash
-node ~/Documents/claude-toolkit/scripts/library.js write toolkit/decisions/forge-<name>-<YYYY-MM-DD> \
+node ${CLAUDE_PLUGIN_ROOT}/scripts/library.js write toolkit/decisions/forge-<name>-<YYYY-MM-DD> \
   --form narrative --topic forge,<persona-or-skill-name> --entities <related-entities>
 ```
 

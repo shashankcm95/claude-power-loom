@@ -492,6 +492,71 @@ test('L2 validateTransactionRecord type-completeness: non-array evidence_refs / 
   assert.strictEqual(validateTransactionRecord(validRecord()).valid, true, 'a legit record is unaffected by the new checks');
 });
 
+// --- behavior-preserving helper-extraction refactor (validate-transaction-record-split) ---
+//
+// validateTransactionRecord was split into single-concern helpers
+// (validateEnumAndHexFields / validateHashFedShapes / validateSemantics).
+// These tests pin the cross-concern contract the split must preserve: when a
+// record violates rules in MULTIPLE concern groups at once, every error is
+// accumulated AND the errors appear in the SAME group order as the prior inline
+// body (enum/hex -> hash-fed shapes -> A10/GP4 semantics). A naive extraction
+// that early-returns per group, or reorders the groups, would break this.
+
+test('refactor: multi-concern violations accumulate in stable group order (enum/hex -> hash-fed -> semantics)', () => {
+  // A single record that trips one rule in EACH extracted helper:
+  //   enum/hex group     -> non-hex transaction_id
+  //   hash-fed group     -> non-hex idempotency_key
+  //   semantics (A10)    -> state-changing op (CREATE) with empty evidence_refs
+  const record = validRecord({
+    transaction_id: 'not-hex!',
+    idempotency_key: 'also-not-hex',
+    operation_class: 'CREATE',
+    evidence_refs: [],
+  });
+  const result = validateTransactionRecord(record);
+  assert.strictEqual(result.valid, false, 'a multi-concern-violating record is invalid');
+
+  const txIdx = result.errors.findIndex((e) => /transaction_id must be 64-char/.test(e));
+  const keyIdx = result.errors.findIndex((e) => /idempotency_key must be 64-char/.test(e));
+  const a10Idx = result.errors.findIndex((e) => /A10 violation/.test(e));
+  assert.ok(txIdx >= 0, 'enum/hex error present (transaction_id)');
+  assert.ok(keyIdx >= 0, 'hash-fed error present (idempotency_key)');
+  assert.ok(a10Idx >= 0, 'semantics error present (A10)');
+  // Group ordering preserved: enum/hex BEFORE hash-fed BEFORE semantics.
+  assert.ok(txIdx < keyIdx, 'enum/hex group precedes the hash-fed group');
+  assert.ok(keyIdx < a10Idx, 'hash-fed group precedes the semantics group');
+});
+
+test('refactor: missing-required errors still precede the spot-check groups', () => {
+  // The required-field loop runs FIRST in the main body; a missing field must
+  // be reported ahead of any spot-check (enum/hex/shape/semantic) error.
+  const record = validRecord({ transaction_id: 'not-hex!' });
+  delete record.writer_persona_id;
+  const result = validateTransactionRecord(record);
+  assert.strictEqual(result.valid, false);
+  const missingIdx = result.errors.findIndex((e) => /missing required field: writer_persona_id/.test(e));
+  const txIdx = result.errors.findIndex((e) => /transaction_id must be 64-char/.test(e));
+  assert.ok(missingIdx >= 0 && txIdx >= 0, 'both errors present');
+  assert.ok(missingIdx < txIdx, 'required-field error precedes the enum/hex spot-check error');
+});
+
+test('refactor: GP4 DERIVED-VIEW-INVALIDATE + bad commit_outcome accumulates BOTH the enum and the GP4 semantic error', () => {
+  // commit_outcome 'BOGUS' is not in the enum (enum/hex group) AND is not
+  // NOT_APPLICABLE for a DERIVED-VIEW-INVALIDATE (semantics group) — both fire.
+  const record = validRecord({
+    operation_class: 'DERIVED-VIEW-INVALIDATE',
+    commit_outcome: 'BOGUS',
+    evidence_refs: [],
+  });
+  const result = validateTransactionRecord(record);
+  assert.strictEqual(result.valid, false);
+  const enumIdx = result.errors.findIndex((e) => /invalid commit_outcome: BOGUS/.test(e));
+  const gp4Idx = result.errors.findIndex((e) => /Round-3e GP4/.test(e));
+  assert.ok(enumIdx >= 0, 'enum error present (commit_outcome)');
+  assert.ok(gp4Idx >= 0, 'GP4 semantic error present');
+  assert.ok(enumIdx < gp4Idx, 'enum/hex group precedes the semantics group');
+});
+
 // --- summary ---
 
 process.stdout.write(`\ntransaction-record.test.js: ${passed} passed, ${failed} failed\n`);

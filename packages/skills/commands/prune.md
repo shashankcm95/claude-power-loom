@@ -17,9 +17,9 @@ Reach for `/prune` when `MEMORY.md` is **over its hard limit** (its tail stops l
 # MEMORY budget — the usual trigger. Hard limit ~24.4 KB (24986 B); over it, the tail truncates.
 wc -c ~/.claude/projects/<project-hash>/memory/MEMORY.md
 # Stale transient artifacts (plans, snapshots) + the debt level.
-node ~/Documents/claude-toolkit/scripts/scan-stale-artifacts.js
+node ${CLAUDE_PLUGIN_ROOT}/scripts/scan-stale-artifacts.js
 # Library volume sizes + last-modified per stack.
-node ~/Documents/claude-toolkit/scripts/library.js stats
+node ${CLAUDE_PLUGIN_ROOT}/scripts/library.js stats
 ```
 
 Carry the numbers into the audit: file-size-vs-limit sets the **target bytes to reclaim**; the scanner output is the stale-file list; `library stats` last-modified is the ONLY access signal available — there is **no per-entry invocation log**, so do not flag "unused" as if one exists.

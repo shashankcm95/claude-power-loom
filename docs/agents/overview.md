@@ -2,9 +2,9 @@
 
 > Returns to README: [../../README.md](../../README.md)
 
-### Agents (5) — The Specialist Layer
+### Agents (19) — The Specialist Layer
 
-Each agent is a `.md` file with YAML frontmatter declaring its name, description, tools, model tier, and color. Claude delegates to them when it judges a specialist would help.
+Each agent is a `.md` file (`agents/*.md`, 19 total) with YAML frontmatter declaring its name, description, tools, model tier, and color. Claude delegates to them when it judges a specialist would help. The table below highlights the five most-used generic personas; the full roster also includes `hacker`, `honesty-auditor`, the domain builders (`node-backend`, `python-backend`, `java-backend`, `react-frontend`, `ios-developer`, `data-engineer`, `ml-engineer`, `devops-sre`), the codebase investigators (`codebase-locator`, `codebase-analyzer`, `codebase-pattern-finder`), and `confused-user`.
 
 | Agent | Model | Tools | Specialty |
 |-------|-------|-------|-----------|
@@ -16,5 +16,7 @@ Each agent is a `.md` file with YAML frontmatter declaring its name, description
 
 ---
 
-### Skills (17) — The Workflow Layer
+### Skills (21) — The Workflow Layer
+
+See [the skills overview](../skills/overview.md) for the workflow layer.
 

@@ -35,8 +35,8 @@ Work → Capture (auto, multi-trigger) → Consolidate (auto, threshold-based) �
 - The session-start reminder hook (`session-self-improve-prompt.js`) exists on disk but is **NOT registered** in `hooks.json` (retired with frequency capture) — pending candidates do NOT surface automatically. Inspect the queue explicitly via `/self-improve` or the CLI.
 - User approves specific IDs, dismisses some, or invokes `/self-improve` for full triage:
   ```
-  node ~/.claude/packages/kernel/spawn-state/self-improve-store.js promote --id <cand-id>
-  node ~/.claude/packages/kernel/spawn-state/self-improve-store.js dismiss --id <cand-id>
+  node "${CLAUDE_PLUGIN_ROOT}/packages/kernel/spawn-state/self-improve-store.js" promote --id <cand-id>
+  node "${CLAUDE_PLUGIN_ROOT}/packages/kernel/spawn-state/self-improve-store.js" dismiss --id <cand-id>
   ```
 - Auto-graduated entries are informational (already executed); they appear in the reminder for transparency.
 
@@ -100,12 +100,12 @@ Remove what's no longer useful:
 
 | Command | Action |
 |---------|--------|
-| `node ~/.claude/packages/kernel/spawn-state/self-improve-store.js stats` | Counter + queue summary (debugging) |
-| `node ~/.claude/packages/kernel/spawn-state/self-improve-store.js pending` | List pending + auto-graduated candidates |
-| `node ~/.claude/packages/kernel/spawn-state/self-improve-store.js scan` | Force a consolidation pass (normally automatic) |
-| `node ~/.claude/packages/kernel/spawn-state/self-improve-store.js promote --id <id>` | Execute low-risk promotion (medium/high need /self-improve) |
-| `node ~/.claude/packages/kernel/spawn-state/self-improve-store.js dismiss --id <id>` | Mark a candidate dismissed |
-| `node ~/.claude/packages/kernel/spawn-state/self-improve-store.js reset` | Wipe counters + queue (test fixture only) |
+| `node "${CLAUDE_PLUGIN_ROOT}/packages/kernel/spawn-state/self-improve-store.js" stats` | Counter + queue summary (debugging) |
+| `node "${CLAUDE_PLUGIN_ROOT}/packages/kernel/spawn-state/self-improve-store.js" pending` | List pending + auto-graduated candidates |
+| `node "${CLAUDE_PLUGIN_ROOT}/packages/kernel/spawn-state/self-improve-store.js" scan` | Force a consolidation pass (normally automatic) |
+| `node "${CLAUDE_PLUGIN_ROOT}/packages/kernel/spawn-state/self-improve-store.js" promote --id <id>` | Execute low-risk promotion (medium/high need /self-improve) |
+| `node "${CLAUDE_PLUGIN_ROOT}/packages/kernel/spawn-state/self-improve-store.js" dismiss --id <id>` | Mark a candidate dismissed |
+| `node "${CLAUDE_PLUGIN_ROOT}/packages/kernel/spawn-state/self-improve-store.js" reset` | Wipe counters + queue (test fixture only) |
 
 ## Quality Gates
 
@@ -122,6 +122,6 @@ The library at `~/.claude/library/` is the cross-session memory backbone:
 - **Session snapshots** (`sections/toolkit/stacks/session-snapshots/`): verbatim session content captured by `pre-compact-save.js` SAVE_PROMPT
 - **Decisions** (`sections/toolkit/stacks/decisions/`): forge/evolve provenance + ADR-style records
 - **Catalog** (`_catalog.json` per stack): topic + entities + last-modified + content_hash for searchable index
-- **CLI**: `node ~/Documents/claude-toolkit/scripts/library.js ls toolkit/<stack>` + `library read <vol>` + `library stats`
+- **CLI**: `node "${CLAUDE_PLUGIN_ROOT}/scripts/library.js" ls toolkit/<stack>` + `library read <vol>` + `library stats`
 
 See `docs/library.md` for the full Section/Stack/Catalog/Volume reference.

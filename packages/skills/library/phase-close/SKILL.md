@@ -110,7 +110,7 @@ durable + queryable. The record's EXISTENCE is the "gate ran" marker the ghost m
 
 ```bash
 # the gate caught FRESH cross-PR drift the per-PR gates missed → it earns its keep:
-node ~/.claude/packages/kernel/spawn-state/self-improve-store.js bump --signal improvement-effectiveness:phase-close --n 1
+node "${CLAUDE_PLUGIN_ROOT}/packages/kernel/spawn-state/self-improve-store.js" bump --signal improvement-effectiveness:phase-close --n 1
 # (only when a lens surfaced a real cross-PR finding; a clean phase needs no bump)
 ```
 

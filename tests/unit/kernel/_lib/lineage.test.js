@@ -181,6 +181,27 @@ test('INV-K3-LineageAcyclicity: duplicate state_id is rejected as malformed (FAI
   );
 });
 
+// --- Header-honesty regression (kernel-deadcode unit) ---
+
+test('header does not falsely claim a K9/K8 "Used by" dependency (lineage is dormant, no production consumer)', () => {
+  // lineage.js has NO production importer (grep finds only this test). The old
+  // header claimed `Used by: K9 pre-commit ... K8 updatedInput payload assembly`
+  // — both false (K8 cancelled per ADR-0012; K9/integrator/quarantine-promote
+  // use their own post_state_hash gate, not require('./lineage')). The corrected
+  // header must state the dormant/no-consumer status and must NOT reassert the
+  // false "Used by: K9" line.
+  const fs = require('fs');
+  const src = fs.readFileSync(MODULE_PATH, 'utf8');
+  assert.ok(
+    !/Used by:\s*K9/.test(src),
+    'lineage.js header must not claim "Used by: K9" (no production consumer)',
+  );
+  assert.ok(
+    /NO production consumer|DORMANT-by-design/.test(src),
+    'lineage.js header must state its true dormant/no-production-consumer status',
+  );
+});
+
 // --- Summary ---
 
 process.stdout.write(`\nlineage.test.js: ${passed} passed, ${failed} failed\n`);

@@ -150,10 +150,10 @@ The migration preserves the explicit `kb_id` injection path:
 - `kb/architecture/ai-systems/rag-anchoring.md` — primary consumer reference; cites `_routing.md` 6× as the deterministic-retrieval layer
 - `kb/architecture/ai-systems/inference-cost-management.md` — routing-budget discipline (3-cap per spawn-context) per cost-management 5-lever framework
 - `kb/architecture/ai-systems/agent-design.md` — agent loops consume routed KBs at each reasoning step
-- `swarm/kb-architecture-planning/_TAXONOMY.md` — KB inventory routing maps into
-- `swarm/kb-architecture-planning/_PRINCIPLES.md` — authoring discipline for routing table additions
-- `scripts/agent-team/kb-resolver.js` — future runtime consumer (v2.1+ `route` subcommand)
-- `scripts/agent-team/build-spawn-context.js` — future caller (v2.1+ uses routing for context construction)
+- `packages/specs/kb-architecture-planning/_TAXONOMY.md` — KB inventory routing maps into
+- `packages/specs/kb-architecture-planning/_PRINCIPLES.md` — authoring discipline for routing table additions
+- `packages/runtime/orchestration/kb-resolver.js` — future runtime consumer (v2.1+ `route` subcommand)
+- `packages/runtime/orchestration/build-spawn-context.js` — future caller (v2.1+ uses routing for context construction)
 
 ## History
 
@@ -166,4 +166,4 @@ Authored: H.9.4 pending-docs-completion phase. Closes 6 forward-references from 
 - Line 301: "The planned `_routing.md` (per `_TAXONOMY.md`) is the substrate's term-based retrieval mechanism"
 - Line 412: "The specific architecture of `_routing.md` (planned per H.x kb-architecture-planning)"
 
-Authored as PLANNING doc per the underscore-prefix convention in `swarm/kb-architecture-planning/` (alongside `_TAXONOMY.md`, `_SOURCES.md`, `_PRINCIPLES.md`, `_NOTES.md`). Runtime integration with `kb-resolver` deferred to v2.1+ post-soak; this doc establishes the routing model + table draft + migration plan.
+Authored as PLANNING doc per the underscore-prefix convention in `packages/specs/kb-architecture-planning/` (alongside `_TAXONOMY.md`, `_SOURCES.md`, `_PRINCIPLES.md`, `_NOTES.md`). Runtime integration with `kb-resolver` deferred to v2.1+ post-soak; this doc establishes the routing model + table draft + migration plan.

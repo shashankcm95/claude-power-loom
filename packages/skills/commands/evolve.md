@@ -45,7 +45,7 @@ No concrete run behind it -> say so; a speculative evolution is weak.
 ## Step 5 — Record the evolution (library; content from stdin)
 
 ```bash
-node ~/Documents/claude-toolkit/scripts/library.js write toolkit/decisions/evolve-<name>-<YYYY-MM-DD> \
+node ${CLAUDE_PLUGIN_ROOT}/scripts/library.js write toolkit/decisions/evolve-<name>-<YYYY-MM-DD> \
   --form narrative --topic evolve,<name> --entities <related> <<'EOF'
 <the triggering run, the gaps found, the changes applied, the disposition>
 EOF

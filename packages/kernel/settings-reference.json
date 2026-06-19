@@ -1,5 +1,5 @@
 {
-  "_comment": "Reference hook configuration. Merge these entries into your ~/.claude/settings.json under the 'hooks' key. Replace HOME_DIR with your actual home directory path.",
+  "_comment": "Reference hook configuration for the legacy / shell-only install path. Merge these entries into your ~/.claude/settings.json under the 'hooks' key. Replace HOME_DIR with your actual home directory path. This file MIRRORS the canonical plugin manifest packages/kernel/hooks.json (which uses the ${CLAUDE_PLUGIN_ROOT} placeholder instead of HOME_DIR); keep the two in sync when adding/removing hooks.",
   "hooks": {
     "SessionStart": [
       {
@@ -13,6 +13,18 @@
         ],
         "description": "Reset fact-forcing gate tracker for clean session state",
         "id": "session:reset-tracker"
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node HOME_DIR/.claude/packages/kernel/hooks/lifecycle/catalog-reconcile-session.js",
+            "timeout": 6
+          }
+        ],
+        "description": "Reconcile the skill/command catalog at session start so stale entries are surfaced",
+        "id": "session:catalog-reconcile"
       }
     ],
     "UserPromptSubmit": [
@@ -27,21 +39,21 @@
         ],
         "description": "Detect vague prompts and inject forcing instruction for prompt-enrichment skill",
         "id": "prompt:enrich-trigger"
-      },
-      {
-        "matcher": "*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node HOME_DIR/.claude/packages/kernel/hooks/lifecycle/session-self-improve-prompt.js",
-            "timeout": 5
-          }
-        ],
-        "description": "H.4.1: on first prompt of session, inject pending self-improve queue if non-empty (closes the manual /self-improve loop)",
-        "id": "prompt:self-improve-queue"
       }
     ],
     "PreToolUse": [
+      {
+        "matcher": "EnterPlanMode",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node HOME_DIR/.claude/packages/kernel/hooks/pre/redirect-plan-mode-in-headless.js",
+            "timeout": 3
+          }
+        ],
+        "description": "GAP-G (v2.5.1): in headless mode, deny EnterPlanMode and redirect to TodoWrite so edits are not blocked on the unreachable approval dialog",
+        "id": "enter-plan:redirect-headless"
+      },
       {
         "matcher": "ExitPlanMode",
         "hooks": [
@@ -65,6 +77,18 @@
         ],
         "description": "GAP-C fix (bench harness 2026-05-20): deterministically invokes route-decide.js before every sub-agent spawn, logs the verdict to ~/.claude/checkpoints/route-decide-log.jsonl. Closes the workflow.md route-decide rule's instruction-following gap (text rule was consistently bypassed in headless). Always approves; visibility is the goal, not blocking.",
         "id": "agent-spawn:route-decide-gate"
+      },
+      {
+        "matcher": "Agent|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node HOME_DIR/.claude/packages/kernel/hooks/pre/contract-reminder-on-agent-spawn.js",
+            "timeout": 5
+          }
+        ],
+        "description": "Surface the spawned persona's contract requirements before an Agent/Task spawn so the actor honors its functional checks",
+        "id": "agent-spawn:contract-reminder"
       },
       {
         "matcher": "Read|Edit|Write",
@@ -95,6 +119,18 @@
         "hooks": [
           {
             "type": "command",
+            "command": "node HOME_DIR/.claude/packages/kernel/validators/validate-yaml-frontmatter.js",
+            "timeout": 5
+          }
+        ],
+        "description": "H.9.11: detect duplicate top-level YAML keys at Edit/Write time; structural-before-semantic ordering (after config-guard).",
+        "id": "pre:validate-yaml-frontmatter"
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
             "command": "node HOME_DIR/.claude/packages/kernel/validators/validate-no-bare-secrets.js",
             "timeout": 5
           }
@@ -103,7 +139,7 @@
         "id": "pre:validate-no-bare-secrets"
       },
       {
-        "matcher": "Write",
+        "matcher": "Edit|Write",
         "hooks": [
           {
             "type": "command",
@@ -125,6 +161,116 @@
         ],
         "description": "H.8.2: Surface active ADRs whose files_affected include the file being edited; emits [ADR-DRIFT-CHECK] forcing instruction (Class 1 advisory). Bypass via SKIP_ADR_CHECK=1 env var.",
         "id": "pre:validate-adr-drift"
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node HOME_DIR/.claude/packages/kernel/validators/validate-kb-doc.js",
+            "timeout": 5
+          }
+        ],
+        "description": "Validate KB / architecture doc structure (frontmatter + bidirectional related links) at Edit/Write time.",
+        "id": "pre:validate-kb-doc"
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node HOME_DIR/.claude/packages/kernel/validators/validate-config-redirect.js",
+            "timeout": 5
+          }
+        ],
+        "description": "v2.9.0 FIX-I9: detect Bash redirects (>, >>, tee) targeting config-guard-protected files. WARN-not-BLOCK by default; STRICT_CONFIG_GUARD=1 env var escalates to block.",
+        "id": "pre:validate-config-redirect"
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node HOME_DIR/.claude/packages/kernel/hooks/post/error-critic.js",
+            "timeout": 5
+          }
+        ],
+        "description": "Critique failed Bash commands and surface a corrective forcing instruction",
+        "id": "post:error-critic"
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node HOME_DIR/.claude/packages/kernel/observability/network-egress-audit.js",
+            "timeout": 5
+          }
+        ],
+        "description": "ADVISORY (class 1) audit of Bash egress to hosts not declared in any persona's network_* trait. Audit, not prevention; real prevention is ContainerAdapter-tier.",
+        "id": "post:network-egress-audit"
+      },
+      {
+        "matcher": "Agent|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node HOME_DIR/.claude/packages/kernel/hooks/post/kb-citation-gate.js",
+            "timeout": 5
+          }
+        ],
+        "description": "Verify spawned actors cited KB sources; emit a forcing instruction when citations are missing.",
+        "id": "post:kb-citation-gate"
+      },
+      {
+        "matcher": "Agent|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node HOME_DIR/.claude/packages/kernel/spawn-state/spawn-record.js",
+            "timeout": 5
+          }
+        ],
+        "description": "v3.0 Phase 1: capture an L_spawn record envelope to ~/.claude/spawn-state/<run_id>/spawn-<id>.json on every Agent|Task spawn close. Fail-soft per ADR-0001.",
+        "id": "post:spawn-record"
+      },
+      {
+        "matcher": "Agent|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node HOME_DIR/.claude/packages/kernel/hooks/post/spawn-close-resolver.js",
+            "timeout": 10
+          }
+        ],
+        "description": "v3.1 PR-3b spawn-close-resolver: OBSERVE-don't-allocate (OQ-21, ADR-0012). SHADOW-ONLY - resolve() runs with dry-run/read-only seams, journals the verdict, performs no git or spawn-state mutation. Fail-soft per ADR-0001.",
+        "id": "post:spawn-close-resolver"
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node HOME_DIR/.claude/packages/kernel/validators/validate-plan-schema.js",
+            "timeout": 5
+          }
+        ],
+        "description": "Validate plan-file schema at Edit/Write time; emits [PLAN-SCHEMA-DRIFT] when a HETS-routed plan is missing required sections.",
+        "id": "post:validate-plan-schema"
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node HOME_DIR/.claude/packages/kernel/hooks/post/catalog-reconcile-write.js",
+            "timeout": 5
+          }
+        ],
+        "description": "Reconcile the skill/command catalog after a write so new or moved entries are picked up.",
+        "id": "post:catalog-reconcile-write"
       }
     ],
     "PreCompact": [
@@ -177,6 +323,18 @@
         ],
         "description": "After N responses, nudge user toward /self-improve (closes the session-end review loop)",
         "id": "stop:session-end-nudge"
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node HOME_DIR/.claude/packages/kernel/hooks/lifecycle/context-size-warn-stop.js",
+            "timeout": 5
+          }
+        ],
+        "description": "GAP-F (v2.5.0): deterministic context-size warning, inserted LAST in the Stop chain so its forcing instruction is the final concatenation.",
+        "id": "stop:context-size-warn"
       }
     ]
   }

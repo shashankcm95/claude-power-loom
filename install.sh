@@ -108,38 +108,29 @@ install_rules() {
   echo "  -> Rules installed to ~/.claude/rules/toolkit/"
 }
 
-install_hooks() {
-  # Phase 0 (v3.0-alpha): mirror the new packages/kernel + packages/runtime layout
-  # to ~/.claude/packages/. The plugin install path uses ${CLAUDE_PLUGIN_ROOT} so
-  # it resolves from the plugin-managed source tree directly — this legacy path
-  # mirror is for shell-only / CI use.
-  #
-  # settings-reference.json (already updated in Step 5) points hook commands at
-  # HOME_DIR/.claude/packages/kernel/hooks/... so this mirror is the layout users
-  # need for the legacy install path to actually work.
-  local k_src="$SCRIPT_DIR/packages/kernel"
-  local r_src="$SCRIPT_DIR/packages/runtime"
-  local k_dst="$CLAUDE_DIR/packages/kernel"
-  local r_dst="$CLAUDE_DIR/packages/runtime"
+# --diff --hooks preview: kernel/hooks + kernel/validators only (see note below).
+install_hooks_dry_run() {
+  local k_src="$1"
+  local k_dst="$2"
+  echo "[DRY RUN] Hooks (kernel hooks + validators):"
+  find "$k_src/hooks" -name '*.js' 2>/dev/null | while read -r f; do
+    local rel="${f#"$k_src"/}"
+    diff_component "$f" "$k_dst/$rel" "packages/kernel/$rel"
+  done
+  find "$k_src/validators" -name '*.js' 2>/dev/null | while read -r f; do
+    diff_component "$f" "$k_dst/validators/$(basename "$f")" "packages/kernel/validators/$(basename "$f")"
+  done
+  echo "[DRY RUN] Note: --diff --hooks shows kernel/hooks + kernel/validators only."
+  echo "[DRY RUN]       Full install also copies kernel/{_lib,recall,spawn-state,algorithms,schema},"
+  echo "[DRY RUN]       runtime/{orchestration,contracts,personas,schema}, root scripts/,"
+  echo "[DRY RUN]       and back-compat ~/.claude/scripts/{loom-recall,self-improve-store,prompt-pattern-store}.js"
+  echo "[DRY RUN]       + back-compat ~/.claude/_lib/ (kernel _lib helpers for entrypoint resolution)."
+}
 
-  if $DRY_RUN; then
-    echo "[DRY RUN] Hooks (kernel hooks + validators):"
-    find "$k_src/hooks" -name '*.js' 2>/dev/null | while read -r f; do
-      local rel="${f#"$k_src"/}"
-      diff_component "$f" "$k_dst/$rel" "packages/kernel/$rel"
-    done
-    find "$k_src/validators" -name '*.js' 2>/dev/null | while read -r f; do
-      diff_component "$f" "$k_dst/validators/$(basename "$f")" "packages/kernel/validators/$(basename "$f")"
-    done
-    echo "[DRY RUN] Note: --diff --hooks shows kernel/hooks + kernel/validators only."
-    echo "[DRY RUN]       Full install also copies kernel/{_lib,recall,spawn-state,algorithms,schema},"
-    echo "[DRY RUN]       runtime/{orchestration,contracts,personas,schema}, root scripts/,"
-    echo "[DRY RUN]       and back-compat ~/.claude/scripts/{loom-recall,self-improve-store,prompt-pattern-store}.js"
-    echo "[DRY RUN]       + back-compat ~/.claude/_lib/ (kernel _lib helpers for entrypoint resolution)."
-    return
-  fi
-
-  echo "Installing kernel substrate (hooks + validators + _lib + recall + spawn-state + algorithms)..."
+# 1-5. kernel substrate: hooks/, validators/, _lib/, recall+spawn-state+algorithms+schema, config json.
+install_hooks_kernel() {
+  local k_src="$1"
+  local k_dst="$2"
 
   # 1. kernel/hooks/ — split into pre/post/lifecycle/ + hooks/_lib/
   # Phase-1-alpha/0a (SC2206): quote $sub inside array-glob; nullglob handles
@@ -197,8 +188,13 @@ install_hooks() {
   for f in hooks.json config-guard-patterns.json settings-reference.json; do
     [ -f "$k_src/$f" ] && cp "$k_src/$f" "$k_dst/$f"
   done
+}
 
-  # 6. runtime/ (HETS orchestration — was scripts/agent-team/)
+# 6. runtime/ (HETS orchestration — was scripts/agent-team/)
+install_hooks_runtime() {
+  local r_src="$1"
+  local r_dst="$2"
+
   echo "Installing runtime substrate (HETS orchestration + contracts + personas)..."
   mkdir -p "$r_dst/orchestration/identity" "$r_dst/orchestration/doctor/probes" \
            "$r_dst/orchestration/aggregate" "$r_dst/contracts" "$r_dst/personas" "$r_dst/schema"
@@ -236,7 +232,10 @@ install_hooks() {
     [ -f "$f" ] && cp "$f" "$r_dst/schema/"
   done
   shopt -u nullglob
+}
 
+# 7/7b/7c. Plugin CLI scripts + back-compat ~/.claude/scripts/ entrypoints + _lib staging.
+install_hooks_scripts() {
   # 7. Plugin-level CLI scripts at scripts/ root (library, library-migrate, generate-persona-agents, etc.)
   if [ -d "$SCRIPT_DIR/scripts" ]; then
     mkdir -p "$CLAUDE_DIR/scripts"
@@ -295,6 +294,31 @@ install_hooks() {
     shopt -u nullglob
     echo "  -> Back-compat _lib helpers installed (~/.claude/_lib/)"
   fi
+}
+
+install_hooks() {
+  # Phase 0 (v3.0-alpha): mirror the new packages/kernel + packages/runtime layout
+  # to ~/.claude/packages/. The plugin install path uses ${CLAUDE_PLUGIN_ROOT} so
+  # it resolves from the plugin-managed source tree directly — this legacy path
+  # mirror is for shell-only / CI use.
+  #
+  # settings-reference.json (already updated in Step 5) points hook commands at
+  # HOME_DIR/.claude/packages/kernel/hooks/... so this mirror is the layout users
+  # need for the legacy install path to actually work.
+  local k_src="$SCRIPT_DIR/packages/kernel"
+  local r_src="$SCRIPT_DIR/packages/runtime"
+  local k_dst="$CLAUDE_DIR/packages/kernel"
+  local r_dst="$CLAUDE_DIR/packages/runtime"
+
+  if $DRY_RUN; then
+    install_hooks_dry_run "$k_src" "$k_dst"
+    return
+  fi
+
+  echo "Installing kernel substrate (hooks + validators + _lib + recall + spawn-state + algorithms)..."
+  install_hooks_kernel "$k_src" "$k_dst"
+  install_hooks_runtime "$r_src" "$r_dst"
+  install_hooks_scripts
 
   echo "  -> Kernel + runtime substrate installed to $CLAUDE_DIR/packages/"
   echo ""

@@ -4,7 +4,7 @@
   "private": true,
   "description": "Loom Kernel layer (v4 §2 Layer 1). Pure-function gates, hooks, validators, recall, spawn-state, schemas. MAJOR-bump-protected. No deps on other workspace packages.",
   "scripts": {
-    "test": "echo '(kernel tests TBD — see tests/ at repo root for cross-cutting suite)' && exit 0"
+    "test": "bash \"${PROJECT_CWD:-$(git rev-parse --show-toplevel)}/tests/run-pkg-unit.sh\" kernel"
   },
   "files": [
     "hooks",
