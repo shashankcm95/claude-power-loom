@@ -196,13 +196,15 @@ test('P1 seam: a NON-function opts.signer falls through to the PEM default (fail
 
 test('P1 seam: the env-PEM DEFAULT path signs + verifies (closes the recon untested-fallback gap)', () => {
   const kp = generateEdgeKeypair();
+  const prev = process.env.LOOM_EDGE_SIGNING_KEY; // CodeRabbit: restore-prev (this is the only test that SETS it)
   process.env.LOOM_EDGE_SIGNING_KEY = kp.privateKeyPem; // the reserved deployment key source
   try {
     const sig = signRecordId(ID, {}); // no opts.signer, no opts.privateKeyPem -> env fallback
     assert.strictEqual(typeof sig, 'string', 'the env signing key is used by default');
     assert.strictEqual(verifyRecordSig(ID, sig, { publicKeyPem: kp.publicKeyPem }), true);
   } finally {
-    delete process.env.LOOM_EDGE_SIGNING_KEY; // restore the file-wide hermetic state
+    if (prev === undefined) delete process.env.LOOM_EDGE_SIGNING_KEY;
+    else process.env.LOOM_EDGE_SIGNING_KEY = prev; // restore the pre-test state, not just delete
   }
 });
 
