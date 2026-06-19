@@ -9,7 +9,7 @@ Multi-agent workflow for large features that span many files and concern areas.
 
 ## Step 0 — Route-decide gate (required before any spawn)
 
-Run `node ~/Documents/claude-toolkit/packages/kernel/algorithms/route-decide.js --task "<task>"` first:
+Run `node "${CLAUDE_PLUGIN_ROOT}/packages/kernel/algorithms/route-decide.js" --task "<task>"` first:
 - `root` → answer directly; do NOT swarm (over-routing wastes ~30x tokens for ~3x failure-mode coverage on trivial tasks)
 - `borderline` → surface the score decomposition to the user and let them pick
 - `route` → proceed below

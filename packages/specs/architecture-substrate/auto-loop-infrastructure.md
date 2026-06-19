@@ -1,14 +1,14 @@
 # Substrate Architecture — Auto-Loop Infrastructure (H.4.1+)
 
-**Type**: substrate-internal architecture documentation (sibling to `swarm/path-reference-conventions.md`; lightweight institutional decision-record shape).
+**Type**: substrate-internal architecture documentation (sibling to `packages/specs/research/path-reference-conventions.md`; lightweight institutional decision-record shape).
 
 **Status**: active (codifies H.4.1 auto-loop substrate as deployed; HT.1.13 migrated this content out of `rules/core/self-improvement.md` per ADR-0005 slopfiles authoring discipline — this content is informational substrate-meta, not active discipline; lives here so it's available for reference without consuming always-on session context).
 
 **Audience**: substrate maintainers + Claude Code sessions explicitly working on the auto-loop machinery (hooks, store scripts, self-improve workflow). Not auto-loaded into session context.
 
-## Why this lives at `swarm/architecture-substrate/` not `kb/architecture/`
+## Why this lives at `packages/specs/architecture-substrate/` not `kb/architecture/`
 
-Per ADR-0005 invariant 2: KB (`skills/agent-team/kb/architecture/`) is for canonical software-engineering knowledge (DIP, SRP, idempotency, error-handling-discipline) — external concepts any senior architect recognizes. Substrate-meta documentation describes how THIS toolkit works internally — institutional architecture, not external knowledge. The `swarm/` namespace is the substrate-internal home; `swarm/path-reference-conventions.md` (HT.1.10) established the precedent.
+Per ADR-0005 invariant 2: KB (`packages/skills/library/agent-team/kb/architecture/`) is for canonical software-engineering knowledge (DIP, SRP, idempotency, error-handling-discipline) — external concepts any senior architect recognizes. Substrate-meta documentation describes how THIS toolkit works internally — institutional architecture, not external knowledge. `packages/specs/research/path-reference-conventions.md` (HT.1.10) established the precedent. (This doc was under `swarm/...` pre-Phase-0; ADR-0008 relocated it into `packages/specs/architecture-substrate/`.)
 
 ## Auto-loop infrastructure overview
 
@@ -32,9 +32,9 @@ Mirrors prompt-pattern-store's 5+-approval auto-apply:
 ## CLI surface (queue inspection + manual action)
 
 ```bash
-node ~/.claude/scripts/self-improve-store.js pending           # human-readable list
-node ~/.claude/scripts/self-improve-store.js promote --id X    # execute (low-risk only)
-node ~/.claude/scripts/self-improve-store.js dismiss --id X    # discard
+node packages/kernel/spawn-state/self-improve-store.js pending           # human-readable list
+node packages/kernel/spawn-state/self-improve-store.js promote --id X    # execute (low-risk only)
+node packages/kernel/spawn-state/self-improve-store.js dismiss --id X    # discard
 ```
 
 For medium/high-risk promotions (skill forge, Memory→Rule, agent rewrite), invoke `/self-improve` for the full review workflow — those need explicit human reasoning, not just a CLI flag.

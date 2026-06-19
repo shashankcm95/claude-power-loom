@@ -7,7 +7,7 @@ Specification for `*.contract.json` files. These files define what an agent must
 ```json
 {
   "agentId": "string",
-  "persona": "string (optional, references swarm/personas/{persona}.md)",
+  "persona": "string (optional, references packages/runtime/personas/{persona}.md)",
   "role": "actor | orchestrator | super-agent",
   "budget": {
     "tokens": 30000,
@@ -15,7 +15,7 @@ Specification for `*.contract.json` files. These files define what an agent must
     "maxExtensions": 1,
     "extensionAmount": 20000
   },
-  // ENFORCEABLE as of H.2.8 via scripts/agent-team/budget-tracker.js.
+  // ENFORCEABLE as of H.2.8 via packages/runtime/orchestration/budget-tracker.js.
   // Read by `budget-tracker extend --identity X` to decide approve/deny.
   // Prior to H.2.8 these fields were documentation-only (architect finding).
   "functional": [

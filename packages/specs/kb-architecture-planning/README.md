@@ -1,10 +1,10 @@
 # kb/architecture — Planning Area
 
-Working files for authoring the architectural-fundamentals knowledge base. This directory holds **planning artifacts** (taxonomy, notes, sources, principles); the **authored pattern docs** ship to `skills/agent-team/kb/architecture/` once ready.
+Working files for authoring the architectural-fundamentals knowledge base. This directory holds **planning artifacts** (taxonomy, notes, sources, principles); the **authored pattern docs** ship to `packages/skills/library/agent-team/kb/architecture/` once ready.
 
 ## Why this exists
 
-The substrate's existing `kb/` is keyed on strict frontmatter (`kb_id`, `version`, `tags`) and auto-scanned by `kb-resolver`. Working notes, source logs, and curation principles don't fit that schema. They live here in `swarm/` (the substrate's working area, alongside chaos-test runs and phase findings) until the authored pattern docs are ready to ship to canonical kb.
+The substrate's existing `kb/` is keyed on strict frontmatter (`kb_id`, `version`, `tags`) and auto-scanned by `kb-resolver`. Working notes, source logs, and curation principles don't fit that schema. They live here in `packages/specs/kb-architecture-planning/` (the substrate's spec/working area, alongside RFCs and phase findings — this dir was under `swarm/` pre-Phase-0, relocated by ADR-0008) until the authored pattern docs are ready to ship to canonical kb.
 
 ## North star
 
@@ -28,7 +28,7 @@ This is **proto-OS internal positioning, plugin external positioning** (per H.7.
 | 1 | Infrastructure setup (this PR) | In progress |
 | 2 | Source ingestion (per-session, user passes URLs/excerpts) | Pending |
 | 3 | Convergence detection (every 5-10 sources, brief sessions) | Pending |
-| 4 | Authoring (priority by consensus; ships to `skills/agent-team/kb/architecture/`) | Pending |
+| 4 | Authoring (priority by consensus; ships to `packages/skills/library/agent-team/kb/architecture/`) | Pending |
 | 5 | KB integration with `kb-resolver` + HETS spawn flow (post-soak; v2.1+) | Out of scope here |
 
 ## Soak compatibility

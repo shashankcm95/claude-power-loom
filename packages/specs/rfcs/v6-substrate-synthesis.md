@@ -1,6 +1,8 @@
 <!-- v6 DRAFT IN PROGRESS — §0/§0a/§3 at v6; §4+ still at v5.4 pending Rounds 2-3 -->
 
-# v6 Substrate Synthesis — Power Loom (LIVE-DRAFTING)
+# v6 Substrate Synthesis — Power Loom (LOCKED blueprint)
+
+> **Status banner (current state):** This RFC is **LOCKED + merged** (PR #160; MEMORY `v6-substrate-locked`) and is **the canonical blueprint** every v3.x phase derives from. The "LIVE-DRAFTING" status line below is the *authoring-time* marker preserved for provenance — it was never flipped when the doc was locked. Treat the content as canonical, not as an unfinished draft.
 
 **Status**: v6 LIVE-DRAFTING (Round 1 of 3 — §0/§0a/§3 at v6 quality; §4+ pending). Supersedes v5.4 BLUEPRINT-LOCKED upon Round-3 completion. v5.4 provenance preserved below; v6 changelog inlined at §0.v6.
 **Branch**: `feat/v3.0-phase-1-verification-spike` (no-merge spike).

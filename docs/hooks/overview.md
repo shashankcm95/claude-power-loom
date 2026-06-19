@@ -2,7 +2,7 @@
 
 > Returns to README: [README.md](README.md) | Up: [docs/](..)
 
-24 hook registrations across 6 lifecycle events (1 `SessionStart` + 1 `UserPromptSubmit` + 12 `PreToolUse` + 5 `PostToolUse` + 1 `PreCompact` + 4 `Stop`). The full registration table is in [README.md](README.md); the authoritative per-hook rationale is the `_comment` field on each entry in [`packages/kernel/hooks.json`](../../packages/kernel/hooks.json). This page explains the **categories** and deep-dives a few representative hooks — it deliberately does not restate every hook (the manifest does, and stays in sync).
+27 hook registrations across 6 lifecycle events (2 `SessionStart` + 1 `UserPromptSubmit` + 12 `PreToolUse` + 7 `PostToolUse` + 1 `PreCompact` + 4 `Stop`). The full registration table is in [README.md](README.md); the authoritative per-hook rationale is the `_comment` field on each entry in [`packages/kernel/hooks.json`](../../packages/kernel/hooks.json). This page explains the **categories** and deep-dives a few representative hooks — it deliberately does not restate every hook (the manifest does, and stays in sync).
 
 Hook scripts run as external Node.js processes triggered by Claude Code's lifecycle events. They are the only layer with hard guarantees — pure logic, no LLM interpretation. Every hook is **fail-soft**: a crash is caught and the session proceeds (a hook must never brick the tool call it observes).
 

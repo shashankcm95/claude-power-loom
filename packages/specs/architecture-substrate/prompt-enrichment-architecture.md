@@ -1,14 +1,14 @@
 # Substrate Architecture — Prompt Enrichment Hook Architecture
 
-**Type**: substrate-internal architecture documentation (sibling to `swarm/path-reference-conventions.md`; lightweight institutional decision-record shape).
+**Type**: substrate-internal architecture documentation (sibling to `packages/specs/research/path-reference-conventions.md`; lightweight institutional decision-record shape).
 
 **Status**: active (codifies prompt-enrichment substrate as deployed; HT.1.13 migrated this content out of `rules/core/prompt-enrichment.md` per ADR-0005 slopfiles authoring discipline — this content is informational substrate-meta, not active discipline; lives here so it's available for reference without consuming always-on session context).
 
 **Audience**: substrate maintainers + Claude Code sessions explicitly working on the prompt-enrichment machinery (hooks, prompt-pattern-store, vagueness detection). Not auto-loaded into session context.
 
-## Why this lives at `swarm/architecture-substrate/` not `kb/architecture/`
+## Why this lives at `packages/specs/architecture-substrate/` not `kb/architecture/`
 
-Per ADR-0005 invariant 2: KB (`skills/agent-team/kb/architecture/`) is for canonical software-engineering knowledge — external concepts any senior architect recognizes. Substrate-meta documentation describes how THIS toolkit works internally — institutional architecture, not external knowledge. Sibling shape with `swarm/path-reference-conventions.md` (HT.1.10) and `swarm/architecture-substrate/auto-loop-infrastructure.md` (HT.1.13).
+Per ADR-0005 invariant 2: KB (`packages/skills/library/agent-team/kb/architecture/`) is for canonical software-engineering knowledge — external concepts any senior architect recognizes. Substrate-meta documentation describes how THIS toolkit works internally — institutional architecture, not external knowledge. Sibling shape with `packages/specs/research/path-reference-conventions.md` (HT.1.10) and `packages/specs/architecture-substrate/auto-loop-infrastructure.md` (HT.1.13). (These were under `swarm/...` pre-Phase-0; ADR-0008 relocated them into `packages/`.)
 
 ## Vagueness Detection Gate
 
@@ -44,7 +44,7 @@ When vague prompts ARE detected, Claude's enrichment workflow consults `~/.claud
 2. Pattern found with **fewer approvals**: show enriched prompt, ask "Look right?"
 3. **No pattern**: activate the prompt-enrichment skill for the full 4-part build
 
-The 5+-approval auto-apply mirrors the auto-loop's `≥5 → queued candidate` threshold (per `swarm/architecture-substrate/auto-loop-infrastructure.md`).
+The 5+-approval auto-apply mirrors the auto-loop's `≥5 → queued candidate` threshold (per `packages/specs/architecture-substrate/auto-loop-infrastructure.md`).
 
 ### Empirical conversion rate (v2.8.2 Fix-2 finding)
 
@@ -68,9 +68,9 @@ Telemetry from `~/.claude/logs/` over ~16 days:
 
 | Hook | Event | Phase | File path |
 |------|-------|-------|-----------|
-| `prompt-enrich-trigger.js` | UserPromptSubmit | first prompt of turn | `hooks/scripts/prompt-enrich-trigger.js` |
-| `auto-store-enrichment.js` | Stop | every turn (counter bump + every-30th-turn scan trigger) | `hooks/scripts/auto-store-enrichment.js` |
-| `prompt-pattern-store.js` | (CLI subcommand) | invoked by Claude during enrichment workflow | `scripts/prompt-pattern-store.js` |
+| `prompt-enrich-trigger.js` | UserPromptSubmit | first prompt of turn | `packages/kernel/hooks/lifecycle/prompt-enrich-trigger.js` |
+| `auto-store-enrichment.js` | Stop | every turn (counter bump + every-30th-turn scan trigger) | `packages/kernel/hooks/lifecycle/auto-store-enrichment.js` |
+| `prompt-pattern-store.js` | (CLI subcommand) | invoked by Claude during enrichment workflow | `packages/kernel/spawn-state/prompt-pattern-store.js` |
 
 Per ADR-0001 fail-open invariants: all hooks fail-soft on errors (try/catch + logger + decision: approve). Vagueness detection failure does NOT block the user prompt — it just skips enrichment.
 

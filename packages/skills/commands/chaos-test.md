@@ -15,13 +15,13 @@ Instead of the default broad audit, this mode runs a focused chaos test against 
 
 ```bash
 # 1. List available patterns + their scenario counts
-node ~/Documents/claude-toolkit/packages/runtime/orchestration/pattern-runner.js list-patterns
+node ${CLAUDE_PLUGIN_ROOT}/packages/runtime/orchestration/pattern-runner.js list-patterns
 
 # 2. Inspect a pattern's testable scenarios
-node ~/Documents/claude-toolkit/packages/runtime/orchestration/pattern-runner.js summary --pattern asymmetric-challenger
+node ${CLAUDE_PLUGIN_ROOT}/packages/runtime/orchestration/pattern-runner.js summary --pattern asymmetric-challenger
 
 # 3. Get ready-to-paste actor-prompt skeletons (one per scenario)
-node ~/Documents/claude-toolkit/packages/runtime/orchestration/pattern-runner.js prompts --pattern asymmetric-challenger
+node ${CLAUDE_PLUGIN_ROOT}/packages/runtime/orchestration/pattern-runner.js prompts --pattern asymmetric-challenger
 ```
 
 For each scenario in the pattern's "Validation Strategy" section:
@@ -40,21 +40,21 @@ After all scenarios complete:
 ### 1. Initialize run
 ```bash
 RUN_ID="chaos-$(date +%Y%m%d-%H%M%S)"
-mkdir -p ~/Documents/claude-toolkit/swarm/run-state/$RUN_ID
+mkdir -p ${CLAUDE_PLUGIN_ROOT}/swarm/run-state/$RUN_ID
 echo "Run ID: $RUN_ID"
 ```
 
 ### 2. Activate Super Agent (HETS pattern)
-Read `~/Documents/claude-toolkit/packages/specs/research/super-agent.md` and `~/Documents/claude-toolkit/packages/skills/library/agent-team/SKILL.md`. Follow the HETS workflow:
+Read `${CLAUDE_PLUGIN_ROOT}/packages/specs/research/super-agent.md` and `${CLAUDE_PLUGIN_ROOT}/packages/skills/library/agent-team/SKILL.md`. Follow the HETS workflow:
 
 **a. Spawn actors flat (recommended for chaos test):**
 Spawn all 5 actors in parallel directly from super-agent (avoids the rate-limit cliff of 3-orch-spawn-actors fan-out we hit in chaos-20260501-184505).
 
 For each actor:
 1. **Assign identity** (Phase H.2-bridge):
-   `node ~/Documents/claude-toolkit/packages/runtime/orchestration/agent-identity.js assign --persona {NN-name} --task chaos-{run-id}`
+   `node ${CLAUDE_PLUGIN_ROOT}/packages/runtime/orchestration/agent-identity.js assign --persona {NN-name} --task chaos-{run-id}`
    → returns `{persona}.{name}` (e.g. `04-architect.mira`). Use this as the identity for all downstream steps. See [agent-identity-reputation pattern](../library/agent-team/patterns/agent-identity-reputation.md).
-2. `node ~/Documents/claude-toolkit/packages/runtime/orchestration/tree-tracker.js spawn --run-id $RUN_ID --parent super-root --child actor-{name}-{identity-name} --task "..." --role actor`
+2. `node ${CLAUDE_PLUGIN_ROOT}/packages/runtime/orchestration/tree-tracker.js spawn --run-id $RUN_ID --parent super-root --child actor-{name}-{identity-name} --task "..." --role actor`
 3. Spawn the Agent with persona + contract + skills block. Skills block lists `skills.required` and `skills.recommended` from the contract by **name only** — actor invokes `Skill` tool to load on demand. See [persona-skills-mapping](../library/agent-team/patterns/persona-skills-mapping.md) + [prompt-distillation](../library/agent-team/patterns/prompt-distillation.md).
 4. Include in actor's frontmatter: `identity: "{full-identity-string}"` (YAML-quoted; SynthId suffixes contain `~` which YAML 1.2 treats as null marker — FIX-I2) so the verifier auto-records per-identity.
 5. Tell the actor to write to `node-actor-{name}-{identity-name}.md` with proper frontmatter
@@ -62,13 +62,13 @@ For each actor:
 **b. After all actors complete, verify contracts:**
 For each actor's output file, run:
 ```bash
-node ~/Documents/claude-toolkit/packages/kernel/validators/contract-verifier.js \
-  --contract ~/Documents/claude-toolkit/packages/runtime/contracts/{NN-name}.contract.json \
-  --output ~/Documents/claude-toolkit/swarm/run-state/$RUN_ID/node-actor-{name}-{identity}.md \
-  --previous-run ~/Documents/claude-toolkit/swarm/run-state/$PREVIOUS_RUN_ID \
+node ${CLAUDE_PLUGIN_ROOT}/packages/kernel/validators/contract-verifier.js \
+  --contract ${CLAUDE_PLUGIN_ROOT}/packages/runtime/contracts/{NN-name}.contract.json \
+  --output ${CLAUDE_PLUGIN_ROOT}/swarm/run-state/$RUN_ID/node-actor-{name}-{identity}.md \
+  --previous-run ${CLAUDE_PLUGIN_ROOT}/swarm/run-state/$PREVIOUS_RUN_ID \
   --identity {NN-name}.{identity}
 ```
-This BOTH validates the output AND records to `~/.claude/agent-patterns.json` (per-persona) AND forwards to `~/.claude/agent-identities.json` (per-identity track record). Identity is also picked up automatically from frontmatter if absent on the CLI. **Note**: invoke from `~/Documents/claude-toolkit/packages/runtime/orchestration/` (not `~/.claude/scripts/`) to avoid the tree-tracker `__dirname` path-resolution quirk surfaced in chaos-20260502-060039.
+This BOTH validates the output AND records to `~/.claude/agent-patterns.json` (per-persona) AND forwards to `~/.claude/agent-identities.json` (per-identity track record). Identity is also picked up automatically from frontmatter if absent on the CLI. **Note**: invoke from `${CLAUDE_PLUGIN_ROOT}/packages/runtime/orchestration/` (not `~/.claude/scripts/`) to avoid the tree-tracker `__dirname` path-resolution quirk surfaced in chaos-20260502-060039.
 
 For any `verdict: "fail"`: re-spawn the actor once with a tighter prompt highlighting the failed checks.
 
@@ -76,14 +76,14 @@ For any `verdict: "fail"`: re-spawn the actor once with a tighter prompt highlig
 You ARE the super agent — synthesize the orchestrator-tier views (orch-code, orch-behavior, orch-architecture) yourself based on the verified actor outputs. Write three `node-orch-{area}.md` files with proper frontmatter.
 
 **d. Run aggregator + compliance probe:**
-- `node ~/Documents/claude-toolkit/packages/runtime/orchestration/aggregate/hierarchical-aggregate.js $RUN_ID --previous chaos-...`
+- `node ${CLAUDE_PLUGIN_ROOT}/packages/runtime/orchestration/aggregate/hierarchical-aggregate.js $RUN_ID --previous chaos-...`
 - `bash ~/.claude/scripts/compliance-probe.sh --last-24h`
 
 **e. Write super-root consolidated report.**
 
 ### 3. Show user the consolidated report
 After super agent completes, display:
-- Path to `~/Documents/claude-toolkit/swarm/run-state/$RUN_ID/hierarchical-report.md`
+- Path to `${CLAUDE_PLUGIN_ROOT}/swarm/run-state/$RUN_ID/hierarchical-report.md`
 - The executive summary from `node-super-root.md`
 - Top recommendation for next fix phase
 

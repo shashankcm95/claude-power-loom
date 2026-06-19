@@ -1,14 +1,14 @@
 # Agents — Specialist Layer
 
-5 generic engineering personas + 16 HETS personas (5 auditors + 8 builders + 3 codebase-investigators) + 2 templates (challenger + engineering-task) = 18 persona contracts; all with persistent named identities.
+19 Agent-tool persona definitions (`agents/*.md`), 17 HETS persona bodies, and 19 persona contracts; all with persistent named identities. The 3-layer split (`agents/*.md` → `packages/runtime/personas/NN-*.md` → `packages/runtime/contracts/*.contract.json`) is intentional — the `agents/` file is the spawn-by-name definition, the persona body is the identity brief, and the contract declares skills / kb-scope / verification checks.
 
 - [Agents overview](overview.md)
 
 ## Source
 
-- Generic agents: [`agents/*.md`](../../agents/) — architect, code-reviewer, planner, optimizer, security-auditor
-- HETS personas: [`swarm/personas/*.md`](../../swarm/personas/) — 16 personas (5 auditors + 8 builders + 3 codebase-investigators)
-- HETS contracts: [`swarm/personas-contracts/*.contract.json`](../../swarm/personas-contracts/) — 18 contracts (16 personas + challenger + engineering-task templates); output verification per persona
+- Agent-tool personas: [`agents/*.md`](../../agents/) — 19 definitions (architect, code-reviewer, hacker, honesty-auditor, security-auditor, optimizer, planner, and the domain builders / codebase-investigators)
+- HETS persona bodies: [`packages/runtime/personas/*.md`](../../packages/runtime/personas/) — 17 numbered persona briefs (`NN-*.md`)
+- HETS contracts: [`packages/runtime/contracts/*.contract.json`](../../packages/runtime/contracts/) — 19 contracts (skills + kb-scope + per-persona output verification)
 - Identity registry: `~/.claude/agent-identities.json` (gitignored runtime state)
 
 > Up: [docs/](..)

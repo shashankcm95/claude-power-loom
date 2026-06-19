@@ -14,7 +14,7 @@ Examples:
 
 If `$ARGUMENTS` is empty, ask one clarifying question (intent + domain) and stop.
 
-Substrate-primitive bash invocations for Steps 0, 1.5, and 2 are wrapped by [`packages/runtime/orchestration/build-team-helpers.sh`](../../runtime/orchestration/build-team-helpers.sh) (HT.1.5 ship; third ADR-0002 application — markdown narrative + helper-script invocations post-split shape). Run `bash $HOME/Documents/claude-toolkit/packages/runtime/orchestration/build-team-helpers.sh --help` for the 5-subcommand surface. Chat-agent actions (`spawn_implementer`, `spawn_challenger`) remain inline as Agent-tool placeholders per `kb:hets/spawn-conventions` and `kb:hets/challenger-conventions`.
+Substrate-primitive bash invocations for Steps 0, 1.5, and 2 are wrapped by [`packages/runtime/orchestration/build-team-helpers.sh`](../../runtime/orchestration/build-team-helpers.sh) (HT.1.5 ship; third ADR-0002 application — markdown narrative + helper-script invocations post-split shape). Run `bash ${CLAUDE_PLUGIN_ROOT}/packages/runtime/orchestration/build-team-helpers.sh --help` for the 5-subcommand surface. Chat-agent actions (`spawn_implementer`, `spawn_challenger`) remain inline as Agent-tool placeholders per `kb:hets/spawn-conventions` and `kb:hets/challenger-conventions`.
 
 ## Steps
 
@@ -32,7 +32,7 @@ If `$ARGUMENTS` contains the literal flag `--force-route`, skip Step 0 entirely 
 # PRIOR_TURN_EXCERPT empty on first-turn invocation; chat agent populates from
 # Claude's context window for conversation-continuation routing signal.
 PRIOR_TURN_EXCERPT="${PRIOR_TURN_EXCERPT:-}"
-ROUTE_OUTPUT=$(bash $HOME/Documents/claude-toolkit/packages/runtime/orchestration/build-team-helpers.sh \
+ROUTE_OUTPUT=$(bash ${CLAUDE_PLUGIN_ROOT}/packages/runtime/orchestration/build-team-helpers.sh \
   route-decide-gate "$TASK_DESCRIPTION" "$PRIOR_TURN_EXCERPT")
 ROUTE_DECISION=$(echo "$ROUTE_OUTPUT" | jq -r '.recommendation')
 ROUTE_SCORE=$(echo "$ROUTE_OUTPUT" | jq -r '.score_total')
@@ -51,9 +51,9 @@ Then dispatch on `$ROUTE_DECISION` (chat-agent followed; emit user-facing messag
 Verify the HETS substrate is ready:
 
 ```bash
-node ~/Documents/claude-toolkit/packages/runtime/orchestration/kb-resolver.js cat hets/stack-skill-map | head -3
-node ~/Documents/claude-toolkit/packages/runtime/orchestration/kb-resolver.js scan
-node ~/Documents/claude-toolkit/packages/runtime/orchestration/agent-identity.js list | head -3
+node ${CLAUDE_PLUGIN_ROOT}/packages/runtime/orchestration/kb-resolver.js cat hets/stack-skill-map | head -3
+node ${CLAUDE_PLUGIN_ROOT}/packages/runtime/orchestration/kb-resolver.js scan
+node ${CLAUDE_PLUGIN_ROOT}/packages/runtime/orchestration/agent-identity.js list | head -3
 ```
 
 If any of these fail, surface the issue and STOP. Don't try to build a team on broken substrate.
@@ -65,7 +65,7 @@ Before invoking tech-stack-analyzer (Step 2), build the team-wide spawn-context 
 ```bash
 # Optional --files arg if user provides specific paths in $ARGUMENTS;
 # otherwise just task-shaped detection (no ADR matching this run).
-SPAWN_CONTEXT=$(bash $HOME/Documents/claude-toolkit/packages/runtime/orchestration/build-team-helpers.sh \
+SPAWN_CONTEXT=$(bash ${CLAUDE_PLUGIN_ROOT}/packages/runtime/orchestration/build-team-helpers.sh \
   build-spawn-context "$TASK_DESCRIPTION" "${TARGET_FILES:-}")
 
 if [ -n "$SPAWN_CONTEXT" ]; then
@@ -90,10 +90,10 @@ Follow the 7-step workflow in `packages/skills/library/tech-stack-analyzer/SKILL
   For each identity in the planned team:
 
   ```bash
-  HELPER="$HOME/Documents/claude-toolkit/packages/runtime/orchestration/build-team-helpers.sh"
+  HELPER="${CLAUDE_PLUGIN_ROOT}/packages/runtime/orchestration/build-team-helpers.sh"
 
   # 1. Get verification recommendation (kept inline — pure pass-through)
-  REC=$(node ~/Documents/claude-toolkit/packages/runtime/orchestration/agent-identity.js \
+  REC=$(node ${CLAUDE_PLUGIN_ROOT}/packages/runtime/orchestration/agent-identity.js \
     recommend-verification --identity "$IDENTITY")
   VERIFICATION=$(echo "$REC" | jq -r '.verification')
   CHALLENGER_COUNT=$(echo "$REC" | jq -r '.challengerCount')
@@ -159,7 +159,7 @@ Follow the 7-step workflow in `packages/skills/library/tech-stack-analyzer/SKILL
   After all identities have completed Step 7's branch, surface the `convergence_agree_pct` aggregate via:
 
   ```bash
-  node ~/Documents/claude-toolkit/packages/runtime/orchestration/agent-identity.js stats --identity "$IDENTITY" | jq '.aggregate_quality_factors'
+  node ${CLAUDE_PLUGIN_ROOT}/packages/runtime/orchestration/agent-identity.js stats --identity "$IDENTITY" | jq '.aggregate_quality_factors'
   ```
 
   The chat agent (Claude reading `/build-team`) follows this flow per identity. The `spawn_implementer` and `spawn_challenger` placeholders are conventions documented in `kb:hets/spawn-conventions` and `kb:hets/challenger-conventions`; they are Agent-tool invocations, NOT bash, and the helper script intentionally does not wrap them.

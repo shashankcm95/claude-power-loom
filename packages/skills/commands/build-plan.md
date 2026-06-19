@@ -28,7 +28,7 @@ If `$ARGUMENTS` contains the literal flag `--force-plan`, skip Step 0 entirely a
 **H.7.5 — context-aware**: when invoking on a conversation continuation, ALWAYS pass `--context "<last assistant excerpt>"`. Bare task strips the routing signal that lived in the prior recommendation.
 
 ```bash
-ROUTE_DECIDE_SCRIPT="$HOME/Documents/claude-toolkit/packages/kernel/algorithms/route-decide.js"
+ROUTE_DECIDE_SCRIPT="${CLAUDE_PLUGIN_ROOT}/packages/kernel/algorithms/route-decide.js"
 PRIOR_TURN_EXCERPT="${PRIOR_TURN_EXCERPT:-}"
 
 if [ ! -f "$ROUTE_DECIDE_SCRIPT" ]; then
