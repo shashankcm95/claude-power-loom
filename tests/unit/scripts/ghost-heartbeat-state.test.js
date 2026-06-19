@@ -145,5 +145,22 @@ test('T-load: missing / corrupt state yields empty state, never throws', () => {
   try { assert.deepStrictEqual(S.loadState(bad).emitted, {}); } finally { rm(bad); }
 });
 
+// T-load-b (CodeRabbit F2): a parseable-but-wrong-shaped `emitted` must be
+// normalized on load (each emitted[sid] -> string array), else markEmitted's
+// prev.includes throws and breaks fail-open.
+test('T-load-b: wrong-shaped emitted entries are normalized; markEmitted stays safe', () => {
+  const p = tmp();
+  fs.writeFileSync(p, JSON.stringify({ version: 1, watermark: {}, emitted: { good: ['plan-honesty'], asStr: 'not-an-array', asNum: 42, asObj: { x: 1 }, mixed: ['recon-depth', 7, null] } }));
+  try {
+    const st = S.loadState(p);
+    assert.deepStrictEqual(st.emitted.good, ['plan-honesty']);
+    assert.deepStrictEqual(st.emitted.mixed, ['recon-depth'], 'non-string members filtered out');
+    assert.ok(!('asStr' in st.emitted) && !('asNum' in st.emitted) && !('asObj' in st.emitted), 'non-array entries dropped');
+    // markEmitted must not throw on any normalized entry
+    assert.doesNotThrow(() => S.markEmitted(st, 'good', 'claim-false'));
+    assert.doesNotThrow(() => S.markEmitted(st, 'never-seen', 'plan-honesty'));
+  } finally { rm(p); }
+});
+
 process.stdout.write(`\n  Passed: ${passed}  Failed: ${failed}\n`);
 process.exit(failed > 0 ? 1 : 0);

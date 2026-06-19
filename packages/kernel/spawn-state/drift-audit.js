@@ -41,6 +41,7 @@ const DEFAULT_MIN_CONFIDENCE = 0.6;
 const DEFAULT_MAX_EMIT_PER_SESSION = 6;
 const MAX_TRANSCRIPT_BYTES = 8 * 1024 * 1024; // pre-digest size cap (DoS guard)
 const MAX_TURN_CHARS = 2000;
+const BUMP_TIMEOUT_MS = 10000; // bound the store-bump subprocess (no unbounded hang)
 
 function isValidDriftClass(driftClass) {
   return typeof driftClass === 'string' && (FROZEN_DRIFT_CLASSES.has(driftClass) || CWE_CLASS_RE.test(driftClass));
@@ -196,7 +197,7 @@ function verifyJudgeOutput(items, { sessionId, state, minConfidence = DEFAULT_MI
 // for an advisory counter (it recurs next session; convergence is cross-session),
 // but it must be observable, not swallowed.
 function bumpSignal(signal) {
-  const r = spawnSync('node', [STORE_SCRIPT, 'bump', '--signal', signal], { encoding: 'utf8', stdio: ['ignore', 'ignore', 'pipe'] });
+  const r = spawnSync('node', [STORE_SCRIPT, 'bump', '--signal', signal], { encoding: 'utf8', stdio: ['ignore', 'ignore', 'pipe'], timeout: BUMP_TIMEOUT_MS });
   if (r.error || r.status !== 0) {
     process.stderr.write(`[drift-audit] bump-failed signal=${signal} status=${r.status} ${r.error ? r.error.message : (r.stderr || '').slice(0, 120)}\n`);
   }

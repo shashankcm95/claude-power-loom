@@ -43,7 +43,15 @@ function loadState(statePath = DEFAULT_STATE_PATH) {
   }
   if (!parsed || typeof parsed !== 'object') return emptyState();
   const w = (parsed.watermark && typeof parsed.watermark === 'object') ? parsed.watermark : {};
-  const emitted = (parsed.emitted && typeof parsed.emitted === 'object' && !Array.isArray(parsed.emitted)) ? parsed.emitted : {};
+  const rawEmitted = (parsed.emitted && typeof parsed.emitted === 'object' && !Array.isArray(parsed.emitted)) ? parsed.emitted : {};
+  // Normalize the NESTED values too: each emitted[sid] MUST be an array of strings.
+  // A parseable-but-wrong-shaped file (emitted[sid] = a string / number / object)
+  // would make markEmitted's `prev.includes` throw or misbehave, breaking the
+  // tolerant-load (fail-open) contract. Drop anything that is not a string array.
+  const emitted = {};
+  for (const [sid, v] of Object.entries(rawEmitted)) {
+    if (Array.isArray(v)) emitted[sid] = v.filter((x) => typeof x === 'string');
+  }
   return {
     version: STATE_VERSION,
     watermark: { lastReviewedAt: w.lastReviewedAt || null, lastSessionId: w.lastSessionId || null },
