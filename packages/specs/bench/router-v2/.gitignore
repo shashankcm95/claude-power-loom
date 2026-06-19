@@ -1,0 +1,9 @@
+# Router-V2 corpus-aug — per-run intermediates (the bench committed-input /
+# ignored-output convention). The labeled route-eval-set.jsonl + the fixtures are
+# committed deliverables and are NOT ignored.
+candidates-blind.jsonl
+candidates-scored.jsonl
+unlabelable.jsonl
+prep-report.json
+contested.jsonl
+spotcheck-sample.jsonl

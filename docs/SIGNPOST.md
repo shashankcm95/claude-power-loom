@@ -333,11 +333,15 @@ Auto-generated map of where things live, derived from the repo structure + each 
 
 ### `specs/bench/`
 
+- `packages/specs/bench/router-v2/_schema.js` - Router-V2 corpus-aug — the shared row schemas for the prep-corpus candidate
 - `packages/specs/bench/_snapshot.js` - bench/_snapshot.js — captures relevant ~/.claude/ state for pre/post diff.
 - `packages/specs/bench/scenarios/02-security-audit/fixture/auth.js` - Tiny "auth helper" with INTENTIONAL security smells designed to trigger
 - `packages/specs/bench/scenarios/04-hets-routed-plan/fixture/cache.js` - In-process LRU cache with naive eviction.
 - `packages/specs/bench/scenarios/01-multi-feature-export/fixture/cli.js` - bench/fixture/cli.js — minimal todo CLI used as boot-test fixture.
 - `packages/specs/bench/collect.js` - bench/collect.js — extracts boot-test metrics from a single headless run.
+- `packages/specs/bench/router-v2/kappa.js` - Fleiss' kappa — chance-corrected inter-rater agreement for N items each rated by
+- `packages/specs/bench/router-v2/prep-corpus.js` - Router-V2 corpus-aug S1 — deterministic prep of the raw route-decide-log into
+- `packages/specs/bench/router-v2/shadow-eval.js` - Router-V2 corpus-aug — the NARROWS-ONLY shadow-eval harness.
 - `packages/specs/bench/scenarios/01-multi-feature-export/validate.js` - Scenario-specific deterministic PASS criteria for the original boot-test
 - `packages/specs/bench/scenarios/02-security-audit/validate.js` - Scenario-specific deterministic PASS criteria for the security-heavy task.
 - `packages/specs/bench/scenarios/03-library-substrate/validate.js` - CLI-driven scenario.
