@@ -149,8 +149,14 @@ registerWeightPolicy(KERNEL_RECORD_KIND, makeKernelRecordPolicy());
  * @returns {object|null} { kind, subject, value, basis_digest, minted_at, key_id, sig } or null.
  */
 function mintWeight(spec, opts = {}) {
-  const kind = spec && spec.kind;
-  const subject = spec && spec.subject;
+  // Guard the property extraction from the untrusted `spec` (CodeRabbit #360): a throwing getter /
+  // proxy on spec.kind|subject must not escape the documented fail-soft "NEVER throws" contract.
+  let kind;
+  let subject;
+  try {
+    kind = spec && spec.kind;
+    subject = spec && spec.subject;
+  } catch { return null; }
   if (typeof kind !== 'string' || kind.length === 0) return null;
   if (!isValidSubjectScalar(subject)) return null;
 
@@ -204,9 +210,21 @@ function mintWeight(spec, opts = {}) {
  */
 function verifyMintedWeight(weight, opts = {}) {
   if (!weight || typeof weight !== 'object' || Array.isArray(weight)) return false;
-  const {
-    kind, subject, value, basis_digest: basisDigest, minted_at: mintedAt, key_id: keyId, sig,
-  } = weight;
+  // Guard the destructure from the untrusted `weight` (CodeRabbit #360): a throwing getter on any
+  // accessed property must not escape the fail-closed "NEVER throws" contract (computeMintedId below
+  // is already try/catch-guarded; this closes the same hole on the first property access).
+  let kind;
+  let subject;
+  let value;
+  let basisDigest;
+  let mintedAt;
+  let keyId;
+  let sig;
+  try {
+    ({
+      kind, subject, value, basis_digest: basisDigest, minted_at: mintedAt, key_id: keyId, sig,
+    } = weight);
+  } catch { return false; }
   if (typeof kind !== 'string' || kind.length === 0) return false;
   if (!isValidSubjectScalar(subject)) return false;
   if (value === undefined) return false;

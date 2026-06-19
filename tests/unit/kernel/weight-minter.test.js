@@ -224,6 +224,25 @@ test('verifyMintedWeight fail-closed on malformed input; never throws', () => {
   assert.strictEqual(verifyMintedWeight({ kind: 'k' }, VERIFY), false); // missing fields
 });
 
+// CodeRabbit #360 (Major): a throwing getter / proxy on the untrusted spec|weight must NOT escape
+// the documented "NEVER throws" contract (mint -> null, verify -> false).
+test('throwing-getter / proxy input is fail-soft: mintWeight -> null, verifyMintedWeight -> false [CR#360]', () => {
+  const HEX = 'a'.repeat(64);
+  // mintWeight: a throwing getter on spec.kind or spec.subject
+  assert.strictEqual(mintWeight({ get kind() { throw new Error('boom'); }, subject: HEX }, SIGN), null);
+  assert.strictEqual(mintWeight({ kind: KERNEL_RECORD_KIND, get subject() { throw new Error('boom'); } }, SIGN), null);
+  // verifyMintedWeight: a throwing getter on an accessed property
+  const wThrow = {
+    get kind() { throw new Error('boom'); },
+    subject: HEX, value: 1, basis_digest: 'd'.repeat(64), minted_at: 't', key_id: KEY_ID_V0, sig: 'AAAA',
+  };
+  assert.strictEqual(verifyMintedWeight(wThrow, VERIFY), false);
+  // a Proxy that throws on ANY property get
+  const proxy = new Proxy({}, { get() { throw new Error('proxy-boom'); } });
+  assert.strictEqual(mintWeight(proxy, SIGN), null);
+  assert.strictEqual(verifyMintedWeight(proxy, VERIFY), false);
+});
+
 // ── 6. F5 — depth-bounded serializer: a pathological basis -> null/false, never a throw ───────────
 
 test('a policy returning an over-deep basis -> mintWeight null (fail-soft), never throws', () => {
