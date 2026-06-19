@@ -1,0 +1,122 @@
+{
+  "lexicon_version": "v1-2026-06-19",
+  "description": "Router-V2 W1 — the route-decide lexicon as a versioned DATA artifact (lifted verbatim from route-decide.js KEYWORDS + SUBSTRATE_META_TOKENS at weights_version v1.3-dict-expanded-2026-06-12). LOAD-BEARING: token sets are architect-gated (see route-decide.js header + architect_gate below); a change to any token set requires a new architect pass + a lexicon_version bump. The scorer schema-validates this file at the A4 boundary and FAILS CLOSED (throws / exits non-zero, never a fabricated verdict) on a malformed/version-mismatched artifact.",
+  "architect_gate": "Weights, thresholds, keyword sets, and edge-case behavior are LOAD-BEARING per theo's H.7.3 design. Adjustments to keyword sets require a new architect pass (route-decide.js:11-13). Keywords-first; weights stay hardcoded in route-decide.js.",
+  "roles": {
+    "scored": ["stakes", "domain_novelty", "compound_strong", "compound_weak", "audit_binary", "scope_size", "convergence_value", "user_facing_or_ux"],
+    "counter_penalty": "counter_signals",
+    "infra_lift": "infra_terms",
+    "detection_only": "substrate_meta"
+  },
+  "scored_and_detected_overlap": [
+    "spawn-verify", "leaf-criteria", "verification tier", "failure-signature", "kernel algorithm",
+    "reject-event", "circuit-breaker", "denial-rate", "negative-attestation", "verdict-attestation",
+    "evolution-snapshot", "canonical-json", "content-addressed", "manage-promote", "delta-promote",
+    "post_state_hash", "stage-candidate"
+  ],
+  "categories": {
+    "stakes": [
+      "production", "scalable", "secure", "reliable", "compliance",
+      "auth", "authentication", "authorization", "payments", "billing",
+      "pii", "encryption", "secrets", "tokens", "oauth",
+      "multi-tenant", "rate-limit", "rate limiting", "availability", "outage", "incident",
+      "kubernetes", "k8s", "terraform", "helm",
+      "critical", "severity",
+      "race-condition", "race condition", "deadlock",
+      "session leak", "memory leak", "leak",
+      "breach", "vulnerability", "cve", "exploit"
+    ],
+    "domain_novelty": [
+      "novel", "prototype", "experiment", "unfamiliar", "unknown",
+      "new framework", "first time", "bleeding edge", "cutting edge", "not standard"
+    ],
+    "compound_strong": [
+      "schema", "migration", "protocol", "consensus", "state-machine",
+      "pipeline", "data-model", "event-sourcing",
+      "race", "concurrency", "concurrent", "locking", "mutex", "lock",
+      "RMW", "read-modify-write",
+      "distributed", "replication", "transaction", "atomic",
+      "idempotent", "idempotency",
+      "spawn-verify", "leaf-criteria", "verification tier", "failure-signature",
+      "test-runner adapter", "kernel algorithm",
+      "reject-event", "circuit-breaker", "denial-rate", "negative-attestation",
+      "verdict-attestation", "evolution-snapshot", "canonical-json", "content-addressed",
+      "manage-promote", "delta-promote", "post_state_hash", "stage-candidate"
+    ],
+    "compound_weak": [
+      "architecture", "design", "framework", "system",
+      "architectural", "refactor", "refactoring", "restructure"
+    ],
+    "audit_binary": [
+      "audit", "compliance", "certification", "regulatory",
+      "retrospective", "postmortem", "post-mortem",
+      "root-cause", "root cause",
+      "findings", "review pass", "audit pass"
+    ],
+    "scope_size": [
+      "multi-file", "multi-component", "cross-cutting",
+      "end-to-end", "pipeline", "orchestration", "service", "manifest",
+      "multiple files", "across files", "endpoints", "apis",
+      "across-files", "hooks", "scripts", "callsites", "callsite"
+    ],
+    "convergence_value": [
+      "tradeoff", "tradeoffs", "options", "compare", "evaluate",
+      "choice", "choose between", "decide between", "eviction policy", "consistency model",
+      "pagination", "search", "service design", "url shortener", "state management"
+    ],
+    "user_facing_or_ux": [
+      "user-facing", "walkthrough", "tutorial", "onboarding", "documentation",
+      "component", "ui", "ux", "accessibility", "responsive"
+    ],
+    "counter_signals": [
+      "fix typo", "small", "tweak", "experiment", "prototype",
+      "typo", "prune", "cleanup", "delete entries", "remove", "stale",
+      "one line", "minor", "trivial", "quick fix", "quick",
+      "hello world",
+      "polish", "polishing", "jsdoc", "docstring", "frontmatter",
+      "comment", "comments", "formatting", "lint", "linting", "prettier",
+      "rename", "renaming", "whitespace"
+    ],
+    "infra_terms": [
+      "k8s", "kubernetes", "terraform", "helm", "docker-compose",
+      "ansible", "infrastructure", "deployment", "manifest"
+    ],
+    "substrate_meta": [
+      "route-decide", "route-decide.js",
+      "weights_version", "WEIGHTS_VERSION",
+      "ROUTE_THRESHOLD", "ROOT_THRESHOLD",
+      "dictionary expansion", "dict expansion",
+      "keyword set", "keyword sets",
+      "weight refit", "re-weight", "reweight",
+      "scoring axis", "routing axis",
+      "forcing instruction", "forcing-instruction",
+      "signal token", "sentinel keyword",
+      "verification tier", "spawn-verify", "leaf-criteria", "leaf criteria",
+      "failure-signature", "failure signature", "test-runner", "kernel algorithm",
+      "algorithm library", "dispatcher", "enforcement flip", "a4 gate", "a4-binding",
+      "trampoline", "budget envelope",
+      "reject-event", "circuit-breaker", "breaker source", "denial-rate",
+      "negative-attestation", "verdict-attestation", "attestation",
+      "evolution-snapshot", "canonical-json", "decompose-run",
+      "manage-promote", "manage-proposal", "tombstone", "supersede",
+      "record-store", "record-scan", "content-address", "content-addressed",
+      "idempotency-key", "post_state_hash", "delta-promote", "stage-candidate",
+      "integrator", "quarantine", "provenance-reject", "spawn-state",
+      "reputation", "materialize", "worktree", "containeradapter",
+      "refs/loom", "evolution lab"
+    ]
+  },
+  "provenance": {
+    "stakes": "M-1 expanded stakes + R3 (kubernetes/k8s/terraform/helm) + H.7.11 (ari): severity-class (critical/severity), concurrency-failure-class (race-condition/deadlock/*leak), security-class (breach/vulnerability/cve/exploit). Closes drift-note 4.",
+    "domain_novelty": "M-2 textual signals only — NO substrate lookup.",
+    "compound_strong": "C-2 strong compound + H.7.11 concurrency + complex-systems clusters + drift:dictionary-gap (2026-06-03) high-precision v3.2 substrate phrases + drift:dictionary-gap v3.8a (2026-06-12, MANDATED architect pass) zero-FP v3.3-v3.8 Lab/trust vocabulary. Flat 0.15 contribution however many match.",
+    "compound_weak": "C-2 weak compound (only fires if stakes does NOT) + H.7.11 architectural/refactor cluster. refactor is ambiguous; mitigated by compound_weak suppression-by-stakes.",
+    "audit_binary": "C-1 high-precision only (removed 'review') + H.7.11 postmortem/root-cause clusters + phrase-level (review pass/audit pass). Second-highest weight share (0.20).",
+    "scope_size": "Multi-file / multi-component signals + R3 manifest + R1 plural-noun-API (endpoints/apis) + H.7.11 substrate-file-type plurals (hooks/scripts) + callsite(s).",
+    "convergence_value": "Non-obvious-tradeoff signals; R4 additions. H.7.11: no additions (drift-notes are known-design execution, not convergence-needing).",
+    "user_facing_or_ux": "R2 7th dimension (user-facing / UX / docs). H.7.11: no additions.",
+    "counter_signals": "HIGH-1 BACKLOG-class counter-signals + H.7.11 polish-class (polish/jsdoc/docstring/frontmatter/lint/...). 'rename' borderline; drop first if FP.",
+    "infra_terms": "HIGH-3 infra-implicit-stakes (independent of stakes match); R3 raised the lift 0.20->0.30.",
+    "substrate_meta": "H.7.16 (drift-note 9, mira) substrate-meta sentinel — DETECTION-ONLY (feeds [ROUTE-META-UNCERTAIN]; does NOT score). Tier 1 file/symbol refs + Tier 2/2b/2c substrate vocabulary. The high-precision multi-word subset ALSO scores in compound_strong (scored_and_detected_overlap) — detection is BROAD (advisory; FP cost = one extra advisory line), scoring is NARROW (zero-FP multi-word phrases). Bare E/K-codes rejected (match chess/vitamin/grid text). Note: weights_version + WEIGHTS_VERSION are an intentional dual-form (same lowercased token); both surface in substrate_meta_tokens for a single match -- verbatim pre-existing behavior, preserved by W1 (do not collapse without a behavior-change review)."
+  }
+}
