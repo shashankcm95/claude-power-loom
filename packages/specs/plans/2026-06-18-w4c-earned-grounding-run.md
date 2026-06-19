@@ -2,7 +2,7 @@
 
 - **Date**: 2026-06-18
 - **Phase**: ③.1 dry-run (SHADOW, DRAFT-only, trust ZERO — OQ-NS-6)
-- **Status**: PLAN — pre-VERIFY
+- **Status**: COMPLETE — built, 3-lens VALIDATE (honesty-auditor Grade A), real run (`n_confirmed=1`, recall discrimination +1), PR [#357](https://github.com/shashankcm95/claude-power-loom/pull/357)
 - **Branch**: `feat/w4c-earned-grounding-run` (isolated worktree `../loom-w4c`; another session is fixing bugs on `main`)
 - **Closes**: ③.1 → produces the routing corpus + the earned-vs-declared discrimination measurement for Router-v2
 

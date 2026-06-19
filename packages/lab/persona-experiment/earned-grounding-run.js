@@ -74,14 +74,17 @@ function assertGithubRepo(repo) {
   // the WHATWG parse normalizes the difference away, so no different host can be smuggled past the allowlist.
   // `[@\\]` = the parser-differential chars; `[^\x21-\x7e]` = any non-printable-ASCII or whitespace
   // (space/tab/control/DEL/non-ASCII). Both ranges are printable in the PATTERN, so no `no-control-regex`.
+  // REDACT the rejected repo from every thrown message (CodeRabbit #357): assertGithubRepo throws
+  // propagate into `residuals` -> the serialized report, so a cred-bearing URL (user:pass@host) would
+  // leak. The messages name the FAILED RULE, never the offending value.
   if (/[@\\]/.test(repo) || /[^\x21-\x7e]/.test(repo)) {
-    throw new Error(`assertGithubRepo: repo must not contain userinfo/backslash/whitespace/control: ${JSON.stringify(repo)}`);
+    throw new Error('assertGithubRepo: repo must not contain userinfo/backslash/whitespace/control (value redacted)');
   }
   let url;
   try { url = new URL(repo); }
-  catch { throw new Error(`assertGithubRepo: not a parseable URL: ${repo}`); }
-  if (url.protocol !== 'https:') throw new Error(`assertGithubRepo: scheme must be https, got ${url.protocol}`);
-  if (url.hostname !== 'github.com') throw new Error(`assertGithubRepo: host must be exactly github.com, got ${url.hostname}`);
+  catch { throw new Error('assertGithubRepo: repo is not a parseable URL (value redacted)'); }
+  if (url.protocol !== 'https:') throw new Error('assertGithubRepo: repo scheme must be https (value redacted)');
+  if (url.hostname !== 'github.com') throw new Error('assertGithubRepo: repo host must be exactly github.com (value redacted)');
   return repo;
 }
 
@@ -98,12 +101,14 @@ function assertCanonicalRole(role, knownPersonas) {
 }
 
 // Build the VERIFIED confirming-attempt the confirm gate (lesson-confirm.js confirmsLesson) expects,
-// or null (refuse). REFUSE if gradedB.test_tree_mutated is true (H-1 for B -- a test-tree-mutating
-// candidate could forge a PASS) OR gradedB.issue_tests !== 'PASS'. behavioral_verdict is the FIXED
+// or null (refuse). REFUSE unless gradedB EXPLICITLY proves a clean tree (H-1 for B -- a test-tree-mutating
+// candidate could forge a PASS) AND gradedB.issue_tests === 'PASS'. behavioral_verdict is the FIXED
 // literal BEHAVIORAL_PASS ONLY when issue_tests==='PASS' (a HARNESS-derived verdict, never an actor claim).
 function buildConfirmingAttempt(record, candidateB, gradedB) {
   if (!gradedB || typeof gradedB !== 'object') return null;
-  if (gradedB.test_tree_mutated) return null;                   // H-1 for B: refuse ANY truthy tree-mutation (fail-closed vs a 1/'true' decoy, not just ===true)
+  // require EXPLICIT `false` (CodeRabbit #357): a missing/undefined/0/'' test_tree_mutated is NOT
+  // evidence of a clean tree -- schema drift or a dropped field must fail closed on a confirmation gate.
+  if (gradedB.test_tree_mutated !== false) return null;         // H-1 for B
   if (gradedB.issue_tests !== 'PASS') return null;              // only a genuinely-resolved B confirms
   if (typeof candidateB !== 'string' || candidateB.length === 0) return null;
   return {
@@ -239,8 +244,12 @@ async function runExperimentPhase({ records, makeSolveFn, persona = SUBJECT_PERS
   const out = [];
   // SEQUENTIAL await (not Promise.all): a real claude -p actor + a Docker grade are heavy; run in
   // order rather than racing concurrent clones/containers (matches runExperiment's own arm sequencing).
-  for (const record of list) {
-    const run_id = `w4c-${String(record.id).replace(/[^a-zA-Z0-9_-]/g, '-')}-${Date.now()}`;
+  for (let index = 0; index < list.length; index += 1) {
+    const record = list[index];
+    // include the loop index (CodeRabbit #357): two records that sanitize to the same id in the same
+    // millisecond would otherwise share a run_id and cross-contaminate the trace store + compareArms.
+    const safeId = String(record.id).replace(/[^a-zA-Z0-9_-]/g, '-');
+    const run_id = `w4c-${index}-${safeId}-${Date.now()}`;
     const solveFn = makeSolveFn(record);
     await runExperiment({ run_id, persona, task, solveFn });
     out.push({ run_id, compare: compareArms(run_id) });
@@ -297,15 +306,26 @@ async function main(opts = {}) {
   // so a custom Phase-1 write dir would make the F4 gate + arm C read an EMPTY store (Phase 2 silently
   // skipped). Run isolation is via the LOOM_LAB_STATE_DIR env (the invoker sets it), used by every store.
   const residuals = [];
+  // EVERY return emits the JSON report to stdout (CodeRabbit #357) -- the fail-closed early returns must
+  // NOT exit silently. mkReport normalizes the shape; finish() is the single emit+return chokepoint.
+  const mkReport = (fields) => ({ ok: false, n_confirmed: 0, lesson_nodes: [], lessons: [], experiment: [], residuals, ...fields });
+  const finish = (report) => { process.stdout.write(`${JSON.stringify(report, null, 2)}\n`); return report; };
+
+  // Fail closed when there is NO work (CodeRabbit #357): the bare CLI path main({}) defaults BOTH record
+  // sets to [] -- exit ok:false rather than silently ok:true with nothing run. (An experiment-only staging
+  // run keeps experimentRecords non-empty, so it is unaffected by the both-empty guard.)
+  if (lessonRecords.length === 0 && experimentRecords.length === 0) {
+    return finish(mkReport({ reason: 'no-records' }));
+  }
 
   // BUILD-TIME PROBES (fail-closed, BEFORE any actor spend) -----------------
   // F5: the persona must canonicalize non-null (a cross-module premise the slice + mint rest on).
   if (canonicalPersonaKey(SUBJECT_PERSONA) == null) {
-    return { ok: false, reason: 'persona-uncanonical', n_confirmed: 0, lesson_nodes: [], experiment: [], residuals };
+    return finish(mkReport({ reason: 'persona-uncanonical' }));
   }
   const claudeBin = opts.claudeBin === undefined ? resolveClaude() : opts.claudeBin;
   if (!claudeBin) {
-    return { ok: false, reason: 'claude-bin-absent', n_confirmed: 0, lesson_nodes: [], experiment: [], residuals };
+    return finish(mkReport({ reason: 'claude-bin-absent' }));
   }
 
   // reapOrphans at batch START (reclaim a container stranded by a prior SIGKILL'd run).
@@ -320,7 +340,7 @@ async function main(opts = {}) {
     const attest = await backend.attest();
     if (!attest || attest.attested !== true) {
       residuals.push(`backend-not-attested:${attest && attest.reason}`);
-      return { ok: false, reason: 'backend-not-attested', n_confirmed: 0, lesson_nodes: [], experiment: [], residuals };
+      return finish(mkReport({ reason: 'backend-not-attested' }));
     }
     const knownPersonas = undefined; // default agents/*.md glob
 
@@ -399,9 +419,7 @@ async function main(opts = {}) {
     try { reapOrphans({ dockerBin }); } catch { /* best-effort */ }
   }
 
-  const report = { ok: true, n_confirmed, lesson_nodes, lessons, experiment, residuals };
-  process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
-  return report;
+  return finish({ ok: true, n_confirmed, lesson_nodes, lessons, experiment, residuals });
 }
 
 module.exports = {
@@ -417,5 +435,6 @@ module.exports = {
 // CLI entry: `node earned-grounding-run.js` runs main() with env-derived opts. Guarded so a `require`
 // (the test) never triggers it -- the test imports the helpers + seams, never main.
 if (require.main === module) {
-  main({}).then((r) => process.exit(r && r.ok ? 0 : 1)).catch((e) => { process.stderr.write(`earned-grounding-run threw: ${e && e.stack}\n`); process.exit(1); });
+  // process.exitCode (NOT process.exit) so buffered stdout/stderr flush before exit (CodeRabbit #357).
+  main({}).then((r) => { process.exitCode = r && r.ok ? 0 : 1; }).catch((e) => { process.stderr.write(`earned-grounding-run threw: ${e && e.stack}\n`); process.exitCode = 1; });
 }

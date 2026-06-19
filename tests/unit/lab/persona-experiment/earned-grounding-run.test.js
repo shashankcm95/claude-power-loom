@@ -24,10 +24,15 @@ const child_process = require('child_process');
 // test below asserts the tripwire count is unchanged across a full earnLesson run.
 let spawnAttempts = 0;
 function tripwire() { spawnAttempts += 1; const e = new Error('__REAL_SPAWN__'); e.__real_spawn__ = true; throw e; }
+// Sabotage EVERY child_process entry point (CodeRabbit #357) so any accidental real subprocess on the
+// unit path throws the tagged sentinel -- not just the four the driver currently uses.
 child_process.execFileSync = tripwire;
 child_process.execFile = tripwire;
 child_process.spawn = tripwire;
 child_process.spawnSync = tripwire;
+child_process.exec = tripwire;
+child_process.execSync = tripwire;
+child_process.fork = tripwire;
 
 const REPO_ROOT = path.join(__dirname, '..', '..', '..', '..');
 const MOD = path.join(REPO_ROOT, 'packages', 'lab', 'persona-experiment', 'earned-grounding-run.js');
@@ -140,9 +145,11 @@ test('buildConfirmingAttempt: REFUSES on graded_B.test_tree_mutated === true (H-
   assert.strictEqual(ca, null, 'a test-tree-mutating candidate is refused, never confirms');
 });
 
-test('buildConfirmingAttempt: REFUSES a TRUTHY-non-true test_tree_mutated (1 / "true" decoy) -- fail-closed harden', () => {
+test('buildConfirmingAttempt: REFUSES unless test_tree_mutated is EXPLICITLY false (1/"true"/undefined/missing all fail closed -- CodeRabbit #357)', () => {
   assert.strictEqual(buildConfirmingAttempt(RECORD, 'diff-B', { issue_tests: 'PASS', test_tree_mutated: 1 }), null);
   assert.strictEqual(buildConfirmingAttempt(RECORD, 'diff-B', { issue_tests: 'PASS', test_tree_mutated: 'true' }), null);
+  assert.strictEqual(buildConfirmingAttempt(RECORD, 'diff-B', { issue_tests: 'PASS', test_tree_mutated: undefined }), null, 'undefined is NOT proof of a clean tree');
+  assert.strictEqual(buildConfirmingAttempt(RECORD, 'diff-B', { issue_tests: 'PASS' }), null, 'a MISSING test_tree_mutated field fails closed');
 });
 
 test('buildConfirmingAttempt: REFUSES on issue_tests !== PASS (a contained-FAIL B is no evidence)', () => {
