@@ -40,6 +40,15 @@ const logger = log('route-decide-on-agent-spawn');
 const LOG_FILE = path.join(os.homedir(), '.claude/checkpoints/route-decide-log.jsonl');
 const TIMEOUT_MS = 5000;
 
+// Router-V2 corpus-aug: how much of the (4000-char scored) taskText to persist as
+// the labelable excerpt. Widened 200 -> 1000 because the dogfood found the route
+// signal usually lives past char 200, so a 200-char prefix scores ~all rows root
+// and is unrepresentative of the live decision (the eval set could only be a
+// root-class guardrail). 1000 chars captures the description + the opening ask for
+// new rows going forward (it does not retroactively fix already-logged 200-char
+// rows). Plan: packages/specs/bench/router-v2 / 2026-06-19-router-v2-corpus-aug-plan.md.
+const TASK_EXCERPT_LEN = 1000;
+
 // B1 (2026-06-10 chip, LOW): resolve route-decide.js across candidates instead of
 // a single hardcoded homedir path. Under a plugin install __dirname is
 // ${CLAUDE_PLUGIN_ROOT}/packages/kernel/hooks/pre, so ../../algorithms/route-decide.js
@@ -167,7 +176,7 @@ function main() {
     tool_use_id: toolUseId,
     tool_name: toolName,
     subagent_type: toolInput.subagent_type || toolInput.subagent || null,
-    task_excerpt: taskText.slice(0, 200),
+    task_excerpt: taskText.slice(0, TASK_EXCERPT_LEN),
     verdict,
     route_decide_exit: result.status,
   });
