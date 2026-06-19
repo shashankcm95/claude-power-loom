@@ -340,7 +340,9 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/specs/bench/scenarios/01-multi-feature-export/fixture/cli.js` - bench/fixture/cli.js — minimal todo CLI used as boot-test fixture.
 - `packages/specs/bench/collect.js` - bench/collect.js — extracts boot-test metrics from a single headless run.
 - `packages/specs/bench/router-v2/kappa.js` - Fleiss' kappa — chance-corrected inter-rater agreement for N items each rated by
+- `packages/specs/bench/router-v2/label-aggregate.js` - Router-V2 corpus-aug S3 — aggregate the N=3 blind-labeler runs into the labeled
 - `packages/specs/bench/router-v2/prep-corpus.js` - Router-V2 corpus-aug S1 — deterministic prep of the raw route-decide-log into
+- `packages/specs/bench/router-v2/scrub.js` - PII redactor for the Router-V2 corpus.
 - `packages/specs/bench/router-v2/shadow-eval.js` - Router-V2 corpus-aug — the NARROWS-ONLY shadow-eval harness.
 - `packages/specs/bench/scenarios/01-multi-feature-export/validate.js` - Scenario-specific deterministic PASS criteria for the original boot-test
 - `packages/specs/bench/scenarios/02-security-audit/validate.js` - Scenario-specific deterministic PASS criteria for the security-heavy task.
