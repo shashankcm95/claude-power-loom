@@ -303,59 +303,17 @@ function isBootstrapSentinel(ref) {
 }
 
 /**
- * Validate a transaction-record against the JSON Schema + structural rules.
+ * Push enum + hex spot-check errors (the highest-value structural checks
+ * without pulling in a full JSON-schema library at v3.0-alpha).
  *
- * Returns { valid: true } on success, { valid: false, errors: [...] } on failure.
- *
- * Round-3d delta 7: structured diagnostic surface (abort_detail) lives in the
- * record itself, not in this validator's return shape. This validator is
- * advisory to K5/K7 (schema validators); K9 pre-commit consumes it and
- * synthesizes the abort_detail block on rejection.
- *
- * Per F9 (post-compact PR-1 R1 F-1): callers MAY pass `{isGenesisPosition: true}`
- * to opt into genesis-position validation. At genesis position, prev_state_hash
- * may be a bootstrap sentinel (e.g., "GENESIS") instead of a 64-char sha256
- * hex. Default (omitted or false) preserves v2.x callers' behavior — sentinel
- * is REJECTED, forward-compat with non-genesis chain heads.
- *
- * The first production caller of `isGenesisPosition: true` is K9 pre-commit
- * gate (ships PR 3); PR-1-era tests call this opt-in path directly to
- * exercise the new branch.
+ * Extracted from validateTransactionRecord (SRP: enum/pattern concern) — the
+ * appended errors + their ordering are byte-identical to the inline version.
  *
  * @param {Object} record
- * @param {Object} [options]
- * @param {boolean} [options.isGenesisPosition=false] Permit bootstrap sentinel as prev_state_hash
- * @returns {{ valid: boolean, errors?: string[] }}
+ * @param {boolean} isGenesisPosition Permit bootstrap sentinel as prev_state_hash
+ * @param {string[]} errors mutated in place (caller-owned accumulator)
  */
-function validateTransactionRecord(record, options) {
-  const errors = [];
-  const isGenesisPosition = !!(options && options.isGenesisPosition);
-
-  if (!record || typeof record !== 'object') {
-    return { valid: false, errors: ['record must be a non-null object'] };
-  }
-
-  // F23 (eli-M5 + jade MEDIUM #7): a record carrying the test-chain marker is
-  // NEVER admissible in production. The marker is REJECTED (never stripped) so
-  // that synthetic test chains cannot leak into a production WAL and pass
-  // validation. This is the runtime half of F23's defense-in-depth; the
-  // physical-separation half is `tests/.../_test-validate.js` living outside
-  // packages/kernel/ (see ADR-0011 WAL-append-path enumeration).
-  if (Object.prototype.hasOwnProperty.call(record, '_test_chain_marker')) {
-    return {
-      valid: false,
-      errors: ['test-marker-not-admissible-in-production'],
-    };
-  }
-
-  const schema = loadSchema();
-  const required = schema.required || [];
-  for (const field of required) {
-    if (!(field in record)) errors.push('missing required field: ' + field);
-  }
-
-  // Spot-check enum + pattern fields (the highest-value structural checks
-  // without pulling in a full JSON-schema library at v3.0-alpha).
+function validateEnumAndHexFields(record, isGenesisPosition, errors) {
   if (record.operation_class != null) {
     const ops = ['CREATE', 'APPEND', 'SUPERSEDE', 'TOMBSTONE', 'DERIVED-VIEW-INVALIDATE'];
     if (!ops.includes(record.operation_class)) {
@@ -390,7 +348,23 @@ function validateTransactionRecord(record, options) {
       errors.push('prev_state_hash must be 64-char lowercase hex sha256');
     }
   }
+}
 
+/**
+ * Push PR-4 shape-gate errors for the hash-fed fields. These MUST conform to the
+ * schema type at the SINGLE validation gate (before BOTH the incoming
+ * computeTransactionId S5 and the stored-side dedup re-derivation), so a
+ * non-conforming value (e.g. a deeply-nested poison) is rejected before any
+ * hashing rather than relying on the canonicalJsonSerialize bound as a backstop.
+ * The lenient validator historically type-checked NONE of these.
+ *
+ * Extracted from validateTransactionRecord (SRP: hash-fed-shape concern) — the
+ * appended errors + their ordering are byte-identical to the inline version.
+ *
+ * @param {Object} record
+ * @param {string[]} errors mutated in place (caller-owned accumulator)
+ */
+function validateHashFedShapes(record, errors) {
   // PR-4 hardening: idempotency_key (when present) MUST be a 64-char lowercase-hex
   // sha256 — the shape contract the dedup gate keys on. Mirrors the transaction_id /
   // prev_state_hash spot-checks above (the JSON-schema pattern is never enforced by
@@ -402,11 +376,6 @@ function validateTransactionRecord(record, options) {
     errors.push('idempotency_key must be 64-char lowercase hex sha256');
   }
 
-  // Hardening (hacker re-verify HIGH + L2 follow-up): the hash-fed fields MUST conform to the
-  // schema type at the SINGLE validation gate (before BOTH the incoming computeTransactionId S5
-  // and the stored-side dedup re-derivation), so a non-conforming value (e.g. a deeply-nested
-  // poison) is rejected before any hashing rather than relying on the canonicalJsonSerialize
-  // bound as a backstop. The lenient validator historically type-checked NONE of these.
   // string-or-null (schema oneOf [string, null]):
   for (const f of ['head_anchor', 'post_state_hash', 'references_transaction_id']) {
     if (record[f] != null && typeof record[f] !== 'string') {
@@ -428,7 +397,18 @@ function validateTransactionRecord(record, options) {
       (typeof record.abort_detail !== 'object' || Array.isArray(record.abort_detail))) {
     errors.push('abort_detail must be an object or null');
   }
+}
 
+/**
+ * Push A10 + Round-3e GP4 semantic-rule errors.
+ *
+ * Extracted from validateTransactionRecord (SRP: A10/GP4 semantic concern) —
+ * the appended errors + their ordering are byte-identical to the inline version.
+ *
+ * @param {Object} record
+ * @param {string[]} errors mutated in place (caller-owned accumulator)
+ */
+function validateSemantics(record, errors) {
   // A10 / Round-3e GP4: state-changing records MUST carry non-empty evidence_refs
   // OR a bootstrap-sentinel (per §3 A10 Bootstrap exception).
   if (isStateChanging(record.operation_class)) {
@@ -443,6 +423,68 @@ function validateTransactionRecord(record, options) {
   if (record.operation_class === 'DERIVED-VIEW-INVALIDATE' && record.commit_outcome !== 'NOT_APPLICABLE') {
     errors.push('Round-3e GP4: DERIVED-VIEW-INVALIDATE must have commit_outcome NOT_APPLICABLE');
   }
+}
+
+/**
+ * Validate a transaction-record against the JSON Schema + structural rules.
+ *
+ * Returns { valid: true } on success, { valid: false, errors: [...] } on failure.
+ *
+ * Round-3d delta 7: structured diagnostic surface (abort_detail) lives in the
+ * record itself, not in this validator's return shape. This validator is
+ * advisory to K5/K7 (schema validators); K9 pre-commit consumes it and
+ * synthesizes the abort_detail block on rejection.
+ *
+ * Per F9 (post-compact PR-1 R1 F-1): callers MAY pass `{isGenesisPosition: true}`
+ * to opt into genesis-position validation. At genesis position, prev_state_hash
+ * may be a bootstrap sentinel (e.g., "GENESIS") instead of a 64-char sha256
+ * hex. Default (omitted or false) preserves v2.x callers' behavior — sentinel
+ * is REJECTED, forward-compat with non-genesis chain heads.
+ *
+ * The first production caller of `isGenesisPosition: true` is K9 pre-commit
+ * gate (ships PR 3); PR-1-era tests call this opt-in path directly to
+ * exercise the new branch.
+ *
+ * The body is split into cohesive single-concern helpers (enum/hex spot-checks,
+ * PR-4 hash-fed shapes, A10/GP4 semantics) so each stays under the function-size
+ * ceiling. The errors[] accumulator threads through them in the SAME order as the
+ * prior inline version — the validation result + the error sequence are unchanged.
+ *
+ * @param {Object} record
+ * @param {Object} [options]
+ * @param {boolean} [options.isGenesisPosition=false] Permit bootstrap sentinel as prev_state_hash
+ * @returns {{ valid: boolean, errors?: string[] }}
+ */
+function validateTransactionRecord(record, options) {
+  const errors = [];
+  const isGenesisPosition = !!(options && options.isGenesisPosition);
+
+  if (!record || typeof record !== 'object') {
+    return { valid: false, errors: ['record must be a non-null object'] };
+  }
+
+  // F23 (eli-M5 + jade MEDIUM #7): a record carrying the test-chain marker is
+  // NEVER admissible in production. The marker is REJECTED (never stripped) so
+  // that synthetic test chains cannot leak into a production WAL and pass
+  // validation. This is the runtime half of F23's defense-in-depth; the
+  // physical-separation half is `tests/.../_test-validate.js` living outside
+  // packages/kernel/ (see ADR-0011 WAL-append-path enumeration).
+  if (Object.prototype.hasOwnProperty.call(record, '_test_chain_marker')) {
+    return {
+      valid: false,
+      errors: ['test-marker-not-admissible-in-production'],
+    };
+  }
+
+  const schema = loadSchema();
+  const required = schema.required || [];
+  for (const field of required) {
+    if (!(field in record)) errors.push('missing required field: ' + field);
+  }
+
+  validateEnumAndHexFields(record, isGenesisPosition, errors);
+  validateHashFedShapes(record, errors);
+  validateSemantics(record, errors);
 
   return errors.length === 0 ? { valid: true } : { valid: false, errors };
 }
