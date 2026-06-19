@@ -10,6 +10,7 @@ const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { execFileSync, spawnSync } = require('child_process');
 const D = require('../../../packages/kernel/spawn-state/drift-audit');
 
 let passed = 0;
@@ -107,6 +108,44 @@ test('T9b: a transcript with no sessionId at all is rejected', () => {
   fs.writeFileSync(p, `${JSON.stringify({ type: 'user', message: { role: 'user', content: 'hi' } })}\n`);
   try { assert.strictEqual(D.buildDigest(p).reason, 'no-session-id'); }
   finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// T-isfile (W2-PR2 hardening): a non-regular-file transcriptPath (here a directory;
+// the worst case is a symlink-to-FIFO, where fs.readFileSync would BLOCK the
+// auto-fired detached producer for the 60s judge window) must fail CLOSED, not hang
+// or throw. readTranscriptText's stat.isFile() guard -> '' -> no-session-id.
+test('T-isfile: a directory transcriptPath fails closed (no hang, no throw)', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ghb-dir-'));
+  try {
+    const dg = D.buildDigest(dir);
+    assert.strictEqual(dg.ok, false, 'a non-regular file must not be digested');
+    assert.strictEqual(dg.reason, 'no-session-id');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// T-isfile-fifo: the ACTUAL hang vector (Probe P7) is a FIFO, where fs.readFileSync
+// BLOCKS — a directory throws EISDIR and never hangs, so the directory case above
+// does NOT by itself demonstrate no-hang (VALIDATE honesty-auditor HIGH: the
+// directory test was relabeled as proving the hang fix). Exercise the real FIFO in
+// a CHILD with a hard timeout: the isFile() guard (drift-audit.js readTranscriptText)
+// must return PROMPTLY; if the guard ever regresses, the child blocks and the
+// spawnSync times out -> this test FAILS (it never hangs the suite). Skipped where
+// mkfifo is unavailable (e.g. win32).
+test('T-isfile-fifo: a FIFO transcriptPath returns promptly, never blocks (no hang)', () => {
+  if (process.platform === 'win32') { process.stdout.write('  (skip T-isfile-fifo: no mkfifo on win32)\n'); return; }
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ghb-fifo-'));
+  const fifo = path.join(dir, 'p.fifo');
+  try {
+    try { execFileSync('mkfifo', [fifo]); }
+    catch { process.stdout.write('  (skip T-isfile-fifo: mkfifo unavailable)\n'); return; }
+    const mod = path.resolve(__dirname, '../../../packages/kernel/spawn-state/drift-audit');
+    const r = spawnSync(process.execPath, ['-e',
+      `const D=require(${JSON.stringify(mod)});process.stdout.write(JSON.stringify(D.buildDigest(${JSON.stringify(fifo)})));`],
+      { encoding: 'utf8', timeout: 4000 });
+    assert.strictEqual(r.error, undefined, `buildDigest(FIFO) must not time out / error (a hang regression); got ${r.error && r.error.code}`);
+    assert.strictEqual(r.status, 0, 'child exited cleanly');
+    assert.strictEqual(JSON.parse(r.stdout).ok, false, 'a FIFO must fail closed, not hang');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 // T-oversized: a transcript over the 8MB byte cap exercises the tail-read branch

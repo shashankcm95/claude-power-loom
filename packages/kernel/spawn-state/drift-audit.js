@@ -17,6 +17,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const { runCapabilityFreeJudge } = require('../_lib/capability-free-claude');
+const { withRegularFileFd } = require('../_lib/safe-read');
 const { recordEmissions, isEmitted, loadState, DEFAULT_STATE_PATH } = require('./ghost-heartbeat-state');
 
 const STORE_SCRIPT = path.join(__dirname, 'self-improve-store.js');
@@ -69,22 +70,22 @@ function extractUserContent(content) {
 }
 
 function readTranscriptText(transcriptPath) {
-  const stat = fs.statSync(transcriptPath);
-  if (stat.size <= MAX_TRANSCRIPT_BYTES) return fs.readFileSync(transcriptPath, 'utf8');
-  // Oversized: read only the newest tail within budget (most drift-relevant).
-  const fd = fs.openSync(transcriptPath, 'r');
-  try {
+  // TOCTOU-safe (CodeRabbit #371): open ONCE O_NONBLOCK, fstat the BOUND fd, and
+  // read from THAT fd — a name-based statSync-then-reopen leaves a swap window where
+  // transcript_path becomes a FIFO and fs.readFileSync BLOCKS the auto-fired
+  // detached child for the 60s judge window. Non-regular / absent -> '' ->
+  // no-session-id downstream (fail-closed, no hang).
+  return withRegularFileFd(transcriptPath, (fd, stat) => {
+    if (stat.size <= MAX_TRANSCRIPT_BYTES) return fs.readFileSync(fd, 'utf8');
+    // Oversized: read only the newest tail within budget (most drift-relevant).
     const buf = Buffer.alloc(MAX_TRANSCRIPT_BYTES);
     fs.readSync(fd, buf, 0, MAX_TRANSCRIPT_BYTES, stat.size - MAX_TRANSCRIPT_BYTES);
     const raw = buf.toString('utf8');
-    // Drop the partial leading line (the tail was cut mid-line). If there is NO
-    // newline at all (one giant line), there are no complete records to parse ->
-    // empty string, which fails closed to no-session-id downstream.
+    // Drop the partial leading line (the tail was cut mid-line). No newline at all
+    // (one giant line) -> '' -> fail-closed to no-session-id downstream.
     const nl = raw.indexOf('\n');
     return nl === -1 ? '' : raw.slice(nl + 1);
-  } finally {
-    fs.closeSync(fd);
-  }
+  }, '');
 }
 
 function buildDigest(transcriptPath, { maxChars = DEFAULT_MAX_DIGEST_CHARS } = {}) {
@@ -197,7 +198,7 @@ function verifyJudgeOutput(items, { sessionId, state, minConfidence = DEFAULT_MI
 // for an advisory counter (it recurs next session; convergence is cross-session),
 // but it must be observable, not swallowed.
 function bumpSignal(signal) {
-  const r = spawnSync('node', [STORE_SCRIPT, 'bump', '--signal', signal], { encoding: 'utf8', stdio: ['ignore', 'ignore', 'pipe'], timeout: BUMP_TIMEOUT_MS });
+  const r = spawnSync(process.execPath, [STORE_SCRIPT, 'bump', '--signal', signal], { encoding: 'utf8', stdio: ['ignore', 'ignore', 'pipe'], timeout: BUMP_TIMEOUT_MS });
   if (r.error || r.status !== 0) {
     process.stderr.write(`[drift-audit] bump-failed signal=${signal} status=${r.status} ${r.error ? r.error.message : (r.stderr || '').slice(0, 120)}\n`);
   }

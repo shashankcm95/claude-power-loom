@@ -54,6 +54,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/kernel/_lib/route-decide-export.js` - route-decide-export.js — H.7.0 helper module.
 - `packages/kernel/_lib/runState.js` - Shared run-state path resolution.
 - `packages/kernel/_lib/safe-exec.js` - safe-exec.js — H.8.4 shared helper: safe subprocess invocation without shell.
+- `packages/kernel/_lib/safe-read.js` - TOCTOU-safe regular-file read primitive.
 - `packages/kernel/_lib/safe-resolve.js` - safe-resolve.js — choose a script candidate that is SAFE to hand to
 - `packages/kernel/_lib/sanitize.js` - JSONL hygiene primitives — per post-compact PR-1 R1 F-2 resolution.
 - `packages/kernel/_lib/secret-patterns.js` - ③.0-W2 (2026-06-17): the SINGLE source of truth for the HIGH-PRECISION,
@@ -86,6 +87,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/kernel/hooks/post/error-critic.js` - PostToolUse hook (H.7.7): Critic→Refiner failure consolidation.
 - `packages/kernel/hooks/pre/fact-force-gate.js` - PreToolUse hook: fact-forcing gate
 - `packages/kernel/hooks/_lib/file-path-pattern.js` - Shared file-path extraction primitive for hook scripts that scan response
+- `packages/kernel/hooks/lifecycle/ghost-heartbeat-stop.js` - Ghost Heartbeat W2-PR2 — the Stop-hook CARRIER.
 - `packages/kernel/hooks/post/kb-citation-gate.js` - PostToolUse:Agent|Task hook — enforces KB citation contract on sub-agent results.
 - `packages/kernel/hooks/_lib/marketplace-state-reader.js` - H.7.22 + H.7.23 — DRY shared marketplace-state reader.
 - `packages/kernel/hooks/lifecycle/pre-compact-save.js` - PreCompact hook: deterministically saves a checkpoint of the conversation
