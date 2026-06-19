@@ -61,31 +61,18 @@ const DEFAULT_MAX_REROLL_B = 3;
 // PURE helpers (unit-tested directly; no async, no FS, no child_process).
 // --------------------------------------------------------------------------
 
-// L-1 -- the SSRF allowlist for the unsandboxed actor clone. assertSafeRepo (the clone-lifecycle
-// guard) admits ANY https host; this is the STRICTER per-issue gate the W4c plan requires: the host
-// must be EXACTLY `github.com` over https. Parsed with `new URL` (never a regex on the raw string,
-// which a `@`-embedded-credentials or userinfo trick can fool). Throws on any other host / scheme.
+// L-1 -- the SSRF allowlist for the unsandboxed actor clone. W4d A1 folded this into the SHARED
+// clone-lifecycle guard `assertSafeRepo`, which now enforces the SAME contract: https-only, a
+// host-allowlist (defaulting to github.com), and the raw-string parser-differential guard
+// (`@`/backslash/whitespace/control rejected BEFORE the WHATWG parse normalizes a `\@` differential
+// away). This is now a THIN DELEGATE that pins the github.com allowlist explicitly (a caller-injected
+// `hostAllowlist` OVERRIDES the env, so the per-issue actor clone stays github.com-only even if the
+// grader's LOOM_CLONE_HOST_ALLOWLIST is ever widened) and disallows a host-local path. The thrown
+// messages come FROM assertSafeRepo (generic + value-redacted); the 6 assertGithubRepo tests match
+// those substrings. `assertSafeRepo` is lazy-required (K12: it pulls child_process at module load).
 function assertGithubRepo(repo) {
-  if (typeof repo !== 'string' || repo.length === 0) throw new Error('assertGithubRepo: repo must be a non-empty string');
-  // SSRF parser-differential guard (VALIDATE-hacker L-1): `new URL` (WHATWG) and libcurl/git disagree on
-  // a `\`/`@`-bearing authority -- `https://github.com\@evil.com/x` parses to host=github.com under WHATWG
-  // but git's libcurl resolves evil.com, and the RAW string is what reaches `git clone`. A legit github
-  // PUBLIC clone URL never carries userinfo (`@`), a backslash, or whitespace/control -- reject them BEFORE
-  // the WHATWG parse normalizes the difference away, so no different host can be smuggled past the allowlist.
-  // `[@\\]` = the parser-differential chars; `[^\x21-\x7e]` = any non-printable-ASCII or whitespace
-  // (space/tab/control/DEL/non-ASCII). Both ranges are printable in the PATTERN, so no `no-control-regex`.
-  // REDACT the rejected repo from every thrown message (CodeRabbit #357): assertGithubRepo throws
-  // propagate into `residuals` -> the serialized report, so a cred-bearing URL (user:pass@host) would
-  // leak. The messages name the FAILED RULE, never the offending value.
-  if (/[@\\]/.test(repo) || /[^\x21-\x7e]/.test(repo)) {
-    throw new Error('assertGithubRepo: repo must not contain userinfo/backslash/whitespace/control (value redacted)');
-  }
-  let url;
-  try { url = new URL(repo); }
-  catch { throw new Error('assertGithubRepo: repo is not a parseable URL (value redacted)'); }
-  if (url.protocol !== 'https:') throw new Error('assertGithubRepo: repo scheme must be https (value redacted)');
-  if (url.hostname !== 'github.com') throw new Error('assertGithubRepo: repo host must be exactly github.com (value redacted)');
-  return repo;
+  const { assertSafeRepo } = require('../issue-corpus/_clone-lifecycle');
+  return assertSafeRepo(repo, { allowLocal: false, hostAllowlist: ['github.com'] });
 }
 
 // H-2 -- the mint-time provenance assert. built_by.role is UNAUTHENTICATED (a faceless actor LABELED
@@ -284,7 +271,7 @@ async function main(opts = {}) {
   const { scoreAttempt } = require('../causal-edge/calibration-issue');
   const { captureLessons } = require('../causal-edge/lesson-capture');
   const { runConfirmationPass } = require('../causal-edge/lesson-confirm');
-  const { assertSafeRepo, assertSafeSha } = require('../issue-corpus/_clone-lifecycle');
+  const { assertSafeSha } = require('../issue-corpus/_clone-lifecycle');   // assertSafeRepo reached via assertGithubRepo (F3 — no direct call here)
   // The INNER claude -p contrast leg captureLessons injects into deriveLesson (NOT deriveLesson
   // itself -- captureLessons calls deriveLesson(contrastInput, deriveFn) internally; passing the
   // wrapper would null the inner leg -> off-floor fallback -> zero lessons). makeLessonDeriver is the
@@ -362,7 +349,10 @@ async function main(opts = {}) {
     // keep the two in sync if the clone/diff/sha discipline changes.
     const ACTOR_TOOLS = ['Read', 'Grep', 'Glob', 'Edit', 'Write'];
     const runActor = async (record, { model } = {}) => {
-      assertGithubRepo(record.repo); assertSafeRepo(record.repo); assertSafeSha(record.base_sha);
+      // assertGithubRepo now DELEGATES to assertSafeRepo (W4d A1 DRY collapse), so the prior direct
+      // assertSafeRepo(record.repo) call here was redundant (F3) AND a silent-misalignment risk: the
+      // delegate pins ['github.com'] while a bare assertSafeRepo would read the env allowlist. Drop it.
+      assertGithubRepo(record.repo); assertSafeSha(record.base_sha);
       const { execFileSync } = require('child_process');
       const git = (args, cwd) => execFileSync('git', args, { cwd, encoding: 'utf8', timeout: 120000, maxBuffer: 4 * 1024 * 1024 });
       let actorDir = null;

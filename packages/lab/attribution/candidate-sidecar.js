@@ -51,6 +51,12 @@ function writeCandidate(patch, opts = {}) {
   const sha = sidecarSha(patch);
   const dir = storeDir(opts);
   const file = path.join(dir, `${sha}.patch`);
+  // W4d Item 2d (+ CodeRabbit Major): tighten the lab-state dir on EVERY write path (dedup + repair +
+  // create), not just create — these patch bytes can carry a (scrubbed-best-effort) secret and a
+  // world-readable dir is the threat the scrub amplifies against. mkdir(mode) is create-only + umask-
+  // subject, so a pre-existing loose leaf would stay 0755 on a dedup re-run; the chmod tightens it
+  // unconditionally. Best-effort (no-op on Windows / non-owner). The dedup early-return is BELOW this.
+  try { fs.mkdirSync(dir, { recursive: true, mode: 0o700 }); fs.chmodSync(dir, 0o700); } catch { /* */ }
   if (fs.existsSync(file)) {
     if (readCandidate(sha, opts) != null) return { ok: true, deduped: true, sha }; // valid prior — first-wins
     // unverifiable garbage (a squat / crash-truncated write) — REPAIR by overwriting.
@@ -59,8 +65,7 @@ function writeCandidate(patch, opts = {}) {
     return { ok: true, deduped: false, repaired: true, sha };
   }
   try {
-    fs.mkdirSync(dir, { recursive: true });
-    writeAtomicString(file, String(patch == null ? '' : patch));
+    writeAtomicString(file, String(patch == null ? '' : patch)); // dir created + hardened above
   } catch (e) { return { ok: false, reason: 'write-failed', error: e.message }; }
   return { ok: true, deduped: false, sha };
 }

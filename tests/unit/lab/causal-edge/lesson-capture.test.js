@@ -173,6 +173,79 @@ test('M2: a failed-patch sidecar-write failure mints failed_attempt_ref=null + c
   assert.strictEqual(r.minted[0].failed_attempt_ref, null, 'no dangling ref — degraded to null on a failed write');
 });
 
+// --------------------------------------------------------------------------
+// ③.1-W4d Item 2 — real-content secret-scrub on the persistence path. A secret echoed
+// into the candidate patch OR the LLM-derived lesson_body must NOT land (unscrubbed) in a
+// world-readable lab-state dir. scrubLabSecrets is applied BEFORE the LLM contrast, the
+// sidecar write, AND the node build (the lesson_body feeds the lesson_content_hash, so
+// scrubbing must precede the build to bind the hash to the scrubbed body).
+// Secret-shaped fixtures are assembled from SPLIT literals so the PreToolUse gate is happy.
+// --------------------------------------------------------------------------
+
+const SK_TOKEN = 'sk-' + 'proj-' + 'a'.repeat(40);   // a scrubber-only coarse sk- key
+
+test('Item 2b: a secret in the candidate patch is scrubbed before the sidecar (recovered bytes redacted)', async () => {
+  const d = dirs();
+  const it = item({ candidate_patch: 'diff --git a/c.py b/c.py\n+ key = "' + SK_TOKEN + '"\n' });
+  let sawCandidate = 'unset';
+  const r = await captureLessons([it], (ci) => { sawCandidate = ci.candidate_patch; return { ...VALID }; }, d);
+  assert.strictEqual(r.n_written, 1);
+  // the derive leg saw the SCRUBBED candidate (scrub-before-contrast)
+  assert.ok(!sawCandidate.includes(SK_TOKEN), 'the derive leg must receive the scrubbed candidate');
+  assert.ok(sawCandidate.includes('[REDACTED]'), 'redaction marker present in the derive input');
+  // the recovered sidecar bytes carry NO secret + hash to the node's candidate_patch_sha (two-site sha)
+  const node = r.minted[0];
+  const recovered = readCandidate(node.candidate_patch_sha, { dir: d.sidecarDir });
+  assert.ok(recovered != null, 'the candidate sidecar resolves (never dangling)');
+  assert.ok(!recovered.includes(SK_TOKEN), 'the persisted candidate bytes must be scrubbed');
+  assert.strictEqual(node.candidate_patch_sha, sidecarSha(recovered), 'two-site sha holds on the SCRUBBED bytes');
+});
+
+test('Item 2c: a secret in the lesson_body is scrubbed before the node build (hash binds the scrubbed body)', async () => {
+  const d = dirs();
+  const leakyBody = 'When auth fails, never log the token ' + SK_TOKEN + ' to disk.';
+  const r = await captureLessons([item()], () => ({ ...VALID, lesson_body: leakyBody }), d);
+  assert.strictEqual(r.n_written, 1, 'a scrubbed body is not a leak of the SEALED diff -> still stored');
+  const node = r.minted[0];
+  assert.ok(!node.lesson_body.includes(SK_TOKEN), 'the persisted lesson_body must be scrubbed');
+  assert.ok(node.lesson_body.includes('[REDACTED]'), 'redaction marker present in the stored body');
+  // verify-on-read must accept: the lesson_content_hash binds the SCRUBBED body (scrub preceded the build)
+  const back = loadNode(node.node_id, { dir: d.recallGraphDir });
+  assert.ok(back != null, 'the node verifies on read (hash bound to the scrubbed body, not the unscrubbed one)');
+  assert.ok(!back.lesson_body.includes(SK_TOKEN), 'the read-back body is scrubbed');
+});
+
+test('Item 2c A3: scrubbing lesson_body does NOT change trigger/gotcha/corrective class (node identity stays)', async () => {
+  const d = dirs();
+  // two runs of the SAME item: one with a clean body, one with a secret-bearing body. The enum
+  // classes (which drive lesson_signature / node_id) must be identical; only the body differs.
+  const cleanBody = 'Raise on the zero edge rather than yield.';
+  const dirtyBody = 'Raise on the zero edge; do not leak ' + SK_TOKEN + ' here.';
+  const clean = await captureLessons([item({ id: 'octo__clean', ref: { issue_id: 'octo__clean' } })],
+    () => ({ ...VALID, lesson_body: cleanBody }), dirs());
+  const dirty = await captureLessons([item({ id: 'octo__clean', ref: { issue_id: 'octo__clean' } })],
+    () => ({ ...VALID, lesson_body: dirtyBody }), d);
+  const cn = clean.minted[0]; const dn = dirty.minted[0];
+  assert.strictEqual(dn.trigger_class, cn.trigger_class, 'trigger_class unchanged by scrubbing the body');
+  assert.strictEqual(dn.gotcha_class, cn.gotcha_class, 'gotcha_class unchanged by scrubbing the body');
+  assert.strictEqual(dn.corrective_class, cn.corrective_class, 'corrective_class unchanged by scrubbing the body');
+  assert.strictEqual(dn.lesson_signature, cn.lesson_signature, 'lesson_signature (enum-driven) unchanged');
+  assert.strictEqual(dn.node_id, cn.node_id, 'node_id (patch-stable) unchanged by a body edit');
+  assert.ok(!dn.lesson_body.includes(SK_TOKEN), 'the dirty run still got its body scrubbed');
+});
+
+test('Item 2b: a secret in a failed_patch is scrubbed before the sidecar (trap-seam bytes redacted)', async () => {
+  const d = dirs();
+  const failed_patch = 'diff --git a/w.py b/w.py\n- token = "' + SK_TOKEN + '"\n';
+  let sawFailed = 'unset';
+  const r = await captureLessons([item({ failed_patch })], (ci) => { sawFailed = ci.failed_patch; return { ...VALID }; }, d);
+  assert.strictEqual(r.n_written, 1);
+  const node = r.minted[0];
+  assert.ok(!sawFailed.includes(SK_TOKEN), 'the derive leg receives the scrubbed failed_patch');
+  const recovered = readCandidate(node.failed_attempt_ref, { dir: d.sidecarDir });
+  assert.ok(recovered != null && !recovered.includes(SK_TOKEN), 'the persisted failed-attempt bytes are scrubbed');
+});
+
 (async () => {
   for (const t of _tests) {
     try { await t.fn(); passed += 1; }

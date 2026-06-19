@@ -181,6 +181,27 @@ test('F22.new: password-in-URL does not over-match plain URLs', () => {
   );
 });
 
+test('W4d-H-03: the REAL scrubSecrets redacts the scrubber-only classes consumer-side (SSOT-regression guard)', () => {
+  // The W4d refactor moved spawn-record's scrubber-only patterns into the shared getScrubberOnlyClasses()
+  // SSOT (secret-patterns.js). The lab scrubber's suite guards the SSOT, but a future edit dropping a
+  // class from spawn-record's OWN spread would not be caught there — so assert these redact through
+  // spawn-record's REAL exported scrubSecrets too (VALIDATE honesty-auditor W4d-H-03). Split-literal
+  // fixtures so this file does not self-trip the validate-no-bare-secrets PreToolUse gate.
+  const scrubSecrets = getScrubSecrets();
+  const A = 'a'.repeat(24);
+  const samples = {
+    'stripe TEST secret (sk_test_)':     'sk' + '_test_' + A,
+    'stripe TEST restricted (rk_test_)': 'rk' + '_test_' + A,
+    'coarse openai sk- prefix':          'sk' + '-' + A,
+    'aws secret-value assignment':       'aws_secret_access_key' + '=' + 'b'.repeat(40),
+  };
+  for (const [label, token] of Object.entries(samples)) {
+    const out = scrubSecrets('lead ' + token + ' trail');
+    assert.ok(out.includes('[REDACTED]'), `${label} must be redacted by spawn-record's scrubSecrets`);
+    assert.ok(!out.includes(token), `${label}: raw token must not survive the scrub`);
+  }
+});
+
 // --- R2-F3: JSON-stringify ordering for audit-log emission ---
 
 function getPrepareForJsonl() {

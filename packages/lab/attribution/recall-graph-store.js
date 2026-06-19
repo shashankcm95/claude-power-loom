@@ -81,6 +81,11 @@ function writeNode(node, opts = {}) {
   if (!verifyNode(node, node.node_id)) return { ok: false, reason: 'self-inconsistent' };
   const dir = storeDir(opts);
   const file = path.join(dir, `${node.node_id}.json`);
+  // W4d Item 2d (+ CodeRabbit Major): tighten the lab-state dir on EVERY write path (dedup + repair +
+  // create), not just create — a node carries the (scrubbed-best-effort) lesson_body and a world-
+  // readable dir is the threat the scrub amplifies against. mkdir(mode) is create-only + umask-subject,
+  // so a pre-existing loose leaf would stay 0755 on a dedup re-run; the chmod tightens it. Best-effort.
+  try { fs.mkdirSync(dir, { recursive: true, mode: 0o700 }); fs.chmodSync(dir, 0o700); } catch { /* */ }
   // RETIREMENT-LIFECYCLE stamp: `recorded_at` (first-population time) is a TOP-LEVEL field
   // OUTSIDE the content-hashed worked_example_ref + the node_id basis, so it never affects
   // dedup/content-verify — it only supports age/date-based retirement of these SCAFFOLDING
@@ -108,8 +113,7 @@ function writeNode(node, opts = {}) {
     return { ok: true, deduped: false, repaired: true, node_id: node.node_id };
   }
   try {
-    fs.mkdirSync(dir, { recursive: true });
-    writeAtomicString(file, `${JSON.stringify(stored, null, 2)}\n`);
+    writeAtomicString(file, `${JSON.stringify(stored, null, 2)}\n`); // dir created + hardened above
   } catch (e) { return { ok: false, reason: 'write-failed', error: e.message }; }
   return { ok: true, deduped: false, node_id: node.node_id };
 }

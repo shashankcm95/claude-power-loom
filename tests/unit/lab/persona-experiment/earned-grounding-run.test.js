@@ -86,18 +86,22 @@ function eligibleAttempt() {
 
 // --- assertGithubRepo (L-1 SSRF allowlist) --------------------------------------------------
 
+// assertGithubRepo is now a THIN DELEGATE to _clone-lifecycle.assertSafeRepo (W4d A1 DRY collapse), so
+// the thrown MESSAGES come from assertSafeRepo (generic + value-redacted). The semantics are unchanged:
+// github.com-only, https-only, reject userinfo/backslash, reject non-string/empty.
 test('assertGithubRepo: accepts an https github.com repo', () => {
   assert.strictEqual(assertGithubRepo('https://github.com/more-itertools/more-itertools'), 'https://github.com/more-itertools/more-itertools');
 });
 
 test('assertGithubRepo: REJECTS a non-github host', () => {
-  assert.throws(() => assertGithubRepo('https://evil.example.com/repo'), /host must be exactly github.com/);
+  assert.throws(() => assertGithubRepo('https://evil.example.com/repo'), /host not in the clone allowlist/);
 });
 
 test('assertGithubRepo: REJECTS a non-https scheme (http / git / file / ssh)', () => {
   for (const r of ['http://github.com/x/y', 'git://github.com/x/y', 'file:///etc/passwd', 'ssh://git@github.com/x/y']) {
-    // ssh://git@... is now caught EARLIER by the @-guard (userinfo); the others by scheme/parse.
-    assert.throws(() => assertGithubRepo(r), /scheme must be https|not a parseable URL|userinfo\/backslash/, `${r} must be rejected`);
+    // ssh://git@... is caught EARLIER by the @-guard (userinfo); git:// is caught by the scheme tighten;
+    // file:// is not http(s) (rejected as a local-disallowed / scheme); http by the scheme tighten.
+    assert.throws(() => assertGithubRepo(r), /scheme must be https|not a parseable URL|userinfo\/backslash|allowLocalRepo|host-local/, `${r} must be rejected`);
   }
 });
 
@@ -114,8 +118,8 @@ test('assertGithubRepo: REJECTS the backslash parser-differential (new URL host=
 });
 
 test('assertGithubRepo: REJECTS non-string / empty', () => {
-  assert.throws(() => assertGithubRepo(null), /non-empty string/);
-  assert.throws(() => assertGithubRepo(''), /non-empty string/);
+  assert.throws(() => assertGithubRepo(null), /repo required/);
+  assert.throws(() => assertGithubRepo(''), /repo required/);
 });
 
 // --- assertCanonicalRole (H-2 mint-time provenance assert) ----------------------------------
@@ -366,7 +370,7 @@ test('earnLesson: a non-github repo is REJECTED before any actor run (L-1)', asy
       confirmFn: async () => ({ n_confirmed: 0 }),
       knownPersonas: KNOWN,
     }),
-    /host must be exactly github.com/,
+    /host not in the clone allowlist/,   // assertGithubRepo now delegates to assertSafeRepo (W4d A1)
   );
   assert.strictEqual(actorCalls, 0, 'the actor is never run for a non-github repo (L-1 fails closed first)');
 });

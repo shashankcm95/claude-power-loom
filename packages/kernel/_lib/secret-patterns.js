@@ -74,6 +74,23 @@ const CANONICAL_SECRET_CLASS_DEFS = Object.freeze([
   { id: 'pem-private-key',         source: '-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----', flags: 'g', description: 'PEM private key block' },
 ]);
 
+// ③.1-W4d Item 2a: the SCRUBBER-ONLY coarse extras — patterns the canonical (no-FP)
+// set deliberately omits because they are too FP-prone for the BLOCKING validator but
+// harmless for COARSE redaction (over-match in a redaction net is safe; over-match in an
+// edit gate would block a legit edit). These previously lived as a local const array in
+// spawn-record.js; hoisting them here makes the lab scrubber (scrub-lab-secrets.js) reach
+// the SAME full surface — canonical-only scrub is strictly weaker (a sk-proj-…/bare sk-…/
+// URL-embedded-pw/aws_secret_access_key=… all survive it). source+flags (NOT a RegExp
+// object) so getScrubberOnlyClasses() can mint fresh instances — same factory rationale
+// as the canonical set (no shared mutable lastIndex). Do NOT collapse into a const array.
+const SCRUBBER_ONLY_CLASS_DEFS = Object.freeze([
+  { id: 'aws-secret-assign',  source: 'aws_secret_access_key\\s*[:=]\\s*[\'"]?[A-Za-z0-9/+=]{40}[\'"]?', flags: 'gi', description: 'AWS secret value assignment' },
+  { id: 'openai-sk-coarse',   source: 'sk-[a-zA-Z0-9\\-_]{20,}',                                        flags: 'g',  description: 'coarse OpenAI/Anthropic sk- prefix (over-matches; fine for scrub)' },
+  { id: 'stripe-test-key',    source: 'sk_test_[A-Za-z0-9]{20,}',                                       flags: 'g',  description: 'Stripe TEST secret key' },
+  { id: 'stripe-test-restricted', source: 'rk_test_[A-Za-z0-9]{20,}',                                   flags: 'g',  description: 'Stripe TEST restricted key' },
+  { id: 'url-embedded-password',  source: '(https?|ftp):\\/\\/[^:/\\s@]+:[^@\\s/]+@',                    flags: 'g',  description: 'password embedded in URL (://user:pw@host)' },
+]);
+
 /**
  * Mint a FRESH array of the canonical secret classes, each with a NEWLY-CONSTRUCTED
  * RegExp (no shared mutable lastIndex — see the factory rationale in the header).
@@ -89,7 +106,22 @@ function getCanonicalSecretClasses() {
   }));
 }
 
+/**
+ * Mint a FRESH array of the scrubber-only coarse classes (same fresh-instance contract as
+ * getCanonicalSecretClasses). These are for COARSE redaction ONLY — never the blocking
+ * validator (they over-match by design). Consumers compose them with the canonical set.
+ *
+ * @returns {Array<{id: string, regex: RegExp, description: string}>}
+ */
+function getScrubberOnlyClasses() {
+  return SCRUBBER_ONLY_CLASS_DEFS.map((d) => ({
+    id: d.id,
+    regex: new RegExp(d.source, d.flags),
+    description: d.description,
+  }));
+}
+
 /** The canonical class ids (frozen) — for tests + the cross-test's expected-id assertions. */
 const CANONICAL_SECRET_CLASS_IDS = Object.freeze(CANONICAL_SECRET_CLASS_DEFS.map((d) => d.id));
 
-module.exports = { getCanonicalSecretClasses, CANONICAL_SECRET_CLASS_IDS };
+module.exports = { getCanonicalSecretClasses, getScrubberOnlyClasses, CANONICAL_SECRET_CLASS_IDS };

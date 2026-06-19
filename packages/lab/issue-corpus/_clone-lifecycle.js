@@ -33,6 +33,29 @@ const MAX_PATCH_BYTES = 5 * 1024 * 1024;
 
 function mkScoped(prefix) { return fs.mkdtempSync(path.join(os.tmpdir(), prefix)); }
 
+// The SSRF host-allowlist for a REMOTE clone URL (W4d A1). The prod corpus is github.com-only; an
+// arbitrary remote is an SSRF lever (the clone runs UNSANDBOXED on the host). Frozen so no importer
+// can `.push` a host into the default at runtime (the weight-source-gate frozen-default discipline).
+const DEFAULT_REPO_HOST_ALLOWLIST = Object.freeze(['github.com']);
+
+// Resolve the allowlist at CALL-TIME (env read per call, like circuit-breaker's resolveSourceId): a
+// comma-split LOOM_CLONE_HOST_ALLOWLIST -> trimmed-lowercase Set. An empty / whitespace / all-commas /
+// absent env FAILS SAFE to the github.com default -- it can NEVER fail-open to any-host (the safety
+// fail-safe). A caller-injected opts.hostAllowlist OVERRIDES the env (caller-owned-override precedence,
+// mirror weight-source-gate.isLiveSource).
+function resolveHostAllowlist(override) {
+  if (Array.isArray(override) && override.length > 0) {
+    const set = new Set(override.map((h) => String(h).trim().toLowerCase()).filter(Boolean));
+    if (set.size > 0) return set;
+  }
+  const raw = process.env.LOOM_CLONE_HOST_ALLOWLIST;
+  if (typeof raw === 'string') {
+    const set = new Set(raw.split(',').map((h) => h.trim().toLowerCase()).filter(Boolean));
+    if (set.size > 0) return set;
+  }
+  return new Set(DEFAULT_REPO_HOST_ALLOWLIST);
+}
+
 // HARDEN neutralizes repo-side hooks + ext-transport + fsmonitor, and the env
 // drops system/global config + the credential prompt, for every git call here.
 const GIT_HARDEN = ['-c', 'core.hooksPath=/dev/null', '-c', 'protocol.ext.allow=never', '-c', 'core.fsmonitor=false'];
@@ -51,13 +74,36 @@ function git(args, cwd) {
 // the shape AND pass `--` at every call site. A host-LOCAL repo is denied by
 // default (the prod path ingests remote URLs; a local path copies host files
 // into a sandbox-readable dir) — opt in via the backend's allowLocalRepo.
-function assertSafeRepo(repo, { allowLocal = false } = {}) {
+//
+// W4d A1 (SSRF): a REMOTE URL is no longer "always allowed" — it must be https
+// to a host on the allowlist (github.com by default; LOOM_CLONE_HOST_ALLOWLIST
+// or opts.hostAllowlist can widen it). The validation ORDER is load-bearing:
+//   (1) the raw-string parser-differential guard (`@`/`\\`/non-printable) runs
+//       BEFORE `new URL`, because WHATWG `new URL` NORMALIZES a `\@` differential
+//       away (host=github.com under WHATWG, but libcurl/git resolves evil.com,
+//       and the RAW string is what reaches `git clone`);
+//   (2) `new URL` in try/catch (clean parse-failure message);
+//   (3) https-only (TIGHTENED from http-OR-https);
+//   (4) `url.hostname` (NOT `url.host` — no port differential; github.com:PORT
+//       is intentionally permitted) must be on the allowlist.
+// Every throw is VALUE-REDACTED: the message names the FAILED RULE, never the
+// offending value, because it flows into a serialized report (a cred-bearing
+// URL `user:pass@host` would otherwise leak).
+function assertSafeRepo(repo, { allowLocal = false, hostAllowlist } = {}) {
   if (typeof repo !== 'string' || repo.length === 0) throw new Error('prepareClone: repo required');
-  if (repo.startsWith('-')) throw new Error(`prepareClone: repo may not start with "-" (arg-injection): ${repo}`);
-  if (/^https?:\/\//.test(repo)) return repo;                       // remote URL — always allowed
+  if (repo.startsWith('-')) throw new Error('prepareClone: repo may not start with "-" (arg-injection; value redacted)');
   const isLocal = path.isAbsolute(repo) || /^file:\/\//.test(repo);
-  if (!isLocal) throw new Error(`prepareClone: repo must be http(s):// (or, with allowLocalRepo, an absolute path / file:// URL): ${repo}`);
-  if (!allowLocal) throw new Error('prepareClone: host-local repo requires allowLocalRepo (default off — remote URL expected)');
+  if (!isLocal) {
+    // (1) parser-differential guard BEFORE new URL (it normalizes \@ away).
+    if (/[@\\]/.test(repo) || /[^\x21-\x7e]/.test(repo)) throw new Error('prepareClone: repo must not contain userinfo/backslash/whitespace/control (value redacted)');
+    let url;
+    try { url = new URL(repo); } catch { throw new Error('prepareClone: repo is not a parseable URL (value redacted)'); } // (2)
+    if (url.protocol !== 'https:') throw new Error('prepareClone: repo scheme must be https (value redacted)');           // (3)
+    const allow = resolveHostAllowlist(hostAllowlist);
+    if (!allow.has(url.hostname)) throw new Error('prepareClone: repo host not in the clone allowlist (value redacted)');  // (4)
+    return repo;
+  }
+  if (!allowLocal) throw new Error('prepareClone: host-local repo requires allowLocalRepo (default off — remote URL expected; value redacted)');
   return repo;
 }
 // base_sha is REQUIRED: a backtest must pin clone@base (never the remote's
@@ -133,4 +179,5 @@ module.exports = {
   mkScoped, git, GIT_HARDEN, GIT_ENV, TEMP_ROOT,
   assertSafeRepo, assertSafeSha, assertSafeLabel, safeDiscard,
   prepareClone, applyPatch,
+  DEFAULT_REPO_HOST_ALLOWLIST, resolveHostAllowlist,
 };

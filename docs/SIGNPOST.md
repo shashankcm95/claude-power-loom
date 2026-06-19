@@ -194,6 +194,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 ### `lab/_lib/`
 
 - `packages/lab/_lib/enum-key.js` - v3.11 W1 — the shared closed-set key primitive.
+- `packages/lab/_lib/scrub-lab-secrets.js` - ③.1-W4d Item 2a — the shared lab secret-scrub helper.
 
 ### `lab/attribution/`
 

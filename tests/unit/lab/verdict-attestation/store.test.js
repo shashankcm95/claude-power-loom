@@ -236,6 +236,36 @@ test('★ H-1 inverse: two different agentIds under one persona → accumulate (
   assert.strictEqual(store.listVerdicts({ now: T0 }).length, 2, 'two spawns of one persona both recorded');
 });
 
+// ── 13c. ★ W4d Item 1c (F1 fold): the C2 roster reconcile normalizes BOTH sides of the H-1 mislabel
+//         guard. A legacy `13-node-backend` row + a `node-backend` input for the SAME agentId are the
+//         SAME canonical persona → they COEXIST (no false mislabel-throw). The stored value is the raw
+//         input verbatim (disk stays byte-stable — no rewrite of the legacy row), so two rows survive.
+test('★ 13c (F1): legacy 13-node-backend then node-backend for one agentId → coexist, no mislabel throw', () => {
+  store.recordVerdict(vin({ subject: { persona: '13-node-backend' }, now: T0 }));     // AGENT / numbered form
+  assert.doesNotThrow(
+    () => store.recordVerdict(vin({ subject: { persona: 'node-backend' }, verifier: { identity: '07-honesty-auditor.sol', kind: 'claim-vs-evidence' }, now: T0 })),
+    'numbered + bare for one agentId are the same canonical persona → no false mislabel',
+  );
+  const rows = store.listVerdicts({ now: T0 });
+  assert.strictEqual(rows.length, 2, 'both rows persisted (distinct verifiers accumulate)');
+  // the stored value is the RAW input verbatim — the legacy numbered row is NOT rewritten.
+  const personas = rows.map((r) => r.subject.persona).sort();
+  assert.deepStrictEqual(personas, ['13-node-backend', 'node-backend'], 'disk stays byte-stable (raw values, not normalized)');
+});
+
+// ── 13d. ★ W4d Item 1c: Test-13 semantics PRESERVED — two GENUINELY different canonical personas
+//         (node-backend vs ml-engineer, both on-roster, distinct bare keys) under one agentId STILL
+//         throws mislabel. The both-sides normalization closes only the numbered/bare collision.
+test('★ 13d (F1): node-backend vs ml-engineer for one agentId → STILL throws (Test 13 preserved)', () => {
+  store.recordVerdict(vin({ subject: { persona: 'node-backend' }, now: T0 }));
+  assert.throws(
+    () => store.recordVerdict(vin({ subject: { persona: 'ml-engineer' }, now: T0 })),
+    /mislabel|already attested|one spawn/i,
+    'two distinct canonical personas under one agentId is still a mislabel',
+  );
+  assert.strictEqual(store.listVerdicts({ now: T0 }).length, 1, 'the mislabel wrote nothing');
+});
+
 // ── 14. ★ M-1 (VALIDATE hacker): control chars (NUL/newline/CR/tab) in any string field corrupt the
 //        JSONL ledger / E4 grouping keys → REJECT at the store boundary. SHORT strings (a long value
 //        would hit the MAX_FIELD_LEN cap first → the control-char path would be untested — CR LOW).

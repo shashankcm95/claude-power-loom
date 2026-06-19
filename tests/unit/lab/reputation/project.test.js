@@ -187,5 +187,33 @@ test('invalid now option → clear throw (not a mid-projection RangeError)', () 
   assert.throws(() => projectReputation({ now: 'not-a-date' }), /invalid 'now'/);
 });
 
+// ── 14. ★ W4d Item 1a (C2 roster reconcile): personaOf canonicalizes the numbered/bare pair. An
+//        ON-ROSTER persona recorded under BOTH `13-node-backend` and `node-backend` collapses into ONE
+//        emitted persona row keyed on the canonical bare key (`node-backend`) — closing the laundering
+//        lever read-side. Distinct agentIds so the H-1 store guard does not fire (two real spawns).
+test('★ W4d 1a: 13-node-backend + node-backend collapse to ONE canonical persona row (node-backend)', () => {
+  recEnriched({ persona: '13-node-backend', verifierId: 'r.a', agentId: 'aNumbered', txid: 'txN' });
+  recEnriched({ persona: 'node-backend', verifierId: 'r.b', agentId: 'aBare', txid: 'txB' });
+  const out = projectReputation({ now: NOW });
+  const rows = out.personas.filter((p) => p.persona === 'node-backend' || p.persona === '13-node-backend');
+  assert.strictEqual(rows.length, 1, 'numbered + bare collapse to one canonical row');
+  assert.strictEqual(rows[0].persona, 'node-backend', 'keyed on the canonical bare key');
+  assert.strictEqual(rows[0].total, 2, 'both records counted under the one canonical persona');
+});
+
+// ── 15. ★ W4d accepted residual (hacker-M1, plan-honesty): the `|| raw` fail-soft collapses the
+//        numbered/bare pair ONLY for ON-ROSTER personas. An OFF-ROSTER name (`foo` not in agents/*.md)
+//        in numbered (`13-foo`) vs bare (`foo`) form returns null from canonicalPersonaKey → falls
+//        through to the distinct RAW keys → does NOT collapse. This is the documented, accepted residual
+//        (the total close is record-time roster enforcement, out of scope for the dry-run).
+test('★ W4d residual: OFF-ROSTER 13-foo vs foo do NOT collapse (canonicalPersonaKey null → raw)', () => {
+  recEnriched({ persona: '13-foo', verifierId: 'r.a', agentId: 'aFoo1', txid: 'txF1' });
+  recEnriched({ persona: 'foo', verifierId: 'r.b', agentId: 'aFoo2', txid: 'txF2' });
+  const out = projectReputation({ now: NOW });
+  const names = out.personas.map((p) => p.persona);
+  assert.ok(names.includes('13-foo'), 'off-roster numbered form stays distinct (raw)');
+  assert.ok(names.includes('foo'), 'off-roster bare form stays distinct (raw)');
+});
+
 process.stdout.write(`\nproject.test.js (E4 reputation): ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);

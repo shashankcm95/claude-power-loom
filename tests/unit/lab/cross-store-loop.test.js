@@ -59,13 +59,17 @@ function test(name, fn) {
 }
 
 // ── ONE seeded producer feeds the whole loop: a strong persona (3 pass) + a failing persona (5 fail).
+// The strong persona is SEEDED in the HETS-numbered form '13-node-backend' on purpose: node-backend is
+// on-roster, so the W4d C2 reconcile canonicalizes it to the bare 'node-backend' on BOTH the projection
+// (reputation + breaker) AND the breaker query — every consumer below sees the canonical key. The weak
+// persona '07-weak-persona' is OFF-roster, so it stays raw (the accepted residual).
 fs.rmSync(vstore.LEDGER_PATH, { force: true });
 for (let i = 0; i < 3; i += 1) seedEnriched('pass', '13-node-backend', NOW - 1000);
 for (let i = 0; i < 5; i += 1) seedEnriched('fail', '07-weak-persona', NOW - 1000);
 
 test('1. W1 -> E4: the projection sees both personas, enriched + stratified', () => {
   const rep = projectReputation({ now: NOW });
-  const nb = rep.personas.find((p) => p.persona === '13-node-backend');
+  const nb = rep.personas.find((p) => p.persona === 'node-backend');   // 13-node-backend canonicalized (C2)
   const weak = rep.personas.find((p) => p.persona === '07-weak-persona');
   assert.ok(nb && weak, 'both personas projected');
   assert.deepStrictEqual(nb.by_verdict, { pass: 3, partial: 0, fail: 0 }, 'node-backend 3 pass');
@@ -81,16 +85,20 @@ test('2. E4 -> A6: materialize records the distribution; the kernel-mediated rea
   assert.strictEqual(snap.present, true, 'the A6 read path sees the snapshot');
   assert.strictEqual(snap.content_hash, m.content_hash, 'read hash == written hash (INV-22 round-trip)');
   const names = (snap.value || []).map((p) => p.persona).sort();
-  assert.deepStrictEqual(names, ['07-weak-persona', '13-node-backend'], 'both personas in the snapshot value');
+  assert.deepStrictEqual(names, ['07-weak-persona', 'node-backend'], 'both personas in the snapshot value (node-backend canonicalized; off-roster weak stays raw)');
 });
 
 test('3. W1 -> E11: the SAME store fans out to the breaker — weak trips, strong is clear', () => {
   const weak = breaker.evaluate({ persona: '07-weak-persona', now: NOW });
+  // Query the NUMBERED form on purpose: evaluate() canonicalizes the query (C2) so '13-node-backend'
+  // resolves to the same canonicalized records as 'node-backend' — no query-side halt bypass.
   const nb = breaker.evaluate({ persona: '13-node-backend', now: NOW });
+  const nbBare = breaker.evaluate({ persona: 'node-backend', now: NOW });
   assert.strictEqual(weak.source, 'verdict-fail', 'breaker DEFAULT source = the verdict-fail stream');
   assert.strictEqual(weak.tripped, true, '5 fails >= threshold -> HALT the weak persona');
   assert.strictEqual(weak.scope, 'persona');
   assert.strictEqual(nb.tripped, false, '0 fails -> the strong persona is clear');
+  assert.deepStrictEqual({ t: nb.tripped, d: nb.denials_in_window }, { t: nbBare.tripped, d: nbBare.denials_in_window }, 'numbered + bare queries resolve to the SAME breaker view (query-canon, no bypass)');
 });
 
 test('4. loop coherence: ONE producer -> advise (A6) + halt (E11) AGREE on the weak persona (no split-brain)', () => {

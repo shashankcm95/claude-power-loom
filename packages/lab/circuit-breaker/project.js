@@ -53,6 +53,7 @@
 // source's path too late). The source registry selects between the already-loaded modules at call-time.
 const negStore = require('../negative-attestation/store');
 const verdictStore = require('../verdict-attestation/store');
+const { canonicalPersonaKey } = require('../persona-experiment/canonical-persona-key');
 // v3.6 W2b.2: the manage-promote denial source — committed destructive mints, cross-run,
 // windowed on FS mtime (the kernel scan; see record-scan.js for the C1/H1/H2 rationale).
 // v3.8 W1: scanRejectEvents — the reject-event source's cross-run, mtime-windowed read.
@@ -70,8 +71,15 @@ const LABEL = 'denial-rate breaker (stateless windowed; shadow — halts nothing
 function personaOfNeg(r) {
   return (r && r.identity && typeof r.identity.subagent_type === 'string' && r.identity.subagent_type) || 'unknown';
 }
+// W4d Item 1b (C2 roster reconcile): canonicalize the numbered/bare persona pair (the sibling reader
+// of the SAME verdict store as reputation/project.js — leaving it raw = a partial fix that lets the
+// breaker still fragment). The dedup key (`JSON.stringify([personaOfVerdict(r), idKey])` below) shifts
+// intentionally: numbered + bare under one agentId now collapse to ONE denial group. `|| raw` (NOT
+// 'unknown') — null for an off-roster/non-string name keeps the existing 'unknown'-guarded fallback
+// for a missing subject while only collapsing the KNOWN numbered/bare pair.
 function personaOfVerdict(r) {
-  return (r && r.subject && typeof r.subject.persona === 'string' && r.subject.persona) || 'unknown';
+  const raw = (r && r.subject && typeof r.subject.persona === 'string' && r.subject.persona) || 'unknown';
+  return canonicalPersonaKey(raw) || raw;
 }
 
 // v3.8b G1 — dedup-by-subject for the verdict-fail source ONLY (the D6 fix): N reviewer fail-records
@@ -376,7 +384,12 @@ function projectBreaker(opts) {
  */
 function evaluate(opts) {
   const o = opts || {};
-  const persona = (typeof o.persona === 'string' && o.persona) || null;
+  // Canonicalize the QUERY persona to match the canonicalized projection rows (personaOfVerdict).
+  // Without this, evaluate({persona:'13-node-backend'}) would miss the records now keyed 'node-backend'
+  // and report a false "clear" — a query-side BYPASS of a halt (the same laundering lever the read-side
+  // reconcile closes). Fail-soft to raw for an off-roster persona (mirrors personaOfVerdict + the CLI 1d).
+  const rawPersona = (typeof o.persona === 'string' && o.persona) || null;
+  const persona = rawPersona ? (canonicalPersonaKey(rawPersona) || rawPersona) : null;
   const view = projectBreaker({ now: o.now, source: o.source, stateDir: o.stateDir });
   if (view.bypassed) {
     // Bypass is checked BEFORE the requireLive guard (CR-F3): the operator's exact-'1' override

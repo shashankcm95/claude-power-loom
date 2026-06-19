@@ -168,5 +168,52 @@ test('10. CLI non-default source (negative-attestation, STARVED) → explicit st
   assert.strictEqual(parsed.source, 'negative-attestation', 'stdout stays clean JSON + echoes the resolved source');
 });
 
+// ── W4d Item 1b (F5): the C2 roster reconcile collapses the numbered/bare persona pair under ONE
+//    agentId into ONE dedup group. personaOfVerdict canonicalizes `13-node-backend` + `node-backend`
+//    to the same bare key, so dedupBySubject keys both records to the same (persona, agentId) group
+//    → exactly ONE denial event, not two. Without the reconcile they would fragment into two groups
+//    (the laundering lever) — though the store's H-1 guard would also have rejected the second write
+//    on a raw-persona compare; the W4d store fix (1c) lets them coexist + this asserts the breaker
+//    side then collapses them.
+test('11. F5: 13-node-backend + node-backend fails for ONE agentId → ONE dedup group (one denial)', () => {
+  const agentId = 'a000000000000ff11'; // 17 chars, path-safe — SAME spawn, two persona spellings
+  vstore.recordVerdict({
+    verdict: 'fail', subject: { persona: '13-node-backend' },
+    verifier: { identity: '03-code-reviewer.nova', kind: 'structural' }, agentId, now: NOW - 1000,
+  });
+  vstore.recordVerdict({
+    verdict: 'fail', subject: { persona: 'node-backend' },
+    verifier: { identity: '07-honesty-auditor.sol', kind: 'claim-vs-evidence' }, agentId, now: NOW - 1000,
+  });
+  // Both raw rows are on disk (the store's H-1 guard treats them as the SAME canonical persona).
+  assert.strictEqual(vstore.listVerdicts({ now: NOW }).length, 2, 'both raw rows coexist on disk');
+  const v = projectBreaker({ now: NOW });
+  const rows = v.personas.filter((p) => p.persona === 'node-backend' || p.persona === '13-node-backend');
+  assert.strictEqual(rows.length, 1, 'exactly ONE persona group (numbered + bare collapsed to canonical)');
+  assert.strictEqual(rows[0].persona, 'node-backend', 'the canonical bare key is the group key');
+  assert.strictEqual(rows[0].denials_in_window, 1, 'the two records dedup to ONE denial (same agentId, same canonical persona)');
+});
+
+// ── W4d Item 1b (query-canon, the bypass close): evaluate() canonicalizes the QUERY persona, so a
+//    HALTED on-roster persona cannot be dodged by querying the numbered form. Seed 5 fails (distinct
+//    agentIds → 5 dedup groups → >= DEFAULT_MAX_DENIALS) under the numbered '13-node-backend'; BOTH the
+//    numbered and the bare query must resolve to the SAME tripped view. Without the query-side fix the
+//    numbered query would miss the canonicalized records and falsely report "clear" (the bypass).
+test('12. query-canon: a HALTED on-roster persona trips under BOTH the numbered + bare query (no bypass)', () => {
+  for (let i = 0; i < 5; i += 1) {
+    vstore.recordVerdict({
+      verdict: 'fail', subject: { persona: '13-node-backend' },
+      verifier: { identity: '03-code-reviewer.nova', kind: 'structural' },
+      agentId: `b${String(i).padStart(16, '0')}`, now: NOW - 1000, // distinct agentId → distinct denial
+    });
+  }
+  const numbered = evaluate({ persona: '13-node-backend', now: NOW });
+  const bare = evaluate({ persona: 'node-backend', now: NOW });
+  assert.strictEqual(bare.tripped, true, '5 distinct-agentId fails -> the canonical persona is HALTED');
+  assert.strictEqual(numbered.tripped, true, 'the NUMBERED-form query also trips — no query-side bypass of the halt');
+  assert.strictEqual(numbered.denials_in_window, bare.denials_in_window, 'numbered + bare resolve to the IDENTICAL denial count');
+  assert.strictEqual(numbered.scope, bare.scope, 'numbered + bare resolve to the IDENTICAL trip scope');
+});
+
 process.stdout.write(`\nverdict-source.test.js (E11-rescue): ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
