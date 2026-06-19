@@ -5,10 +5,18 @@
 // v-next Carry C W1 — the ed25519 EDGE-ATTESTATION primitive. The authenticated minter that
 // NARROWS the #273 standing residual on the confirmed-by edge ledger: an edge becomes unforgeable
 // by a writer who does not POSSESS the minter's private key (the verifier needs only the PUBLIC
-// key, which ships; the private key stays in the legitimate minter's process env — a future
-// deployment precondition, NOT a W1 deliverable). It does NOT harden trust in any world-anchored
-// sense (OQ-NS-6); it raises the forgery bar from "anyone who can call the exported deriveEdgeId"
-// (trivial — proven live by the co-forge red-test) to "a holder of the kernel private key".
+// key, which ships; the private key stays in the legitimate minter's process env BY DEFAULT). It does
+// NOT harden trust in any world-anchored sense (OQ-NS-6); it raises the forgery bar from "anyone who
+// can call the exported deriveEdgeId" (trivial — proven live by the co-forge red-test) to "a holder
+// of the kernel private key".
+//
+// P1 SEAM (RFC §5.1/§7, minter P1 step 1 — the trust-domain INTERFACE FREEZE): signing is resolved
+// through resolveSigner(opts). The env-PEM default is honestly Option-A-equivalent — a same-uid caller
+// can read LOOM_EDGE_SIGNING_KEY and forge. A caller INJECTS opts.signer (a function) to route signing
+// into a trust domain the same-uid host cannot read() (a separate-uid broker / container namespace), so
+// the host need never hold the key (Option B — the full same-uid close). This primitive ships ONLY the
+// seam; the actual key-custody vehicle (recompute-INSIDE, so the broker is not a sign-arbitrary oracle)
+// is the ③.2-era step. P1 does NOT itself close the same-uid co-forge or gate anything (SHADOW).
 //
 // PURE kernel crypto: parameterized over (edgeId, sig, key) only — it knows NOTHING about edges,
 // lessons, or the lab (so a lab store importing it is the legal lab->kernel direction, no leak).
@@ -75,17 +83,48 @@ function generateEdgeKeypair() {
   return { publicKeyPem: publicKey, privateKeyPem: privateKey };
 }
 
-// signRecordId(recordId, opts) -> base64 ed25519 signature over ANY 64-hex content-address string,
-// or null. v-next minter P0 (RFC §5.3): generalized from "edge_id" to "any 64-hex id" — the crypto
-// is UNCHANGED (the id was always treated as an opaque HEX64 string), only the name widens. Fail-soft:
-// a non-HEX64 id or no/again-non-ed25519 key -> null (the caller then writes an unsigned/shadow form).
-// Never throws.
-function signRecordId(recordId, opts = {}) {
-  if (!isHex64(recordId)) return null;
+// resolveSigner(opts) -> a signer function (hex64) -> base64-sig | null, or null if no signer is
+// available. THE P1 TRUST-DOMAIN SEAM (RFC §5.1/§7). The DEFAULT signer loads the ed25519 PEM
+// (opts/env via loadPrivateKey, unchanged) and crypto.sign's IN-PROCESS — honestly Option-A-equivalent
+// (a same-uid caller can read LOOM_EDGE_SIGNING_KEY). A caller INJECTS opts.signer (a function) to
+// route signing into a trust domain the same-uid host cannot read() — a separate-uid broker or a
+// container namespace — so the host process never holds the key (Option B). This seam is the INTERFACE
+// FREEZE: the ③.2-era vehicle plugs in HERE with no signRecordId call-site edit. opts.signer takes
+// precedence; a non-function opts.signer is IGNORED (fall through to the PEM default — fail-safe).
+function resolveSigner(opts = {}) {
+  if (opts && typeof opts.signer === 'function') return opts.signer;
   const key = loadPrivateKey(opts);
   if (!key) return null;
-  try { return crypto.sign(null, Buffer.from(recordId, 'utf8'), key).toString('base64'); }
+  return (recordId) => {
+    // The default closure SELF-GUARDS isHex64 (VALIDATE code-reviewer F1): resolveSigner is exported, so
+    // a ③.2 vehicle invoking the returned closure directly bypasses signRecordId's input gate — the
+    // closure must not sign an arbitrary (non-HEX64) string. signRecordId also pre-checks (defense-in-depth).
+    if (!isHex64(recordId)) return null;
+    try { return crypto.sign(null, Buffer.from(recordId, 'utf8'), key).toString('base64'); }
+    catch { return null; }
+  };
+}
+
+// signRecordId(recordId, opts) -> base64 ed25519 signature over ANY 64-hex content-address string,
+// or null. v-next minter P0 (RFC §5.3): generalized from "edge_id" to "any 64-hex id". P1 (RFC §5.1):
+// the signer is resolved through resolveSigner — the env-PEM default OR an injected opts.signer (the
+// trust-domain vehicle). Fail-soft: a non-HEX64 id (the INPUT gate, BEFORE any signer), no signer, a
+// throwing signer, or a malformed/non-canonical signer OUTPUT -> null. Never throws.
+function signRecordId(recordId, opts = {}) {
+  if (!isHex64(recordId)) return null;          // INPUT gate FIRST — never hand an unchecked id to a signer
+  const signer = resolveSigner(opts);
+  if (typeof signer !== 'function') return null;
+  let sig;
+  try { sig = signer(recordId); }               // an injected signer may throw -> fail-soft
   catch { return null; }
+  // OUTPUT gate: an injected signer is UNTRUSTED to return a well-formed sig. Require canonical base64
+  // (malleability defense — the SAME gate verifyRecordSig applies) AND the exact 64-byte shape of an
+  // authentic ed25519 signature (VALIDATE hacker M1 — makes emit symmetric with verifyRecordSig's crypto
+  // acceptance, so a malformed injected-signer output fails at MINT instead of persisting as a dead
+  // "signed" record). The default ed25519 signer always emits a 64-byte canonical sig -> no-op for the
+  // env/PEM path (zero regression).
+  if (!isCanonicalBase64(sig)) return null;
+  return Buffer.from(sig, 'base64').length === 64 ? sig : null;
 }
 
 // verifyRecordSig(recordId, sigB64, opts) -> boolean. Fail-CLOSED: a non-HEX64 id, a non-canonical /
@@ -119,4 +158,6 @@ module.exports = {
   // v-next minter P0: the generic names (RFC §5.3) + the edge-lane identity aliases.
   signRecordId, verifyRecordSig,
   signEdgeId, verifyEdgeSig,
+  // v-next minter P1: the signer-resolution seam (opts.signer routes signing into a trust domain).
+  resolveSigner,
 };

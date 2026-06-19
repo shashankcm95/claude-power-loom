@@ -420,5 +420,21 @@ test('freshness never rescues a bad sig (stale window irrelevant if sig invalid)
   assert.strictEqual(verifyMintedWeight(forged, { ...VERIFY, maxAgeMs: 60000, nowMs: T0_MS }), false);
 });
 
+// ── P1 seam — VALIDATE hacker H1: mintWeight must NOT honor a caller-injected opts.signer ──────────
+// The P1 signer-seam made opts.signer the highest-precedence signer in resolveSigner. mintWeight must
+// NOT forward a caller's opts.signer (that would let an untrusted caller DOWNGRADE the kernel key to a
+// key it controls — a provenance forge). The minter's signer is kernel-owned (env/PEM here).
+test('H1 (VALIDATE): mintWeight IGNORES a caller-injected opts.signer — signs under the TRUSTED key, no downgrade', () => {
+  const attacker = generateEdgeKeypair();
+  const attackerSigner = (id) => crypto.sign(null, Buffer.from(id, 'utf8'), crypto.createPrivateKey(attacker.privateKeyPem)).toString('base64');
+  const policies = new Map();
+  policies.set('h1-kind', () => ({ value: 1, basis: { x: 1 } }));
+  // a hostile caller passes BOTH the trusted PEM and an attacker signer; the minter must use ONLY the trusted key.
+  const w = mintWeight({ kind: 'h1-kind', subject: 'x'.repeat(64) }, { ...SIGN, policies, signer: attackerSigner });
+  assert.ok(w && w.sig, 'minted under the trusted key');
+  assert.strictEqual(verifyMintedWeight(w, VERIFY), true, 'verifies under the TRUSTED kernel key');
+  assert.strictEqual(verifyMintedWeight(w, { publicKeyPem: attacker.publicKeyPem }), false, 'does NOT verify under the injected attacker key (downgrade closed)');
+});
+
 process.stdout.write(`\nweight-minter: ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
