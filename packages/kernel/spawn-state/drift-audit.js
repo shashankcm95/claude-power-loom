@@ -70,6 +70,11 @@ function extractUserContent(content) {
 
 function readTranscriptText(transcriptPath) {
   const stat = fs.statSync(transcriptPath);
+  // Reject a non-regular file (FIFO / dir / socket). PR-2's Stop-hook carrier
+  // AUTO-fires this producer, so a symlink-to-FIFO transcript_path would otherwise
+  // make fs.readFileSync BLOCK the detached child for the 60s judge window. Fail
+  // to '' -> no-session-id downstream (fail-closed, no hang).
+  if (!stat.isFile()) return '';
   if (stat.size <= MAX_TRANSCRIPT_BYTES) return fs.readFileSync(transcriptPath, 'utf8');
   // Oversized: read only the newest tail within budget (most drift-relevant).
   const fd = fs.openSync(transcriptPath, 'r');
@@ -197,7 +202,7 @@ function verifyJudgeOutput(items, { sessionId, state, minConfidence = DEFAULT_MI
 // for an advisory counter (it recurs next session; convergence is cross-session),
 // but it must be observable, not swallowed.
 function bumpSignal(signal) {
-  const r = spawnSync('node', [STORE_SCRIPT, 'bump', '--signal', signal], { encoding: 'utf8', stdio: ['ignore', 'ignore', 'pipe'], timeout: BUMP_TIMEOUT_MS });
+  const r = spawnSync(process.execPath, [STORE_SCRIPT, 'bump', '--signal', signal], { encoding: 'utf8', stdio: ['ignore', 'ignore', 'pipe'], timeout: BUMP_TIMEOUT_MS });
   if (r.error || r.status !== 0) {
     process.stderr.write(`[drift-audit] bump-failed signal=${signal} status=${r.status} ${r.error ? r.error.message : (r.stderr || '').slice(0, 120)}\n`);
   }

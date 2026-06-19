@@ -290,6 +290,17 @@
         ]
       },
       {
+        "_comment": "Ghost Heartbeat W2-PR2 carrier (#369 producer). Opt-in (GHOST_HEARTBEAT_EMIT=1), default-off, advisory. On opted-in turn end it hands the transcript to drift-audit.js as a DETACHED background process (debounced per session), then passes stdin through. Emits NO forcing instruction, so order is immaterial; placed BEFORE context-size-warn-stop to keep that hook's self-declared last position.",
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/packages/kernel/hooks/lifecycle/ghost-heartbeat-stop.js",
+            "timeout": 5
+          }
+        ]
+      },
+      {
         "_comment": "GAP-F (v2.5.0): deterministic context-size warning. Inserted LAST in Stop chain so its forcing instruction is the final concatenation when multiple Stop hooks emit. Uses transcript_path bytes as the primary signal (ground-truth); falls back to turn counter if transcript_path missing.",
         "matcher": "*",
         "hooks": [
