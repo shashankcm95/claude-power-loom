@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // route-decide.js — H.7.3 deterministic route-decision gate.
 //
-// Pure function CLI that scores a task on 7 weighted dimensions and emits a
+// Pure function CLI that scores a task on 8 weighted dimensions and emits a
 // route|borderline|root recommendation as JSON. Consumed by /build-team Step 0
 // and (advisory) by rules/core/workflow.md.
 //
@@ -11,6 +11,9 @@
 // Weights, thresholds, keyword sets, and edge-case behavior are LOAD-BEARING
 // per theo's design — implementer (13-node-backend.noor) MUST NOT re-derive
 // them. Adjustments to keyword sets / weights require a new architect pass.
+// (Router-V2 W1: the keyword sets now live in route-lexicon.json — a versioned
+// DATA artifact, schema-validated at the boundary; the architect-gate discipline
+// is unchanged. Weights stay hardcoded here — keywords-first.)
 //
 // Forcing-instruction class: 1 (advisory) — emits [ROUTE-DECISION-UNCERTAIN]
 // and [ROUTE-META-UNCERTAIN]. Per Convention G (skills/agent-team/patterns/
@@ -18,6 +21,9 @@
 // instruction-family.md.
 
 'use strict';
+
+const fs = require('fs');
+const path = require('path');
 
 // ---------- constants ----------
 
@@ -61,217 +67,275 @@ const CONFIDENCE_BAND = 0.30;  // for L-1 confidence calc
 const CONTEXT_WEIGHT_MULT = 0.5;
 const BORDERLINE_PROMOTION_THRESHOLD = 0.10;  // post-mult context_score floor
 
-// ---------- keyword sets ----------
+// Number of WEIGHTED scoring dimensions (single source of truth for the
+// human-facing count in --help + the comment header). The counter-signal and
+// infra-lift sets are SEPARATE roles (penalty / lift), not weighted dimensions.
+const SCORED_DIMENSION_COUNT = Object.keys(WEIGHTS).length;  // 8
 
-const KEYWORDS = {
-  // M-1: expanded Stakes set + R3: kubernetes/k8s/terraform/helm
-  // H.7.11 (ari): + severity-class (`critical`, `severity`), concurrency-failure-class
-  // (`race-condition`, `deadlock`, `*leak`), security-class (`breach`, `vulnerability`,
-  // `cve`, `exploit`). Closes drift-note 4 ("CRITICAL fixes" + "session leak").
-  stakes: [
-    'production', 'scalable', 'secure', 'reliable', 'compliance',
-    'auth', 'authentication', 'authorization', 'payments', 'billing',
-    'pii', 'encryption', 'secrets', 'tokens', 'oauth',
-    'multi-tenant', 'rate-limit', 'rate limiting', 'availability', 'outage', 'incident',
-    'kubernetes', 'k8s', 'terraform', 'helm',
-    // H.7.11 — drift-note-driven additions
-    'critical', 'severity',
-    'race-condition', 'race condition', 'deadlock',
-    'session leak', 'memory leak', 'leak',
-    'breach', 'vulnerability', 'cve', 'exploit',
-  ],
-  // M-2: textual signals only — NO substrate lookup
-  domain_novelty: [
-    'novel', 'prototype', 'experiment', 'unfamiliar', 'unknown',
-    'new framework', 'first time', 'bleeding edge', 'cutting edge', 'not standard',
-  ],
-  // C-2: split compound into strong + weak
-  // H.7.11 (ari): + concurrency-cluster (`race`/`concurrency`/`concurrent`/`locking`/`mutex`/`lock`/`RMW`/`read-modify-write`)
-  // and complex-systems-cluster (`distributed`/`replication`/`transaction`/`atomic`/`idempotent`/`idempotency`).
-  // Closes drift-note 4 ("RMW race", "concurrent PostToolUse fires", "withLock").
-  compound_strong: [
-    'schema', 'migration', 'protocol', 'consensus', 'state-machine',
-    'pipeline', 'data-model', 'event-sourcing',
-    // H.7.11 — concurrency cluster
-    'race', 'concurrency', 'concurrent', 'locking', 'mutex', 'lock',
-    'RMW', 'read-modify-write',
-    // H.7.11 — complex-systems cluster
-    'distributed', 'replication', 'transaction', 'atomic',
-    'idempotent', 'idempotency',
-    // drift:dictionary-gap (2026-06-03) — HIGH-PRECISION v3.2 substrate-component
-    // phrases (multi-word / hyphenated → zero general-task FP risk; no general SWE
-    // task says "spawn-verify" or "leaf-criteria"). The ambiguous single words
-    // (gate/dispatcher/validator) are DETECTION-ONLY (SUBSTRATE_META_TOKENS), NOT
-    // scored here, to avoid over-routing general tasks.
-    'spawn-verify', 'leaf-criteria', 'verification tier', 'failure-signature',
-    'test-runner adapter', 'kernel algorithm',
-    // drift:dictionary-gap v3.8a (2026-06-12, the MANDATED architect pass — plan
-    // 2026-06-12-v3.8a-route-decide-dictionary-expansion.md) — the zero-FP subset of
-    // the v3.3-v3.8 Lab/trust-substrate vocabulary: hyphenated/underscored/2-word
-    // phrases ONLY (no general SWE task says "negative-attestation"). Single words
-    // (integrator/quarantine/reputation/materialize/...) are DETECTION-ONLY in the
-    // Tier-2c sentinel block below — they appear in general prose and must never
-    // score. compound_strong contributes a FLAT 0.15 however many match, so this
-    // expansion structurally cannot push a substrate task past root on its own —
-    // the [ROUTE-META-UNCERTAIN] advisory is the designed escalation hook.
-    'reject-event', 'circuit-breaker', 'denial-rate', 'negative-attestation',
-    'verdict-attestation', 'evolution-snapshot', 'canonical-json', 'content-addressed',
-    'manage-promote', 'delta-promote', 'post_state_hash', 'stage-candidate',
-  ],
-  // H.7.11 (ari): + `architectural` (synonym of `architecture`), + `refactor`/`refactoring`/`restructure`.
-  // `refactor` is genuinely ambiguous; mitigated by compound_weak suppression-by-stakes.
-  // Drop `refactor`/`refactoring` first if FP regression observed.
-  compound_weak: [
-    'architecture', 'design', 'framework', 'system',
-    // H.7.11
-    'architectural', 'refactor', 'refactoring', 'restructure',
-  ],
-  // C-1: removed `review` from binary trigger; high-precision only
-  // H.7.11 (ari): + `retrospective` (drift-notes 1+4), + postmortem-cluster + root-cause-cluster + phrase-level (`review pass`/`audit pass`).
-  // Largest single-dim expansion: 4 → 12 tokens. Justified by the second-highest weight share (0.20).
-  audit_binary: [
-    'audit', 'compliance', 'certification', 'regulatory',
-    // H.7.11 — drift-note-driven + proactive
-    'retrospective', 'postmortem', 'post-mortem',
-    'root-cause', 'root cause',
-    'findings', 'review pass', 'audit pass',
-  ],
-  // Scope (multi-file / multi-component signals); R3: `manifest` included.
-  // R1-derived: `endpoints`/`apis` (plural) are multi-component implications
-  // — theo's R1 trace explicitly counts "Express API endpoints" as multi-
-  // component. Plural-noun-API IS the multi-component signal.
-  // H.7.11 (ari): + substrate-file-type plurals (`hooks`/`scripts`) + spelling-normalized
-  // (`across-files`) + callsite plurals. Closes drift-note 4 ("4 hooks/scripts files").
-  scope_size: [
-    'multi-file', 'multi-component', 'cross-cutting',
-    'end-to-end', 'pipeline', 'orchestration', 'service', 'manifest',
-    'multiple files', 'across files', 'endpoints', 'apis',
-    // H.7.11
-    'across-files', 'hooks', 'scripts', 'callsites', 'callsite',
-  ],
-  // Convergence-value (non-obvious tradeoffs); R4 keyword additions
-  // H.7.11 (ari): no additions. Drift-notes are known-design execution, not convergence-needing.
-  convergence_value: [
-    'tradeoff', 'tradeoffs', 'options', 'compare', 'evaluate',
-    'choice', 'choose between', 'decide between', 'eviction policy', 'consistency model',
-    'pagination', 'search', 'service design', 'url shortener', 'state management',
-  ],
-  // R2: 7th dimension keywords (user-facing / UX / docs)
-  // H.7.11 (ari): no additions. Drift-notes are not UX work.
-  user_facing_or_ux: [
-    'user-facing', 'walkthrough', 'tutorial', 'onboarding', 'documentation',
-    'component', 'ui', 'ux', 'accessibility', 'responsive',
-  ],
-  // HIGH-1: counter-signals expanded to BACKLOG-class
-  // H.7.11 (ari): + polish-class (`polish`/`polishing`/`jsdoc`/`docstring`/`frontmatter`/etc.).
-  // Catches the alternative-H.7.11 mechanical-polish work that would otherwise mis-route
-  // when phrased with substrate vocabulary. `rename` flagged borderline; drop first if FP.
-  counter_signals: [
-    'fix typo', 'small', 'tweak', 'experiment', 'prototype',
-    'typo', 'prune', 'cleanup', 'delete entries', 'remove', 'stale',
-    'one line', 'minor', 'trivial', 'quick fix', 'quick',
-    'hello world',
-    // H.7.11 — polish-class
-    'polish', 'polishing', 'jsdoc', 'docstring', 'frontmatter',
-    'comment', 'comments', 'formatting', 'lint', 'linting', 'prettier',
-    'rename', 'renaming', 'whitespace',
-  ],
-  // HIGH-3: infra-implicit-stakes (independent of stakes match)
-  infra_terms: [
-    'k8s', 'kubernetes', 'terraform', 'helm', 'docker-compose',
-    'ansible', 'infrastructure', 'deployment', 'manifest',
-  ],
-};
+// ---------- lexicon (data artifact) ----------
+//
+// Router-V2 W1: the keyword sets + substrate-meta sentinel were lifted VERBATIM
+// out of this file into route-lexicon.json (a versioned DATA artifact). The four
+// roles are explicit there: 8 SCORED dims (-> WEIGHTS), the COUNTER-penalty set
+// (counter_signals), the INFRA-lift set (infra_terms), and the DETECTION-only
+// sentinel (substrate_meta). The high-precision scored-and-detected overlap is a
+// first-class, drift-checked field. Token sets remain LOAD-BEARING + architect-
+// gated (see header); weights stay hardcoded above (keywords-first).
+//
+// The scorer treats the artifact as UNTRUSTED DATA: it schema-validates at load
+// and FAILS CLOSED — throws a typed LexiconError (CLI exits non-zero with NO
+// stdout JSON; in-process scoreTask throws) rather than emit a fabricated verdict.
+// Both consumers absorb the loud fail: the spawn hook treats a non-zero exit as
+// route-decide-failed -> approve (ADR-0001 fail-open); bucketTaskComplexity's
+// try/catch -> 'standard'.
 
-// H.7.16 (drift-note 9, mira architect pass) — substrate-meta token sentinel.
-// These tokens feed the [ROUTE-META-UNCERTAIN] forcing instruction. The sentinel
-// itself does NOT score — BUT per the drift:dictionary-gap hybrid (2026-06-03), a
-// HIGH-PRECISION subset of the Tier-2b substrate-architecture phrases is ALSO listed
-// in KEYWORDS.compound_strong (those DO score). The two lists overlap intentionally:
-// detection is BROAD (advisory; FP cost = a harmless extra advisory), scoring is
-// NARROW (zero-FP multi-word phrases only).
+const EXPECTED_LEXICON_VERSION = 'v1-2026-06-19';
+// The lexicon is DATA, not an algorithm — it lives in kernel/_lib (the algorithms
+// dir is restricted to registered flat .js algorithm files; kernel-algorithms-audit).
+const DEFAULT_LEXICON_PATH = path.join(__dirname, '..', '_lib', 'route-lexicon.json');
+
+class LexiconError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'LexiconError';
+    this.code = 'ROUTE_LEXICON_INVALID';
+  }
+}
+
+// [a-z0-9_] — the matcher operates on already-lowercased text, so A-Z never
+// appears (the original boundary class [a-zA-Z0-9_] reduces to this on lowercased
+// input). '_' (95) is a word char, so post_state_hash is ONE token.
+function isWordCharCode(code) {
+  return (code >= 97 && code <= 122) || (code >= 48 && code <= 57) || code === 95;
+}
+
+// Validate the artifact shape at the A4 boundary. Throws LexiconError on any
+// violation (fail-closed). Asserts: version match; the role taxonomy; scored
+// roles === WEIGHTS keys (exact-set — no special-path dim may be misclassified as
+// scored); every declared category present + a non-empty string[] whose tokens
+// each begin with a word char; and the scored-and-detected overlap === the actual
+// compound_strong/substrate_meta intersection (exact-set — drift-proof).
+function validateLexiconShape(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    throw new LexiconError('route-lexicon must be a JSON object');
+  }
+  if (typeof data.lexicon_version !== 'string' || data.lexicon_version.length === 0) {
+    throw new LexiconError('route-lexicon.lexicon_version must be a non-empty string');
+  }
+  if (data.lexicon_version !== EXPECTED_LEXICON_VERSION) {
+    throw new LexiconError(
+      `route-lexicon version mismatch: expected ${EXPECTED_LEXICON_VERSION}, got ${data.lexicon_version}`);
+  }
+  const roles = data.roles;
+  if (!roles || typeof roles !== 'object' || Array.isArray(roles)) {
+    throw new LexiconError('route-lexicon.roles must be an object');
+  }
+  if (!Array.isArray(roles.scored) || !roles.scored.every((s) => typeof s === 'string')) {
+    throw new LexiconError('route-lexicon.roles.scored must be an array of strings');
+  }
+  for (const k of ['counter_penalty', 'infra_lift', 'detection_only']) {
+    if (typeof roles[k] !== 'string' || roles[k].length === 0) {
+      throw new LexiconError(`route-lexicon.roles.${k} must be a non-empty string`);
+    }
+  }
+  // scored roles must EXACTLY equal the weighted dims (no misclassification).
+  const weightKeys = Object.keys(WEIGHTS);
+  const scoredSet = new Set(roles.scored);
+  const weightSet = new Set(weightKeys);
+  const missingScored = weightKeys.filter((k) => !scoredSet.has(k));
+  const unexpectedScored = roles.scored.filter((k) => !weightSet.has(k));
+  if (missingScored.length > 0 || unexpectedScored.length > 0) {
+    throw new LexiconError(
+      `route-lexicon.roles.scored must equal WEIGHTS keys; missing=[${missingScored}], unexpected=[${unexpectedScored}]`);
+  }
+  // categories must contain EXACTLY the declared role categories.
+  const expectedCats = [...roles.scored, roles.counter_penalty, roles.infra_lift, roles.detection_only];
+  const cats = data.categories;
+  if (!cats || typeof cats !== 'object' || Array.isArray(cats)) {
+    throw new LexiconError('route-lexicon.categories must be an object');
+  }
+  const catKeys = Object.keys(cats);
+  const expectedCatSet = new Set(expectedCats);
+  const missingCats = expectedCats.filter((c) => !catKeys.includes(c));
+  const extraCats = catKeys.filter((c) => !expectedCatSet.has(c));
+  if (missingCats.length > 0 || extraCats.length > 0) {
+    throw new LexiconError(
+      `route-lexicon.categories keys must equal the declared roles; missing=[${missingCats}], extra=[${extraCats}]`);
+  }
+  for (const cat of expectedCats) {
+    const arr = cats[cat];
+    if (!Array.isArray(arr) || arr.length === 0) {
+      throw new LexiconError(`route-lexicon.categories.${cat} must be a non-empty array`);
+    }
+    for (const tok of arr) {
+      if (typeof tok !== 'string' || tok.length === 0) {
+        throw new LexiconError(`route-lexicon.categories.${cat} contains a non-string/empty token`);
+      }
+      if (!isWordCharCode(tok.toLowerCase().charCodeAt(0))) {
+        throw new LexiconError(
+          `route-lexicon token "${tok}" (in ${cat}) must begin with a word char [a-z0-9_]`);
+      }
+    }
+  }
+  // The scored-and-detected overlap is a first-class field: the declared set must
+  // equal the actual compound_strong/substrate_meta intersection (exact-set).
+  // NOTE (VALIDATE/cr-F2): this intersection is by LITERAL token string (case-
+  // sensitive). The current 17 overlap tokens are authored case-consistently in both
+  // categories; a future token spelled with divergent case across the two lists would
+  // need this comparison lowercased to stay drift-proof.
+  if (!Array.isArray(data.scored_and_detected_overlap)) {
+    throw new LexiconError('route-lexicon.scored_and_detected_overlap must be an array');
+  }
+  const csSet = new Set(cats.compound_strong);
+  const smSet = new Set(cats.substrate_meta);
+  const actualOverlap = cats.compound_strong.filter((t) => smSet.has(t));
+  const declaredSet = new Set(data.scored_and_detected_overlap);
+  const missingOverlap = actualOverlap.filter((t) => !declaredSet.has(t));
+  const unexpectedOverlap = data.scored_and_detected_overlap.filter((t) => !csSet.has(t) || !smSet.has(t));
+  if (missingOverlap.length > 0 || unexpectedOverlap.length > 0) {
+    throw new LexiconError(
+      'route-lexicon.scored_and_detected_overlap must equal compound_strong/substrate_meta; ' +
+      `missing=[${missingOverlap}], unexpected=[${unexpectedOverlap}]`);
+  }
+}
+
+// Compile the validated artifact into the matcher. Builds a phrase-aware index
+// keyed by each token's leading word-run; matchLowerSet scans the text's maximal
+// [a-z0-9_]+ runs in O(task) and reproduces the EXACT word-boundary semantics of
+// the retired per-keyword regex (hyphen-subphrase match; literal internal
+// separators incl. single-space; underscore as a word char). A match can only
+// START at a text run-start (the leading boundary is non-word/^), and a token's
+// leading word-run must EQUAL a full maximal text run (the text run is maximal,
+// so a token's leading run cannot be a proper prefix of it) — so the index is
+// keyed by that leading run, deduped by lowercased token.
+function compileLexicon(data) {
+  // Complexity note (VALIDATE/hacker M1): matchLowerSet below is O(textRuns x
+  // bucketCandidates). The real lexicon's largest leading-run bucket is 3 (of ~255
+  // tokens) so it is effectively O(task) — and it is NOT a regression vs the retired
+  // O(keywords x text) matcher (which was the same class, measured slower). The bound
+  // on token count / bucket size is the ARCHITECT-GATE (the lexicon is reviewed before
+  // merge); a hard validation cap is deferred defense-in-depth for if/when the lexicon
+  // path becomes attacker-controllable rather than architect-gated.
+  const categories = data.categories;
+  const keywordDims = [...data.roles.scored, data.roles.counter_penalty, data.roles.infra_lift];
+  const allCats = [...keywordDims, data.roles.detection_only];
+  const index = new Map();
+  const seen = new Set();
+  for (const cat of allCats) {
+    for (const tok of categories[cat]) {
+      const kwLower = tok.toLowerCase();
+      if (seen.has(kwLower)) continue;
+      seen.add(kwLower);
+      const firstRun = kwLower.match(/^[a-z0-9_]+/)[0];   // non-empty by validation
+      const isSingleRun = firstRun.length === kwLower.length;
+      if (!index.has(firstRun)) index.set(firstRun, []);
+      index.get(firstRun).push({ kwLower, kwLen: kwLower.length, isSingleRun });
+    }
+  }
+
+  // Returns the SET of lowercased tokens present in textLower (expects already-
+  // lowercased input, as every call site passes lowerText/ctxLower). Callers
+  // recover per-category, list-ordered match arrays by filtering each category's
+  // ORIGINAL token list against this set's membership.
+  function matchLowerSet(textLower) {
+    const found = new Set();
+    const runRe = /[a-z0-9_]+/g;
+    let m;
+    while ((m = runRe.exec(textLower)) !== null) {
+      const candidates = index.get(m[0]);
+      if (!candidates) continue;
+      const at = m.index;
+      for (const cand of candidates) {
+        if (found.has(cand.kwLower)) continue;
+        if (cand.isSingleRun) {
+          // run === leading-run === kwLower; both boundaries are run boundaries.
+          found.add(cand.kwLower);
+        } else {
+          const end = at + cand.kwLen;
+          if (end <= textLower.length &&
+              textLower.startsWith(cand.kwLower, at) &&
+              (end === textLower.length || !isWordCharCode(textLower.charCodeAt(end)))) {
+            found.add(cand.kwLower);
+          }
+        }
+      }
+    }
+    return found;
+  }
+
+  return {
+    lexicon_version: data.lexicon_version,
+    categories,
+    keywordDims,
+    scoredDims: [...data.roles.scored],
+    matchLowerSet,
+  };
+}
+
+// Read + parse + validate + compile the lexicon artifact. Throws LexiconError on
+// an unreadable / malformed / shape-invalid / version-mismatched artifact.
+// Exported for direct unit testing of the fail-closed boundary.
+function loadLexicon(lexiconPath) {
+  const p = lexiconPath || DEFAULT_LEXICON_PATH;
+  let raw;
+  try {
+    raw = fs.readFileSync(p, 'utf8');
+  } catch (e) {
+    throw new LexiconError(`route-lexicon unreadable at ${p}: ${e.message}`);
+  }
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch (e) {
+    throw new LexiconError(`route-lexicon at ${p} is not valid JSON: ${e.message}`);
+  }
+  validateLexiconShape(data);
+  return compileLexicon(data);
+}
+
+// Lazy, memoized compiled lexicon. A bad artifact makes scoreTask THROW (never a
+// fabricated verdict); the error is cached so repeated calls re-throw cheaply.
+// The path can be overridden via ROUTE_LEXICON_PATH (testing / ops only).
 //
-// The catch-22: when route-decide is invoked on a task that proposes modifying
-// route-decide itself (dictionary expansion, weight refit, threshold change),
-// the gate scores using the OLD dictionary. The proposed-but-not-yet-shipped
-// tokens won't be in that dictionary; the score comes back lower than it
-// would post-change. Two empirical observations this session:
-//   - H.7.11 task: scored root 0.125 confidence 0.625 (proposed dict expansion
-//     would have made it borderline 0.488). Required theo's load-bearing
-//     comment to force architect spawn.
-//   - H.7.14 task: scored borderline 0.488 (post-H.7.11 dict caught 'audit').
-//     Pre-H.7.11 it would have been root 0.225. (Mira note: actually a
-//     different failure mode — borderline-tier escalation, not substrate-meta.
-//     See drift-note 20.)
-//
-// Detection is parallel infrastructure: separate sentinel array, separate
-// detection function, separate forcing-instruction emission. Score and
-// recommendation are unchanged. Mirrors the H.7.5 forcing-instruction-injection
-// pattern: substrate detects deterministically; Claude makes the semantic call.
-//
-// Tier 1: file/symbol references — high precision, near-zero FP risk
-// Tier 2: substrate-vocabulary phrases — high precision
-// Tier 3: workflow names — medium precision (deferred per FP risk)
-const SUBSTRATE_META_TOKENS = [
-  // Tier 1
-  'route-decide', 'route-decide.js',
-  'weights_version', 'WEIGHTS_VERSION',
-  'ROUTE_THRESHOLD', 'ROOT_THRESHOLD',
-  // Tier 2
-  'dictionary expansion', 'dict expansion',
-  'keyword set', 'keyword sets',
-  'weight refit', 're-weight', 'reweight',
-  'scoring axis', 'routing axis',
-  'forcing instruction', 'forcing-instruction',
-  'signal token', 'sentinel keyword',
-  // Tier 2b (drift:dictionary-gap, 2026-06-03) — v3.2 Runtime-Decomposition
-  // substrate-architecture vocabulary. DETECTION-ONLY here (advisory); the
-  // high-precision multi-word subset ALSO scores in KEYWORDS.compound_strong.
-  // General-task FP cost is nil — a stray match only prints an extra advisory.
-  'verification tier', 'spawn-verify', 'leaf-criteria', 'leaf criteria',
-  'failure-signature', 'failure signature', 'test-runner', 'kernel algorithm',
-  'algorithm library', 'dispatcher', 'enforcement flip', 'a4 gate', 'a4-binding',
-  'trampoline', 'budget envelope',
-  // Tier 2c (drift:dictionary-gap v3.8a, 2026-06-12 — the MANDATED architect pass) —
-  // the v3.3-v3.8 Lab/trust-substrate vocabulary. DETECTION-ONLY here, like Tier 2b;
-  // the 12-phrase zero-FP subset ALSO scores in KEYWORDS.compound_strong (the
-  // intentional overlap, documented above). Single words (integrator, quarantine,
-  // reputation, materialize, attestation, tombstone, supersede, worktree) appear in
-  // general SWE prose — they detect (one harmless advisory line) but NEVER score.
-  // Bare E/K-codes (E4, K9, E11) are REJECTED outright: they match chess/vitamin/
-  // grid text, and the substrate-noun phrases already cover every real usage.
-  'reject-event', 'circuit-breaker', 'breaker source', 'denial-rate',
-  'negative-attestation', 'verdict-attestation', 'attestation',
-  'evolution-snapshot', 'canonical-json', 'decompose-run',
-  'manage-promote', 'manage-proposal', 'tombstone', 'supersede',
-  'record-store', 'record-scan', 'content-address', 'content-addressed',
-  'idempotency-key', 'post_state_hash', 'delta-promote', 'stage-candidate',
-  'integrator', 'quarantine', 'provenance-reject', 'spawn-state',
-  'reputation', 'materialize', 'worktree', 'containeradapter',
-  'refs/loom', 'evolution lab',
-];
+// SECURITY (VALIDATE/hacker L1): ROUTE_LEXICON_PATH lets a caller swap the lexicon,
+// which can steer the in-process bucketTaskComplexity reputation bucket. This is
+// proportionate today — the scorer is ADVISORY (never blocks) and the reputation it
+// feeds is shadow/gates no action. When a lab-derived weight first GATES an action
+// (the documented v3.x-③.2 precondition), this override MUST be gated behind a
+// test-only flag or removed (an env-setter is already past the trust boundary, but
+// the seam should not outlive the advisory regime).
+let _compiledLexicon = null;
+let _lexiconError = null;
+function getCompiledLexicon() {
+  if (_compiledLexicon) return _compiledLexicon;
+  if (_lexiconError) throw _lexiconError;
+  try {
+    _compiledLexicon = loadLexicon(process.env.ROUTE_LEXICON_PATH || DEFAULT_LEXICON_PATH);
+    return _compiledLexicon;
+  } catch (e) {
+    _lexiconError = e;
+    throw e;
+  }
+}
 
 /**
  * H.7.16 (drift-note 9) — detect substrate-meta tokens in the task text.
  * SEPARATE from the regular keyword-matching used in scoring; this is a
- * sentinel check that runs parallel to scoring and feeds the
- * [ROUTE-META-UNCERTAIN] forcing instruction. Does NOT alter score or
- * recommendation.
+ * sentinel check that feeds the [ROUTE-META-UNCERTAIN] forcing instruction.
+ * Does NOT alter score or recommendation.
  *
- * Token matching uses the same word-boundary semantics as `matchKeywords`
- * (case-insensitive; non-letter/digit/underscore boundary on both sides
- * for hyphenated tokens). Tokens with spaces (e.g., "dict expansion")
- * match as substrings on word boundaries.
+ * Router-V2 W1: derives from the same single-pass match set used by scoring
+ * (no separate regex scan). Token matching uses the same word-boundary semantics
+ * as the scored keywords (case-insensitive; non-letter/digit/underscore boundary;
+ * underscored tokens like post_state_hash match as one unit; space-bearing tokens
+ * match on the literal single-space substring).
  *
- * @param {string} lowerText Task text already lowercased
- * @returns {{detected: boolean, tokens: string[]}} Detection result
+ * @param {Set<string>} matchedLower Lowercased tokens present in the task text
+ * @param {object} compiled The compiled lexicon (carries categories.substrate_meta)
+ * @returns {{detected: boolean, tokens: string[]}} Detection result (list order)
  */
-function detectSubstrateMeta(lowerText) {
-  const matched = [];
-  for (const token of SUBSTRATE_META_TOKENS) {
-    const re = buildKeywordRegex(token);
-    if (re.test(lowerText)) matched.push(token);
-  }
+function detectSubstrateMeta(matchedLower, compiled) {
+  const matched = compiled.categories.substrate_meta.filter((t) => matchedLower.has(t.toLowerCase()));
   return { detected: matched.length > 0, tokens: matched };
 }
 
@@ -335,35 +399,12 @@ function parseArgs(argv) {
 }
 
 // ---------- keyword matching ----------
-
-// Build a regex that matches the keyword on word boundaries, case-insensitive.
-// Hyphens and spaces inside keywords are preserved; the surrounding word
-// boundary uses a custom non-letter / non-digit / non-underscore guard so
-// hyphenated keywords like `rate-limit` are matched as a single token.
 //
-// HT.1.11: memoize by keyword key. Previously this function recompiled the
-// regex on every call; `scoreTask` invokes ~90× per call (9 dims × ~10
-// keywords). Keyspace is bounded (~100 unique keywords across all KEYWORDS
-// dims + SUBSTRATE_META_TOKENS). Memoization eliminates per-call compile
-// after first invocation. Regex behavior unchanged.
-const _keywordRegexCache = new Map();
-function buildKeywordRegex(keyword) {
-  if (!_keywordRegexCache.has(keyword)) {
-    const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    _keywordRegexCache.set(keyword, new RegExp(`(?:^|[^a-zA-Z0-9_])${escaped}(?=$|[^a-zA-Z0-9_])`, 'i'));
-  }
-  return _keywordRegexCache.get(keyword);
-}
-
-// Returns list of matched keywords in order encountered (for diagnostics).
-function matchKeywords(text, keywordList) {
-  const matched = [];
-  for (const kw of keywordList) {
-    const re = buildKeywordRegex(kw);
-    if (re.test(text)) matched.push(kw);
-  }
-  return matched;
-}
+// Router-V2 W1: the per-keyword regex matcher (buildKeywordRegex + matchKeywords
+// + the _keywordRegexCache memo) was RETIRED. Matching now runs through the
+// phrase-aware index built in compileLexicon (matchLowerSet) — an O(task) run-scan
+// that reproduces the identical word-boundary semantics for BOTH scoring and
+// substrate-meta detection. No caller outside this file used those helpers.
 
 // ---------- scoring ----------
 
@@ -372,14 +413,20 @@ function scoreTask(task, scoreArgs) {
   // --context, --force-route, --force-root. Default to empty object so
   // callers that omit it (existing tests, future internal uses) still work.
   const argsLocal = scoreArgs || {};
+  // Router-V2 W1: load the lexicon at the boundary. Fails closed (throws) on a
+  // bad artifact — never a fabricated verdict.
+  const compiled = getCompiledLexicon();
   const text = String(task || '');
   const lowerText = text.toLowerCase();
   const wordCount = lowerText.split(/\s+/).filter(Boolean).length;
 
-  // Per-dimension matches.
+  // Per-dimension matches. Single text scan -> a presence set; each dimension's
+  // matched list is its ORIGINAL token list filtered by membership (list order
+  // preserved — byte-identical to the retired per-keyword scan).
+  const matchedLower = compiled.matchLowerSet(lowerText);
   const matches = {};
-  for (const dim of Object.keys(KEYWORDS)) {
-    matches[dim] = matchKeywords(lowerText, KEYWORDS[dim]);
+  for (const dim of compiled.keywordDims) {
+    matches[dim] = compiled.categories[dim].filter((kw) => matchedLower.has(kw.toLowerCase()));
   }
 
   // scores_by_dim: each dim gets contribution = (matched ? 1.0 : 0) * weight.
@@ -454,9 +501,9 @@ function scoreTask(task, scoreArgs) {
   const bareLowSignal = allSignals === 0;
   const bareScoreTotal = scoreTotal;  // snapshot before context add (for output JSON)
 
-  // H.7.5 Layer A: context scoring pass. Re-uses the same KEYWORDS map +
-  // matchKeywords function — no separate scoring system. Multiplied by
-  // CONTEXT_WEIGHT_MULT (0.5) to discount second-hand signal.
+  // H.7.5 Layer A: context scoring pass. Re-uses the same lexicon + matcher —
+  // no separate scoring system. Multiplied by CONTEXT_WEIGHT_MULT (0.5) to
+  // discount second-hand signal.
   let contextScore = 0;
   const contextContributions = {};
   let contextProvided = false;
@@ -470,8 +517,9 @@ function scoreTask(task, scoreArgs) {
       contextTruncated = true;
     }
     const ctxLower = ctxText.toLowerCase();
+    const ctxMatchedLower = compiled.matchLowerSet(ctxLower);
     for (const dim of Object.keys(WEIGHTS)) {
-      const ctxMatched = matchKeywords(ctxLower, KEYWORDS[dim]);
+      const ctxMatched = compiled.categories[dim].filter((kw) => ctxMatchedLower.has(kw.toLowerCase()));
       if (ctxMatched.length > 0) {
         const contribution = WEIGHTS[dim] * CONTEXT_WEIGHT_MULT;
         contextContributions[dim] = {
@@ -483,7 +531,7 @@ function scoreTask(task, scoreArgs) {
     }
     // Infra-implicit lift also applies to context, multiplied. Keeps the
     // context-scoring symmetric with the bare-task scoring path.
-    const ctxInfra = matchKeywords(ctxLower, KEYWORDS.infra_terms);
+    const ctxInfra = compiled.categories.infra_terms.filter((kw) => ctxMatchedLower.has(kw.toLowerCase()));
     if (ctxInfra.length > 0) {
       const contribution = INFRA_IMPLICIT_STAKES_LIFT * CONTEXT_WEIGHT_MULT;
       contextContributions.infra_implicit = {
@@ -585,6 +633,14 @@ function scoreTask(task, scoreArgs) {
     wordCount >= SHORT_PROMPT_WORD_THRESHOLD
   ) {
     uncertain = true;
+    // NOTE (W1-step-5 / VALIDATE honesty MEDIUM-1): "9 dimensions" below is the
+    // scores_by_dim count (the 8 weighted dims + the programmatic infra_implicit),
+    // NOT the weighted-dim count (SCORED_DIMENSION_COUNT = 8). This is a user-facing
+    // OUTPUT string and is kept VERBATIM to preserve byte-for-byte behavior-identity;
+    // the dim-count canonicalization applies only to the non-output surfaces (the
+    // header comment, --help, and the manifest summary). Changing it would alter the
+    // forcing_instruction field on low-signal tasks (a behavior change), so it is a
+    // DELIBERATE, disclosed exception — not an oversight.
     forcingInstruction =
       `[ROUTE-DECISION-UNCERTAIN]\n` +
       `Zero keyword signals matched on this task across all 9 dimensions.\n` +
@@ -670,11 +726,11 @@ function scoreTask(task, scoreArgs) {
     weights_version: WEIGHTS_VERSION,
     thresholds: { route: ROUTE_THRESHOLD, root: ROOT_THRESHOLD },
   };
-  // H.7.16 (drift-note 9) — substrate-meta detection. Pure additive: runs
-  // AFTER scoring/recommendation; does NOT alter score or recommendation.
-  // Three new output fields. Backward-compatible (existing JSON consumers
-  // ignore unknown fields).
-  const metaResult = detectSubstrateMeta(lowerText);
+  // H.7.16 (drift-note 9) — substrate-meta detection. Pure additive: derived
+  // from the same match set; does NOT alter score or recommendation. Three new
+  // output fields. Backward-compatible (existing JSON consumers ignore unknown
+  // fields).
+  const metaResult = detectSubstrateMeta(matchedLower, compiled);
   out.substrate_meta_detected = metaResult.detected;
   out.substrate_meta_tokens = metaResult.tokens;
   out.meta_forcing_instruction = metaResult.detected
@@ -689,12 +745,13 @@ function scoreTask(task, scoreArgs) {
 // re-expose it for in-process consumers (e.g., agent-identity.js's
 // bucketTaskComplexity). The CLI behavior below only fires when this file is
 // invoked directly (require.main === module). Pure refactor; CLI semantics
-// unchanged.
+// unchanged. loadLexicon is exported for direct fail-closed-boundary testing.
 
 module.exports = {
   scoreTask,
   ROUTE_THRESHOLD,
   ROOT_THRESHOLD,
+  loadLexicon,
 };
 
 // ---------- main ----------
@@ -707,7 +764,7 @@ if (require.main === module) {
       'Usage: route-decide.js --task "<description>" [--context "<text>"] ' +
       '[--force-route|--force-root] [--explain]\n' +
       '\n' +
-      'Scores a task on 7 weighted dimensions and emits a route/borderline/root\n' +
+      `Scores a task on ${SCORED_DIMENSION_COUNT} weighted dimensions and emits a route/borderline/root\n` +
       'recommendation as JSON to stdout. Pure function; deterministic.\n' +
       '\n' +
       'Flags:\n' +
@@ -734,7 +791,16 @@ if (require.main === module) {
     process.exit(2);
   }
 
-  const result = scoreTask(task, args);
+  // Router-V2 W1: a bad lexicon fails closed — loud stderr, non-zero exit, NO
+  // stdout JSON (never a fabricated verdict). The spawn hook reads the non-zero
+  // exit as route-decide-failed -> approve (ADR-0001 fail-open).
+  let result;
+  try {
+    result = scoreTask(task, args);
+  } catch (err) {
+    process.stderr.write(`route-decide: ${err.name || 'Error'}: ${err.message}\n`);
+    process.exit(3);
+  }
   process.stdout.write(JSON.stringify(result, null, 2) + '\n');
 
   if (args.explain) {

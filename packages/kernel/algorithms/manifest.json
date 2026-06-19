@@ -8,7 +8,7 @@
       "exports": ["scoreTask", "ROUTE_THRESHOLD", "ROOT_THRESHOLD"],
       "test": "tests/unit/kernel/algorithms/route-decide.test.js",
       "kind": "scorer",
-      "summary": "Deterministic 7-dimension task-routing scorer (H.7.3). Pure: task string -> { recommendation, confidence, score_total }."
+      "summary": "Deterministic 8-weighted-dimension task-routing scorer (H.7.3). Pure: task string -> { recommendation, confidence, score_total }. Lexicon is a versioned data artifact (route-lexicon.json), schema-validated + fail-closed at the A4 boundary."
     }
   ],
   "planned": []
