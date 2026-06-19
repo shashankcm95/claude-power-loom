@@ -159,14 +159,40 @@ function loadPending() {
 // saveStore + session-self-improve-prompt.js writeAtomic) migrate alongside.
 const { writeAtomic } = require('../_lib/atomic-write');
 
+// Ghost Heartbeat W1 (2026-06-19): the SINGLE classification + convergence-
+// threshold chokepoint. Returns { kind, risk, candidateThreshold } for a signal.
+// The high-value drift families (`drift:`, `rule-recurrence:`) converge at 3 (the
+// ghost-protocol taxonomy threshold) and classify as high-risk `rule-candidate`
+// so they surface for /self-improve and can NEVER auto-bury. Every other signal
+// keeps its prior kind + the default candidate threshold; the catch-all stays
+// `observation-log`/low so an unknown or positive signal (e.g.
+// `improvement-effectiveness:` — "the rule WORKED") cannot enter the always-prompt
+// path (closes the 2026-05-30 frequency-noise vector by construction).
+const DRIFT_FAMILY_CANDIDATE_THRESHOLD = 3;
+
+function signalPolicy(signal) {
+  if (signal.startsWith('drift:') || signal.startsWith('rule-recurrence:')) {
+    return {
+      kind: 'rule-candidate',
+      risk: KIND_RISK['rule-candidate'],
+      candidateThreshold: DRIFT_FAMILY_CANDIDATE_THRESHOLD,
+    };
+  }
+  let kind;
+  if (signal.startsWith('command:')) kind = 'skill-candidate';
+  else if (signal.startsWith('pattern:')) kind = 'memory-consolidation';
+  else if (signal.startsWith('rule:')) kind = 'rule-candidate';
+  else if (signal.startsWith('agent:')) kind = 'agent-evolution';
+  // filePath:, skill:, improvement-effectiveness:, and any unknown signal fall
+  // through to the unchanged low-risk catch-all.
+  else kind = 'observation-log';
+  return { kind, risk: KIND_RISK[kind] || 'medium', candidateThreshold: THRESHOLDS.candidate };
+}
+
+// Back-compat shim: the kind half of signalPolicy. Exported + relied on by
+// signalToProposedAction/tests — delegates so classification has ONE source.
 function inferKindFromSignal(signal) {
-  if (signal.startsWith('filePath:')) return 'observation-log';
-  if (signal.startsWith('command:')) return 'skill-candidate';
-  if (signal.startsWith('skill:')) return 'observation-log';
-  if (signal.startsWith('pattern:')) return 'memory-consolidation';
-  if (signal.startsWith('rule:')) return 'rule-candidate';
-  if (signal.startsWith('agent:')) return 'agent-evolution';
-  return 'observation-log';
+  return signalPolicy(signal).kind;
 }
 
 function signalToSummary(signal, entry) {
@@ -180,8 +206,14 @@ function signalToProposedAction(signal, kind) {
   // described the destination (which is the side-effect anyway) instead of
   // the LEARNING outcome the graduation represents. The new texts surface
   // what the observer should DO with the recurring signal — making the
-  // SessionStart reminder + cmdPending readout actionable rather than
-  // self-describing.
+  // first-prompt-of-session reminder (UserPromptSubmit, idempotent per
+  // session_id) + cmdPending readout actionable rather than self-describing.
+  if (signal.startsWith('drift:')) {
+    return 'Converged drift class — triage via /self-improve to graduate a preventive rule';
+  }
+  if (signal.startsWith('rule-recurrence:')) {
+    return 'Graduated rule is RECURRING (failing) — retune or escalate via /self-improve, not a fresh rule';
+  }
   if (kind === 'observation-log') {
     if (signal.startsWith('filePath:')) {
       return 'Recurring workspace file — consider adding to project MEMORY.md or workspace allowlist';
@@ -189,7 +221,7 @@ function signalToProposedAction(signal, kind) {
     if (signal.startsWith('skill:')) {
       return 'Frequent skill invocation — surface for prompt-pattern enrichment or skill-forge review';
     }
-    return 'Surface as next-session reminder via session-self-improve-prompt hook';
+    return 'Surface as a first-prompt-of-session reminder via the session-self-improve-prompt hook';
   }
   if (kind === 'memory-consolidation') return 'Append to project MEMORY.md as recurring pattern';
   if (kind === 'skill-candidate') return 'Consider forging a skill via skill-forge';
@@ -283,7 +315,10 @@ function _runScan(counters, pending) {
   const now = new Date().toISOString();
 
   for (const [signal, entry] of Object.entries(counters.signals)) {
-    if (entry.count < THRESHOLDS.candidate) continue;
+    // Ghost W1: one signalPolicy lookup drives BOTH the per-class candidate
+    // threshold (drift-family converges at 3) and the classification below.
+    const policy = signalPolicy(signal);
+    if (entry.count < policy.candidateThreshold) continue;
 
     const existing = knownBySignal.get(signal);
 
@@ -296,12 +331,19 @@ function _runScan(counters, pending) {
         continue;
       }
 
-      // Non-terminal: 'pending'. Refresh observability fields (T9) and check
-      // if it's eligible to transition to auto-graduated (T3, T4, T8).
+      // Non-terminal: 'pending'. Refresh observability fields (T9), then
+      // re-derive kind/risk from the CURRENT classification (Ghost W1 migration):
+      // a candidate stored under an old classification (e.g. a `drift:` signal
+      // once filed as observation-log/low) is re-classified so it can never
+      // auto-bury under a stale low-risk field.
       existing.occurrences = entry.count;
       existing.lastSeen = entry.lastSeen;
-      const risk = existing.risk || KIND_RISK[existing.kind] || 'medium';
-      if (risk === 'low' && entry.count >= THRESHOLDS.autoGraduate) {
+      if (existing.kind !== policy.kind) {
+        existing.kind = policy.kind;
+        existing.proposedAction = signalToProposedAction(signal, policy.kind);
+      }
+      existing.risk = policy.risk;
+      if (policy.risk === 'low' && entry.count >= THRESHOLDS.autoGraduate) {
         existing.status = 'auto-graduated';
         existing.autoGraduatedAt = now;
         executeGraduation(existing);
@@ -310,23 +352,21 @@ function _runScan(counters, pending) {
       continue;
     }
 
-    // Unknown signal at >= candidate threshold — new candidate.
-    const kind = inferKindFromSignal(signal);
-    const risk = KIND_RISK[kind] || 'medium';
+    // Unknown signal at >= its candidate threshold — new candidate.
     const candidate = {
       id: newCandidateId(),
-      kind,
+      kind: policy.kind,
       signal,
       occurrences: entry.count,
       firstSeen: entry.firstSeen,
       lastSeen: entry.lastSeen,
-      risk,
+      risk: policy.risk,
       summary: signalToSummary(signal, entry),
-      proposedAction: signalToProposedAction(signal, kind),
+      proposedAction: signalToProposedAction(signal, policy.kind),
       status: 'pending',
       createdAt: now,
     };
-    if (risk === 'low' && entry.count >= THRESHOLDS.autoGraduate) {
+    if (policy.risk === 'low' && entry.count >= THRESHOLDS.autoGraduate) {
       candidate.status = 'auto-graduated';
       candidate.autoGraduatedAt = now;
       executeGraduation(candidate);
@@ -600,6 +640,7 @@ module.exports = {
   signalToProposedAction,
   signalToSummary,
   inferKindFromSignal,
+  signalPolicy,
   executeGraduation,
 };
 

@@ -567,6 +567,170 @@ test('T15: bumpBatch single lock span: bump+scan execute under one outer lock ac
   } finally { h.cleanup(); }
 });
 
+// ============================================================================
+// Ghost Heartbeat W1 (2026-06-19) — drift: STORE classification + convergence.
+// TDD-treatment: these describe the NEW behavior; the signalPolicy impl makes
+// them pass. Bugs fixed: (1) drift: converges at 3 not 5; (2) drift: classifies
+// to rule-candidate/high (never auto-buries); (3) per-class threshold pre-filter;
+// (4) migration re-derive; (5) effectiveness/lens split.
+// ============================================================================
+
+process.stdout.write('\n=== ghost-heartbeat-w1 (drift: classification + convergence) ===\n');
+
+test('T16: drift_signal_converges_at_3_as_rule_candidate_high', () => {
+  const h = mkHome();
+  try {
+    seedCounters(h.countersPath, [{ signal: 'drift:plan-honesty', count: 3 }]);
+    runCmd(h.home, 'scan');
+    const pending = readPending(h.pendingPath);
+    if (pending.candidates.length !== 1) throw new Error(`expected 1 candidate at drift count=3, got ${pending.candidates.length}`);
+    const c = pending.candidates[0];
+    if (c.status !== 'pending') throw new Error(`expected status='pending', got '${c.status}'`);
+    if (c.kind !== 'rule-candidate') throw new Error(`expected kind='rule-candidate', got '${c.kind}'`);
+    if (c.risk !== 'high') throw new Error(`expected risk='high', got '${c.risk}'`);
+  } finally { h.cleanup(); }
+});
+
+test('T17: drift_signal_below_threshold_3_does_not_queue', () => {
+  const h = mkHome();
+  try {
+    seedCounters(h.countersPath, [{ signal: 'drift:plan-honesty', count: 2 }]);
+    runCmd(h.home, 'scan');
+    const pending = readPending(h.pendingPath);
+    if (pending.candidates.length !== 0) throw new Error(`expected 0 candidates at drift count=2 (below threshold 3), got ${pending.candidates.length}`);
+  } finally { h.cleanup(); }
+});
+
+test('T18: drift_signal_never_auto_graduates_even_at_count_10', () => {
+  const h = mkHome();
+  try {
+    seedCounters(h.countersPath, [{ signal: 'drift:plan-honesty', count: 10 }]);
+    runCmd(h.home, 'scan');
+    const pending = readPending(h.pendingPath);
+    const c = pending.candidates[0];
+    if (c.status !== 'pending') throw new Error(`high-risk drift must stay pending at count=10, got '${c.status}'`);
+    const obs = readObservations(h.observationsPath);
+    if (obs.length !== 0) throw new Error(`high-risk drift must not auto-graduate (0 obs lines), got ${obs.length}`);
+  } finally { h.cleanup(); }
+});
+
+test('T19: per_class_threshold_isolation_drift_at_3_queues_filePath_at_3_does_not', () => {
+  const h = mkHome();
+  try {
+    seedCounters(h.countersPath, [
+      { signal: 'drift:dictionary-gap', count: 3 },
+      { signal: 'filePath:/a.js', count: 3 },
+    ]);
+    runCmd(h.home, 'scan');
+    const pending = readPending(h.pendingPath);
+    if (pending.candidates.length !== 1) throw new Error(`expected exactly 1 candidate (drift only; filePath still needs 5), got ${pending.candidates.length}`);
+    if (pending.candidates[0].signal !== 'drift:dictionary-gap') throw new Error(`expected the drift signal queued, got '${pending.candidates[0].signal}'`);
+  } finally { h.cleanup(); }
+});
+
+test('T20: improvement_effectiveness_stays_catch_all_low_never_rule_candidate', () => {
+  const h = mkHome();
+  try {
+    // @3: below the default candidate threshold (5) → no candidate (it is NOT a drift-family signal)
+    seedCounters(h.countersPath, [{ signal: 'improvement-effectiveness:phase-close', count: 3 }]);
+    runCmd(h.home, 'scan');
+    let pending = readPending(h.pendingPath);
+    if (pending.candidates.length !== 0) throw new Error(`improvement-effectiveness at 3 must NOT queue (threshold 5), got ${pending.candidates.length}`);
+    // @5: queues as low/observation-log — a positive signal, never a rule-candidate
+    seedCounters(h.countersPath, [{ signal: 'improvement-effectiveness:phase-close', count: 5 }]);
+    runCmd(h.home, 'scan');
+    pending = readPending(h.pendingPath);
+    const c = pending.candidates[0];
+    if (!c) throw new Error('expected 1 candidate at count=5');
+    if (c.kind === 'rule-candidate') throw new Error(`improvement-effectiveness (rule WORKED) must NOT be a rule-candidate, got '${c.kind}'`);
+    if (c.risk !== 'low') throw new Error(`expected low risk for the positive effectiveness signal, got '${c.risk}'`);
+  } finally { h.cleanup(); }
+});
+
+test('T21: rule_recurrence_converges_at_3_high_with_retune_action', () => {
+  const h = mkHome();
+  try {
+    seedCounters(h.countersPath, [{ signal: 'rule-recurrence:plan-honesty', count: 3 }]);
+    runCmd(h.home, 'scan');
+    const c = readPending(h.pendingPath).candidates[0];
+    if (!c) throw new Error('expected 1 candidate at rule-recurrence count=3');
+    if (c.risk !== 'high') throw new Error(`expected high risk, got '${c.risk}'`);
+    if (!/retune|recurr|failing/i.test(c.proposedAction)) throw new Error(`expected a retune-oriented action (not a fresh-rule write), got: ${c.proposedAction}`);
+  } finally { h.cleanup(); }
+});
+
+test('T22: migration_legacy_drift_candidate_stored_low_is_rederived_high_not_auto_graduated', () => {
+  const h = mkHome();
+  try {
+    seedCounters(h.countersPath, [{ signal: 'drift:legacy-stored', count: 10 }]);
+    // A candidate created under OLD classification: drift: as observation-log/low.
+    seedPending(h.pendingPath, [{
+      id: 'cand-legacy-drift',
+      kind: 'observation-log',
+      signal: 'drift:legacy-stored',
+      occurrences: 5,
+      firstSeen: '2026-05-01T00:00:00.000Z',
+      lastSeen: '2026-05-01T00:00:00.000Z',
+      risk: 'low',
+      summary: 'legacy',
+      proposedAction: 'legacy',
+      status: 'pending',
+      createdAt: '2026-05-01T00:00:00.000Z',
+    }]);
+    runCmd(h.home, 'scan');
+    const c = readPending(h.pendingPath).candidates[0];
+    if (c.status !== 'pending') throw new Error(`migrated drift candidate must NOT auto-graduate (high-risk), got '${c.status}'`);
+    if (c.kind !== 'rule-candidate') throw new Error(`migrated drift candidate must be re-derived to rule-candidate, got '${c.kind}'`);
+    if (c.risk !== 'high') throw new Error(`migrated drift candidate must be re-derived to high, got '${c.risk}'`);
+    const obs = readObservations(h.observationsPath);
+    if (obs.length !== 0) throw new Error(`migrated drift must not auto-graduate (0 obs lines), got ${obs.length}`);
+  } finally { h.cleanup(); }
+});
+
+test('T22b: migration_rule_recurrence_candidate_stored_low_is_rederived_high', () => {
+  const h = mkHome();
+  try {
+    seedCounters(h.countersPath, [{ signal: 'rule-recurrence:old-rule', count: 10 }]);
+    seedPending(h.pendingPath, [{
+      id: 'cand-legacy-rr',
+      kind: 'observation-log',
+      signal: 'rule-recurrence:old-rule',
+      occurrences: 5,
+      firstSeen: '2026-05-01T00:00:00.000Z',
+      lastSeen: '2026-05-01T00:00:00.000Z',
+      risk: 'low',
+      summary: 'legacy',
+      proposedAction: 'legacy',
+      status: 'pending',
+      createdAt: '2026-05-01T00:00:00.000Z',
+    }]);
+    runCmd(h.home, 'scan');
+    const c = readPending(h.pendingPath).candidates[0];
+    if (c.kind !== 'rule-candidate') throw new Error(`expected re-derived rule-candidate, got '${c.kind}'`);
+    if (c.risk !== 'high') throw new Error(`expected re-derived high, got '${c.risk}'`);
+    if (c.status !== 'pending') throw new Error(`rule-recurrence must not auto-graduate, got '${c.status}'`);
+  } finally { h.cleanup(); }
+});
+
+test('T23: signalPolicy_export_returns_kind_risk_candidateThreshold', () => {
+  if (typeof store.signalPolicy !== 'function') throw new Error('signalPolicy must be exported');
+  const drift = store.signalPolicy('drift:x');
+  if (drift.kind !== 'rule-candidate' || drift.risk !== 'high' || drift.candidateThreshold !== 3) {
+    throw new Error(`drift policy wrong: ${JSON.stringify(drift)}`);
+  }
+  const fp = store.signalPolicy('filePath:/a.js');
+  if (fp.kind !== 'observation-log' || fp.risk !== 'low' || fp.candidateThreshold !== 5) {
+    throw new Error(`filePath policy wrong: ${JSON.stringify(fp)}`);
+  }
+  // inferKindFromSignal stays consistent (delegates to signalPolicy)
+  if (store.inferKindFromSignal('drift:x') !== 'rule-candidate') {
+    throw new Error('inferKindFromSignal(drift:) must delegate to rule-candidate');
+  }
+  if (store.inferKindFromSignal('command:/x') !== 'skill-candidate') {
+    throw new Error('inferKindFromSignal(command:) regression');
+  }
+});
+
 process.stdout.write(`\n=== Summary ===\n`);
 process.stdout.write(`  Passed: ${passed}\n`);
 process.stdout.write(`  Failed: ${failed}\n`);
