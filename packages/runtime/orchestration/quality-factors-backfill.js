@@ -82,9 +82,25 @@ function rowToEntry(row) {
   };
 }
 
+// Validate the parsed store's `identities` shape before iterating it. The
+// store is a plain object keyed by identity id; a store JSON missing the
+// `identities` key (or with it null / an array / a primitive) is malformed.
+// Returns true iff `identities` is a plain (non-array) object. Iterating a
+// missing/null/array `identities` with Object.entries either throws
+// (`TypeError: Cannot convert undefined or null to object`) or misbehaves, so
+// callers fail-soft to a 0-identity summary on a false return.
+function hasValidIdentities(store) {
+  const identities = store && store.identities;
+  return identities !== null
+    && typeof identities === 'object'
+    && !Array.isArray(identities);
+}
+
 function main() {
   const store = readStore();
   const rows = readSpawnHistory();
+  const storeOk = hasValidIdentities(store);
+  const identities = storeOk ? store.identities : {};
 
   // Index spawn-history rows by identity, sorted oldest-first.
   const byIdentity = new Map();
@@ -98,7 +114,10 @@ function main() {
   }
 
   const summary = { backfilled: 0, skipped: 0, untouched: 0, perIdentity: {} };
-  for (const [identityId, identity] of Object.entries(store.identities)) {
+  if (!storeOk) {
+    console.error('Store has no valid `identities` map - nothing to backfill');
+  }
+  for (const [identityId, identity] of Object.entries(identities)) {
     if (!Array.isArray(identity.quality_factors_history)) {
       identity.quality_factors_history = [];
     }
@@ -125,7 +144,9 @@ function main() {
     summary.perIdentity[identityId] = { action: DRY_RUN ? 'would backfill' : 'backfilled', backfilled: entries.length };
   }
 
-  if (!DRY_RUN) {
+  // Only write back when the store had a valid identities map; rewriting a
+  // malformed store would persist nothing useful and risk clobbering it.
+  if (!DRY_RUN && storeOk) {
     // H.9.8: migrated from bare .tmp suffix (WEAKEST collision-vulnerable form)
     // to shared helper with pid+hrtime+crypto nonce suffix.
     writeAtomic(STORE_PATH, store);
@@ -139,4 +160,10 @@ function main() {
   }, null, 2));
 }
 
-main();
+if (require.main === module) main();
+
+// quality-factors-backfill-validation re-introduced a single export:
+// `hasValidIdentities` now HAS a consumer - the unit test that pins the
+// malformed-store guard. CLI surface unchanged (still runs main() as the entry
+// point). Kept minimal (one named export).
+module.exports = { hasValidIdentities };

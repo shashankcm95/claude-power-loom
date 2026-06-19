@@ -32,6 +32,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
+const vm = require('vm');
 const { execFileSync } = require('child_process');
 
 const REPO_ROOT = path.join(__dirname, '..', '..', '..', '..');
@@ -267,6 +268,84 @@ test('(10) all 18 real contracts pass the new validators (GREEN — migrated in 
     0,
     'all 18 migrated contracts must satisfy the two-tier validators',
   );
+});
+
+// --- (11) extractCommandSuffix matches the v4 packages/kernel/ layout ---
+//
+// Regression gate for the pre-migration `hooks/scripts/` anchor: that path no
+// longer appears in any hooks.json command, so the old regex matched 0/27
+// commands and fell back to the full command string — making the plugin
+// (placeholder) suffix and the settings.json (absolute) suffix NEVER compare
+// equal, which silently produced false `hook-not-deployed` violations on a real
+// install (masked in CI because both sides were placeholder-vs-placeholder).
+//
+// extractCommandSuffix is a private (un-exported) function and the module fires
+// process.exit() at require-time (CLI runs at top level). To test the REAL
+// production code without triggering the CLI, we lift the exact function body
+// out of the source text and evaluate it in isolation, then exercise it against
+// a REAL hooks.json command entry plus its absolute-path settings.json twin.
+
+function loadExtractCommandSuffix() {
+  const src = fs.readFileSync(VALIDATOR, 'utf8');
+  const start = src.indexOf('function extractCommandSuffix');
+  assert.ok(start >= 0, 'extractCommandSuffix must exist in the source');
+  // Capture from the declaration through its closing brace (single-statement body).
+  const tail = src.slice(start);
+  const end = tail.indexOf('\n}');
+  assert.ok(end >= 0, 'extractCommandSuffix body must terminate');
+  const body = tail.slice(0, end + 2);
+  // Isolate ONE pure function from a module that self-executes a CLI at
+  // require-time (so a plain require() would call process.exit). vm.runInNewContext
+  // evaluates the lifted source verbatim — testing the REAL function body, and
+  // failing if a future edit drifts it — without importing the module.
+  const sandbox = {};
+  vm.runInNewContext(`${body}\nthis.fn = extractCommandSuffix;`, sandbox);
+  return sandbox.fn;
+}
+
+test('(11) extractCommandSuffix matches a real hooks.json command entry', () => {
+  const extractCommandSuffix = loadExtractCommandSuffix();
+  const hooksPath = path.join(REPO_ROOT, 'packages', 'kernel', 'hooks.json');
+  const hooks = JSON.parse(fs.readFileSync(hooksPath, 'utf8')).hooks;
+
+  const commands = Object.values(hooks)
+    .flat()
+    .flatMap((e) => (Array.isArray(e.hooks) ? e.hooks : []))
+    .filter((h) => h && h.type === 'command' && typeof h.command === 'string')
+    .map((h) => h.command);
+
+  assert.ok(commands.length > 0, 'hooks.json must declare command hooks');
+
+  for (const pluginCmd of commands) {
+    const suffix = extractCommandSuffix(pluginCmd);
+    // The suffix must NOT be the whole command (the old fallback) — it must have
+    // been stripped to the path AFTER packages/kernel/.
+    assert.notStrictEqual(
+      suffix,
+      pluginCmd,
+      `suffix extraction fell back to the full command for: ${pluginCmd}`,
+    );
+    assert.ok(
+      !suffix.includes('${CLAUDE_PLUGIN_ROOT}'),
+      `suffix must strip the CLAUDE_PLUGIN_ROOT placeholder: ${suffix}`,
+    );
+    assert.ok(
+      suffix.endsWith('.js'),
+      `suffix should be the script path (ends in .js): ${suffix}`,
+    );
+
+    // The cross-source comparison the validator relies on: the placeholder form
+    // and an equivalent absolute-path form must yield the SAME suffix.
+    const absoluteTwin = pluginCmd.replace(
+      '${CLAUDE_PLUGIN_ROOT}',
+      '/Users/someone/.claude/plugins/cache/power-loom',
+    );
+    assert.strictEqual(
+      extractCommandSuffix(absoluteTwin),
+      suffix,
+      `placeholder and absolute forms must extract the same suffix for: ${pluginCmd}`,
+    );
+  }
 });
 
 // --- Summary ---

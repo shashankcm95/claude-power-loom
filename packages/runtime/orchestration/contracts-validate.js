@@ -700,10 +700,14 @@ validators['contract-plugin-hook-deployment'] = function () {
 // Extract a stable suffix from a hook command string. Used to compare
 // triples across plugin (with `${CLAUDE_PLUGIN_ROOT}` placeholders) vs
 // settings.json (with absolute paths). Returns the path after the FIRST
-// occurrence of `hooks/scripts/`. Falls back to the full command if not
-// found (still allows comparison, just less robust).
+// occurrence of `packages/kernel/` — the v4 layout root that every deployed
+// hook/validator/observability/spawn-state command shares identically in both
+// the placeholder and absolute-path forms (the pre-migration `hooks/scripts/`
+// anchor no longer matches any command, which silently broke the cross-source
+// comparison). Falls back to the full command if not found (still allows
+// comparison, just less robust).
 function extractCommandSuffix(command) {
-  const m = command.match(/hooks\/scripts\/(.+)$/);
+  const m = command.match(/packages\/kernel\/(.+)$/);
   return m ? m[1] : command;
 }
 
