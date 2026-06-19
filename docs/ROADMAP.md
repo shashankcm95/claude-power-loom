@@ -586,6 +586,39 @@ removed). No finding blocks the start of ③.1. Durable record: the
 
 ---
 
+## ✅ ③.1 — The dry-run loop (W1–W4d, SHADOW / DRAFT-only / trust ZERO) — phase-closed 2026-06-19
+
+The dry-run sub-phase of ③ (the live external-PR beta — the only TRUST unlock; ③.1 NARROWS, it does not harden trust — OQ-NS-6). Build + observe the FULL loop end-to-end on a REAL `claude -p` actor + REAL Docker-graded sealed tests, drafting solutions only (no real PRs). Charter: [`2026-06-16-test-phase-live-beta-charter.md`](../packages/specs/plans/2026-06-16-test-phase-live-beta-charter.md) (the "③.1 — The DRY-RUN loop" section). Sub-phase of ③ → no version bump (held at 3.11 across all 9 PRs); the release-surface gate is N/A. Span **#347–#362**: W1 #347 (session-reset dead-write + ARCH-PC-3); W2 #348 / W2b #349 (F7 trace-emitter + close-path ingester); W3 #350 / W3b #351,#352 (3-arm harness + arm-loop/query run+measure); W4a #353 (forge `python-backend` subject); W4b #354 (async seam + REAL `claude -p` solve+grade driver); W4c #357 (`earned-grounding-run` + the REAL experiment); W4d #362 (C2 reconcile + real-content secret-scrub + Finding-A1 SSRF allowlist).
+
+| Exit criterion | Status | Evidence |
+|---|---|---|
+| **EC1** — full loop end-to-end on a REAL `claude -p` actor + REAL grading, DRAFT-only | **MET** | `real-solve.js` spawns the real actor; verdict HARNESS-computed over the sealed tests, never parsed from stdout; writes the BACKTEST store only (OQ-7 firewall). Ran on the sealed 18-issue v3.9 corpus, not a live puller (carry). |
+| **EC2** — F7 per-step replayable timeline + ARCH-PC-4 (close-path under real concurrency) | **PARTIAL** | timeline MET (per-run JSONL, 5 seam records/arm); **ARCH-PC-4 NOT-MET** — the actor clones bypass the kernel resolver → no close-path entries → the named concurrency measurement was structurally not exercised. Re-routed (carry). |
+| **EC3** — 3-arm experiment + arm-C-vs-A discrimination, trace-primary | **MET** | recall_C−A=+1 consistent across 3 issues; efficacy caveat (arm-C byte-identical to arm-A; N=3; PLUMBING proven, EFFICACY not) carried at source. |
+| **EC4** — learning-graph capture; lessons GENUINELY earned + confirmed (n_confirmed≥1) | **MET** | n_confirmed=1 genuine (sonnet-A mint → opus-B distinct+passing → edge); the honest-floor is wired in code, not prose. |
+| **EC5** — the Router-V2 routing corpus | **PARTIAL** | a SEED (the wave-authoring `drift:dictionary-gap` misclassifications, conv→4) + the trace timelines — NOT the loop-emitted labeled task→route dataset the charter implied. Disclosed. |
+| **EC6** — trust-ZERO discipline held throughout | **MET** | version held 3.11; OQ-7 backtest-only firewall; the confirmed-by edge gates a PROMPT SLICE never an action/weight; integrity≠provenance residual named everywhere; K12 grep-clean across all 9 PRs. |
+
+### Phase-close sign-off (③.1, 2026-06-19)
+
+`/phase-close ③.1` — three independent full-context lenses (PM=honesty-auditor + Principal-SDE=code-reviewer-at-phase-altitude + Architect) reviewed the INTEGRATED dry-run (#347–#362) against EC1–EC6. **Verdict: CLOSEABLE-WITH-NOTES (all three unanimous); 0 MUST-FIX; 0 NEEDS-WORK.**
+
+- **PM (honesty)** — Grade A / no-overclaim. EC1/EC3/EC4/EC6 MET against firsthand artifacts; EC2/EC5 honestly PARTIAL. The plumbing≠efficacy caveat and the trust-ZERO / integrity≠provenance residuals are named everywhere they apply — "the phase's strongest honesty surface." No verb-tense / scope-inflation overclaim found.
+- **Principal-SDE** — the producer→consumer chain composes; K12 held across all 9 PRs; the W4d two-site-sha + C2 reconcile are coherent. One MEDIUM: the `runActor` (Phase-1 confirm) clone lacks the `runActorSolve` (Phase-2) candidate-size cap — SHADOW-negligible on the committed corpus, a real gap on a live/adversarial corpus.
+- **Architect** — ③.1 coheres as a design unit (shadow-first / DRAFT-only / earned-vs-declared the spine); phase-claim honesty is "the load-bearing reason this is CLOSEABLE." The ③.2 forward contract is READY-WITH-PRECONDITIONS, all named (no silent drop).
+
+**Cross-PR drift the per-wave VALIDATE structurally could not see (the gate's catch):**
+
+1. **(HIGH → re-routed) ARCH-PC-4** — the ③.0-close handed ③.1 the obligation to measure close-path wall-time + lock-soft-fail drop-rate under the dry-run's real concurrency. The `claude -p` actor clones never traverse the kernel resolver, so the dry-run **structurally cannot** exercise the close-path → the measurement was silently not taken. **Disposition:** re-route to where the close-path IS loaded — a dedicated kernel concurrency probe, or ③.2's gated real-spawn flow. Mis-assigned obligation, not a ③.1 loop failure; the gate caught the mis-assignment.
+2. **(HIGH) ③.2 forward contract — the authenticated-minter precondition is only PARTIALLY satisfied.** P0 mechanics frozen (#360) but "Option-A-equivalent until P1"; P1 key-custody + P2 consumer-flips are the actual gate (owned by the v-next minter session). The PR-egress kernel (ARCH-PC-5 base64/entropy scrub + killswitch + caps) is unbuilt. ③.2 is **apply-then-gate**: do NOT go live on a real PR until (a) the PR-egress kernel exists fail-closed + killswitch, AND (b) either nothing gates (stay shadow) OR minter P1+P2 land.
+3. **(MEDIUM) the SHADOW-tolerable security residuals collapse to ONE ③.2 precondition.** The unsigned co-forgeable confirmed-by edge, the unauthenticated `built_by.role`, the unbounded forged-metric trust, and the conftest-poison / last-wins grade-forgery (C1/H1/RFC-R3) are each individually tolerable because nothing gates — but ALL trip on "the moment a slice/weight/grade GATES" (③.2 ingests real external PRs = adversarial-capable). ③.2 must resolve them as a coherent SET, or structurally guarantee nothing from the lab tier gates a real-PR decision.
+
+**Carry-list for ③.2 (all named, no silent drop):** ARCH-PC-4 close-path concurrency probe (re-routed to the real spawn path) · the `runActor` candidate-size cap + maxBuffer alignment (DRY-reconcile the two actor-clone paths) · the PR-egress kernel (ARCH-PC-5 base64/entropy scrub + killswitch + per-window cap + 429 backpressure) · the integrity≠provenance SET (minter P1/P2 + signed-edge lane + RFC-R3 C1/H1/H2 grade-forgery + two-axis weight reconcile) · the live good-first-issue puller (vs the sealed corpus) · trace-store `nextSeq` O(n²) at beta volume. **Router-V2** (queued next): the dry-run output is a SEED + a real-task-shape sample, NOT a sufficient labeled dataset — the Router-V2 plan's Runtime Probes must characterize the corpus size/shape first.
+
+Durable record: the `toolkit/phase-close/3.1-dry-run-close` library volume.
+
+---
+
 ## ⬜ Deferred / field-survey debt (v3.5+)
 
 Explicitly out of v3.0-alpha scope, tracked for later:
