@@ -40,40 +40,33 @@ function loadPending() {
 // writeAtomic — see require at top of file (migrated to `_lib/atomic-write.js`
 // at HT.audit-followup H4)
 
-function buildReminder(candidates) {
-  // Group by risk so the user sees auto-graduated (cheap, audit-only) up top
-  // and pending-approval items below — minimizing decision load.
-  const auto = candidates.filter((c) => c.status === 'auto-graduated');
-  const queued = candidates.filter((c) => c.status === 'pending');
+// Ghost Heartbeat W1 (2026-06-19) — the surface GATE. Only converged
+// HIGH-VALUE candidates auto-surface: `rule-candidate` (a `drift:`/`rule:`/
+// `rule-recurrence:` signal converged) and `agent-evolution`. The retired
+// frequency kinds (`observation-log` from `filePath:`, `skill-candidate` from
+// `command:`) are EXCLUDED by construction — they never reach the prompt
+// pipeline, closing the 2026-05-30 91.5%-dismissal-noise failure mode even if a
+// stray such candidate ever re-enters the queue. Both allowlisted kinds are
+// `high` risk, which never auto-graduate, so `status === 'pending'` is the only
+// reachable surfacing path. Low-risk items remain inspectable via
+// `self-improve-store.js pending`.
+const HIGH_VALUE_KINDS = new Set(['rule-candidate', 'agent-evolution']);
 
+function buildReminder(candidates) {
+  // All inputs are high-value, pending candidates (gated upstream).
   const lines = [];
   lines.push('[SELF-IMPROVE QUEUE]');
-  lines.push(`The auto self-improve loop has ${candidates.length} unreviewed candidate(s) from prior sessions.`);
+  lines.push(`The self-improve loop has ${candidates.length} converged candidate(s) awaiting your decision.`);
   lines.push('');
-
-  if (auto.length > 0) {
-    lines.push(`Auto-graduated (low-risk, already logged to ~/.claude/checkpoints/observations.log):`);
-    for (const c of auto.slice(0, 5)) {
-      lines.push(`  • ${c.summary} (kind: ${c.kind})`);
-    }
-    if (auto.length > 5) lines.push(`  ... and ${auto.length - 5} more`);
-    lines.push('');
+  for (const c of candidates.slice(0, 8)) {
+    lines.push(`  • [${c.id}] ${c.summary}`);
+    lines.push(`    risk: ${c.risk} | kind: ${c.kind} | ${c.proposedAction}`);
   }
-
-  if (queued.length > 0) {
-    lines.push(`Pending your decision (medium/high risk, needs explicit approval):`);
-    for (const c of queued.slice(0, 5)) {
-      lines.push(`  • [${c.id}] ${c.summary}`);
-      lines.push(`    risk: ${c.risk} | kind: ${c.kind} | ${c.proposedAction}`);
-    }
-    if (queued.length > 5) lines.push(`  ... and ${queued.length - 5} more`);
-    lines.push('');
-    lines.push('Surface this to the user once with options: approve specific IDs, dismiss all, or invoke /self-improve to triage. Use:');
-    lines.push('  node ~/.claude/packages/kernel/spawn-state/self-improve-store.js promote --id <id>');
-    lines.push('  node ~/.claude/packages/kernel/spawn-state/self-improve-store.js dismiss --id <id>');
-  } else {
-    lines.push('No items requiring approval — auto-graduated entries are informational.');
-  }
+  if (candidates.length > 8) lines.push(`  ... and ${candidates.length - 8} more`);
+  lines.push('');
+  lines.push('Surface this to the user once: approve specific IDs, dismiss, or invoke /self-improve to triage. Use:');
+  lines.push('  node ~/.claude/packages/kernel/spawn-state/self-improve-store.js promote --id <id>');
+  lines.push('  node ~/.claude/packages/kernel/spawn-state/self-improve-store.js dismiss --id <id>');
   lines.push('[/SELF-IMPROVE QUEUE]');
   return lines.join('\n');
 }
@@ -82,32 +75,27 @@ let input = '';
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', (chunk) => { input += chunk; });
 process.stdin.on('end', () => {
-  // Default: pass-through unchanged. Only inject when (a) there's a pending
-  // queue AND (b) we haven't shown it yet this session.
-  let suffix = '';
+  // UserPromptSubmit contract (matches the working sibling prompt-enrich-
+  // trigger.js): stdin is the JSON event envelope ({ prompt, session_id, ... });
+  // stdout is ADDED to the model's context — we never echo the prompt back.
+  // Emit ONLY the reminder (or nothing). Fail-open: any parse/IO error -> emit
+  // nothing, never throw (the harness keeps the user's prompt intact).
   try {
+    const data = JSON.parse(input);
+    const sessionId = data.session_id || SESSION_ID;
     const pending = loadPending();
-    if (!pending) {
-      // No queue file yet — first run after install. Nothing to surface.
-      logger('no_queue_file');
-    } else if (pending.lastShownInSessionId === SESSION_ID) {
-      // Already nudged this session.
-      logger('already_shown');
-    } else {
-      const visible = (pending.candidates || []).filter((c) => c.status === 'pending' || c.status === 'auto-graduated');
-      if (visible.length === 0) {
-        logger('queue_empty');
-      } else {
-        suffix = '\n\n' + buildReminder(visible) + '\n';
-        // Mark as shown for this session — atomic write.
-        pending.lastShownInSessionId = SESSION_ID;
-        pending.lastShownAt = new Date().toISOString();
-        writeAtomic(PENDING_PATH, pending);
-        logger('injected', { sessionId: SESSION_ID, candidateCount: visible.length });
-      }
-    }
+    if (!pending) { logger('no_queue_file'); return; }
+    if (pending.lastShownInSessionId === sessionId) { logger('already_shown'); return; }
+    const visible = (pending.candidates || []).filter(
+      (c) => c.status === 'pending' && HIGH_VALUE_KINDS.has(c.kind));
+    if (visible.length === 0) { logger('queue_empty'); return; }
+    process.stdout.write(buildReminder(visible) + '\n');
+    // Mark as shown for this session — atomic write (best-effort).
+    pending.lastShownInSessionId = sessionId;
+    pending.lastShownAt = new Date().toISOString();
+    writeAtomic(PENDING_PATH, pending);
+    logger('injected', { sessionId, candidateCount: visible.length });
   } catch (err) {
     logger('error', { error: err.message });
   }
-  process.stdout.write(input + suffix);
 });
