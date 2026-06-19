@@ -75,29 +75,38 @@ function generateEdgeKeypair() {
   return { publicKeyPem: publicKey, privateKeyPem: privateKey };
 }
 
-// signEdgeId(edgeId, opts) -> base64 ed25519 signature over the edge_id string, or null.
-// Fail-soft: a non-HEX64 id or no/again-non-ed25519 key -> null (the minter then writes an
-// unsigned/shadow edge). Never throws.
-function signEdgeId(edgeId, opts = {}) {
-  if (!isHex64(edgeId)) return null;
+// signRecordId(recordId, opts) -> base64 ed25519 signature over ANY 64-hex content-address string,
+// or null. v-next minter P0 (RFC §5.3): generalized from "edge_id" to "any 64-hex id" — the crypto
+// is UNCHANGED (the id was always treated as an opaque HEX64 string), only the name widens. Fail-soft:
+// a non-HEX64 id or no/again-non-ed25519 key -> null (the caller then writes an unsigned/shadow form).
+// Never throws.
+function signRecordId(recordId, opts = {}) {
+  if (!isHex64(recordId)) return null;
   const key = loadPrivateKey(opts);
   if (!key) return null;
-  try { return crypto.sign(null, Buffer.from(edgeId, 'utf8'), key).toString('base64'); }
+  try { return crypto.sign(null, Buffer.from(recordId, 'utf8'), key).toString('base64'); }
   catch { return null; }
 }
 
-// verifyEdgeSig(edgeId, sigB64, opts) -> boolean. Fail-CLOSED: a non-HEX64 id, a non-canonical /
+// verifyRecordSig(recordId, sigB64, opts) -> boolean. Fail-CLOSED: a non-HEX64 id, a non-canonical /
 // malformed sig, or no loadable ed25519 verify key -> false (never accept-all). Never throws.
-function verifyEdgeSig(edgeId, sigB64, opts = {}) {
-  if (!isHex64(edgeId)) return false;
+function verifyRecordSig(recordId, sigB64, opts = {}) {
+  if (!isHex64(recordId)) return false;
   if (!isCanonicalBase64(sigB64)) return false;
   const key = loadPublicKey(opts);
   if (!key) return false;
   let sig;
   try { sig = Buffer.from(sigB64, 'base64'); } catch { return false; }
-  try { return crypto.verify(null, Buffer.from(edgeId, 'utf8'), key, sig); }
+  try { return crypto.verify(null, Buffer.from(recordId, 'utf8'), key, sig); }
   catch { return false; }
 }
+
+// IDENTITY aliases (F5 — zero behavioral fork). The causal-edge confirmed-by lane (lesson-confirm.js)
+// + recall-edge-store + 5 test files call signEdgeId/verifyEdgeSig by name; they are the SAME function
+// objects as the generic names, so the alg-pinning / canonical-base64 / fail-closed rules above stay
+// byte-identical across both lanes. Do NOT re-wrap (a wrapper would risk a fork).
+const signEdgeId = signRecordId;
+const verifyEdgeSig = verifyRecordSig;
 
 // Whether a loadable ed25519 verify key is configured (opts/env). Lets a caller distinguish
 // "no key to adjudicate with" from "key present, sig failed" without leaking key material.
@@ -106,5 +115,8 @@ function hasVerifyKey(opts = {}) {
 }
 
 module.exports = {
-  SIG_ALG, generateEdgeKeypair, signEdgeId, verifyEdgeSig, hasVerifyKey, isCanonicalBase64,
+  SIG_ALG, generateEdgeKeypair, hasVerifyKey, isCanonicalBase64,
+  // v-next minter P0: the generic names (RFC §5.3) + the edge-lane identity aliases.
+  signRecordId, verifyRecordSig,
+  signEdgeId, verifyEdgeSig,
 };

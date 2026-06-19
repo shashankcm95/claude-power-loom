@@ -15,9 +15,11 @@ const crypto = require('crypto');
 const path = require('path');
 
 const REPO = path.join(__dirname, '..', '..', '..');
+const ATTEST = require(path.join(REPO, 'packages', 'kernel', '_lib', 'edge-attestation.js'));
 const {
   generateEdgeKeypair, signEdgeId, verifyEdgeSig, hasVerifyKey, SIG_ALG,
-} = require(path.join(REPO, 'packages', 'kernel', '_lib', 'edge-attestation.js'));
+  signRecordId, verifyRecordSig,
+} = ATTEST;
 
 // Hermetic (CodeRabbit #335): the fail-soft/fail-closed assertions assume NO ambient edge keys —
 // signEdgeId/verifyEdgeSig/hasVerifyKey fall back to LOOM_EDGE_SIGNING_KEY/LOOM_EDGE_VERIFY_KEY when
@@ -103,6 +105,33 @@ test('hasVerifyKey: true with a loadable ed25519 key, false otherwise', () => {
   assert.strictEqual(hasVerifyKey({ publicKeyPem }), true);
   assert.strictEqual(hasVerifyKey({}), false);                  // no opts, no env
   assert.strictEqual(hasVerifyKey({ publicKeyPem: 'garbage' }), false);
+});
+
+// ── v-next minter P0 — signRecordId/verifyRecordSig generalization (RFC §5.3) ─────────────────────
+// signEdgeId was always "any 64-hex content-address"; P0 exposes the generic names + keeps the edge
+// names as IDENTITY aliases (F5 — zero behavioral fork, the security rules stay byte-identical).
+
+test('signRecordId/verifyRecordSig: generic names round-trip over any 64-hex id', () => {
+  const { publicKeyPem, privateKeyPem } = generateEdgeKeypair();
+  const sig = signRecordId(ID, { privateKeyPem });
+  assert.strictEqual(typeof sig, 'string');
+  assert.strictEqual(verifyRecordSig(ID, sig, { publicKeyPem }), true);
+  assert.strictEqual(verifyRecordSig(OTHER, sig, { publicKeyPem }), false);
+});
+
+test('signEdgeId/verifyEdgeSig are IDENTITY aliases of signRecordId/verifyRecordSig (no fork)', () => {
+  assert.strictEqual(signEdgeId, signRecordId, 'signEdgeId must be the SAME function object as signRecordId');
+  assert.strictEqual(verifyEdgeSig, verifyRecordSig, 'verifyEdgeSig must be the SAME function object as verifyRecordSig');
+});
+
+test('signRecordId carries the alg-pinning + fail-closed contract verbatim', () => {
+  // no key -> null (sign); no key -> false (verify); non-HEX64 -> null/false.
+  assert.strictEqual(signRecordId(ID, {}), null);
+  const { publicKeyPem, privateKeyPem } = generateEdgeKeypair();
+  assert.strictEqual(signRecordId('not-hex', { privateKeyPem }), null);
+  const sig = signRecordId(ID, { privateKeyPem });
+  assert.strictEqual(verifyRecordSig(ID, sig, {}), false);            // no verify key -> fail-closed
+  assert.strictEqual(verifyRecordSig('not-hex', sig, { publicKeyPem }), false);
 });
 
 (async () => {
