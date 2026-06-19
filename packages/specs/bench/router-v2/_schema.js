@@ -41,14 +41,21 @@ function isBool(v) {
 // Structural blinding: no scorer band field exists here.
 const BLIND_FIELDS = Object.freeze(['id', 'task_excerpt']);
 
+/**
+ * Validate a candidates-blind row. Structural blinding (VERIFY CA-6 / CodeRabbit):
+ * an ALLOWLIST — a blind row may carry ONLY `BLIND_FIELDS`, so ANY scorer-derived
+ * field (even one added later) is rejected, not just a known denylist.
+ * @param {object} row the blind row
+ * @returns {string[]} validation errors (empty when valid)
+ */
 function validateBlindRow(row) {
   const errors = [];
   if (!row || typeof row !== 'object') return ['row is not an object'];
   if (!isNonEmptyString(row.id)) errors.push('id must be a non-empty string');
   if (typeof row.task_excerpt !== 'string') errors.push('task_excerpt must be a string');
-  // A blind row must NOT leak the band (defense against an accidental join-in).
-  for (const leaky of ['scorer_route', 'scorer_score', 'band', 'correct_route']) {
-    if (leaky in row) errors.push(`blind row must NOT carry "${leaky}" (blinding leak)`);
+  const allowed = new Set(BLIND_FIELDS);
+  for (const k of Object.keys(row)) {
+    if (!allowed.has(k)) errors.push(`blind row must NOT carry "${k}" (blinding leak)`);
   }
   return errors;
 }

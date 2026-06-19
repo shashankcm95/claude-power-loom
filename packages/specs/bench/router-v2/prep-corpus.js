@@ -81,7 +81,14 @@ function rowId(excerpt) {
 }
 
 // --- pure core ---
-// prepCorpus(rawRows, scoreTask, { lexiconVersion }) -> { candidatesBlind, candidatesScored, unlabelable, report }
+/**
+ * Distill raw log rows into labeling candidates (filter, drop+flag unlabelable,
+ * de-dup, attach a band snapshot) and emit the two blinding files + a report.
+ * @param {object[]} rawRows parsed route-decide-log rows
+ * @param {(task:string)=>object} scoreTask the pinned scorer (returns the scoreTask shape)
+ * @param {{lexiconVersion:string}} opts pins the lexicon version onto every scored row
+ * @returns {{candidatesBlind:object[], candidatesScored:object[], unlabelable:object[], report:object}}
+ */
 function prepCorpus(rawRows, scoreTask, opts) {
   const lexiconVersion = (opts && opts.lexiconVersion) || 'unknown';
   if (!Array.isArray(rawRows)) throw new Error('prepCorpus: rawRows must be an array');
@@ -185,6 +192,7 @@ if (require.main === module) {
   const { candidatesBlind, candidatesScored, unlabelable, report } =
     prepCorpus(raw, (t) => scorer.scoreTask(t), { lexiconVersion });
 
+  fs.mkdirSync(outDir, { recursive: true });   // a non-default --out may not exist yet (CodeRabbit)
   const writeJsonl = (name, rows) => fs.writeFileSync(path.join(outDir, name), rows.map((r) => JSON.stringify(r)).join('\n') + (rows.length ? '\n' : ''));
   writeJsonl('candidates-blind.jsonl', candidatesBlind);
   writeJsonl('candidates-scored.jsonl', candidatesScored);

@@ -43,9 +43,14 @@ function bandOf(scorerOut, leg, id) {
   return rec;
 }
 
-// PURE core. opts = { evalRows, scoreOld, scoreNew, floors? }.
-// scoreOld/scoreNew: (task_excerpt:string) -> { recommendation, ... } (the scoreTask shape).
-// The SAME byte-identical task_excerpt feeds both legs (VERIFY CA-1).
+/**
+ * Old-vs-new regression check over the labeled eval set (PURE; NARROWS only).
+ * The SAME byte-identical task_excerpt feeds both legs (VERIFY CA-1).
+ * @param {{evalRows:object[], scoreOld:(t:string)=>object, scoreNew:(t:string)=>object, floors?:object}} opts
+ *   scoreOld/scoreNew return the scoreTask shape ({ recommendation, ... }).
+ * @returns {object} per-task rows + regressions/improvements + byBand + anchors +
+ *   { regression, underPowered, pass } (pass = no regression AND sufficient anchors).
+ */
 function shadowEval(opts) {
   const { evalRows, scoreOld, scoreNew } = opts;
   const floors = { ...DEFAULT_FLOORS, ...(opts.floors || {}) };

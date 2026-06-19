@@ -11,10 +11,14 @@
 
 'use strict';
 
-// items: Array<Array<string>> — one inner array per item = the category each rater
-// assigned (length = the fixed rater count). Returns
-// { kappa, observed, expected, nItems, nRaters, categories, note }.
-// kappa is null when undefined (P_e === 1: every rater always picks one class).
+/**
+ * Fleiss' kappa — chance-corrected inter-rater agreement.
+ * @param {string[][]} items one inner array per item = the category each rater
+ *   assigned; every item must have the SAME fixed rater count (>= 2).
+ * @returns {{kappa:number|null, observed:number|null, expected:number|null,
+ *   nItems:number, nRaters:number, categories:string[], note:string|null}}
+ *   kappa is null when undefined (P_e === 1: every rater always picks one class).
+ */
 function fleissKappa(items) {
   if (!Array.isArray(items) || items.length === 0) {
     return { kappa: null, observed: null, expected: null, nItems: 0, nRaters: 0, categories: [], note: 'no items' };
