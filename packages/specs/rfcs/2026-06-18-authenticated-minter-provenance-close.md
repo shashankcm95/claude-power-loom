@@ -87,12 +87,12 @@ Everything else (the full reputation distribution, lesson confirmed-weights, the
 
 1. **P0 — primitive + invariant (no trust-domain dependency).** Generalize `signEdgeId` → `signRecordId`/`verifyRecordSig`; add `mintWeight` with the recompute-from-authoritative policy; adopt Option C's invariant (gating reads only kernel-minted records + a minted weight). Land it SHADOW (mint + verify wired, but the gate still doesn't fire) so the mechanics freeze before the beta.
 2. **P1 — trust-domain separation (the load-bearing precondition).** Stand up the minter inside the ContainerAdapter namespace (or the separate-uid broker); move the key out of the same-uid env. This is the step that makes it Option B rather than Option A; gate the beta on it.
-3. **P2 — flip the gating consumers fail-closed** on `verifyMintedWeight` for the A6 snapshot (and any other beta gate). Add the read-back/dedup/update immutability tests the workspace rule mandates.
+3. **P2 — flip the gating consumers fail-closed** on `verifyMintedWeight` for the A6 snapshot (and any other beta gate). Add the read-back/dedup/update immutability tests the workspace rule mandates. **Deferred — entry-gated on the OQ-2 trigger** (③.2 names a real gate on a lab-derived weight). Flipping before then wires a gate onto a non-existent action and over-signs (§5.4). The flip also carries a **hard predecessor**: the gated weight's authoritative basis must first move onto the kernel chain (Option C's invariant / OQ-3) — see the *OQ-2 resolution* appendix.
 
 ## 8. Open questions
 
 - **OQ-1 (custody vehicle):** ContainerAdapter namespace vs separate-uid broker for the first cut? The ContainerAdapter ties the timeline to Track 2; the broker is independently shippable. Recommendation: broker if the beta predates a hardened ContainerAdapter, else fold into the ContainerAdapter.
-- **OQ-2 (gating set freeze):** confirm the *exact* set of weights that gate in ③.1/③.2 so the mint set is minimal and complete. The DRY-RUN (③.1) is DRAFT-only — does anything actually gate before ③.2?
+- **OQ-2 (gating set freeze) — RESOLVED 2026-06-19** (see the *OQ-2 resolution* appendix below): nothing gates a real action on a co-forgeable lab-derived weight in ③.1 (DRAFT-only) or today — the gating set is **empty** → the P2 consumer flip is **premature**. Trigger for P2: ③.2 introduces a real gate on a lab-derived weight.
 - **OQ-3:** does `mintWeight`'s policy need to read the *full* lab distribution, or only the kernel chain + a bounded advisory summary? The narrower the authoritative basis, the smaller the oracle surface.
 - **OQ-NS-6 reminder:** none of this *hardens* trust in the world-anchored sense — it removes a *forgery* lever. Only a world-anchored merge hardens. The minter makes a gating weight *trustworthy-to-compute-from-honest-inputs*, not *correct*.
 
@@ -112,3 +112,35 @@ Everything else (the full reputation distribution, lesson confirmed-weights, the
 **Corrected basis:** `minted_id = sha256(canonical({kind, subject, value, basis_digest, minted_at, key_id}))`, `sig = signRecordId(minted_id, opts)`. `basis_digest` stays in the body so a (P2) verifier can optionally re-run the policy. `verifyMintedWeight` re-derives `minted_id` from an explicit field allowlist and verifies the sig over it; it does **not** re-run the policy in P0 (the oracle defense lives on the mint side, §5.2). These two decisions are joined: sig-sufficient verify is safe **only because** `minted_id` binds `value`.
 
 **P2 obligation added (replay):** `minted_at` is signed but unchecked in P0 — a genuine mint verifies forever (inert in SHADOW, exploitable once a value gates). The P2 consumer flip MUST enforce a freshness window OR policy re-run. See plan `packages/specs/plans/2026-06-19-vnext-authenticated-minter-p0.md` (INV-MINT, F1/H-1, M-1).
+
+## OQ-2 resolution — 2026-06-19 (gating-set freeze; RESOLVED → P2 premature)
+
+**The question (restated).** §5.4 says only the weights that will **gate** in the beta need minting first; OQ-2 asked us to confirm the *exact* gating set so the mint set is minimal and complete, and — sharply — *"the DRY-RUN (③.1) is DRAFT-only — does anything actually gate before ③.2?"*
+
+**Method.** A read-only survey of every lab→kernel consumer named in §5.4, re-probed firsthand against the repo on 2026-06-19 (not from memory). Each candidate was checked for whether it *gates a real action* on a lab-derived weight, vs. records/annotates/narrows.
+
+**Finding — the §5.4 gating-candidate set, with its actual current state:**
+
+- **A6 reputation snapshot (the one lab→kernel hot-path).** `spawn-record.js` reads the materialized snapshot but only to **embed it as an annotation** in the approve envelope under `axioms.evolution_snapshot.reputation` — "A6 records-not-injects" per ADR-0012. The read is **fail-open** ("read the reputation snapshot O(1), fail-open (never throws)") and the hook **emits an unconditional approve** ("We do NOT block on this hook"). It annotates; it never denies or admits. *Probe:* `grep -n "reputation\|block" packages/kernel/spawn-state/spawn-record.js` → embed at the envelope-build (`evolution_snapshot: { reputation: boundSnapshot(...) }`), read fail-open, approve unconditional.
+- **`reputation-gate.js` (`recommendNarrowing`).** PURE-advisory with **zero production callers** — the only references are a `_spike/` diagnostic and a comment in `lesson-merge-lift.js`. *Probe:* `grep -rn "recommendNarrowing\|reputation-gate" packages --include=*.js | grep -v "test\|_spike\|reputation-gate.js"` → one comment, no live consumer.
+- **circuit-breaker (`project.js` / `cli.js`).** Self-labelled "shadow — halts nothing yet"; "never writes, gates, or halts." Shadow. *Probe:* `grep -n "halts nothing\|shadow\|gates" packages/lab/circuit-breaker/*.js`.
+- **resolver / manage-promote.** Gate only under `LOOM_RESOLVER_ENFORCE === '1'` / `LOOM_MANAGE_ENFORCE === '1'` (default OFF; shadow is the default), and even when enforcing the trust anchor is the **human disposition + the env flag + a kernel FS-scan** — *not* a lab-derived weight ("the human is the trust anchor"). *Probe:* `grep -rn "LOOM_RESOLVER_ENFORCE\|LOOM_MANAGE_ENFORCE" packages --include=*.js` → default OFF.
+- **Route/admission eligibility.** `route-decide.js`'s only `reputation` references are detection-only lexicon tokens (`SUBSTRATE_META_TOKENS`), not a consumer of any reputation weight. *Probe:* `grep -n "reputation\|deny\|block" packages/kernel/algorithms/route-decide.js`.
+
+**Conclusion.** In ③.1 (DRAFT-only) and today, **no consumer gates a real action on a co-forgeable lab-derived weight** — the gating set is **empty**. Therefore the P2 consumer flip (§7) is **premature**.
+
+**Two independent reasons not to flip now:**
+
+1. **Over-signing.** Wiring `verifyMintedWeight` fail-closed onto a consumer that does not gate is cost with no security gain — exactly the §5.4 "do not over-sign" anti-goal. The §0a.3.1 monotonic-narrowing safety argument still covers every advisory/unsigned weight precisely *because* nothing gates.
+2. **A hard predecessor (the structural blocker; ties to OQ-3).** Even once a gate appears, the A6 reputation weight cannot be minted under **Option C** yet: its authoritative basis is the **verdict-attestation lab store**, not the kernel transaction chain. Option C's invariant — gating reads only kernel-minted records, and the minter recomputes from kernel-authoritative inputs (§5.2) — requires that basis to live on the kernel chain *first*. Minting today would either sign a lab-asserted value verbatim (the §5.2 oracle bypass) or recompute from a co-forgeable lab store (no provenance gained).
+
+**The P2 entry sequence (when ③.2 names a real gate on a lab-derived weight):**
+
+1. **Freeze** the exact gating set — this is the "confirm" OQ-2 asked for, answerable only once ③.2 names the gate.
+2. **Move** that weight's authoritative basis onto the kernel transaction chain (the Option C / OQ-3 precondition).
+3. **Define** the recompute-from-authoritative policy plus a freshness window or policy-re-run (the Erratum's replay obligation; M-1 already provides the opt-in freshness knob).
+4. **Flip** the consumer to `verifyMintedWeight` fail-closed, with the read-back/dedup/update immutability tests.
+
+**Correct stopping point today.** P0 (#360) + M-1 (#361) mechanics **landed and frozen SHADOW**. Nothing further mints or gates until the trigger fires.
+
+**OQ-NS-6.** This resolution removes a forgery *lever* from a future gate; it does not *harden* trust. That nothing gates today is exactly why the monotonic-narrowing safety argument still holds — the close is "narrows," never "hardens."
