@@ -10,7 +10,7 @@ const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { execSync, spawnSync } = require('child_process');
+const { execFileSync, spawnSync } = require('child_process');
 const { withRegularFileFd } = require('../../../../packages/kernel/_lib/safe-read');
 
 let passed = 0;
@@ -59,7 +59,7 @@ test('S5: a FIFO -> fallback promptly, never blocks', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sr-fifo-'));
   const fifo = path.join(dir, 'p.fifo');
   try {
-    try { execSync(`mkfifo ${JSON.stringify(fifo)}`); }
+    try { execFileSync('mkfifo', [fifo]); }
     catch { process.stdout.write('  (skip S5: mkfifo unavailable)\n'); return; }
     const mod = path.resolve(__dirname, '../../../../packages/kernel/_lib/safe-read');
     const r = spawnSync(process.execPath, ['-e',

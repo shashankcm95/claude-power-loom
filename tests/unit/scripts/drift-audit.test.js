@@ -10,7 +10,7 @@ const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { execSync, spawnSync } = require('child_process');
+const { execFileSync, spawnSync } = require('child_process');
 const D = require('../../../packages/kernel/spawn-state/drift-audit');
 
 let passed = 0;
@@ -136,7 +136,7 @@ test('T-isfile-fifo: a FIFO transcriptPath returns promptly, never blocks (no ha
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ghb-fifo-'));
   const fifo = path.join(dir, 'p.fifo');
   try {
-    try { execSync(`mkfifo ${JSON.stringify(fifo)}`); }
+    try { execFileSync('mkfifo', [fifo]); }
     catch { process.stdout.write('  (skip T-isfile-fifo: mkfifo unavailable)\n'); return; }
     const mod = path.resolve(__dirname, '../../../packages/kernel/spawn-state/drift-audit');
     const r = spawnSync(process.execPath, ['-e',
