@@ -337,10 +337,12 @@ function status(opts) {
     if (c.os === 'darwin') {
       return { os: 'darwin', installed: c.effects.plistExists(plistPathFor(c.launchAgentsDir, c.label)) };
     }
-    // Require a COMPLETE span (both sentinels) -- a dangling BEGIN (which install never
-    // writes, but a manual edit could leave) is NOT a functioning block (VALIDATE NIT #12).
-    const lines = c.effects.readCrontab().split('\n');
-    return { os: 'linux', installed: lines.includes(MARKER_BEGIN) && lines.includes(MARKER_END) };
+    // Require a COMPLETE, ORDERED span -- reuse stripCronBlock's exact BEGIN..END matcher:
+    // if stripping our block CHANGES the crontab, a valid ordered block is present. A
+    // dangling BEGIN, an out-of-order END-before-BEGIN, or a bare marker mention all leave
+    // the text unchanged -> installed:false (VALIDATE NIT #12 + CodeRabbit ordered-span).
+    const current = c.effects.readCrontab();
+    return { os: 'linux', installed: stripCronBlock(current) !== current };
   } catch (e) {
     return { os: c.os, installed: false, error: e && e.message };
   }

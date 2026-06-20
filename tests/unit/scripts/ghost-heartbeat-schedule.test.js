@@ -249,8 +249,10 @@ test('install (darwin): a zero launchctl load -> loaded:true', () => {
 test('status (linux): a dangling BEGIN (no END) reports installed:false', () => {
   const both = { ...stubEffects(), readCrontab: () => `${S.MARKER_BEGIN}\n0 */4 * * * x\n${S.MARKER_END}\n` };
   const dangling = { ...stubEffects(), readCrontab: () => `${S.MARKER_BEGIN}\n0 */4 * * * x\n` };
-  assert.strictEqual(S.status({ os: 'linux', effects: both }).installed, true, 'complete span -> installed');
+  const reversed = { ...stubEffects(), readCrontab: () => `${S.MARKER_END}\n0 */4 * * * x\n${S.MARKER_BEGIN}\n` };
+  assert.strictEqual(S.status({ os: 'linux', effects: both }).installed, true, 'complete ordered span -> installed');
   assert.strictEqual(S.status({ os: 'linux', effects: dangling }).installed, false, 'dangling BEGIN -> NOT installed');
+  assert.strictEqual(S.status({ os: 'linux', effects: reversed }).installed, false, 'END-before-BEGIN (out of order) -> NOT installed (CodeRabbit ordered-span)');
 });
 
 process.stdout.write(`\n  Passed: ${passed}  Failed: ${failed}\n`);

@@ -393,8 +393,16 @@ schedule_heartbeat() {
     return 0
   fi
   echo "Scheduling ghost-heartbeat drain runner ($sched, every 4h)..."
-  node "$mod" install || true
-  echo "  -> Pause anytime: touch ~/.claude/checkpoints/ghost-heartbeat.disabled  (resume: rm that file)"
+  # The module exits 0 but returns {ok:false,...} on a real failure (effect-error /
+  # unsafe-arg). Branch the success guidance on the ok field so a failed schedule is NOT
+  # reported as success (CodeRabbit Major). Still fail-open: the step never aborts install.
+  local out; out=$(node "$mod" install 2>&1 || true)
+  printf '%s\n' "$out"
+  if printf '%s' "$out" | grep -q '"ok":true'; then
+    echo "  -> Pause anytime: touch ~/.claude/checkpoints/ghost-heartbeat.disabled  (resume: rm that file)"
+  else
+    echo "  NOTE: schedule request did not complete (see the result above); nothing was scheduled."
+  fi
 }
 
 unschedule_heartbeat() {
@@ -408,7 +416,11 @@ unschedule_heartbeat() {
     return 0
   fi
   echo "Unscheduling ghost-heartbeat drain runner..."
-  node "$mod" uninstall || true
+  local out; out=$(node "$mod" uninstall 2>&1 || true)
+  printf '%s\n' "$out"
+  if ! printf '%s' "$out" | grep -q '"ok":true'; then
+    echo "  NOTE: unschedule request did not complete (see the result above)."
+  fi
 }
 
 run_smoke_tests() {

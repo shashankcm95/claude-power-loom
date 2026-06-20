@@ -30,7 +30,7 @@ function withEnv(overrides, fn) {
     // Hermetic default: point the touch-file killswitch at a guaranteed-absent path so a
     // real ~/.claude/checkpoints/ghost-heartbeat.disabled on the dev box can't silently
     // kill the opt-in tests. A test that wants the killswitch overrides this explicitly.
-    if (!('GHOST_HEARTBEAT_KILLSWITCH_FILE' in overrides)) process.env.GHOST_HEARTBEAT_KILLSWITCH_FILE = path.join(os.tmpdir(), 'ghb-killswitch-absent-zzz');
+    if (!('GHOST_HEARTBEAT_KILLSWITCH_FILE' in overrides)) process.env.GHOST_HEARTBEAT_KILLSWITCH_FILE = path.join(os.tmpdir(), `ghb-ks-absent-${process.hrtime.bigint().toString(36)}.none`);
     Object.assign(process.env, overrides);
     return fn();
   } finally {
