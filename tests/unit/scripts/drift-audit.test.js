@@ -110,6 +110,37 @@ test('T9b: a transcript with no sessionId at all is rejected', () => {
   finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// T9c (VALIDATE hacker LOW): an over-long / control-char sessionId is a self-asserted field
+// that would become an emitted-set / pruneTracking KEY -> on-disk DoS + control-char-in-JSON.
+// isValidSid bounds it: an out-of-bound sid is IGNORED (not counted, never a key); a valid sid
+// in the same file still wins, and the keyset excludes the bad one.
+test('T9c: an over-long / NUL-bearing sessionId is ignored; a valid sid still wins; keyset excludes the bad one', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ghb-sid-'));
+  const p = path.join(dir, 'x.jsonl');
+  const ctrlSid = `a${String.fromCharCode(0)}b`; // a real NUL (built at runtime; source stays ASCII)
+  const lines = [
+    { type: 'user', sessionId: 'x'.repeat(200), message: { role: 'user', content: 'a' } },
+    { type: 'user', sessionId: ctrlSid, message: { role: 'user', content: 'b' } },
+    { type: 'user', sessionId: 'good-sid', message: { role: 'user', content: 'c' } },
+    { type: 'user', sessionId: 'good-sid', message: { role: 'user', content: 'd' } },
+  ];
+  fs.writeFileSync(p, `${lines.map((l) => JSON.stringify(l)).join('\n')}\n`);
+  try {
+    const dg = D.buildDigest(p);
+    assert.strictEqual(dg.ok, true);
+    assert.strictEqual(dg.sessionId, 'good-sid', 'out-of-bound sids are not counted; the valid one is dominant');
+    assert.deepStrictEqual(dg.sessionIds, ['good-sid'], 'the keyset excludes the over-long / control-char sids');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('T9d: a transcript whose ONLY sids are out-of-bound -> no-session-id (fail closed)', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ghb-sid2-'));
+  const p = path.join(dir, 'x.jsonl');
+  fs.writeFileSync(p, `${JSON.stringify({ type: 'user', sessionId: 'y'.repeat(500), message: { role: 'user', content: 'a' } })}\n`);
+  try { assert.strictEqual(D.buildDigest(p).reason, 'no-session-id'); }
+  finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 // T-isfile (W2-PR2 hardening): a non-regular-file transcriptPath (here a directory;
 // the worst case is a symlink-to-FIFO, where fs.readFileSync would BLOCK the
 // auto-fired detached producer for the 60s judge window) must fail CLOSED, not hang

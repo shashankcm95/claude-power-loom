@@ -180,5 +180,147 @@ test('T-load-fifo: a FIFO at the state path -> empty state PROMPTLY (no hang)', 
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// =========================== PR-B retention bound ===========================
+// pruneEmittedState: superset-safe, default-KEEP. The emitted-set is the double-emit
+// correctness boundary -> a wrong prune un-dedups a session and over-counts convergence.
+const NOWB = 1000000000000; // fixed base clock (ms)
+
+test('T-pes-defer: !complete -> no prune, no counter advance (deferred)', () => {
+  const sp = tmp();
+  try {
+    S.recordEmissions({ sessionId: 'gone', classes: ['plan-honesty'], emitFn: () => {}, statePath: sp });
+    const r = S.pruneEmittedState({ presentSids: [], complete: false, now: () => NOWB, absentRuns: 1, floorMs: 0, statePath: sp });
+    assert.strictEqual(r.ok, true);
+    assert.strictEqual(r.deferred, true);
+    assert.deepStrictEqual(r.pruned, []);
+    const st = S.loadState(sp);
+    assert.ok(S.isEmitted(st, 'gone', 'plan-honesty'), 'not pruned when the observation is incomplete');
+    assert.deepStrictEqual(st.pruneTracking, {}, 'an incomplete run must NOT advance absence counters');
+  } finally { rm(sp); }
+});
+
+test('T-pes-absent-once-keeps: one complete-absent run (K=2) counts but does not prune', () => {
+  const sp = tmp();
+  try {
+    S.recordEmissions({ sessionId: 'gone', classes: ['plan-honesty'], emitFn: () => {}, statePath: sp });
+    const r = S.pruneEmittedState({ presentSids: [], complete: true, now: () => NOWB, absentRuns: 2, floorMs: 0, statePath: sp });
+    assert.deepStrictEqual(r.pruned, []);
+    const st = S.loadState(sp);
+    assert.ok(S.isEmitted(st, 'gone', 'plan-honesty'), 'kept after 1 absence (K=2)');
+    assert.strictEqual(st.pruneTracking.gone.absentRuns, 1);
+  } finally { rm(sp); }
+});
+
+test('T-pes-prune: K absences past the wall-clock floor -> prune; tracker cleared', () => {
+  const sp = tmp();
+  try {
+    S.recordEmissions({ sessionId: 'gone', classes: ['plan-honesty'], emitFn: () => {}, statePath: sp });
+    S.pruneEmittedState({ presentSids: [], complete: true, now: () => NOWB, absentRuns: 2, floorMs: 1000, statePath: sp }); // absence #1 @ NOWB
+    const r = S.pruneEmittedState({ presentSids: [], complete: true, now: () => NOWB + 2000, absentRuns: 2, floorMs: 1000, statePath: sp }); // #2, +2000>=floor
+    assert.deepStrictEqual(r.pruned, ['gone']);
+    const st = S.loadState(sp);
+    assert.ok(!S.isEmitted(st, 'gone', 'plan-honesty'), 'pruned after K=2 absences past the floor');
+    assert.ok(!('gone' in st.pruneTracking), 'tracker cleared on prune');
+  } finally { rm(sp); }
+});
+
+test('T-pes-under-floor: K reached but UNDER the wall-clock floor -> kept (floor protects)', () => {
+  const sp = tmp();
+  try {
+    S.recordEmissions({ sessionId: 'gone', classes: ['plan-honesty'], emitFn: () => {}, statePath: sp });
+    S.pruneEmittedState({ presentSids: [], complete: true, now: () => NOWB, absentRuns: 2, floorMs: 100000, statePath: sp });
+    const r = S.pruneEmittedState({ presentSids: [], complete: true, now: () => NOWB + 500, absentRuns: 2, floorMs: 100000, statePath: sp }); // 500 < floor
+    assert.deepStrictEqual(r.pruned, [], 'K reached but floor not met -> keep');
+    assert.ok(S.isEmitted(S.loadState(sp), 'gone', 'plan-honesty'));
+  } finally { rm(sp); }
+});
+
+test('T-pes-present-resets: a present sid resets its absence tracker', () => {
+  const sp = tmp();
+  try {
+    S.recordEmissions({ sessionId: 's', classes: ['plan-honesty'], emitFn: () => {}, statePath: sp });
+    S.pruneEmittedState({ presentSids: [], complete: true, now: () => NOWB, absentRuns: 2, floorMs: 0, statePath: sp });
+    assert.strictEqual(S.loadState(sp).pruneTracking.s.absentRuns, 1);
+    S.pruneEmittedState({ presentSids: ['s'], complete: true, now: () => NOWB + 10, absentRuns: 2, floorMs: 0, statePath: sp });
+    assert.ok(!('s' in S.loadState(sp).pruneTracking), 'tracker reset when the sid is observed present');
+  } finally { rm(sp); }
+});
+
+// The TOCTOU-race close (VERIFY board hack/arch MED): a Stop-child emit landing between
+// the runner's discover() snapshot and the prune must NOT let the sid be pruned. The emit
+// itself (recordEmissions) resets the tracker transactionally under the shared lock.
+test('T-pes-emit-resets-tracker: recordEmissions for a sid clears its absence tracker', () => {
+  const sp = tmp();
+  try {
+    S.recordEmissions({ sessionId: 's', classes: ['plan-honesty'], emitFn: () => {}, statePath: sp });
+    S.pruneEmittedState({ presentSids: [], complete: true, now: () => NOWB, absentRuns: 2, floorMs: 0, statePath: sp });
+    assert.strictEqual(S.loadState(sp).pruneTracking.s.absentRuns, 1, 'absence accrued');
+    S.recordEmissions({ sessionId: 's', classes: ['recon-depth'], emitFn: () => {}, statePath: sp }); // a fresh emit = a presence signal
+    assert.ok(!('s' in S.loadState(sp).pruneTracking), 'the emit reset the tracker (race closed)');
+  } finally { rm(sp); }
+});
+
+// CR-HIGH: loadState's strict whitelist would silently drop pruneTracking, so a
+// recordEmissions write would erase the absence counters and prune would never fire.
+test('T-pes-tracking-roundtrip: pruneTracking survives an UNRELATED recordEmissions write', () => {
+  const sp = tmp();
+  try {
+    S.recordEmissions({ sessionId: 'gone', classes: ['plan-honesty'], emitFn: () => {}, statePath: sp });
+    S.pruneEmittedState({ presentSids: [], complete: true, now: () => NOWB, absentRuns: 5, floorMs: 0, statePath: sp });
+    assert.strictEqual(S.loadState(sp).pruneTracking.gone.absentRuns, 1);
+    S.recordEmissions({ sessionId: 'other', classes: ['scope-creep'], emitFn: () => {}, statePath: sp });
+    assert.strictEqual(S.loadState(sp).pruneTracking.gone.absentRuns, 1, "an unrelated emit must not erase gone's tracker");
+  } finally { rm(sp); }
+});
+
+// Hacker HIGH (R13 rigor for the new field): poisoned pruneTracking numerics must be
+// DROPPED on load, so they game the K+floor gate in NEITHER direction.
+test('T-pes-poison: future/negative/string/non-finite pruneTracking values are dropped on load', () => {
+  const sp = tmp();
+  try {
+    const future = Date.now() + 10 * 86400000;
+    fs.writeFileSync(sp, JSON.stringify({ version: 1, watermark: {}, emitted: { a: ['plan-honesty'], b: ['recon-depth'], c: ['scope-creep'], d: ['claim-false'] }, pruneTracking: {
+      a: { absentRuns: 1, firstAbsentAt: future }, // future stamp -> would deny-prune-forever
+      b: { absentRuns: -5, firstAbsentAt: NOWB },   // negative
+      c: { absentRuns: '9', firstAbsentAt: NOWB },  // string (coerces in `>=`)
+      d: { absentRuns: 1, firstAbsentAt: 'x' },     // non-finite
+    } }));
+    assert.deepStrictEqual(S.loadState(sp).pruneTracking, {}, 'every poisoned tracker dropped');
+    // Trackers dropped -> a fresh absence gate (K=1, floor=0) prunes all four; the poison
+    // neither blocked (future stamp) nor pre-advanced (string/negative) the decision.
+    const r = S.pruneEmittedState({ presentSids: [], complete: true, now: () => NOWB + 20 * 86400000, absentRuns: 1, floorMs: 0, statePath: sp });
+    assert.deepStrictEqual([...r.pruned].sort(), ['a', 'b', 'c', 'd']);
+  } finally { rm(sp); }
+});
+
+test('T-pes-lockfail: a held lock -> {ok:false}, no prune (fail-open, cross-process)', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ghb-pes-lt-'));
+  const sp = path.join(dir, 'state.json');
+  const lp = `${sp}.lock`;
+  const ready = path.join(dir, 'ready');
+  const holder = path.join(dir, 'holder.js');
+  try {
+    S.recordEmissions({ sessionId: 'gone', classes: ['plan-honesty'], emitFn: () => {}, statePath: sp, lockPath: lp });
+    fs.writeFileSync(holder, [
+      `const { acquireLock, releaseLock } = require(${JSON.stringify(LOCK_MODULE)});`,
+      "const fs = require('fs');",
+      `acquireLock(${JSON.stringify(lp)});`,
+      `fs.writeFileSync(${JSON.stringify(ready)}, '1');`,
+      'Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 6000);',
+      `releaseLock(${JSON.stringify(lp)});`,
+    ].join('\n'));
+    const child = spawn('node', [holder], { detached: true, stdio: 'ignore' });
+    try {
+      const deadline = Date.now() + 3000;
+      while (!fs.existsSync(ready) && Date.now() < deadline) { execSync('sleep 0.05'); }
+      assert.ok(fs.existsSync(ready), 'holder failed to acquire the lock');
+      const r = S.pruneEmittedState({ presentSids: [], complete: true, now: () => NOWB, absentRuns: 1, floorMs: 0, statePath: sp, lockPath: lp });
+      assert.strictEqual(r.ok, false, 'fail-open when the lock is held');
+      assert.deepStrictEqual(r.pruned, []);
+      assert.ok(S.isEmitted(S.loadState(sp), 'gone', 'plan-honesty'), 'nothing pruned under lock-timeout');
+    } finally { try { process.kill(-child.pid); } catch { /* ignore */ } }
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 process.stdout.write(`\n  Passed: ${passed}  Failed: ${failed}\n`);
 process.exit(failed > 0 ? 1 : 0);

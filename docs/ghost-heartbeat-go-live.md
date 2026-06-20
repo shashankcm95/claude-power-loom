@@ -54,9 +54,9 @@ making it safely reachable.
   `ghost-heartbeat-stop.js` is present in the installed cache (`ls
   ~/.claude/plugins/cache/.../packages/kernel/hooks/lifecycle/ghost-heartbeat*`). Until then the
   realtime Stop carrier does not fire (the manifest path deploys it only on update).
-- **(c) The emitted-set retention bound is wired (PR-B -- see "Open design" below).** Without it
-  the emitted-set grows unbounded under continuous operation. **This is the one remaining CODE
-  precondition.**
+- **(c) The emitted-set retention bound is wired (PR-B).** *Done.* The runner now prunes the
+  emitted-set (superset-safe, default-KEEP, K>=2 absences past a 24h floor) and GCs the Stop-hook
+  markers, so continuous operation is bounded. See the closed design summary below.
 - **(d) The capability-free guarantee is freshly probed.** Run the G3 sentinel-leak test with a
   real `claude` on PATH (CI cannot -- it self-skips). The flags are CLI-version-dependent; a
   real-`claude` G3 pass is the go-live gate, not a continuous CI guarantee. The model is now
@@ -81,54 +81,32 @@ touch ~/.claude/checkpoints/ghost-heartbeat.disabled   # pause without unschedul
 rm    ~/.claude/checkpoints/ghost-heartbeat.disabled   # resume
 ```
 
-## Open design -- PR-B: the emitted-set retention bound (NOT yet specified-safe)
+## Closed design -- PR-B: the emitted-set retention bound (shipped)
 
-`pruneEmitted` (the RFC section 5.4 retention bound on the emitted-set) has **zero live
-callers**, so the emitted-set grows `O(all-sessions-ever)` on the hot path under continuous
-operation. Wiring it is **non-trivial and currently UNSAFE in the naive form** -- the VERIFY
-board (2026-06-20) proved three holes. **This section is a design BRIEF for PR-B, not a settled
-spec; PR-B must design the safe keep-set under its own TDD + multi-lens review.**
+Full plan + the VERIFY/VALIDATE boards:
+`packages/specs/plans/2026-06-20-ghost-heartbeat-w2-prB-retention-bound.md`.
 
-**Why the naive "keep the sessions of all present transcripts" is unsafe (the key-space
-mismatch):** the emitted-set is keyed by the **dominant in-content sessionId** (a many-to-one,
-non-injective function of the file path), while any cheap keep-set is derived from a **path**-keyed
-(and explicitly lossy) cost-map. So "every present path contributes its sessionId" does NOT equal
-"every still-re-auditable session is kept." A wrongly-pruned session that is later re-audited
-**re-emits** -> a single session over-counts toward the cross-session convergence threshold-of-3
-(the exact guarantee the emitted-set exists to provide). Three concrete holes:
+The emitted-set is the **double-emit correctness boundary** (a class converges only across
+DISTINCT sessions), so a wrong prune un-dedups a session and over-counts convergence. The naive
+"keep the sessions of all present transcripts" was proven UNSAFE by the pre-build VERIFY board
+(key-space mismatch: the emitted-set is keyed by the in-content sessionId, the cost-map by path).
+The shipped design is **superset-safe / default-KEEP on uncertainty**:
 
-1. A present path with a **null/unknown stored sessionId** (e.g. a back-compat bare-number
-   cost-map entry, mtime-skipped this run) contributes nothing -> its session is wrongly pruned.
-2. `auditTranscript` does **not** carry a sessionId on every return branch, and the runner records
-   a path as "audited" (cost-map) on ANY non-throw (incl. no-drift / judge-fail). So
-   "audited-in-cost-map" and "sessionId-known" are **distinct predicates** -- conflating them is
-   the bug.
-3. The dominant sessionId is **non-monotonic across compaction** (a file's MAX-count session can
-   flip B -> C -> B), so "present sessions this run" is not a stable superset of "re-auditable
-   ever."
+- `buildDigest` returns the **full sid keyset** of a transcript (not just the dominant sid); the
+  runner cost-map is `{ mtimeMs, sessionIds[] }`, and `presentSids` is the union over present
+  files -- a non-dominant-but-present sid (a compaction flip target) is KEPT.
+- The keyset is **monotonic per path** (a sid once captured is never dropped) so a long session
+  whose head scrolls past the 8MB digest cap keeps its sid (the VALIDATE keyset-loss fix).
+- A sid is pruned only after **K >= 2 consecutive COMPLETE runs** absent AND past a 24h wall-clock
+  floor; an emit RESETS the sid's tracker (closing the Stop-child snapshot race); an incomplete
+  observation (truncated discovery, or a never-captured present path within its `CAPTURE_GRACE`)
+  DEFERS the whole prune. All counters are R13-rigor poison-validated.
+- Marker-GC: a bounded keep-newest-N + TTL sweep, `effectiveTtl = max(ttl, pruneFloor)` so a
+  debounce marker outlives its emitted entry; unlinks ONLY marker-grammar names, regular files,
+  lstat-no-follow + re-lstat (TOCTOU), fail-open.
 
-**Direction the safe design MUST follow (architect):** the keep-set is a **superset-safe
-over-approximation, never tight -- default-KEEP on uncertainty**; prune a sessionId only when
-**positively observed absent**.
-
-- Prune only when EVERY present path is audited-this-run-with-a-captured-sid OR
-  skipped-with-a-NON-NULL-stored-sid (a null sid => defer the WHOLE prune that run; this also makes
-  a reset/back-compat cost-map self-heal by re-auditing).
-- `auditTranscript` must thread `dg.sessionId` into every return branch that computed a dominant
-  sid (a PREREQUISITE additive change: `{ ok, emitted, sessionId? }`); the runner cost-map becomes
-  `{ mtimeMs, sessionId }`.
-- Prune a sid only after it has been ABSENT for **K >= 2 consecutive complete runs** AND past a
-  wall-clock floor -- this absorbs the non-monotonic dominant-sid flip and the concurrent
-  Stop-child race (the lock makes the WRITE atomic, not the DECISION correct).
-
-**Named residual (honest):** a transcript ABSENT during a complete scan that later RETURNS
-(restored backup / remounted volume) will re-audit and re-emit; bounded by `MAX_EMIT_PER_SESSION`
-per session; acceptable for an advisory counter (narrows-only -> worst case = a false convergence
-surfacing a human-triage prompt).
-
-**Bundle marker-GC with PR-B.** The Stop-hook's `ghost-heartbeat-spawns/` markers are
-debounce-only (no consumer) and have no GC -> the same unbounded growth. A bounded keep-N-newest /
-TTL sweep in the runner is SAFE as sketched (losing a marker costs at most one extra debounced
-spawn), provided it: unlinks ONLY via `lstat` no-follow + `isFile` (no symlink traversal out of
-`markerDir`), fails open on any unlink error, and env-clamps its bound via the existing
-`envIntClamped` helper.
+**Named residual (honest):** a sid PHYSICALLY absent across `K` complete scans that later RETURNS
+(restored backup / remount / the cold-start-while-oversized corner) re-audits and re-emits,
+bounded by `MAX_EMIT_PER_SESSION` per prune/return CYCLE (recurring); advisory + narrows-only
+(worst case = a repeat false `/self-improve` human-triage prompt, NEVER an action). A
+signed/kernel-minted emitted-set closes it fully -- v-next.
