@@ -59,15 +59,26 @@ making it safely reachable.
   markers, so continuous operation is bounded. See the closed design summary below.
 - **(d) The capability-free guarantee is freshly probed.** Run the G3 sentinel-leak test with a
   real `claude` on PATH (CI cannot -- it self-skips). The flags are CLI-version-dependent; a
-  real-`claude` G3 pass is the go-live gate, not a continuous CI guarantee. The model is now
-  overridable via `GHOST_HEARTBEAT_JUDGE_MODEL` (defaults to the pinned cheap model).
+  real-`claude` G3 pass is the go-live gate, not a continuous CI guarantee. The model is
+  overridable via `GHOST_HEARTBEAT_JUDGE_MODEL` (defaults to the pinned cheap model); the judge
+  binary via `GHOST_HEARTBEAT_JUDGE_BIN` (the scheduler bakes the absolute claude path here so
+  launchd/cron's minimal PATH resolves it -- see (e) and PR-C).
 - **(e) Real end-to-end dogfood (the mock-vs-real gap).** The unit tests mock the judge. Before
   trusting it unattended, run BOTH real paths once and record the result:
   - **Stop:** with `GHOST_HEARTBEAT_EMIT=1`, end a turn; confirm a detached `drift-audit.js`
     child spawns and survives the harness reaping, and that an emit fires.
-  - **Cron/launchd:** a real scheduled fire on a clean minimal-PATH environment (the absolute
-    `process.execPath` baking was added precisely so launchd/cron's minimal PATH resolves node;
-    the scheduled read path is still unexercised live).
+  - **Cron/launchd:** a real scheduled fire on a clean minimal-PATH environment.
+  - **(e) DOGFOOD RESULT 2026-06-20 (the launchd fire actually happened):** the scheduled job
+    fired (16:08), scanned 533 / audited 20, but emitted **ZERO** -- the judge resolved `claude`
+    via PATH and launchd's minimal `PATH=/usr/bin:/bin:/usr/sbin:/sbin` excludes `~/.local/bin`
+    -> `spawn-error:ENOENT`. **PR-C** (bake the absolute `GHOST_HEARTBEAT_JUDGE_BIN` into the
+    plist/cron, the analog of the absolute-node bake) **closes the PATH dimension** -- under the
+    minimal PATH the judge now FINDS + EXECUTES claude (ENOENT is gone). A SECOND, separate gate
+    surfaced and is NOT closed by PR-C: a real `claude -p` headless run currently returns
+    **`401 Invalid authentication credentials`** (reproduces in the full-PATH shell too -> an
+    environment-level auth issue, independent of PATH). So the scheduled judge will not actually
+    EMIT until headless `claude -p` auth is valid. (e) is satisfied only when a scheduled fire
+    both resolves the bin AND a real judge call returns `ok:true`.
 - **(f) Honesty defects closed.** *Done in this PR:* the stale "marker = PR-3 drain queue"
   comment, the `drift-audit.js` "mismatch rejected" comment, the run.js "GUARANTEED" overclaim,
   and the RFC "guarded by a CI regression test" overclaim are all corrected.

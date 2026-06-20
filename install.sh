@@ -389,7 +389,13 @@ schedule_heartbeat() {
   local sched; sched=$([ "$(uname -s)" = "Darwin" ] && echo "launchd" || echo "cron")
   if $DRY_RUN; then
     echo "[DRY RUN] ghost-heartbeat schedule ($sched) -- previewing the generated task (no mutation):"
-    node "$mod" install --dry-run || true
+    local preview; preview=$(node "$mod" install --dry-run 2>&1 || true)
+    printf '%s\n' "$preview"
+    # Surface an empty (dark) judge-bin bake in the PREVIEW too, not just the real install.
+    if ! printf '%s' "$preview" | grep -q 'GHOST_HEARTBEAT_JUDGE_BIN'; then
+      echo "  NOTE: the preview baked NO absolute 'claude' path -- under launchd/cron's minimal PATH the"
+      echo "        scheduled judge would emit nothing. Run from a shell where 'command -v claude' resolves."
+    fi
     return 0
   fi
   echo "Scheduling ghost-heartbeat drain runner ($sched, every 4h)..."
@@ -400,6 +406,13 @@ schedule_heartbeat() {
   printf '%s\n' "$out"
   if printf '%s' "$out" | grep -q '"ok":true'; then
     echo "  -> Pause anytime: touch ~/.claude/checkpoints/ghost-heartbeat.disabled  (resume: rm that file)"
+    # The scheduled task runs under a minimal PATH; the judge (claude) is found only if its
+    # absolute path was baked. If it wasn't, the heartbeat audits but emits ZERO -- warn.
+    if printf '%s' "$out" | grep -q '"judgeBinBaked":false'; then
+      echo "  NOTE: could not bake an absolute 'claude' path -- the scheduled judge will not run under"
+      echo "        the minimal PATH, so the heartbeat will emit nothing. Re-run --schedule-heartbeat"
+      echo "        from a shell where 'command -v claude' resolves to a real binary."
+    fi
   else
     echo "  NOTE: schedule request did not complete (see the result above); nothing was scheduled."
   fi

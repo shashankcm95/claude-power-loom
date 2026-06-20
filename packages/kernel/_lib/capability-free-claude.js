@@ -33,8 +33,18 @@ const MAX_BUFFER = 8 * 1024 * 1024;
 // The load-bearing flags. Frozen + regression-tested. See the header.
 const CAPABILITY_FREE_ARGS = Object.freeze(['--tools', '', '--strict-mcp-config']);
 
+// Precedence: explicit `bin` arg > GHOST_HEARTBEAT_JUDGE_BIN env > PATH (`command -v`)
+// > bare 'claude'. The env override exists so the SCHEDULER can bake the ABSOLUTE claude
+// path into the launchd/cron task: those run with a minimal PATH (/usr/bin:/bin:...) where
+// ~/.local/bin/claude is invisible, so a bare PATH resolution ENOENTs (the dogfooded
+// failure). The resolved value is a spawnSync target under shell:false -> it is an exec
+// target, NEVER a shell string, so an arbitrary bin path cannot shell-inject (it just
+// fails to exec). Do NOT "harden" this to shell:true. The drift threat model is
+// attacker-influenceable TRANSCRIPT content, not the operator's own env.
 function resolveClaude(bin) {
   if (bin) return bin;
+  const envBin = (process.env.GHOST_HEARTBEAT_JUDGE_BIN || '').trim();
+  if (envBin) return envBin;
   try {
     const which = spawnSync('command', ['-v', 'claude'], { shell: '/bin/bash', encoding: 'utf8' });
     return (which.stdout || '').trim() || 'claude';
