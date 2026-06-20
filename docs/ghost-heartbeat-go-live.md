@@ -95,15 +95,19 @@ The shipped design is **superset-safe / default-KEEP on uncertainty**:
 - `buildDigest` returns the **full sid keyset** of a transcript (not just the dominant sid); the
   runner cost-map is `{ mtimeMs, sessionIds[] }`, and `presentSids` is the union over present
   files -- a non-dominant-but-present sid (a compaction flip target) is KEPT.
-- The keyset is **monotonic per path** (a sid once captured is never dropped) so a long session
-  whose head scrolls past the 8MB digest cap keeps its sid (the VALIDATE keyset-loss fix).
+- The keyset is **monotonic per path** -- a captured sid is retained while the path's keyset stays
+  under `MAX_KEYSET_PER_PATH` (256; a path referencing more distinct sessions than that drops the
+  oldest, far above the handful a real transcript carries) -- so a long session whose head scrolls
+  past the 8MB digest cap keeps its sid (the VALIDATE keyset-loss fix).
 - A sid is pruned only after **K >= 2 consecutive COMPLETE runs** absent AND past a 24h wall-clock
   floor; an emit RESETS the sid's tracker (closing the Stop-child snapshot race); an incomplete
   observation (truncated discovery, or a never-captured present path within its `CAPTURE_GRACE`)
   DEFERS the whole prune. All counters are R13-rigor poison-validated.
-- Marker-GC: a bounded keep-newest-N + TTL sweep, `effectiveTtl = max(ttl, pruneFloor)` so a
-  debounce marker outlives its emitted entry; unlinks ONLY marker-grammar names, regular files,
-  lstat-no-follow + re-lstat (TOCTOU), fail-open.
+- Marker-GC: a bounded keep-newest-N + TTL sweep. `effectiveTtl = max(ttl, pruneFloor)` keeps the
+  AGE path from evicting a marker younger than an emitted entry could be pruned; the keep-newest-N
+  backstop CAN still evict an older marker before its TTL floor under a marker flood (bounded --
+  one extra debounced spawn, no re-emit since the emitted-set de-dups). Unlinks ONLY marker-grammar
+  names, regular files, lstat-no-follow + re-lstat (TOCTOU), fail-open.
 
 **Named residual (honest):** a sid PHYSICALLY absent across `K` complete scans that later RETURNS
 (restored backup / remount / the cold-start-while-oversized corner) re-audits and re-emits,
