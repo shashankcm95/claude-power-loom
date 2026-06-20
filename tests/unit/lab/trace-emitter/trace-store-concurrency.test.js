@@ -27,11 +27,16 @@ const TMP = [];
 function test(name, fn) { tests.push({ name, fn }); }
 function scratch(prefix) { const d = fs.mkdtempSync(path.join(os.tmpdir(), prefix)); TMP.push(d); return d; }
 
-function runChild(scriptPath, runId, dir, count) {
+function runChild(scriptPath, runId, dir, count, timeoutMs = 30000) {
   return new Promise((resolve) => {
     const cp = spawn(process.execPath, [scriptPath, runId, dir, String(count)], { stdio: 'ignore' });
-    cp.on('exit', (code) => resolve(code));
-    cp.on('error', () => resolve(-1));
+    // Bounded timeout (CodeRabbit #380): if a lock regression hangs a child, kill it + resolve a distinct
+    // failure code so CI fails fast instead of hanging indefinitely. settled-guard prevents a double-resolve.
+    let settled = false;
+    const done = (code) => { if (settled) return; settled = true; clearTimeout(timer); resolve(code); };
+    const timer = setTimeout(() => { try { cp.kill('SIGKILL'); } catch { /* already gone */ } done(-2); }, timeoutMs);
+    cp.on('exit', (code) => done(code));
+    cp.on('error', () => done(-1));
   });
 }
 

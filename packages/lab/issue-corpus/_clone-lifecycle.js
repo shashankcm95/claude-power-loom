@@ -87,10 +87,22 @@ function resolveMaxCloneBytes() {
 // tool); allow them ONLY behind allowFileProtocol (the allowLocalRepo path). `ext::`
 // stays denied by GIT_HARDEN. The env still drops system/global config + the cred prompt.
 function buildGitEnv({ allowFileProtocol = false } = {}) {
+  // Strip the ambient GIT_CONFIG_* injection family (CodeRabbit #380 Major): GIT_CONFIG_COUNT /
+  // GIT_CONFIG_KEY_<n> / GIT_CONFIG_VALUE_<n> / GIT_CONFIG_PARAMETERS (and the legacy singular
+  // GIT_CONFIG) inject config that the NOSYSTEM/GLOBAL disables do NOT cover — they can set
+  // core.pager/sshCommand/etc. -> host exec, and only `-c` (not GIT_HARDEN's specific keys) overrides
+  // them. Delete any inherited from the parent process so a compromised ambient env can't bypass the
+  // hardening (defense-in-depth; the module's whole job is dropping untrusted config).
+  const env = { ...process.env };
+  for (const k of Object.keys(env)) {
+    if (k === 'GIT_CONFIG' || /^GIT_CONFIG_(COUNT|PARAMETERS|KEY_\d+|VALUE_\d+)$/.test(k)) delete env[k];
+  }
   return {
-    ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null',
+    ...env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null',
     GIT_TERMINAL_PROMPT: '0',
-    GIT_ALLOW_PROTOCOL: allowFileProtocol ? 'file:https:http' : 'https',
+    // The file-opt-in (allowLocalRepo) permits `file:` for a LOCAL clone — but NEVER cleartext `http`
+    // (CodeRabbit #380): a https-only remote posture has no reason to re-enable http on the local path.
+    GIT_ALLOW_PROTOCOL: allowFileProtocol ? 'file:https' : 'https',
   };
 }
 // Back-compat export: the secure (https-only) env snapshot.
@@ -242,6 +254,16 @@ async function prepareClone({ repo, base_sha, allowLocalRepo = false }) {
 // regular file, so a symlink here is an attack, never legitimate (mirrors the read path's lstat-no-
 // follow + the substrate's withRegularFileFd discipline). O_CREAT restores an actor-deleted config.
 function restoreConfigNoFollow(cfgPath, configSnapshot) {
+  // CRITICAL (CodeRabbit #380): O_NOFOLLOW guards only the FINAL path component (config). A symlinked
+  // .git PARENT would make the open TRAVERSE it and clobber <target>/config on the host. So reject a
+  // non-real-directory .git parent FIRST. No TOCTOU: the actor is NOT running during capture (its edits
+  // are already complete), so a check-then-open is safe here.
+  const parent = path.dirname(cfgPath);
+  let pst = null;
+  try { pst = fs.lstatSync(parent); } catch { /* parent missing -> the open below fails closed (ENOENT) */ }
+  if (pst && (pst.isSymbolicLink() || !pst.isDirectory())) {
+    throw new Error('captureActorDiff: .git is not a real directory (actor host-overwrite attempt; refused)');
+  }
   const O = fs.constants;
   if (typeof O.O_NOFOLLOW === 'number') {
     let fd;
