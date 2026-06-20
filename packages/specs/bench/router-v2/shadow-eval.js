@@ -119,8 +119,12 @@ function shadowEval(opts) {
     insufficientRouteAnchors: nGenuineRoute < floors.minRouteAnchors,
   };
   // Under-powered = too few anchors to certify no-regression (VALIDATE H-3 / HON-MED-2).
-  // On today's 200-char-prefix corpus the route axis has 0 anchors, so this is the
-  // honest verdict until 1000-char rows accumulate — NOT a silent green.
+  // W3 doc-drift fix: the pre-PR-2 note ("the route axis has 0 anchors") is STALE — the
+  // labeled corpus now carries 575 route + 70 root anchors, so `underPowered` is FALSE
+  // and the gate CAN certify no-regression. (The DEEPER bound persists and is NOT this
+  // flag's job: the corpus is the substrate's own board-spawns — correlated-by-
+  // construction — so a clean no-regression NARROWS, it never proves global route-
+  // correctness; per OQ-NS-6 only a world-anchored corpus would HARDEN.)
   const underPowered = anchors.insufficientN || anchors.insufficientRootAnchors || anchors.insufficientRouteAnchors;
 
   // The GATE (VERIFY CA-2 / HON-MED-4): the per-task away-from-label move is the
