@@ -32,6 +32,10 @@ usage() {
   echo "  --commands   Install slash commands"
   echo "  --skills     Install skill workflows"
   echo ""
+  echo "Ghost heartbeat (advisory drift detection -- opt-in, default-off):"
+  echo "  --schedule-heartbeat     Schedule the drain runner (launchd on macOS / cron on Linux, every 4h)"
+  echo "  --unschedule-heartbeat   Remove the scheduled drain runner"
+  echo ""
   echo "Options:"
   echo "  --diff       Preview changes without installing (dry run)"
   echo "  --backup     Back up existing ~/.claude/ before overwriting"
@@ -325,6 +329,14 @@ install_hooks() {
   echo "  NOTE: Hook configuration must be manually merged."
   echo "  See packages/kernel/settings-reference.json for the configuration template."
   echo "  Replace HOME_DIR with your actual home directory path."
+  echo ""
+  # Offer NOTE (VERIFY arch/code-rev LOW #15): printed only on a REAL install
+  # (install_hooks returns early under DRY_RUN, so this never prints on --diff).
+  echo "  Ghost-heartbeat (advisory drift detection) is installed but OFF by default."
+  echo "  To run it on a schedule (launchd on macOS / cron on Linux, every 4h):"
+  echo "    bash install.sh --schedule-heartbeat      # enable (opt-in)"
+  echo "    bash install.sh --unschedule-heartbeat    # disable"
+  echo "  Pause without unscheduling: touch ~/.claude/checkpoints/ghost-heartbeat.disabled"
 }
 
 install_commands() {
@@ -360,6 +372,43 @@ install_skills() {
   mkdir -p "$CLAUDE_DIR/skills"
   cp -r "$skills_src"/* "$CLAUDE_DIR/skills/"
   echo "  -> Skills installed to ~/.claude/skills/"
+}
+
+# Ghost heartbeat W2-PR3b -- schedule / unschedule the drain runner via the node module
+# (the SRP split: bash dispatches; ghost-heartbeat-schedule.js owns the OS logic). The
+# guard checks the RUNNER file (scheduling without it is the incoherent state -- VERIFY
+# code-rev HIGH #6). DRY_RUN maps to the module's --dry-run so a --diff preview plants
+# NOTHING (VERIFY hacker HIGH #4). Always tolerant: `|| true` + the module exits 0.
+schedule_heartbeat() {
+  local mod="$CLAUDE_DIR/packages/kernel/spawn-state/ghost-heartbeat-schedule.js"
+  local runner="$CLAUDE_DIR/packages/kernel/spawn-state/ghost-heartbeat-run.js"
+  if [ ! -f "$runner" ] || [ ! -f "$mod" ]; then
+    echo "  NOTE: ghost-heartbeat is not installed yet -- run 'bash install.sh --hooks' first, then --schedule-heartbeat."
+    return 0
+  fi
+  local sched; sched=$([ "$(uname -s)" = "Darwin" ] && echo "launchd" || echo "cron")
+  if $DRY_RUN; then
+    echo "[DRY RUN] ghost-heartbeat schedule ($sched) -- previewing the generated task (no mutation):"
+    node "$mod" install --dry-run || true
+    return 0
+  fi
+  echo "Scheduling ghost-heartbeat drain runner ($sched, every 4h)..."
+  node "$mod" install || true
+  echo "  -> Pause anytime: touch ~/.claude/checkpoints/ghost-heartbeat.disabled  (resume: rm that file)"
+}
+
+unschedule_heartbeat() {
+  local mod="$CLAUDE_DIR/packages/kernel/spawn-state/ghost-heartbeat-schedule.js"
+  if [ ! -f "$mod" ]; then
+    echo "  NOTE: ghost-heartbeat schedule module not installed -- nothing to unschedule."
+    return 0
+  fi
+  if $DRY_RUN; then
+    echo "[DRY RUN] ghost-heartbeat unschedule -- would remove the scheduled task (no mutation)."
+    return 0
+  fi
+  echo "Unscheduling ghost-heartbeat drain runner..."
+  node "$mod" uninstall || true
 }
 
 run_smoke_tests() {
@@ -402,6 +451,10 @@ run_smoke_tests() {
   # (T121 signpost --check, T122 doc-paths, T123 contracts-validate); closes the
   # local-vs-CI gap that let SIGNPOST / doc-path / related-link drift reach push 5x.
   source "$SCRIPT_DIR/tests/smoke-drift-gates.sh"
+  # Ghost Heartbeat W2-PR3b (T125+): the scheduler-offer smoke -- `install --dry-run`
+  # generates a plutil-clean plist (darwin) / a well-formed marked cron block, and
+  # mutates NOTHING. Sourced here per the HT.1.4 parent-scope-counter convention.
+  source "$SCRIPT_DIR/tests/smoke-ghost-heartbeat-schedule.sh"
 
 
   echo ""
@@ -428,6 +481,8 @@ INSTALL_RULES=false
 INSTALL_HOOKS=false
 INSTALL_COMMANDS=false
 INSTALL_SKILLS=false
+SCHEDULE_HEARTBEAT=false
+UNSCHEDULE_HEARTBEAT=false
 RUN_TESTS=false
 
 for arg in "$@"; do
@@ -444,6 +499,8 @@ for arg in "$@"; do
     --hooks)    INSTALL_HOOKS=true ;;
     --commands) INSTALL_COMMANDS=true ;;
     --skills)   INSTALL_SKILLS=true ;;
+    --schedule-heartbeat)   SCHEDULE_HEARTBEAT=true ;;
+    --unschedule-heartbeat) UNSCHEDULE_HEARTBEAT=true ;;
     --diff)     DRY_RUN=true ;;
     --backup)   BACKUP=true ;;
     --test)     RUN_TESTS=true ;;
@@ -474,6 +531,10 @@ $INSTALL_RULES   && install_rules
 $INSTALL_HOOKS   && install_hooks
 $INSTALL_COMMANDS && install_commands
 $INSTALL_SKILLS  && install_skills
+# Scheduler dispatch MUST come AFTER install_hooks (the runner-file guard inside
+# schedule_heartbeat needs the just-installed runner present -- VERIFY code-rev HIGH #6).
+$SCHEDULE_HEARTBEAT   && schedule_heartbeat
+$UNSCHEDULE_HEARTBEAT && unschedule_heartbeat
 
 if $RUN_TESTS && ! $DRY_RUN; then
   if ! $INSTALL_HOOKS; then

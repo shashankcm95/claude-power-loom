@@ -21,12 +21,16 @@ function test(name, fn) {
   catch (e) { process.stdout.write(`  FAIL ${name}: ${e.message}\n`); failed++; }
 }
 
-const ENV_KEYS = ['GHOST_HEARTBEAT_DISABLED', 'GHOST_HEARTBEAT_EMIT', 'GHOST_HEARTBEAT_MAX_SESSIONS_PER_RUN', 'GHOST_HEARTBEAT_RUN_BUDGET_MS', 'GHOST_HEARTBEAT_PROJECTS_DIR', 'GHOST_HEARTBEAT_RUN_STATE'];
+const ENV_KEYS = ['GHOST_HEARTBEAT_DISABLED', 'GHOST_HEARTBEAT_EMIT', 'GHOST_HEARTBEAT_MAX_SESSIONS_PER_RUN', 'GHOST_HEARTBEAT_RUN_BUDGET_MS', 'GHOST_HEARTBEAT_PROJECTS_DIR', 'GHOST_HEARTBEAT_RUN_STATE', 'GHOST_HEARTBEAT_KILLSWITCH_FILE'];
 function withEnv(overrides, fn) {
   const saved = {};
   for (const k of ENV_KEYS) saved[k] = process.env[k];
   try {
     for (const k of ENV_KEYS) delete process.env[k];
+    // Hermetic default: point the touch-file killswitch at a guaranteed-absent path so a
+    // real ~/.claude/checkpoints/ghost-heartbeat.disabled on the dev box can't silently
+    // kill the opt-in tests. A test that wants the killswitch overrides this explicitly.
+    if (!('GHOST_HEARTBEAT_KILLSWITCH_FILE' in overrides)) process.env.GHOST_HEARTBEAT_KILLSWITCH_FILE = path.join(os.tmpdir(), 'ghb-killswitch-absent-zzz');
     Object.assign(process.env, overrides);
     return fn();
   } finally {
@@ -256,6 +260,30 @@ test('R15: a symlinked .jsonl and a symlinked project dir are NOT discovered', (
     const names = cands.map((c) => path.basename(c.path));
     assert.deepStrictEqual(names, ['good.jsonl'], 'only the real in-tree file; symlinks rejected (CWE-22)');
   } finally { fs.rmSync(pdir, { recursive: true, force: true }); fs.rmSync(outside, { recursive: true, force: true }); }
+});
+
+test('R16: a present touch-file killswitch -> no audit, reason killswitch-file, even when opted-in (PR-3b hacker #12)', () => {
+  const pdir = mkProjects([{ proj: 'p', sid: 's1', mtimeMs: 100 }]);
+  const sp = tmpState();
+  const ksDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ghb-ks-'));
+  const ksFile = path.join(ksDir, 'ghost-heartbeat.disabled');
+  try {
+    fs.writeFileSync(ksFile, ''); // the user "touch"es the off-switch
+    const calls = [];
+    // EMIT=1 (opted in / scheduled) but the home-readable killswitch file is present.
+    const r = withEnv({ GHOST_HEARTBEAT_EMIT: '1' },
+      () => R.runHeartbeat({ projectsDir: pdir, statePath: sp, auditFn: (o) => calls.push(o.transcriptPath), killswitchFile: ksFile }));
+    assert.strictEqual(r.reason, 'killswitch-file', 'the touch-file overrides the opt-in (the scheduled-env-safe off-switch)');
+    assert.strictEqual(calls.length, 0, 'no audit when killed by file');
+    assert.ok(!fs.existsSync(sp), 'short-circuit before any FS write');
+    // remove it -> audits resume
+    fs.unlinkSync(ksFile);
+    const calls2 = [];
+    const r2 = withEnv({ GHOST_HEARTBEAT_EMIT: '1' },
+      () => R.runHeartbeat({ projectsDir: pdir, statePath: sp, auditFn: (o) => calls2.push(o.transcriptPath), killswitchFile: ksFile }));
+    assert.strictEqual(r2.ok, true);
+    assert.strictEqual(calls2.length, 1, 'audits resume once the killswitch file is gone');
+  } finally { fs.rmSync(pdir, { recursive: true, force: true }); rmrf(sp); fs.rmSync(ksDir, { recursive: true, force: true }); }
 });
 
 // R-real: drive the REAL auditTranscript (mock judge, no claude -p) to prove the
