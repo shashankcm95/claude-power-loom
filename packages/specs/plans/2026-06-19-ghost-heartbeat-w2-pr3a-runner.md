@@ -222,6 +222,6 @@ All board folds applied; runner 16/16 + state 10/10 green.
 - [x] Full kernel suite green + `bash install.sh --hooks --test` (2 known-benign fails only).
 - [x] SIGNPOST regenerated.
 - [x] VALIDATE board done (3-lens; hacker live-re-probed FIFO/poison/symlink → all CLOSED; all folds applied).
-- [ ] CodeRabbit gate: poll inline + reviews surfaces, premise-probe each, fold. (PENDING — post-push.)
-- [ ] PR opened for the USER merge gate (never auto-merge). (PENDING.)
+- [x] CodeRabbit gate CLEAN: the walkthrough reviewed HEAD `2fb8b5c` and reported "No actionable comments were generated" (zero findings — the VERIFY+VALIDATE boards had already folded the issue set).
+- [x] PR opened: #373 — awaiting the USER merge gate (never auto-merge).
 - [ ] PR-3b (install.sh launchd/cron offer) specced as the follow-up. (After PR-3a merges.)
