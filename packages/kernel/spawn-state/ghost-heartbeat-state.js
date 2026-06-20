@@ -23,6 +23,7 @@ const path = require('path');
 const os = require('os');
 const { writeAtomic } = require('../_lib/atomic-write');
 const { withLockSoft } = require('../_lib/lock');
+const { withRegularFileFd } = require('../_lib/safe-read');
 
 const STATE_VERSION = 1;
 const HOME = os.homedir();
@@ -32,15 +33,12 @@ function emptyState() {
   return { version: STATE_VERSION, watermark: { lastReviewedAt: null, lastSessionId: null }, emitted: {}, lastRunAt: null };
 }
 
-// Tolerant read: a missing / corrupt / wrong-shaped file yields empty state, never
-// throws (the producer must fail open).
+// Tolerant read: a missing / corrupt / wrong-shaped / non-regular file yields empty
+// state, never throws AND never blocks (the producer + the unattended PR-3a runner
+// must fail open). withRegularFileFd opens O_NONBLOCK + fstat + reads from the bound
+// fd — a FIFO planted at the state path would hang a raw readFileSync forever (#371).
 function loadState(statePath = DEFAULT_STATE_PATH) {
-  let parsed;
-  try {
-    parsed = JSON.parse(fs.readFileSync(statePath, 'utf8'));
-  } catch {
-    return emptyState();
-  }
+  const parsed = withRegularFileFd(statePath, (fd) => JSON.parse(fs.readFileSync(fd, 'utf8')), null);
   if (!parsed || typeof parsed !== 'object') return emptyState();
   const w = (parsed.watermark && typeof parsed.watermark === 'object') ? parsed.watermark : {};
   const rawEmitted = (parsed.emitted && typeof parsed.emitted === 'object' && !Array.isArray(parsed.emitted)) ? parsed.emitted : {};
