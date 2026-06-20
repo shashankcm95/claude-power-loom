@@ -41,10 +41,9 @@
 
 'use strict';
 
-// node-core only at module load (no child_process here -- the lazy-require gate lives in the closure).
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
+// No node-core at module load: the clone/diff/cleanup now lives behind the SHARED hardened lifecycle
+// (_clone-lifecycle), lazy-required INSIDE the closure (the CI-green gate) — so a claudeBin=null unit
+// test still reaches NO child_process import.
 
 // The three HARNESS verdicts the real driver yields (a closed set, mirrored in arm-loop's VERDICT_SET
 // so observedVerdict honors them verbatim). UNAVAILABLE is the fail-closed grade -- "the grade could
@@ -135,41 +134,32 @@ function makeRealSolve({ record, backend, claudeBin, model = DEFAULT_MODEL, time
 // claudeBin=null unit path.
 async function runActorSolve({ record, claudeBin, backend, prompt, model, timeout, behavioralFnFactory }) {
   // LAZY-require the heavy deps INSIDE the closure (FLAG-1) -- only reached on a real run.
-  const { execFileSync } = require('child_process');
   const { runActorTrajectory } = require('../causal-edge/trajectory-friction-run');
-  const { assertSafeRepo, assertSafeSha } = require('../issue-corpus/_clone-lifecycle');
+  // ③.2.0-A: the SHARED hardened lifecycle owns clone+checkout (assertSafeRepo/Sha + GIT_HARDEN +
+  // https-only + the clone-DoS byte cap) and the SAFE candidate capture (the C1 .git/config restore).
+  const { prepareClone, captureActorDiff, safeDiscard } = require('../issue-corpus/_clone-lifecycle');
   // grader is injectable (test seam); default = the proven makeBehavioralFn (sealed-field grade + the
   // C1 test-tree-rehash that bare ContainerAdapter.run drops).
   const makeGrader = behavioralFnFactory
     || (() => require('../causal-edge/calibration-issue-run').makeBehavioralFn(backend));
-  // git helper: maxBuffer at the patch ceiling (+slack) so an in-[1MiB,2MiB) diff reaches the size
-  // check (hacker M-1) instead of ENOBUFS at execFileSync's default 1MiB.
-  const git = (args, cwd) => execFileSync('git', args, { cwd, encoding: 'utf8', timeout: 120000, maxBuffer: MAX_PATCH_BYTES + 65536 });
 
-  // M-2 + CodeRabbit: validate repo + base_sha on the ACTOR path (no weaker than the grader's
-  // prepareClone) -- assertSafeRepo rejects '-'-lead arg-injection + non-http(s) host; assertSafeSha
-  // requires a FULL 40-char commit so the checkout pins an IMMUTABLE commit, never a mutable ref (a
-  // branch/tag would skew grading across runs). Committed corpus is github.com-only (H2 / W4c).
-  assertSafeRepo(record.repo);
-  assertSafeSha(record.base_sha);
   let actorDir = null;
   try {
     // clone @ base_sha for the actor to edit (unsandboxed -- it only produces a patch; the stranger's
-    // CODE runs later, contained, in the grader sandbox).
-    actorDir = fs.mkdtempSync(path.join(os.tmpdir(), 'loom-arm-actor-'));
-    git(['clone', '--quiet', record.repo, actorDir]);
-    git(['checkout', '--quiet', '--detach', record.base_sha], actorDir);
+    // CODE runs later, contained, in the grader sandbox). prepareClone validates repo+base_sha (no
+    // weaker than before), bounds the clone bytes, and snapshots the PRISTINE .git/config for the C1 close.
+    const { workDir, configSnapshot } = await prepareClone({ repo: record.repo, base_sha: record.base_sha });
+    actorDir = workDir;
     // run the actor. §2b: the PROBLEM rides in `record` (buildActorPrompt, blind+graded); `prompt` is
     // the persona-framing DELTA -> extraContext VERBATIM (W3a fence-as-DATA applied). Bash DROPPED.
     const cap = runActorTrajectory({ record, extraContext: prompt, claudeBin, model, cwd: actorDir, allowedTools: ACTOR_TOOLS, ...(timeout ? { timeout } : {}) });
     // GATE 1 (M1): gate on cap.ok FIRST -- a failed run may have left partial edits. The KEY is cap.ok,
     // NOT "did we get a diff".
     if (!cap || cap.ok !== true) return unavailable(`actor-failed:${(cap && cap.reason) || 'unknown'}`);
-    // candidate = the actor's diff. STAGE first (git add -A) so NEW files the Write tool created are
-    // captured -- a bare `git diff` drops untracked files -> a new-file fix grades 0-byte / false FAIL
-    // (hacker H-1). Then diff --cached; size cap (M3).
-    git(['add', '-A'], actorDir);
-    const candidate = git(['diff', '--cached'], actorDir);
+    // ③.2.0-A1: restore pristine .git/config (an actor-poisoned filter driver cannot exec), then stage
+    // (captures NEW Write-tool files -- hacker H-1) + diff through the hardened git. The shared default
+    // maxBuffer (>1MiB) lets a legal large diff reach the size cap instead of ENOBUFS (A5).
+    const candidate = captureActorDiff({ workDir: actorDir, configSnapshot });
     if (Buffer.byteLength(candidate, 'utf8') > MAX_PATCH_BYTES) return unavailable('candidate-too-large');
     // HARNESS grade over the SEALED fields (never actor stdout). makeBehavioralFn is fail-closed
     // (FALLBACK on refuse/throw); mapBehavioral -> the three-way verdict.
@@ -179,7 +169,7 @@ async function runActorSolve({ record, claudeBin, backend, prompt, model, timeou
     // any host/clone/git fault is a fail-clean UNAVAILABLE (never a thrown rejection, never a PASS).
     return unavailable(`driver-threw:${err && err.code ? err.code : 'error'}`);
   } finally {
-    if (actorDir) { try { fs.rmSync(actorDir, { recursive: true, force: true }); } catch { /* best-effort */ } }
+    if (actorDir) { try { safeDiscard(actorDir); } catch { /* best-effort */ } }
   }
 }
 

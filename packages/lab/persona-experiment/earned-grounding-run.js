@@ -261,9 +261,8 @@ function groundingNonEmpty(persona, knownPersonas) {
 // --------------------------------------------------------------------------
 
 async function main(opts = {}) {
-  // LAZY requires (the K12 + no-test-spawn boundary): reached only on a real run.
-  const fs = require('fs');
-  const path = require('path');
+  // LAZY requires (the K12 + no-test-spawn boundary): reached only on a real run. (③.2.0-A removed the
+  // direct fs/os/path clone plumbing — clone+capture now lives behind the shared _clone-lifecycle.)
   const { createDockerBackend, reapOrphans } = require('../issue-corpus/docker-backend');
   const { makeRealSolve } = require('./real-solve');
   const { resolveClaude, makeBehavioralFn, makeBlindSemanticJudge, makeReferenceTeacher } = require('../causal-edge/calibration-issue-run');
@@ -271,14 +270,15 @@ async function main(opts = {}) {
   const { scoreAttempt } = require('../causal-edge/calibration-issue');
   const { captureLessons } = require('../causal-edge/lesson-capture');
   const { runConfirmationPass } = require('../causal-edge/lesson-confirm');
-  const { assertSafeSha } = require('../issue-corpus/_clone-lifecycle');   // assertSafeRepo reached via assertGithubRepo (F3 — no direct call here)
+  // assertSafeRepo reached via assertGithubRepo (F3 — no direct call here). ③.2.0-A: the actor clone
+  // now goes through the SHARED hardened lifecycle (prepareClone + the C1-safe captureActorDiff).
+  const { assertSafeSha, prepareClone, captureActorDiff, safeDiscard } = require('../issue-corpus/_clone-lifecycle');
   // The INNER claude -p contrast leg captureLessons injects into deriveLesson (NOT deriveLesson
   // itself -- captureLessons calls deriveLesson(contrastInput, deriveFn) internally; passing the
   // wrapper would null the inner leg -> off-floor fallback -> zero lessons). makeLessonDeriver is the
   // canonical real leg (lesson-derive.js header: "the real leg lives in _spike/lesson-capture-rerun.js").
   const { makeLessonDeriver } = require('../causal-edge/_spike/lesson-capture-rerun');
 
-  const os = require('os');
   const dockerBin = opts.dockerBin || 'docker';
   const task = opts.task || 'Resolve the issue described above.';
   // Candidate B's model -- a DIFFERENT engine from candidate A's (the runActorTrajectory default,
@@ -348,30 +348,32 @@ async function main(opts = {}) {
     // reused) ONLY because real-solve returns an arm-loop solveFn `{arm,prompt,task}`, not a candidate;
     // keep the two in sync if the clone/diff/sha discipline changes.
     const ACTOR_TOOLS = ['Read', 'Grep', 'Glob', 'Edit', 'Write'];
+    const MAX_ACTOR_PATCH_BYTES = 2 * 1024 * 1024; // VALIDATE F2: mirror real-solve.js's candidate-size REJECTION ceiling
     const runActor = async (record, { model } = {}) => {
-      // assertGithubRepo now DELEGATES to assertSafeRepo (W4d A1 DRY collapse), so the prior direct
-      // assertSafeRepo(record.repo) call here was redundant (F3) AND a silent-misalignment risk: the
-      // delegate pins ['github.com'] while a bare assertSafeRepo would read the env allowlist. Drop it.
+      // assertGithubRepo pins github.com (W4d A1 DRY collapse — stricter than prepareClone's env-default
+      // allowlist), so it runs FIRST; prepareClone then re-validates + hardens. (③.2.0-A: mirror of
+      // real-solve.js runActorSolve — the two actor paths share ONE hardened clone/capture lifecycle.)
       assertGithubRepo(record.repo); assertSafeSha(record.base_sha);
-      const { execFileSync } = require('child_process');
-      const git = (args, cwd) => execFileSync('git', args, { cwd, encoding: 'utf8', timeout: 120000, maxBuffer: 4 * 1024 * 1024 });
       let actorDir = null;
       try {
-        actorDir = fs.mkdtempSync(path.join(os.tmpdir(), 'loom-w4c-actor-'));
-        git(['clone', '--quiet', record.repo, actorDir]);
-        git(['checkout', '--quiet', '--detach', record.base_sha], actorDir);
+        const { workDir, configSnapshot } = await prepareClone({ repo: record.repo, base_sha: record.base_sha });
+        actorDir = workDir;
         // `model` undefined -> runActorTrajectory's default; candidate B passes confirmModel for cross-model divergence.
         const cap = runActorTrajectory({ record, claudeBin, model, cwd: actorDir, allowedTools: ACTOR_TOOLS, timeout: opts.timeout || 240000 });
         if (!cap || cap.ok !== true) return { ok: false, reason: `actor-failed:${cap && cap.reason}` };
-        git(['add', '-A'], actorDir);
-        const candidate = git(['diff', '--cached'], actorDir);
+        // ③.2.0-A1: pristine-config restore + hardened stage/diff (an actor-poisoned filter driver cannot
+        // exec); the shared maxBuffer default reconciles the prior bare 4MiB drift (VERIFY F6/A5).
+        const candidate = captureActorDiff({ workDir: actorDir, configSnapshot });
+        // VALIDATE F2: mirror real-solve.js's pre-grader size REJECTION (the module's "keep the two in
+        // sync" contract) — fail-clean fast-exit instead of flowing a 2-5MiB candidate through the grader.
+        if (Buffer.byteLength(candidate, 'utf8') > MAX_ACTOR_PATCH_BYTES) return { ok: false, reason: 'candidate-too-large' };
         const crypto = require('crypto');
         const sha = crypto.createHash('sha256').update(candidate).digest('hex');
         return { ok: true, candidate, sha };
       } catch (err) {
         return { ok: false, reason: `actor-threw:${err && err.code ? err.code : 'error'}` };
       } finally {
-        if (actorDir) { try { fs.rmSync(actorDir, { recursive: true, force: true }); } catch { /* best-effort */ } }
+        if (actorDir) { try { safeDiscard(actorDir); } catch { /* best-effort */ } }
       }
     };
 
