@@ -18,7 +18,16 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 const { runCapabilityFreeJudge } = require('../_lib/capability-free-claude');
 const { withRegularFileFd } = require('../_lib/safe-read');
+const { hasControlChars } = require('../_lib/free-string-checks');
 const { recordEmissions, isEmitted, loadState, DEFAULT_STATE_PATH } = require('./ghost-heartbeat-state');
+
+// A real harness sessionId is a UUID (~36 chars). Bound length + reject control chars:
+// the sid is a SELF-ASSERTED field that becomes an emitted-set / pruneTracking / presentSids
+// KEY, so a 500KB or NUL-bearing sid would be an on-disk DoS + a control-char-in-JSON hazard
+// (VALIDATE hacker LOW). An out-of-bound sid is simply ignored (not counted) -> it never
+// becomes a key and a transcript carrying only such sids fails closed to no-session-id.
+const MAX_SID_LEN = 128;
+function isValidSid(s) { return typeof s === 'string' && s.length > 0 && s.length <= MAX_SID_LEN && !hasControlChars(s); }
 
 const STORE_SCRIPT = path.join(__dirname, 'self-improve-store.js');
 
@@ -102,7 +111,7 @@ function buildDigest(transcriptPath, { maxChars = DEFAULT_MAX_DIGEST_CHARS } = {
     if (!line) continue;
     let o;
     try { o = JSON.parse(line); } catch { continue; }
-    if (o.sessionId) sidCounts.set(o.sessionId, (sidCounts.get(o.sessionId) || 0) + 1);
+    if (isValidSid(o.sessionId)) sidCounts.set(o.sessionId, (sidCounts.get(o.sessionId) || 0) + 1);
     const msg = o.message;
     if (o.type === 'user' && msg) {
       const text = extractUserContent(msg.content);
@@ -118,14 +127,26 @@ function buildDigest(transcriptPath, { maxChars = DEFAULT_MAX_DIGEST_CHARS } = {
   // is named by a lineage anchor that LEGITIMATELY differs from the session that
   // produced its content (resume / compaction rotation) — dogfooded: a file named
   // <A> held 56519 lines of session <B> and 1 of <A>. Use the DOMINANT sessionId
-  // (the bulk of the work), stable per file. It remains a self-asserted string in
-  // an open-writable tree (the narrows-only residual; RFC threat model).
+  // (the bulk of the work) as the EMIT key, stable per file. It remains a
+  // self-asserted string in an open-writable tree (the narrows-only residual).
   let sessionId = null;
   let maxCount = 0;
   for (const [sid, n] of sidCounts) {
     if (n > maxCount) { maxCount = n; sessionId = sid; }
   }
   if (!sessionId) return { ok: false, reason: 'no-session-id' };
+  // sessionIds = the FULL keyset (every distinct sid present, not just the argmax).
+  // The PR-B retention keep-set is the union of these across present files — a superset
+  // of "any sid any present file could re-emit for" (the dominant sid can FLIP across
+  // compaction to ANY currently-present sid; keeping only the argmax would prune a
+  // non-dominant-but-present sid that later flips dominant and re-emits — VERIFY arch-HIGH).
+  // CAVEAT (VALIDATE hacker HIGH): for an OVERSIZED transcript readTranscriptText tail-
+  // truncates, so this keyset reflects only the TAIL — a sid that scrolled into the
+  // truncated HEAD is absent here. The runner closes that by UNIONING this keyset with
+  // the path's PRIOR captured keyset (monotonic: a sid once seen for a path is never
+  // dropped), so a long session audited while small keeps its sid as it grows past 8MB.
+  // Keys are pre-validated by isValidSid (bounded length, no control chars).
+  const sessionIds = [...sidCounts.keys()];
   // Newest-first within the char budget.
   let digest = '';
   for (let i = turns.length - 1; i >= 0; i--) {
@@ -133,7 +154,7 @@ function buildDigest(transcriptPath, { maxChars = DEFAULT_MAX_DIGEST_CHARS } = {
     if (digest.length + next.length > maxChars) break;
     digest = next + digest;
   }
-  return { ok: true, sessionId, digest };
+  return { ok: true, sessionId, sessionIds, digest };
 }
 
 // --- Act: the judge prompt --------------------------------------------------
@@ -206,16 +227,22 @@ function bumpSignal(signal) {
 }
 
 // --- Orchestrate ------------------------------------------------------------
+// Returns { ok, emitted, sessionId?, sessionIds? }. The PR-B retention runner reads
+// `sessionIds` (the full present sid-set) to build its keep-set, so EVERY return
+// branch that ran AFTER a successful buildDigest carries it; the pre-digest branches
+// (killswitch / digest-fail) carry neither — there is genuinely no sid. Additive:
+// existing callers read only .ok/.reason/.emitted, which are unchanged.
 function auditTranscript({ transcriptPath, judgeFn, emitFn, statePath = DEFAULT_STATE_PATH, lockPath, log = () => {} } = {}) {
   if (killed()) { log('killswitch'); return { ok: false, reason: 'killswitch', emitted: [] }; }
   const dg = buildDigest(transcriptPath);
   if (!dg.ok) { log('digest-fail', dg.reason); return { ok: false, reason: dg.reason, emitted: [] }; }
+  const sid = { sessionId: dg.sessionId, sessionIds: dg.sessionIds };
   const judge = judgeFn || ((prompt) => runCapabilityFreeJudge({ prompt }));
   const jres = judge(buildJudgePrompt(dg.digest));
-  if (!jres || !jres.ok) { log('judge-fail', jres && jres.reason); return { ok: false, reason: (jres && jres.reason) || 'judge-fail', emitted: [] }; }
+  if (!jres || !jres.ok) { log('judge-fail', jres && jres.reason); return { ok: false, reason: (jres && jres.reason) || 'judge-fail', emitted: [], ...sid }; }
   const state = loadState(statePath);
   const survivors = verifyJudgeOutput(parseJudgeJson(jres.text), { sessionId: dg.sessionId, state });
-  if (survivors.length === 0) { log('no-drift', dg.sessionId); return { ok: true, reason: 'no-drift', emitted: [] }; }
+  if (survivors.length === 0) { log('no-drift', dg.sessionId); return { ok: true, reason: 'no-drift', emitted: [], ...sid }; }
   const emit = emitFn || ((driftClass) => bumpSignal(`drift:${driftClass}`));
   // writeAtomic can throw (disk-full / permission). Keep the producer's fail-soft
   // contract (a carrier hook must never see a throw) — catch + return cleanly.
@@ -224,11 +251,11 @@ function auditTranscript({ transcriptPath, judgeFn, emitFn, statePath = DEFAULT_
     rec = recordEmissions({ sessionId: dg.sessionId, classes: survivors, reviewedAt: new Date().toISOString(), emitFn: emit, statePath, lockPath });
   } catch (err) {
     log('state-write-error', err && err.message);
-    return { ok: false, reason: 'state-write-error', emitted: [] };
+    return { ok: false, reason: 'state-write-error', emitted: [], ...sid };
   }
-  if (!rec.ok) { log('lock-timeout', dg.sessionId); return { ok: false, reason: rec.reason, emitted: [] }; }
+  if (!rec.ok) { log('lock-timeout', dg.sessionId); return { ok: false, reason: rec.reason, emitted: [], ...sid }; }
   log('emitted', { sessionId: dg.sessionId, classes: rec.value });
-  return { ok: true, emitted: rec.value };
+  return { ok: true, emitted: rec.value, ...sid };
 }
 
 module.exports = {
