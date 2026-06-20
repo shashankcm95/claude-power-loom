@@ -6,7 +6,7 @@
 // (cron / launchd, PR-3b) or manually. When opted in and not killed, it discovers
 // session transcripts under ~/.claude/projects, audits the ones whose content is NEW
 // since it last saw them (bounded, fail-open, idempotent), and emits drift via the
-// existing producer. The GUARANTEED unattended heartbeat — and the backstop for the
+// existing producer. The unattended drain path (the real runner-to-judge end-to-end is gated to a post-install dogfood) — and the backstop for the
 // PR-2 Stop-hook carrier (whose detached child may be reaped).
 //
 // Correctness vs cost (two layers): the producer's emitted-set (ghost-heartbeat-

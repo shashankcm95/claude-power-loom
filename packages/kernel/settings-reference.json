@@ -329,6 +329,18 @@
         "hooks": [
           {
             "type": "command",
+            "command": "node HOME_DIR/.claude/packages/kernel/hooks/lifecycle/ghost-heartbeat-stop.js",
+            "timeout": 5
+          }
+        ],
+        "description": "Ghost Heartbeat W2-PR2 carrier (advisory drift-audit). Opt-in (GHOST_HEARTBEAT_EMIT=1), default-off; on an opted-in turn end hands the transcript to drift-audit.js as a DETACHED background process (debounced per session), then passes stdin through. Emits NO forcing instruction; placed BEFORE context-size-warn to keep that hook's last position.",
+        "id": "stop:ghost-heartbeat"
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
             "command": "node HOME_DIR/.claude/packages/kernel/hooks/lifecycle/context-size-warn-stop.js",
             "timeout": 5
           }
