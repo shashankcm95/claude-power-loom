@@ -27,7 +27,12 @@ const { execFileSync } = require('child_process');
 
 const REPO_ROOT = path.join(__dirname, '..', '..', '..', '..');
 const CL = require(path.join(REPO_ROOT, 'packages', 'lab', 'issue-corpus', '_clone-lifecycle.js'));
-const { prepareClone, captureActorDiff, safeDiscard } = CL;
+const { prepareClone, captureActorDiff } = CL;
+// Test-owned dirs are cleaned with a direct rmSync (CodeRabbit #380): do NOT route test cleanup through
+// the production safeDiscard (its TEMP_ROOT guard exists for a different purpose).
+function rmrf(d) { try { fs.rmSync(d, { recursive: true, force: true }); } catch { /* best-effort */ } }
+// Count loom-clone-* scoped dirs under the lifecycle TEMP_ROOT (for the non-vacuous over-cap assertion).
+function countCloneDirs() { try { return fs.readdirSync(CL.TEMP_ROOT).filter((n) => n.startsWith('loom-clone-')).length; } catch { return 0; } }
 
 let passed = 0;
 let failed = 0;
@@ -78,7 +83,7 @@ test('prepareClone returns {workDir, configSnapshot} and pins base_sha', async (
   assert.ok(typeof out.configSnapshot === 'string' && out.configSnapshot.length > 0, 'returns a non-empty configSnapshot');
   const head = rawGit(['rev-parse', 'HEAD'], out.workDir).trim();
   assert.strictEqual(head, base_sha, 'HEAD pinned to base_sha');
-  safeDiscard(out.workDir);
+  rmrf(out.workDir);
 });
 
 test('C1 (CRITICAL): captureActorDiff restores pristine .git/config -> NO filter-driver RCE, candidate still captured', async () => {
@@ -92,7 +97,7 @@ test('C1 (CRITICAL): captureActorDiff restores pristine .git/config -> NO filter
 
   assert.ok(!fs.existsSync(sentinel), 'C1 CLOSED: the poisoned clean filter did NOT execute host shell');
   assert.ok(/FIXED/.test(candidate), 'the real candidate edit IS still captured in the diff');
-  safeDiscard(workDir);
+  rmrf(workDir);
 });
 
 test('C1 non-vacuous: a BARE `git add -A` on the same poison DOES fire the RCE (the test bites)', async () => {
@@ -103,7 +108,7 @@ test('C1 non-vacuous: a BARE `git add -A` on the same poison DOES fire the RCE (
   // bare git (no config restore) — proves the vulnerability class is real, so the C1 test is non-vacuous.
   try { execFileSync('git', ['add', '-A'], { cwd: workDir, encoding: 'utf8' }); } catch { /* filter may exit nonzero */ }
   assert.ok(fs.existsSync(sentinel), 'bare add -A fires the filter RCE (demonstrates the closed-by-fix vuln)');
-  safeDiscard(workDir);
+  rmrf(workDir);
 });
 
 test('H1 (CRITICAL): captureActorDiff refuses a symlinked .git/config -> no host-file overwrite', async () => {
@@ -121,7 +126,26 @@ test('H1 (CRITICAL): captureActorDiff refuses a symlinked .git/config -> no host
   assert.throws(() => captureActorDiff({ workDir, configSnapshot }),
     /symlink|host-overwrite|ELOOP/i, 'a symlinked .git/config is refused (O_NOFOLLOW)');
   assert.strictEqual(fs.readFileSync(victim, 'utf8'), 'PRISTINE-VICTIM\n', 'the victim host file is byte-untouched');
-  safeDiscard(workDir);
+  rmrf(workDir);
+});
+
+test('CRITICAL (CodeRabbit #380): a symlinked .git PARENT is refused -> no traversal host-overwrite', async () => {
+  const { repoPath, base_sha } = makeFixtureRepo();
+  const { workDir, configSnapshot } = await prepareClone({ repo: repoPath, base_sha, allowLocalRepo: true });
+  // a victim host DIR outside the work tree, with a `config` file of known content
+  const victimDir = scratch('loom-victim-parent-');
+  fs.writeFileSync(path.join(victimDir, 'config'), 'PRISTINE-PARENT-VICTIM\n');
+  // the actor replaces the WHOLE .git dir with a symlink to the victim dir. O_NOFOLLOW on `config`
+  // ALONE would still traverse this .git symlink and clobber victimDir/config — the parent guard must catch it.
+  const dotgit = path.join(workDir, '.git');
+  fs.rmSync(dotgit, { recursive: true, force: true });
+  fs.symlinkSync(victimDir, dotgit);
+
+  assert.throws(() => captureActorDiff({ workDir, configSnapshot }),
+    /not a real directory|host-overwrite|symlink/i, 'a symlinked .git parent is refused before the open');
+  assert.strictEqual(fs.readFileSync(path.join(victimDir, 'config'), 'utf8'), 'PRISTINE-PARENT-VICTIM\n',
+    'the victim config under the symlinked-parent target is byte-untouched');
+  rmrf(workDir);
 });
 
 test('A5: captureActorDiff honors opts.maxBuffer (a >1MiB legal diff is captured, not ENOBUFS-dropped)', async () => {
@@ -131,7 +155,7 @@ test('A5: captureActorDiff honors opts.maxBuffer (a >1MiB legal diff is captured
   fs.writeFileSync(path.join(workDir, 'big.py'), 'D = "' + 'y'.repeat(1.5 * 1024 * 1024) + '"\n');
   const candidate = captureActorDiff({ workDir, configSnapshot, maxBuffer: 4 * 1024 * 1024 });
   assert.ok(Buffer.byteLength(candidate, 'utf8') > 1024 * 1024, 'the >1MiB diff was captured in full');
-  safeDiscard(workDir);
+  rmrf(workDir);
 });
 
 test('A5: a too-small maxBuffer surfaces the cap (no silent truncation)', async () => {
@@ -140,21 +164,24 @@ test('A5: a too-small maxBuffer surfaces the cap (no silent truncation)', async 
   fs.writeFileSync(path.join(workDir, 'big.py'), 'D = "' + 'y'.repeat(512 * 1024) + '"\n');
   assert.throws(() => captureActorDiff({ workDir, configSnapshot, maxBuffer: 1024 }),
     /ENOBUFS|maxBuffer/i, 'a tiny maxBuffer throws rather than silently truncating');
-  safeDiscard(workDir);
+  rmrf(workDir);
 });
 
 test('A4: prepareClone discards + throws when the cloned tree exceeds LOOM_MAX_CLONE_BYTES', async () => {
   const { repoPath, base_sha } = makeFixtureRepo({ pyBytes: 200 * 1024 });
   const prev = process.env.LOOM_MAX_CLONE_BYTES;
   process.env.LOOM_MAX_CLONE_BYTES = String(64 * 1024); // 64KiB ceiling -> the ~200KiB fixture trips it
-  let threw = null, workDir = null;
+  const before = countCloneDirs();
+  let threw = null;
   try {
-    const out = await prepareClone({ repo: repoPath, base_sha, allowLocalRepo: true });
-    workDir = out.workDir;
+    await prepareClone({ repo: repoPath, base_sha, allowLocalRepo: true });
   } catch (e) { threw = e; }
+  const after = countCloneDirs();
   if (prev === undefined) delete process.env.LOOM_MAX_CLONE_BYTES; else process.env.LOOM_MAX_CLONE_BYTES = prev;
   assert.ok(threw, 'an over-cap clone throws (fail-clean DoS bound)');
-  assert.ok(!workDir, 'no workDir leaked on the over-cap path');
+  // non-vacuous (CodeRabbit #380): prove the partial-clone scoped temp was actually DISCARDED, not just
+  // that no workDir was returned (the old `!workDir` assert passed trivially on any throw).
+  assert.strictEqual(after, before, 'the partial-clone scoped temp was discarded (no leaked loom-clone-* dir)');
 });
 
 test('A3: a local file repo is still refused WITHOUT allowLocalRepo (the gate holds)', async () => {
@@ -170,7 +197,7 @@ test('A3: a local file repo is still refused WITHOUT allowLocalRepo (the gate ho
     try { await fn(); process.stdout.write(`  PASS ${name}\n`); passed++; }
     catch (err) { process.stdout.write(`  FAIL ${name}: ${err && err.message}\n`); failed++; }
   }
-  for (const d of TMP) { try { safeDiscard(d); } catch { /* best-effort */ } }
+  for (const d of TMP) { try { rmrf(d); } catch { /* best-effort */ } }
   process.stdout.write(`\nclone-lifecycle.test.js: ${passed} passed, ${failed} failed\n`);
   process.exit(failed === 0 ? 0 : 1);
 })();

@@ -33,6 +33,7 @@ const path = require('path');
 const { isSafePathSegment } = require('../../kernel/_lib/path-canonicalize');
 const { deepFreeze } = require('../../kernel/_lib/deep-freeze');
 const { withLockSoft } = require('../../kernel/_lib/lock');
+const { writeAtomicString } = require('../../kernel/_lib/atomic-write');
 const { validateTraceRecord } = require('./trace-schema');
 
 const LAB_STATE_BASE = process.env.LOOM_LAB_STATE_DIR || path.join(os.homedir(), '.claude', 'lab-state');
@@ -100,7 +101,11 @@ function readSeqCounter(seqPath, file) {
 let _SEQ_WRITE_FAILURE_LOGGED = false;
 function writeSeqCounter(seqPath, next) {
   try {
-    fs.writeFileSync(seqPath, String(next), { mode: 0o600 });
+    // ATOMIC (CodeRabbit #380 Major): temp+rename so a crash mid-write can never leave a PARTIAL,
+    // still-parseable smaller int (e.g. "1" for "15") that readSeqCounter would trust -> seq reuse.
+    // The lock serializes concurrent writers; this closes the single-process crash window too. (A torn
+    // write now yields the orphan tmp, never a corrupt counter; readSeqCounter falls back to the scan.)
+    writeAtomicString(seqPath, String(next));
   } catch (e) {
     // best-effort: a scan recovers the seq next time. But if EVERY write fails (disk full / perm
     // change), the O(1) design silently degrades to O(n) — emit a one-time stderr notice so it is
