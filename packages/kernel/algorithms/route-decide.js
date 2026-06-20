@@ -30,7 +30,15 @@ const path = require('path');
 const WEIGHTS_VERSION = 'v1.3-dict-expanded-2026-06-12';
 
 // HIGH-1 + HIGH-2 + MEDIUM-1 + C-2 adjusted weights from theo's design.
-// Sums to 1.00 within decimal-precision tolerance after R1-R6 calibration.
+// These dims sum to 1.15, NOT 1.00 (a prior comment claimed "sums to 1.00" — false;
+// W4 2026-06-20 corrected it). That is fine: the dims are NOT a probability simplex —
+// `score_total` is clamped to [0,1] below and the 0.30/0.60 thresholds are what is
+// calibrated against this weighted space; NO code assumes a unit sum (grep-verified).
+// W4 DEFERRED the magnitude refit (these weights + COUNTER/INFRA/SHORT + the thresholds)
+// to a world-anchored, non-substrate corpus (v-next): the Router-V2 eval set is the
+// substrate's OWN board-spawns, so it can only REGRESSION-gate a magnitude change, never
+// validate one is better — and 241/575 route-labeled rows match nothing (reweight-
+// unreachable). See plans/2026-06-20-router-v2-w4-weight-refit-plan.md.
 const WEIGHTS = {
   stakes:            0.25,
   domain_novelty:    0.15,
