@@ -33,6 +33,13 @@ const { auditTranscript } = require('./drift-audit');
 const HOME = os.homedir();
 const DEFAULT_PROJECTS_DIR = path.join(HOME, '.claude', 'projects');
 const DEFAULT_RUN_STATE_PATH = path.join(HOME, '.claude', 'checkpoints', 'ghost-heartbeat-run.json');
+// A home-readable touch-file killswitch (PR-3b, VERIFY hacker MED #12): the env
+// killswitch (GHOST_HEARTBEAT_DISABLED) is INERT for a launchd/cron task -- the
+// scheduled minimal env does NOT source the user's shell profile, so a user who
+// exported the var to "turn it off" still has the SCHEDULED run firing. The scheduled
+// process CAN read $HOME, so `touch ~/.claude/checkpoints/ghost-heartbeat.disabled`
+// is the off-switch that works for BOTH the interactive and the scheduled path.
+const DEFAULT_KILLSWITCH_FILE = path.join(HOME, '.claude', 'checkpoints', 'ghost-heartbeat.disabled');
 const RUN_STATE_VERSION = 1;
 
 // Whole-digit env int, clamped to [min, max]. Rejects '', 'garbage', '0x10', '-1',
@@ -108,8 +115,16 @@ function prune(audited, cands) {
 // The drain. killswitch + opt-in FIRST. Sequential audits, bounded by a clamped count
 // cap AND a wall-clock budget (the budget gates LAUNCH; a synchronous in-flight audit
 // runs to its own 60s timeout). Per-session fail-open. Always returns; never throws.
-function runHeartbeat({ projectsDir, statePath, auditFn, now = Date.now, log = () => {} } = {}) {
+// Presence-only check (lstat NO-FOLLOW, never opens -> can't block on a FIFO): ANY
+// node at the path (file / symlink / dir) means "disabled". A stat error means absent.
+function killswitchFilePresent(p) {
+  try { fs.lstatSync(p); return true; } catch { return false; }
+}
+
+function runHeartbeat({ projectsDir, statePath, auditFn, now = Date.now, log = () => {}, killswitchFile } = {}) {
   if (process.env.GHOST_HEARTBEAT_DISABLED === '1') return { ok: false, reason: 'killswitch', audited: [] };
+  const ksFile = killswitchFile || process.env.GHOST_HEARTBEAT_KILLSWITCH_FILE || DEFAULT_KILLSWITCH_FILE;
+  if (killswitchFilePresent(ksFile)) return { ok: false, reason: 'killswitch-file', audited: [] };
   if (process.env.GHOST_HEARTBEAT_EMIT !== '1') return { ok: false, reason: 'opt-out', audited: [] };
 
   const pdir = projectsDir || process.env.GHOST_HEARTBEAT_PROJECTS_DIR || DEFAULT_PROJECTS_DIR;
@@ -150,8 +165,8 @@ function runHeartbeat({ projectsDir, statePath, auditFn, now = Date.now, log = (
 }
 
 module.exports = {
-  runHeartbeat, discover, loadRunState, prune, envIntClamped,
-  DEFAULT_PROJECTS_DIR, DEFAULT_RUN_STATE_PATH, RUN_STATE_VERSION,
+  runHeartbeat, discover, loadRunState, prune, envIntClamped, killswitchFilePresent,
+  DEFAULT_PROJECTS_DIR, DEFAULT_RUN_STATE_PATH, DEFAULT_KILLSWITCH_FILE, RUN_STATE_VERSION,
 };
 
 if (require.main === module) {

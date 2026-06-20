@@ -115,6 +115,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/kernel/spawn-state/_stage-helpers.js` - Shared close-path staging helpers, extracted from the two spawn-close staging
 - `packages/kernel/spawn-state/drift-audit.js` - Ghost Heartbeat W2-PR1.
 - `packages/kernel/spawn-state/ghost-heartbeat-run.js` - Ghost Heartbeat W2-PR3a — the background DRAIN RUNNER.
+- `packages/kernel/spawn-state/ghost-heartbeat-schedule.js` - Ghost Heartbeat W2-PR3b -- the OS-scheduler OFFER.
 - `packages/kernel/spawn-state/ghost-heartbeat-state.js` - Ghost Heartbeat W2-PR1.
 - `packages/kernel/spawn-state/integrate-cli.js` - PR-P3c-b — the thin composition root for the ordered integrator.
 - `packages/kernel/spawn-state/integrator.js` - PR-P3c-b — the ORDERED INTEGRATOR (the consumer half of the P3 enforcing arc).
