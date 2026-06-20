@@ -12,7 +12,6 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/kernel/_lib/atomic-write.js` - _lib/atomic-write.js — shared hardened atomic file-write primitive.
 - `packages/kernel/_lib/canonical-json.js` - Pure, stateless canonical JSON serialization (sorted keys, no whitespace).
 - `packages/kernel/_lib/capability-free-claude.js` - Ghost Heartbeat W2-PR1.
-- `packages/kernel/_lib/close-path-concurrency-probe.js` - ③.2.0-B (ARCH-PC-4): a concurrency probe for the SHARED withLockSoft primitive that backs the
 - `packages/kernel/_lib/context-envelope.js` - K3.b context envelope validator — DORMANT in v3.0-alpha.
 - `packages/kernel/_lib/deep-freeze.js` - _lib/deep-freeze.js — pure recursive Object.freeze.
 - `packages/kernel/_lib/edge-attestation.js` - v-next Carry C W1 — the ed25519 EDGE-ATTESTATION primitive.
