@@ -123,8 +123,17 @@ function bucketTaskComplexity(taskSignature) {
   }
   if (!result || typeof result.score_total !== 'number') return 'standard';
   const score = result.score_total;
-  if (score < 0.30) return 'trivial';
-  if (score < 0.60) return 'standard';
+  // W4 (DRY): track route-decide's EXPORTED thresholds — the bucket boundaries are the
+  // SAME cut points as the routing bands, so hardcoding them risked a silent desync if a
+  // future refit moves the thresholds (the W3 bucket-probe / architect-flagged leak). The
+  // literal fallback fires ONLY if the export lacks a numeric threshold (version skew):
+  // without the typeof guard a missing field makes `score < undefined` false and buckets
+  // EVERY task 'compound'. The bucket keeps its strict `<` boundary (routing maps
+  // `<=ROOT`->root; here `<ROOT`->trivial) -> byte-identical today (0.30 / 0.60).
+  const rootT = typeof re.ROOT_THRESHOLD === 'number' ? re.ROOT_THRESHOLD : 0.30;
+  const routeT = typeof re.ROUTE_THRESHOLD === 'number' ? re.ROUTE_THRESHOLD : 0.60;
+  if (score < rootT) return 'trivial';
+  if (score < routeT) return 'standard';
   return 'compound';
 }
 
