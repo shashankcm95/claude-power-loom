@@ -203,6 +203,18 @@ test('fail-closed: a tampered overlap declaration throws (drift-proof first-clas
   assert.throws(() => loadLexicon(p), (e) => e.name === 'LexiconError' && /scored_and_detected_overlap/.test(e.message));
 });
 
+test('fail-closed: a re-introduced scored+counter double-count throws at LOAD (W3 M1 enforcement)', () => {
+  // VALIDATE/hacker M1: graduate the de-dup invariant from test-only to load-time
+  // fail-closed. Re-introducing `experiment` into counter_signals (it stays in
+  // domain_novelty) must now throw, not load silently at exit 0.
+  const a = validArtifact();
+  a.categories.counter_signals = [...a.categories.counter_signals, 'experiment'];
+  const p = fixture('doublecount.json', JSON.stringify(a));
+  assert.throws(() => loadLexicon(p),
+    (e) => e.name === 'LexiconError' && /counter-signal|double-count/.test(e.message),
+    'a scored token re-added to counter_signals fails closed');
+});
+
 test('fail-closed CLI: a bad artifact -> non-zero exit + NO stdout (never a fabricated exit-0 verdict)', () => {
   const bad = fixture('cli-bad.json', '{ "lexicon_version": "v1-2026-06-19"');  // truncated JSON
   const r = spawnSync(process.execPath, [RD_PATH, '--task', 'design a secure production auth system'],
@@ -219,6 +231,61 @@ test('fail-closed CLI sanity: the REAL bundled artifact loads -> exit 0 + a pars
   const parsed = JSON.parse(r.stdout);
   assert.ok(['route', 'borderline', 'root'].includes(parsed.recommendation), 'a real verdict');
   assert.strictEqual(typeof parsed.score_total, 'number', 'score_total numeric');
+});
+
+// ---------- W3 curation: de-dup invariant + transferable adds + version bump ----------
+
+test('W3 de-dup invariant: counter_signals is DISJOINT from the UNION of all scored dims', () => {
+  // The `experiment`/`prototype` double-count (a token in BOTH a +scored dim and the
+  // -counter set) was internally incoherent. This guards against the WHOLE class, not
+  // just the experiment pair (VERIFY-folded: broadened from domain_novelty-only).
+  const counter = new Set(artifact.categories.counter_signals);
+  const offenders = [];
+  for (const dim of artifact.roles.scored) {
+    for (const tok of artifact.categories[dim]) {
+      if (counter.has(tok)) offenders.push(`${tok} (in ${dim} AND counter_signals)`);
+    }
+  }
+  assert.deepStrictEqual(offenders, [], `no token may be both scored and a counter-signal; found: ${offenders.join(', ')}`);
+});
+
+test('W3 de-dup direction: experiment + prototype live in domain_novelty, NOT counter_signals', () => {
+  assert.ok(artifact.categories.domain_novelty.includes('experiment'), 'experiment kept in domain_novelty (novelty signal)');
+  assert.ok(artifact.categories.domain_novelty.includes('prototype'), 'prototype kept in domain_novelty');
+  assert.ok(!artifact.categories.counter_signals.includes('experiment'), 'experiment removed from counter_signals (was a false-positive triviality penalty)');
+  assert.ok(!artifact.categories.counter_signals.includes('prototype'), 'prototype removed from counter_signals');
+});
+
+test('W3 de-dup behavior: a substantive "experiment" task is no longer counter-penalized', () => {
+  // ISOLATED task (cr LOW-1): "fresh angle" carries no other lexicon token, so the
+  // counter_signal_contribution===0 assertion is unambiguously about the de-dup.
+  const out = scoreTask('experiment with a fresh angle');
+  assert.ok(!out.counter_signals.includes('experiment'), 'experiment is not a fired counter-signal');
+  assert.strictEqual(out.counter_signal_contribution, 0, 'no -0.25 penalty from experiment alone');
+  assert.ok(dimMatched(out, 'domain_novelty').includes('experiment'), 'experiment still lifts domain_novelty (+0.15)');
+});
+
+test('W3 transferable adds: the high-precision review COMPOUNDS are in audit_binary', () => {
+  const ab = new Set(artifact.categories.audit_binary);
+  for (const tok of ['code review', 'code-review', 'design review', 'security review',
+    'architecture review', 'arch review', 'threat model', 'threat-model', 'threat modeling']) {
+    assert.ok(ab.has(tok), `'${tok}' added to audit_binary`);
+  }
+});
+
+test('W3 transferable behavior: "code review" fires audit_binary (+0.20), bare "review" does NOT', () => {
+  const reviewed = scoreTask('do a thorough code review of the new auth handler');
+  assert.ok(dimMatched(reviewed, 'audit_binary').includes('code review'), '"code review" matches audit_binary');
+  assert.ok(reviewed.scores_by_dim.audit_binary.contribution > 0, 'audit_binary contributes');
+  // bare "review" must NOT be a token (deliberately excluded: 43 lift / 5 root regressions = overfit + gate FAIL)
+  assert.ok(!artifact.categories.audit_binary.includes('review'), 'bare "review" is NOT an audit_binary token');
+});
+
+test('W3 version bump: the bundled lexicon is v2-2026-06-19 and loads (EXPECTED lockstep holds)', () => {
+  assert.strictEqual(artifact.lexicon_version, 'v2-2026-06-19', 'lexicon_version bumped for the W3 curation');
+  // loadLexicon throws on version mismatch -> a clean load proves EXPECTED_LEXICON_VERSION
+  // was bumped in lockstep (route-decide.js:92).
+  assert.doesNotThrow(() => loadLexicon(LEXICON_PATH), 'the real artifact loads -> EXPECTED matches v2');
 });
 
 // --- cleanup + summary ---

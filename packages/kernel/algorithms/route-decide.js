@@ -89,7 +89,7 @@ const SCORED_DIMENSION_COUNT = Object.keys(WEIGHTS).length;  // 8
 // route-decide-failed -> approve (ADR-0001 fail-open); bucketTaskComplexity's
 // try/catch -> 'standard'.
 
-const EXPECTED_LEXICON_VERSION = 'v1-2026-06-19';
+const EXPECTED_LEXICON_VERSION = 'v2-2026-06-19';
 // The lexicon is DATA, not an algorithm — it lives in kernel/_lib (the algorithms
 // dir is restricted to registered flat .js algorithm files; kernel-algorithms-audit).
 const DEFAULT_LEXICON_PATH = path.join(__dirname, '..', '_lib', 'route-lexicon.json');
@@ -196,6 +196,25 @@ function validateLexiconShape(data) {
     throw new LexiconError(
       'route-lexicon.scored_and_detected_overlap must equal compound_strong/substrate_meta; ' +
       `missing=[${missingOverlap}], unexpected=[${unexpectedOverlap}]`);
+  }
+  // W3 (VALIDATE/hacker M1): the scored dims and the counter-penalty set must be
+  // DISJOINT. A token in BOTH a +scored dim AND counter_signals is internally
+  // incoherent — it earns the dim's lift AND the global -0.25 penalty (the
+  // `experiment`/`prototype` double-count class W3 removed). This is the load-time,
+  // FAIL-CLOSED enforcement of that invariant (it was test-only): a future curator who
+  // re-introduces the overlap throws here rather than silently scoring incoherently.
+  // Counter_signals vs the SCORED union only — infra_lift/detection_only are separate
+  // roles a token may legitimately also occupy (e.g. the scored_and_detected_overlap).
+  const counterSet = new Set(cats[roles.counter_penalty]);
+  const doubleCounted = [];
+  for (const dim of roles.scored) {
+    for (const tok of cats[dim]) {
+      if (counterSet.has(tok)) doubleCounted.push(`${tok} (${dim})`);
+    }
+  }
+  if (doubleCounted.length > 0) {
+    throw new LexiconError(
+      `route-lexicon: a token may not be both scored and a counter-signal (the double-count class); found [${doubleCounted}]`);
   }
 }
 
