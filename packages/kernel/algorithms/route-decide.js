@@ -205,11 +205,14 @@ function validateLexiconShape(data) {
   // re-introduces the overlap throws here rather than silently scoring incoherently.
   // Counter_signals vs the SCORED union only — infra_lift/detection_only are separate
   // roles a token may legitimately also occupy (e.g. the scored_and_detected_overlap).
-  const counterSet = new Set(cats[roles.counter_penalty]);
+  // Compare LOWERCASED (CodeRabbit #374): the matcher is case-insensitive (matchLowerSet
+  // + kw.toLowerCase()), so a mixed-case duplicate (`Experiment` scored / `experiment`
+  // counter) would double-count at scoring while a case-sensitive check waved it through.
+  const counterSet = new Set(cats[roles.counter_penalty].map((t) => t.toLowerCase()));
   const doubleCounted = [];
   for (const dim of roles.scored) {
     for (const tok of cats[dim]) {
-      if (counterSet.has(tok)) doubleCounted.push(`${tok} (${dim})`);
+      if (counterSet.has(tok.toLowerCase())) doubleCounted.push(`${tok} (${dim})`);
     }
   }
   if (doubleCounted.length > 0) {

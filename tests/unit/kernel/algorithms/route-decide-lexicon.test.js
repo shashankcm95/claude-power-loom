@@ -215,6 +215,19 @@ test('fail-closed: a re-introduced scored+counter double-count throws at LOAD (W
     'a scored token re-added to counter_signals fails closed');
 });
 
+test('fail-closed: a MIXED-CASE double-count throws (CodeRabbit #374 — match the case-insensitive scorer)', () => {
+  // A capital-case scored token + a lowercase counter token are the SAME token to the
+  // matcher (matchLowerSet lowercases), so they would double-count at scoring; the
+  // load-time guard must catch the collision case-insensitively, not wave it through.
+  const a = validArtifact();
+  a.categories.domain_novelty = [...a.categories.domain_novelty, 'Foobar'];
+  a.categories.counter_signals = [...a.categories.counter_signals, 'foobar'];
+  const p = fixture('mixedcase-doublecount.json', JSON.stringify(a));
+  assert.throws(() => loadLexicon(p),
+    (e) => e.name === 'LexiconError' && /counter-signal|double-count/.test(e.message),
+    'Foobar (scored) vs foobar (counter) is caught case-insensitively');
+});
+
 test('fail-closed CLI: a bad artifact -> non-zero exit + NO stdout (never a fabricated exit-0 verdict)', () => {
   const bad = fixture('cli-bad.json', '{ "lexicon_version": "v1-2026-06-19"');  // truncated JSON
   const r = spawnSync(process.execPath, [RD_PATH, '--task', 'design a secure production auth system'],
