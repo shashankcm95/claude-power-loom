@@ -11,7 +11,8 @@
 // Stop fires PER TURN (not once per session close), so the carrier DEBOUNCES per
 // session — one marker file per sha256(transcript_path), holding {lastSpawnAt} —
 // to bound the spawn rate to ~1 per GHOST_HEARTBEAT_DEBOUNCE_MS per session, NOT
-// one `claude -p` per turn. The same marker is PR-3's drain queue.
+// one `claude -p` per turn. The marker is THIS carrier's per-session DEBOUNCE record
+// ONLY; PR-3a's drain runner discovers transcripts by direct glob and never reads it.
 //
 // Fail-open is ABSOLUTE: every gate just returns; a single finally passes stdin
 // through; nothing throws out of the handler; no process.exit (stdout drains on

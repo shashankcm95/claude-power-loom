@@ -619,6 +619,28 @@ Durable record: the `toolkit/phase-close/3.1-dry-run-close` library volume.
 
 ---
 
+### Phase-close sign-off (ghost-heartbeat Wave 2, 2026-06-20)
+
+`/phase-close` over the INTEGRATED ghost-heartbeat Wave 2 arc (5 merged PRs: #367 STORE+SURFACE · #369 capability-free EMIT producer · #371 Stop-hook carrier · #373 drain runner · #375 install.sh launchd/cron scheduler offer) against the RFC `2026-06-19-ghost-heartbeat-w2-drift-emit.md` exit criteria. Three full-context lenses (PM=honesty-auditor + Principal-SDE=code-reviewer-at-phase-altitude + Architect). **Verdict: CLOSEABLE-WITH-NOTES (all three unanimous); 0 BLOCKER; 0 NEEDS-WORK.** Release-surface `--check` clean (feature arc, version unbumped at v3.11; no partial-bump drift).
+
+- **Exit criteria:** 5/7 MET firsthand (EMIT producer · human-gated promotion · advisory/draft-only/DEFAULT-OFF · narrows-not-hardens · integrity≠provenance unchanged — no new trust writer). 2/7 honestly PARTIAL: the bounded loop is proven at the PRODUCER level with a real `claude -p` judge but the UNATTENDED runner→real-judge end-to-end was never observed (R-real uses a mock judge); the cron/schedule carrier is darwin/launchd LIVE-PROVEN (real `launchctl` round-trip) but linux/cron + the scheduled-minimal-env path are generated+unit-tested-only, by design (DEFAULT-OFF, gated post-`claude plugin update`). PM: the default-OFF/not-live/human-gated framing is "the most honest phase-completion framing in the arc's history" — rounding direction is systematically conservative.
+
+**Cross-PR drift + merged-but-dark debt the per-wave VALIDATE structurally could not see (the gate's catch):**
+
+1. **(HIGH, architect) the Stop carrier #371 is in `hooks.json` but ABSENT from `settings-reference.json`** — the manual-merge template install.sh directs users to. Combined with the stale 3.9.0 plugin cache (zero ghost-heartbeat files), the realtime Stop carrier is deployed by NEITHER path today. A two-file divergence no single-file PR review caught.
+2. **(HIGH, PM/architect) the capability-free safety guard is NOT continuously CI-enforced** — G3 (the real-`claude -p` sentinel-leak test, the load-bearing draft-only enforcement) self-SKIPS when `claude` is off PATH (i.e. CI); G1 only catches a flag-STRING change, not a CLI-behavior change that re-opens a tool. The RFC's "guarded by a CI regression test" out-runs the artifact (point-in-time probed + flags-golden).
+3. **(MEDIUM ×3 convergence) dead "marker = PR-3 drain queue" contract** in `ghost-heartbeat-stop.js:14` — #373's runner globs `~/.claude/projects` directly and never reads the markers; the comment lies + the markers are write-only, no-GC growth in `ghost-heartbeat-spawns/`.
+4. **(MEDIUM, architect) `pruneEmitted` has ZERO live callers** — the RFC-mandated retention bound on the emitted-set (the correctness boundary) is wired + unit-tested but never called → O(all-sessions-ever) monotonic growth on the hot path under the exact continuous-operation regime this arc ships.
+5. **(MEDIUM, code-reviewer) `drift-audit.js:57` comment "a filename/field mismatch is rejected" contradicts the code** (uses the dominant in-content sessionId, no rejection — RFC §10 recorded the correction, the source comment didn't). **(LOW)** RFC OQ-W2-1 promised an env-configurable judge model; the build hardcoded haiku with no override.
+
+**Positive attestations (verified, not assumed):** cross-carrier concurrency is genuinely sound — the Stop-hook detached child AND the cron runner both converge on ONE shared `withLockSoft` critical section + `isEmitted` re-check on `ghost-heartbeat-state.json.lock` → no double-emit (the property most likely to fail at the integrated view, and it holds).
+
+**GO-LIVE precondition checklist (the forward contract for flipping `GHOST_HEARTBEAT_EMIT=1` — none are blockers NOW because the feature is default-OFF + narrows-only):** (a) add the ghost-heartbeat-stop entry to `settings-reference.json`; (b) `claude plugin update` to ≥3.11.0 and verify the hook lands in the cache; (c) wire `pruneEmitted` (+ marker GC) so continuous operation is bounded; (d) run G3 with a real `claude` (CI cannot) and record it; (e) a real-Stop dogfood (EMIT=1, end a turn, confirm the detached child + an emit survives reaping) and a real-cron fire on a clean minimal-PATH env; (f) fix the 3 doc-honesty defects (stale marker comment, drift-audit mismatch comment, soften "GUARANTEED" in run.js:9) + add the `GHOST_HEARTBEAT_JUDGE_MODEL` override. The single highest-value forward artifact is a consolidated go-live runbook capturing (a)–(f) — today they live scattered across five plan files + MEMORY.
+
+Durable record: the `toolkit/phase-close/ghost-heartbeat-w2-close` library volume.
+
+---
+
 ### Phase-close sign-off (Router-V2, 2026-06-20)
 
 `/phase-close Router-V2` — three independent full-context lenses (PM=honesty-auditor + Principal-SDE=code-reviewer-at-phase-altitude + Architect) reviewed the INTEGRATED phase (6 PRs: #366 lexicon-as-data + O(task) invert · #368 shadow-eval harness · #370 712-row blind-labeled eval set · #372 borderline-resolver · #374 lexicon curation · #376 threshold-leak + coherence) against its exit criteria. **Verdict: CLOSEABLE (all three unanimous); 0 MUST-FIX-to-close; 0 cross-PR contract drift.** Release-surface clean (`--phase v3.11 --allow-unbumped` — Router-V2 is an advisory sub-phase of the unreleased ③.x beta; version correctly holds at 3.11.0). Merge tip `c26e038`.

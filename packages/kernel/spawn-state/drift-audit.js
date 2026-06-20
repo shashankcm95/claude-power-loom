@@ -54,7 +54,8 @@ function killed() {
 
 // --- Observe: a bounded digest from a transcript jsonl ----------------------
 // session_id is read from the in-transcript `sessionId` field (NOT the filename —
-// a filename is attacker-cheap); a filename/field mismatch is rejected.
+// a filename is attacker-cheap); there is NO filename/field mismatch CHECK -- the DOMINANT
+// in-transcript sessionId is used (a file legitimately differs from its session via rotation).
 function extractUserContent(content) {
   if (typeof content === 'string') return content;
   if (!Array.isArray(content)) return '';

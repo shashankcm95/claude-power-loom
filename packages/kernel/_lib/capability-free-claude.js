@@ -22,8 +22,10 @@
 
 const { spawnSync } = require('child_process');
 
-// Cheap model for an advisory classifier; PINNED because the child inherits the
-// parent's model otherwise (a real bug baked into trajectory-friction-run.js).
+// Cheap model for an advisory classifier. Defaults to PINNED (the child inherits the
+// parent's model if unpinned -- the trajectory-friction-run.js bug). Escape hatch:
+// override the default via the GHOST_HEARTBEAT_JUDGE_MODEL env var (an explicit `model`
+// arg still wins over the env, per JS default-param precedence). RFC OQ-W2-1.
 const DEFAULT_MODEL = 'claude-haiku-4-5-20251001';
 const DEFAULT_TIMEOUT_MS = 60000;
 const MAX_BUFFER = 8 * 1024 * 1024;
@@ -44,7 +46,7 @@ function resolveClaude(bin) {
 // Pure text in/out. Returns { ok: true, text } | { ok: false, reason }. Never
 // throws — fail-soft for the unattended hook/cron callers. The prompt rides
 // STDIN (a trailing-argv prompt would be swallowed by the variadic --tools).
-function runCapabilityFreeJudge({ prompt, model = DEFAULT_MODEL, timeout = DEFAULT_TIMEOUT_MS, bin } = {}) {
+function runCapabilityFreeJudge({ prompt, model = process.env.GHOST_HEARTBEAT_JUDGE_MODEL || DEFAULT_MODEL, timeout = DEFAULT_TIMEOUT_MS, bin } = {}) {
   if (typeof prompt !== 'string' || prompt.length === 0) {
     return { ok: false, reason: 'empty-prompt' };
   }
