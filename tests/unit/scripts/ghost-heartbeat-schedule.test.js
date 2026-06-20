@@ -307,11 +307,11 @@ test('PR-C builder: an UNSAFE judgeBin (control char / %) THROWS (strict for dir
 const BIN_DIR = '/Users/x/.local/bin';
 const TGT = '/Users/x/.local/share/claude/versions/1/claude';
 const TGT_DIR = '/Users/x/.local/share/claude/versions/1';
-function vetFs({ binDirMode = 0o755, tgtDirMode = 0o755, isFile = true } = {}) {
+function vetFs({ binDirMode = 0o755, tgtDirMode = 0o755, fileMode = 0o755, isFile = true } = {}) {
   return {
     realpathSync: (p) => (p === ABS ? TGT : p),
     statSync: (p) => {
-      if (p === ABS || p === TGT) return { isFile: () => isFile, mode: 0o755 };
+      if (p === ABS || p === TGT) return { isFile: () => isFile, mode: fileMode };
       if (p === BIN_DIR) return { isFile: () => false, mode: binDirMode };
       if (p === TGT_DIR) return { isFile: () => false, mode: tgtDirMode };
       throw new Error(`ENOENT ${p}`);
@@ -330,6 +330,10 @@ test('PR-C vetJudgeBinPath: rejects non-absolute / non-file / control-char / mis
 test('PR-C vetJudgeBinPath: rejects a world-writable SYMLINK dir OR a world-writable TARGET dir (hacker MED)', () => {
   assert.strictEqual(S.vetJudgeBinPath(ABS, vetFs({ binDirMode: 0o777 })), '', 'world-writable symlink dir -> reject');
   assert.strictEqual(S.vetJudgeBinPath(ABS, vetFs({ tgtDirMode: 0o777 })), '', 'world-writable TARGET dir -> reject (the symlink-target gap)');
+});
+test('PR-C vetJudgeBinPath: rejects a world-writable BINARY even under safe dirs (CodeRabbit)', () => {
+  assert.strictEqual(S.vetJudgeBinPath(ABS, vetFs({ fileMode: 0o777 })), '', 'world-writable binary (any user can overwrite in place) -> reject');
+  assert.strictEqual(S.vetJudgeBinPath(ABS, vetFs({ fileMode: 0o755 })), ABS, '0755 binary under safe dirs -> accepted');
 });
 
 test('PR-C plist: an & in judgeBin is xml-escaped; cron single-quotes a space-bearing path', () => {

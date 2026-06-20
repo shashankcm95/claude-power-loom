@@ -61,8 +61,8 @@ making it safely reachable.
   real `claude` on PATH (CI cannot -- it self-skips). The flags are CLI-version-dependent; a
   real-`claude` G3 pass is the go-live gate, not a continuous CI guarantee. The model is
   overridable via `GHOST_HEARTBEAT_JUDGE_MODEL` (defaults to the pinned cheap model); the judge
-  binary via `GHOST_HEARTBEAT_JUDGE_BIN` (the scheduler bakes the absolute claude path here so
-  launchd/cron's minimal PATH resolves it -- see (e) and PR-C).
+  binary via `GHOST_HEARTBEAT_JUDGE_BIN` (the scheduler bakes the absolute claude path here so the
+  runtime reads it directly and no longer depends on launchd/cron PATH resolution -- see (e) and PR-C).
 - **(e) Real end-to-end dogfood (the mock-vs-real gap).** The unit tests mock the judge. Before
   trusting it unattended, run BOTH real paths once and record the result:
   - **Stop:** with `GHOST_HEARTBEAT_EMIT=1`, end a turn; confirm a detached `drift-audit.js`

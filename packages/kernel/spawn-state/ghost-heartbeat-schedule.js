@@ -113,8 +113,9 @@ function shellSingleQuote(s) {
 // `command -v` SYMLINK path, which survives a claude version bump, not the pinned realpath).
 // Residual: an attacker who already controls your PATH/shell-profile has code-exec as you
 // -- out of scope; this only blocks the PERSISTENCE a shared world-writable PATH dir grants.
-// statSync / realpathSync injected for tests. The world-writable check covers BOTH the
-// on-PATH dir (dirname p) AND the resolved-target dir (dirname realpath(p)) -- claude IS a
+// statSync / realpathSync injected for tests. The world-writable (0o002) reject covers the
+// resolved BINARY itself (an attacker overwriting it in place) AND BOTH the on-PATH dir
+// (dirname p) AND the resolved-target dir (dirname realpath(p)) -- claude IS a
 // symlink (~/.local/bin/claude -> .../versions/<v>), so a world-writable TARGET dir would let
 // an attacker swap the binary the frozen symlink resolves to (VALIDATE hacker MED). Check is
 // world-writable ONLY (0o002), NOT group (0o020): /usr/local/bin is admin-GROUP-writable on
@@ -128,6 +129,7 @@ function vetJudgeBinPath(p, { statSync = fs.statSync, realpathSync = fs.realpath
   let fileStat;
   try { fileStat = statSync(p); } catch { return ''; }       // follows symlink; ENOENT/dangling -> skip
   if (!fileStat.isFile()) return '';
+  if ((fileStat.mode & 0o002) !== 0) return '';              // world-writable BINARY (any user can overwrite it in place) -> reject (CodeRabbit)
   const dirs = [path.dirname(p)];
   try { dirs.push(path.dirname(realpathSync(p))); } catch { return ''; }
   for (const d of dirs) {
