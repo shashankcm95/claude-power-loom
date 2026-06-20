@@ -11,7 +11,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
-const { execSync, spawn } = require('child_process');
+const { execSync, execFileSync, spawn, spawnSync } = require('child_process');
 const S = require('../../../packages/kernel/spawn-state/ghost-heartbeat-state');
 const STATE_MODULE = path.resolve(__dirname, '../../../packages/kernel/spawn-state/ghost-heartbeat-state.js');
 const LOCK_MODULE = path.resolve(__dirname, '../../../packages/kernel/_lib/lock.js');
@@ -160,6 +160,24 @@ test('T-load-b: wrong-shaped emitted entries are normalized; markEmitted stays s
     assert.doesNotThrow(() => S.markEmitted(st, 'good', 'claim-false'));
     assert.doesNotThrow(() => S.markEmitted(st, 'never-seen', 'plan-honesty'));
   } finally { rm(p); }
+});
+
+// T-load-fifo (#371 pattern, PR-3a): a FIFO at the state path must NOT hang loadState
+// (it now reads via withRegularFileFd, not raw readFileSync) — the unattended runner
+// reaches this read. Timeout-bounded child so a regression FAILS, never hangs the
+// suite. Skipped where mkfifo is unavailable.
+test('T-load-fifo: a FIFO at the state path -> empty state PROMPTLY (no hang)', () => {
+  if (process.platform === 'win32') { process.stdout.write('  (skip T-load-fifo: no mkfifo on win32)\n'); return; }
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ghb-st-fifo-'));
+  const fifo = path.join(dir, 'state.json');
+  try {
+    try { execFileSync('mkfifo', [fifo]); } catch { process.stdout.write('  (skip T-load-fifo: mkfifo unavailable)\n'); return; }
+    const r = spawnSync(process.execPath, ['-e',
+      `const S=require(${JSON.stringify(STATE_MODULE)});process.stdout.write(JSON.stringify(S.loadState(${JSON.stringify(fifo)}).emitted));`],
+      { encoding: 'utf8', timeout: 4000 });
+    assert.strictEqual(r.error, undefined, `loadState must not block on a FIFO; got ${r.error && r.error.code}`);
+    assert.deepStrictEqual(JSON.parse(r.stdout), {});
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 process.stdout.write(`\n  Passed: ${passed}  Failed: ${failed}\n`);
