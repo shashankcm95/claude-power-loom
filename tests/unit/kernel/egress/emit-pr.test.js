@@ -255,6 +255,52 @@ test('serialization: a lock-unavailable acquisition REFUSES the emit (fail-close
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// === ③.2.1b PR-B — scrub wiring + cap + etiquette via emitPR ===
+
+const PRB_PAT = `github_pat_${'a'.repeat(82)}`;
+
+test('EC1bB.2 emitPR: draft.diff is the SCRUBBED diff (a secret in the input does not survive into the artifact)', () => {
+  const r = E.emitPR(goodData({ diff: `diff --git a/c.py b/c.py\n+++ b/c.py\n+token = "${PRB_PAT}"\n` }));
+  assert.strictEqual(r.ok, true);
+  assert.ok(!r.draft.diff.includes(PRB_PAT), 'the secret is redacted in draft.diff');
+  assert.ok(/\[REDACTED/.test(r.draft.diff), 'a redaction marker is present');
+});
+
+test('EC1bB.2 emitPR: a secret in a FILENAME is redacted in draft.touched_paths (whole-body scrub)', () => {
+  const diff = `diff --git a/src/${PRB_PAT}.py b/src/${PRB_PAT}.py\n+++ b/src/${PRB_PAT}.py\n+x = 1\n`;
+  const r = E.emitPR(goodData({ diff }));
+  assert.strictEqual(r.ok, true, 'a secret-in-filename diff still passes (the path is not .github/.git)');
+  assert.ok(r.draft.touched_paths.every((p) => !p.includes(PRB_PAT)), 'the secret filename is redacted in touched_paths');
+});
+
+test('EC1bB.3 emitPR: an over-cap emit is fail-closed (custody cap state; injected clock)', () => {
+  const dir = scratch('loom-cap-'); const capPath = path.join(dir, 'cap.json');
+  try {
+    fs.writeFileSync(capPath, JSON.stringify({ windowStart: 1000, count: 5 }));   // at cap
+    const r = E.emitPR(goodData(), { custodyCapStatePath: capPath, perWindowCap: 5, windowMs: 24 * 3600 * 1000, now: 1000, lockPath: path.join(dir, 'lock') });
+    assert.strictEqual(r.ok, false);
+    assert.strictEqual(r.reason, 'cap-exceeded');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('EC1bB.4 emitPR: a 2nd CANONICAL (repo,issue) emit is fail-closed (custody ledger)', () => {
+  const dir = scratch('loom-led-'); const ledger = path.join(dir, 'ledger');
+  try {
+    fs.writeFileSync(ledger, 'owner/repo#42\n');                                   // already emitted
+    const r = E.emitPR(goodData({ repo: 'Owner/Repo.git', issueRef: '#42' }), { custodyEtiquetteLedgerPath: ledger, lockPath: path.join(dir, 'lock') });
+    assert.strictEqual(r.ok, false);
+    assert.strictEqual(r.reason, 'etiquette-already-emitted');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('EC1bB.3/4 emitPR: a poisoned data policy key (cap/window/ledger/now) is fail-closed REJECTED', () => {
+  for (const k of ['perWindowCap', 'windowMs', 'ledger', 'cap', 'now', 'backpressure']) {
+    const r = E.emitPR(goodData({ [k]: 'x' }));
+    assert.strictEqual(r.ok, false, `data.${k} rejected`);
+    assert.ok(/policy key/.test(r.reason), `data.${k} names the policy-key rejection (got ${r.reason})`);
+  }
+});
+
 (async () => {
   for (const { name, fn } of tests) {
     try { await fn(); process.stdout.write(`  PASS ${name}\n`); passed += 1; }
