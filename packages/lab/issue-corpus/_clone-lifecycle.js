@@ -306,6 +306,11 @@ function captureActorDiff({ workDir, configSnapshot, maxBuffer } = {}) {
 // Write patch into .loom-patches/<label>.diff and `git apply --` it. git apply
 // refuses `..`/symlink-through writes; `--` guards the patch-path positional
 // from flag-injection; label -> basename-safe slug (no ../ host write).
+// ③.2.1a PR-2 (forge) #6: apply under `-c core.attributesFile=/dev/null` (mirrors captureActorDiff) so
+// a HOST-GLOBAL gitattributes file cannot influence the grader's apply — git apply DOES honor
+// core.attributesFile (proven: eol/text normalization AND a filter-driver assignment both fire). This is
+// defense-in-depth vs a compromised host git config; an IN-TREE .gitattributes is rejected by the
+// diff-scope (PR-1) and a candidate-supplied filter driver is closed by the C1 .git/config restore.
 async function applyPatch({ workDir, patch, label }) {
   if (!patch) return { ok: true, skipped: true };
   if (typeof patch !== 'string' && !Buffer.isBuffer(patch)) throw new Error('applyPatch: patch must be a string or Buffer');
@@ -315,7 +320,7 @@ async function applyPatch({ workDir, patch, label }) {
   fs.mkdirSync(pdir, { recursive: true });
   const pfile = path.join(pdir, `${assertSafeLabel(label)}.diff`);
   fs.writeFileSync(pfile, patch);
-  git(['apply', '--', pfile], workDir);
+  git(['-c', 'core.attributesFile=/dev/null', 'apply', '--', pfile], workDir);
   return { ok: true };
 }
 

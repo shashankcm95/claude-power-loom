@@ -143,13 +143,34 @@ test('parseTestStatus: extracts the __LOOM_TEST_RESULT__ json line; missing ids 
   const { observed } = parseTestStatus(stdout, ['t1', 't2', 't3']);
   assert.deepStrictEqual(observed, { t1: 'pass', t2: 'fail', t3: 'missing' });
 });
-test('parseTestStatus: no result line => all missing', () => {
-  const { observed } = parseTestStatus('nothing here', ['t1']);
-  assert.deepStrictEqual(observed, { t1: 'missing' });
+test('parseTestStatus: no result line => all missing + sentinel_count:0 (honest, not a forge anomaly)', () => {
+  const r = parseTestStatus('nothing here', ['t1']);
+  assert.deepStrictEqual(r.observed, { t1: 'missing' });
+  assert.strictEqual(r.sentinel_count, 0);
 });
 test('parseTestStatus: a malformed json line fails soft to all-missing (never throws)', () => {
   const { observed } = parseTestStatus(`${LOOM_TEST_RESULT_PREFIX}{not json`, ['t1']);
   assert.deepStrictEqual(observed, { t1: 'missing' });
+});
+// ③.2.1a PR-2 (forge) — the report-channel BOUND (not a close; the in-process forge is the documented
+// assertion-oracle residual, ADR-0017). The legit wrapper emits EXACTLY ONE result line, so >1 valid
+// sentinel line means a candidate injected a second (the reproduced in-process forge writes a forged
+// PASS line alongside the wrapper's legit line) -> FAIL-CLOSED, never last-wins.
+test('parseTestStatus: >1 sentinel line => FAIL-CLOSED all-missing (the in-process double-emit forge bound)', () => {
+  const forged = `${LOOM_TEST_RESULT_PREFIX}{"t1":"pass"}\n${LOOM_TEST_RESULT_PREFIX}{"t1":"fail"}`;
+  const r = parseTestStatus(forged, ['t1']);
+  assert.strictEqual(r.observed.t1, 'missing', 'a double-emitted sentinel is fail-closed, never a forged pass');
+  assert.strictEqual(r.sentinel_count, 2, 'the anomaly count is surfaced for the caller');
+});
+test('parseTestStatus: exactly ONE sentinel line still parses + reports sentinel_count:1 (no regression)', () => {
+  const r = parseTestStatus(`${LOOM_TEST_RESULT_PREFIX}{"t1":"pass","t2":"fail"}`, ['t1', 't2']);
+  assert.deepStrictEqual(r.observed, { t1: 'pass', t2: 'fail' });
+  assert.strictEqual(r.sentinel_count, 1);
+});
+test('parseTestStatus: a malformed line does NOT count toward the sentinel total (only valid maps count)', () => {
+  const r = parseTestStatus(`${LOOM_TEST_RESULT_PREFIX}{bad\n${LOOM_TEST_RESULT_PREFIX}{"t1":"pass"}`, ['t1']);
+  assert.strictEqual(r.observed.t1, 'pass', 'one valid map + one malformed = a single valid sentinel');
+  assert.strictEqual(r.sentinel_count, 1);
 });
 
 test('evaluateOutcome: resolved iff every fail_to_pass passes AND every pass_to_pass holds', () => {

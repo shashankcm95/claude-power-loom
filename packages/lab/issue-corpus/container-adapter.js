@@ -142,17 +142,28 @@ function parseTestStatus(stdout, testIds) {
   const ids = Array.isArray(testIds) ? testIds : [];
   const observed = {};
   for (const id of ids) observed[id] = 'missing';
-  let map = null;
+  // ③.2.1a PR-2 (forge) BOUND: collect ALL valid sentinel maps rather than last-wins. The legit wrapper
+  // emits EXACTLY ONE result line, so >1 valid sentinel line is an in-process forge signature (the
+  // reproduced exploit writes a forged PASS line alongside the wrapper's legit line) -> FAIL-CLOSED
+  // (all-missing), never last-wins. This is a BOUND, NOT a close: a forge that SUPPRESSES the wrapper's
+  // line still emits one line, so the in-process grade forge remains the documented assertion-oracle
+  // residual (ADR-0017) and the behavioral grade stays SHADOW/advisory (never gates an action).
+  const maps = [];
   for (const line of String(stdout || '').split('\n')) {
     const idx = line.indexOf(LOOM_TEST_RESULT_PREFIX);
     if (idx === -1) continue;
     try {
       const parsed = JSON.parse(line.slice(idx + LOOM_TEST_RESULT_PREFIX.length));
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) map = parsed;
-    } catch { /* fail soft — a malformed/forged line leaves observed all-missing */ }
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) maps.push(parsed);
+    } catch { /* a malformed line is not a valid sentinel — ignore, does NOT count toward the total */ }
   }
-  if (map) for (const id of ids) { if (map[id] === 'pass' || map[id] === 'fail') observed[id] = map[id]; }
-  return { observed };
+  const sentinel_count = maps.length;
+  // exactly one => parse it; zero (no result, honest all-missing) or >1 (forge anomaly) => fail-closed.
+  if (sentinel_count === 1) {
+    const map = maps[0];
+    for (const id of ids) { if (map[id] === 'pass' || map[id] === 'fail') observed[id] = map[id]; }
+  }
+  return { observed, sentinel_count };
 }
 
 // resolved iff EVERY designated fail_to_pass now passes AND every pass_to_pass
