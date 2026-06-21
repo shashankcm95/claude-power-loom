@@ -25,6 +25,10 @@ Default kb_scope for this persona (override in spawn prompt if needed):
 - `kb:ml-dev/training-vs-inference`
 - `kb:architecture/ai-systems/inference-cost-management`
 - `kb:hets/spawn-conventions` — output-format requirements for HETS spawns
+- `kb:bigdata-ml-cloud/jvm-machine-learning` — JVM ML (DL4J / Tribuo / etc.)
+- `kb:bigdata-ml-cloud/apache-spark` — Spark for data / feature pipelines
+
+**Broader scope (select per task, do not preload):** the `bigdata-ml-cloud/` KB section(s). Find task-relevant docs via `kb-resolver list --tag <topic>` + each doc's `related[]`; load at Summary tier first, drill deeper only for docs you act on.
 
 Consult via `node packages/runtime/orchestration/kb-resolver.js cat <kb_id>` (or `Read packages/skills/library/agent-team/kb/<kb_id>.md` if Bash isn't in your tool inventory).
 

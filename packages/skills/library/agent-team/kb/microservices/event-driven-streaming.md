@@ -1,0 +1,80 @@
+---
+kb_id: microservices/event-driven-streaming
+version: 1
+tags:
+  - microservices
+  - streaming
+  - spring-cloud-stream
+  - data-flow
+sources_consulted:
+  - "Baeldung tutorials (eugenp/tutorials) module: spring-cloud-stream, spring-cloud-stream-starters, spring-cloud-data-flow"
+  - "Spring Cloud Stream functional programming model (medium.com/geekculture)"
+related:
+  - microservices/consumer-driven-contracts
+  - microservices/cqrs-event-sourcing
+  - microservices/serverless-cloud-sdk
+  - microservices/centralized-config
+status: active
+---
+
+## Summary
+
+**Concept**: Service-to-service async messaging abstracted from the broker — Spring Cloud Stream's binder model maps channels onto Rabbit/Kafka/Kinesis; Spring Cloud Data Flow (SCDF) composes source -> processor -> sink pipelines for streaming and ETL.
+**Key APIs**: legacy `@EnableBinding(Source/Processor/Sink)`, `@StreamListener` + `@SendTo`, custom `MessageConverter`, consumer groups; SCDF `@InboundChannelAdapter`/`@Transformer`, `@EnableDataFlowServer`; Kafka+Avro via `@EnableSchemaRegistryClient`.
+**Gotcha**: the annotation model (`@EnableBinding`/`@StreamListener`/`@Input`/`@Output`) was deprecated in 3.1 and REMOVED in 4.0 — current code uses functional `Supplier`/`Function`/`Consumer` beans.
+**2026-currency**: functional model + `spring.cloud.stream.function.definition` replaces annotations; `spring-cloud-stream-test-support`+`MessageCollector` -> `TestChannelBinderConfiguration`/`OutputDestination`.
+**Sources**: Baeldung `spring-cloud-stream`/`-data-flow`; Spring Cloud Stream functional-model writeup.
+
+## Quick Reference
+
+**Legacy binder model (the corpus's form, now removed)**:
+```java
+@EnableBinding(Processor.class)
+class Handler {
+  @StreamListener(Processor.INPUT) @SendTo(Processor.OUTPUT)
+  String transform(String in) { return in.toUpperCase(); }
+}
+```
+- Channels: `@Input SubscribableChannel` / `@Output MessageChannel` (or built-in `Source`/`Processor`/`Sink`).
+- Config as data: `spring.cloud.stream.bindings.*` (destination/group/content-type/binder) + `spring.cloud.stream.binders.*`.
+- **Consumer groups** = competing consumers (load-balance within a group; fan-out across groups).
+- Conditional routing: `@StreamListener(condition="payload < 10")`.
+
+**Functional model (current)**:
+```java
+@Bean Function<String,String> uppercase() { return String::toUpperCase; }
+// spring.cloud.stream.function.definition=uppercase
+```
+
+**Spring Cloud Data Flow (SCDF)** — source/processor/sink pipelines:
+- Source: `@InboundChannelAdapter(value=Source.OUTPUT, poller=@Poller(fixedDelay="10000"))` returning a `MessageSource`.
+- Processor: `@Transformer`. Sink: `@StreamListener`. Server/shell: `@EnableDataFlowServer`/`@EnableDataFlowShell`.
+- ETL example: `jdbc | transform | mongodb-sink`; plus batch + Spark jobs; App Starters.
+
+**Kafka + Avro + Schema Registry**: `@EnableSchemaRegistryClient` + `ConfluentSchemaRegistryClient`; `useNativeEncoding: true` (hands to Confluent `KafkaAvroSerializer`); `KafkaHeaders.MESSAGE_KEY`; `avro-maven-plugin` codegen; `content-type: application/*+avro`.
+
+**Top gotchas**:
+- The entire annotation model is removed in Stream 4.0 — porting is mandatory.
+- Consumer group misconfiguration silently flips fan-out to load-balance.
+- Test support changed binders — `MessageCollector` is gone.
+
+**Current (mid-2026)**: Spring Cloud Stream uses functional `Supplier`/`Function`/`Consumer` beans bound via `spring.cloud.stream.function.definition`; `@EnableBinding`/`@StreamListener`/`@Input`/`@Output`/`@SendTo` are removed (4.0). Test with `TestChannelBinderConfiguration` + `InputDestination`/`OutputDestination`. Spring Boot 4 mandates Jackson 3.
+
+## Full content
+
+Event-driven streaming is the async backbone of a microservice system — services publish and consume messages over a broker instead of calling each other synchronously, gaining decoupling, buffering, and replay. Spring Cloud Stream abstracts the broker behind a binder so the same code runs on RabbitMQ, Kafka, or Kinesis; Spring Cloud Data Flow composes deployable source/processor/sink apps into pipelines.
+
+### The binder abstraction
+
+A binder maps logical channels to physical broker destinations, configured entirely as data (`spring.cloud.stream.bindings.*`). Consumer groups implement competing-consumer semantics: instances in one group share the load; distinct groups each receive every message. The corpus's annotation form (`@EnableBinding` + `@StreamListener` + `@SendTo`) is the deprecated era; the functional form replaces a listener with a plain `Function` bean.
+
+### Data Flow pipelines and Avro
+
+SCDF turns the source/processor/sink trio into deployable apps wired into pipelines (streaming, ETL, batch, Spark). The Kafka+Avro path adds a Confluent Schema Registry: `@EnableSchemaRegistryClient` plus `useNativeEncoding` hands serialization to Confluent's `KafkaAvroSerializer`, with Avro classes generated by the maven plugin — the closest the corpus gets to schema evolution.
+
+### 2026 currency
+
+- **Annotation model removed in Stream 4.0.** `@EnableBinding`/`@StreamListener`/`@Input`/`@Output`/`@SendTo`/`Source`/`Processor`/`Sink` were deprecated in 3.1 and removed in 4.0; the model is now functional `Supplier`/`Function`/`Consumer` beans bound via `spring.cloud.stream.function.definition`. [Spring Cloud Stream functional model (Medium)](https://medium.com/geekculture/spring-cloud-streams-with-functional-programming-model-93d49696584c)
+- **Test support changed binders.** `spring-cloud-stream-test-support` + `MessageCollector` -> `TestChannelBinderConfiguration` with `InputDestination`/`OutputDestination`.
+- **Boot 4 mandates Jackson 3**, so any custom `MessageConverter`/serde needs Jackson-3 awareness on that baseline. [Spring Framework 7.0 GA](https://spring.io/blog/2025/11/13/spring-framework-7-0-general-availability/)
+- **Schema evolution beyond Avro registry** (e.g. broader API-versioning strategy) remains a gap the corpus doesn't cover; Spring Boot 4 adds built-in API versioning at the HTTP layer. [Spring Framework 7.0 GA](https://spring.io/blog/2025/11/13/spring-framework-7-0-general-availability/)

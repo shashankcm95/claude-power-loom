@@ -25,6 +25,10 @@ Default kb_scope for this persona (override in spawn prompt if needed):
 - `kb:data-dev/data-modeling-basics`
 - `kb:data-dev/orchestration-essentials`
 - `kb:hets/spawn-conventions` — output-format requirements for HETS spawns
+- `kb:persistence/jdbc-fundamentals` — JDBC connection & query basics
+- `kb:bigdata-ml-cloud/apache-spark` — Spark batch / stream processing
+
+**Broader scope (select per task, do not preload):** the `bigdata-ml-cloud/` · `persistence/` KB section(s). Find task-relevant docs via `kb-resolver list --tag <topic>` + each doc's `related[]`; load at Summary tier first, drill deeper only for docs you act on.
 
 Consult via `node packages/runtime/orchestration/kb-resolver.js cat <kb_id>` (or `Read packages/skills/library/agent-team/kb/<kb_id>.md` if Bash isn't in your tool inventory).
 

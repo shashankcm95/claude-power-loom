@@ -1,11 +1,190 @@
 {
   "version": 1,
   "entries": {
+    "algorithms-design/clean-hexagonal-architecture": {
+      "path": "algorithms-design/clean-hexagonal-architecture.md",
+      "version": 1,
+      "hash": "daf5360e0639492db6bd845144fb74e68e1db2a5a98a93123583e551b12d2c84",
+      "shortHash": "daf5360e",
+      "tags": [
+        "algorithms-design",
+        "architecture",
+        "hexagonal",
+        "clean-architecture"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.751Z"
+    },
+    "algorithms-design/combinatorics-dp-bit-numeric": {
+      "path": "algorithms-design/combinatorics-dp-bit-numeric.md",
+      "version": 1,
+      "hash": "3fa27af8fbcb5d04206ec46bb8ded357b64d58e4bac702b39b5e99c46a5a40cb",
+      "shortHash": "3fa27af8",
+      "tags": [
+        "algorithms-design",
+        "dynamic-programming",
+        "combinatorics",
+        "numeric"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.752Z"
+    },
+    "algorithms-design/cqrs-event-sourcing": {
+      "path": "algorithms-design/cqrs-event-sourcing.md",
+      "version": 1,
+      "hash": "6bf277886278e337a0f7924296e1cd83dbcf5396346a0dad0d9c4e2ea8c1eec9",
+      "shortHash": "6bf27788",
+      "tags": [
+        "algorithms-design",
+        "cqrs",
+        "event-sourcing",
+        "architecture"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.752Z"
+    },
+    "algorithms-design/domain-driven-design": {
+      "path": "algorithms-design/domain-driven-design.md",
+      "version": 1,
+      "hash": "e6ecdeccc372faad49ed111d91d1b626cc05ea7563f3d2f066f704749976978a",
+      "shortHash": "e6ecdecc",
+      "tags": [
+        "algorithms-design",
+        "ddd",
+        "domain-modeling",
+        "bounded-contexts"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.752Z"
+    },
+    "algorithms-design/gof-behavioral-patterns": {
+      "path": "algorithms-design/gof-behavioral-patterns.md",
+      "version": 1,
+      "hash": "f1eddfe539af9f734b1d0f52555eb1070d01dac0a8193a439d3faf78882b7f08",
+      "shortHash": "f1eddfe5",
+      "tags": [
+        "algorithms-design",
+        "design-patterns",
+        "gof",
+        "behavioral"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.753Z"
+    },
+    "algorithms-design/gof-creational-patterns": {
+      "path": "algorithms-design/gof-creational-patterns.md",
+      "version": 1,
+      "hash": "c0365ab9aa4539265eff19317aea3e06fd510e71e9418c04d7a73ff82633a65f",
+      "shortHash": "c0365ab9",
+      "tags": [
+        "algorithms-design",
+        "design-patterns",
+        "gof",
+        "creational"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.753Z"
+    },
+    "algorithms-design/gof-structural-patterns": {
+      "path": "algorithms-design/gof-structural-patterns.md",
+      "version": 1,
+      "hash": "46e6b7db84784c530796ab7169d52a6d3c1cf3f65c5a1aeb7fae7b87e67edbd2",
+      "shortHash": "46e6b7db",
+      "tags": [
+        "algorithms-design",
+        "design-patterns",
+        "gof",
+        "structural"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.753Z"
+    },
+    "algorithms-design/graph-algorithms": {
+      "path": "algorithms-design/graph-algorithms.md",
+      "version": 1,
+      "hash": "fc938b9802383c1e6b5a77ee6a2ac3b7378e29ed2d3e6c113e89ae9380f0302f",
+      "shortHash": "fc938b98",
+      "tags": [
+        "algorithms-design",
+        "graphs",
+        "shortest-path"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.753Z"
+    },
+    "algorithms-design/heuristic-metaheuristic-optimization": {
+      "path": "algorithms-design/heuristic-metaheuristic-optimization.md",
+      "version": 1,
+      "hash": "cab41784db6ee013d16d3f2fc08998886ef155f3cca85941e8941466e30073cf",
+      "shortHash": "cab41784",
+      "tags": [
+        "algorithms-design",
+        "optimization",
+        "metaheuristics",
+        "genetic-algorithms"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.753Z"
+    },
+    "algorithms-design/rule-engines-and-state-machines": {
+      "path": "algorithms-design/rule-engines-and-state-machines.md",
+      "version": 1,
+      "hash": "1c4f323facd2b60b43adaee0d55f43c6c8259caab8ed221483e4f6992f95ff25",
+      "shortHash": "1c4f323f",
+      "tags": [
+        "algorithms-design",
+        "rule-engines",
+        "state-machines",
+        "drools"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.753Z"
+    },
+    "algorithms-design/searching-and-string-matching": {
+      "path": "algorithms-design/searching-and-string-matching.md",
+      "version": 1,
+      "hash": "21ade34c362cf92931c7dd52ffb8ca49d90e7f923399998fa600239002a0f660",
+      "shortHash": "21ade34c",
+      "tags": [
+        "algorithms-design",
+        "searching",
+        "string-matching"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.753Z"
+    },
+    "algorithms-design/solid-and-dependency-inversion": {
+      "path": "algorithms-design/solid-and-dependency-inversion.md",
+      "version": 1,
+      "hash": "d096d3a732e79c6f8e4d8e120468eee8a84d0bdd6967883980c82b71f5873904",
+      "shortHash": "d096d3a7",
+      "tags": [
+        "algorithms-design",
+        "solid",
+        "design-principle",
+        "dependency-inversion"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.753Z"
+    },
+    "algorithms-design/sorting-algorithms": {
+      "path": "algorithms-design/sorting-algorithms.md",
+      "version": 1,
+      "hash": "a593c8a11dbeb7c962b3e6424decd2dce6df1b96b3ab6b983b8c7c0cec70ffd1",
+      "shortHash": "a593c8a1",
+      "tags": [
+        "algorithms-design",
+        "sorting",
+        "partitioning"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.753Z"
+    },
+    "algorithms-design/trees-heaps-and-buffers": {
+      "path": "algorithms-design/trees-heaps-and-buffers.md",
+      "version": 1,
+      "hash": "c7459f5bf031762ce5493dab301ad162106f699c24ce8e8eead8923de2fe57fb",
+      "shortHash": "c7459f5b",
+      "tags": [
+        "algorithms-design",
+        "data-structures",
+        "trees",
+        "heaps"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.753Z"
+    },
     "architecture/ai-systems/agent-design": {
       "path": "architecture/ai-systems/agent-design.md",
       "version": 1,
-      "hash": "828e8167cf13e7f5e5a2991dc40a399cdabd29e46a752d47ca3d314c6b10620b",
-      "shortHash": "828e8167",
+      "hash": "6e15f688033d14d161a1f66b8777616f520e894b75026ef8faa7e331e4802b14",
+      "shortHash": "6e15f688",
       "tags": [
         "ai-systems",
         "agents",
@@ -14,7 +193,7 @@
         "tool-use",
         "planning"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.527Z"
+      "lastUpdated": "2026-06-21T14:13:15.754Z"
     },
     "architecture/ai-systems/evaluation-under-nondeterminism": {
       "path": "architecture/ai-systems/evaluation-under-nondeterminism.md",
@@ -29,13 +208,13 @@
         "testing",
         "non-determinism"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.529Z"
+      "lastUpdated": "2026-06-21T14:13:15.754Z"
     },
     "architecture/ai-systems/inference-cost-management": {
       "path": "architecture/ai-systems/inference-cost-management.md",
       "version": 1,
-      "hash": "ea58621914319fc80e772ff35c1378bb00e220b6aa5ca76c1baa39f56bf4108d",
-      "shortHash": "ea586219",
+      "hash": "b417745996cdf29eef81389d76c69e3f4cbcaac4031eb82fef7b0979f2dd5ccb",
+      "shortHash": "b4177459",
       "tags": [
         "ai-systems",
         "cost-management",
@@ -44,7 +223,7 @@
         "performance",
         "economics"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.529Z"
+      "lastUpdated": "2026-06-21T14:13:15.754Z"
     },
     "architecture/ai-systems/rag-anchoring": {
       "path": "architecture/ai-systems/rag-anchoring.md",
@@ -59,13 +238,13 @@
         "retrieval",
         "llm-applications"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.530Z"
+      "lastUpdated": "2026-06-21T14:13:15.754Z"
     },
     "architecture/crosscut/acyclic-dependencies": {
       "path": "architecture/crosscut/acyclic-dependencies.md",
       "version": 1,
-      "hash": "b4cb95b08c23a41774e9ea03da5a3dd10540afec65610912a0c1c8618e46892c",
-      "shortHash": "b4cb95b0",
+      "hash": "410ae4500c9cc98938b8fac7b84ac73c555ad199e756a8890f1b257c49432d3b",
+      "shortHash": "410ae450",
       "tags": [
         "crosscut",
         "solid",
@@ -74,7 +253,7 @@
         "architecture",
         "package-design"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.531Z"
+      "lastUpdated": "2026-06-21T14:13:15.754Z"
     },
     "architecture/crosscut/control-and-data-flow": {
       "path": "architecture/crosscut/control-and-data-flow.md",
@@ -90,7 +269,7 @@
         "data-flow",
         "control-flow"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.535Z"
+      "lastUpdated": "2026-06-21T14:13:15.754Z"
     },
     "architecture/crosscut/deep-modules": {
       "path": "architecture/crosscut/deep-modules.md",
@@ -105,13 +284,13 @@
         "complexity-management",
         "information-hiding"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.536Z"
+      "lastUpdated": "2026-06-21T14:13:15.755Z"
     },
     "architecture/crosscut/dependency-rule": {
       "path": "architecture/crosscut/dependency-rule.md",
       "version": 1,
-      "hash": "ccb3623255aa1d0015321cccbf6c5db0f6f78e37438eb7adb968306f3e7d6129",
-      "shortHash": "ccb36232",
+      "hash": "01bd7b15ddcf0e660f54ab5c57acfabd7e278e952807e2c13dc921f5faf601b7",
+      "shortHash": "01bd7b15",
       "tags": [
         "crosscut",
         "solid",
@@ -120,7 +299,7 @@
         "architecture",
         "boundaries"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.536Z"
+      "lastUpdated": "2026-06-21T14:13:15.755Z"
     },
     "architecture/crosscut/idempotency": {
       "path": "architecture/crosscut/idempotency.md",
@@ -135,13 +314,13 @@
         "foundational",
         "retry-semantics"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.537Z"
+      "lastUpdated": "2026-06-21T14:13:15.755Z"
     },
     "architecture/crosscut/information-hiding": {
       "path": "architecture/crosscut/information-hiding.md",
       "version": 1,
-      "hash": "fb38922795130f23327996519b9bb8ce344c618935448a4d6ff3f6536bc3c277",
-      "shortHash": "fb389227",
+      "hash": "5d4eba957e44591cdee30749dc360c1df047c15286dbadc6b53bf401fe006852",
+      "shortHash": "5d4eba95",
       "tags": [
         "crosscut",
         "design-principle",
@@ -150,7 +329,7 @@
         "modularity",
         "encapsulation"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.538Z"
+      "lastUpdated": "2026-06-21T14:13:15.755Z"
     },
     "architecture/crosscut/integration-boundary-contracts": {
       "path": "architecture/crosscut/integration-boundary-contracts.md",
@@ -166,13 +345,13 @@
         "coupling",
         "foundational"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.539Z"
+      "lastUpdated": "2026-06-21T14:13:15.755Z"
     },
     "architecture/crosscut/single-responsibility": {
       "path": "architecture/crosscut/single-responsibility.md",
       "version": 1,
-      "hash": "52bed6cd88c9da307ae663f1dba515019b5383fac085213816ac5d61068dda56",
-      "shortHash": "52bed6cd",
+      "hash": "6578b4e8fa77167653125a022703ef47c01acfeb9c74b729694f3b6c4645c7fb",
+      "shortHash": "6578b4e8",
       "tags": [
         "crosscut",
         "solid",
@@ -180,7 +359,7 @@
         "foundational",
         "architecture"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.540Z"
+      "lastUpdated": "2026-06-21T14:13:15.755Z"
     },
     "architecture/discipline/blast-radius-and-reversibility": {
       "path": "architecture/discipline/blast-radius-and-reversibility.md",
@@ -196,7 +375,7 @@
         "operational",
         "risk"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.541Z"
+      "lastUpdated": "2026-06-21T14:13:15.755Z"
     },
     "architecture/discipline/error-handling-discipline": {
       "path": "architecture/discipline/error-handling-discipline.md",
@@ -210,7 +389,7 @@
         "architecture",
         "reliability"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.541Z"
+      "lastUpdated": "2026-06-21T14:13:15.755Z"
     },
     "architecture/discipline/evidence-and-premise-discipline": {
       "path": "architecture/discipline/evidence-and-premise-discipline.md",
@@ -224,13 +403,13 @@
         "foundational",
         "anti-hallucination"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.542Z"
+      "lastUpdated": "2026-06-21T14:13:15.756Z"
     },
     "architecture/discipline/refusal-patterns": {
       "path": "architecture/discipline/refusal-patterns.md",
       "version": 1,
-      "hash": "f87f080cad21574453398743687687a13dd17ae5aab1477174636640466d40b8",
-      "shortHash": "f87f080c",
+      "hash": "7eda882d156c3d75992fb21d7e18ff4b6c1434f0c6e4b984c56863cbc3738a1a",
+      "shortHash": "7eda882d",
       "tags": [
         "discipline",
         "ai-systems",
@@ -239,7 +418,7 @@
         "foundational",
         "architecture"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.542Z"
+      "lastUpdated": "2026-06-21T14:13:15.756Z"
     },
     "architecture/discipline/reliability-scalability-maintainability": {
       "path": "architecture/discipline/reliability-scalability-maintainability.md",
@@ -255,7 +434,7 @@
         "maintainability",
         "quality-attributes"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.543Z"
+      "lastUpdated": "2026-06-21T14:13:15.756Z"
     },
     "architecture/discipline/stability-patterns": {
       "path": "architecture/discipline/stability-patterns.md",
@@ -270,7 +449,7 @@
         "stability",
         "operational"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.543Z"
+      "lastUpdated": "2026-06-21T14:13:15.756Z"
     },
     "architecture/discipline/trade-off-articulation": {
       "path": "architecture/discipline/trade-off-articulation.md",
@@ -284,7 +463,7 @@
         "decision-making",
         "design-rationale"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.544Z"
+      "lastUpdated": "2026-06-21T14:13:15.756Z"
     },
     "backend-dev/express-essentials": {
       "path": "backend-dev/express-essentials.md",
@@ -299,7 +478,7 @@
         "http",
         "rate-limiting"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.544Z"
+      "lastUpdated": "2026-06-21T14:13:15.756Z"
     },
     "backend-dev/jvm-observability": {
       "path": "backend-dev/jvm-observability.md",
@@ -317,7 +496,7 @@
         "sre",
         "reliability"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.545Z"
+      "lastUpdated": "2026-06-21T14:13:15.756Z"
     },
     "backend-dev/jvm-runtime-basics": {
       "path": "backend-dev/jvm-runtime-basics.md",
@@ -332,7 +511,7 @@
         "threading",
         "starter"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.545Z"
+      "lastUpdated": "2026-06-21T14:13:15.756Z"
     },
     "backend-dev/node-runtime-basics": {
       "path": "backend-dev/node-runtime-basics.md",
@@ -347,7 +526,7 @@
         "runtime",
         "async"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.545Z"
+      "lastUpdated": "2026-06-21T14:13:15.756Z"
     },
     "backend-dev/spring-boot-essentials": {
       "path": "backend-dev/spring-boot-essentials.md",
@@ -361,7 +540,7 @@
         "spring-boot",
         "starter"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.545Z"
+      "lastUpdated": "2026-06-21T14:13:15.756Z"
     },
     "backend-dev/type-safety-at-the-boundary": {
       "path": "backend-dev/type-safety-at-the-boundary.md",
@@ -377,7 +556,319 @@
         "boundary",
         "foundational"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.548Z"
+      "lastUpdated": "2026-06-21T14:13:15.757Z"
+    },
+    "bigdata-ml-cloud/apache-lucene": {
+      "path": "bigdata-ml-cloud/apache-lucene.md",
+      "version": 1,
+      "hash": "6610958cfaa95842127b18bdf45d2fee7bac7ebbfe7d3c0363baa9a86703dcee",
+      "shortHash": "6610958c",
+      "tags": [
+        "bigdata-ml-cloud",
+        "apache-lucene",
+        "full-text-search"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.757Z"
+    },
+    "bigdata-ml-cloud/apache-olingo-odata": {
+      "path": "bigdata-ml-cloud/apache-olingo-odata.md",
+      "version": 1,
+      "hash": "9f50a59d32e71f5abae0b6ace845f29ede390f8fc051b212fb7bade1646256ce",
+      "shortHash": "9f50a59d",
+      "tags": [
+        "bigdata-ml-cloud",
+        "apache-olingo",
+        "odata"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.757Z"
+    },
+    "bigdata-ml-cloud/apache-spark": {
+      "path": "bigdata-ml-cloud/apache-spark.md",
+      "version": 1,
+      "hash": "79460578279f8194223d9110c89b677e206db3e6194909f9e0aaa10d3134defe",
+      "shortHash": "79460578",
+      "tags": [
+        "bigdata-ml-cloud",
+        "apache-spark",
+        "distributed-processing"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.757Z"
+    },
+    "bigdata-ml-cloud/apache-tika": {
+      "path": "bigdata-ml-cloud/apache-tika.md",
+      "version": 1,
+      "hash": "05f16b8a6c25c6d064fdf2bebfa6e45d0a506aa9c2ddb1e2f378f0f3dcd75eb8",
+      "shortHash": "05f16b8a",
+      "tags": [
+        "bigdata-ml-cloud",
+        "apache-tika",
+        "content-extraction"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.757Z"
+    },
+    "bigdata-ml-cloud/aws-lambda": {
+      "path": "bigdata-ml-cloud/aws-lambda.md",
+      "version": 1,
+      "hash": "c52706b212abcfe23e520752622b4459b6e361bb9542621b5edd0f341266ffec",
+      "shortHash": "c52706b2",
+      "tags": [
+        "bigdata-ml-cloud",
+        "aws-lambda",
+        "serverless"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.757Z"
+    },
+    "bigdata-ml-cloud/aws-sdk-java": {
+      "path": "bigdata-ml-cloud/aws-sdk-java.md",
+      "version": 1,
+      "hash": "8c30dfe61cf802afbd53f9138e9691998bf9b9235418b3f78d7dbdfd0c796d31",
+      "shortHash": "8c30dfe6",
+      "tags": [
+        "bigdata-ml-cloud",
+        "aws",
+        "cloud-sdk"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.757Z"
+    },
+    "bigdata-ml-cloud/blockchain-ethereum": {
+      "path": "bigdata-ml-cloud/blockchain-ethereum.md",
+      "version": 1,
+      "hash": "24245d622e8d224f32fca383d727fd1bab3aebdc78ac66adf95d39122c2483e2",
+      "shortHash": "24245d62",
+      "tags": [
+        "bigdata-ml-cloud",
+        "blockchain",
+        "ethereum"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.757Z"
+    },
+    "bigdata-ml-cloud/cloud-storage-clients": {
+      "path": "bigdata-ml-cloud/cloud-storage-clients.md",
+      "version": 1,
+      "hash": "35d1c9b9f2c5f20bd94250faa8f819681ff875c840c2fd40b52b129cdfb31df8",
+      "shortHash": "35d1c9b9",
+      "tags": [
+        "bigdata-ml-cloud",
+        "google-cloud",
+        "azure"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.757Z"
+    },
+    "bigdata-ml-cloud/geotools-geospatial": {
+      "path": "bigdata-ml-cloud/geotools-geospatial.md",
+      "version": 1,
+      "hash": "b25bde49aa9536163fcc2cea838ebe294fdbece070912c346c3ff291f5f99e6c",
+      "shortHash": "b25bde49",
+      "tags": [
+        "bigdata-ml-cloud",
+        "geotools",
+        "geospatial"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.757Z"
+    },
+    "bigdata-ml-cloud/jvm-machine-learning": {
+      "path": "bigdata-ml-cloud/jvm-machine-learning.md",
+      "version": 1,
+      "hash": "e8e2fb778e90bfc26ac485b11d04704a7cf97ef9f3951bae22c78d8cd4368cc9",
+      "shortHash": "e8e2fb77",
+      "tags": [
+        "bigdata-ml-cloud",
+        "machine-learning",
+        "jvm-ml"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.757Z"
+    },
+    "bigdata-ml-cloud/reactive-cloud-integration": {
+      "path": "bigdata-ml-cloud/reactive-cloud-integration.md",
+      "version": 1,
+      "hash": "93a27efd7579f57b5c284451251901d731d1fb2e9da0a88b37b5f087a2c834a7",
+      "shortHash": "93a27efd",
+      "tags": [
+        "bigdata-ml-cloud",
+        "reactive",
+        "aws"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.757Z"
+    },
+    "bigdata-ml-cloud/saas-integrations": {
+      "path": "bigdata-ml-cloud/saas-integrations.md",
+      "version": 1,
+      "hash": "67f5fcc3b4181dfd2fbd3a652f2967a6397951f148deb3ed632fcb3c51476829",
+      "shortHash": "67f5fcc3",
+      "tags": [
+        "bigdata-ml-cloud",
+        "saas",
+        "chat-social"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.757Z"
+    },
+    "bigdata-ml-cloud/stripe-payments": {
+      "path": "bigdata-ml-cloud/stripe-payments.md",
+      "version": 1,
+      "hash": "b4b768cb744998fc666d0a78083d56de332e19c830ea79160c2c2a1ae9bc15f8",
+      "shortHash": "b4b768cb",
+      "tags": [
+        "bigdata-ml-cloud",
+        "stripe",
+        "payments"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.757Z"
+    },
+    "bigdata-ml-cloud/twilio-messaging": {
+      "path": "bigdata-ml-cloud/twilio-messaging.md",
+      "version": 1,
+      "hash": "18b9a4b588b3fce4280a4f1bae53ef420cc183ad84cf27260009afedc53bab8b",
+      "shortHash": "18b9a4b5",
+      "tags": [
+        "bigdata-ml-cloud",
+        "twilio",
+        "messaging"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.758Z"
+    },
+    "build-devops/bazel-build": {
+      "path": "build-devops/bazel-build.md",
+      "version": 1,
+      "hash": "b0c1c6331efd99bab7eb3e4f2e9d8e93e1cf2ee75f5598789f5ba35eda53bf95",
+      "shortHash": "b0c1c633",
+      "tags": [
+        "build-devops",
+        "bazel",
+        "build-systems"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.758Z"
+    },
+    "build-devops/compile-time-codegen": {
+      "path": "build-devops/compile-time-codegen.md",
+      "version": 1,
+      "hash": "e1269432df436c44832c90942a03a6f0c042369f01c09c165044221beab37f3e",
+      "shortHash": "e1269432",
+      "tags": [
+        "build-devops",
+        "codegen",
+        "annotation-processing"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.758Z"
+    },
+    "build-devops/dev-tooling-docs": {
+      "path": "build-devops/dev-tooling-docs.md",
+      "version": 1,
+      "hash": "a6c79dc3b2948a8d9d7181641a2140e276f036f558bd52ddcfba9d0617b4b77d",
+      "shortHash": "a6c79dc3",
+      "tags": [
+        "build-devops",
+        "dev-tooling",
+        "docs-as-code"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.758Z"
+    },
+    "build-devops/docker-packaging": {
+      "path": "build-devops/docker-packaging.md",
+      "version": 1,
+      "hash": "131cd90810f9488a89ea345403430f230d92951a07a04f24eb4fce469ab4b401",
+      "shortHash": "131cd908",
+      "tags": [
+        "build-devops",
+        "docker",
+        "containerization"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.758Z"
+    },
+    "build-devops/gradle-build": {
+      "path": "build-devops/gradle-build.md",
+      "version": 1,
+      "hash": "e81edd89828411c64bd134b3389188c9b56430a794651951135acef705f1cd63",
+      "shortHash": "e81edd89",
+      "tags": [
+        "build-devops",
+        "gradle",
+        "build-systems"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.758Z"
+    },
+    "build-devops/jmh-benchmarking": {
+      "path": "build-devops/jmh-benchmarking.md",
+      "version": 1,
+      "hash": "580d0f439e078d36ce43e6a9a03025ddfe7300afa737216be0861902610006f4",
+      "shortHash": "580d0f43",
+      "tags": [
+        "build-devops",
+        "jmh",
+        "benchmarking"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.758Z"
+    },
+    "build-devops/jvm-runtime-modernization": {
+      "path": "build-devops/jvm-runtime-modernization.md",
+      "version": 1,
+      "hash": "8d9a0408bc59563457fc7afe5226a549e25e34cd050ed67c3efbc0daa44cffe6",
+      "shortHash": "8d9a0408",
+      "tags": [
+        "build-devops",
+        "jvm",
+        "performance"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.758Z"
+    },
+    "build-devops/kubernetes-iac": {
+      "path": "build-devops/kubernetes-iac.md",
+      "version": 1,
+      "hash": "8b7350cab982ee6b375a9249c2dbe9f005005ce3098cbc61099cce93f70c13d9",
+      "shortHash": "8b7350ca",
+      "tags": [
+        "build-devops",
+        "terraform",
+        "kubernetes"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.758Z"
+    },
+    "build-devops/maven-build": {
+      "path": "build-devops/maven-build.md",
+      "version": 1,
+      "hash": "4638e05a8a4d682d030a8eb3d3c2c3c7b98e2992564ba4e469390aecc5653813",
+      "shortHash": "4638e05a",
+      "tags": [
+        "build-devops",
+        "maven",
+        "build-systems"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.758Z"
+    },
+    "build-devops/metrics-observability": {
+      "path": "build-devops/metrics-observability.md",
+      "version": 1,
+      "hash": "eabd8566f3bd7c07cb1c9c09ca314453965248b67bcdb01a334eac6e5b4b49bf",
+      "shortHash": "eabd8566",
+      "tags": [
+        "build-devops",
+        "metrics",
+        "observability"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.758Z"
+    },
+    "build-devops/static-analysis-gates": {
+      "path": "build-devops/static-analysis-gates.md",
+      "version": 1,
+      "hash": "0632be612a4e5d8eeb74c5ef9a68dde78d2578b3fec4a7b88f51f0a0c09b48c7",
+      "shortHash": "0632be61",
+      "tags": [
+        "build-devops",
+        "static-analysis",
+        "code-quality"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.758Z"
+    },
+    "build-devops/supply-chain-security": {
+      "path": "build-devops/supply-chain-security.md",
+      "version": 1,
+      "hash": "dfa698ebde47fc7c07b5957b59e7df877251cc4b295740a5f8848b39e39d3b05",
+      "shortHash": "dfa698eb",
+      "tags": [
+        "build-devops",
+        "supply-chain",
+        "ci-security"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.758Z"
     },
     "data-dev/data-modeling-basics": {
       "path": "data-dev/data-modeling-basics.md",
@@ -391,7 +882,7 @@
         "warehouse",
         "starter"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.548Z"
+      "lastUpdated": "2026-06-21T14:13:15.758Z"
     },
     "data-dev/lineage-and-cost": {
       "path": "data-dev/lineage-and-cost.md",
@@ -407,7 +898,7 @@
         "warehouse",
         "governance"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.549Z"
+      "lastUpdated": "2026-06-21T14:13:15.758Z"
     },
     "data-dev/orchestration-essentials": {
       "path": "data-dev/orchestration-essentials.md",
@@ -422,13 +913,13 @@
         "idempotency",
         "starter"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.549Z"
+      "lastUpdated": "2026-06-21T14:13:15.759Z"
     },
     "design-pushback/_index": {
       "path": "design-pushback/_index.md",
       "version": 1,
-      "hash": "9904af8e2d4f3c09e9a7727d22c05534e376c410762dbcedf96ac0f352e2c23f",
-      "shortHash": "9904af8e",
+      "hash": "923915dd8ceeff1ff4ebffda711b8afe487ba227d081f884e00e475e07e99b4a",
+      "shortHash": "923915dd",
       "tags": [
         "design-pushback",
         "anti-patterns",
@@ -436,7 +927,7 @@
         "proactive-critique",
         "foundational"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.549Z"
+      "lastUpdated": "2026-06-21T14:13:15.759Z"
     },
     "design-pushback/google-drive-for-backend-storage": {
       "path": "design-pushback/google-drive-for-backend-storage.md",
@@ -450,7 +941,7 @@
         "backend",
         "high-severity"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.551Z"
+      "lastUpdated": "2026-06-21T14:13:15.761Z"
     },
     "design-pushback/localStorage-for-auth-tokens": {
       "path": "design-pushback/localStorage-for-auth-tokens.md",
@@ -464,7 +955,7 @@
         "auth",
         "high-severity"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.552Z"
+      "lastUpdated": "2026-06-21T14:13:15.761Z"
     },
     "design-pushback/plain-http-for-sensitive-data": {
       "path": "design-pushback/plain-http-for-sensitive-data.md",
@@ -479,7 +970,7 @@
         "network",
         "medium-severity"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.553Z"
+      "lastUpdated": "2026-06-21T14:13:15.761Z"
     },
     "design-pushback/single-region-deploy-for-mission-critical": {
       "path": "design-pushback/single-region-deploy-for-mission-critical.md",
@@ -492,7 +983,7 @@
         "reliability",
         "medium-severity"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.553Z"
+      "lastUpdated": "2026-06-21T14:13:15.761Z"
     },
     "design-pushback/string-concat-sql": {
       "path": "design-pushback/string-concat-sql.md",
@@ -506,7 +997,7 @@
         "data",
         "high-severity"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.553Z"
+      "lastUpdated": "2026-06-21T14:13:15.761Z"
     },
     "design-pushback/synchronous-llm-calls-in-request-path": {
       "path": "design-pushback/synchronous-llm-calls-in-request-path.md",
@@ -521,7 +1012,7 @@
         "latency",
         "medium-severity"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.554Z"
+      "lastUpdated": "2026-06-21T14:13:15.761Z"
     },
     "design-pushback/syntactic-gate-extension-for-tool-bypass": {
       "path": "design-pushback/syntactic-gate-extension-for-tool-bypass.md",
@@ -536,7 +1027,7 @@
         "hidden-cost",
         "medium-severity"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.554Z"
+      "lastUpdated": "2026-06-21T14:13:15.762Z"
     },
     "hets/canonical-skill-sources": {
       "path": "hets/canonical-skill-sources.md",
@@ -549,20 +1040,20 @@
         "canonical-sources",
         "evolution-loop-l2"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.554Z"
+      "lastUpdated": "2026-06-21T14:13:15.762Z"
     },
     "hets/challenger-conventions": {
       "path": "hets/challenger-conventions.md",
       "version": 1,
-      "hash": "eb95486f397e72031136c978e21424ba761b9b3d43f9f98f0df4c3c4f4705368",
-      "shortHash": "eb95486f",
+      "hash": "28a67c2f145e6abad2c4c0bda1a946cfe20d5349d0872183c4e283b315aca890",
+      "shortHash": "28a67c2f",
       "tags": [
         "hets",
         "challenger",
         "asymmetric",
         "conventions"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.554Z"
+      "lastUpdated": "2026-06-21T14:13:15.762Z"
     },
     "hets/code-search-heuristics": {
       "path": "hets/code-search-heuristics.md",
@@ -577,7 +1068,7 @@
         "ripgrep",
         "recall"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.555Z"
+      "lastUpdated": "2026-06-21T14:13:15.762Z"
     },
     "hets/identity-roster": {
       "path": "hets/identity-roster.md",
@@ -589,19 +1080,19 @@
         "identity",
         "roster"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.555Z"
+      "lastUpdated": "2026-06-21T14:13:15.762Z"
     },
     "hets/spawn-conventions": {
       "path": "hets/spawn-conventions.md",
       "version": 1,
-      "hash": "d9e1f33b5c496424a70e247e42bd17033de813e3b138470c4999cd1d4dfbbe6f",
-      "shortHash": "d9e1f33b",
+      "hash": "9d06ab62290def242e722a6893804543c9b6619837352dd2789995fdae3fd2e0",
+      "shortHash": "9d06ab62",
       "tags": [
         "hets",
         "conventions",
         "spawn"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.555Z"
+      "lastUpdated": "2026-06-21T14:13:15.762Z"
     },
     "hets/stack-skill-map": {
       "path": "hets/stack-skill-map.md",
@@ -615,20 +1106,20 @@
         "mapping",
         "analyzer"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.555Z"
+      "lastUpdated": "2026-06-21T14:13:15.762Z"
     },
     "hets/symmetric-pair-conventions": {
       "path": "hets/symmetric-pair-conventions.md",
       "version": 1,
-      "hash": "3d308c4ab0b6b47bf83abb8e9b2b40e12367173bd039bd5374613b5486c05f07",
-      "shortHash": "3d308c4a",
+      "hash": "13f4e6624cf0c97d8799b04a61f48d1b54dc75f072d17e0b922b6c6c3e333478",
+      "shortHash": "13f4e662",
       "tags": [
         "hets",
         "symmetric-pair",
         "low-trust",
         "conventions"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.555Z"
+      "lastUpdated": "2026-06-21T14:13:15.762Z"
     },
     "hets/usability-adversary": {
       "path": "hets/usability-adversary.md",
@@ -644,7 +1135,7 @@
         "foundational",
         "quality-baseline"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.555Z"
+      "lastUpdated": "2026-06-21T14:13:15.762Z"
     },
     "infra-dev/kubernetes-essentials": {
       "path": "infra-dev/kubernetes-essentials.md",
@@ -658,7 +1149,7 @@
         "k8s",
         "starter"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.556Z"
+      "lastUpdated": "2026-06-21T14:13:15.762Z"
     },
     "infra-dev/observability-basics": {
       "path": "infra-dev/observability-basics.md",
@@ -673,7 +1164,1020 @@
         "sre",
         "starter"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.556Z"
+      "lastUpdated": "2026-06-21T14:13:15.762Z"
+    },
+    "java-lang/annotations-and-processing": {
+      "path": "java-lang/annotations-and-processing.md",
+      "version": 1,
+      "hash": "1a0fc40a188ea5488eda18a3865498627d47be9077ec1d9a47e7a9c8071507c0",
+      "shortHash": "1a0fc40a",
+      "tags": [
+        "java-lang",
+        "annotations",
+        "metaprogramming"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.763Z"
+    },
+    "java-lang/date-time-api": {
+      "path": "java-lang/date-time-api.md",
+      "version": 1,
+      "hash": "3f2b1913d9292397df26ff45d74af9b1d161f2d888578a8891672ed79aa2afaf",
+      "shortHash": "3f2b1913",
+      "tags": [
+        "java-lang",
+        "date-time",
+        "jsr-310"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.763Z"
+    },
+    "java-lang/enums": {
+      "path": "java-lang/enums.md",
+      "version": 1,
+      "hash": "48e4228ef9622537c23a21cc84edf24ba0d2f2c32a66439a16183d684e16be6c",
+      "shortHash": "48e4228e",
+      "tags": [
+        "java-lang",
+        "oop",
+        "enums"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.763Z"
+    },
+    "java-lang/exceptions-and-linkage-errors": {
+      "path": "java-lang/exceptions-and-linkage-errors.md",
+      "version": 1,
+      "hash": "70e9f5a52ba91ba3c49874037690f94a1bd5175cf53a8d3d90df852ca1662897",
+      "shortHash": "70e9f5a5",
+      "tags": [
+        "java-lang",
+        "exceptions",
+        "error-handling"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.763Z"
+    },
+    "java-lang/functional-interfaces-lambdas": {
+      "path": "java-lang/functional-interfaces-lambdas.md",
+      "version": 1,
+      "hash": "dcc489f21a26578f469ab81411062ee9e456937539f1ed223293cc33b7363020",
+      "shortHash": "dcc489f2",
+      "tags": [
+        "java-lang",
+        "functional",
+        "lambdas"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.763Z"
+    },
+    "java-lang/generics-type-erasure": {
+      "path": "java-lang/generics-type-erasure.md",
+      "version": 1,
+      "hash": "cd68c6b99b798a36be55e559962a9fc606a271546f1de95cc0e43265c9f29b1c",
+      "shortHash": "cd68c6b9",
+      "tags": [
+        "java-lang",
+        "generics",
+        "type-system"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.763Z"
+    },
+    "java-lang/inheritance-polymorphism-binding": {
+      "path": "java-lang/inheritance-polymorphism-binding.md",
+      "version": 1,
+      "hash": "f202222373a56c2cc6faada82fa6b2005e1743fdba0ff61480dff1b4aadc503d",
+      "shortHash": "f2022223",
+      "tags": [
+        "java-lang",
+        "oop",
+        "polymorphism"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.763Z"
+    },
+    "java-lang/interfaces-abstract-classes": {
+      "path": "java-lang/interfaces-abstract-classes.md",
+      "version": 1,
+      "hash": "18c28772afe97766895e82817f96458f8ec48c4ac62d36734f89bcb95a34fafd",
+      "shortHash": "18c28772",
+      "tags": [
+        "java-lang",
+        "oop",
+        "interfaces"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.763Z"
+    },
+    "java-lang/language-evolution-8-to-25": {
+      "path": "java-lang/language-evolution-8-to-25.md",
+      "version": 1,
+      "hash": "8e74e13289c40d922784a177d5e652771a6bcb5b293b94755b983fd678dac370",
+      "shortHash": "8e74e132",
+      "tags": [
+        "java-lang",
+        "versions",
+        "language-evolution"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.763Z"
+    },
+    "java-lang/module-system-jpms": {
+      "path": "java-lang/module-system-jpms.md",
+      "version": 1,
+      "hash": "22f5c2ea110c70a217de44f4241bd2409b1be11dcd493963d52402c54404cb0f",
+      "shortHash": "22f5c2ea",
+      "tags": [
+        "java-lang",
+        "jpms",
+        "modules"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.763Z"
+    },
+    "java-lang/oop-class-design": {
+      "path": "java-lang/oop-class-design.md",
+      "version": 1,
+      "hash": "1e679f5ddf45cdc671b7382cdb44aa4cc6bcddb95a067b3cf0b08ed5b856a5db",
+      "shortHash": "1e679f5d",
+      "tags": [
+        "java-lang",
+        "oop",
+        "class-design"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.763Z"
+    },
+    "java-lang/optional": {
+      "path": "java-lang/optional.md",
+      "version": 1,
+      "hash": "bbb94d88af317854d9b586ffbdcda986054082867aab3b75fbb53d25bab7acc1",
+      "shortHash": "bbb94d88",
+      "tags": [
+        "java-lang",
+        "functional",
+        "optional"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.763Z"
+    },
+    "java-lang/primitive-vs-object-types": {
+      "path": "java-lang/primitive-vs-object-types.md",
+      "version": 1,
+      "hash": "967288fba8becdc0055718b5342d565267d3bc0894ab6ded90f681ff28574167",
+      "shortHash": "967288fb",
+      "tags": [
+        "java-lang",
+        "type-system",
+        "primitives"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.763Z"
+    },
+    "java-lang/reflection-and-proxies": {
+      "path": "java-lang/reflection-and-proxies.md",
+      "version": 1,
+      "hash": "ddd27f5b727b590bda4472bc0fd20a6d740bce4960d4b0505d7980fab42020ea",
+      "shortHash": "ddd27f5b",
+      "tags": [
+        "java-lang",
+        "reflection",
+        "metaprogramming"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.763Z"
+    },
+    "java-libraries/bean-mapping": {
+      "path": "java-libraries/bean-mapping.md",
+      "version": 1,
+      "hash": "2b964159a7fcfd99adf536f0b0a42b2c3f982aca6a9c6f3b2a364c663d54ecbc",
+      "shortHash": "2b964159",
+      "tags": [
+        "java-libraries",
+        "bean-mapping",
+        "annotation-processing"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.763Z"
+    },
+    "java-libraries/code-generation": {
+      "path": "java-libraries/code-generation.md",
+      "version": 1,
+      "hash": "4ed405863e770597ae5c90310a1dbf701a41d5401c2167d101f2f271f35fd964",
+      "shortHash": "4ed40586",
+      "tags": [
+        "java-libraries",
+        "code-generation",
+        "bytecode"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.763Z"
+    },
+    "java-libraries/commons-collections": {
+      "path": "java-libraries/commons-collections.md",
+      "version": 1,
+      "hash": "54e7286a40ba6b323f83601a8effef55dde1af27e08c8a6c9e7b50a26c09ea42",
+      "shortHash": "54e7286a",
+      "tags": [
+        "java-libraries",
+        "apache-commons",
+        "collections"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.764Z"
+    },
+    "java-libraries/commons-io-lang": {
+      "path": "java-libraries/commons-io-lang.md",
+      "version": 1,
+      "hash": "7a4a812d42d3613be94569030900180ae861c419954a22ac7b4b67beba2c007d",
+      "shortHash": "7a4a812d",
+      "tags": [
+        "java-libraries",
+        "apache-commons",
+        "io"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.764Z"
+    },
+    "java-libraries/document-generation": {
+      "path": "java-libraries/document-generation.md",
+      "version": 1,
+      "hash": "6f680586412d60cf5212605ce4870e28229dfa7f25c15d99c98f38b6fd6275c8",
+      "shortHash": "6f680586",
+      "tags": [
+        "java-libraries",
+        "document-generation",
+        "pdf"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.764Z"
+    },
+    "java-libraries/embedded-servers": {
+      "path": "java-libraries/embedded-servers.md",
+      "version": 1,
+      "hash": "edf3bfe4a240976a5647a7e0c025f3308f4b1803f8be78914fa74e9161350efe",
+      "shortHash": "edf3bfe4",
+      "tags": [
+        "java-libraries",
+        "embedded-server",
+        "netty"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.764Z"
+    },
+    "java-libraries/functional-extensions": {
+      "path": "java-libraries/functional-extensions.md",
+      "version": 1,
+      "hash": "3ad04e50201f2da0e82adf6cf146ad9702c165d1a82699781cae8fb825115ff4",
+      "shortHash": "3ad04e50",
+      "tags": [
+        "java-libraries",
+        "functional",
+        "streams"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.764Z"
+    },
+    "java-libraries/guava-collections": {
+      "path": "java-libraries/guava-collections.md",
+      "version": 1,
+      "hash": "e0f22240daea0396b766dddcec3f6871cb7b39098e146fd598266488a6792f80",
+      "shortHash": "e0f22240",
+      "tags": [
+        "java-libraries",
+        "guava",
+        "collections"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.764Z"
+    },
+    "java-libraries/http-clients": {
+      "path": "java-libraries/http-clients.md",
+      "version": 1,
+      "hash": "38860cf2eed486d1bf40fb8ce3c9ad44256ce96c51e1542a944ea70885ff0e04",
+      "shortHash": "38860cf2",
+      "tags": [
+        "java-libraries",
+        "http-client",
+        "networking"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.764Z"
+    },
+    "java-libraries/in-process-caching": {
+      "path": "java-libraries/in-process-caching.md",
+      "version": 1,
+      "hash": "85e728ea70a71dd1cb3f73a4122c57e7d28bbb9d08fbcd5a9ec409dcb1c053b9",
+      "shortHash": "85e728ea",
+      "tags": [
+        "java-libraries",
+        "caching",
+        "performance"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.764Z"
+    },
+    "java-libraries/logging": {
+      "path": "java-libraries/logging.md",
+      "version": 1,
+      "hash": "a911b552227bc17de3d5c5a9da12d337f70490c8d9011b209a3cae9b85ea0288",
+      "shortHash": "a911b552",
+      "tags": [
+        "java-libraries",
+        "logging",
+        "slf4j"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.764Z"
+    },
+    "java-libraries/messaging-coordination": {
+      "path": "java-libraries/messaging-coordination.md",
+      "version": 1,
+      "hash": "584cbf1f6107382151261772a761479d2ddeb47997bee46f15f2ee3effb8d55b",
+      "shortHash": "584cbf1f",
+      "tags": [
+        "java-libraries",
+        "messaging",
+        "distributed-coordination"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.764Z"
+    },
+    "java-libraries/resilience-concurrency": {
+      "path": "java-libraries/resilience-concurrency.md",
+      "version": 1,
+      "hash": "4e4792d939f56e6f2508c1144a4de3e69f1e7fe12c1b0571d2c1b1755ab0d4f2",
+      "shortHash": "4e4792d9",
+      "tags": [
+        "java-libraries",
+        "resilience",
+        "concurrency"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.764Z"
+    },
+    "java-libraries/web-rpc-serialization": {
+      "path": "java-libraries/web-rpc-serialization.md",
+      "version": 1,
+      "hash": "6603e0e4885ee03c121cfb53fcbc32a9f33c71154be95f0c71cf384dcb5d2305",
+      "shortHash": "6603e0e4",
+      "tags": [
+        "java-libraries",
+        "rpc",
+        "serialization"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.764Z"
+    },
+    "java-runtime/concurrency-primitives": {
+      "path": "java-runtime/concurrency-primitives.md",
+      "version": 1,
+      "hash": "8dfeef0829872609fdad8f45626e347c69114490d84bc2d4e82b1084ba5cc044",
+      "shortHash": "8dfeef08",
+      "tags": [
+        "java-runtime",
+        "concurrency",
+        "synchronization"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.765Z"
+    },
+    "java-runtime/concurrent-collections": {
+      "path": "java-runtime/concurrent-collections.md",
+      "version": 1,
+      "hash": "62a9f50f4efc69264a6bd596f5c236039bc00f537a99582f155a9919df42aedf",
+      "shortHash": "62a9f50f",
+      "tags": [
+        "java-runtime",
+        "concurrency",
+        "collections"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.765Z"
+    },
+    "java-runtime/executors-futures-async": {
+      "path": "java-runtime/executors-futures-async.md",
+      "version": 1,
+      "hash": "35abfa1a6a904290ab6eb427d0c83d5818d1c7affbd24b62398936509e216a3c",
+      "shortHash": "35abfa1a",
+      "tags": [
+        "java-runtime",
+        "concurrency",
+        "async"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.765Z"
+    },
+    "java-runtime/io-streams": {
+      "path": "java-runtime/io-streams.md",
+      "version": 1,
+      "hash": "10b4d34183fb7c8dd4aaae413d7a548b7e38469c52117bbb6c69e6042ca8a5f8",
+      "shortHash": "10b4d341",
+      "tags": [
+        "java-runtime",
+        "io",
+        "serialization"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.765Z"
+    },
+    "java-runtime/java-crypto-security": {
+      "path": "java-runtime/java-crypto-security.md",
+      "version": 1,
+      "hash": "edcb76351d73635113fe121527311882d2232ea36dc90294232684edcb859464",
+      "shortHash": "edcb7635",
+      "tags": [
+        "java-runtime",
+        "security",
+        "cryptography"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.765Z"
+    },
+    "java-runtime/jvm-tooling": {
+      "path": "java-runtime/jvm-tooling.md",
+      "version": 1,
+      "hash": "201d354c7a83dbdcd07ac31bc7c50ce9e331f15e224688f2e53d2065eb68e71b",
+      "shortHash": "201d354c",
+      "tags": [
+        "java-runtime",
+        "jvm",
+        "observability"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.765Z"
+    },
+    "java-runtime/native-interop-extensibility": {
+      "path": "java-runtime/native-interop-extensibility.md",
+      "version": 1,
+      "hash": "08c8f5b1901944463e4a2d1df34f68e51bef3ae3df7b602251b60a577461bf30",
+      "shortHash": "08c8f5b1",
+      "tags": [
+        "java-runtime",
+        "native-interop",
+        "extensibility"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.765Z"
+    },
+    "java-runtime/networking": {
+      "path": "java-runtime/networking.md",
+      "version": 1,
+      "hash": "3a39393af47a8f01685c81df700c5303c9f6b479966116bff264b4a705cb8bc7",
+      "shortHash": "3a39393a",
+      "tags": [
+        "java-runtime",
+        "networking",
+        "http"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.765Z"
+    },
+    "java-runtime/nio-files-channels": {
+      "path": "java-runtime/nio-files-channels.md",
+      "version": 1,
+      "hash": "98f443f2bf8a3b2b8afc1c91f65b15f17d700a26f9502ccba31152cec8fdd682",
+      "shortHash": "98f443f2",
+      "tags": [
+        "java-runtime",
+        "nio",
+        "filesystem"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.765Z"
+    },
+    "java-stdlib/arrays": {
+      "path": "java-stdlib/arrays.md",
+      "version": 1,
+      "hash": "c319a5af2dfc492e6da3bfa2ca69c7e215edb6f008010a1690f97fc2749c73c2",
+      "shortHash": "c319a5af",
+      "tags": [
+        "java-stdlib",
+        "arrays",
+        "data-structures"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.765Z"
+    },
+    "java-stdlib/collection-conversions": {
+      "path": "java-stdlib/collection-conversions.md",
+      "version": 1,
+      "hash": "2eb084d9815b711932134645f22aa8b690045155d0f4ebb8ae36c1dc5e15aa9a",
+      "shortHash": "2eb084d9",
+      "tags": [
+        "java-stdlib",
+        "collections",
+        "conversions"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.765Z"
+    },
+    "java-stdlib/collections-framework": {
+      "path": "java-stdlib/collections-framework.md",
+      "version": 1,
+      "hash": "1745df61522a44e59570ec1f2aa47b41b58fe35d17ba8e95df3d53a54d74b499",
+      "shortHash": "1745df61",
+      "tags": [
+        "java-stdlib",
+        "collections",
+        "data-structures"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.765Z"
+    },
+    "java-stdlib/iteration-and-modification": {
+      "path": "java-stdlib/iteration-and-modification.md",
+      "version": 1,
+      "hash": "dd2dcda11d9e5439df455a807b4350bd920fd7d0984031cd733a88fa72ef5daf",
+      "shortHash": "dd2dcda1",
+      "tags": [
+        "java-stdlib",
+        "collections",
+        "iteration"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.765Z"
+    },
+    "java-stdlib/java-time": {
+      "path": "java-stdlib/java-time.md",
+      "version": 1,
+      "hash": "a5371edfd601a682d9ea60ded31ee22bbe7587a7bb19bdd89db15d004627c900",
+      "shortHash": "a5371edf",
+      "tags": [
+        "java-stdlib",
+        "datetime",
+        "jsr-310"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.765Z"
+    },
+    "java-stdlib/map-implementations": {
+      "path": "java-stdlib/map-implementations.md",
+      "version": 1,
+      "hash": "d562480fa7db74f4772598e6a7dfda626cd8c2a967ab9f327fbacbca5b60cd7a",
+      "shortHash": "d562480f",
+      "tags": [
+        "java-stdlib",
+        "collections",
+        "maps"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.765Z"
+    },
+    "java-stdlib/math-and-numerics": {
+      "path": "java-stdlib/math-and-numerics.md",
+      "version": 1,
+      "hash": "5b557563bf030c14d3653a5b5925021fb2c9d6ee112c2f0bbf670081c87e7e5a",
+      "shortHash": "5b557563",
+      "tags": [
+        "java-stdlib",
+        "math",
+        "numerics"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.765Z"
+    },
+    "java-stdlib/regex": {
+      "path": "java-stdlib/regex.md",
+      "version": 1,
+      "hash": "202313c616b02a0e158ed239b696ce5a8a60a83a3df5377d716c1d37f405124b",
+      "shortHash": "202313c6",
+      "tags": [
+        "java-stdlib",
+        "regex",
+        "text"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.765Z"
+    },
+    "java-stdlib/sequenced-collections": {
+      "path": "java-stdlib/sequenced-collections.md",
+      "version": 1,
+      "hash": "b2567270d99c31c5318fb4db9b0fe9c442e0e4d79ecc8ac244a4ea11fe317677",
+      "shortHash": "b2567270",
+      "tags": [
+        "java-stdlib",
+        "collections",
+        "jdk21"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.765Z"
+    },
+    "java-stdlib/stream-api": {
+      "path": "java-stdlib/stream-api.md",
+      "version": 1,
+      "hash": "8beac7ec373595e02d9045dfa3d3d41f49828bf0b610c4f859bef2387f908746",
+      "shortHash": "8beac7ec",
+      "tags": [
+        "java-stdlib",
+        "streams",
+        "functional"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.765Z"
+    },
+    "java-stdlib/string-algorithms": {
+      "path": "java-stdlib/string-algorithms.md",
+      "version": 1,
+      "hash": "f400644b51f5dc6015fb0b3129105df65079e79ff9bf90d39aadd06d56190f77",
+      "shortHash": "f400644b",
+      "tags": [
+        "java-stdlib",
+        "strings",
+        "algorithms"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.766Z"
+    },
+    "java-stdlib/strings": {
+      "path": "java-stdlib/strings.md",
+      "version": 1,
+      "hash": "38142773ef914edb5cc3fa938402384595a9b15d94649a467dd40b9fbe7821ee",
+      "shortHash": "38142773",
+      "tags": [
+        "java-stdlib",
+        "strings",
+        "text"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.766Z"
+    },
+    "jvm-languages/clojure-ring-web": {
+      "path": "jvm-languages/clojure-ring-web.md",
+      "version": 1,
+      "hash": "624cc8fd4079d3c73978b0030a6869bac96b83a8a162adf65819e6d7981d1eb6",
+      "shortHash": "624cc8fd",
+      "tags": [
+        "jvm-languages",
+        "clojure",
+        "ring",
+        "web"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.766Z"
+    },
+    "jvm-languages/groovy-collections": {
+      "path": "jvm-languages/groovy-collections.md",
+      "version": 1,
+      "hash": "dbdc9f559fff1cbf5582d3f448345c9592febaeb5df4ed221b048124c59f2c99",
+      "shortHash": "dbdc9f55",
+      "tags": [
+        "jvm-languages",
+        "groovy",
+        "collections"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.766Z"
+    },
+    "jvm-languages/groovy-language-core": {
+      "path": "jvm-languages/groovy-language-core.md",
+      "version": 1,
+      "hash": "e85490c889cee77b3c08f95dd5b403818e27cc4f7412cb4630a748c33bbadf9f",
+      "shortHash": "e85490c8",
+      "tags": [
+        "jvm-languages",
+        "groovy",
+        "language-semantics"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.766Z"
+    },
+    "jvm-languages/groovy-metaprogramming": {
+      "path": "jvm-languages/groovy-metaprogramming.md",
+      "version": 1,
+      "hash": "5341002d49c834c1d42a2c44f55685121d20aec3c9759c109706dc6baed46867",
+      "shortHash": "5341002d",
+      "tags": [
+        "jvm-languages",
+        "groovy",
+        "metaprogramming"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.766Z"
+    },
+    "jvm-languages/groovy-sql-jdbc": {
+      "path": "jvm-languages/groovy-sql-jdbc.md",
+      "version": 1,
+      "hash": "85d9861ae623d6bd0951707a690003f91da105bed2d0549bb697fc9c1f1a959e",
+      "shortHash": "85d9861a",
+      "tags": [
+        "jvm-languages",
+        "groovy",
+        "jdbc",
+        "security"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.766Z"
+    },
+    "jvm-languages/javalite-activerecord-web": {
+      "path": "jvm-languages/javalite-activerecord-web.md",
+      "version": 1,
+      "hash": "33a8f7d87ada8018aaeb1092b67bb8cb3f7377325a2f2edc917e22046640577d",
+      "shortHash": "33a8f7d8",
+      "tags": [
+        "jvm-languages",
+        "javalite",
+        "web",
+        "orm"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.766Z"
+    },
+    "jvm-languages/kotlin-vs-java": {
+      "path": "jvm-languages/kotlin-vs-java.md",
+      "version": 1,
+      "hash": "cfa1eb4d539dcd8f4a9a15d90b245e98b7e617c94bb474a598eec095a74cff10",
+      "shortHash": "cfa1eb4d",
+      "tags": [
+        "jvm-languages",
+        "kotlin",
+        "language-semantics"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.766Z"
+    },
+    "jvm-languages/polyglot-scripting-interop": {
+      "path": "jvm-languages/polyglot-scripting-interop.md",
+      "version": 1,
+      "hash": "931d70033f59b63c91b049948013640b44c1905c645ff84ef65ece1a25bd7096",
+      "shortHash": "931d7003",
+      "tags": [
+        "jvm-languages",
+        "polyglot",
+        "scripting",
+        "interop"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.766Z"
+    },
+    "jvm-languages/vavr-control-types": {
+      "path": "jvm-languages/vavr-control-types.md",
+      "version": 1,
+      "hash": "d98aad872ecb0930663bc636db39a75f93620cd2e1e904534214bf996f59fe06",
+      "shortHash": "d98aad87",
+      "tags": [
+        "jvm-languages",
+        "vavr",
+        "functional"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.766Z"
+    },
+    "jvm-languages/vavr-functions-pattern-matching": {
+      "path": "jvm-languages/vavr-functions-pattern-matching.md",
+      "version": 1,
+      "hash": "b5b8dae97e35eff15649c5c0933d25ad3f24542eaf99e628efbb7af43bac93af",
+      "shortHash": "b5b8dae9",
+      "tags": [
+        "jvm-languages",
+        "vavr",
+        "functional",
+        "pattern-matching"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.766Z"
+    },
+    "jvm-languages/vavr-persistent-collections": {
+      "path": "jvm-languages/vavr-persistent-collections.md",
+      "version": 1,
+      "hash": "0a5dad89f914b9c82cbbb04d9d1cd9c91d69349698bd02ea97fe251964178186",
+      "shortHash": "0a5dad89",
+      "tags": [
+        "jvm-languages",
+        "vavr",
+        "collections",
+        "immutability"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.766Z"
+    },
+    "messaging/amqp-model": {
+      "path": "messaging/amqp-model.md",
+      "version": 1,
+      "hash": "ec92ed1c2abc0cb310f1428b6c5eda1cf0a432fc8c868b6c3f7301a616df9640",
+      "shortHash": "ec92ed1c",
+      "tags": [
+        "messaging",
+        "amqp",
+        "rabbitmq",
+        "routing"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.766Z"
+    },
+    "messaging/amqp-reliability": {
+      "path": "messaging/amqp-reliability.md",
+      "version": 1,
+      "hash": "f1be85ee2da826984feb50e8575615cda70f61666e326032469abb44a7086fbd",
+      "shortHash": "f1be85ee",
+      "tags": [
+        "messaging",
+        "amqp",
+        "rabbitmq",
+        "reliability",
+        "dead-letter"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.766Z"
+    },
+    "messaging/enterprise-integration-patterns": {
+      "path": "messaging/enterprise-integration-patterns.md",
+      "version": 1,
+      "hash": "4885e9908275ba68eff3bf43a617aa779319d284d18640f7fc8d9f121f964aac",
+      "shortHash": "4885e990",
+      "tags": [
+        "messaging",
+        "eip",
+        "camel",
+        "spring-integration"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.766Z"
+    },
+    "messaging/jgroups-group-messaging": {
+      "path": "messaging/jgroups-group-messaging.md",
+      "version": 1,
+      "hash": "129dfb7f6801ab98a43ae0ad16d2bffc873b2e5efc100c14a95c4cf7a72b40e1",
+      "shortHash": "129dfb7f",
+      "tags": [
+        "messaging",
+        "jgroups",
+        "group-communication",
+        "reliability"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.766Z"
+    },
+    "messaging/jms-classic": {
+      "path": "messaging/jms-classic.md",
+      "version": 1,
+      "hash": "62a6f9928be2df2d769f74fb235e78a81fcea7dab8fae359252c036aa33f6d01",
+      "shortHash": "62a6f992",
+      "tags": [
+        "messaging",
+        "jms",
+        "jakarta",
+        "activemq"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.766Z"
+    },
+    "messaging/kafka-reliability-ops": {
+      "path": "messaging/kafka-reliability-ops.md",
+      "version": 1,
+      "hash": "071d0a3d387c370318da2c3f80045db44a5fb5f28f3e65e7a134b3c9d5874653",
+      "shortHash": "071d0a3d",
+      "tags": [
+        "messaging",
+        "kafka",
+        "reliability",
+        "operations"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.766Z"
+    },
+    "messaging/kafka-spring": {
+      "path": "messaging/kafka-spring.md",
+      "version": 1,
+      "hash": "bfc3817521fe5cbcc53b4e01eff6cf8ccc5d75326c4afc5351243c9e5b770090",
+      "shortHash": "bfc38175",
+      "tags": [
+        "messaging",
+        "kafka",
+        "spring",
+        "producer-consumer"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.766Z"
+    },
+    "messaging/rocketmq": {
+      "path": "messaging/rocketmq.md",
+      "version": 1,
+      "hash": "a45232b526f92343eac0b7a5ed7c2487844d0ca9cbeec1ae962eb0db5d729d53",
+      "shortHash": "a45232b5",
+      "tags": [
+        "messaging",
+        "rocketmq",
+        "spring-boot",
+        "transactions"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.767Z"
+    },
+    "microservices/alternative-runtimes": {
+      "path": "microservices/alternative-runtimes.md",
+      "version": 1,
+      "hash": "a0c6f8648eb07de98b2b6aeadd740129a41571bce9f06a6b47b6e99ed12a7571",
+      "shortHash": "a0c6f864",
+      "tags": [
+        "microservices",
+        "runtimes",
+        "quarkus",
+        "micronaut"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.767Z"
+    },
+    "microservices/api-gateway": {
+      "path": "microservices/api-gateway.md",
+      "version": 1,
+      "hash": "af0075f5febb2cbd3cca15c4d3d78aeb81b4b697c35f7defabd2c4bf838c34fe",
+      "shortHash": "af0075f5",
+      "tags": [
+        "microservices",
+        "api-gateway",
+        "spring-cloud-gateway",
+        "zuul"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.767Z"
+    },
+    "microservices/centralized-config": {
+      "path": "microservices/centralized-config.md",
+      "version": 1,
+      "hash": "416e0f3f75e7e639f429b3ad606b6aaf22862cfd94933f6250941400316db28a",
+      "shortHash": "416e0f3f",
+      "tags": [
+        "microservices",
+        "configuration",
+        "spring-cloud-config",
+        "vault"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.767Z"
+    },
+    "microservices/client-load-balancing": {
+      "path": "microservices/client-load-balancing.md",
+      "version": 1,
+      "hash": "840914aca5841181560cab439fe0cf55dee7f244746454d544bd1e11d0e7c025",
+      "shortHash": "840914ac",
+      "tags": [
+        "microservices",
+        "load-balancing",
+        "ribbon",
+        "spring-cloud"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.767Z"
+    },
+    "microservices/consumer-driven-contracts": {
+      "path": "microservices/consumer-driven-contracts.md",
+      "version": 1,
+      "hash": "ff0b0dbe56f270d7f6c3a0e9e781c8f1b22116b39d8febbce5827068ae081acf",
+      "shortHash": "ff0b0dbe",
+      "tags": [
+        "microservices",
+        "contract-testing",
+        "spring-cloud-contract",
+        "testing"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.767Z"
+    },
+    "microservices/containers-orchestration": {
+      "path": "microservices/containers-orchestration.md",
+      "version": 1,
+      "hash": "eaf87c19c32e1ea513d583746dec47545d68662b065ee675724175ca37d83876",
+      "shortHash": "eaf87c19",
+      "tags": [
+        "microservices",
+        "docker",
+        "kubernetes",
+        "orchestration"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.767Z"
+    },
+    "microservices/cqrs-event-sourcing": {
+      "path": "microservices/cqrs-event-sourcing.md",
+      "version": 1,
+      "hash": "c5d678b5caf28e4c143a47e521a7cd85b9492e2107806248069f00ca96a7a236",
+      "shortHash": "c5d678b5",
+      "tags": [
+        "microservices",
+        "cqrs",
+        "event-sourcing",
+        "axon"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.767Z"
+    },
+    "microservices/declarative-http-clients": {
+      "path": "microservices/declarative-http-clients.md",
+      "version": 1,
+      "hash": "610d648d896164412e4e2e448b614e9e6ea4325fdd3df103f787793c890c2b42",
+      "shortHash": "610d648d",
+      "tags": [
+        "microservices",
+        "rpc",
+        "feign",
+        "grpc"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.767Z"
+    },
+    "microservices/distributed-tracing": {
+      "path": "microservices/distributed-tracing.md",
+      "version": 1,
+      "hash": "8abce0f025c994b9d9e917eea40e21d1fbddfe9a16704a0b3396aa5e02ecd849",
+      "shortHash": "8abce0f0",
+      "tags": [
+        "microservices",
+        "tracing",
+        "observability",
+        "opentelemetry"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.767Z"
+    },
+    "microservices/event-driven-streaming": {
+      "path": "microservices/event-driven-streaming.md",
+      "version": 1,
+      "hash": "92f4fa27bd16537e51eaa94894f07db337f4531608cef7bc968adf7833b3e21d",
+      "shortHash": "92f4fa27",
+      "tags": [
+        "microservices",
+        "streaming",
+        "spring-cloud-stream",
+        "data-flow"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.767Z"
+    },
+    "microservices/microservice-security": {
+      "path": "microservices/microservice-security.md",
+      "version": 1,
+      "hash": "55f3675bf4db0f580676eaa755887028fd86f8617a801a88a2df55ce5cb8400f",
+      "shortHash": "55f3675b",
+      "tags": [
+        "microservices",
+        "security",
+        "jwt",
+        "oauth2"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.767Z"
+    },
+    "microservices/resilience-circuit-breaking": {
+      "path": "microservices/resilience-circuit-breaking.md",
+      "version": 1,
+      "hash": "b6fe2d9665f68d74ba22cff380af295ba2ee51a05e1592d81346d65bbd468796",
+      "shortHash": "b6fe2d96",
+      "tags": [
+        "microservices",
+        "resilience",
+        "circuit-breaker",
+        "resilience4j"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.767Z"
+    },
+    "microservices/serverless-cloud-sdk": {
+      "path": "microservices/serverless-cloud-sdk.md",
+      "version": 1,
+      "hash": "9b53dbb0e8bff5183cc194e4ca2097f86c6f72de63cbec5965b584c1fa7ee3bd",
+      "shortHash": "9b53dbb0",
+      "tags": [
+        "microservices",
+        "serverless",
+        "spring-cloud-function",
+        "aws"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.767Z"
+    },
+    "microservices/service-discovery": {
+      "path": "microservices/service-discovery.md",
+      "version": 1,
+      "hash": "aa6292db58ba81839ec8a3580c2e30b8b580969bec341dab4b289d924c1e75f8",
+      "shortHash": "aa6292db",
+      "tags": [
+        "microservices",
+        "service-discovery",
+        "eureka",
+        "spring-cloud"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.767Z"
     },
     "ml-dev/pipeline-essentials": {
       "path": "ml-dev/pipeline-essentials.md",
@@ -687,7 +2191,7 @@
         "reproducibility",
         "starter"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.557Z"
+      "lastUpdated": "2026-06-21T14:13:15.768Z"
     },
     "ml-dev/training-vs-inference": {
       "path": "ml-dev/training-vs-inference.md",
@@ -702,7 +2206,7 @@
         "drift",
         "starter"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.557Z"
+      "lastUpdated": "2026-06-21T14:13:15.768Z"
     },
     "mobile-dev/ios-app-architecture": {
       "path": "mobile-dev/ios-app-architecture.md",
@@ -716,7 +2220,7 @@
         "mvvm",
         "tca"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.557Z"
+      "lastUpdated": "2026-06-21T14:13:15.768Z"
     },
     "mobile-dev/swift-essentials": {
       "path": "mobile-dev/swift-essentials.md",
@@ -729,7 +2233,431 @@
         "swift",
         "language"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.557Z"
+      "lastUpdated": "2026-06-21T14:13:15.768Z"
+    },
+    "persistence/alternative-orms": {
+      "path": "persistence/alternative-orms.md",
+      "version": 1,
+      "hash": "267868d672e9a166aa3a55b11317bd8340b614c6e130011f602b5cc0579ef827",
+      "shortHash": "267868d6",
+      "tags": [
+        "persistence",
+        "orm",
+        "sql-mapper"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.768Z"
+    },
+    "persistence/caching-data-grid": {
+      "path": "persistence/caching-data-grid.md",
+      "version": 1,
+      "hash": "551b36020e2102eec47d209245683933280fbb8b90333242d3b6785754a9f25f",
+      "shortHash": "551b3602",
+      "tags": [
+        "persistence",
+        "caching",
+        "data-grid"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.768Z"
+    },
+    "persistence/connection-pooling": {
+      "path": "persistence/connection-pooling.md",
+      "version": 1,
+      "hash": "2dbca2b854260d6d4d3278290946906c9630d5768aeecc3ebf3379ad7ec5fdaa",
+      "shortHash": "2dbca2b8",
+      "tags": [
+        "persistence",
+        "connection-pool",
+        "hikaricp"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.768Z"
+    },
+    "persistence/hibernate-native": {
+      "path": "persistence/hibernate-native.md",
+      "version": 1,
+      "hash": "77d4e74e4f9a13b1407d27b98ce9b23bf9a7aa04c843df2c763ec90b4ee29cb3",
+      "shortHash": "77d4e74e",
+      "tags": [
+        "persistence",
+        "hibernate",
+        "orm"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.768Z"
+    },
+    "persistence/jdbc-fundamentals": {
+      "path": "persistence/jdbc-fundamentals.md",
+      "version": 1,
+      "hash": "9a500926821deca4f4d32ff15c8d58759a276a6e7ccdf7b1c28336a39e595a01",
+      "shortHash": "9a500926",
+      "tags": [
+        "persistence",
+        "jdbc",
+        "tier-0"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.768Z"
+    },
+    "persistence/jpa-entity-mapping": {
+      "path": "persistence/jpa-entity-mapping.md",
+      "version": 1,
+      "hash": "73f5f59069adbbe808f0f29224005eeff49da54dfa1abc30e40eac8ddfd5f26d",
+      "shortHash": "73f5f590",
+      "tags": [
+        "persistence",
+        "jpa",
+        "entity-mapping"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.768Z"
+    },
+    "persistence/jpa-locking-concurrency": {
+      "path": "persistence/jpa-locking-concurrency.md",
+      "version": 1,
+      "hash": "eb306e2b0f31fb3bba687499ff633f11d10f577a37345f252b12c28ab6fab522",
+      "shortHash": "eb306e2b",
+      "tags": [
+        "persistence",
+        "jpa",
+        "locking",
+        "concurrency"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.768Z"
+    },
+    "persistence/jpa-queries-criteria": {
+      "path": "persistence/jpa-queries-criteria.md",
+      "version": 1,
+      "hash": "ff6626449fe8e1fb6dd9fe9cfdbb3e7049a6e7d29b46264c270350edb7dcd42c",
+      "shortHash": "ff662644",
+      "tags": [
+        "persistence",
+        "jpa",
+        "jpql",
+        "criteria-api"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.768Z"
+    },
+    "persistence/schema-migration": {
+      "path": "persistence/schema-migration.md",
+      "version": 1,
+      "hash": "f4d775098ea2bc179271ebf8e2149321a300112fd9a05653609d3b9ae39cf10b",
+      "shortHash": "f4d77509",
+      "tags": [
+        "persistence",
+        "schema-migration",
+        "flyway",
+        "liquibase"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.768Z"
+    },
+    "persistence/spring-data-nosql": {
+      "path": "persistence/spring-data-nosql.md",
+      "version": 1,
+      "hash": "6ef94e7cf48dc070c3a53897caee15030ef1977525b9955af600e61aaecef676",
+      "shortHash": "6ef94e7c",
+      "tags": [
+        "persistence",
+        "nosql",
+        "spring-data"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.768Z"
+    },
+    "persistence/spring-data-repositories": {
+      "path": "persistence/spring-data-repositories.md",
+      "version": 1,
+      "hash": "89068449a82632f158292510e580d526706643076f3313dcadd834d2f7176d97",
+      "shortHash": "89068449",
+      "tags": [
+        "persistence",
+        "spring-data",
+        "repository"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.768Z"
+    },
+    "persistence/transactions": {
+      "path": "persistence/transactions.md",
+      "version": 1,
+      "hash": "9dbd60ab3e06595f0e8a6479218efd438e2f4fe19aa6a1f67c717ed80b1d6363",
+      "shortHash": "9dbd60ab",
+      "tags": [
+        "persistence",
+        "transactions",
+        "jta"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.768Z"
+    },
+    "reactive/akka-actors-streams": {
+      "path": "reactive/akka-actors-streams.md",
+      "version": 1,
+      "hash": "7a505365349b08ffa7cde4e8fc10b8816d0bd039ccbb1b20ebb478602d5bcd6c",
+      "shortHash": "7a505365",
+      "tags": [
+        "reactive",
+        "akka",
+        "actors"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.768Z"
+    },
+    "reactive/jvm-async-alternatives": {
+      "path": "reactive/jvm-async-alternatives.md",
+      "version": 1,
+      "hash": "d05cd9635e95c4459d63d1982e419159896a174e2890137fb8ef3e07d88c22cd",
+      "shortHash": "d05cd963",
+      "tags": [
+        "reactive",
+        "virtual-threads",
+        "resilience"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.768Z"
+    },
+    "reactive/lmax-disruptor": {
+      "path": "reactive/lmax-disruptor.md",
+      "version": 1,
+      "hash": "d10be441e36119477108bada186ee0340785fbd4fe4c04374a35fcaf28e28bb4",
+      "shortHash": "d10be441",
+      "tags": [
+        "reactive",
+        "disruptor",
+        "concurrency"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.768Z"
+    },
+    "reactive/project-reactor-core": {
+      "path": "reactive/project-reactor-core.md",
+      "version": 1,
+      "hash": "0ecd4b90efa992739cdd991aeb9d942f5adf05f7d4b73c59ab05c4f1f375c395",
+      "shortHash": "0ecd4b90",
+      "tags": [
+        "reactive",
+        "reactor",
+        "flux-mono"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.768Z"
+    },
+    "reactive/reactive-data-integrations": {
+      "path": "reactive/reactive-data-integrations.md",
+      "version": 1,
+      "hash": "1f0e63a750b5f080f026166b320bcae52677885c203fa7cdbcdcdf9ef815e55b",
+      "shortHash": "1f0e63a7",
+      "tags": [
+        "reactive",
+        "persistence",
+        "messaging"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.769Z"
+    },
+    "reactive/reactive-streams-foundations": {
+      "path": "reactive/reactive-streams-foundations.md",
+      "version": 1,
+      "hash": "46e20a5e62611328684c1a1868129dc91aa80adee47413ec357128ce3926efb0",
+      "shortHash": "46e20a5e",
+      "tags": [
+        "reactive",
+        "reactive-streams",
+        "backpressure"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.769Z"
+    },
+    "reactive/reactor-test-stepverifier": {
+      "path": "reactive/reactor-test-stepverifier.md",
+      "version": 1,
+      "hash": "c3a9e7e0429418129861411067d02713e9e716099573adaad269873092ab3143",
+      "shortHash": "c3a9e7e0",
+      "tags": [
+        "reactive",
+        "reactor",
+        "testing"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.769Z"
+    },
+    "reactive/rsocket": {
+      "path": "reactive/rsocket.md",
+      "version": 1,
+      "hash": "2b735d0ca73943076c230c9205d51e585c9f0107c94e521f6d6a998d655d4345",
+      "shortHash": "2b735d0c",
+      "tags": [
+        "reactive",
+        "rsocket",
+        "protocol"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.769Z"
+    },
+    "reactive/rxjava": {
+      "path": "reactive/rxjava.md",
+      "version": 1,
+      "hash": "76993dbf25df45e5d2570c4ee0bfffc4136ede77df388579a75495ea24b44ef1",
+      "shortHash": "76993dbf",
+      "tags": [
+        "reactive",
+        "rxjava",
+        "observables"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.769Z"
+    },
+    "reactive/spring-webclient": {
+      "path": "reactive/spring-webclient.md",
+      "version": 1,
+      "hash": "fc0dabe0af3c7d3c22be6c16ad292fe2021e16bb9455ea8b547a5be3c9e4d9bf",
+      "shortHash": "fc0dabe0",
+      "tags": [
+        "reactive",
+        "spring",
+        "webclient",
+        "http-client"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.769Z"
+    },
+    "reactive/spring-webflux": {
+      "path": "reactive/spring-webflux.md",
+      "version": 1,
+      "hash": "e64c6053a45c89ff909f393a1a025241f8ed626b6f00c0e1783432424bbcbb49",
+      "shortHash": "e64c6053",
+      "tags": [
+        "reactive",
+        "spring",
+        "webflux"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.769Z"
+    },
+    "reactive/vertx": {
+      "path": "reactive/vertx.md",
+      "version": 1,
+      "hash": "d1ff89bc902aab75ac3b9df5a1b3eece70d62d0f1bb642c8c4a0cf4941ad35ce",
+      "shortHash": "d1ff89bc",
+      "tags": [
+        "reactive",
+        "vertx",
+        "event-driven"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.769Z"
+    },
+    "security/applied-cryptography": {
+      "path": "security/applied-cryptography.md",
+      "version": 1,
+      "hash": "b1d7b51ced1123a17ffda0d0df8b1ddb2d1ddcfb6c762f9631ab9fe778c9ecda",
+      "shortHash": "b1d7b51c",
+      "tags": [
+        "security",
+        "cryptography",
+        "libraries"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.769Z"
+    },
+    "security/authentication-backends": {
+      "path": "security/authentication-backends.md",
+      "version": 1,
+      "hash": "87b6667f7ade4a79ee7f13e69dc46b8c5fe07a03e0b4d495358e834e930d4464",
+      "shortHash": "87b6667f",
+      "tags": [
+        "security",
+        "spring-security",
+        "authentication"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.769Z"
+    },
+    "security/authorization-method-acl": {
+      "path": "security/authorization-method-acl.md",
+      "version": 1,
+      "hash": "91826c807c88f93554bb5d1156a848963ef3d98288aea34909c1dc6150df15cd",
+      "shortHash": "91826c80",
+      "tags": [
+        "security",
+        "spring-security",
+        "authorization"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.769Z"
+    },
+    "security/federation-sso": {
+      "path": "security/federation-sso.md",
+      "version": 1,
+      "hash": "22d92826e3cf5d94dc621987c4ef8c995f2e54448be00f5b02edb72d7e30386a",
+      "shortHash": "22d92826",
+      "tags": [
+        "security",
+        "federation",
+        "sso"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.769Z"
+    },
+    "security/jakarta-security-shiro": {
+      "path": "security/jakarta-security-shiro.md",
+      "version": 1,
+      "hash": "132eab1ba2e33b2aaf4dccb13729614d4307d2e55b60df33a62b36ffc283ade3",
+      "shortHash": "132eab1b",
+      "tags": [
+        "security",
+        "jakarta-security",
+        "apache-shiro"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.769Z"
+    },
+    "security/jwt-jose": {
+      "path": "security/jwt-jose.md",
+      "version": 1,
+      "hash": "8da8c6782c9cf60fc0d6cb01e69c1015b0bd42b39fe69495813ebc3c7cad9cda",
+      "shortHash": "8da8c678",
+      "tags": [
+        "security",
+        "jwt",
+        "jose"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.769Z"
+    },
+    "security/oauth2-oidc-spring": {
+      "path": "security/oauth2-oidc-spring.md",
+      "version": 1,
+      "hash": "94a3042fd11969fe8e1e3ebf78443f5f1f71dcda8f43dd1c97a7ea6f388604a6",
+      "shortHash": "94a3042f",
+      "tags": [
+        "security",
+        "oauth2",
+        "oidc"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.769Z"
+    },
+    "security/spring-security-config-model": {
+      "path": "security/spring-security-config-model.md",
+      "version": 1,
+      "hash": "d7b53c2b34be5ab4f2ce427cff598dc2fecf7d816e3e15248c7184cd88cbd38c",
+      "shortHash": "d7b53c2b",
+      "tags": [
+        "security",
+        "spring-security",
+        "configuration"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.769Z"
+    },
+    "security/spring-session-ldap": {
+      "path": "security/spring-session-ldap.md",
+      "version": 1,
+      "hash": "c8dd8cf4e595b9f44b896a0cabac16d4ee7662ab968c0052d5e7c3ddaeb1e6ae",
+      "shortHash": "c8dd8cf4",
+      "tags": [
+        "security",
+        "spring-session",
+        "ldap"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.769Z"
+    },
+    "security/sql-injection-prevention": {
+      "path": "security/sql-injection-prevention.md",
+      "version": 1,
+      "hash": "3f1772e96850b36fb89abcfe936d3de36b7200c0eaa2e44e8382883e309b72ad",
+      "shortHash": "3f1772e9",
+      "tags": [
+        "security",
+        "sql-injection",
+        "input-validation"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.769Z"
+    },
+    "security/web-security-controls": {
+      "path": "security/web-security-controls.md",
+      "version": 1,
+      "hash": "2b250e0c7b6fbd09df3db94ba77693a4d7142739ba143e8069bc5b5180e7e5a9",
+      "shortHash": "2b250e0c",
+      "tags": [
+        "security",
+        "spring-security",
+        "web"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.769Z"
     },
     "security-dev/auth-patterns": {
       "path": "security-dev/auth-patterns.md",
@@ -745,7 +2673,7 @@
         "mfa",
         "starter"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.557Z"
+      "lastUpdated": "2026-06-21T14:13:15.770Z"
     },
     "security-dev/defense-in-depth": {
       "path": "security-dev/defense-in-depth.md",
@@ -761,7 +2689,7 @@
         "severity-calibration",
         "foundational"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.557Z"
+      "lastUpdated": "2026-06-21T14:13:15.770Z"
     },
     "security-dev/protocol-and-state-abuse": {
       "path": "security-dev/protocol-and-state-abuse.md",
@@ -777,7 +2705,7 @@
         "foundational",
         "adversarial-input"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.558Z"
+      "lastUpdated": "2026-06-21T14:13:15.770Z"
     },
     "security-dev/threat-modeling-essentials": {
       "path": "security-dev/threat-modeling-essentials.md",
@@ -791,7 +2719,648 @@
         "attack-trees",
         "starter"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.558Z"
+      "lastUpdated": "2026-06-21T14:13:15.770Z"
+    },
+    "serialization/gson": {
+      "path": "serialization/gson.md",
+      "version": 1,
+      "hash": "b45824be808e18c5c6af0d219badcc63f3c7dfcc7b7212ef7c1f7b5cf4f56bb7",
+      "shortHash": "b45824be",
+      "tags": [
+        "serialization",
+        "gson",
+        "json",
+        "type-token"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.770Z"
+    },
+    "serialization/jackson-annotations": {
+      "path": "serialization/jackson-annotations.md",
+      "version": 1,
+      "hash": "0fcfc2284777d8ac0c371ab96ab5ac28993f3bbb40ddb1d3aed5596dff749d8e",
+      "shortHash": "0fcfc228",
+      "tags": [
+        "serialization",
+        "jackson",
+        "json",
+        "annotations"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.770Z"
+    },
+    "serialization/jackson-custom-serializers": {
+      "path": "serialization/jackson-custom-serializers.md",
+      "version": 1,
+      "hash": "23edcf6aaa9f7435a1f306e6682861006d650cdefa088c8b6a03e2830b6c6a53",
+      "shortHash": "23edcf6a",
+      "tags": [
+        "serialization",
+        "jackson",
+        "json",
+        "custom-serializer"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.770Z"
+    },
+    "serialization/jackson-databinding": {
+      "path": "serialization/jackson-databinding.md",
+      "version": 1,
+      "hash": "77f2d006762dae7d3259146e86c18d40a792903ed77f176f73eb9ebf48cfd6f6",
+      "shortHash": "77f2d006",
+      "tags": [
+        "serialization",
+        "jackson",
+        "json",
+        "data-binding"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.770Z"
+    },
+    "serialization/jackson-polymorphism-dates": {
+      "path": "serialization/jackson-polymorphism-dates.md",
+      "version": 1,
+      "hash": "ebceec720a6e0b2401ec59a8783586756f3d7b1f9a6d2d3499c692684ae6a5f6",
+      "shortHash": "ebceec72",
+      "tags": [
+        "serialization",
+        "jackson",
+        "json",
+        "polymorphism",
+        "date-time"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.770Z"
+    },
+    "serialization/jackson-tree-streaming": {
+      "path": "serialization/jackson-tree-streaming.md",
+      "version": 1,
+      "hash": "5797e0229defedad08dcd582b7231200a74ffb02ec4928f34d082a3743b5fc47",
+      "shortHash": "5797e022",
+      "tags": [
+        "serialization",
+        "jackson",
+        "json",
+        "streaming"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.770Z"
+    },
+    "serialization/jaxb-binding": {
+      "path": "serialization/jaxb-binding.md",
+      "version": 1,
+      "hash": "f5f55250fc27fdc8b8a430d4693b4d90f04a6443250e51df7948cd1a2ef81a4b",
+      "shortHash": "f5f55250",
+      "tags": [
+        "serialization",
+        "xml",
+        "jaxb",
+        "jakarta",
+        "data-binding"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.770Z"
+    },
+    "serialization/json-other-libraries": {
+      "path": "serialization/json-other-libraries.md",
+      "version": 1,
+      "hash": "cb93b03e17cc960f5d7504b5a457ac8083c6bf61cad9fa52c7311921d732e3a0",
+      "shortHash": "cb93b03e",
+      "tags": [
+        "serialization",
+        "json",
+        "json-b",
+        "schema-validation"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.770Z"
+    },
+    "serialization/json-querying": {
+      "path": "serialization/json-querying.md",
+      "version": 1,
+      "hash": "ff641c2ef0d61dc7139555519b0efe2d05dfb9399785f03f02f06cdeec86d711",
+      "shortHash": "ff641c2e",
+      "tags": [
+        "serialization",
+        "json",
+        "jsonpath",
+        "json-pointer"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.770Z"
+    },
+    "serialization/protobuf": {
+      "path": "serialization/protobuf.md",
+      "version": 1,
+      "hash": "52086929fa278f749f9a4fc4004a31c8f14d7833cf8357b58504b7104e6b80a0",
+      "shortHash": "52086929",
+      "tags": [
+        "serialization",
+        "protobuf",
+        "binary",
+        "schema-first"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.770Z"
+    },
+    "serialization/xml-parsing-jaxp": {
+      "path": "serialization/xml-parsing-jaxp.md",
+      "version": 1,
+      "hash": "ffaf872d67bc33052d7b0fc1d59910f5ebf6e4e87e49e12b1b89c8393374f220",
+      "shortHash": "ffaf872d",
+      "tags": [
+        "serialization",
+        "xml",
+        "jaxp",
+        "xpath",
+        "parsing"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.771Z"
+    },
+    "serialization/xml-serializers": {
+      "path": "serialization/xml-serializers.md",
+      "version": 1,
+      "hash": "b2ce6f0ef7fd76a7451c8b653532e0b20b1ee14747e2a499e9d40c249fd743aa",
+      "shortHash": "b2ce6f0e",
+      "tags": [
+        "serialization",
+        "xml",
+        "xstream",
+        "jackson-xml"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.771Z"
+    },
+    "serialization/xml-xxe-security": {
+      "path": "serialization/xml-xxe-security.md",
+      "version": 1,
+      "hash": "0245b97071cf1b1db5f18bfae80c6b3e92831e3daa927d873439cd365041d5f4",
+      "shortHash": "0245b970",
+      "tags": [
+        "serialization",
+        "xml",
+        "security",
+        "xxe",
+        "insecure-deserialization"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.771Z"
+    },
+    "spring-boot/actuator": {
+      "path": "spring-boot/actuator.md",
+      "version": 1,
+      "hash": "52895b09ee4a785c9742f9a8d37758638ee95b2a46db5e95eaa29002e4b3f4a7",
+      "shortHash": "52895b09",
+      "tags": [
+        "spring-boot",
+        "actuator",
+        "observability"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.771Z"
+    },
+    "spring-boot/api-documentation": {
+      "path": "spring-boot/api-documentation.md",
+      "version": 1,
+      "hash": "ebebef6017a54e056052f26bb26621d31756ee9c8bc3466a769b7a9d93d17f1d",
+      "shortHash": "ebebef60",
+      "tags": [
+        "spring-boot",
+        "api-documentation",
+        "openapi"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.771Z"
+    },
+    "spring-boot/auto-configuration": {
+      "path": "spring-boot/auto-configuration.md",
+      "version": 1,
+      "hash": "50ea207cf15821f87989ac59ec37e6fc33e03323b93c162b8fc2dfd8bb2309f9",
+      "shortHash": "50ea207c",
+      "tags": [
+        "spring-boot",
+        "auto-configuration",
+        "conditional-beans"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.771Z"
+    },
+    "spring-boot/bootstrapping-lifecycle": {
+      "path": "spring-boot/bootstrapping-lifecycle.md",
+      "version": 1,
+      "hash": "6243c4631b54266ba6b0417d0e702dc4fe7f3d3dfce7daa664ef35297bf07bed",
+      "shortHash": "6243c463",
+      "tags": [
+        "spring-boot",
+        "bootstrapping",
+        "lifecycle"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.771Z"
+    },
+    "spring-boot/build-packaging": {
+      "path": "spring-boot/build-packaging.md",
+      "version": 1,
+      "hash": "39f0082acb0d232aa6fb5953bd874bd87dca8b18fe4f1ec41ea426a7de4cc3ee",
+      "shortHash": "39f0082a",
+      "tags": [
+        "spring-boot",
+        "build",
+        "packaging"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.771Z"
+    },
+    "spring-boot/error-handling": {
+      "path": "spring-boot/error-handling.md",
+      "version": 1,
+      "hash": "96bc43799f560a24f190064d2fc01ac95280ebd2cbc1e554f65d77bc55649034",
+      "shortHash": "96bc4379",
+      "tags": [
+        "spring-boot",
+        "error-handling",
+        "rest"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.771Z"
+    },
+    "spring-boot/externalized-configuration": {
+      "path": "spring-boot/externalized-configuration.md",
+      "version": 1,
+      "hash": "c380d11e975eaee96fc884ba2f6a6d495e2904e637ffedfd2b42113fe58c0dc7",
+      "shortHash": "c380d11e",
+      "tags": [
+        "spring-boot",
+        "configuration",
+        "property-binding"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.771Z"
+    },
+    "spring-boot/native-image-aot": {
+      "path": "spring-boot/native-image-aot.md",
+      "version": 1,
+      "hash": "0215429594a11c4087ec3052368075f04fb5aecfbfcc7eb08b84be71bd6b2de3",
+      "shortHash": "02154295",
+      "tags": [
+        "spring-boot",
+        "native-image",
+        "graalvm"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.771Z"
+    },
+    "spring-boot/observability-logging": {
+      "path": "spring-boot/observability-logging.md",
+      "version": 1,
+      "hash": "5595c0b51d54fef46771643c124ec655cd19aa4f3363b81cf6a0b566f13db3d4",
+      "shortHash": "5595c0b5",
+      "tags": [
+        "spring-boot",
+        "logging",
+        "observability"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.771Z"
+    },
+    "spring-boot/persistence-jpa": {
+      "path": "spring-boot/persistence-jpa.md",
+      "version": 1,
+      "hash": "b5e19e1540e23e814324cfae7ac54787baa5b3023c615991b0291ce22277437d",
+      "shortHash": "b5e19e15",
+      "tags": [
+        "spring-boot",
+        "persistence",
+        "spring-data-jpa"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.771Z"
+    },
+    "spring-boot/runtime-performance": {
+      "path": "spring-boot/runtime-performance.md",
+      "version": 1,
+      "hash": "69858568da0b61a30193138e48fb51dd05fe46e7130549e995c7b4109ca00683",
+      "shortHash": "69858568",
+      "tags": [
+        "spring-boot",
+        "performance",
+        "runtime"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.771Z"
+    },
+    "spring-boot/security": {
+      "path": "spring-boot/security.md",
+      "version": 1,
+      "hash": "f295189136a6002e8ed6f8a3f12b71392a240a51114117bbc4ca972cb0e6397f",
+      "shortHash": "f2951891",
+      "tags": [
+        "spring-boot",
+        "security",
+        "authentication"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.771Z"
+    },
+    "spring-boot/testing": {
+      "path": "spring-boot/testing.md",
+      "version": 1,
+      "hash": "9a068ee1b28bc0947a9c17eea8a6302b52f69733526ec976c16485d89690f060",
+      "shortHash": "9a068ee1",
+      "tags": [
+        "spring-boot",
+        "testing",
+        "test-slices"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.771Z"
+    },
+    "spring-boot/validation": {
+      "path": "spring-boot/validation.md",
+      "version": 1,
+      "hash": "c4b155bf4e52431486282fdb308b313ee66a17e45e9efd70d955f1768f0f3297",
+      "shortHash": "c4b155bf",
+      "tags": [
+        "spring-boot",
+        "validation",
+        "bean-validation"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.771Z"
+    },
+    "spring-boot/web-rest-controllers": {
+      "path": "spring-boot/web-rest-controllers.md",
+      "version": 1,
+      "hash": "5e6db00e2b9a69b9b0ddccc73d7c827d3f6ce80e816c431310a5fb52afdcfb2a",
+      "shortHash": "5e6db00e",
+      "tags": [
+        "spring-boot",
+        "web",
+        "rest"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.771Z"
+    },
+    "spring-core/bean-lifecycle-extension": {
+      "path": "spring-core/bean-lifecycle-extension.md",
+      "version": 1,
+      "hash": "92afba545966f5e3c2bb1e436d067e83668be75ce2293e18793038bcea698e13",
+      "shortHash": "92afba54",
+      "tags": [
+        "spring-core",
+        "bean-lifecycle",
+        "container-internals"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.772Z"
+    },
+    "spring-core/bean-validation": {
+      "path": "spring-core/bean-validation.md",
+      "version": 1,
+      "hash": "2a19d2b61f07fb88e9e70b2e465ee12f92e0a7e2a6f35760b69c11144e4ffe45",
+      "shortHash": "2a19d2b6",
+      "tags": [
+        "spring-core",
+        "validation",
+        "jsr-380"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.772Z"
+    },
+    "spring-core/cache-abstraction": {
+      "path": "spring-core/cache-abstraction.md",
+      "version": 1,
+      "hash": "e4ec06e4a5d68b6abf7095e4e990828c9b34b2ca6d4f666bccba61145f6dd17e",
+      "shortHash": "e4ec06e4",
+      "tags": [
+        "spring-core",
+        "caching",
+        "cross-cutting"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.772Z"
+    },
+    "spring-core/ioc-container-di": {
+      "path": "spring-core/ioc-container-di.md",
+      "version": 1,
+      "hash": "3a3164166b6f2eb3e82ea5f5513eed6900942a889cd8c936aa4efb4a6719e029",
+      "shortHash": "3a316416",
+      "tags": [
+        "spring-core",
+        "dependency-injection",
+        "ioc-container"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.772Z"
+    },
+    "spring-core/rest-client": {
+      "path": "spring-core/rest-client.md",
+      "version": 1,
+      "hash": "499fcd4ff1c695d4afc097bc5f7e50a85ff5ac39b083cfa0640041d1d0a2207e",
+      "shortHash": "499fcd4f",
+      "tags": [
+        "spring-core",
+        "rest-client",
+        "http"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.772Z"
+    },
+    "spring-core/scheduling-async-retry": {
+      "path": "spring-core/scheduling-async-retry.md",
+      "version": 1,
+      "hash": "02df65db9ff2284d99fd125dacb60c8f93b3b3846029476dde2e8e7a2be6070a",
+      "shortHash": "02df65db",
+      "tags": [
+        "spring-core",
+        "scheduling",
+        "async"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.772Z"
+    },
+    "spring-core/spring-aop": {
+      "path": "spring-core/spring-aop.md",
+      "version": 1,
+      "hash": "9e956207280a6eed027f648f268ea7e248da257bd64cb390445c8c317919d97c",
+      "shortHash": "9e956207",
+      "tags": [
+        "spring-core",
+        "aop",
+        "cross-cutting"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.772Z"
+    },
+    "spring-core/spring-batch": {
+      "path": "spring-core/spring-batch.md",
+      "version": 1,
+      "hash": "307323cf910669f7f1c1b56946e71abb9c7c3451c2d99c825166aa0aec08c352",
+      "shortHash": "307323cf",
+      "tags": [
+        "spring-core",
+        "batch",
+        "etl"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.772Z"
+    },
+    "spring-core/spring-mvc-web-tier": {
+      "path": "spring-core/spring-mvc-web-tier.md",
+      "version": 1,
+      "hash": "bfa69a82c7de14458dbe5a79593da8420a0675e3d3a7f10fc76a5a9cf7cb2660",
+      "shortHash": "bfa69a82",
+      "tags": [
+        "spring-core",
+        "spring-mvc",
+        "web-tier"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.772Z"
+    },
+    "spring-core/spring-testing": {
+      "path": "spring-core/spring-testing.md",
+      "version": 1,
+      "hash": "c751a43af5cd161809058ece2ea1d73bc0d639bdcc5c4da4bd71633cd9b4f2a5",
+      "shortHash": "c751a43a",
+      "tags": [
+        "spring-core",
+        "testing",
+        "mockmvc"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.772Z"
+    },
+    "spring-core/view-technologies": {
+      "path": "spring-core/view-technologies.md",
+      "version": 1,
+      "hash": "a6b2089936ae4c0100050b19c12e86b7230934f9ca173c40395c9cb88cee94d6",
+      "shortHash": "a6b20899",
+      "tags": [
+        "spring-core",
+        "view-templates",
+        "thymeleaf"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.772Z"
+    },
+    "spring-core/websocket-soap": {
+      "path": "spring-core/websocket-soap.md",
+      "version": 1,
+      "hash": "dcb0fbec224ca59c576623abd71e936ce748dd9d95ca853edf13b479c21dabe6",
+      "shortHash": "dcb0fbec",
+      "tags": [
+        "spring-core",
+        "websocket",
+        "soap"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.772Z"
+    },
+    "testing/architecture-coverage-quality": {
+      "path": "testing/architecture-coverage-quality.md",
+      "version": 1,
+      "hash": "90bb3593764c86f5131f4aa2bfc5ae93bce75d58f36611b0e64b6ea0bdbabf33",
+      "shortHash": "90bb3593",
+      "tags": [
+        "testing",
+        "coverage",
+        "code-quality"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.772Z"
+    },
+    "testing/assertion-libraries": {
+      "path": "testing/assertion-libraries.md",
+      "version": 1,
+      "hash": "9bd1e21c9b319701447f0bba560e72f287ad43d7ba294a7f1575f38d16dca9fe",
+      "shortHash": "9bd1e21c",
+      "tags": [
+        "testing",
+        "assertj",
+        "hamcrest"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.772Z"
+    },
+    "testing/async-awaitility": {
+      "path": "testing/async-awaitility.md",
+      "version": 1,
+      "hash": "e87f4742baebcf894c744a3315b0bf4ef1ea70007bee7ba2bb70e96ce56caa1d",
+      "shortHash": "e87f4742",
+      "tags": [
+        "testing",
+        "awaitility",
+        "async"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.772Z"
+    },
+    "testing/bdd-acceptance": {
+      "path": "testing/bdd-acceptance.md",
+      "version": 1,
+      "hash": "8144bd45d7fc5d2387c50cdd76fc031bb7c1d9b4d0292a4997bbc3cdcbf454b4",
+      "shortHash": "8144bd45",
+      "tags": [
+        "testing",
+        "cucumber",
+        "bdd"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.772Z"
+    },
+    "testing/json-xml-assertions": {
+      "path": "testing/json-xml-assertions.md",
+      "version": 1,
+      "hash": "ca3551b82646c527bf3c1a178018fcfd3a55d41f2a43c49ca5867edfb031d288",
+      "shortHash": "ca3551b8",
+      "tags": [
+        "testing",
+        "jsonassert",
+        "xmlunit"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.772Z"
+    },
+    "testing/junit5-jupiter": {
+      "path": "testing/junit5-jupiter.md",
+      "version": 1,
+      "hash": "dae89292423cd4d51077414d766d8ad1d7da2e9bc2f992602b840a3baafa32c4",
+      "shortHash": "dae89292",
+      "tags": [
+        "testing",
+        "junit5",
+        "test-runner"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.772Z"
+    },
+    "testing/load-performance-testing": {
+      "path": "testing/load-performance-testing.md",
+      "version": 1,
+      "hash": "855a3840197c857f33cd0293b6fb5acad2763a1a15fb0886bede6c48824525fe",
+      "shortHash": "855a3840",
+      "tags": [
+        "testing",
+        "load-testing",
+        "performance"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.772Z"
+    },
+    "testing/mockito": {
+      "path": "testing/mockito.md",
+      "version": 1,
+      "hash": "ae1391e571f46f0283cdad226c41354ce9994a0833cebef28ff37895daa27e84",
+      "shortHash": "ae1391e5",
+      "tags": [
+        "testing",
+        "mockito",
+        "mocking"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.772Z"
+    },
+    "testing/rest-api-testing": {
+      "path": "testing/rest-api-testing.md",
+      "version": 1,
+      "hash": "2c83131e993d46fd158c59a8df68d07e4657e246edee64b765232319b0571551",
+      "shortHash": "2c83131e",
+      "tags": [
+        "testing",
+        "rest-assured",
+        "http-mocking"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.773Z"
+    },
+    "testing/spring-testcontext": {
+      "path": "testing/spring-testcontext.md",
+      "version": 1,
+      "hash": "cc54be58b0add3275151fd67cb8de1790ec394c1dc9e53e978fbf4f83b6632d9",
+      "shortHash": "cc54be58",
+      "tags": [
+        "testing",
+        "spring",
+        "integration"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.773Z"
+    },
+    "testing/test-data-fixtures": {
+      "path": "testing/test-data-fixtures.md",
+      "version": 1,
+      "hash": "0ac6fc00fabeda067e4155aeab0fa4fcc13164cf39dd2b884c9b4fdfaf4e4c79",
+      "shortHash": "0ac6fc00",
+      "tags": [
+        "testing",
+        "fixtures",
+        "test-data"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.773Z"
+    },
+    "testing/testcontainers": {
+      "path": "testing/testcontainers.md",
+      "version": 1,
+      "hash": "294b15413e38a4586562f0afebf4f170d875045384700d0bb53fbeb87b0541f4",
+      "shortHash": "294b1541",
+      "tags": [
+        "testing",
+        "testcontainers",
+        "integration"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.773Z"
     },
     "web-dev/accessibility-essentials": {
       "path": "web-dev/accessibility-essentials.md",
@@ -807,7 +3376,7 @@
         "foundational",
         "quality-baseline"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.558Z"
+      "lastUpdated": "2026-06-21T14:13:15.773Z"
     },
     "web-dev/performance-budgets": {
       "path": "web-dev/performance-budgets.md",
@@ -823,7 +3392,7 @@
         "foundational",
         "quality-baseline"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.558Z"
+      "lastUpdated": "2026-06-21T14:13:15.773Z"
     },
     "web-dev/react-essentials": {
       "path": "web-dev/react-essentials.md",
@@ -836,7 +3405,7 @@
         "react",
         "javascript"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.558Z"
+      "lastUpdated": "2026-06-21T14:13:15.773Z"
     },
     "web-dev/typescript-react-patterns": {
       "path": "web-dev/typescript-react-patterns.md",
@@ -850,7 +3419,151 @@
         "typescript",
         "starter"
       ],
-      "lastUpdated": "2026-06-03T01:19:00.559Z"
+      "lastUpdated": "2026-06-21T14:13:15.773Z"
+    },
+    "web-ui/action-mvc-frameworks": {
+      "path": "web-ui/action-mvc-frameworks.md",
+      "version": 1,
+      "hash": "d1117459eec3f90c6f66f1e5e1e9147919096d84de951a9ce3fdec6388525469",
+      "shortHash": "d1117459",
+      "tags": [
+        "web-ui",
+        "mvc",
+        "routing"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.773Z"
+    },
+    "web-ui/component-stateful-ui": {
+      "path": "web-ui/component-stateful-ui.md",
+      "version": 1,
+      "hash": "3336925a5369e0e0e01331a0073a7592559a50fd345d3f9e88dd5f3bc46fbf05",
+      "shortHash": "3336925a",
+      "tags": [
+        "web-ui",
+        "components",
+        "stateful"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.773Z"
+    },
+    "web-ui/forms-validation-binding": {
+      "path": "web-ui/forms-validation-binding.md",
+      "version": 1,
+      "hash": "2be9d6d3e77dbf02bf3472ee9f114d2a1637039ab13e3edce4ef6fbf10f223fc",
+      "shortHash": "2be9d6d3",
+      "tags": [
+        "web-ui",
+        "validation",
+        "data-binding"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.773Z"
+    },
+    "web-ui/javafx-desktop-ui": {
+      "path": "web-ui/javafx-desktop-ui.md",
+      "version": 1,
+      "hash": "9eb5aeece09430fe01998727cd839a0d286459bdc41725dbc78ca151cef80cdc",
+      "shortHash": "9eb5aeec",
+      "tags": [
+        "web-ui",
+        "javafx",
+        "desktop"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.773Z"
+    },
+    "web-ui/javax-jakarta-migration": {
+      "path": "web-ui/javax-jakarta-migration.md",
+      "version": 1,
+      "hash": "f4a1939072d93c25110f99a38702aeae1d4e8c245363fb22e2cbe2ee2a3eac33",
+      "shortHash": "f4a19390",
+      "tags": [
+        "web-ui",
+        "jakarta",
+        "migration"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.773Z"
+    },
+    "web-ui/jvm-templating-engines": {
+      "path": "web-ui/jvm-templating-engines.md",
+      "version": 1,
+      "hash": "e25dcb5110403fb7b790a052250ac926444a9c6bdf2e9940df8786ec40647a55",
+      "shortHash": "e25dcb51",
+      "tags": [
+        "web-ui",
+        "templating",
+        "mustache"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.773Z"
+    },
+    "web-ui/micro-functional-frameworks": {
+      "path": "web-ui/micro-functional-frameworks.md",
+      "version": 1,
+      "hash": "8458b69cc86884ffb41f02cb45cfc58ead61a1121352aee26bd7c746eabb87c5",
+      "shortHash": "8458b69c",
+      "tags": [
+        "web-ui",
+        "microframework",
+        "routing"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.773Z"
+    },
+    "web-ui/play-async-reactive": {
+      "path": "web-ui/play-async-reactive.md",
+      "version": 1,
+      "hash": "547a99a6872283c82fe258f152dc9171dc44750199f554c116cd88a62176d9b2",
+      "shortHash": "547a99a6",
+      "tags": [
+        "web-ui",
+        "play",
+        "async"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.773Z"
+    },
+    "web-ui/ratpack-reactive-handler-chain": {
+      "path": "web-ui/ratpack-reactive-handler-chain.md",
+      "version": 1,
+      "hash": "bbc9a63d8d9fe46d6a07484917a92cb0755e6e3d34140d829300c0ba632b8505",
+      "shortHash": "bbc9a63d",
+      "tags": [
+        "web-ui",
+        "ratpack",
+        "reactive"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.773Z"
+    },
+    "web-ui/realtime-websocket-webrtc": {
+      "path": "web-ui/realtime-websocket-webrtc.md",
+      "version": 1,
+      "hash": "101c326dbbb51e3b735cdcf281144a1d156fac84c1ef333cf9f441b31d57557b",
+      "shortHash": "101c326d",
+      "tags": [
+        "web-ui",
+        "websocket",
+        "webrtc"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.774Z"
+    },
+    "web-ui/server-side-ui-vaadin-gwt": {
+      "path": "web-ui/server-side-ui-vaadin-gwt.md",
+      "version": 1,
+      "hash": "ce0e136bf2ed2bb9f94b5ceac3a4573864f782299c0d74edbbf7864164cca28b",
+      "shortHash": "ce0e136b",
+      "tags": [
+        "web-ui",
+        "vaadin",
+        "gwt"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.774Z"
+    },
+    "web-ui/war-deployment-wildfly": {
+      "path": "web-ui/war-deployment-wildfly.md",
+      "version": 1,
+      "hash": "7bab2b6808b4d4ef2ddca8f8c52d65d3e9b65c42362eca3ef992f9345ed2b79e",
+      "shortHash": "7bab2b68",
+      "tags": [
+        "web-ui",
+        "deployment",
+        "wildfly"
+      ],
+      "lastUpdated": "2026-06-21T14:13:15.774Z"
     }
   }
 }

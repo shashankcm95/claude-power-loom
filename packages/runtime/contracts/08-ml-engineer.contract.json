@@ -37,7 +37,9 @@
     "default": [
       "kb:ml-dev/pipeline-essentials",
       "kb:ml-dev/training-vs-inference",
-      "kb:hets/spawn-conventions"
+      "kb:hets/spawn-conventions",
+      "kb:bigdata-ml-cloud/jvm-machine-learning",
+      "kb:bigdata-ml-cloud/apache-spark"
     ]
   },
   "budget": {
