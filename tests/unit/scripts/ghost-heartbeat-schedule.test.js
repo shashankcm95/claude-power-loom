@@ -129,6 +129,7 @@ function stubEffects() {
   const calls = [];
   return {
     calls,
+    resolveJudgeBin: () => { calls.push('resolveJudgeBin'); return ''; }, // default: nothing baked
     readCrontab: () => { calls.push('readCrontab'); return ''; },
     writeCrontab: (t) => { calls.push(['writeCrontab', t]); },
     writePlist: (p, t) => { calls.push(['writePlist', p, t]); },
@@ -145,15 +146,18 @@ test('install --dry-run (darwin): returns the plist artifact and performs ZERO e
   assert.strictEqual(r.ok, true);
   assert.strictEqual(r.dryRun, true);
   assert.ok(r.artifact.includes('<?xml'), 'returns the plist text');
-  assert.deepStrictEqual(eff.calls, [], 'NO effect called on dry-run');
+  // dry-run plants NOTHING: no MUTATING effect. resolveJudgeBin (command -v + statSync) is
+  // read-only and APPROVED by the PR-C VERIFY board (disposition #1: the dry-run SHOWS the
+  // baked bin for --diff preview; no schedule mutation occurs) -> filtered, not a coverage gap.
+  assert.deepStrictEqual(eff.calls.filter((c) => c !== 'resolveJudgeBin'), [], 'NO mutating effect on dry-run');
 });
 
-test('install --dry-run (linux): returns the cron block and performs ZERO effect (hacker #4)', () => {
+test('install --dry-run (linux): returns the cron block and performs ZERO MUTATING effect (hacker #4)', () => {
   const eff = stubEffects();
   const r = S.install({ os: 'linux', nodeBin: NODEBIN, runnerPath: __filename, dryRun: true, effects: eff });
   assert.strictEqual(r.ok, true);
   assert.ok(r.artifact.includes(S.MARKER_BEGIN), 'returns the cron block');
-  assert.deepStrictEqual(eff.calls, [], 'NO effect called on dry-run');
+  assert.deepStrictEqual(eff.calls.filter((c) => c !== 'resolveJudgeBin'), [], 'NO mutating effect on dry-run');
 });
 
 // --- install runner-absent guard (code-rev HIGH #6 belt) ------------------
@@ -253,6 +257,125 @@ test('status (linux): a dangling BEGIN (no END) reports installed:false', () => 
   assert.strictEqual(S.status({ os: 'linux', effects: both }).installed, true, 'complete ordered span -> installed');
   assert.strictEqual(S.status({ os: 'linux', effects: dangling }).installed, false, 'dangling BEGIN -> NOT installed');
   assert.strictEqual(S.status({ os: 'linux', effects: reversed }).installed, false, 'END-before-BEGIN (out of order) -> NOT installed (CodeRabbit ordered-span)');
+});
+
+// =================== PR-C: bake the absolute judge bin ===================
+const ABS = '/Users/x/.local/bin/claude';
+
+test('PR-C plist: a judgeBin bakes a 2nd EnvironmentVariables entry (xml-escaped)', () => {
+  const p = S.buildLaunchdPlist({ label: 'com.x', nodeBin: NODEBIN, runnerPath: RUNNER, intervalSec: 14400, stdoutPath: LOG, stderrPath: LOG, judgeBin: ABS });
+  assert.ok(p.includes('<key>GHOST_HEARTBEAT_JUDGE_BIN</key>'), 'JUDGE_BIN key present');
+  assert.ok(p.includes(`<string>${ABS}</string>`), 'abs path baked');
+  // still a well-formed single EnvironmentVariables dict with EMIT first
+  assert.ok(p.indexOf('GHOST_HEARTBEAT_EMIT') < p.indexOf('GHOST_HEARTBEAT_JUDGE_BIN'), 'EMIT before JUDGE_BIN');
+});
+
+test('PR-C plist: NO judgeBin -> exact back-compat (no JUDGE_BIN key)', () => {
+  const p = S.buildLaunchdPlist({ label: 'com.x', nodeBin: NODEBIN, runnerPath: RUNNER, intervalSec: 14400, stdoutPath: LOG, stderrPath: LOG });
+  assert.ok(!p.includes('GHOST_HEARTBEAT_JUDGE_BIN'), 'no JUDGE_BIN key when absent (back-compat)');
+});
+
+test('PR-C plist: an XML-injection judgeBin is neutralized by xmlEscape', () => {
+  const evil = '/x</string></dict><key>RunAtLoad</key><true/><string>';
+  const p = S.buildLaunchdPlist({ label: 'com.x', nodeBin: NODEBIN, runnerPath: RUNNER, intervalSec: 14400, stdoutPath: LOG, stderrPath: LOG, judgeBin: evil });
+  assert.ok(!p.includes('<key>RunAtLoad</key><true/>'), 'no injected key escaped the string');
+  assert.ok(p.includes('&lt;/string&gt;'), 'angle brackets entity-escaped');
+});
+
+test('PR-C cron: a judgeBin sits AFTER the schedule + EMIT and BEFORE the node arg (single-quoted)', () => {
+  const c = S.buildCronBlock({ nodeBin: NODEBIN, runnerPath: RUNNER, stdoutPath: LOG, judgeBin: ABS });
+  const line = c.split('\n')[1];
+  assert.ok(line.includes(`GHOST_HEARTBEAT_JUDGE_BIN='${ABS}'`), 'single-quoted JUDGE_BIN assignment');
+  const iEmit = line.indexOf('GHOST_HEARTBEAT_EMIT=1');
+  const iJudge = line.indexOf('GHOST_HEARTBEAT_JUDGE_BIN=');
+  const iNode = line.indexOf(`'${NODEBIN}'`);
+  assert.ok(iEmit < iJudge && iJudge < iNode, 'EMIT < JUDGE_BIN < node command (valid inline-env placement)');
+});
+
+test('PR-C cron: NO judgeBin -> exact back-compat (no JUDGE_BIN assignment)', () => {
+  const c = S.buildCronBlock({ nodeBin: NODEBIN, runnerPath: RUNNER, stdoutPath: LOG });
+  assert.ok(!c.includes('GHOST_HEARTBEAT_JUDGE_BIN'), 'no JUDGE_BIN when absent');
+});
+
+test('PR-C builder: an UNSAFE judgeBin (control char / %) THROWS (strict for direct callers)', () => {
+  assert.throws(() => S.buildLaunchdPlist({ label: 'c', nodeBin: NODEBIN, runnerPath: RUNNER, intervalSec: 1, stdoutPath: LOG, stderrPath: LOG, judgeBin: '/x%y/claude' }), /unsafe-arg:judgeBin/);
+  assert.throws(() => S.buildCronBlock({ nodeBin: NODEBIN, runnerPath: RUNNER, stdoutPath: LOG, judgeBin: `/x${String.fromCharCode(10)}y` }), /unsafe-arg:judgeBin/);
+});
+
+// vetJudgeBinPath (the PATH-poisoning-persistence guard) -- injected fs, no real disk.
+// Models the REAL claude shape: ABS is a SYMLINK in BIN_DIR -> a regular file in TGT_DIR.
+const BIN_DIR = '/Users/x/.local/bin';
+const TGT = '/Users/x/.local/share/claude/versions/1/claude';
+const TGT_DIR = '/Users/x/.local/share/claude/versions/1';
+function vetFs({ binDirMode = 0o755, tgtDirMode = 0o755, fileMode = 0o755, isFile = true } = {}) {
+  return {
+    realpathSync: (p) => (p === ABS ? TGT : p),
+    statSync: (p) => {
+      if (p === ABS || p === TGT) return { isFile: () => isFile, mode: fileMode };
+      if (p === BIN_DIR) return { isFile: () => false, mode: binDirMode };
+      if (p === TGT_DIR) return { isFile: () => false, mode: tgtDirMode };
+      throw new Error(`ENOENT ${p}`);
+    },
+  };
+}
+test('PR-C vetJudgeBinPath: a good symlinked abs path (both dirs non-world-writable) is accepted', () => {
+  assert.strictEqual(S.vetJudgeBinPath(ABS, vetFs()), ABS);
+});
+test('PR-C vetJudgeBinPath: rejects non-absolute / non-file / control-char / missing', () => {
+  assert.strictEqual(S.vetJudgeBinPath('claude', vetFs()), '', 'relative -> reject');
+  assert.strictEqual(S.vetJudgeBinPath(ABS, vetFs({ isFile: false })), '', 'not a regular file -> reject');
+  assert.strictEqual(S.vetJudgeBinPath(`/x${String.fromCharCode(0)}/claude`, vetFs()), '', 'control char -> reject');
+  assert.strictEqual(S.vetJudgeBinPath('/no/such/claude', { statSync: () => { throw new Error('ENOENT'); }, realpathSync: (p) => p }), '', 'missing -> reject');
+});
+test('PR-C vetJudgeBinPath: rejects a world-writable SYMLINK dir OR a world-writable TARGET dir (hacker MED)', () => {
+  assert.strictEqual(S.vetJudgeBinPath(ABS, vetFs({ binDirMode: 0o777 })), '', 'world-writable symlink dir -> reject');
+  assert.strictEqual(S.vetJudgeBinPath(ABS, vetFs({ tgtDirMode: 0o777 })), '', 'world-writable TARGET dir -> reject (the symlink-target gap)');
+});
+test('PR-C vetJudgeBinPath: rejects a world-writable BINARY even under safe dirs (CodeRabbit)', () => {
+  assert.strictEqual(S.vetJudgeBinPath(ABS, vetFs({ fileMode: 0o777 })), '', 'world-writable binary (any user can overwrite in place) -> reject');
+  assert.strictEqual(S.vetJudgeBinPath(ABS, vetFs({ fileMode: 0o755 })), ABS, '0755 binary under safe dirs -> accepted');
+});
+
+test('PR-C plist: an & in judgeBin is xml-escaped; cron single-quotes a space-bearing path', () => {
+  const p = S.buildLaunchdPlist({ label: 'c', nodeBin: NODEBIN, runnerPath: RUNNER, intervalSec: 1, stdoutPath: LOG, stderrPath: LOG, judgeBin: '/x&y/claude' });
+  assert.ok(p.includes('/x&amp;y/claude') && !p.includes('<string>/x&y/claude</string>'), '& -> &amp; in the plist');
+  const c = S.buildCronBlock({ nodeBin: NODEBIN, runnerPath: RUNNER, stdoutPath: LOG, judgeBin: '/Users/John Smith/claude' });
+  assert.ok(c.includes(`GHOST_HEARTBEAT_JUDGE_BIN='/Users/John Smith/claude'`), 'a space-bearing path is one single-quoted token');
+});
+
+// install() default-resolves the judge bin via the effect + reports judgeBinBaked.
+test('PR-C install (effectful, non-dry): a resolved bin is baked into the WRITTEN artifact + judgeBinBaked:true', () => {
+  let written = '';
+  const effDar = { ...stubEffects(), resolveJudgeBin: () => ABS, writePlist: (p, t) => { written = t; } };
+  const rd = S.install({ os: 'darwin', nodeBin: NODEBIN, runnerPath: __filename, effects: effDar, launchAgentsDir: '/tmp/la', logDir: '/tmp/lg' });
+  assert.strictEqual(rd.judgeBinBaked, true, 'darwin effectful: judgeBinBaked');
+  assert.ok(written.includes(`<string>${ABS}</string>`), 'the WRITTEN plist carries the abs bin');
+  let crontab = '';
+  const effLin = { ...stubEffects(), resolveJudgeBin: () => ABS, readCrontab: () => '', writeCrontab: (t) => { crontab = t; } };
+  const rl = S.install({ os: 'linux', nodeBin: NODEBIN, runnerPath: __filename, effects: effLin });
+  assert.strictEqual(rl.judgeBinBaked, true, 'linux effectful: judgeBinBaked');
+  assert.ok(crontab.includes(`GHOST_HEARTBEAT_JUDGE_BIN='${ABS}'`), 'the WRITTEN crontab carries the abs bin');
+});
+
+test('PR-C install: resolves the judge bin by DEFAULT via the effect (the production CLI path)', () => {
+  const eff = { ...stubEffects(), resolveJudgeBin: () => ABS };
+  const r = S.install({ os: 'darwin', nodeBin: NODEBIN, runnerPath: __filename, dryRun: true, effects: eff });
+  assert.strictEqual(r.judgeBinBaked, true);
+  assert.ok(r.artifact.includes(`<string>${ABS}</string>`), 'the effect-resolved abs bin is baked into the dry-run artifact');
+});
+test('PR-C install: an empty resolution bakes nothing + reports judgeBinBaked:false (no regression)', () => {
+  const eff = { ...stubEffects(), resolveJudgeBin: () => '' };
+  const r = S.install({ os: 'darwin', nodeBin: NODEBIN, runnerPath: __filename, dryRun: true, effects: eff });
+  assert.strictEqual(r.judgeBinBaked, false);
+  assert.ok(!r.artifact.includes('GHOST_HEARTBEAT_JUDGE_BIN'), 'nothing baked');
+});
+test('PR-C install: opts.judgeBin OVERRIDES the effect (test seam); runner-absent fires NO resolve', () => {
+  const eff = { ...stubEffects(), resolveJudgeBin: () => { throw new Error('should not be called'); } };
+  const r = S.install({ os: 'linux', nodeBin: NODEBIN, runnerPath: __filename, judgeBin: ABS, dryRun: true, effects: eff });
+  assert.ok(r.artifact.includes(`GHOST_HEARTBEAT_JUDGE_BIN='${ABS}'`), 'opts.judgeBin used, effect not called');
+  const eff2 = stubEffects();
+  S.install({ os: 'linux', nodeBin: NODEBIN, runnerPath: '/no/such/run.js', effects: eff2 });
+  assert.ok(!eff2.calls.includes('resolveJudgeBin'), 'runner-absent -> resolveJudgeBin NOT called (after the guard)');
 });
 
 process.stdout.write(`\n  Passed: ${passed}  Failed: ${failed}\n`);

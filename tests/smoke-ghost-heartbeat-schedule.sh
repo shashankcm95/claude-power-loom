@@ -70,3 +70,21 @@ else
   echo "FAIL: dry-run changed schedule status ($T127_BEFORE -> $T127_AFTER)"
   failed=$((failed + 1))
 fi
+
+# Test 128 (PR-C): when claude IS on PATH, the REAL dry-run MUST bake the absolute judge bin.
+# This exercises the production resolveJudgeBin effect (not a test stub) -> it catches a
+# silently-empty (dark) bake the unit tests cannot. Self-skips when claude is absent (CI), the
+# same pattern as the G3 sentinel test.
+echo -n "  Test 128 (ghost-heartbeat schedule: dry-run bakes the absolute judge bin when claude is on PATH): "
+if ! command -v claude >/dev/null 2>&1; then
+  echo "SKIP (claude not on PATH -- expected in CI)"
+else
+  T128_OUT=$(node "$GHB_SCHED_MOD" install --dry-run 2>&1 || true)
+  if printf '%s' "$T128_OUT" | grep -qF "GHOST_HEARTBEAT_JUDGE_BIN"; then
+    echo "OK (absolute judge bin baked -- not a dark/empty bake)"
+    passed=$((passed + 1))
+  else
+    echo "FAIL: claude is on PATH but the dry-run artifact did NOT bake GHOST_HEARTBEAT_JUDGE_BIN (the fix is dark)"
+    failed=$((failed + 1))
+  fi
+fi

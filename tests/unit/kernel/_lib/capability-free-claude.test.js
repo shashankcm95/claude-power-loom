@@ -51,6 +51,15 @@ if (!hasClaude()) {
   // real failure. So skip-on-invocation-failure too; assert no-leak ONLY on success. This
   // matches the honest framing (G3 is a LOCAL probe: "IF the judge runs, it cannot leak";
   // it cannot make a continuous CI-style guarantee -- see capability-free-claude.js header).
+  // HARDEN G3 against the PR-C env override (hacker HIGH): a leaked GHOST_HEARTBEAT_JUDGE_BIN
+  // would make this no-bin call spawn the env bin (e.g. /bin/true) instead of the REAL claude
+  // -> empty stdout -> the sentinel is vacuously absent -> G3 passes while testing NOTHING.
+  // Delete + assert-unset so the sentinel probe ALWAYS exercises the real PATH claude.
+  const SAVED_BIN = process.env.GHOST_HEARTBEAT_JUDGE_BIN;
+  test('G3 pre-condition: GHOST_HEARTBEAT_JUDGE_BIN cleared so the sentinel probe runs the REAL claude', () => {
+    delete process.env.GHOST_HEARTBEAT_JUDGE_BIN;
+    assert.strictEqual(process.env.GHOST_HEARTBEAT_JUDGE_BIN, undefined, 'a leaked env bin would make G3 a vacuous pass');
+  });
   const sentinel = `CAPFREE_TEST_${crypto.randomBytes(6).toString('hex')}`;
   const secret = path.join(os.tmpdir(), `capfree-${crypto.randomBytes(6).toString('hex')}.txt`);
   fs.writeFileSync(secret, `secret=${sentinel}\n`);
@@ -60,6 +69,8 @@ if (!hasClaude()) {
     r = runCapabilityFreeJudge({ prompt, timeout: 60000 });
   } finally {
     fs.unlinkSync(secret);
+    if (SAVED_BIN === undefined) delete process.env.GHOST_HEARTBEAT_JUDGE_BIN;
+    else process.env.GHOST_HEARTBEAT_JUDGE_BIN = SAVED_BIN;
   }
   if (!r || !r.ok) {
     process.stdout.write(`  SKIP G3 (sentinel-leak): claude invocation inconclusive (${r && r.reason}) -- not a leak; enforcement unverifiable this run\n`);
