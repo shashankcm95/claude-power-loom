@@ -31,6 +31,7 @@ const METADATA_FIELDS = Object.freeze(['resolved_at', 'perturbation_of', 'diffic
 const DERIVED_FIELDS = Object.freeze(['temporal_tier']);
 const INPUT_FIELD_SET = new Set([...PUBLIC_FIELDS, ...SEALED_FIELDS, ...METADATA_FIELDS]);
 const DERIVED_FIELD_SET = new Set(DERIVED_FIELDS);
+const PUBLIC_FIELD_SET = new Set(PUBLIC_FIELDS);
 
 // ── Constants ──
 const NEG_CONTROL_SENTINEL = '__LOOM_NEG_CONTROL__';
@@ -151,6 +152,30 @@ function validateIssueCorpus(records) {
   return records.length;
 }
 
+// ③.2.2a (open/closed addition — does NOT touch validateOne / the SEALED boundary): the PUBLIC-ONLY
+// record validator. A live OPEN issue has no sealed oracle (accepted_diff/fail_to_pass/test_patch), so
+// the live puller produces a record carrying ONLY the four PUBLIC_FIELDS — which validateIssueCorpus
+// structurally REJECTS (it is a full raw-record validator: it requires every SEALED+METADATA field and
+// hard-throws on any key outside the input union). validatePublicRecord is the gate for that shape:
+// EXACTLY the four PUBLIC_FIELDS (no extra key — a smuggled sealed field is rejected, not silently
+// carried), each a non-empty string, base_sha a 40-hex commit. Mirrors validateOne's anti-leak
+// discipline (Symbol + accessor rejection) so a getter/aliased key cannot slip the exact-shape check.
+// Throws on any violation (the live puller's per-item loop drops on throw); returns true on success.
+function validatePublicRecord(rec) {
+  if (rec === null || typeof rec !== 'object' || Array.isArray(rec)) throw new Error('public-record: must be a plain object');
+  if (Object.getOwnPropertySymbols(rec).length > 0) throw new Error('public-record: a Symbol key is never a legitimate public field');
+  for (const k of Object.getOwnPropertyNames(rec)) {
+    const d = Object.getOwnPropertyDescriptor(rec, k);
+    if (d.get !== undefined || d.set !== undefined) throw new Error('public-record: ' + k + ' is an accessor (getter/setter), not a data field');
+    if (!PUBLIC_FIELD_SET.has(k)) throw new Error('public-record: unexpected field ' + k + ' (expected exactly PUBLIC_FIELDS)');
+  }
+  for (const k of PUBLIC_FIELDS) {
+    if (!hasOwn(rec, k) || !isPlainString(rec[k]) || rec[k].length === 0) throw new Error('public-record: ' + k + ' required non-empty string');
+  }
+  if (!/^[0-9a-f]{40}$/.test(rec.base_sha)) throw new Error('public-record: base_sha must be 40-hex lowercase');
+  return true;
+}
+
 function stripManifestHash(i) {
   const out = {};
   for (const k of Object.keys(i)) if (k !== 'manifest_hash') out[k] = i[k];
@@ -205,7 +230,7 @@ function reportStratification(records) {
 }
 
 module.exports = {
-  splitRecord, validateIssueCorpus, assignTemporalTier, computeManifestHash, reportStratification,
+  splitRecord, validateIssueCorpus, validatePublicRecord, assignTemporalTier, computeManifestHash, reportStratification,
   PUBLIC_FIELDS, SEALED_FIELDS, METADATA_FIELDS, DERIVED_FIELDS,
   NEG_CONTROL_SENTINEL, MODEL_CUTOFF, N_CLEAN_LARGE_MIN, ENUMS,
 };
