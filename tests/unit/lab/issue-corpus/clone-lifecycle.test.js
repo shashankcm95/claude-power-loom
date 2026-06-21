@@ -27,7 +27,7 @@ const { execFileSync } = require('child_process');
 
 const REPO_ROOT = path.join(__dirname, '..', '..', '..', '..');
 const CL = require(path.join(REPO_ROOT, 'packages', 'lab', 'issue-corpus', '_clone-lifecycle.js'));
-const { prepareClone, captureActorDiff } = CL;
+const { prepareClone, captureActorDiff, applyPatch } = CL;
 // Test-owned dirs are cleaned with a direct rmSync (CodeRabbit #380): do NOT route test cleanup through
 // the production safeDiscard (its TEMP_ROOT guard exists for a different purpose).
 function rmrf(d) { try { fs.rmSync(d, { recursive: true, force: true }); } catch { /* best-effort */ } }
@@ -188,6 +188,35 @@ test('A3: a local file repo is still refused WITHOUT allowLocalRepo (the gate ho
   const { repoPath, base_sha } = makeFixtureRepo();
   await assert.rejects(() => prepareClone({ repo: repoPath, base_sha }),
     /allowLocalRepo|host-local/i, 'local repo refused without the opt-in');
+});
+
+// ③.2.1a PR-2 (forge) #6 — the grader applyPatch runs under `-c core.attributesFile=/dev/null`, so a
+// HOST-GLOBAL gitattributes file cannot influence the apply (eol/text normalization OR a filter-driver
+// assignment). Defense-in-depth mirroring captureActorDiff; an IN-TREE .gitattributes is closed
+// separately by the diff-scope (PR-1) and a candidate filter-driver by the C1 .git/config restore.
+test('#6: applyPatch neutralizes a HOST-GLOBAL gitattributes (eol=crlf) — control honors it, applyPatch does not', async () => {
+  const repo = scratch('loom-attr-');
+  rawGit(['init', '--quiet', '-b', 'main'], repo);
+  fs.writeFileSync(path.join(repo, 'note.txt'), 'line1\nline2\n');
+  rawGit(['add', 'note.txt'], repo); rawGit(['commit', '--quiet', '-m', 'base'], repo);
+  // generate the patch under CLEAN attrs (before wiring the host-global file) so it is plain-LF context.
+  fs.writeFileSync(path.join(repo, 'note.txt'), 'line1\nLINE2\n');
+  const patch = rawGit(['diff'], repo);
+  rawGit(['checkout', '--', 'note.txt'], repo);
+  // a HOST-GLOBAL-style attributes file forcing CRLF on *.txt, wired in via repo core.attributesFile
+  const attrs = path.join(repo, 'host.attrs');
+  fs.writeFileSync(attrs, '*.txt text eol=crlf\n');
+  rawGit(['config', 'core.attributesFile', attrs], repo);
+  const crlfCount = () => (fs.readFileSync(path.join(repo, 'note.txt'), 'utf8').match(/\r/g) || []).length;
+  // CONTROL (non-vacuous): a bare apply that HONORS the host-global attrs -> CRLF appears.
+  const pfile = path.join(repo, 'ctrl.diff'); fs.writeFileSync(pfile, patch);
+  rawGit(['-c', `core.attributesFile=${attrs}`, 'apply', '--', pfile], repo);
+  assert.ok(crlfCount() > 0, 'control: a host-global eol=crlf attrs DOES alter a bare apply (proves non-vacuous)');
+  // reset to clean LF UNDER /dev/null (a plain checkout would smudge back to CRLF under the active attrs regime).
+  rawGit(['-c', 'core.attributesFile=/dev/null', 'checkout', '--', 'note.txt'], repo);
+  // applyPatch (the grader path) overrides core.attributesFile=/dev/null -> the host-global attrs is neutralized.
+  await applyPatch({ workDir: repo, patch, label: 'candidate' });
+  assert.strictEqual(crlfCount(), 0, 'applyPatch ran under core.attributesFile=/dev/null -> no host-global eol normalization');
 });
 
 // --- run ---------------------------------------------------------------------------------------
