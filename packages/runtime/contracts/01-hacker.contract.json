@@ -19,7 +19,9 @@
   "kb_scope": {
     "default": [
       "kb:security-dev/threat-modeling-essentials",
-      "kb:hets/spawn-conventions"
+      "kb:hets/spawn-conventions",
+      "kb:security/sql-injection-prevention",
+      "kb:security/web-security-controls"
     ]
   },
   "budget": {

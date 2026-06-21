@@ -28,7 +28,9 @@
     "default": [
       "kb:infra-dev/kubernetes-essentials",
       "kb:infra-dev/observability-basics",
-      "kb:hets/spawn-conventions"
+      "kb:hets/spawn-conventions",
+      "kb:build-devops/docker-packaging",
+      "kb:build-devops/kubernetes-iac"
     ]
   },
   "budget": {

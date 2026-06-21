@@ -34,7 +34,9 @@
     "default": [
       "kb:backend-dev/spring-boot-essentials",
       "kb:backend-dev/jvm-runtime-basics",
-      "kb:hets/spawn-conventions"
+      "kb:hets/spawn-conventions",
+      "kb:spring-boot/auto-configuration",
+      "kb:spring-core/ioc-container-di"
     ]
   },
   "budget": {

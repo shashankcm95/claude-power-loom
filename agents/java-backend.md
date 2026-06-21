@@ -25,6 +25,10 @@ Default kb_scope for this persona (override in spawn prompt if needed):
 - `kb:backend-dev/spring-boot-essentials`
 - `kb:backend-dev/jvm-runtime-basics`
 - `kb:hets/spawn-conventions` — output-format requirements for HETS spawns
+- `kb:spring-boot/auto-configuration` — classpath-driven conditional bean registration
+- `kb:spring-core/ioc-container-di` — Spring IoC / dependency-injection core
+
+**Broader scope (select per task, do not preload):** the `spring-boot/` · `spring-core/` · `persistence/` · `messaging/` · `microservices/` · `reactive/` · `serialization/` · `testing/` KB section(s). Find task-relevant docs via `kb-resolver list --tag <topic>` + each doc's `related[]`; load at Summary tier first, drill deeper only for docs you act on.
 
 Consult via `node packages/runtime/orchestration/kb-resolver.js cat <kb_id>` (or `Read packages/skills/library/agent-team/kb/<kb_id>.md` if Bash isn't in your tool inventory).
 
