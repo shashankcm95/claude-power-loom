@@ -24,11 +24,17 @@ const {
 const { validatePublicRecord } = require(path.join(REPO, 'packages', 'lab', 'issue-corpus', 'corpus.js'));
 
 let passed = 0; let failed = 0;
+// Collect every test's promise so the summary awaits ACTUAL completion, not a timer tick (CodeRabbit
+// #390): some tests are async (the pullLiveCorpus cases), so process.exit must fire on Promise.all of
+// the whole set — never on a setImmediate guess that could miss a slow/late failure.
+const pending = [];
 function test(name, fn) {
-  Promise.resolve()
-    .then(fn)
-    .then(() => { process.stdout.write(`  PASS ${name}\n`); passed++; })
-    .catch((err) => { process.stdout.write(`  FAIL ${name}: ${err.message}\n`); failed++; });
+  pending.push(
+    Promise.resolve()
+      .then(fn)
+      .then(() => { process.stdout.write(`  PASS ${name}\n`); passed++; })
+      .catch((err) => { process.stdout.write(`  FAIL ${name}: ${err.message}\n`); failed++; }),
+  );
 }
 
 // ── (a) assertSafeOwnerRepo — the CRITICAL net-new surface (VERIFY H1) ──
@@ -253,7 +259,15 @@ test('g6. EC2.1h — the record.repo is github.com even when the raw repository_
 // kernel. This converts the manual "lint/grep" attestation into a running check.
 test('h1. EC2.1d — the module source has no git-push / gh-pr / fs-write / egress-import call-site', () => {
   const src = fs.readFileSync(path.join(REPO, 'packages', 'lab', 'issue-corpus', 'live-puller.js'), 'utf8');
-  const forbidden = [/git\s+push/i, /push\s+--?/i, /\bgh\s+pr\b/i, /'pr'/i, /fs\.write/i, /writeFile/i, /require\([^)]*egress/i];
+  // precise call-site shapes (CodeRabbit #390: avoid over-broad patterns like /'pr'/ that false-fail CI).
+  const forbidden = [
+    /\bgit\b[\s'",\]]+push\b/i,                     // git push command/arg
+    /\bgh\b[\s'",\]]+pr\b/i,                        // gh pr ...
+    /['"]pr['"]\s*,\s*['"]create['"]/i,            // ['pr','create']
+    /(?:-X|--method)['"]?\s*[,\s]+['"]?(?:POST|PUT|PATCH|DELETE)\b/i,  // a gh-api WRITE verb (-X/--method; single or argv form)
+    /\bfs\.write/i, /\bwriteFileSync\b/i,           // fs writes
+    /require\(['"][^'"]*egress/i,                   // egress import
+  ];
   const hits = forbidden.filter((re) => re.test(src)).map((re) => re.source);
   assert.deepStrictEqual(hits, [], 'forbidden write/emission call-sites: ' + hits.join(', '));
   // the ONLY subprocess sink is the read-only execFileSync('gh', ...); no spawn / execSync.
@@ -262,8 +276,8 @@ test('h1. EC2.1d — the module source has no git-push / gh-pr / fs-write / egre
   assert.ok(!/\bspawn\b|\bexecSync\b/.test(src), 'no other subprocess sink (spawn/execSync)');
 });
 
-// summary (deferred a tick so the async tests resolve first)
-setImmediate(() => setImmediate(() => {
+// summary — awaits ALL tests' actual completion (Promise.all), then exits on the real pass/fail count.
+Promise.all(pending).then(() => {
   process.stdout.write(`\nlive-puller.test.js (③.2.2a): ${passed} passed, ${failed} failed\n`);
   process.exit(failed === 0 ? 0 : 1);
-}));
+});
