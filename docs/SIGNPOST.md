@@ -70,6 +70,10 @@ Auto-generated map of where things live, derived from the repo structure + each 
 
 - `packages/kernel/algorithms/route-decide.js` - route-decide.js — H.7.3 deterministic route-decision gate.
 
+### `kernel/egress/`
+
+- `packages/kernel/egress/emit-pr.js` - ③.2.1b — the PR-egress kernel: the SINGLE in-process `emitPR` chokepoint that is the SOLE holder of
+
 ### `kernel/enforcement/`
 
 - `packages/kernel/enforcement/k10-escape-hatch.js` - K10 — operator escape hatches + F10 combined-bypass detection (v3.0-alpha, PR 2).
