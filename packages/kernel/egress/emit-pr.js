@@ -32,6 +32,8 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { withLockSoft } = require('../_lib/lock');
+const { scrubEmitDiff } = require('./scrub');                          // ③.2.1b PR-B — body secret-scrub
+const { capExceeded, recordEmit, etiquetteKey, alreadyEmitted, recordEmitted } = require('./policy');
 // NOTE: child_process is intentionally NOT imported this wave — armedEmit() (the only network seam) is
 // unimplemented (throws). ③.2.3 adds the sanitized-env gh REST call there.
 
@@ -136,6 +138,12 @@ function assertSafeIssueRef(issueRef) {
 const DISPOSITION_KEYS = Object.freeze([
   'dryRun', 'dry_run', 'dry-run', 'live', 'draft', 'disposition', 'mode', 'emit', 'killswitch',
   'token', 'ghToken', 'gh_token', 'GH_TOKEN', 'GITHUB_TOKEN', 'armed', 'force',
+  // ③.2.1b PR-B — the cap/window/etiquette policy vocabulary AND the custody opts-path names (a poisoned
+  // data attempt is REJECTED, not silently ignored): the actor never sets the cap/ledger state OR a path.
+  'cap', 'window', 'windowCount', 'windowStart', 'emitCount', 'ledger', 'backpressure',
+  'rateLimit', 'perWindowCap', 'windowMs', 'emittedKeys', 'seen', 'now', 'count',
+  'custodyCapStatePath', 'custodyEtiquetteLedgerPath', 'custodyTokenPath', 'custodyDispositionPath',
+  'killswitchPath', 'lockPath', 'ghConfigDir', 'hostAllowlist',
 ]);
 // CASE-FOLDED match set (+ the prototype-pollution keys) so a casing/spelling variant (Live / DRY_RUN /
 // __proto__) cannot slip the deny-list (VALIDATE-hacker).
@@ -271,7 +279,8 @@ const DEFAULT_LOCK_PATH = path.join(os.tmpdir(), 'loom-egress-emit.lock');
 /**
  * @param {{repo: string, issueRef: number|string, diff: string}} data  UNTRUSTED (actor-influenceable).
  * @param {object} [opts]  TRUSTED policy custody: { custodyTokenPath, custodyDispositionPath,
- *   killswitchPath, ghConfigDir, lockPath, hostAllowlist }.
+ *   killswitchPath, ghConfigDir, lockPath, hostAllowlist, custodyCapStatePath,
+ *   custodyEtiquetteLedgerPath, perWindowCap, windowMs, now }. (PR-B adds the cap/etiquette state paths.)
  * @returns {{ok: boolean, emitted: boolean, disposition?: object, draft?: object, reason?: string}}
  *   Fail-closed: any validation/lock/error => { ok:false, emitted:false }. This wave NEVER emits.
  */
@@ -281,7 +290,7 @@ function emitPR(data, opts = {}) {
     assertDataIsPolicyFree(data);
     assertSafeRepoRef(data.repo, { hostAllowlist: opts.hostAllowlist });
     assertSafeIssueRef(data.issueRef);
-    const touched = assertEgressSafeDiff(data.diff);
+    assertEgressSafeDiff(data.diff);   // validates the RAW paths (throws on .github/.git*/CI); the draft derives paths from the SCRUBBED diff (PR-B)
 
     // 2. serialize: a lock-unavailable acquisition REFUSES the emit (fail-closed), never age-reap-admit.
     const lockPath = typeof opts.lockPath === 'string' ? opts.lockPath : DEFAULT_LOCK_PATH;
@@ -292,21 +301,37 @@ function emitPR(data, opts = {}) {
       const killswitchOn = isKillswitchOn({ killswitchPath: opts.killswitchPath });
       const disposition = resolveDisposition({ custodyDispositionPath: opts.custodyDispositionPath });
       const token = resolveToken({ custodyTokenPath: opts.custodyTokenPath, killswitchOn });
+      const now = typeof opts.now === 'number' ? opts.now : Date.now();
 
-      // 4. build the would-be PR artifact (the DRAFT) from the bounded diff-as-DATA. Body-scrub is PR-B.
+      // 4. PR-B policy gates (custody state via opts; fail-closed refuse; the cap is GLOBAL; the etiquette
+      //    key is CANONICAL) — inside the lock (shared-state). The actor's (repo,issueRef) is ONLY a
+      //    validated lookup key; the cap/ledger PATHS come only from opts (custody), never from data.
+      if (typeof opts.custodyCapStatePath === 'string'
+          && capExceeded(opts.custodyCapStatePath, { now, perWindowCap: opts.perWindowCap, windowMs: opts.windowMs })) {
+        return { ok: false, emitted: false, reason: 'cap-exceeded' };
+      }
+      const etqKey = etiquetteKey(data.repo, data.issueRef);
+      if (typeof opts.custodyEtiquetteLedgerPath === 'string'
+          && alreadyEmitted(opts.custodyEtiquetteLedgerPath, etqKey)) {
+        return { ok: false, emitted: false, reason: 'etiquette-already-emitted' };
+      }
+
+      // 5. SCRUB the diff (PR-B), then build the DRAFT SOLELY from the scrubbed diff + the custody-validated
+      //    refs — touched_paths derive from the SCRUBBED diff so a secret in a filename is redacted there too.
+      const scrubbedDiff = scrubEmitDiff(data.diff);
       const draft = Object.freeze({
         repo: data.repo,
         issueRef: Number(String(data.issueRef).replace(/^#/, '')),
         title: `loom: candidate for issue #${String(data.issueRef).replace(/^#/, '')}`,
-        touched_paths: Object.freeze([...touched]),
-        diff: data.diff,                                              // PR-B scrubs this before any send
+        touched_paths: Object.freeze(parseDiffPaths(scrubbedDiff).paths),
+        diff: scrubbedDiff,
       });
 
-      // 5. emit ONLY when disposition is live AND a token resolved AND the killswitch is off. In the
-      //    DEFAULT posture that conjunction is FALSE (killswitch on => token null); a disarmed custody
-      //    makes it REACHABLE (EC1b.5), at which point armedEmit() THROWS not-armed => fail-closed. So
-      //    it is fail-closed by construction either way (no live network code exists this wave).
+      // 6. emit ONLY when disposition is live AND a token resolved AND the killswitch is off (EC1b.5). On a
+      //    real emit (③.2.3) RESERVE the cap + ledger FIRST, then emit; armedEmit() THROWS this wave.
       if (disposition.mode === 'live' && token && !killswitchOn) {
+        if (typeof opts.custodyCapStatePath === 'string') recordEmit(opts.custodyCapStatePath, { now, windowMs: opts.windowMs });
+        if (typeof opts.custodyEtiquetteLedgerPath === 'string') recordEmitted(opts.custodyEtiquetteLedgerPath, etqKey);
         armedEmit();                                                  // throws not-armed (no live network)
       }
       return { ok: true, emitted: false, disposition, draft };
