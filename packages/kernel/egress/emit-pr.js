@@ -55,10 +55,25 @@ const ENV_ALLOWLIST = Object.freeze(['PATH', 'HOME', 'LANG', 'LC_ALL', 'LC_CTYPE
  * @param {{token?: string|null, ghConfigDir: string}} opts
  * @returns {object} the scrubbed env
  */
+// Enforce the ISOLATION invariant, not just string-presence (CodeRabbit #388): a populated GH_CONFIG_DIR
+// (a real hosts.yml / keyring linkage) reintroduces ambient gh auth and weakens the killswitch. The dir
+// must be EMPTY if it exists (gh creates a fresh empty one if it does not) — fail-closed otherwise.
+function assertIsolatedGhConfigDir(dir) {
+  let st;
+  try { st = fs.statSync(dir); } catch { return; }                  // absent => gh creates it fresh+empty (isolated)
+  if (!st.isDirectory()) throw new Error(`buildEmitEnv: ghConfigDir must be a directory: ${JSON.stringify(dir)}`);
+  let entries;
+  try { entries = fs.readdirSync(dir); } catch { throw new Error(`buildEmitEnv: ghConfigDir is unreadable: ${JSON.stringify(dir)}`); }
+  if (entries.length > 0) {
+    throw new Error(`buildEmitEnv: ghConfigDir must be EMPTY/isolated — a populated gh config reintroduces ambient auth (found: ${entries.slice(0, 5).join(',')})`);
+  }
+}
+
 function buildEmitEnv({ token = null, ghConfigDir } = {}) {
   if (typeof ghConfigDir !== 'string' || ghConfigDir.length === 0) {
     throw new Error('buildEmitEnv: a ghConfigDir (empty custody-owned dir) is required');
   }
+  assertIsolatedGhConfigDir(ghConfigDir);
   const env = {};
   for (const k of ENV_ALLOWLIST) {
     if (typeof process.env[k] === 'string') env[k] = process.env[k];
@@ -307,7 +322,7 @@ function emitPR(data, opts = {}) {
 
 module.exports = {
   emitPR,
-  buildEmitEnv, armedEmit,
+  buildEmitEnv, assertIsolatedGhConfigDir, armedEmit,
   assertDataIsPolicyFree, assertSafeRepoRef, assertSafeIssueRef, assertEgressSafeDiff,
   isKillswitchOn, resolveToken, resolveDisposition, parseDiffPaths, isEgressDeniedPath,
   DISPOSITION_KEYS, DEFAULT_REPO_HOST_ALLOWLIST, ENV_ALLOWLIST,

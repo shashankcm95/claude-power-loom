@@ -56,6 +56,17 @@ test('EC1b.1 buildEmitEnv: a token is injected ONLY when explicitly provided (th
   } finally { fs.rmSync(cfg, { recursive: true, force: true }); }
 });
 
+test('EC1b.1 buildEmitEnv: a POPULATED ghConfigDir is fail-closed (isolation invariant — CodeRabbit #388)', () => {
+  const cfg = scratch('loom-ghcfg-');
+  fs.writeFileSync(path.join(cfg, 'hosts.yml'), 'github.com:\n  oauth_token: REDACTED\n'); // ambient gh auth state
+  try {
+    assert.throws(() => E.buildEmitEnv({ token: null, ghConfigDir: cfg }), /EMPTY\/isolated/, 'a populated gh config dir reintroduces ambient auth -> rejected');
+    assert.throws(() => E.assertIsolatedGhConfigDir(cfg), /EMPTY\/isolated/);
+  } finally { fs.rmSync(cfg, { recursive: true, force: true }); }
+  // an absent dir is allowed (gh creates it fresh + empty => isolated)
+  assert.doesNotThrow(() => E.assertIsolatedGhConfigDir(path.join(os.tmpdir(), `loom-absent-${process.pid}-${Date.now()}`)));
+});
+
 test('EC1b.1 [LIVE] gh auth status in the sanitized env reports NOT-authenticated even when the host is authed', () => {
   const ghPath = spawnSync('command', ['-v', 'gh'], { shell: '/bin/bash', encoding: 'utf8' });
   if (ghPath.status !== 0) { skipped += 1; process.stdout.write('  SKIP (gh absent) EC1b.1 live\n'); return; }
@@ -202,8 +213,12 @@ test('EC1b.2a sole-chokepoint LINT: no PRODUCTION module outside emit-pr.js spaw
   const CAP = [
     /(?:spawn|spawnSync|exec|execSync|execFile|execFileSync)\(\s*['"`]gh['"` ]/,
     /['"]git['"]\s*,\s*\[\s*['"]push['"]/,
-    /process\.env\[?\s*['"`]?(GH_TOKEN|GITHUB_TOKEN)\b/,
+    /process\.env\s*(?:\.\s*|\[\s*['"`])(GH_TOKEN|GITHUB_TOKEN)\b/,    // dot AND bracket reads (CodeRabbit #388)
   ];
+  // regression (CodeRabbit #388): the token pattern must catch BOTH the dot AND the bracket read.
+  assert.ok(CAP[2].test('const t = process.env.GH_TOKEN;'), 'token-CAP catches dot-notation');
+  assert.ok(CAP[2].test("const t = process.env['GITHUB_TOKEN'];"), 'token-CAP catches bracket-notation');
+  assert.ok(!CAP[2].test('process.env.PATH'), 'token-CAP does not over-match a non-token env read');
   const offenders = [];
   const walk = (dir) => {
     for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
