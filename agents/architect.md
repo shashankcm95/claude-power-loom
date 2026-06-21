@@ -101,6 +101,14 @@ Without Bash, `Read` returns full doc — favor reading 2-3 most-relevant docs o
 - `kb:architecture/ai-systems/inference-cost-management`
 - `kb:architecture/ai-systems/rag-anchoring`
 
+**JVM design patterns** (tutorials KB — select per task, do not preload):
+
+- `kb:algorithms-design/solid-and-dependency-inversion`
+- `kb:algorithms-design/clean-hexagonal-architecture`
+- `kb:algorithms-design/domain-driven-design`
+- `kb:algorithms-design/cqrs-event-sourcing`
+- `kb:algorithms-design/gof-creational-patterns` (also `-structural-patterns`, `-behavioral-patterns`)
+
 **Stack-specific** (consult when design touches that stack):
 
 - Backend: `kb:backend-dev/{express-essentials, jvm-runtime-basics, node-runtime-basics, spring-boot-essentials}`

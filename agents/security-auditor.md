@@ -47,6 +47,7 @@ Security findings must anchor to the kb. Before flagging a vulnerability, consul
 - Mobile: `kb:mobile-dev/{ios-app-architecture, swift-essentials}` (Keychain, ATS)
 - Data: `kb:data-dev/{data-modeling-basics, orchestration-essentials}`
 - Infra: `kb:infra-dev/{kubernetes-essentials, observability-basics}` (RBAC, secrets-at-rest)
+- App/web security (tutorials KB, JVM): `kb:security/{sql-injection-prevention, web-security-controls, authorization-method-acl, oauth2-oidc-spring, jwt-jose, authentication-backends}`
 
 **Output requirement**: each CRITICAL / HIGH finding cites the specific kb doc that names the vulnerability class. Findings without kb citation get a `[needs-kb-cite]` tag rather than being silently dropped.
 

@@ -36,7 +36,9 @@
     "default": [
       "kb:data-dev/orchestration-essentials",
       "kb:data-dev/data-modeling-basics",
-      "kb:hets/spawn-conventions"
+      "kb:hets/spawn-conventions",
+      "kb:persistence/jdbc-fundamentals",
+      "kb:bigdata-ml-cloud/apache-spark"
     ]
   },
   "budget": {

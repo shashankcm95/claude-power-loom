@@ -48,6 +48,8 @@ When reviewing code, consult relevant docs from `packages/skills/library/agent-t
 - Data: `kb:data-dev/{data-modeling-basics, orchestration-essentials}`
 - ML: `kb:ml-dev/{pipeline-essentials, training-vs-inference}`
 - Infra: `kb:infra-dev/{kubernetes-essentials, observability-basics}`
+- Testing (tutorials KB, JVM): `kb:testing/{junit5-jupiter, mockito, assertion-libraries, testcontainers, rest-api-testing}`
+- JVM backend (tutorials KB): `kb:spring-boot/*`, `kb:persistence/*`, `kb:reactive/*` — select per concern via kb-resolver
 
 **Output requirement**: each PRINCIPLE-severity finding cites the specific kb doc; each CRITICAL-severity finding cites the kb-security-dev doc that names the vulnerability class.
 

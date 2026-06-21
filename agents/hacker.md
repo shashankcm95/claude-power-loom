@@ -25,6 +25,10 @@ Default kb_scope for this persona (override in spawn prompt if needed):
 - `kb:security-dev/threat-modeling-essentials`
 - `kb:security-dev/auth-patterns`
 - `kb:hets/spawn-conventions` — output-format requirements for HETS spawns
+- `kb:security/sql-injection-prevention` — parameterized queries / injection defense
+- `kb:security/web-security-controls` — CSRF, security headers, session, transport
+
+**Broader scope (select per task, do not preload):** the `security/` KB section(s). Find task-relevant docs via `kb-resolver list --tag <topic>` + each doc's `related[]`; load at Summary tier first, drill deeper only for docs you act on.
 
 Consult via `node packages/runtime/orchestration/kb-resolver.js cat <kb_id>` (or `Read packages/skills/library/agent-team/kb/<kb_id>.md` if Bash isn't in your tool inventory).
 
