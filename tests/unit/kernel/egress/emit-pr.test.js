@@ -217,23 +217,19 @@ test('EC1b.2a sole-chokepoint LINT: no PRODUCTION module outside emit-pr.js spaw
   // ③.2.2a: the read-only live puller (lab/issue-corpus/live-puller.js) legitimately spawns `gh api`
   // for READ-only GitHub search/metadata using AMBIENT read auth — it emits nothing and never reads the
   // egress token. The chokepoint invariant is therefore "emit-pr.js is the sole WRITE-egress gh-spawner +
-  // sole token-reader", NOT "the sole gh-spawner": a named read-only consumer is exempt from the
-  // gh-SPAWN cap but STILL barred from write-egress (gh pr / -X POST|PUT|PATCH|DELETE / git push) and
-  // token reads, so the exemption cannot be abused to emit. (The AUTHORITATIVE token-custody control,
-  // EC1b.2b, is unaffected — the puller never touches process.env GH_TOKEN/GITHUB_TOKEN.)
+  // sole token-reader", NOT "the sole gh-spawner". A named read-only consumer is exempt from the gh-SPAWN
+  // cap ONLY IF it proves it is GET-only by a POSITIVE runtime gate. We do NOT enumerate gh's write surface
+  // here (the syntactic-gate-extension anti-pattern — gh AUTO-POSTs on `-f`/`-F`, accepts glued `-XPOST`,
+  // and has `release/issue/gist create` etc.; a denylist would forever miss forms). Instead the exempted
+  // module MUST carry an `assertReadOnlyGhArgs` gate (it refuses any non-`-X GET` before spawning), and is
+  // STILL barred from git-push + token reads. (The AUTHORITATIVE token-custody control, EC1b.2b, is
+  // unaffected — the puller never touches process.env GH_TOKEN/GITHUB_TOKEN.)
   const READONLY_GH_ALLOW = [path.join('packages', 'lab', 'issue-corpus', 'live-puller.js')];
-  const WRITE_EGRESS = [
-    /(?:-X|--method)['"]?\s*[,\s]+['"]?(?:POST|PUT|PATCH|DELETE)\b/i,  // a gh-api WRITE verb (-X or --method; single `-X POST` OR argv `'-X','POST'`)
-    /\bgh\b[\s'",\]]+pr\b/i,                               // `gh pr ...`
-    /['"]pr['"]\s*,\s*['"]create['"]/i,                   // ['pr','create']
-  ];
+  const GET_GATE = /assertReadOnlyGhArgs\s*\(/;   // the positive proof the exempted module is GET-only
   // regression (CodeRabbit #388): the token pattern must catch BOTH the dot AND the bracket read.
   assert.ok(TOKEN_READ.test('const t = process.env.GH_TOKEN;'), 'token-CAP catches dot-notation');
   assert.ok(TOKEN_READ.test("const t = process.env['GITHUB_TOKEN'];"), 'token-CAP catches bracket-notation');
   assert.ok(!TOKEN_READ.test('process.env.PATH'), 'token-CAP does not over-match a non-token env read');
-  // non-vacuous: the read-only exemption still BARS write-egress (so it cannot launder an emit).
-  assert.ok(WRITE_EGRESS.some((re) => re.test("execFileSync('gh', ['pr', 'create'])")), 'write-egress guard catches gh pr create');
-  assert.ok(WRITE_EGRESS.some((re) => re.test("['api', '-X', 'POST', 'repos/x/y/pulls']")), 'write-egress guard catches -X POST');
   const offenders = [];
   const walk = (dir) => {
     for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -243,9 +239,13 @@ test('EC1b.2a sole-chokepoint LINT: no PRODUCTION module outside emit-pr.js spaw
       const rel = path.relative(REPO, abs);
       if (rel.endsWith(SELF) || SPIKE_ALLOW.test(rel)) continue;        // emitPR itself + dev spikes
       const src = fs.readFileSync(abs, 'utf8');
-      // a named read-only gh consumer is exempt from GH_SPAWN, but still barred from write-egress + token reads.
-      const checks = READONLY_GH_ALLOW.includes(rel) ? [GIT_PUSH, TOKEN_READ, ...WRITE_EGRESS] : CAP;
-      if (checks.some((re) => re.test(src))) offenders.push(rel);
+      if (READONLY_GH_ALLOW.includes(rel)) {
+        // exempt from GH_SPAWN ONLY with the positive GET-gate; still barred from git-push + token reads.
+        if (!GET_GATE.test(src)) offenders.push(`${rel} (missing assertReadOnlyGhArgs GET-gate)`);
+        if (GIT_PUSH.test(src) || TOKEN_READ.test(src)) offenders.push(rel);
+        continue;
+      }
+      if (CAP.some((re) => re.test(src))) offenders.push(rel);
     }
   };
   for (const layer of ['kernel', 'runtime', 'lab']) walk(path.join(REPO, 'packages', layer));

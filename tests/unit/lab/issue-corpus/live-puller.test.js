@@ -20,6 +20,7 @@ const P = require(path.join(REPO, 'packages', 'lab', 'issue-corpus', 'live-pulle
 const {
   assertSafeOwnerRepo, parseRepoSlug, isLicenseCompatible, isPrCapable, isUnassigned,
   boundProblemStatement, buildPublicRecord, pullLiveCorpus, MAX_PROBLEM_BYTES, LICENSE_ALLOWLIST,
+  assertReadOnlyGhArgs, ghApiReadArgs, buildSearchArgs,
 } = P;
 const { validatePublicRecord } = require(path.join(REPO, 'packages', 'lab', 'issue-corpus', 'corpus.js'));
 
@@ -254,26 +255,37 @@ test('g6. EC2.1h — the record.repo is github.com even when the raw repository_
   assert.ok(records[0].repo.startsWith('https://github.com/'), 'host is github.com by construction');
 });
 
-// ── (h) EC2.1d — the read-only/no-emission boundary as an EXECUTING gate (VALIDATE H2) ──
-// Static-scan the module source: it must contain no write/emission call-site and import no egress
-// kernel. This converts the manual "lint/grep" attestation into a running check.
-test('h1. EC2.1d — the module source has no git-push / gh-pr / fs-write / egress-import call-site', () => {
+// ── (h) EC2.1d — the read-only/no-emission boundary as an EXECUTING gate (VALIDATE H2 + the GET-gate) ──
+test('h1. EC2.1d — the module has no fs-write / egress-import call-site, and the gh spawn is GET-gated', () => {
   const src = fs.readFileSync(path.join(REPO, 'packages', 'lab', 'issue-corpus', 'live-puller.js'), 'utf8');
-  // precise call-site shapes (CodeRabbit #390: avoid over-broad patterns like /'pr'/ that false-fail CI).
-  const forbidden = [
-    /\bgit\b[\s'",\]]+push\b/i,                     // git push command/arg
-    /\bgh\b[\s'",\]]+pr\b/i,                        // gh pr ...
-    /['"]pr['"]\s*,\s*['"]create['"]/i,            // ['pr','create']
-    /(?:-X|--method)['"]?\s*[,\s]+['"]?(?:POST|PUT|PATCH|DELETE)\b/i,  // a gh-api WRITE verb (-X/--method; single or argv form)
-    /\bfs\.write/i, /\bwriteFileSync\b/i,           // fs writes
-    /require\(['"][^'"]*egress/i,                   // egress import
-  ];
+  const forbidden = [/\bfs\.write/i, /\bwriteFileSync\b/i, /require\(['"][^'"]*egress/i];
   const hits = forbidden.filter((re) => re.test(src)).map((re) => re.source);
   assert.deepStrictEqual(hits, [], 'forbidden write/emission call-sites: ' + hits.join(', '));
-  // the ONLY subprocess sink is the read-only execFileSync('gh', ...); no spawn / execSync.
+  // the ONLY subprocess sink is execFileSync('gh', ...) and it is gated by assertReadOnlyGhArgs (GET-only).
   // (a bare /exec\(/ would false-match RegExp.prototype.exec — a regex method, not a subprocess call.)
   assert.ok(/execFileSync\('gh'/.test(src), 'gh read path present');
-  assert.ok(!/\bspawn\b|\bexecSync\b/.test(src), 'no other subprocess sink (spawn/execSync)');
+  assert.ok(!/\bspawn\s*\(|\bspawnSync\s*\(|\bexecSync\s*\(/.test(src), 'no other subprocess sink (spawn/spawnSync/execSync call)');
+  // the gh args pass through assertReadOnlyGhArgs (the call form, with the args param) — h2 proves it refuses writes.
+  assert.ok(/assertReadOnlyGhArgs\(args\)\s*;/.test(src), 'the gh spawn is GET-gated by assertReadOnlyGhArgs(args)');
+});
+test('h2. assertReadOnlyGhArgs — the bounded GET-gate accepts the real reads, refuses EVERY write-form', () => {
+  // accepts: the three read shapes the puller actually issues.
+  assert.strictEqual(assertReadOnlyGhArgs(buildSearchArgs({ label: 'good first issue', language: 'python', limit: 5 })), true);
+  assert.strictEqual(assertReadOnlyGhArgs(ghApiReadArgs('octo', 'widget')), true);
+  assert.strictEqual(assertReadOnlyGhArgs(ghApiReadArgs('octo', 'widget', '/commits/HEAD')), true);
+  // refuses every write-form the VALIDATE-hacker enumerated (incl. gh's -f auto-POST + glued + long forms):
+  const writes = [
+    ['api', 'repos/o/r'],                                  // no -X GET pin -> -f would auto-POST
+    ['api', '-f', 'title=t', 'repos/o/r/pulls'],           // -f auto-POST (no -X GET)
+    ['api', '-X', 'POST', 'repos/o/r/pulls'],              // explicit POST (argv)
+    ['api', '-XPOST', 'repos/o/r/pulls'],                  // glued -XPOST
+    ['api', '--method', 'PATCH', 'repos/o/r'],             // --method PATCH
+    ['api', '--method=DELETE', 'repos/o/r'],               // --method=DELETE
+    ['api', '-X', 'GET', '-X', 'POST', 'repos/o/r'],       // GET then POST (contradictory -> refused)
+    ['pr', 'create', '--title', 't'],                      // not `gh api` at all
+    ['release', 'create', 'v1'],                            // a write subcommand
+  ];
+  for (const w of writes) assert.throws(() => assertReadOnlyGhArgs(w), /gh-readonly/, JSON.stringify(w));
 });
 
 // summary — awaits ALL tests' actual completion (Promise.all), then exits on the real pass/fail count.

@@ -145,8 +145,34 @@ function buildPublicRecord({ owner, repo, number, title, body, base_sha } = {}) 
 }
 
 // ── IO seam: the gh runner (lazy child_process; injectable for tests) ──
+// THE READ-ONLY GET-GATE (VALIDATE-hacker re-probe of #390, the bounded positive invariant): the puller
+// must NEVER mutate anything via its write-capable ambient `gh` auth. Rather than the egress chokepoint
+// lint enumerating gh's effectively-unbounded write surface (the syntactic-gate-extension anti-pattern —
+// it would forever miss `gh api -f` AUTO-POST, glued `-XPOST`, `gh release/issue create`, shell-string
+// push), the puller pins a POSITIVE invariant: every spawn is `gh api` with an EXPLICIT `-X GET`, no
+// write verb. `gh` auto-switches to POST when `-f`/`-F` data fields are present and no `-X` is set, so
+// the explicit `-X GET` is load-bearing (it forces GET even with `-f` query params). defaultGhRunner
+// enforces this before any subprocess runs, so the puller is GET-only BY CONSTRUCTION; the egress lint
+// then merely verifies the gate EXISTS, not that it caught every write-form.
+function assertReadOnlyGhArgs(args) {
+  if (!Array.isArray(args) || String(args[0]) !== 'api') throw new Error('gh-readonly: only `gh api` reads are permitted');
+  let getPinned = false;
+  for (let i = 0; i < args.length; i++) {
+    const a = String(args[i]);
+    let verb = null;
+    if (a === '-X' || a === '--method') verb = String(args[i + 1] || '');           // `-X GET` / `--method POST`
+    else { const m = a.match(/^(?:-X|--method=)(.+)$/); if (m) verb = m[1]; }        // glued `-XPOST` / `--method=POST`
+    if (verb !== null) {
+      if (!/^GET$/i.test(verb)) throw new Error(`gh-readonly: only -X GET is permitted (write verb refused: ${verb})`);
+      getPinned = true;
+    }
+  }
+  if (!getPinned) throw new Error('gh-readonly: every gh api call must explicitly pin -X GET (else -f/-F data fields auto-POST)');
+  return true;
+}
 function defaultGhRunner(args, { timeout = 30000, maxBuffer = 8 * 1024 * 1024 } = {}) {
-  const { execFileSync } = require('child_process'); // lazy — an injected runner never loads this
+  assertReadOnlyGhArgs(args);                          // GET-only by construction — refuse any write before spawn
+  const { execFileSync } = require('child_process');   // lazy — an injected runner never loads this
   return execFileSync('gh', args, { encoding: 'utf8', timeout, maxBuffer, stdio: ['ignore', 'pipe', 'pipe'] });
 }
 function ghJson(ghRunner, args) {
@@ -158,6 +184,10 @@ function ghApiEndpoint(owner, repo, suffix = '') {
   const ep = `repos/${owner}/${repo}${suffix}`;
   if (!ENDPOINT_RE.test(ep)) throw new Error('gh-endpoint: constructed endpoint failed the shape re-assertion');
   return ep;
+}
+// A read-only `gh api` GET for a repos endpoint — the explicit `-X GET` is the load-bearing pin.
+function ghApiReadArgs(owner, repo, suffix = '') {
+  return ['api', '-X', 'GET', ghApiEndpoint(owner, repo, suffix)];
 }
 function assertSearchTerm(v, name) {
   if (typeof v !== 'string' || !SEARCH_TERM_RE.test(v)) throw new Error(`${name}: must match [A-Za-z0-9 _.-]{1,60}`);
@@ -202,12 +232,12 @@ async function pullLiveCorpus({
       const { owner, repo } = assertSafeOwnerRepo(parseRepoSlug(item && item.repository_url));
       // (2) cheap rejects first (no gh call): an assigned issue is not an unsolicited-PR candidate.
       if (!isUnassigned(item)) throw new Error('drop: issue is assigned');
-      // (3) enrich (the guarded, shape-re-asserted endpoint as a single argv positional).
-      const meta = ghJson(ghRunner, ['api', ghApiEndpoint(owner, repo)]);
+      // (3) enrich (the guarded, shape-re-asserted endpoint, GET-pinned, as a single argv positional).
+      const meta = ghJson(ghRunner, ghApiReadArgs(owner, repo));
       if (!isPrCapable(meta)) throw new Error('drop: repo not PR-capable');
       if (!licOk(meta && meta.license && meta.license.spdx_id)) throw new Error('drop: license not compatible');
       // (4) resolve base_sha — the gh `.sha` field is untrusted; assertSafeSha drops a non-40-hex/missing.
-      const shaResp = ghJson(ghRunner, ['api', ghApiEndpoint(owner, repo, '/commits/HEAD')]);
+      const shaResp = ghJson(ghRunner, ghApiReadArgs(owner, repo, '/commits/HEAD'));
       const base_sha = assertSafeSha(shaResp && shaResp.sha);
       // (5) build + round-trip the canonical URL through assertSafeRepo (F2) + validate the public shape.
       const record = buildPublicRecord({ owner, repo, number: item.number, title: item.title, body: item.body, base_sha });
@@ -227,6 +257,6 @@ async function pullLiveCorpus({
 module.exports = {
   assertSafeOwnerRepo, parseRepoSlug, isLicenseCompatible, isPrCapable, isUnassigned,
   boundProblemStatement, buildPublicRecord, pullLiveCorpus,
-  defaultGhRunner, ghApiEndpoint, buildSearchArgs,
+  defaultGhRunner, assertReadOnlyGhArgs, ghApiEndpoint, ghApiReadArgs, buildSearchArgs,
   MAX_PROBLEM_BYTES, LICENSE_ALLOWLIST,
 };
