@@ -77,6 +77,9 @@ function parsePatchTouchedPaths(patch) {
 function isTestInfraPath(p) {
   const base = p.split('/').pop();
   if (COLLECTION_CONFIG.has(base)) return true;
+  // ③.2.1a (close #2 / A5): a smuggled .gitattributes (filter/eol/ident driver) or .gitignore at ANY
+  // depth is a collection-affecting surface the grader must not apply blindly — reject the touch.
+  if (base === '.gitattributes' || base === '.gitignore') return true;
   if (/\.pth$/i.test(base)) return true;
   if (base === 'sitecustomize.py' || base === 'usercustomize.py' || base === 'conftest.py') return true;
   if (/(^|\/)tests?(\/|$)/i.test(p)) return true;                 // a test/ or tests/ dir component (case-insensitive)
@@ -137,6 +140,15 @@ function buildLegBInput(record) {
   return { input, dropped };
 }
 
+// ③.2.1a close #1 — the SINGLE HOME of the fail-closed test-tree-mutation rule (the parity gate). A
+// graded behavioral result counts as tree-mutated UNLESS it explicitly carries test_tree_mutated ===
+// false. Consumed by deriveBehavioralVerdict (scoreAttempt, below), buildConfirmingAttempt
+// (earned-grounding-run.js:98), and mapBehavioral (real-solve.js) — the three live grade paths — so the
+// rule can never silently diverge between them (the VERIFY-board A2/A3 close; it was hand-replicated 3x).
+function isTreeMutated(graded) {
+  return !graded || typeof graded !== 'object' || graded.test_tree_mutated !== false;
+}
+
 // The behavioral verdict — the only cross-leg combine (PARTIAL on a leg-B
 // discrepancy), kept in the aggregate (leg A never sees leg B). A SKIPPED/absent
 // full suite is NOT a discrepancy (the issue tests are the floor); only a FAIL is.
@@ -165,7 +177,7 @@ async function scoreAttempt(record, candidate_patch, attemptIndex, legs, { tier 
 
   const a = (behavioralFn && await behavioralFn(record, candidate_patch)) || {};
   const aFallback = a.outcome_source !== 'model';                // ALLOW-list: only 'model' is a model decision
-  const treeMutated = a.test_tree_mutated === false ? false : true; // fail-CLOSED (only explicit false is clean)
+  const treeMutated = isTreeMutated(a);                          // fail-CLOSED (only explicit false is clean); shared rule (close #1)
 
   const { input: legBInput, dropped } = buildLegBInput(record);
   const b = (semanticFn && await semanticFn(legBInput, candidate_patch)) || {};
@@ -339,6 +351,10 @@ module.exports = {
   scoreAttempt, scoreIssueCalibration, passAtK,
   buildActorInput, parsePatchTouchedPaths, rubricLeaks,
   WORKED_EXAMPLE_FIELDS,
+  // ③.2.1a — the SHARED grade-integrity rules, the single home consumed by mapBehavioral (real-solve)
+  // + buildConfirmingAttempt (earned-grounding) + the live diff-scope, so the path/tamper rules can
+  // never drift between the grade producers (VERIFY-board A2/A3/A6/H4 close).
+  isTreeMutated, isTestInfraPath, computeTamper,
   // v3.11 W1 — additive exports (no behavior change): the lesson leak-guard
   // (lesson-signature.js lessonLeaks) reuses the SAME min-run length + the SAME
   // normalizer so the two leak checks can never silently diverge. Never re-literal `12`.

@@ -27,6 +27,7 @@ const crypto = require('crypto');
 const { spawnSync } = require('child_process');
 const {
   scoreIssueCalibration, WORKED_EXAMPLE_FIELDS,
+  isTestInfraPath,  // ③.2.1a A6 — the SINGLE-home test-infra path predicate (hashTestTree reuses it)
 } = require('./calibration-issue');
 const { computeManifestHash } = require('../issue-corpus/corpus');
 const {
@@ -48,9 +49,13 @@ const { writeNode } = require('../attribution/recall-graph-store');
 // test file still changes the hash).
 function hashTestTree(workDir) {
   const h = crypto.createHash('sha256');
-  const isTreeFile = (rel) => /(^|\/)tests?(\/|$)/i.test(rel) || /(^|\/)conftest\.py$/i.test(rel)
-    || /\.pth$/i.test(rel) || /(^|\/)(test_[^/]+|[^/]+_test)\.[a-z0-9]+$/i.test(rel) // root/any-depth test_*.x (VALIDATE-hacker M2)
-    || /(^|\/)(pytest\.ini|setup\.cfg|tox\.ini|pyproject\.toml|sitecustomize\.py|usercustomize\.py|loom-run-tests\.js)$/i.test(rel);
+  // ③.2.1a (A6 reconciliation): the test-infra path rule has ONE home — the exported isTestInfraPath
+  // (calibration-issue.js) — so the C1 hash set and the diff-scope set can never silently diverge.
+  // hashTestTree additionally tracks loom-run-tests.js (the loom wrapper is collection-relevant for the
+  // rehash, but is not a diff-scope "test-infra" reject target). Folding isTestInfraPath in ALSO brings
+  // .gitattributes/.gitignore into the hashed set, closing that residual on EVERY grade path (the
+  // earned-grounding candidate-B path has no front-line diff-scope; the rehash is its backstop).
+  const isTreeFile = (rel) => isTestInfraPath(rel) || /(^|\/)loom-run-tests\.js$/i.test(rel);
   const walk = (dir, rel) => {
     let entries;
     try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
