@@ -98,9 +98,39 @@ test('mapBehavioral: a FALLBACK / not-contained run -> BEHAVIORAL_UNAVAILABLE (n
   }
 });
 
-test('mapBehavioral: the test_tree_mutated tamper signal (hacker C1) is surfaced report-only on PASS/FAIL', () => {
-  assert.strictEqual(mapBehavioral({ issue_tests: 'PASS', test_tree_mutated: true }).test_tree_mutated, true, 'PASS carries the tamper signal');
+// --- ③.2.1a close #1: the test-tree-mutation gate (was report-only; now a hard FAIL on the live path,
+// at PARITY with scoreAttempt/calibration-issue.js:168 via the SHARED isTreeMutated rule) ----------
+
+test('mapBehavioral: ③.2.1a — a test-tree-mutated PASS is GATED to BEHAVIORAL_FAIL (never PASS)', () => {
+  const r = mapBehavioral({ issue_tests: 'PASS', test_tree_mutated: true });
+  assert.strictEqual(r.verdict, VERDICT.FAIL, 'a tree-mutated PASS can NEVER be BEHAVIORAL_PASS (the live-path parity gate)');
+  assert.strictEqual(r.test_tree_mutated, true, 'the tamper signal is still surfaced on the gated FAIL');
+});
+
+test('mapBehavioral: ③.2.1a — fail-closed, a PASS with test_tree_mutated ABSENT/non-false is GATED to FAIL', () => {
+  for (const g of [{ issue_tests: 'PASS' }, { issue_tests: 'PASS', test_tree_mutated: undefined }, { issue_tests: 'PASS', test_tree_mutated: 0 }, { issue_tests: 'PASS', test_tree_mutated: 'false' }]) {
+    assert.strictEqual(mapBehavioral(g).verdict, VERDICT.FAIL, `only an EXPLICIT test_tree_mutated:false is clean (${JSON.stringify(g)})`);
+  }
+});
+
+test('mapBehavioral: a clean (explicit test_tree_mutated:false) PASS stays BEHAVIORAL_PASS', () => {
+  const r = mapBehavioral({ issue_tests: 'PASS', test_tree_mutated: false, outcome_source: 'model' });
+  assert.strictEqual(r.verdict, VERDICT.PASS, 'a genuinely-clean resolved run is still BEHAVIORAL_PASS');
+  assert.strictEqual(r.test_tree_mutated, false, 'a clean PASS reports test_tree_mutated:false');
+});
+
+test('mapBehavioral: a contained FAIL still surfaces the tamper signal (report-only is fine on a non-PASS)', () => {
   assert.strictEqual(mapBehavioral({ issue_tests: 'FAIL', test_tree_mutated: true }).test_tree_mutated, true, 'FAIL carries the tamper signal');
+});
+
+test('mapBehavioral: ③.2.1a — pure/idempotent; same input twice is deep-equal + a fresh object + no mutation of graded (A7)', () => {
+  const input = { issue_tests: 'PASS', test_tree_mutated: true };
+  const before = JSON.stringify(input);
+  const a = mapBehavioral(input);
+  const b = mapBehavioral(input);
+  assert.deepStrictEqual(a, b, 'idempotent: same input -> deep-equal verdict');
+  assert.notStrictEqual(a, b, 'a fresh object each call (immutability)');
+  assert.strictEqual(JSON.stringify(input), before, 'mapBehavioral does not mutate its graded argument');
 });
 
 // --- the driver fail-closed gates (NO real subprocess) --------------------------------------

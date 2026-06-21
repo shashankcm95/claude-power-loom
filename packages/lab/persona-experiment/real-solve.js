@@ -81,7 +81,15 @@ function unavailable(reason) { return { verdict: VERDICT.UNAVAILABLE, reason: St
 function mapBehavioral(graded) {
   if (!graded || typeof graded !== 'object') return unavailable('grade-missing');
   if (graded.issue_tests === 'PASS') {
-    return { verdict: VERDICT.PASS, test_tree_mutated: graded.test_tree_mutated === true };
+    // ③.2.1a close #1 — the test-tree-mutation gate. PREVIOUSLY this surfaced test_tree_mutated
+    // report-only and returned PASS regardless (the live-path asymmetry vs scoreAttempt). Now a
+    // tree-mutated PASS is FAIL, at PARITY with scoreAttempt via the SHARED isTreeMutated rule (its
+    // single home is calibration-issue.js — a PURE, child_process-free sibling). LAZY-required at the
+    // point of use to honor the K12 module-load discipline (no sibling-lab import at load; cached+cheap).
+    const { isTreeMutated } = require('../causal-edge/calibration-issue');
+    // fail-closed: a tree-mutated (or non-explicit-false) PASS can never be a clean BEHAVIORAL_PASS.
+    if (isTreeMutated(graded)) return { verdict: VERDICT.FAIL, test_tree_mutated: true };
+    return { verdict: VERDICT.PASS, test_tree_mutated: false };
   }
   if (graded.issue_tests === 'FAIL') {
     return { verdict: VERDICT.FAIL, test_tree_mutated: graded.test_tree_mutated === true };
@@ -161,8 +169,15 @@ async function runActorSolve({ record, claudeBin, backend, prompt, model, timeou
     // maxBuffer (>1MiB) lets a legal large diff reach the size cap instead of ENOBUFS (A5).
     const candidate = captureActorDiff({ workDir: actorDir, configSnapshot });
     if (Buffer.byteLength(candidate, 'utf8') > MAX_PATCH_BYTES) return unavailable('candidate-too-large');
+    // ③.2.1a close #2 (front-line diff-scope) — reject a candidate that touches a test-infra path
+    // (tests/, conftest, collection config, .gitattributes) OR an unparseable hunk BEFORE grading. Uses
+    // the SHARED computeTamper rule (single home in calibration-issue.js), so the grade path and the
+    // scorer can never disagree on the path rule. The grader's test-tree rehash is the backstop; this is
+    // the front line (a poisoned candidate never even reaches the sandbox).
+    const { computeTamper } = require('../causal-edge/calibration-issue');
+    if (computeTamper(candidate).forceFail) return unavailable('candidate-touches-test-infra');
     // HARNESS grade over the SEALED fields (never actor stdout). makeBehavioralFn is fail-closed
-    // (FALLBACK on refuse/throw); mapBehavioral -> the three-way verdict.
+    // (FALLBACK on refuse/throw); mapBehavioral -> the three-way verdict (now tree-mutation-gated).
     const graded = await makeGrader()(record, candidate);
     return mapBehavioral(graded);
   } catch (err) {

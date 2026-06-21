@@ -25,6 +25,8 @@ const CI = require(path.join(REPO, 'packages', 'lab', 'causal-edge', 'calibratio
 const {
   scoreAttempt, scoreIssueCalibration, passAtK, buildActorInput, parsePatchTouchedPaths,
   WORKED_EXAMPLE_FIELDS,
+  // ③.2.1a close #1/#2 — the SHARED single-home grade-integrity rules (newly exported).
+  isTreeMutated, isTestInfraPath, computeTamper,
 } = CI;
 const { SEALED_FIELDS, NEG_CONTROL_SENTINEL } = require(path.join(REPO, 'packages', 'lab', 'issue-corpus', 'corpus.js'));
 
@@ -163,6 +165,50 @@ test('tamper: a candidate touching a collection-config / rename path => touches-
   assert.ok(ren.behavioral.tamper_flags.includes('touches-test-infra') && ren.behavioral.verdict === 'BEHAVIORAL_FAIL', 'rename into tests/ must flag + FAIL');
   const root = await scoreAttempt(validRecord(), 'diff --git a/test_top.py b/test_top.py\n--- a/test_top.py\n+++ b/test_top.py\n@@ -1 +1 @@\n-x\n+y\n', 0, legs);
   assert.strictEqual(root.behavioral.verdict, 'BEHAVIORAL_FAIL', 'a root-level test_*.py touch must FAIL');
+});
+
+// --- ③.2.1a close #1/#2 — the SHARED grade-integrity rules (the single home consumed by scoreAttempt,
+// mapBehavioral, and earned-grounding so the three live grade paths can never diverge) --------------
+
+test('isTreeMutated: exported; fail-closed — only an EXPLICIT test_tree_mutated:false is clean', () => {
+  assert.strictEqual(typeof isTreeMutated, 'function', 'isTreeMutated is exported (the single home of the parity rule)');
+  assert.strictEqual(isTreeMutated({ test_tree_mutated: false }), false, 'explicit false is the ONLY clean state');
+  for (const g of [{ test_tree_mutated: true }, { test_tree_mutated: undefined }, {}, { test_tree_mutated: 0 }, { test_tree_mutated: 'false' }, null, undefined, 'x']) {
+    assert.strictEqual(isTreeMutated(g), true, `non-false / non-object is fail-closed mutated: ${JSON.stringify(g)}`);
+  }
+});
+
+test('isTestInfraPath: exported; ③.2.1a adds .gitattributes/.gitignore to the existing test-infra set', () => {
+  assert.strictEqual(typeof isTestInfraPath, 'function', 'isTestInfraPath is exported for cross-module reuse (DRY single home)');
+  for (const p of ['.gitattributes', 'sub/.gitattributes', '.gitignore', 'pkg/.gitignore']) {
+    assert.strictEqual(isTestInfraPath(p), true, `${p} is a smuggle surface -> test-infra`);
+  }
+  for (const p of ['tests/test_a.py', 'conftest.py', 'pyproject.toml', 'setup.cfg', 'src/test_x.py', 'a.pth']) {
+    assert.strictEqual(isTestInfraPath(p), true, `${p} stays test-infra (no regression)`);
+  }
+  for (const p of ['src/foo.py', 'README.md', 'pkg/core.py']) {
+    assert.strictEqual(isTestInfraPath(p), false, `${p} is an ordinary source path`);
+  }
+});
+
+test('computeTamper: exported; a .gitattributes touch forceFails (the A5 smuggle close, reused by the live diff-scope)', () => {
+  assert.strictEqual(typeof computeTamper, 'function', 'computeTamper is exported (real-solve.js diff-scope reuses it)');
+  assert.strictEqual(computeTamper('diff --git a/.gitattributes b/.gitattributes\n--- a/.gitattributes\n+++ b/.gitattributes\n@@ -0,0 +1 @@\n+*.py filter=poison\n').forceFail, true, '.gitattributes -> forceFail');
+  assert.strictEqual(computeTamper('diff --git a/src/foo.py b/src/foo.py\n--- a/src/foo.py\n+++ b/src/foo.py\n@@ -1 +1 @@\n-old\n+new\n').forceFail, false, 'an ordinary source edit does NOT forceFail');
+});
+
+test('③.2.1a A6: hashTestTree reuses the SHARED isTestInfraPath — a .gitattributes touch IS collection-relevant (residual closed on EVERY grade path, incl. earned-grounding-B)', () => {
+  const fs = require('fs'); const os = require('os');
+  const { hashTestTree } = require(path.join(REPO, 'packages', 'lab', 'causal-edge', 'calibration-issue-run.js'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loom-a6-'));
+  try {
+    fs.writeFileSync(path.join(dir, 'mod.py'), 'x = 1\n');                  // an ordinary source file
+    const before = hashTestTree(dir);
+    fs.writeFileSync(path.join(dir, 'mod.py'), 'x = 2\n');                  // editing plain source...
+    assert.strictEqual(hashTestTree(dir), before, 'an ordinary source edit is NOT collection-relevant (no false positive)');
+    fs.writeFileSync(path.join(dir, '.gitattributes'), '*.py filter=poison\n'); // ...vs the A6-added surface
+    assert.notStrictEqual(hashTestTree(dir), before, 'a .gitattributes touch IS now in the hashed set -> test_tree_mutated fires on every grade path');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('A2 ALLOW-list: an omitted/unknown outcome_source is treated as harness_fallback (fail-closed), NOT model', async () => {

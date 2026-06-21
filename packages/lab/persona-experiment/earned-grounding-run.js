@@ -93,9 +93,13 @@ function assertCanonicalRole(role, knownPersonas) {
 // literal BEHAVIORAL_PASS ONLY when issue_tests==='PASS' (a HARNESS-derived verdict, never an actor claim).
 function buildConfirmingAttempt(record, candidateB, gradedB) {
   if (!gradedB || typeof gradedB !== 'object') return null;
-  // require EXPLICIT `false` (CodeRabbit #357): a missing/undefined/0/'' test_tree_mutated is NOT
+  // ③.2.1a close #1 — require EXPLICIT `false` (CodeRabbit #357) via the SHARED isTreeMutated rule (its
+  // single home in calibration-issue.js, the same rule scoreAttempt + mapBehavioral consume) so this
+  // THIRD grade consumer can never drift from them. A missing/undefined/0/'' test_tree_mutated is NOT
   // evidence of a clean tree -- schema drift or a dropped field must fail closed on a confirmation gate.
-  if (gradedB.test_tree_mutated !== false) return null;         // H-1 for B
+  // LAZY-required to match this file's treatment of calibration-issue (line 270).
+  const { isTreeMutated } = require('../causal-edge/calibration-issue');
+  if (isTreeMutated(gradedB)) return null;                      // H-1 for B (shared fail-closed gate)
   if (gradedB.issue_tests !== 'PASS') return null;              // only a genuinely-resolved B confirms
   if (typeof candidateB !== 'string' || candidateB.length === 0) return null;
   return {

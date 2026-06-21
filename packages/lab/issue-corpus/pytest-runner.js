@@ -47,6 +47,13 @@ const PYTEST_WRAPPER = [
   '    import tempfile; tempfile.tempdir = _tmp',
   'except Exception as _e:',
   "    sys.stderr.write('tmp-setup-error: ' + repr(_e))",
+  // ③.2.1a close #4: pin the harness BEFORE `import pytest`. Disable entry-point plugin autoload (closes
+  // the pytest11 / committed-*.egg-info vector — a candidate-planted plugin can hijack the report) and
+  // clear host-inherited PYTEST_ADDOPTS/PYTEST_PLUGINS (operator-infra defense-in-depth: either can
+  // re-add a named plugin even under autoload-disable). Must precede `import pytest` or it no-ops.
+  "os.environ['PYTEST_DISABLE_PLUGIN_AUTOLOAD'] = '1'",
+  "os.environ.pop('PYTEST_ADDOPTS', None)",
+  "os.environ.pop('PYTEST_PLUGINS', None)",
   'ids = sys.argv[1:]',
   'res = {}',
   'class _Loom:',
@@ -59,7 +66,10 @@ const PYTEST_WRAPPER = [
   'rc = 99',
   'try:',
   '    import pytest',
-  "    rc = pytest.main(['-p', 'no:cacheprovider', '-q', '--no-header', '-o', 'addopts=', '--basetemp', _tmp, *ids], plugins=[_Loom()])",
+  // --confcutdir pinned to the ABSOLUTE workDir (os.getcwd()) stops pytest walking UP into parent-dir
+  // conftest.py files; an in-tree conftest is covered by the diff-scope close. _Loom stays the explicit
+  // collector (plugins=[...]) so autoload-disable does not starve the result channel.
+  "    rc = pytest.main(['-p', 'no:cacheprovider', '-q', '--no-header', '-o', 'addopts=', '--confcutdir', os.getcwd(), '--basetemp', _tmp, *ids], plugins=[_Loom()])",
   'except Exception as e:',
   "    sys.stderr.write('pytest-wrapper-error: ' + repr(e))",
   'out = {t: res.get(t, "missing") for t in ids}',

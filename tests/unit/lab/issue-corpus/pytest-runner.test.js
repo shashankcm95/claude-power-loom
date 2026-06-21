@@ -35,4 +35,19 @@ test('the wrapper emits the SAME sentinel parseTestStatus parses (single-source 
   assert.ok(/missing/.test(PYTEST_WRAPPER), 'an un-run test defaults to missing, not pass');
 });
 
+test('③.2.1a close #4: the harness is PINNED — autoload disabled BEFORE import pytest, env hygiene, absolute confcutdir', () => {
+  const autoloadIdx = PYTEST_WRAPPER.indexOf("PYTEST_DISABLE_PLUGIN_AUTOLOAD");
+  const importIdx = PYTEST_WRAPPER.indexOf('import pytest');
+  assert.ok(autoloadIdx !== -1, 'PYTEST_DISABLE_PLUGIN_AUTOLOAD is set (closes the entry-points / pytest11 autoload vector)');
+  assert.ok(autoloadIdx < importIdx, 'autoload-disable is set BEFORE `import pytest` (otherwise it no-ops)');
+  // env hygiene: a host-inherited PYTEST_ADDOPTS / PYTEST_PLUGINS can re-add a named plugin even under
+  // autoload-disable (operator-infra defense-in-depth; ③.2.2 runs on operator hosts).
+  assert.ok(/PYTEST_ADDOPTS/.test(PYTEST_WRAPPER) && /PYTEST_PLUGINS/.test(PYTEST_WRAPPER), 'PYTEST_ADDOPTS + PYTEST_PLUGINS are cleared');
+  // confcutdir pinned to the absolute workDir stops the parent-dir conftest walk (in-tree conftest is
+  // covered by the diff-scope close; here we assert the harness pins it to os.getcwd(), not a relative
+  // path — a relative/mismatched value silently no-ops the protection).
+  assert.ok(/--confcutdir'\s*,\s*os\.getcwd\(\)/.test(PYTEST_WRAPPER), 'confcutdir is the ABSOLUTE cwd (os.getcwd()), not a relative path');
+  assert.ok(/plugins=\[_Loom\(\)\]/.test(PYTEST_WRAPPER), 'the in-process _Loom collector is still the explicit plugin (autoload-disable must not starve it)');
+});
+
 console.log(`pytest-runner.test.js: ${passed} passed`);
