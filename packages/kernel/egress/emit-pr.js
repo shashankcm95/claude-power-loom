@@ -34,8 +34,10 @@ const path = require('path');
 const { withLockSoft } = require('../_lib/lock');
 const { scrubEmitDiff } = require('./scrub');                          // ③.2.1b PR-B — body secret-scrub
 const { capExceeded, recordEmit, etiquetteKey, alreadyEmitted, recordEmitted } = require('./policy');
-// NOTE: child_process is intentionally NOT imported this wave — armedEmit() (the only network seam) is
-// unimplemented (throws). ③.2.4 adds the sanitized-env gh REST call there.
+const { computeEmissionHash, normalizeRepo } = require('./approval');                       // ③.2.4 — the per-emission gate
+const { readVerifiedApproval, consumeApproval } = require('./approval-store');
+// NOTE: child_process is STILL intentionally NOT imported — armedEmit() (the only network seam) remains
+// unimplemented (throws). ③.2.5 adds the sanitized-env gh REST call there, behind THIS wave's approval gate.
 
 // --------------------------------------------------------------------------
 // Env-sanitization — the killswitch core (CRITICAL F1).
@@ -44,10 +46,10 @@ const { capExceeded, recordEmit, etiquetteKey, alreadyEmitted, recordEmitted } =
 // The non-credential vars the gh/git subprocess legitimately needs to RUN. Everything else (esp. the
 // GH_*/GITHUB_TOKEN/GIT_ASKPASS credential surface + the GIT_CONFIG_* injection family) is DROPPED by
 // starting from {} and copying ONLY this allowlist — nothing ambient can leak.
-// TODO(③.2.4): add SSL_CERT_FILE + SSL_CERT_DIR for Linux/Docker runners whose CA bundle path is
-// non-default — gh's TLS would fail there without them (macOS uses the keychain, so this wave is fine;
-// there is no live network call here regardless — armedEmit throws).
-const ENV_ALLOWLIST = Object.freeze(['PATH', 'HOME', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TMPDIR', 'USER', 'LOGNAME', 'SHELL']);
+// ③.2.4 I4 — SSL_CERT_FILE + SSL_CERT_DIR are allowlisted for the ③.2.5 Linux/Docker gh-REST runner whose CA
+// bundle path is non-default (gh's TLS fails there without them; macOS uses the keychain). Additive + benign:
+// these are CA-bundle PATHS, not credentials, and there is no live network call this wave (armedEmit throws).
+const ENV_ALLOWLIST = Object.freeze(['PATH', 'HOME', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TMPDIR', 'USER', 'LOGNAME', 'SHELL', 'SSL_CERT_FILE', 'SSL_CERT_DIR']);
 
 /**
  * Build the emission subprocess env FROM SCRATCH. The token reaches gh/git ONLY if explicitly injected
@@ -162,6 +164,10 @@ const DISPOSITION_KEYS = Object.freeze([
   'rateLimit', 'perWindowCap', 'windowMs', 'emittedKeys', 'seen', 'now', 'count',
   'custodyCapStatePath', 'custodyEtiquetteLedgerPath', 'custodyTokenPath', 'custodyDispositionPath',
   'killswitchPath', 'lockPath', 'ghConfigDir', 'hostAllowlist',
+  // ③.2.4 H7 — the FULL per-emission-approval vocabulary (the actor never sets an approval/custody-approvals
+  // path, a pre-baked hash, the clock/ttl/uid the gate reads, OR the injectable emit fn). Exact-set deny (#273).
+  'approval', 'approvalHash', 'approved', 'emission', 'approvedAt', 'nonce',
+  'custodyApprovalsDir', 'custodyApprovalsPath', 'ttlMs', 'selfUid', 'armedEmitFn',
 ]);
 // CASE-FOLDED match set (+ the prototype-pollution keys) so a casing/spelling variant (Live / DRY_RUN /
 // __proto__) cannot slip the deny-list (VALIDATE-hacker).
@@ -280,12 +286,14 @@ function resolveDisposition({ custodyDispositionPath } = {}) {
 // --------------------------------------------------------------------------
 
 /**
- * The ONLY place the network would be touched (a gh REST blob->tree->commit->ref->pull from the diff-as-
- * DATA, NEVER a git push from the candidate clone). UNIMPLEMENTED this wave: it THROWS, so "cannot emit"
- * is true by construction. ③.2.4 implements it inside the sanitized env (buildEmitEnv).
+ * The ONLY place the network would be touched (a gh REST blob->tree->commit->ref->pull, NEVER a git push from
+ * the candidate clone). STILL UNIMPLEMENTED: it THROWS, so "cannot emit" is true by construction THIS wave too
+ * (the ③.2.4 wave builds + proves the per-emission approval GATE; the live seam is ③.2.5, behind this gate,
+ * once the blob-source + signed-minter Forward-Contract is met). Injectable via opts.armedEmitFn so the gated
+ * emit-then-record path is provable without the network.
  */
 function armedEmit() {
-  throw new Error('egress-not-armed-until-3.2.4: the live PR-emission seam is intentionally unimplemented this wave');
+  throw new Error('egress-not-armed-until-3.2.5: the live PR-emission seam is intentionally unimplemented (gate built ③.2.4; network ③.2.5)');
 }
 
 // --------------------------------------------------------------------------
@@ -335,24 +343,40 @@ function emitPR(data, opts = {}) {
       }
 
       // 5. SCRUB the diff (PR-B), then build the DRAFT SOLELY from the scrubbed diff + the custody-validated
-      //    refs — touched_paths derive from the SCRUBBED diff so a secret in a filename is redacted there too.
+      //    refs. repo is NORMALIZED ONCE (③.2.4 H5) — the SAME canonical the approval axiom hashes AND the
+      //    ③.2.5 emit target will read, so the approved identity and the emit target can never diverge.
+      //    touched_paths derive from the SCRUBBED diff so a secret in a filename is redacted there too.
       const scrubbedDiff = scrubEmitDiff(data.diff);
+      const issueNum = Number(String(data.issueRef).replace(/^#/, ''));
       const draft = Object.freeze({
-        repo: data.repo,
-        issueRef: Number(String(data.issueRef).replace(/^#/, '')),
-        title: `loom: candidate for issue #${String(data.issueRef).replace(/^#/, '')}`,
+        repo: normalizeRepo(data.repo),
+        issueRef: issueNum,
+        title: `loom: candidate for issue #${issueNum}`,
         touched_paths: Object.freeze(parseDiffPaths(scrubbedDiff).paths),
         diff: scrubbedDiff,
       });
+      // The content-address the human approval is keyed to (binds the MINIMAL set {repo,issueRef,scrubbed diff};
+      // the scrubbed diff IS draft.diff == the bytes ③.2.5 must emit verbatim — the Forward-Contract).
+      const approvalHash = computeEmissionHash(draft);
 
-      // 6. emit ONLY when disposition is live AND a token resolved AND the killswitch is off (EC1b.5). On a
-      //    real emit (③.2.4) RESERVE the cap + ledger FIRST, then emit; armedEmit() THROWS this wave.
+      // 6. emit ONLY when live AND a token AND killswitch-off AND a VALID per-emission human approval (③.2.4).
       if (disposition.mode === 'live' && token && !killswitchOn) {
+        const appr = readVerifiedApproval(opts.custodyApprovalsDir, approvalHash, { now, ttlMs: opts.ttlMs, selfUid: opts.selfUid });
+        if (!appr.ok) {
+          // the EXPECTED pending state (NOT an error): the human has not approved THIS exact content yet.
+          return { ok: true, emitted: false, disposition, draft, approvalHash, reason: 'awaiting-approval' };
+        }
+        // emit-then-record (③.2.4 I2 — fold the reservation-before-throw): armedEmit FIRST (throws this wave);
+        // ONLY on success RESERVE the cap + ledger and CONSUME the one-shot approval. A throw -> the outer
+        // catch -> fail-closed, with cap + ledger + approval all UNCHANGED (proven via an injected armedEmitFn).
+        const armedEmitFn = typeof opts.armedEmitFn === 'function' ? opts.armedEmitFn : armedEmit;
+        const pr = armedEmitFn({ draft, token, ghConfigDir: opts.ghConfigDir });
         if (typeof opts.custodyCapStatePath === 'string') recordEmit(opts.custodyCapStatePath, { now, windowMs: opts.windowMs });
         if (typeof opts.custodyEtiquetteLedgerPath === 'string') recordEmitted(opts.custodyEtiquetteLedgerPath, etqKey);
-        armedEmit();                                                  // throws not-armed (no live network)
+        consumeApproval(opts.custodyApprovalsDir, approvalHash);
+        return { ok: true, emitted: true, disposition, draft, approvalHash, pr };
       }
-      return { ok: true, emitted: false, disposition, draft };
+      return { ok: true, emitted: false, disposition, draft, approvalHash };
     });
 
     if (!r.ok) return { ok: false, emitted: false, reason: `lock-unavailable:${r.reason}` };
