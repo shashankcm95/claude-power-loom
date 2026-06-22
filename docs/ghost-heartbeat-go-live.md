@@ -1,7 +1,7 @@
 # Ghost Heartbeat -- go-live runbook
 
 > The single forward contract for turning the advisory drift heartbeat ON. Today the
-> heartbeat is **built, schedulable, and DEFAULT-OFF -- it is NOT live**. This runbook
+> heartbeat is **built, schedulable, and DEFAULT-OFF**. It was **scheduled live** on the operator's box 2026-06-22 (launchd, every 4h), but the scheduled judge does **not yet EMIT** -- it is gated on the headless `claude -p` auth issue in precondition (e). This runbook
 > consolidates the go-live preconditions (previously scattered across five plan files +
 > MEMORY) surfaced by the Wave-2 `/phase-close` (2026-06-20, `CLOSEABLE-WITH-NOTES`).
 
@@ -13,9 +13,11 @@ taxonomy, and a deterministic wrapper `bump`s an **advisory counter** (never an 
 rule mutation -- *narrows-not-hardens*; `integrity != provenance` unchanged). Promotion stays
 **human-gated** (the existing `/self-improve` path).
 
-Integrated arc (5 merged PRs): #367 STORE+SURFACE -> #369 capability-free EMIT producer
+Integrated arc (8 merged PRs): #367 STORE+SURFACE -> #369 capability-free EMIT producer
 (`drift-audit.js`) -> #371 Stop-hook carrier (realtime, best-effort) -> #373 drain runner
-(unattended backstop) -> #375 `install.sh` launchd/cron scheduler offer.
+(unattended backstop) -> #375 `install.sh` launchd/cron scheduler offer -> #378 go-live readiness
+(this runbook + honesty fixes) -> #379 emitted-set retention bound (`pruneEmitted` + marker-GC)
+-> #382 the absolute judge-bin bake into the scheduled task.
 
 ## Two carriers, one producer
 

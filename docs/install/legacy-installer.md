@@ -28,13 +28,15 @@ cd ~/Documents/claude-toolkit
 | `--agents` / `--rules` / `--hooks` / `--commands` / `--skills` | Install selectively |
 | `--diff` | Dry run: show what would change without installing |
 | `--backup` | Snapshot existing `~/.claude/` to `~/.claude/backups/backup-{timestamp}/` |
-| `--test` | Run 7-point smoke test suite after install (verifies hooks fire correctly) |
+| `--test` | Run the hook smoke-test suite after install (verifies hooks fire correctly; pair with `--hooks`, e.g. `--hooks --test`) |
+| `--schedule-heartbeat` | Opt-in: schedule the ghost-heartbeat drift drain runner (launchd on macOS / cron on Linux, every 4h; default-off advisory). Pause without unscheduling via `touch ~/.claude/checkpoints/ghost-heartbeat.disabled` |
+| `--unschedule-heartbeat` | Remove the scheduled ghost-heartbeat drain runner |
 
 ### Hook Configuration (legacy path only)
 
-If you used `install.sh`, hook scripts copy automatically but the configuration must be merged into `~/.claude/settings.json` manually. Reference template at `hooks/settings-reference.json` — replace `HOME_DIR` with your home directory path.
+If you used `install.sh`, hook scripts copy automatically but the configuration must be merged into `~/.claude/settings.json` manually. Reference template at `packages/kernel/settings-reference.json` — replace `HOME_DIR` with your home directory path.
 
-**If you used the plugin install path** (`/plugin marketplace add ...`), you can skip this step entirely — `hooks/hooks.json` ships with the plugin and is auto-loaded by Claude Code's plugin loader using `${CLAUDE_PLUGIN_ROOT}` substitution. No manual `settings.json` editing required.
+**If you used the plugin install path** (`/plugin marketplace add ...`), you can skip this step entirely — `packages/kernel/hooks.json` ships with the plugin and is auto-loaded by Claude Code's plugin loader using `${CLAUDE_PLUGIN_ROOT}` substitution. No manual `settings.json` editing required.
 
 ### Library memory organizer (v2.1.0+)
 

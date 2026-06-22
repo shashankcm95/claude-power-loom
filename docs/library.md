@@ -62,7 +62,7 @@ The catalog hides the form choice from callers (information-hiding per `kb:archi
 
 The CLI lives at `scripts/library.js`. Invoke via `node scripts/library.js <subcommand>`.
 
-### v2.1.0 verbs (8)
+### Core CLI verbs (10)
 
 | Verb | Description |
 |---|---|
@@ -74,11 +74,12 @@ The CLI lives at `scripts/library.js`. Invoke via `node scripts/library.js <subc
 | `ls [<section>[/<stack>]]` | List sections / stacks / volumes |
 | `sections` | List all sections |
 | `stacks <section>` | List stacks within a section + volume counts |
+| `reindex [<section>/<stack>]` | Rebuild `_catalog.json` from volumes on disk; repairs catalog drift (no arg → all stacks) |
 | `stats [--json] [--section X]` | Observability (Component L): volume counts, catalog bytes, last-rebuilt times, schema versions |
 
 ### v2.1.1 — Component H FULL bulkhead
 
-`scripts/library-migrate.js` gains a third subcommand:
+`scripts/library-migrate.js` adds `partition-personas` (the script now dispatches six subcommands — `migrate`, `rollback`, `partition-personas`, plus `add-synthid` (one-shot SynthId backfill), `sync-legacy` (rebuild the legacy `agent-identities.json` from the bulkhead store), and `fix-symlinks` (detect + restore broken legacy symlinks)):
 
 | Verb | Description |
 |---|---|

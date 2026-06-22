@@ -20,10 +20,10 @@ them. (Looking for "the memory file"? It's the MEMORY.md row below.)
 | Tier | Look at | What |
 |---|---|---|
 | kernel (enforced) | `packages/kernel/` | hooks + primitives: `hooks/`, `algorithms/` (route-decide), `spawn-state/` (integrator, stage-candidate), `_lib/` (record-store, transaction-record), `validators/`, `enforcement/` |
-| runtime (orchestration) | `packages/runtime/` | HETS: `orchestration/`, `personas/` (16 bodies), `contracts/` (20), `decomposition/`, `verify/` — best-effort |
+| runtime (orchestration) | `packages/runtime/` | HETS: `orchestration/`, `personas/` (17 bodies), `contracts/` (19), `decomposition/`, `verify/` — best-effort |
 | lab (Evolution Lab) | `packages/lab/` | the v3.x advisory/shadow experiment substrate: `attribution/`, `reputation/`, `circuit-breaker/`, `manage-proposal/`, `verdict-attestation/`, … |
 | rules + commands + skills SOURCE | `packages/skills/` | `rules/core/*.md` (the always-on discipline source — see above), `commands/*.md` (14 slash commands), `library/**/SKILL.md` (21 skills) |
-| Agent-tool persona defs | `agents/*.md` (18) | the personas the Agent tool spawns (architect, code-reviewer, hacker, …). The 3-layer split `agents/*.md` → `runtime/personas/NN` → `contracts/*.contract.json` is **INTENTIONAL — don't "dedup" it** |
+| Agent-tool persona defs | `agents/*.md` (19) | the personas the Agent tool spawns (architect, code-reviewer, hacker, …). The 3-layer split `agents/*.md` → `runtime/personas/NN` → `contracts/*.contract.json` is **INTENTIONAL — don't "dedup" it** |
 | tests | `tests/unit/{kernel,runtime,lab,hooks,agents}/` | the unit suites; the full kernel suite + `install.sh --hooks --test` are the pre-push gate |
 
 ## Canonical records
