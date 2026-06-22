@@ -25,11 +25,13 @@ lifecycle: persistent
 > record). Several of its mechanisms are **net-new and unbuilt** — flagged inline. DRAFT pending USER
 > ratification of the open questions + the corrections folded 2026-06-11.
 
-## Status update (2026-06-22) — the "ContainerAdapter unknown" framing below is superseded
+## Status update (2026-06-22) — two stale-status families below are superseded
 
-Two things landed AFTER this 2026-06-11 capture, so the ContainerAdapter references in this RFC
-(§Principle 6; §"What this RFC does NOT claim"; the breaker/promotion deferrals at the lines marked
-`[UPDATE 2026-06-22 …]`) read as more open than they now are:
+This 2026-06-11 capture froze (#292) and its file was not re-touched, but substrate landed the same day +
+after — so two families of present-tense status claims now read as more open than they are. Each stale
+site is marked inline `[UPDATE 2026-06-22 …]`.
+
+**(A) The ContainerAdapter** (§Principle 6; §"What this RFC does NOT claim"; the breaker/promotion deferrals):
 
 - The "real sandbox" this RFC calls an unbuilt wall **is built + containment-attested** — the Docker
   backend behind the ContainerAdapter seam (#346, real fs/net/proc isolation) and the write-isolated
@@ -38,10 +40,25 @@ Two things landed AFTER this 2026-06-11 capture, so the ContainerAdapter referen
 - The "harness-wrap go/no-go **unknown**" is **resolved**: a `claude -p` agent runs write-confined in a
   container, proven this arc (the v3.9 RFC had deferred any live-repo WRITE path to v4.x; it shipped early).
 
-**Still future — by design, not unbuilt:** the *autonomous-promotion wiring* that lifts the human from
-the loop (v4.x; ③.2 is human-sole-gate), and R13 (the network-enforcer *beyond* default-deny, v4.x). So
-read the ContainerAdapter references below as **"the containment machinery exists + the unknown is
-answered; only the autonomous USE of it is deferred."**
+**(B) The reject-event ledger** (the "UNBUILT / WILL BE built / re-scope to ratify" sites — §"Fractal
+trust", the §roadmap-derivation v3.7 bullet, and the verification-record drift table):
+
+- The reject-event ledger **is built**, ~83 min after this RFC froze: `kernel/_lib/reject-event-store.js`
+  (#293), **minted by the integrator's own assembly path** (`mintRejectEvent` at quarantine +
+  provenance-reject; `writer_persona_id: KERNEL_INTEGRATOR_PERSONA`) — exactly the "MUST be minted by the
+  assembly path, never caller-asserted" requirement this RFC states two sentences later. Released v3.7.0
+  (#299); wired as the circuit-breaker's first denial source (#300). So the denial source "the v3.7 VERIFY
+  found missing" is no longer missing, and the "re-scope to ratify" was ratified at #292.
+
+**Still future / still true — do NOT read the above as over-closing:**
+
+- the *autonomous-promotion wiring* that lifts the human from the loop (v4.x; ③.2 is human-sole-gate) and
+  R13 (network-enforcer *beyond* default-deny, v4.x) — the ContainerAdapter MACHINERY exists; only its
+  autonomous USE is deferred;
+- the **ABSORB / clean-merge side is intentionally NOT minted** (display-only) — only the REJECT side is a
+  ledger; the reject ledger is still **SHADOW** (the fail-closed gating consumer is deferred, so the
+  breaker halts nothing yet); and **`recordVerdict` remains caller-forgeable** (H-ATK-1 — genuinely
+  unaddressed).
 
 ## Problem statement
 
@@ -190,7 +207,7 @@ and the rejection reason (the old spawn is ephemeral, but the deltas carry every
 same closure as the retrace). Repeated rejects on a task -> **reassign** to a different/more-trusted
 persona. Crucially, **the orchestrator's commit-rejection events WILL BE the delta-promote denial source
 the v3.7 VERIFY found missing** — once v3.7 W1 builds the durable journal (today the integrator's
-run-report is in-memory only; the ledger is UNBUILT, panel CRITICAL). **The absorb/reject event MUST be
+run-report is in-memory only; the ledger is UNBUILT, panel CRITICAL). `[UPDATE 2026-06-22: BUILT — the reject-event ledger shipped #293 (assembly-path-minted: mintRejectEvent at quarantine + provenance-reject), released v3.7.0 (#299), breaker-wired (#300); the "minted by the assembly path, never caller-asserted" requirement below is MET for the REJECT side. Still SHADOW (gating deferred); the ABSORB side is display-only (unminted); recordVerdict stays caller-forgeable. See Status update (B).]` **The absorb/reject event MUST be
 MINTED by the assembly path itself** — the integrator's stack-vs-quarantine decision, bound to the
 kernel-attested candidate — **never caller-asserted** (the current `recordVerdict` accepts a
 caller-supplied verdict+agentId with no kernel-attest -> absorb-forgery; panel CRITICAL H-ATK-1). So the
@@ -319,7 +336,7 @@ proposed derivation:
   vs rejected / quarantined, tagged to its requirement). This is the one producer two trust consumers
   read. (This addresses the v3.7 EC3 debate AND finds the breaker's missing denial source: the reject
   events are what the breaker bounds — but note the committed v3.7 plan is delta-promote *activation*;
-  adding the ledger is a re-scope to ratify, and the ledger is UNBUILT. The breaker's INTERNAL
+  adding the ledger is a re-scope to ratify, and the ledger is UNBUILT. `[UPDATE 2026-06-22: ratified at #292 + BUILT in v3.7 W1 (#293, assembly-path-minted) + released v3.7.0 (#299); only the ABSORB side stays unminted. See Status update (B).]` The breaker's INTERNAL
   reject-bounding job comes with it; only its AUTONOMOUS-promotion job defers to the ContainerAdapter.) `[UPDATE 2026-06-22: the ContainerAdapter machinery is BUILT (#346 + #391); the deferral is the autonomous-promotion WIRING — see Status update.]`
 - **v3.8** wires both consumers: **reputation** reads the absorb-rate (trust-up); the **breaker** reads
   the reject-rate (trust-down: demote a degrading persona + reassign).
@@ -389,7 +406,7 @@ built; but several confident claims were over-stated. Corrections folded above:
 | Over-claimed determinism | "mechanical incoherence caught deterministically, no new mechanism" — FALSE for cross-file/semantic deps (probed: clean merge + runtime error, no quarantine) | Reconciliation downgraded; OQ-NS-7 build/test gate |
 | Over-claimed determinism | "every PR line maps to the spawn with certainty" — provenance is COMMIT-level; intra-spawn checkpoint trajectory is UNBUILT (single squash) | Retrace downgraded; OQ-NS-5 capture mechanism |
 | Over-claimed continuity | "re-prioritizes, does not re-sequence the spine" — FALSE (re-scopes v3.7, forward-pulls E-EXT) | Status note + roadmap section reframed as a PROPOSED re-scope through the charter's gate |
-| Unbuilt + forgeable | the absorb/reject ledger ("ARE emitted") is UNBUILT; `recordVerdict` is caller-forgeable | Present-tense -> future; MUST be minted by the assembly path, kernel-attested |
+| Unbuilt + forgeable | the absorb/reject ledger ("ARE emitted") is UNBUILT; `recordVerdict` is caller-forgeable [UPDATE 2026-06-22: REJECT side now BUILT (#293, assembly-path-minted); ABSORB side still unminted (display-only); recordVerdict still caller-forgeable — see Status update (B)] | Present-tense -> future; MUST be minted by the assembly path, kernel-attested |
 | §0a.3.1 tension | absorb-rate hardening reputation / "fiftieth clean-merged commit gets a skim" = trust-by-frequency on a same-system signal | The narrows-vs-hardens split (Fractal trust); OQ-NS-6 |
 | Cold-start | "resolved" inverts the bottleneck (unproven = MAXIMAL review; human freed only lagged) | Re-titled MITIGATION (partial); amplification-control is the unconditional win |
 | Apex unbuilt | external-merge signal has no producer + no authentication; latency vs `run_id` rotation breaks attribution | OQ-NS-8 (auth) + OQ-NS-3 (durable key); flagged UNBUILT |
