@@ -13,6 +13,8 @@ const { spawnSync } = require('child_process');
 
 const REPO = path.join(__dirname, '..', '..', '..', '..');
 const E = require(path.join(REPO, 'packages', 'kernel', 'egress', 'emit-pr.js'));
+const S = require(path.join(REPO, 'packages', 'kernel', 'egress', 'approval-store.js'));   // ③.2.4 — mint approvals
+const SELF_UID = typeof process.getuid === 'function' ? process.getuid() : null;
 
 // Computed fake credentials (never a literal *_TOKEN = '...' assignment).
 const FAKE_AMBIENT = ['AMBIENT', 'no', 'leak'].join('-');
@@ -200,30 +202,130 @@ test('EC1b.4 emitPR: a .github diff is fail-closed (ok:false, emitted:false)', (
   assert.strictEqual(r.emitted, false);
 });
 
-// === EC1b.5 — the live-emission seam throws; emitPR never emits even when "armed" ===
+// === EC1b.5 — the live seam (③.2.4 gate: live AND token AND killswitch-off AND a per-emission approval) ===
 
-test('EC1b.5 armedEmit() THROWS not-armed (no live network code this wave)', () => {
-  // Match the STABLE prefix, not the version (③.2.3 retargeted the seam to ③.2.4 — VF6).
-  assert.throws(() => E.armedEmit(), /egress-not-armed/);
+test('EC1b.5 armedEmit() THROWS not-armed (no live network code this wave; retargeted ③.2.5)', () => {
+  assert.throws(() => E.armedEmit(), /egress-not-armed/);                 // match the STABLE prefix, not the version
 });
 
-test('EC1b.5 emitPR: even with killswitch OFF + a custody token + LIVE disposition, the seam throws => fail-closed (zero emit)', () => {
-  const dir = scratch('loom-custody-');
+// An "armed" custody (killswitch OFF + token + LIVE disposition + an empty approvals dir). The 4th AND — a
+// per-emission approval — is minted per-test via recordApproval so we prove BOTH the awaiting + the approved paths.
+function armedCustody(dir) {
+  fs.writeFileSync(path.join(dir, 'killswitch'), 'ARMED');
+  fs.writeFileSync(path.join(dir, 'token'), FAKE_CUSTODY);
+  fs.writeFileSync(path.join(dir, 'disposition'), JSON.stringify({ mode: 'live', draft: false }));
+  fs.mkdirSync(path.join(dir, 'approvals'));
+  return {
+    killswitchPath: path.join(dir, 'killswitch'), custodyTokenPath: path.join(dir, 'token'),
+    custodyDispositionPath: path.join(dir, 'disposition'), custodyApprovalsDir: path.join(dir, 'approvals'),
+    lockPath: path.join(dir, 'lock'), now: 1000, ttlMs: 1000000, selfUid: SELF_UID,
+  };
+}
+// The minimal axiom emitPR hashes for goodData() (GOOD_DIFF has no secrets => scrubbed == raw).
+function mintApprovalFor(opts) {
+  return S.recordApproval(opts.custodyApprovalsDir, { repo: 'owner/repo', issueRef: 42, diff: GOOD_DIFF }, { now: opts.now, nonce: 'n-test', selfUid: SELF_UID });
+}
+function withKillswitchEnvCleared(fn) {
   const save = process.env.LOOM_BETA_KILLSWITCH; delete process.env.LOOM_BETA_KILLSWITCH;
+  try { return fn(); } finally { if (save === undefined) delete process.env.LOOM_BETA_KILLSWITCH; else process.env.LOOM_BETA_KILLSWITCH = save; }
+}
+
+test('EC1b.5a armed but NO approval => awaiting-approval (ok:true, emitted:false, approvalHash surfaced)', () => {
+  const dir = scratch('loom-custody-');
   try {
-    fs.writeFileSync(path.join(dir, 'killswitch'), 'ARMED');               // killswitch OFF
-    fs.writeFileSync(path.join(dir, 'token'), FAKE_CUSTODY);              // a token resolves
-    fs.writeFileSync(path.join(dir, 'disposition'), JSON.stringify({ mode: 'live', draft: false }));
-    const r = E.emitPR(goodData(), {
-      killswitchPath: path.join(dir, 'killswitch'),
-      custodyTokenPath: path.join(dir, 'token'),
-      custodyDispositionPath: path.join(dir, 'disposition'),
-      lockPath: path.join(dir, 'lock'),
+    withKillswitchEnvCleared(() => {
+      const r = E.emitPR(goodData(), armedCustody(dir));
+      assert.strictEqual(r.ok, true);
+      assert.strictEqual(r.emitted, false, 'no approval => no emit');
+      assert.strictEqual(r.reason, 'awaiting-approval');
+      assert.ok(/^[a-f0-9]{64}$/.test(r.approvalHash), 'the approvalHash is surfaced for the human to approve');
     });
-    assert.strictEqual(r.ok, false, 'the armed path hits the not-armed seam and fails closed');
-    assert.strictEqual(r.emitted, false, 'still zero bytes — no live network code exists');
-    assert.ok(/not-armed/.test(r.reason), `reason is the not-armed seam (got ${r.reason})`);
-  } finally { if (save === undefined) delete process.env.LOOM_BETA_KILLSWITCH; else process.env.LOOM_BETA_KILLSWITCH = save; fs.rmSync(dir, { recursive: true, force: true }); }
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('EC1b.5b armed + a VALID approval => reaches the throwing armedEmit => fail-closed; cap+ledger+approval UNCHANGED (I2)', () => {
+  const dir = scratch('loom-custody-');
+  try {
+    withKillswitchEnvCleared(() => {
+      const opts = Object.assign(armedCustody(dir), { custodyCapStatePath: path.join(dir, 'cap.json'), custodyEtiquetteLedgerPath: path.join(dir, 'ledger') });
+      const { hash } = mintApprovalFor(opts);
+      const r = E.emitPR(goodData(), opts);                               // default armedEmit THROWS this wave
+      assert.strictEqual(r.ok, false, 'the not-armed seam fails closed even with a valid approval');
+      assert.strictEqual(r.emitted, false);
+      assert.ok(/not-armed/.test(r.reason), `reason is the seam (got ${r.reason})`);
+      // emit-then-record: a throwing emit leaves the cap + ledger UNWRITTEN and the approval UN-consumed.
+      assert.strictEqual(fs.existsSync(opts.custodyCapStatePath), false, 'cap state never written (reservation fold)');
+      assert.strictEqual(fs.existsSync(opts.custodyEtiquetteLedgerPath), false, 'ledger never written');
+      assert.strictEqual(S.readVerifiedApproval(opts.custodyApprovalsDir, hash, { now: opts.now, ttlMs: opts.ttlMs, selfUid: SELF_UID }).ok, true, 'approval NOT consumed by a failed emit');
+    });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('EC1b.5c armed + valid approval + an injected SUCCEEDING armedEmitFn => emitted:true; cap+ledger RECORDED + approval CONSUMED', () => {
+  const dir = scratch('loom-custody-');
+  try {
+    withKillswitchEnvCleared(() => {
+      const opts = Object.assign(armedCustody(dir), { custodyCapStatePath: path.join(dir, 'cap.json'), custodyEtiquetteLedgerPath: path.join(dir, 'ledger') });
+      const { hash } = mintApprovalFor(opts);
+      // NB the emit-then-record ORDERING (record AFTER emit) is proven by EC1b.5b/5b2 (the throwing path), not
+      // here — a succeeding emit records + consumes under either order. This proves the on-SUCCESS state only.
+      let emitCalls = 0;
+      const r = E.emitPR(goodData(), Object.assign({}, opts, { armedEmitFn: () => { emitCalls += 1; return { pr_url: 'https://example/pr/1' }; } }));
+      assert.strictEqual(emitCalls, 1, 'armedEmitFn invoked exactly once');
+      assert.strictEqual(r.ok, true); assert.strictEqual(r.emitted, true, 'valid approval + succeeding emit => emitted');
+      assert.deepStrictEqual(r.pr, { pr_url: 'https://example/pr/1' });
+      assert.strictEqual(fs.existsSync(opts.custodyCapStatePath), true, 'cap recorded AFTER the successful emit');
+      assert.strictEqual(fs.existsSync(opts.custodyEtiquetteLedgerPath), true, 'ledger recorded AFTER the successful emit');
+      assert.strictEqual(S.readVerifiedApproval(opts.custodyApprovalsDir, hash, { now: opts.now, ttlMs: opts.ttlMs, selfUid: SELF_UID }).ok, false, 'approval consumed (one-shot)');
+    });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('EC1b.5d a CONSUMED approval does not re-fire; a TTL-expired approval => awaiting-approval (H4 one-shot + TTL)', () => {
+  const dir = scratch('loom-custody-');
+  try {
+    withKillswitchEnvCleared(() => {
+      const opts = armedCustody(dir);                                     // no cap/ledger => the approval is the sole gate
+      mintApprovalFor(opts);
+      E.emitPR(goodData(), Object.assign({}, opts, { armedEmitFn: () => ({ pr_url: 'x' }) }));   // consumes it
+      const r2 = E.emitPR(goodData(), Object.assign({}, opts, { armedEmitFn: () => ({ pr_url: 'x' }) }));
+      assert.strictEqual(r2.reason, 'awaiting-approval', 'a consumed one-shot approval does not re-fire');
+      mintApprovalFor(opts);                                             // fresh approval, but now PAST its TTL
+      const r3 = E.emitPR(goodData(), Object.assign({}, opts, { now: opts.now + 9999999, ttlMs: 1000, armedEmitFn: () => ({ pr_url: 'x' }) }));
+      assert.strictEqual(r3.reason, 'awaiting-approval', 'a stale (TTL-expired) approval does not fire');
+    });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('EC1b.5b2 a throwing emit leaves PRE-EXISTING cap/ledger state byte-UNCHANGED (the strongest reservation-fold guard; honesty H3)', () => {
+  const dir = scratch('loom-custody-');
+  try {
+    withKillswitchEnvCleared(() => {
+      const opts = Object.assign(armedCustody(dir), { custodyCapStatePath: path.join(dir, 'cap.json'), custodyEtiquetteLedgerPath: path.join(dir, 'ledger') });
+      mintApprovalFor(opts);
+      fs.writeFileSync(opts.custodyCapStatePath, JSON.stringify({ windowStart: opts.now, count: 2 }));   // pre-seeded under cap
+      fs.writeFileSync(opts.custodyEtiquetteLedgerPath, 'other/repo#1\n');                                // an unrelated prior key
+      const r = E.emitPR(goodData(), opts);                                                              // default armedEmit THROWS
+      assert.strictEqual(r.ok, false, 'the seam fails closed');
+      assert.deepStrictEqual(JSON.parse(fs.readFileSync(opts.custodyCapStatePath, 'utf8')), { windowStart: opts.now, count: 2 }, 'cap counter NOT incremented by a throwing emit');
+      assert.strictEqual(fs.readFileSync(opts.custodyEtiquetteLedgerPath, 'utf8'), 'other/repo#1\n', 'ledger byte-unchanged by a throwing emit');
+    });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('EC1b.5e partial-commit residual: a SUCCEEDING emit whose recordEmit then throws => ok:false + approval NOT consumed (Forward-Contract #6 — INERT this wave)', () => {
+  const dir = scratch('loom-custody-');
+  try {
+    withKillswitchEnvCleared(() => {
+      // a cap path in a NON-existent subdir => recordEmit's writeAtomic ENOENT-throws AFTER the (injected) emit succeeded.
+      const opts = Object.assign(armedCustody(dir), { custodyCapStatePath: path.join(dir, 'no-such-subdir', 'cap.json') });
+      const { hash } = mintApprovalFor(opts);
+      const r = E.emitPR(goodData(), Object.assign({}, opts, { armedEmitFn: () => ({ pr_url: 'https://example/pr/9' }) }));
+      // documents the known reserve->rollback gap deferred to ③.2.5: the emit "happened" but the result reads ok:false.
+      assert.strictEqual(r.ok, false, 'a post-emit record throw surfaces as ok:false (the documented partial-commit lie)');
+      assert.strictEqual(S.readVerifiedApproval(opts.custodyApprovalsDir, hash, { now: opts.now, ttlMs: opts.ttlMs, selfUid: SELF_UID }).ok, true, 'the approval is NOT consumed when the post-emit record throws (③.2.5 reserve->rollback closes this)');
+    });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('EC1b.5 killswitch default-ON: absent custody => killswitch on => token null (capability removed)', () => {
@@ -348,6 +450,26 @@ test('EC1bB.3/4 emitPR: a poisoned data policy key (cap/window/ledger/now) is fa
     const r = E.emitPR(goodData({ [k]: 'x' }));
     assert.strictEqual(r.ok, false, `data.${k} rejected`);
     assert.ok(/policy key/.test(r.reason), `data.${k} names the policy-key rejection (got ${r.reason})`);
+  }
+});
+
+// === ③.2.4 — the per-emission approval gate riders (H5 normalize-once + H7 deny-list completeness) ===
+
+test('③.2.4 H7: the full approval vocabulary is in the data deny-list (actor cannot inject approval/custody keys)', () => {
+  for (const k of ['approval', 'approvalHash', 'approved', 'emission', 'approvedAt', 'nonce', 'custodyApprovalsDir', 'custodyApprovalsPath', 'ttlMs', 'selfUid', 'armedEmitFn']) {
+    assert.ok(E.DISPOSITION_KEYS.includes(k), `${k} must be a declared disposition key`);
+    const r = E.emitPR(goodData({ [k]: 'x' }));
+    assert.strictEqual(r.ok, false, `data.${k} rejected end-to-end`);
+    assert.ok(/policy key/.test(r.reason), `data.${k} names the policy-key rejection (got ${r.reason})`);
+  }
+});
+
+test('③.2.4 H5: draft.repo is the NORMALIZED canonical (a .git / case input collapses to owner/repo)', () => {
+  for (const input of ['Owner/Repo', 'Owner/Repo.git', 'owner/repo']) {
+    const r = E.emitPR(goodData({ repo: input }));
+    assert.strictEqual(r.ok, true, `${input} ok`);
+    assert.strictEqual(r.draft.repo, 'owner/repo', `${input} -> the ONE canonical repo the axiom + the ③.2.5 target read`);
+    assert.ok(/^[a-f0-9]{64}$/.test(r.approvalHash), 'approvalHash surfaced on the dry-run path too');
   }
 });
 

@@ -72,6 +72,8 @@ Auto-generated map of where things live, derived from the repo structure + each 
 
 ### `kernel/egress/`
 
+- `packages/kernel/egress/approval-store.js` - ③.2.4 — the per-emission approval STORE: the fail-closed filesystem I/O over the PURE approval.js axiom (the
+- `packages/kernel/egress/approval.js` - ③.2.4 — the PER-EMISSION approval AXIOM (PURE; no I/O).
 - `packages/kernel/egress/emit-pr.js` - ③.2.1b — the PR-egress kernel: the SINGLE in-process `emitPR` chokepoint that is the SOLE holder of
 - `packages/kernel/egress/policy.js` - ③.2.1b PR-B — egress POLICY gates: a GLOBAL per-window emission cap, 429/abuse backpressure, and a
 - `packages/kernel/egress/scrub.js` - ③.2.1b PR-B — the egress SECRET-SCRUB (coarse, defense-in-depth).
