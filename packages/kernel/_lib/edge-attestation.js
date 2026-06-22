@@ -66,8 +66,13 @@ function loadPrivateKey(opts) {
 // Resolve an ed25519 PUBLIC KeyObject from opts/env, or null. No committed default key in W1
 // (no production minter exists yet — a fake "default" key would be misleading); absent -> null
 // -> the verify side fails CLOSED. PINS ed25519 (refuses a wrong-type override).
+// allowEnvFallback (DEFAULT true — zero regression for the edge/lesson callers): pass `false` to FORBID the
+// ambient LOOM_EDGE_VERIFY_KEY fallback. A gate whose trust anchor must come from CUSTODY (the egress
+// signed-approval gate, ③.2.5a) passes false so a same-uid host cannot point the verifier at its own key via
+// the env var (VERIFY-hacker H1 — reproduced live: undefined pin + hostile env verified an attacker sig).
 function loadPublicKey(opts) {
-  const pem = (opts && opts.publicKeyPem) || process.env.LOOM_EDGE_VERIFY_KEY || null;
+  const envPem = (opts && opts.allowEnvFallback === false) ? null : process.env.LOOM_EDGE_VERIFY_KEY;
+  const pem = (opts && opts.publicKeyPem) || envPem || null;
   if (typeof pem !== 'string' || pem.length === 0) return null;
   let key;
   try { key = crypto.createPublicKey(pem); } catch { return null; }
@@ -110,12 +115,17 @@ function resolveSigner(opts = {}) {
 // the signer is resolved through resolveSigner — the env-PEM default OR an injected opts.signer (the
 // trust-domain vehicle). Fail-soft: a non-HEX64 id (the INPUT gate, BEFORE any signer), no signer, a
 // throwing signer, or a malformed/non-canonical signer OUTPUT -> null. Never throws.
-function signRecordId(recordId, opts = {}) {
+// ③.2.5a M1 — `body` is FORWARDED to the resolved signer (3rd arg). signRecordId is DOMAIN-AGNOSTIC: it does
+// NOT recompute-bind (it signs `recordId` as given) — the recompute-bind is the CALLER's job (the egress
+// recordApproval re-derives at the mint site) or the cross-uid broker's (it recomputes from the stdin body and
+// refuses a mismatch — PR-2). The env-PEM default closure IGNORES `body` (unchanged); only an injected broker
+// signer reads it. Backward-compatible: every existing 2-arg call site passes body=undefined.
+function signRecordId(recordId, opts = {}, body) {
   if (!isHex64(recordId)) return null;          // INPUT gate FIRST — never hand an unchecked id to a signer
   const signer = resolveSigner(opts);
   if (typeof signer !== 'function') return null;
   let sig;
-  try { sig = signer(recordId); }               // an injected signer may throw -> fail-soft
+  try { sig = signer(recordId, body); }         // an injected signer may throw -> fail-soft
   catch { return null; }
   // OUTPUT gate: an injected signer is UNTRUSTED to return a well-formed sig. Require canonical base64
   // (malleability defense — the SAME gate verifyRecordSig applies) AND the exact 64-byte shape of an

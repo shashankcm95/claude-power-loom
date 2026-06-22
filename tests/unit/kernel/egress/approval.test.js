@@ -56,61 +56,108 @@ test('normalizeRepo: strips .git + lowercases', () => {
   assert.strictEqual(A.normalizeRepo('owner/.github'), 'owner/.github', 'a dot-led repo name is preserved (only the trailing .git is stripped)');
 });
 
-// === verifyApproval — #273 verify-the-body + TTL + nonce ===
+// === verifyApproval — #273 verify-the-body + TTL + nonce + ③.2.5a broker SIGNATURE ===
 
-function approvalBody(over) {
+// In-process ed25519 keypair (the not-yet-isolated key — PR-1 is the verify-HALF, NOT provenance; ③.2.5b
+// moves this key cross-uid). A second keypair models a WRONG/attacker key.
+const { generateEdgeKeypair, signRecordId } = require(path.join(REPO, 'packages', 'kernel', '_lib', 'edge-attestation.js'));
+const KP = generateEdgeKeypair();
+const ATTACKER = generateEdgeKeypair();
+const VKEY = KP.publicKeyPem;
+function sign(hash, body, priv) { return signRecordId(hash, { privateKeyPem: priv || KP.privateKeyPem }, body); }
+
+// A well-formed SIGNED approval body. `over` can replace fields; `signWith` picks the signing key. ③.2.5a — the
+// sig is over the FRESHNESS-BOUND basis (hash+approvedAt+nonce+key_id), not the bare hash. F3: only auto-sign when
+// the caller did NOT pass an explicit `sig` (so approvalBody({ sig: '' }) yields a sig-less body, no workaround).
+function approvalBody(over, signWith) {
   const d = draft();
-  return Object.assign({ hash: A.computeEmissionHash(d), emission: A.emissionAxiom(d), approvedAt: 1000, nonce: 'n-abc' }, over || {});
+  const base = { hash: A.computeEmissionHash(d), emission: A.emissionAxiom(d), approvedAt: 1000, nonce: 'n-abc', key_id: 'v0' };
+  const merged = Object.assign(base, over || {});
+  if (!Object.prototype.hasOwnProperty.call(over || {}, 'sig')) merged.sig = sign(A.approvalSigBasis(merged), merged, signWith);
+  return merged;
 }
 
-test('verifyApproval: a well-formed approval for the requested hash -> ok', () => {
+test('verifyApproval: a well-formed SIGNED approval for the requested hash + pinned key -> ok (verify-half mechanism)', () => {
   const h = A.computeEmissionHash(draft());
-  const r = A.verifyApproval({ fileBytes: JSON.stringify(approvalBody()), requestedHash: h, now: 2000, ttlMs: 10000 });
+  const r = A.verifyApproval({ fileBytes: JSON.stringify(approvalBody()), requestedHash: h, now: 2000, ttlMs: 10000, verifyKeyPem: VKEY });
   assert.strictEqual(r.ok, true, r.reason);
 });
 
+test('verifyApproval: an UNSIGNED (③.2.4-shape) approval -> sig-missing (fail-closed)', () => {
+  const d = draft(); const h = A.computeEmissionHash(d);
+  const unsigned = JSON.stringify({ hash: h, emission: A.emissionAxiom(d), approvedAt: 1000, nonce: 'n' }); // no sig
+  assert.strictEqual(A.verifyApproval({ fileBytes: unsigned, requestedHash: h, now: 2000, ttlMs: 10000, verifyKeyPem: VKEY }).reason, 'sig-missing');
+});
+
+test('verifyApproval: a sig from the WRONG key -> sig-invalid; a sig over a DIFFERENT hash -> body-hash/sig fail', () => {
+  const h = A.computeEmissionHash(draft());
+  // wrong-key: body signed by ATTACKER, verified against the pinned VKEY
+  assert.strictEqual(A.verifyApproval({ fileBytes: JSON.stringify(approvalBody({}, ATTACKER.privateKeyPem)), requestedHash: h, now: 2000, ttlMs: 10000, verifyKeyPem: VKEY }).reason, 'sig-invalid');
+  // tampered: a body whose sig is over the right hash but emission re-derives elsewhere -> body-hash-mismatch (before sig)
+  const forged = JSON.stringify({ hash: h, emission: A.emissionAxiom(draft({ diff: SCRUBBED + 'T' })), approvedAt: 1000, nonce: 'n', sig: sign(h, A.emissionAxiom(draft())) });
+  assert.strictEqual(A.verifyApproval({ fileBytes: forged, requestedHash: h, now: 2000, ttlMs: 10000, verifyKeyPem: VKEY }).reason, 'body-hash-mismatch');
+});
+
+test('verifyApproval: NO verify key pinned -> no-verify-key, even with a hostile LOOM_EDGE_VERIFY_KEY env (H1 — no env fallthrough)', () => {
+  const h = A.computeEmissionHash(draft());
+  const save = process.env.LOOM_EDGE_VERIFY_KEY;
+  process.env.LOOM_EDGE_VERIFY_KEY = ATTACKER.publicKeyPem;               // attacker sets ambient
+  try {
+    // a body the attacker self-signed; verifyKeyPem ABSENT — must fail-closed (NOT verify against the env key)
+    const selfSigned = JSON.stringify(approvalBody({}, ATTACKER.privateKeyPem));
+    assert.strictEqual(A.verifyApproval({ fileBytes: selfSigned, requestedHash: h, now: 2000, ttlMs: 10000 }).reason, 'no-verify-key');
+    assert.strictEqual(A.verifyApproval({ fileBytes: selfSigned, requestedHash: h, now: 2000, ttlMs: 10000, verifyKeyPem: '' }).reason, 'no-verify-key');
+  } finally { if (save === undefined) delete process.env.LOOM_EDGE_VERIFY_KEY; else process.env.LOOM_EDGE_VERIFY_KEY = save; }
+});
+
+test('verifyApproval [RESIDUAL]: a body signed by the in-process (same-uid) key VERIFIES -> PR-1 is integrity+mechanism, NOT provenance', () => {
+  // Documents the open residual: until ③.2.5b moves the key cross-uid, anyone who can read the signing key mints a
+  // byte-valid approval the gate accepts. This is EXPECTED in PR-1 (the verify-half), NOT a guarantee of provenance.
+  const h = A.computeEmissionHash(draft());
+  assert.strictEqual(A.verifyApproval({ fileBytes: JSON.stringify(approvalBody()), requestedHash: h, now: 2000, ttlMs: 10000, verifyKeyPem: VKEY }).ok, true);
+});
+
+test('verifyApproval [H1]: a signed approval is NOT replayable past TTL by editing approvedAt, nor nonce-swappable (freshness-bound sig)', () => {
+  const h = A.computeEmissionHash(draft());
+  const signed = approvalBody({ approvedAt: 1000 });                       // genuinely signed at t=1000
+  assert.strictEqual(A.verifyApproval({ fileBytes: JSON.stringify(signed), requestedHash: h, now: 5000, ttlMs: 10000, verifyKeyPem: VKEY }).ok, true, 'fresh approval verifies');
+  // a NON-key-holder bumps approvedAt to dodge the TTL WITHOUT re-signing -> the basis changes -> sig-invalid.
+  const replayed = Object.assign({}, signed, { approvedAt: 999999 });
+  assert.strictEqual(A.verifyApproval({ fileBytes: JSON.stringify(replayed), requestedHash: h, now: 1000000, ttlMs: 10000, verifyKeyPem: VKEY }).reason, 'sig-invalid', 'a TTL-bumped approvedAt invalidates the freshness-bound sig');
+  // a nonce swap likewise breaks the sig.
+  const swapped = Object.assign({}, signed, { nonce: 'different-nonce' });
+  assert.strictEqual(A.verifyApproval({ fileBytes: JSON.stringify(swapped), requestedHash: h, now: 5000, ttlMs: 10000, verifyKeyPem: VKEY }).reason, 'sig-invalid', 'a nonce swap invalidates the sig');
+});
+
 test('verifyApproval: a body whose emission re-derives to a DIFFERENT hash than its claimed hash -> false (#273)', () => {
-  // claimed hash matches requested, but the embedded emission is for OTHER content -> body-hash-mismatch.
-  const d = draft();
-  const h = A.computeEmissionHash(d);
-  const forged = JSON.stringify({ hash: h, emission: A.emissionAxiom(draft({ diff: SCRUBBED + 'TAMPERED' })), approvedAt: 1000, nonce: 'n' });
-  const r = A.verifyApproval({ fileBytes: forged, requestedHash: h, now: 2000, ttlMs: 10000 });
-  assert.strictEqual(r.ok, false);
-  assert.strictEqual(r.reason, 'body-hash-mismatch');
+  const d = draft(); const h = A.computeEmissionHash(d);
+  const forged = JSON.stringify({ hash: h, emission: A.emissionAxiom(draft({ diff: SCRUBBED + 'TAMPERED' })), approvedAt: 1000, nonce: 'n', sig: sign(h, A.emissionAxiom(d)) });
+  assert.strictEqual(A.verifyApproval({ fileBytes: forged, requestedHash: h, now: 2000, ttlMs: 10000, verifyKeyPem: VKEY }).reason, 'body-hash-mismatch');
 });
 
 test('verifyApproval: claimed hash != requestedHash -> false', () => {
-  const r = A.verifyApproval({ fileBytes: JSON.stringify(approvalBody()), requestedHash: 'f'.repeat(64), now: 2000, ttlMs: 10000 });
-  assert.strictEqual(r.ok, false);
+  const r = A.verifyApproval({ fileBytes: JSON.stringify(approvalBody()), requestedHash: 'f'.repeat(64), now: 2000, ttlMs: 10000, verifyKeyPem: VKEY });
   assert.strictEqual(r.reason, 'hash-mismatch');
 });
 
-test('verifyApproval: TTL-expired -> false (H4)', () => {
+test('verifyApproval: TTL-expired / future approvedAt -> stale-or-future (H4)', () => {
   const h = A.computeEmissionHash(draft());
-  const r = A.verifyApproval({ fileBytes: JSON.stringify(approvalBody({ approvedAt: 1000 })), requestedHash: h, now: 1000 + 99999, ttlMs: 10000 });
-  assert.strictEqual(r.ok, false);
-  assert.strictEqual(r.reason, 'stale-or-future');
+  assert.strictEqual(A.verifyApproval({ fileBytes: JSON.stringify(approvalBody({ approvedAt: 1000 })), requestedHash: h, now: 1000 + 99999, ttlMs: 10000, verifyKeyPem: VKEY }).reason, 'stale-or-future');
+  assert.strictEqual(A.verifyApproval({ fileBytes: JSON.stringify(approvalBody({ approvedAt: 5000 })), requestedHash: h, now: 1000, ttlMs: 10000, verifyKeyPem: VKEY }).reason, 'stale-or-future');
 });
 
-test('verifyApproval: a future approvedAt (clock-skew/forgery) -> false', () => {
+test('verifyApproval: an empty / whitespace-only nonce -> no-nonce (H2)', () => {
   const h = A.computeEmissionHash(draft());
-  const r = A.verifyApproval({ fileBytes: JSON.stringify(approvalBody({ approvedAt: 5000 })), requestedHash: h, now: 1000, ttlMs: 10000 });
-  assert.strictEqual(r.ok, false);
-  assert.strictEqual(r.reason, 'stale-or-future');
-});
-
-test('verifyApproval: an empty / whitespace-only / absent nonce -> false (the one-shot binding; H2)', () => {
-  const h = A.computeEmissionHash(draft());
-  assert.strictEqual(A.verifyApproval({ fileBytes: JSON.stringify(approvalBody({ nonce: '' })), requestedHash: h, now: 2000, ttlMs: 10000 }).reason, 'no-nonce');
-  assert.strictEqual(A.verifyApproval({ fileBytes: JSON.stringify(approvalBody({ nonce: '   ' })), requestedHash: h, now: 2000, ttlMs: 10000 }).reason, 'no-nonce', 'whitespace-only nonce is not a meaningful one-shot marker');
+  assert.strictEqual(A.verifyApproval({ fileBytes: JSON.stringify(approvalBody({ nonce: '' })), requestedHash: h, now: 2000, ttlMs: 10000, verifyKeyPem: VKEY }).reason, 'no-nonce');
+  assert.strictEqual(A.verifyApproval({ fileBytes: JSON.stringify(approvalBody({ nonce: '   ' })), requestedHash: h, now: 2000, ttlMs: 10000, verifyKeyPem: VKEY }).reason, 'no-nonce');
 });
 
 test('verifyApproval: unparseable / non-object / missing fields -> false (fail-closed)', () => {
   const h = A.computeEmissionHash(draft());
-  assert.strictEqual(A.verifyApproval({ fileBytes: 'not json', requestedHash: h, now: 2000 }).reason, 'unparseable');
-  assert.strictEqual(A.verifyApproval({ fileBytes: '[]', requestedHash: h, now: 2000 }).reason, 'not-an-object');
-  assert.strictEqual(A.verifyApproval({ fileBytes: '{}', requestedHash: h, now: 2000 }).reason, 'hash-mismatch');
-  assert.strictEqual(A.verifyApproval({ fileBytes: JSON.stringify(approvalBody()), requestedHash: '', now: 2000 }).reason, 'no-requested-hash');
+  assert.strictEqual(A.verifyApproval({ fileBytes: 'not json', requestedHash: h, now: 2000, verifyKeyPem: VKEY }).reason, 'unparseable');
+  assert.strictEqual(A.verifyApproval({ fileBytes: '[]', requestedHash: h, now: 2000, verifyKeyPem: VKEY }).reason, 'not-an-object');
+  assert.strictEqual(A.verifyApproval({ fileBytes: '{}', requestedHash: h, now: 2000, verifyKeyPem: VKEY }).reason, 'hash-mismatch');
+  assert.strictEqual(A.verifyApproval({ fileBytes: JSON.stringify(approvalBody()), requestedHash: '', now: 2000, verifyKeyPem: VKEY }).reason, 'no-requested-hash');
 });
 
 (async () => {
