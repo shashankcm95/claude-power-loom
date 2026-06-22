@@ -25,6 +25,24 @@ lifecycle: persistent
 > record). Several of its mechanisms are **net-new and unbuilt** — flagged inline. DRAFT pending USER
 > ratification of the open questions + the corrections folded 2026-06-11.
 
+## Status update (2026-06-22) — the "ContainerAdapter unknown" framing below is superseded
+
+Two things landed AFTER this 2026-06-11 capture, so the ContainerAdapter references in this RFC
+(§Principle 6; §"What this RFC does NOT claim"; the breaker/promotion deferrals at the lines marked
+`[UPDATE 2026-06-22 …]`) read as more open than they now are:
+
+- The "real sandbox" this RFC calls an unbuilt wall **is built + containment-attested** — the Docker
+  backend behind the ContainerAdapter seam (#346, real fs/net/proc isolation) and the write-isolated
+  actor sandbox (#391 / ③.2.2b, host-write confinement attested via a `/proc/self/mountinfo` oracle plus
+  a live escape probe).
+- The "harness-wrap go/no-go **unknown**" is **resolved**: a `claude -p` agent runs write-confined in a
+  container, proven this arc (the v3.9 RFC had deferred any live-repo WRITE path to v4.x; it shipped early).
+
+**Still future — by design, not unbuilt:** the *autonomous-promotion wiring* that lifts the human from
+the loop (v4.x; ③.2 is human-sole-gate), and R13 (the network-enforcer *beyond* default-deny, v4.x). So
+read the ContainerAdapter references below as **"the containment machinery exists + the unknown is
+answered; only the autonomous USE of it is deferred."**
+
 ## Problem statement
 
 The industry wants agents to do software engineering, and the two common bets both fail the same way:
@@ -184,7 +202,7 @@ loop closes (once the minted ledger exists):
 
 This means the breaker is NOT teeth-less pre-autonomy: it bounds the internal re-dispatch loop NOW
 (a persona stuck burning cycles on a task it cannot satisfy is a named failure mode with a real source).
-Only its AUTONOMOUS-promotion job still waits for the ContainerAdapter.
+Only its AUTONOMOUS-promotion job still waits for the ContainerAdapter. `[UPDATE 2026-06-22: the ContainerAdapter machinery is BUILT (#346 + #391); what still waits is the autonomous-promotion WIRING, not the sandbox — see Status update.]`
 
 ## Fractal trust — review depth is itself a reputation function
 
@@ -283,7 +301,7 @@ world has finished judging.
    AI-generated provenance, respect `CONTRIBUTING.md`, rate-limit per project, never spam — a system
    that floods maintainers gets the approach banned, and "merged" stops being a clean signal the moment
    a maintainer starts auto-rejecting the bot.
-6. **The ContainerAdapter wall stands for the autonomous end.** "Agents push freely to their own branch
+6. **The ContainerAdapter wall stands for the autonomous end.** `[UPDATE 2026-06-22: the real sandbox is now BUILT + containment-attested (#346 fs/net/proc isolation; #391 write-isolation) — the remaining "wall" is the autonomous WIRING, not the sandbox; see Status update.]` "Agents push freely to their own branch
    but cannot corrupt main" needs a real sandbox — worktree isolation is same-uid and not a security
    boundary. BUT the beta routes around it: while a HUMAN is the merge gate, the human is the
    containment, so the GitHub pipeline runs on already-built machinery. The sandbox is required only when
@@ -302,7 +320,7 @@ proposed derivation:
   read. (This addresses the v3.7 EC3 debate AND finds the breaker's missing denial source: the reject
   events are what the breaker bounds — but note the committed v3.7 plan is delta-promote *activation*;
   adding the ledger is a re-scope to ratify, and the ledger is UNBUILT. The breaker's INTERNAL
-  reject-bounding job comes with it; only its AUTONOMOUS-promotion job defers to the ContainerAdapter.)
+  reject-bounding job comes with it; only its AUTONOMOUS-promotion job defers to the ContainerAdapter.) `[UPDATE 2026-06-22: the ContainerAdapter machinery is BUILT (#346 + #391); the deferral is the autonomous-promotion WIRING — see Status update.]`
 - **v3.8** wires both consumers: **reputation** reads the absorb-rate (trust-up); the **breaker** reads
   the reject-rate (trust-down: demote a degrading persona + reassign).
 - **v3.9 sharpens** from "install for a cooperative cohort" to the concrete, better beta: **the GitHub
@@ -310,7 +328,7 @@ proposed derivation:
   This makes **E-EXT the spine of how trust is earned, not a post-beta validation footnote.**
 - **v4.x** lifts the human from per-PR to spot-audit (the breaker becomes the trust-DOWN auto-demotion
   valve once there is autonomous promotion to halt), gated on the ContainerAdapter for the autonomous
-  push.
+  push. `[UPDATE 2026-06-22: the ContainerAdapter machinery is BUILT (#346 + #391); the v4.x gate is the autonomous-promotion WIRING, not the sandbox — see Status update.]`
 
 ## What this RFC does NOT claim
 
@@ -319,7 +337,7 @@ proposed derivation:
   and reject good ones; it is *strong evidence*, graded, never *proof* (`validated-external (n=1)` is a
   floor).
 - It does not resolve the ContainerAdapter unknown (Track 2 / `P0.0` harness-wrap probe remains the
-  autonomy go/no-go).
+  autonomy go/no-go). `[UPDATE 2026-06-22: RESOLVED — the harness-wrap unknown is answered: a claude -p agent runs write-confined in a container, proven (#346 + #391); the autonomy go/no-go is no longer this unknown but the autonomous-promotion WIRING — see Status update.]`
 - The retrace's decision-attribution is a hypothesis layer over a deterministic provenance layer; only
   the provenance layer is authoritative.
 
