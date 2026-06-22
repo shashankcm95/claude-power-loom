@@ -272,6 +272,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/lab/issue-corpus/_spike/docker-containment-spike.js` - v3.0 (Docker wave) — docker containment spike (green-or-block proof).
 - `packages/lab/issue-corpus/_spike/docker-dogfood.js` - v3.0 (Docker wave) — ContainerAdapter end-to-end dogfood on the DOCKER backend.
 - `packages/lab/issue-corpus/_spike/dogfood.js` - v3.9 W1 — ContainerAdapter end-to-end dogfood (macOS-only verification probe).
+- `packages/lab/issue-corpus/live-puller.js` - ③.2.2a — the READ-ONLY good-first-issue live puller.
 - `packages/lab/issue-corpus/pytest-runner.js` - v3.9.x (real-E2E spike) — the pytest test-runner adapter.
 - `packages/lab/issue-corpus/_spike/real-e2e-actor-dogfood.js` - v3.9.x real-E2E spike — STEP B: the REAL attempt.
 - `packages/lab/issue-corpus/_spike/real-e2e-dogfood.js` - v3.9.x real-E2E spike — STEP A: prove the DETERMINISTIC grading path on a REAL

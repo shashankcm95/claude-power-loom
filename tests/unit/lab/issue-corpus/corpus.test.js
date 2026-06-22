@@ -228,5 +228,48 @@ test('m2. deriving manifest instances from the seed -> computeManifestHash is st
   assert.strictEqual(h, computeManifestHash(instances.slice().reverse())); // order-independent
 });
 
+// ── (n) validatePublicRecord — the ③.2.2a public-only validator (open/closed addition) ──
+// The live puller produces public-only {id, repo, base_sha, problem_statement} records (a live OPEN
+// issue has no sealed oracle), which validateIssueCorpus structurally REJECTS. validatePublicRecord
+// is the public-shape gate: exact 4-field set + non-empty strings + 40-hex base_sha. It does NOT
+// touch the SEALED boundary (validateOne is unchanged).
+const { validatePublicRecord } = C;
+function publicRecord(over) {
+  return Object.assign({
+    id: 'owner__repo-issue-1', repo: 'https://github.com/owner/repo',
+    base_sha: 'a'.repeat(40), problem_statement: 'When X happens, Y breaks.',
+  }, over || {});
+}
+test('n1. a valid 4-field public record passes', () => {
+  assert.strictEqual(validatePublicRecord(publicRecord()), true);
+});
+test('n2. each missing/empty PUBLIC field throws', () => {
+  for (const k of PUBLIC_FIELDS) {
+    assert.throws(() => validatePublicRecord(publicRecord({ [k]: '' })), new RegExp(k), `empty ${k}`);
+    const missing = publicRecord(); delete missing[k];
+    assert.throws(() => validatePublicRecord(missing), new RegExp(k), `missing ${k}`);
+  }
+});
+test('n3. a non-40-hex / uppercase / short base_sha throws', () => {
+  assert.throws(() => validatePublicRecord(publicRecord({ base_sha: 'HEAD' })), /base_sha/);
+  assert.throws(() => validatePublicRecord(publicRecord({ base_sha: 'A'.repeat(40) })), /base_sha/);
+  assert.throws(() => validatePublicRecord(publicRecord({ base_sha: 'abc' })), /base_sha/);
+});
+test('n4. an EXTRA key (e.g. a smuggled sealed field) is rejected — exact public shape', () => {
+  assert.throws(() => validatePublicRecord(publicRecord({ accepted_diff: 'LEAK' })), /unexpected field|accepted_diff/);
+  assert.throws(() => validatePublicRecord(publicRecord({ temporal_tier: 'clean' })), /unexpected field|temporal_tier/);
+});
+test('n5. a non-object / array / accessor record is rejected', () => {
+  assert.throws(() => validatePublicRecord(null), /plain object/);
+  assert.throws(() => validatePublicRecord([publicRecord()]), /plain object/);
+  const acc = publicRecord();
+  Object.defineProperty(acc, 'problem_statement', { get() { return 'x'; }, enumerable: true, configurable: true });
+  assert.throws(() => validatePublicRecord(acc), /accessor/);
+});
+test('n6. a Symbol key is rejected (a spread would carry it)', () => {
+  const r = publicRecord(); r[Symbol('accepted_diff')] = 'LEAK';
+  assert.throws(() => validatePublicRecord(r), /Symbol/);
+});
+
 process.stdout.write(`\ncorpus.test.js (v3.9 W0): ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
