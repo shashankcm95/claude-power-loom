@@ -8,6 +8,36 @@ For granular per-phase detail, see annotated tags `phase-H.x.y` and `swarm/H.x.y
 
 ---
 
+## [Unreleased]
+
+_Work merged on `main` since v3.11.0 (PRs #334–#397). **Documented, not released** — `.claude-plugin/plugin.json` stays `3.11.0`; cutting a version is the maintainer's call. Everything below is **SHADOW / advisory / opt-in — nothing new GATES a real action** (the North-Star invariant OQ-NS-6: an engineered/backtest signal only NARROWS confidence; only a world-anchored live merge HARDENS trust). The plugin is mid **Phase ③.2 — the live external-PR beta** (the apex trust unlock): ③.0 readiness (phase-closed) → ③.1 dry-run, DRAFT-only (phase-closed) → ③.2 gated real-PR (in progress). The PR-egress kernel is the sole `emitPR` chokepoint and `armedEmit()` currently **THROWS** — so there is **no live PR emission yet, by construction** (the arming is the next wave, ③.2.4)._
+
+### Added
+
+- **PR-egress kernel** (`packages/kernel/egress/`; #388, #389, #397) — the sole `emitPR` chokepoint (`emit-pr.js` + `policy.js` + `scrub.js`). The killswitch is `buildEmitEnv` env-sanitization = **capability-removal, NOT a hook** ([ADR-0012](packages/specs/adrs/0012-capability-enforcement-is-static-not-runtime-injected.md)). `armedEmit()` **THROWS** (cannot emit by construction); egress secret-scrub + per-window cap + etiquette gate as defense-in-depth (#389); #397 hardens the carry-set (owner/repo-typed slug, `assertSafeIssueRef`, per-judge `--max-budget-usd`, a runtime tool-inertness gate) **with no arming added** — `armedEmit` still throws.
+- **Live external-PR beta charter + Phase ③.0 readiness** (#341–#345) — the ③.0 → ③.1 → ③.2 test-phase charter (#341); kernel close-path latency hardening (#342); beta-credential secret-scrub (#343); `fact-force-gate` per-session tracker key + instruction-layer honesty, closing ③.0 (#344); per-uid `0700` tracker subdir closing the foreign-uid symlink-plant (#345).
+- **Phase ③.1 dry-run (DRAFT-only, shadow)** (#347–#364) — the F7 trace-emitter frozen contract + close-path ingester / replay / diff CLI (#348, #349); the 3-arm persona experiment harness + run/measure layer (#350, #352); the async seam + real `claude -p` solve+grade driver + earned-grounding run driver (#354, #357); roster reconcile + secret-scrub + SSRF allowlist (#362). Phase-closed CLOSEABLE-WITH-NOTES (#363).
+- **`python-backend` persona (persona 17)** (`agents/python-backend.md`; #353) — the dry-run subject persona.
+- **Docker containment backend** (shadow, opt-in; #346) — `createDockerBackend` behind the **ContainerAdapter** seam (`packages/lab/issue-corpus/{docker-backend.js,Dockerfile,_clone-lifecycle.js}`): real fs/net/proc isolation (`--network none`, `--memory`/`--memory-swap`, `--pids-limit` + `--init`, mount namespace, `--cap-drop ALL`, `no-new-privileges`, `--read-only`, `--user`). Opt-in via `LOOM_SANDBOX_BACKEND=docker`; macOS `sandbox-exec` stays default.
+- **Phase ③.2 live-beta waves** (shadow / DRAFT-only; #380–#396) — ③.2.1a grade-integrity producer gate + pinned pytest harness (#383); ③.2.2a read-only good-first-issue live puller + `validatePublicRecord` (#390); ③.2.2b Docker actor-write sandbox + cost-guard, the contained-actor primitive (#391); ③.2.2c semantic-only DRAFT loop on real repos — SHADOW, emits nothing (#395).
+- **Authenticated weight minter** (shadow; `packages/kernel/_lib/{weight-minter,edge-attestation}.js`; #360, #361, #365) — `mintWeight` signing via `edge-attestation.js`'s `signRecordId` (ed25519); an opt-in default-off freshness window (#361); the P1 signer-resolution seam / trust-domain interface freeze (#365). NARROWS the *integrity ≠ provenance* residual; never gates.
+- **v-next mock-verified mechanics arc** (shadow; #334–#340) — authenticated `confirmed-by` edges (ed25519; #335); the mock-verified hardening gate `lesson_merge_lift` (#336); the source-gated verdict → trust-weight advisory wire (#337); `deriveItemSource` signed-lane source derivation (#338); the isolated end-to-end composition capstone (#339). Phase-closed (#340). MECHANICS, not TRUST — NARROWS only.
+- **ADR-0017** (`packages/specs/adrs/0017-lab-grade-integrity-bounded-not-closed.md`; #387) — the assertion-oracle floor: the calibration grade is **SHADOW and never gates**. (The ADR series now runs 0001–0017.)
+
+### Changed
+
+- **Router-V2** (advisory; #366–#377) — four mechanism upgrades, behavior-identical and live: lexicon-as-data + a phrase-aware invert (#366); the runtime borderline-seam resolver escalating `borderline` → HETS (#372); lexicon curation / experiment de-dup (#374); trust-scoring threshold-leak + weights-coherence honesty fixes (#376). The motivating "route → root misclass" goal was **DEFERRED-HONEST** to a world-anchored corpus (not honestly curable without overfitting); phase-closed (#377).
+- **Ghost-heartbeat** (advisory / draft-only, default-off; #367–#382) — retired the old self-improve `drift:` loop into a bounded, debounced, opt-in advisory/draft-only heartbeat: the drift store + gated auto-surface (#367); the capability-free drift-emit producer (#369); the detached Stop-hook carrier (#371); the background drain runner (#373); the `install.sh` launchd/cron opt-in scheduler offer (#375); go-live readiness — deploy-template + runbook [`docs/ghost-heartbeat-go-live.md`](docs/ghost-heartbeat-go-live.md) (#378); emitted-set retention bound + marker-GC (#379); bake the absolute judge bin into the scheduled task (#382).
+- **`security.md` rule: integrity ≠ provenance** (#334) — codify the #273 family's third face: a content-addressed store proves *integrity*, not *provenance*; derive trust from an authenticated minter, never from a record's mere existence in an open-writable store.
+- **Docs / rules housekeeping** (#392, #393) — north-star build-status refresh (#392); self-improve rule promotions (#393).
+
+### Fixed
+
+- **Full-system audit fixes** (#355, #358) — correctness & security bug-fixes surfaced by the full-system audit, plus the audit cleanup sweep.
+- **LSP-tool leak in the capability-free `claude -p` recipe** (#396) — `--tools "" --strict-mcp-config` still left the always-on LSP tool live (argv-threading ≠ tool-inertness; all VERIFY/VALIDATE lenses + unit tests passed — only the real `claude -p` dogfood caught it). Fixed via `--disallowedTools LSP` → `tools:[]`; the authoritative oracle is the stream-json INIT `tools[]`, not a sentinel-read.
+
+---
+
 ## [3.11.0] — 2026-06-16 — v3.11 Experience layer (lessons-not-actions; shadow)
 
 **Minor release** (additive — new **Lab-layer experience/lesson** code; no kernel/runtime change, no breaking change. `.claude-plugin/plugin.json` `3.10.0 → 3.11.0`). Ships **v3.11** — phase-closed 2026-06-16 (3-lens gate; after folding the gate's findings: CLOSEABLE; [`docs/ROADMAP.md`](docs/ROADMAP.md) + the `phase-close/v3.11-close` library volume).

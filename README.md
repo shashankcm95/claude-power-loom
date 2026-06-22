@@ -8,6 +8,8 @@
 
 [![CI](https://github.com/shashankcm95/claude-power-loom/actions/workflows/ci.yml/badge.svg)](https://github.com/shashankcm95/claude-power-loom/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Phase](https://img.shields.io/badge/substrate-v3.11%20(experience%20layer)-orange.svg)](docs/ROADMAP.md) [![Plugin](https://img.shields.io/badge/Claude_Code-plugin_3.11.0-orange.svg)](.claude-plugin/plugin.json)
 
+_Badges show the published release (v3.11.0); the [Status](#status) section below covers the in-progress post-v3.11 beta._
+
 ---
 
 ## What it is
@@ -81,7 +83,7 @@ CI re-runs it on every push. The documented workflow (and how to opt in for real
 
 ## Status
 
-Distributed as a **Claude Code plugin**, now at **v3.11.0**. The v3.x line is the kernel + runtime + Evolution Lab substrate; v3.1.0 was its first published cut (the prior published line was v2.9.x). Twelve phases are complete:
+Distributed as a **Claude Code plugin**. **If you install today, you get v3.11.0** — everything dated after it in the table below is merged to `main` and documented here (see the changelog [`[Unreleased]`](CHANGELOG.md)) but **not yet in a published release**; it ships on the next version bump. The v3.x line is the kernel + runtime + Evolution Lab substrate; v3.1.0 was its first published cut (the prior published line was v2.9.x). The twelve v3.x phases through v3.11 are complete, and the **post-v3.11 readiness arc** (an internal track of development phases written ③.0, ③.1, ③.2 — these come *after* the v3.11.0 release; they are not higher version numbers) has phase-closed; the plugin is now mid **Phase ③.2 — the live external-PR beta** (the apex trust unlock). The phase record:
 
 | Phase | What shipped | Closed |
 |---|---|---|
@@ -97,14 +99,20 @@ Distributed as a **Claude Code plugin**, now at **v3.11.0**. The v3.x line is th
 | v3.9 — Retrospective-calibration bootcamp | a **diagnostic** harness that grades the plugin against *already-resolved* OSS issues (problem-statement-only → blind attempt → grade-vs-accepted): the sealed issue-corpus, the `sandbox-exec` behavioral leg, the three-legged **never-blended** scorer, and the recall-graph populator + cross-issue friction map — **proven end-to-end on a real issue** (a divergent-but-valid fix, behaviorally graded; the first worked-example node). DIAGNOSTIC, not a trust score (a backtest narrows confidence; only a world-anchored live merge hardens it) | 2026-06-13 |
 | v3.10 — Persona reputation over the recall graph | the **WHO-built axis**: persona provenance on each node (`built_by`/`graded_by`, outside the content-address) → a source-blind consumer that *recalibrates* persona standing → a multi-author authorship **ledger** with a collision-first ≥2-distinct JOIN (closes single-edge credit-laundering) → a **pure-advisory** reputation decision loop (three independent axes, most-restrictive, authenticated-lane-only). Proven **internally** end-to-end (incl. a live `claude -p` actor dogfood); the mechanism closes but the seed lane is honestly non-discriminating — *mechanism proven, the DATA is the gap*. All **shadow** | 2026-06-15 |
 | v3.11 — Experience layer (lessons-not-actions) | the recall node reframed from an *action log* into a **derived lesson**: a FROZEN closed-enum signature (`trigger \| gotcha \| corrective`, the 24-cell D1 floor) + a leak-guarded principle body, top-level + patch-stable (outside `node_id`/`content_hash`) → a same-`fail_to_pass` **confirmation gate** (a lesson provably cannot enter the predictor lane without a same-requirement confirming delta) + the first `confirmed-by` edge → the **trap seam** (`failed_attempt_ref` + confirmed trust-weight + a signature retriever). Validated by a full **bootcamp re-run**: 20 real OSS bugs → 20 real `claude`-derived on-floor lessons → held-out cross-repo sibling retrieval **signature 0.72 vs the repo-gated lexical floor 0.06**. DIAGNOSTIC (a backtest on a corpus engineered for cross-repo collisions NARROWS; only a world-anchored merge HARDENS). All **shadow** | 2026-06-16 |
+| v-next — Mock-verified trust mechanics | the machinery to carry a real hardening signal, built + proven in shadow while hardening nothing: signed (ed25519) `confirmed-by` edges + the source-gated weight firewall (`LIVE_SOURCES` frozen-empty → a mock weight is structurally inert in prod) | 2026-06-16 |
+| ③.0 — Beta readiness hardening | kernel close-path latency, beta-credential secret-scrub, per-uid tracker isolation — the mechanics-freeze before going live | 2026-06-17 |
+| Docker containment backend | `createDockerBackend` behind the **ContainerAdapter** seam — real fs/net/proc isolation (`--network none`, memory/pids caps, `--cap-drop ALL`, `--read-only`); opt-in via `LOOM_SANDBOX_BACKEND=docker` (macOS `sandbox-exec` stays default) | 2026-06-17 (#346) |
+| ③.1 — Dry-run loop (DRAFT-only) | the full recall → solve → grade → learn loop on a **real** `claude -p` actor + Docker-graded sealed tests, drafting solutions only (no real PRs) | 2026-06-19 |
+| Router-V2 | route-decide as data: lexicon-as-data + an O(task) phrase-aware invert + a runtime `borderline` → HETS resolver (advisory); the magnitude refit deferred to a world-anchored corpus | 2026-06-20 |
+| ghost-heartbeat | the retired self-improve `drift:` loop reborn as a bounded, opt-in, **default-off** advisory/draft-only heartbeat | 2026-06-20 |
 
-**Next:** the first **world-anchored live merges** — the only thing that *hardens* trust (every phase to here NARROWS confidence in shadow; [RFC §10](packages/specs/rfcs/2026-06-04-enforcing-vs-advisory-identity.md) remains the human-gated-promotion decision point). The named carries: a **live** signature retriever proven by a Runtime-Claim probe to filter backtest provenance (OQ-7), the A6 lesson-bridge to a live spawn, and **signed/kernel-writer edges** to close the standing #273 provenance residual (a store proves integrity, not provenance). The full narrative lives in [`docs/ROADMAP.md`](docs/ROADMAP.md); what is dark/flag-gated and why in [`docs/ACTIVATION-LEDGER.md`](docs/ACTIVATION-LEDGER.md).
+**In progress — Phase ③.2, the live external-PR beta:** the first **world-anchored live merges** are the only thing that *hardens* trust (every phase to here NARROWS confidence in shadow; [RFC §10](packages/specs/rfcs/2026-06-04-enforcing-vs-advisory-identity.md) remains the human-gated-promotion decision point). The beta is built on the **PR-egress kernel** (`packages/kernel/egress/`) as the sole `emitPR` chokepoint — but its live-emission entry point (`armedEmit()`) is a deliberate hard-stop stub that **throws by design**, so there is **no live PR emission yet, by construction**. The actual arming (the real `gh`-REST emission) is the next wave (③.2.4), human-gated, with the behavioral grade kept advisory-only ([ADR-0017](packages/specs/adrs/0017-lab-grade-integrity-bounded-not-closed.md)). The remaining open hardening items — the live provenance-filtering signature retriever (OQ-7), the lesson-to-spawn bridge, and signed/kernel-writer edges (a store proves integrity, not provenance) — are tracked in [`docs/ROADMAP.md`](docs/ROADMAP.md); what is dark/flag-gated and why in [`docs/ACTIVATION-LEDGER.md`](docs/ACTIVATION-LEDGER.md).
 
 Kernel-primitive status (details: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#kernel-primitives)):
 
 | Live | Dormant | Advisory | Dropped / Retired |
 |---|---|---|---|
-| K1 K2 K3 K4 K7 K9 K10 K11 K13 K14 + the reject-event ledger | **K3.b** (no production importer yet; CI-asserted) | **K12** (layer-boundary lint — warns, never blocks) | **K6** (retired v3.2) · **K8** (dropped — [ADR-0012](packages/specs/adrs/0012-capability-enforcement-is-static-not-runtime-injected.md)) |
+| K2 K3 K4 K7 K9 K10 K11 K13 K14 + the reject-event ledger | **K1** (superseded — the harness owns worktree creation; `dormancy-assertion-k1`-enforced) · **K3.b** (no production importer yet; CI-asserted) | **K12** (layer-boundary lint — warns, never blocks) | **K6** (retired v3.2) · **K8** (dropped — [ADR-0012](packages/specs/adrs/0012-capability-enforcement-is-static-not-runtime-injected.md)) |
 
 > ⚠️ Early major line. The v3.x kernel surface changes incompatibly with v2.9 readers (the MAJOR bump — [ADR-0009](packages/specs/adrs/0009-major-bump-rationale.md)), and the kernel schema keeps evolving across v3.x minors — pin a version if you depend on it.
 
@@ -112,7 +120,7 @@ Kernel-primitive status (details: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#
 
 ## How the substrate is layered
 
-Power Loom is a microkernel architecture in three layers (a fourth, `adapters` — the ContainerAdapter sandbox boundary — is a reserved Track-2 path that does not yet exist on disk):
+Power Loom is a microkernel architecture in three layers (a fourth, `adapters` — the ContainerAdapter sandbox boundary — has no top-level `packages/adapters/` path yet; its first realization ships as the opt-in Docker backend under `packages/lab/issue-corpus/`):
 
 | Layer | Path | Responsibility | Trust |
 |---|---|---|---|
@@ -130,8 +138,8 @@ The kernel boundary is **Axiom 2**: *kernel = pure deterministic functions; user
 
 The substrate has a hard floor and a soft ceiling, and the docs never blur them:
 
-- **🔒 Enforced (deterministic).** Hooks and validators are pure logic — they fire every time, no LLM interpretation. Read-before-edit, secret-literal blocking, config-guard, path canonicalization, write-scope detection, serial-spawn enforcement. If a behavior *must* always happen, it is a hook.
-- **🌓 Shadow / opt-in (human-gated).** The deep-substrate delta path — the spawn-close resolver, the ordered integrator, the v3.7 reject-event ledger — RECORDS provenance but does **not** gate. It stays in shadow unless you set a `LOOM_*` flag (default OFF), never writes your checked-out HEAD (all assembly is out-of-tree), and a human reviews + merges the staged `loom/integration` / `loom-promote/*` branch. It is a *capability*, not an enforced behavior — see [ARCHITECTURE §6](docs/ARCHITECTURE.md#6-what-is-enforced-and-where) and the [activation ledger](docs/ACTIVATION-LEDGER.md).
+- **🔒 Enforced (deterministic).** Hooks and validators are pure logic — they fire every time, no LLM interpretation. The always-on PreToolUse gates that *block*: read-before-edit (the `fact-force-gate` hook), secret-literal blocking, config-guard, and the frontmatter/schema validators (YAML frontmatter, skill/command frontmatter, KB-doc). Path canonicalization is a deterministic `_lib` helper these gates call, not a standalone hook. If a behavior *must* always happen, it is a hook.
+- **🌓 Shadow / opt-in (human-gated).** The deep-substrate delta path — the spawn-close resolver (which runs post-hoc write-scope *detection* [K14] and serial-spawn closure [K13], not prevention), the ordered integrator, the v3.7 reject-event ledger — RECORDS provenance but does **not** gate. It stays in shadow unless you set a `LOOM_*` flag (default OFF), never writes your checked-out HEAD (all assembly is out-of-tree), and a human reviews + merges the staged `loom/integration` / `loom-promote/*` branch. It is a *capability*, not an enforced behavior — see [ARCHITECTURE §6](docs/ARCHITECTURE.md#6-what-is-enforced-and-where) and the [activation ledger](docs/ACTIVATION-LEDGER.md).
 - **📜 Best-effort (instruction-following).** Rules, skills, and agent prompts shape Claude's reasoning but **can be skipped** by the LLM under context pressure. They are ideals, not guarantees.
 
 The value is concentrated in the enforced layer. The runtime adds *verifiable* multi-agent coordination on top: even when an individual agent skips an instruction, its output is checked against a per-persona contract, so the **team-level verdict is deterministic**. See [Honest disclosures](#honest-disclosures).
@@ -141,7 +149,7 @@ The value is concentrated in the enforced layer. The runtime adds *verifiable* m
 ## Documentation
 
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — the substrate model: layers, the Ten Axioms, the transaction loop, every kernel primitive, and the threat model.
-- **[docs/ROADMAP.md](docs/ROADMAP.md)** — the phase-by-phase record (Phase 0 → v3.10 ✓, each with its phase-close sign-off) and what comes next (v3.11 → the first world-anchored live merges).
+- **[docs/ROADMAP.md](docs/ROADMAP.md)** — the phase-by-phase record (Phase 0 → v3.11 ✓, each with its phase-close sign-off, plus the post-v3.11 readiness arc — Phase ③.0 / ③.1 dry-run, Router-V2, ghost-heartbeat, Docker containment) and what comes next (the **Phase ③.2 live external-PR beta** — the first world-anchored live merges).
 - **[docs/ACTIVATION-LEDGER.md](docs/ACTIVATION-LEDGER.md)** — every built-but-dark / flag-gated capability, its consumer, and its activation fate. The honest inventory.
 - **[docs/delta-promote-walkthrough.md](docs/delta-promote-walkthrough.md)** — the human-gated promote workflow, end to end (with the runnable demo).
 - **[docs/README.md](docs/README.md)** — the full documentation index.
@@ -157,7 +165,7 @@ What this substrate does **not** do:
 - ❌ **Does not make the LLM better at long-horizon coding.** It makes failures cheap, observable, and reversible. That is the whole pitch; anything more would be an overclaim.
 - ❌ **Does not guarantee Claude follows the markdown rules.** Those are advisory text. *Specific* behaviors are hook-enforced and deterministic (read-before-edit, vague-prompt detection, config-guard, pre-compact checkpoint); the rest ride on best-effort instruction-following.
 - ❌ **Does not give agents continuous LLM memory across sessions.** Each spawn is a fresh call. The substrate maintains *per-identity reputation* on disk (trust scores, history) — that is persistence of a record, not of the model's memory.
-- ⚠️ **Is local-trust-anchored.** The v3.x line does **not** defend against hostile same-uid filesystem tampering (e.g. back-dating a record's mtime to hide it from a rate window) — those residuals are named in the [threat model](docs/ARCHITECTURE.md#threat-model--the-human-gated-delta-path) and close only at the Track-2 **ContainerAdapter** sandbox.
+- ⚠️ **Is local-trust-anchored.** The v3.x line does **not** defend against hostile same-uid filesystem tampering (e.g. back-dating a record's mtime to hide it from a rate window) — those residuals are named in the [threat model](docs/ARCHITECTURE.md#threat-model--the-human-gated-delta-path) and close at the Track-2 **ContainerAdapter** sandbox — a first realization of which now ships as an opt-in Docker backend (`LOOM_SANDBOX_BACKEND=docker`), still shadow/opt-in rather than the default-enforced floor.
 - ⚠️ **Ships some code ahead of its consumer — deliberately, and tracked.** Producers may land one phase before the thing that reads them (e.g. the v3.7 reject-event ledger's breaker **source** landed in v3.8 as a shadow read; its fail-closed **gating** consumer remains deferred — still shadow). Every such edge is named in the [activation ledger](docs/ACTIVATION-LEDGER.md) rather than implied to be live.
 
 These are intentional architecture decisions, not gaps to fix.
@@ -166,7 +174,7 @@ These are intentional architecture decisions, not gaps to fix.
 
 ## Project layout
 
-- `packages/kernel/` — the Loom Kernel: `hooks/` + `validators/` + `recall/` + `spawn-state/` + `_lib/` (transaction primitives), `hooks.json`, `schema/`.
+- `packages/kernel/` — the Loom Kernel: `hooks/` + `validators/` + `recall/` + `spawn-state/` + `egress/` (the PR-egress chokepoint) + `_lib/` (transaction primitives), `hooks.json`, `schema/`.
 - `packages/runtime/` — the Loom Runtime: HETS orchestration, persona contracts, identity registry.
 - `packages/lab/` — the Evolution Lab: attribution, reputation, circuit-breaker, manage-proposal, verdict-attestation.
 - `packages/specs/` — the design record: `rfcs/`, `adrs/`, `plans/` (living per-wave docs), `research/`.
