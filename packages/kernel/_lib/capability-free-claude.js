@@ -5,20 +5,41 @@
 // Ghost Heartbeat W2-PR1. The SINGLE place the "capability-free claude -p"
 // invocation lives. The drift-judge (drift-audit.js) reads attacker-influenceable
 // transcript content, so it MUST be unable to invoke ANY tool: no Read/Bash/Write,
-// no Monitor, no MCP exfil (Gmail/Drive), no Agent/Workflow spawn. The flags below
-// were established by a 7-probe chain on 2026-06-19 (RFC
-// packages/specs/rfcs/2026-06-19-ghost-heartbeat-w2-drift-emit.md section 5.6):
+// no Monitor, no LSP, no MCP exfil (Gmail/Drive), no Agent/Workflow spawn. The flags
+// below were established by a 7-probe chain on 2026-06-19 (RFC
+// packages/specs/rfcs/2026-06-19-ghost-heartbeat-w2-drift-emit.md section 5.6) and
+// CORRECTED 2026-06-22 (claude 2.1.177 — the `--strict-mcp-config`-leaves-LSP fix):
 //
 //   - `--allowedTools ""`               does NOT restrict (it is an auto-APPROVAL
 //                                       list, not an availability gate).
-//   - `--disallowedTools <set>`         is BYPASSABLE — the model read a planted
+//   - `--disallowedTools <set>` ALONE   is BYPASSABLE — with the default tool set
+//                                       still available, the model read a planted
 //                                       sentinel via the unlisted `Monitor` tool.
 //   - `--tools ""`                      removes the core tools but LEAVES LSP + MCP.
-//   - `--tools "" --strict-mcp-config`  blocks read + MCP + LSP. THE enforcement.
+//   - `--tools "" --strict-mcp-config`  blocks MCP but STILL LEAVES the always-on
+//                                       `LSP` tool: on claude 2.1.177 the stream-json
+//                                       INIT event reports `tools: ["LSP"]`, NOT `[]`.
+//                                       This was the prior (incorrect) recipe; its
+//                                       sentinel-file-read regression test FALSE-
+//                                       NEGATIVED, because LSP is a code-intelligence
+//                                       tool (not a file-read tool), so the planted
+//                                       sentinel stayed absent even with LSP enabled.
+//   - `--tools "" --strict-mcp-config --disallowedTools LSP`  → INIT `tools: []`.
+//                                       THE enforcement. `--tools ""` is the positive
+//                                       availability restrictor (distinct from
+//                                       `--allowedTools`), `--strict-mcp-config` loads
+//                                       zero MCP servers, and the one-item `LSP`
+//                                       denylist drops the always-on residual. (NOT the
+//                                       bare-denylist bypass above: here `--tools ""`
+//                                       has already emptied the default set, so there
+//                                       is no unlisted tool to escape to.)
 //
-// The guarantee is CLI-version-dependent. DO NOT change CAPABILITY_FREE_ARGS
-// without re-running the sentinel-leak regression test
-// (tests/unit/kernel/_lib/capability-free-claude.test.js) — it is the standing guard.
+// The guarantee is CLI-version-dependent (a future always-on built-in would leak the
+// enumerative `--disallowedTools` again). DO NOT change CAPABILITY_FREE_ARGS without
+// re-running the regression test (tests/unit/kernel/_lib/capability-free-claude.test.js)
+// — it is the standing guard. The AUTHORITATIVE enabled-set is the stream-json INIT
+// `tools` array; do NOT trust a sentinel-file oracle (false-negatives on LSP) or the
+// model self-reporting its tools (it lists from general knowledge, not the live config).
 
 const { spawnSync } = require('child_process');
 
@@ -31,7 +52,7 @@ const DEFAULT_TIMEOUT_MS = 60000;
 const MAX_BUFFER = 8 * 1024 * 1024;
 
 // The load-bearing flags. Frozen + regression-tested. See the header.
-const CAPABILITY_FREE_ARGS = Object.freeze(['--tools', '', '--strict-mcp-config']);
+const CAPABILITY_FREE_ARGS = Object.freeze(['--tools', '', '--strict-mcp-config', '--disallowedTools', 'LSP']);
 
 // Precedence: explicit `bin` arg > GHOST_HEARTBEAT_JUDGE_BIN env > PATH (`command -v`)
 // > bare 'claude'. The env override exists so the SCHEDULER can bake the ABSOLUTE claude
