@@ -24,6 +24,12 @@ const SCRUBBED = 'diff --git a/src/foo.py b/src/foo.py\n--- a/src/foo.py\n+++ b/
 function draft(over) { return Object.assign({ repo: 'owner/repo', issueRef: 42, diff: SCRUBBED }, over || {}); }
 const HASH = A.computeEmissionHash(draft());
 
+// ③.2.5a — an in-process keypair + a test signFn (the cross-uid broker is PR-2; here the key is in-process).
+const { generateEdgeKeypair, signRecordId } = require(path.join(REPO, 'packages', 'kernel', '_lib', 'edge-attestation.js'));
+const KP = generateEdgeKeypair();
+const SIGN = (h, body) => signRecordId(h, { privateKeyPem: KP.privateKeyPem }, body);
+const VKEY = KP.publicKeyPem;
+
 // === assertCustodyApprovalsDir ===
 
 test('assertCustodyApprovalsDir: a clean uid-owned dir passes; absent/non-dir/symlink/foreign rejected', () => {
@@ -44,12 +50,14 @@ test('assertCustodyApprovalsDir: a clean uid-owned dir passes; absent/non-dir/sy
 test('recordApproval -> readVerifiedApproval round-trips ok; body carries hash/emission/approvedAt/nonce', () => {
   const dir = scratch('loom-appr-');
   try {
-    const { hash, path: file } = S.recordApproval(dir, draft(), { now: 1000, nonce: 'n-xyz', selfUid: SELF });
+    const { hash, path: file } = S.recordApproval(dir, draft(), { now: 1000, nonce: 'n-xyz', selfUid: SELF, signFn: SIGN });
     assert.strictEqual(hash, HASH);
     const body = JSON.parse(fs.readFileSync(file, 'utf8'));
     assert.strictEqual(body.hash, HASH); assert.strictEqual(body.nonce, 'n-xyz'); assert.strictEqual(body.approvedAt, 1000);
     assert.deepStrictEqual(body.emission, A.emissionAxiom(draft()));
-    const r = S.readVerifiedApproval(dir, HASH, { now: 2000, ttlMs: 10000, selfUid: SELF });
+    assert.ok(typeof body.sig === 'string' && body.sig.length > 0, 'the minted approval carries a sig');
+    assert.strictEqual(body.key_id, 'v0');
+    const r = S.readVerifiedApproval(dir, HASH, { now: 2000, ttlMs: 10000, selfUid: SELF, verifyKeyPem: VKEY });
     assert.strictEqual(r.ok, true, r.reason);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
@@ -59,7 +67,7 @@ test('recordApproval: a pre-seeded symlink at <hash>.approved is fail-closed (wx
   try {
     const victim = path.join(elsewhere, 'victim'); fs.writeFileSync(victim, 'PREEXISTING');
     fs.symlinkSync(victim, path.join(dir, HASH + '.approved'));         // attacker pre-seeds a symlink
-    assert.throws(() => S.recordApproval(dir, draft(), { now: 1000, nonce: 'n', selfUid: SELF }), /EEXIST/);
+    assert.throws(() => S.recordApproval(dir, draft(), { now: 1000, nonce: 'n', selfUid: SELF, signFn: SIGN }), /EEXIST/);
     assert.strictEqual(fs.readFileSync(victim, 'utf8'), 'PREEXISTING', 'the symlink target was NOT written through');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(elsewhere, { recursive: true, force: true }); }
 });
@@ -107,7 +115,7 @@ test('readVerifiedApproval: a foreign-uid approvals DIR is refused (the dir guar
   if (WIN) { skipped += 1; process.stdout.write('  SKIP (Windows — uid unknowable) foreign-uid read\n'); return; }
   const dir = scratch('loom-appr-');
   try {
-    S.recordApproval(dir, draft(), { now: 1000, nonce: 'n', selfUid: SELF });   // dir + file owned by SELF
+    S.recordApproval(dir, draft(), { now: 1000, nonce: 'n', selfUid: SELF, signFn: SIGN });   // dir + file owned by SELF
     const r = S.readVerifiedApproval(dir, HASH, { now: 2000, ttlMs: 10000, selfUid: SELF + 1 }); // pretend we are someone else
     assert.strictEqual(r.ok, false);
     assert.ok(/foreign/.test(r.reason), `the foreign-owned dir is refused (got ${r.reason})`);
@@ -131,11 +139,14 @@ test('readVerifiedApproval: a FIFO / special-file at <hash>.approved is refused 
 test('recordApproval: a malformed draft (NaN issueRef / 3-segment repo / empty segment) is rejected (reviewer F2)', () => {
   const dir = scratch('loom-appr-');
   try {
-    assert.throws(() => S.recordApproval(dir, draft({ issueRef: 'not-a-number' }), { now: 1000, nonce: 'n', selfUid: SELF }), /positive-integer issueRef/);
-    assert.throws(() => S.recordApproval(dir, draft({ issueRef: 0 }), { now: 1000, nonce: 'n', selfUid: SELF }), /positive-integer issueRef/);
-    assert.throws(() => S.recordApproval(dir, draft({ repo: 'owner/repo/extra' }), { now: 1000, nonce: 'n', selfUid: SELF }), /single non-empty owner\/name/);
-    assert.throws(() => S.recordApproval(dir, draft({ repo: 'owner/.git' }), { now: 1000, nonce: 'n', selfUid: SELF }), /single non-empty owner\/name/, 'a name that normalizes to empty is rejected');
-    assert.throws(() => S.recordApproval(dir, draft(), { now: 1000, nonce: '   ', selfUid: SELF }), /non-empty nonce/, 'a whitespace nonce is rejected at the writer too');
+    assert.throws(() => S.recordApproval(dir, draft({ issueRef: 'not-a-number' }), { now: 1000, nonce: 'n', selfUid: SELF, signFn: SIGN }), /positive-integer issueRef/);
+    assert.throws(() => S.recordApproval(dir, draft({ issueRef: 0 }), { now: 1000, nonce: 'n', selfUid: SELF, signFn: SIGN }), /positive-integer issueRef/);
+    assert.throws(() => S.recordApproval(dir, draft({ repo: 'owner/repo/extra' }), { now: 1000, nonce: 'n', selfUid: SELF, signFn: SIGN }), /single non-empty owner\/name/);
+    assert.throws(() => S.recordApproval(dir, draft({ repo: 'owner/.git' }), { now: 1000, nonce: 'n', selfUid: SELF, signFn: SIGN }), /single non-empty owner\/name/, 'a name that normalizes to empty is rejected');
+    assert.throws(() => S.recordApproval(dir, draft(), { now: 1000, nonce: '   ', selfUid: SELF, signFn: SIGN }), /non-empty nonce/, 'a whitespace nonce is rejected at the writer too');
+    assert.throws(() => S.recordApproval(dir, draft(), { now: 1000, nonce: 'n', selfUid: SELF }), /requires a signFn/, 'signFn is REQUIRED — no same-uid default (H4)');
+    assert.throws(() => S.recordApproval(dir, draft(), { now: 1000, nonce: 'n', selfUid: SELF, signFn: () => null }), /malformed sig/, 'a refusing (null) signFn -> throw, no write');
+    assert.strictEqual(fs.existsSync(path.join(dir, HASH + '.approved')), false, 'a refused/unsigned mint leaves NO file (F5)');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -157,12 +168,52 @@ test('readVerifiedApproval: an absent approval is fail-closed (io:ENOENT)', () =
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+test('recordApproval [F1]: a malformed (non-canonical / wrong-length) sig is refused BEFORE the write — no wx-slot poison', () => {
+  const dir = scratch('loom-appr-');
+  try {
+    // a non-empty but non-canonical-base64 / not-64-byte sig must throw, NOT consume the wx slot (which would
+    // EEXIST-lock the hash from a later correct sign).
+    assert.throws(() => S.recordApproval(dir, draft(), { now: 1000, nonce: 'n', selfUid: SELF, signFn: () => 'garbage-not-base64' }), /malformed sig/);
+    assert.throws(() => S.recordApproval(dir, draft(), { now: 1000, nonce: 'n', selfUid: SELF, signFn: () => Buffer.alloc(65).toString('base64') }), /malformed sig/, 'a 65-byte sig is refused');
+    assert.strictEqual(fs.existsSync(path.join(dir, HASH + '.approved')), false, 'no file written for a malformed sig');
+    // and a later CORRECT sign then succeeds (the slot was never poisoned).
+    assert.doesNotThrow(() => S.recordApproval(dir, draft(), { now: 1000, nonce: 'n', selfUid: SELF, signFn: SIGN }));
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('recordApproval [H2]: with verifyKeyPem, a value-swap signFn (signs a DIFFERENT basis) fails at the mint boundary — no dead artifact', () => {
+  const dir = scratch('loom-appr-');
+  try {
+    // a signFn that ignores its basis arg and signs an unrelated 64-hex returns a canonical 64-byte sig (shape-ok)
+    // but does NOT verify over the real basis -> recordApproval rejects it at the boundary (H2), no file written.
+    const badSign = () => signRecordId('e'.repeat(64), { privateKeyPem: KP.privateKeyPem });
+    assert.throws(() => S.recordApproval(dir, draft(), { now: 1000, nonce: 'n', selfUid: SELF, signFn: badSign, verifyKeyPem: VKEY }), /does not verify over the basis/);
+    assert.strictEqual(fs.existsSync(path.join(dir, HASH + '.approved')), false, 'no dead artifact minted');
+    // the honest signFn + the matching key verifies + writes.
+    assert.doesNotThrow(() => S.recordApproval(dir, draft(), { now: 1000, nonce: 'n', selfUid: SELF, signFn: SIGN, verifyKeyPem: VKEY }));
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('readVerifiedApproval [honesty-H2]: an absent / wrong verifyKeyPem fails closed (no-verify-key / sig-invalid)', () => {
+  const dir = scratch('loom-appr-');
+  try {
+    S.recordApproval(dir, draft(), { now: 1000, nonce: 'n', selfUid: SELF, signFn: SIGN });
+    // absent pin -> no-verify-key (the gate's trust anchor is mandatory)
+    assert.strictEqual(S.readVerifiedApproval(dir, HASH, { now: 2000, ttlMs: 10000, selfUid: SELF }).reason, 'no-verify-key');
+    // a WRONG pin (a second keypair) -> sig-invalid
+    const wrong = generateEdgeKeypair().publicKeyPem;
+    assert.strictEqual(S.readVerifiedApproval(dir, HASH, { now: 2000, ttlMs: 10000, selfUid: SELF, verifyKeyPem: wrong }).reason, 'sig-invalid');
+    // the right pin -> ok
+    assert.strictEqual(S.readVerifiedApproval(dir, HASH, { now: 2000, ttlMs: 10000, selfUid: SELF, verifyKeyPem: VKEY }).ok, true);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 // === consumeApproval (one-shot) ===
 
 test('consumeApproval: unlinks an existing approval; false on absent (best-effort)', () => {
   const dir = scratch('loom-appr-');
   try {
-    S.recordApproval(dir, draft(), { now: 1000, nonce: 'n', selfUid: SELF });
+    S.recordApproval(dir, draft(), { now: 1000, nonce: 'n', selfUid: SELF, signFn: SIGN });
     assert.strictEqual(S.consumeApproval(dir, HASH), true, 'first consume removes it');
     assert.strictEqual(S.readVerifiedApproval(dir, HASH, { now: 2000, selfUid: SELF }).ok, false, 'gone after consume');
     assert.strictEqual(S.consumeApproval(dir, HASH), false, 'second consume is a no-op');

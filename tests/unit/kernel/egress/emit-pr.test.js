@@ -14,6 +14,10 @@ const { spawnSync } = require('child_process');
 const REPO = path.join(__dirname, '..', '..', '..', '..');
 const E = require(path.join(REPO, 'packages', 'kernel', 'egress', 'emit-pr.js'));
 const S = require(path.join(REPO, 'packages', 'kernel', 'egress', 'approval-store.js'));   // ③.2.4 — mint approvals
+// ③.2.5a — an in-process keypair + test signFn (the cross-uid broker is PR-2); the gate pins KP.publicKeyPem via custody.
+const { generateEdgeKeypair, signRecordId } = require(path.join(REPO, 'packages', 'kernel', '_lib', 'edge-attestation.js'));
+const KP = generateEdgeKeypair();
+const SIGN = (h, body) => signRecordId(h, { privateKeyPem: KP.privateKeyPem }, body);
 const SELF_UID = typeof process.getuid === 'function' ? process.getuid() : null;
 
 // Computed fake credentials (never a literal *_TOKEN = '...' assignment).
@@ -214,16 +218,18 @@ function armedCustody(dir) {
   fs.writeFileSync(path.join(dir, 'killswitch'), 'ARMED');
   fs.writeFileSync(path.join(dir, 'token'), FAKE_CUSTODY);
   fs.writeFileSync(path.join(dir, 'disposition'), JSON.stringify({ mode: 'live', draft: false }));
+  fs.writeFileSync(path.join(dir, 'verify.pem'), KP.publicKeyPem);       // ③.2.5a — the custody-pinned broker verify key
   fs.mkdirSync(path.join(dir, 'approvals'));
   return {
     killswitchPath: path.join(dir, 'killswitch'), custodyTokenPath: path.join(dir, 'token'),
     custodyDispositionPath: path.join(dir, 'disposition'), custodyApprovalsDir: path.join(dir, 'approvals'),
+    custodyVerifyKeyPath: path.join(dir, 'verify.pem'),
     lockPath: path.join(dir, 'lock'), now: 1000, ttlMs: 1000000, selfUid: SELF_UID,
   };
 }
-// The minimal axiom emitPR hashes for goodData() (GOOD_DIFF has no secrets => scrubbed == raw).
+// The minimal axiom emitPR hashes for goodData() (GOOD_DIFF has no secrets => scrubbed == raw); SIGNED (③.2.5a).
 function mintApprovalFor(opts) {
-  return S.recordApproval(opts.custodyApprovalsDir, { repo: 'owner/repo', issueRef: 42, diff: GOOD_DIFF }, { now: opts.now, nonce: 'n-test', selfUid: SELF_UID });
+  return S.recordApproval(opts.custodyApprovalsDir, { repo: 'owner/repo', issueRef: 42, diff: GOOD_DIFF }, { now: opts.now, nonce: 'n-test', selfUid: SELF_UID, signFn: SIGN });
 }
 function withKillswitchEnvCleared(fn) {
   const save = process.env.LOOM_BETA_KILLSWITCH; delete process.env.LOOM_BETA_KILLSWITCH;
@@ -243,6 +249,44 @@ test('EC1b.5a armed but NO approval => awaiting-approval (ok:true, emitted:false
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+test('EC1b.5a2 armed + a VALID signed approval but NO custody verify-key => awaiting-approval (③.2.5a fail-closed; F2)', () => {
+  const dir = scratch('loom-custody-');
+  try {
+    withKillswitchEnvCleared(() => {
+      const opts = armedCustody(dir);
+      mintApprovalFor(opts);                                              // a genuinely signed approval exists
+      // ...but the verify key is unresolvable -> the gate cannot establish provenance -> awaiting-approval.
+      for (const bad of [undefined, path.join(dir, 'no-such.pem')]) {
+        const r = E.emitPR(goodData(), Object.assign({}, opts, { custodyVerifyKeyPath: bad }));
+        assert.strictEqual(r.ok, true); assert.strictEqual(r.emitted, false);
+        assert.strictEqual(r.reason, 'awaiting-approval', `absent/missing verify key (${bad}) => awaiting-approval`);
+      }
+    });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('EC1b.5a3 armed + an UNSIGNED or WRONG-KEY approval planted in custody => awaiting-approval (the sig gates at the emit chokepoint; honesty-H1)', () => {
+  const dir = scratch('loom-custody-');
+  try {
+    withKillswitchEnvCleared(() => {
+      const opts = armedCustody(dir);
+      const approvalHash = E.emitPR(goodData(), opts).approvalHash;       // the awaiting result surfaces the hash
+      const file = path.join(opts.custodyApprovalsDir, approvalHash + '.approved');
+      const emission = { repo: 'owner/repo', issueRef: 42, diff: GOOD_DIFF };
+      // (a) an UNSIGNED ③.2.4-shape approval
+      fs.writeFileSync(file, JSON.stringify({ hash: approvalHash, emission, approvedAt: opts.now, nonce: 'n' }), { flag: 'wx' });
+      assert.strictEqual(E.emitPR(goodData(), opts).reason, 'awaiting-approval', 'unsigned approval does NOT pass the gate');
+      fs.unlinkSync(file);
+      // (b) a WRONG-KEY signed approval (signed by an attacker key the custody pin does not trust)
+      const attacker = generateEdgeKeypair();
+      const basis = require(path.join(REPO, 'packages', 'kernel', 'egress', 'approval.js')).approvalSigBasis({ hash: approvalHash, approvedAt: opts.now, nonce: 'n', key_id: 'v0' });
+      const sig = signRecordId(basis, { privateKeyPem: attacker.privateKeyPem });
+      fs.writeFileSync(file, JSON.stringify({ hash: approvalHash, emission, approvedAt: opts.now, nonce: 'n', sig, key_id: 'v0' }), { flag: 'wx' });
+      assert.strictEqual(E.emitPR(goodData(), opts).reason, 'awaiting-approval', 'a wrong-key sig does NOT pass the gate');
+    });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('EC1b.5b armed + a VALID approval => reaches the throwing armedEmit => fail-closed; cap+ledger+approval UNCHANGED (I2)', () => {
   const dir = scratch('loom-custody-');
   try {
@@ -256,7 +300,7 @@ test('EC1b.5b armed + a VALID approval => reaches the throwing armedEmit => fail
       // emit-then-record: a throwing emit leaves the cap + ledger UNWRITTEN and the approval UN-consumed.
       assert.strictEqual(fs.existsSync(opts.custodyCapStatePath), false, 'cap state never written (reservation fold)');
       assert.strictEqual(fs.existsSync(opts.custodyEtiquetteLedgerPath), false, 'ledger never written');
-      assert.strictEqual(S.readVerifiedApproval(opts.custodyApprovalsDir, hash, { now: opts.now, ttlMs: opts.ttlMs, selfUid: SELF_UID }).ok, true, 'approval NOT consumed by a failed emit');
+      assert.strictEqual(S.readVerifiedApproval(opts.custodyApprovalsDir, hash, { now: opts.now, ttlMs: opts.ttlMs, selfUid: SELF_UID, verifyKeyPem: KP.publicKeyPem }).ok, true, 'approval NOT consumed by a failed emit');
     });
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
@@ -276,7 +320,7 @@ test('EC1b.5c armed + valid approval + an injected SUCCEEDING armedEmitFn => emi
       assert.deepStrictEqual(r.pr, { pr_url: 'https://example/pr/1' });
       assert.strictEqual(fs.existsSync(opts.custodyCapStatePath), true, 'cap recorded AFTER the successful emit');
       assert.strictEqual(fs.existsSync(opts.custodyEtiquetteLedgerPath), true, 'ledger recorded AFTER the successful emit');
-      assert.strictEqual(S.readVerifiedApproval(opts.custodyApprovalsDir, hash, { now: opts.now, ttlMs: opts.ttlMs, selfUid: SELF_UID }).ok, false, 'approval consumed (one-shot)');
+      assert.strictEqual(S.readVerifiedApproval(opts.custodyApprovalsDir, hash, { now: opts.now, ttlMs: opts.ttlMs, selfUid: SELF_UID, verifyKeyPem: KP.publicKeyPem }).ok, false, 'approval consumed (one-shot)');
     });
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
@@ -323,7 +367,7 @@ test('EC1b.5e partial-commit residual: a SUCCEEDING emit whose recordEmit then t
       const r = E.emitPR(goodData(), Object.assign({}, opts, { armedEmitFn: () => ({ pr_url: 'https://example/pr/9' }) }));
       // documents the known reserve->rollback gap deferred to ③.2.5: the emit "happened" but the result reads ok:false.
       assert.strictEqual(r.ok, false, 'a post-emit record throw surfaces as ok:false (the documented partial-commit lie)');
-      assert.strictEqual(S.readVerifiedApproval(opts.custodyApprovalsDir, hash, { now: opts.now, ttlMs: opts.ttlMs, selfUid: SELF_UID }).ok, true, 'the approval is NOT consumed when the post-emit record throws (③.2.5 reserve->rollback closes this)');
+      assert.strictEqual(S.readVerifiedApproval(opts.custodyApprovalsDir, hash, { now: opts.now, ttlMs: opts.ttlMs, selfUid: SELF_UID, verifyKeyPem: KP.publicKeyPem }).ok, true, 'the approval is NOT consumed when the post-emit record throws (③.2.5 reserve->rollback closes this)');
     });
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
@@ -455,8 +499,9 @@ test('EC1bB.3/4 emitPR: a poisoned data policy key (cap/window/ledger/now) is fa
 
 // === ③.2.4 — the per-emission approval gate riders (H5 normalize-once + H7 deny-list completeness) ===
 
-test('③.2.4 H7: the full approval vocabulary is in the data deny-list (actor cannot inject approval/custody keys)', () => {
-  for (const k of ['approval', 'approvalHash', 'approved', 'emission', 'approvedAt', 'nonce', 'custodyApprovalsDir', 'custodyApprovalsPath', 'ttlMs', 'selfUid', 'armedEmitFn']) {
+test('③.2.4 H7 + ③.2.5a: the full approval + signing vocabulary is in the data deny-list (actor cannot inject approval/custody/verify-key keys)', () => {
+  for (const k of ['approval', 'approvalHash', 'approved', 'emission', 'approvedAt', 'nonce', 'custodyApprovalsDir', 'custodyApprovalsPath', 'ttlMs', 'selfUid', 'armedEmitFn',
+    'sig', 'key_id', 'keyId', 'signFn', 'verifyKeyPem', 'verifyKey', 'publicKeyPem', 'custodyVerifyKeyPath']) {
     assert.ok(E.DISPOSITION_KEYS.includes(k), `${k} must be a declared disposition key`);
     const r = E.emitPR(goodData({ [k]: 'x' }));
     assert.strictEqual(r.ok, false, `data.${k} rejected end-to-end`);

@@ -227,6 +227,41 @@ test('P1 seam: resolveSigner is exported + returns the injected fn / a PEM closu
   assert.strictEqual(typeof closure(ID), 'string', 'the default closure signs a valid HEX64 id');
 });
 
+// ③.2.5a M1 — signRecordId gains a 3rd `body` arg forwarded to the signer; the default closure is UNCHANGED
+// (it ignores the extra arg). Backward-compatible: a 2-arg call still signs.
+test('③.2.5a M1: signRecordId forwards `body` to an injected signer; the env-PEM default IGNORES it; 2-arg still works', () => {
+  const { privateKeyPem, publicKeyPem } = generateEdgeKeypair();
+  // backward-compat: a 2-arg (no body) call still signs + verifies.
+  const sig2 = signRecordId(ID, { privateKeyPem });
+  assert.ok(sig2 && verifyRecordSig(ID, sig2, { publicKeyPem }), '2-arg signRecordId still signs');
+  // a 3-arg call (body present) signs the SAME (env default ignores body) -> identical sig (ed25519 is deterministic).
+  const sig3 = signRecordId(ID, { privateKeyPem }, { decoy: 'ignored-by-default-signer' });
+  assert.strictEqual(sig3, sig2, 'the env-PEM default signer ignores body (signs the recordId)');
+  // an injected signer RECEIVES the body (proves the forward) — it can recompute-bind (PR-2 does).
+  let seen = null;
+  const out = signRecordId(ID, { signer: (rid, body) => { seen = body; return rid === ID ? sig2 : null; } }, { mark: 7 });
+  assert.deepStrictEqual(seen, { mark: 7 }, 'the injected signer receives the forwarded body');
+  assert.strictEqual(out, sig2, 'the injected signer output passes the canonical+64-byte OUTPUT gate (regression-guard, unchanged on main)');
+});
+
+// ③.2.5a H1 — allowEnvFallback:false FORBIDS the ambient LOOM_EDGE_VERIFY_KEY fallback (the egress signed-gate
+// passes it so a same-uid host cannot point the verifier at its own key via the env var — reproduced live).
+test('③.2.5a H1: allowEnvFallback:false ignores a hostile LOOM_EDGE_VERIFY_KEY; default (true) preserves the edge-domain fallback', () => {
+  const attacker = generateEdgeKeypair();
+  const legit = generateEdgeKeypair();
+  const sig = signRecordId(ID, { privateKeyPem: attacker.privateKeyPem }); // attacker self-signs
+  const save = process.env.LOOM_EDGE_VERIFY_KEY;
+  process.env.LOOM_EDGE_VERIFY_KEY = attacker.publicKeyPem;               // attacker controls the ambient env
+  try {
+    // env fallback ON (default): the attacker sig verifies against the env key (the edge-domain behavior — unchanged).
+    assert.strictEqual(verifyRecordSig(ID, sig, {}), true, 'default allowEnvFallback consults the env (edge domain)');
+    // env fallback OFF + no explicit pin: NO key resolves -> fail-CLOSED (the env is never consulted).
+    assert.strictEqual(verifyRecordSig(ID, sig, { allowEnvFallback: false }), false, 'allowEnvFallback:false refuses the env key');
+    // env fallback OFF + an explicit (legit) pin: a key resolves, but the attacker sig does not verify under it.
+    assert.strictEqual(verifyRecordSig(ID, sig, { publicKeyPem: legit.publicKeyPem, allowEnvFallback: false }), false, 'a legit pin rejects the attacker sig');
+  } finally { if (save === undefined) delete process.env.LOOM_EDGE_VERIFY_KEY; else process.env.LOOM_EDGE_VERIFY_KEY = save; }
+});
+
 (async () => {
   for (const t of _tests) {
     try { await t.fn(); passed += 1; }

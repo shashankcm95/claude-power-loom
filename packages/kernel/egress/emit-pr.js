@@ -168,6 +168,9 @@ const DISPOSITION_KEYS = Object.freeze([
   // path, a pre-baked hash, the clock/ttl/uid the gate reads, OR the injectable emit fn). Exact-set deny (#273).
   'approval', 'approvalHash', 'approved', 'emission', 'approvedAt', 'nonce',
   'custodyApprovalsDir', 'custodyApprovalsPath', 'ttlMs', 'selfUid', 'armedEmitFn',
+  // ③.2.5a — the broker-signature verify vocab is CUSTODY-only; an actor must never inject the verify key or a
+  // sig via untrusted data (the #273 exact-set deny-list; VERIFY-arch F3 / honesty H1).
+  'sig', 'key_id', 'keyId', 'signFn', 'verifyKeyPem', 'verifyKey', 'publicKeyPem', 'custodyVerifyKeyPath',
 ]);
 // CASE-FOLDED match set (+ the prototype-pollution keys) so a casing/spelling variant (Live / DRY_RUN /
 // __proto__) cannot slip the deny-list (VALIDATE-hacker).
@@ -269,6 +272,25 @@ function resolveToken({ custodyTokenPath, killswitchOn } = {}) {
   } catch { return null; }
 }
 
+/**
+ * ③.2.5a — the per-emission approval verify key, from CUSTODY ONLY (the SAME provenance as the token/killswitch:
+ * a custody-owned file, NOT an ambient env var, NOT edge-attestation's LOOM_EDGE_VERIFY_KEY — the dedicated
+ * loom-broker trust domain, VERIFY-hacker H1/H2). Returns the PEM string, or null (=> verifyApproval fail-closes
+ * with 'no-verify-key', so the env fallback in loadPublicKey is never reached). The actor cannot supply this —
+ * custodyVerifyKeyPath is in DISPOSITION_KEYS, rejected from untrusted data.
+ * NB this is a bare readFileSync — it FOLLOWS symlinks, by DELIBERATE PARITY with resolveToken/resolveDisposition
+ * (the custody root's provenance is the host-setup contract, not a per-file O_NOFOLLOW guard). VALIDATE-hacker H3:
+ * the verify key is the highest-stakes custody input (it selects WHICH broker sig is authoritative), so whether it
+ * warrants the .approved read path's O_NOFOLLOW+fstat+uid treatment is an explicit ③.2.5b arming decision.
+ */
+function resolveVerifyKey({ custodyVerifyKeyPath } = {}) {
+  if (typeof custodyVerifyKeyPath !== 'string') return null;
+  try {
+    const pem = fs.readFileSync(custodyVerifyKeyPath, 'utf8').trim();
+    return pem.length > 0 ? pem : null;
+  } catch { return null; }
+}
+
 /** Disposition is computed SOLELY from custody. Default = dry-run + DRAFT (fail-closed). */
 function resolveDisposition({ custodyDispositionPath } = {}) {
   const fallback = Object.freeze({ mode: 'dry-run', draft: true });
@@ -361,7 +383,9 @@ function emitPR(data, opts = {}) {
 
       // 6. emit ONLY when live AND a token AND killswitch-off AND a VALID per-emission human approval (③.2.4).
       if (disposition.mode === 'live' && token && !killswitchOn) {
-        const appr = readVerifiedApproval(opts.custodyApprovalsDir, approvalHash, { now, ttlMs: opts.ttlMs, selfUid: opts.selfUid });
+        // the verify key is resolved from CUSTODY (a file), under the lock — same provenance as the token (H1/H2).
+        const verifyKeyPem = resolveVerifyKey({ custodyVerifyKeyPath: opts.custodyVerifyKeyPath });
+        const appr = readVerifiedApproval(opts.custodyApprovalsDir, approvalHash, { now, ttlMs: opts.ttlMs, selfUid: opts.selfUid, verifyKeyPem });
         if (!appr.ok) {
           // the EXPECTED pending state (NOT an error): the human has not approved THIS exact content yet.
           return { ok: true, emitted: false, disposition, draft, approvalHash, reason: 'awaiting-approval' };
@@ -391,6 +415,6 @@ module.exports = {
   emitPR,
   buildEmitEnv, assertIsolatedGhConfigDir, armedEmit,
   assertDataIsPolicyFree, assertSafeRepoRef, assertSafeIssueRef, assertEgressSafeDiff,
-  isKillswitchOn, resolveToken, resolveDisposition, parseDiffPaths, isEgressDeniedPath,
+  isKillswitchOn, resolveToken, resolveDisposition, resolveVerifyKey, parseDiffPaths, isEgressDeniedPath,
   DISPOSITION_KEYS, DEFAULT_REPO_HOST_ALLOWLIST, ENV_ALLOWLIST,
 };
