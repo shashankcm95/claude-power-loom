@@ -83,7 +83,7 @@ CI re-runs it on every push. The documented workflow (and how to opt in for real
 
 ## Status
 
-Distributed as a **Claude Code plugin**. **If you install today, you get v3.11.0** — everything dated after it in the table below is merged to `main` and documented here (see the changelog [`[Unreleased]`](CHANGELOG.md)) but **not yet in a published release**; it ships on the next version bump. The v3.x line is the kernel + runtime + Evolution Lab substrate; v3.1.0 was its first published cut (the prior published line was v2.9.x). The twelve v3.x phases through v3.11 are complete, and the **post-v3.11 readiness arc** (an internal track of development phases written ③.0, ③.1, ③.2 — these come *after* the v3.11.0 release; they are not higher version numbers) has phase-closed; the plugin is now mid **Phase ③.2 — the live external-PR beta** (the apex trust unlock). The phase record:
+Distributed as a **Claude Code plugin**, now at **v3.11.0**. If you install today, you get exactly that release — everything dated after it in the table below is merged to `main` and documented here (see the changelog [`[Unreleased]`](CHANGELOG.md)) but **not yet in a published release**; it ships on the next version bump. The v3.x line is the kernel + runtime + Evolution Lab substrate; v3.1.0 was its first published cut (the prior published line was v2.9.x). The twelve v3.x phases through v3.11 are complete, and the **post-v3.11 readiness arc** (an internal track of development phases written ③.0, ③.1, ③.2 — these come *after* the v3.11.0 release; they are not higher version numbers) has phase-closed; the plugin is now mid **Phase ③.2 — the live external-PR beta** (the apex trust unlock). The phase record:
 
 | Phase | What shipped | Closed |
 |---|---|---|
