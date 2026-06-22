@@ -16,5 +16,9 @@ swarm/run-state/
 # and T84 ESLint via --ignore-pattern at invocation (v2.6.1).
 bench/runs/
 
+# Local-only authored content (blog drafts, etc.) — kept on disk for the
+# author but not tracked in the repo.
+content/
+
 # Note: mempalace.yaml and entities.json ARE tracked — they ship as default
 # rooms/people for the toolkit. Per-project users can override locally.
