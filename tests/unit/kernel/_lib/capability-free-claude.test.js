@@ -2,14 +2,19 @@
 'use strict';
 
 // tests/unit/kernel/_lib/capability-free-claude.test.js
-// Ghost Heartbeat W2-PR1.
+// Ghost Heartbeat W2-PR1 (G4 added + recipe corrected 2026-06-22).
 //   G1 flags-golden  — gated, no claude needed: the capability-free flags must
-//      stay `--tools "" --strict-mcp-config`; a change fails here so it cannot
-//      ship without re-justifying + re-running the real sentinel probe.
+//      stay `--tools "" --strict-mcp-config --disallowedTools LSP`; a change fails
+//      here so it cannot ship without re-running the real INIT-tools oracle (G4).
 //   G2 fail-soft     — empty/invalid input returns {ok:false}, never throws.
-//   G3 sentinel-leak — REAL claude -p (skip if absent, e.g. CI): plant a secret,
-//      demand a read with ANY tool, assert no leak. The standing guard for the
-//      RFC 5.6 Probe-3 capability-free property.
+//   G4 init-tools    — REAL claude -p (skip if absent, e.g. CI): the AUTHORITATIVE
+//      oracle. Parse the stream-json `init` event's `tools` array; assert it is [].
+//      This is the live config the CLI exposes — the probe that caught the prior
+//      `--tools "" --strict-mcp-config` recipe leaking the always-on `LSP` tool.
+//   G3 sentinel-leak — REAL claude -p (skip if absent): plant a secret, demand a
+//      read with ANY tool, assert no leak. SECONDARY only — it FALSE-NEGATIVES on
+//      LSP (a code-intelligence tool, not a file-read tool, so the sentinel stays
+//      absent even with LSP enabled). G4 is the load-bearing guard; G3 is a backstop.
 
 const assert = require('assert');
 const { spawnSync } = require('child_process');
@@ -17,7 +22,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
-const { runCapabilityFreeJudge, CAPABILITY_FREE_ARGS } = require('../../../../packages/kernel/_lib/capability-free-claude');
+const { runCapabilityFreeJudge, CAPABILITY_FREE_ARGS, DEFAULT_MODEL } = require('../../../../packages/kernel/_lib/capability-free-claude');
 
 let passed = 0;
 let failed = 0;
@@ -32,9 +37,9 @@ function hasClaude() {
 
 process.stdout.write('\n=== capability-free-claude (ghost-heartbeat-w2-pr1) ===\n');
 
-test('G1: capability-free flags are exactly --tools "" --strict-mcp-config (golden)', () => {
-  assert.deepStrictEqual([...CAPABILITY_FREE_ARGS], ['--tools', '', '--strict-mcp-config'],
-    'capability-free flags changed: re-run the sentinel-leak probe (RFC 5.6 Probe 3) BEFORE changing this golden');
+test('G1: capability-free flags are exactly --tools "" --strict-mcp-config --disallowedTools LSP (golden)', () => {
+  assert.deepStrictEqual([...CAPABILITY_FREE_ARGS], ['--tools', '', '--strict-mcp-config', '--disallowedTools', 'LSP'],
+    'capability-free flags changed: re-run the INIT-tools oracle (G4) BEFORE changing this golden -- --tools "" --strict-mcp-config ALONE leaves the always-on LSP tool on claude 2.1.177');
 });
 
 test('G2: empty / missing prompt fails soft (ok:false, no throw)', () => {
@@ -43,8 +48,46 @@ test('G2: empty / missing prompt fails soft (ok:false, no throw)', () => {
 });
 
 if (!hasClaude()) {
-  process.stdout.write('  SKIP G3 (sentinel-leak): `claude` not on PATH (expected in CI)\n');
+  process.stdout.write('  SKIP G4/G3 (real-claude probes): `claude` not on PATH (expected in CI)\n');
 } else {
+  // ---- G4 (AUTHORITATIVE): parse the stream-json `init` event's `tools` array. ----
+  // This is the live enabled-set the CLI exposes -- NOT the model's self-report (which
+  // it lists from general knowledge, not config) and NOT the G3 sentinel-file oracle
+  // (which false-negatives on LSP: LSP is a code-intelligence tool, not a file-read
+  // tool, so a planted secret stays absent even when LSP is enabled). G4 is the probe
+  // that caught `--tools "" --strict-mcp-config` ALONE leaking LSP on claude 2.1.177.
+  // Same INCONCLUSIVE framing as G3: invocation failure / no-init-event = SKIP, not a
+  // violation; assert ONLY when an INIT event is successfully parsed. Invokes claude
+  // DIRECTLY (not via runCapabilityFreeJudge) because we need --output-format
+  // stream-json --verbose to surface the init event -- but with the SAME
+  // CAPABILITY_FREE_ARGS, so the test stays coupled to the real recipe constant.
+  const claudeBin = (spawnSync('command', ['-v', 'claude'], { shell: '/bin/bash', encoding: 'utf8' }).stdout || '').trim() || 'claude';
+  const initRes = spawnSync(
+    claudeBin,
+    ['-p', '--model', DEFAULT_MODEL, ...CAPABILITY_FREE_ARGS, '--output-format', 'stream-json', '--verbose'],
+    { input: 'hi', encoding: 'utf8', shell: false, timeout: 60000, maxBuffer: 8 * 1024 * 1024 },
+  );
+  let initTools = null;
+  if (!initRes.error && initRes.status === 0) {
+    for (const line of (initRes.stdout || '').split('\n')) {
+      if (!line.trim()) continue;
+      let evt;
+      try { evt = JSON.parse(line); } catch { continue; }
+      if (evt && evt.type === 'system' && evt.subtype === 'init' && Array.isArray(evt.tools)) {
+        initTools = evt.tools;
+        break;
+      }
+    }
+  }
+  if (initTools === null) {
+    process.stdout.write(`  SKIP G4 (init-tools oracle): claude invocation inconclusive (status=${initRes.status}, err=${initRes.error && initRes.error.code}) -- no INIT event parsed; enforcement unverifiable this run\n`);
+  } else {
+    test('G4: capability-free INIT event exposes ZERO tools (authoritative enabled-set, real claude -p)', () => {
+      assert.deepStrictEqual(initTools, [],
+        `CAPABILITY-FREE VIOLATION: the INIT event exposed tools ${JSON.stringify(initTools)} (expected []). The --tools ""/--strict-mcp-config/--disallowedTools LSP enforcement regressed -- see capability-free-claude.js header.`);
+    });
+  }
+
   // G3 runs the REAL judge. An INVOCATION failure (rate-limit / auth / sandbox / model
   // unavailable) is INCONCLUSIVE -- the same epistemic state as claude-absent, NOT a
   // capability-free violation. Only a SUCCESSFUL invocation that LEAKS the sentinel is a
