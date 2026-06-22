@@ -88,6 +88,16 @@ test('non-hex basis -> null, NEVER spawns (no side-effect)', () => {
   } finally { fs.rmSync(dir, { recursive: true, force: true }); try { fs.unlinkSync(side); } catch { /* */ } }
 });
 
+test('oversized ctx (> MAX_CTX_BYTES) -> null, NEVER spawns (fail-fast; CodeRabbit)', () => {
+  const side = path.join(os.tmpdir(), 'loom-bc-big-' + process.pid + '.json');
+  const { dir, signer } = setup({ LB_SIDE: side }, null);
+  try {
+    const huge = { emission: { repo: 'o/r', issueRef: 1, diff: 'a'.repeat(1100000) }, approvedAt: 1, nonce: 'n', key_id: 'v0' };
+    assert.strictEqual(signer(HEX, huge), null);
+    assert.strictEqual(fs.existsSync(side), false, 'the broker was NEVER spawned (no wasted serialize/spawn)');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); try { fs.unlinkSync(side); } catch { /* */ } }
+});
+
 test('non-zero exit / output flood / garbage output -> null (fail-closed, DoS bounds + re-gate)', () => {
   for (const mode of ['exit1', 'flood', 'garbage']) {
     const { dir, signer } = setup({}, mode);

@@ -101,7 +101,8 @@ function assessCustody(facts = {}) {
     if (!w.ok) note('C2.5-wrapper', 'sudo wrapper not statable (' + (w.errno || 'unknown') + ') — check the wrapperPath');
     else if (!w.isFile) fail('C2.5-wrapper', 'the sudo wrapper is not a regular file (symlink/dir) — hijackable');
     else if (w.worldOrGroupWritable) fail('C2.5-wrapper', 'the sudo wrapper is group/world-writable — the host can run code as the broker uid (privesc)');
-    else pass('C2.5-wrapper', 'sudo wrapper is a regular, non-group/world-writable file');
+    else if (typeof w.ownerUid === 'number' && typeof facts.runningUid === 'number' && w.ownerUid === facts.runningUid) fail('C2.5-wrapper', 'the sudo wrapper is OWNED by the host uid (' + w.ownerUid + ') — its owner can chmod/edit it and have sudo run attacker code as the broker uid (privesc). Own it root:root (CodeRabbit Major).');
+    else pass('C2.5-wrapper', 'sudo wrapper is a regular, non-group/world-writable file not owned by the host uid');
   } else {
     note('C2.5-wrapper', 'wrapper integrity NOT checked — pass wrapperPath to enable');
   }
@@ -164,7 +165,7 @@ function gatherCustodyFacts(opts = {}) {
   if (typeof wrapperPath === 'string' && wrapperPath.length) {
     try {
       const st = fs.lstatSync(wrapperPath);
-      wrapper = { ok: true, isFile: st.isFile(), worldOrGroupWritable: !!(st.mode & 0o022) };
+      wrapper = { ok: true, isFile: st.isFile(), worldOrGroupWritable: !!(st.mode & 0o022), ownerUid: st.uid };
     } catch (e) { wrapper = { ok: false, errno: (e && e.code) || 'EUNKNOWN' }; }
   }
 

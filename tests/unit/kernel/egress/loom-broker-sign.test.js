@@ -111,12 +111,16 @@ test('symlink key (O_NOFOLLOW) and group-writable key refuse; stderr leaks NEITH
     const link = path.join(dir, 'key.link.pem'); fs.symlinkSync(keyFile, link);
     const sym = run(basis, JSON.stringify(ctx), runEnv({ LOOM_BROKER_KEY_FILE: link }));
     assert.strictEqual(sym.ok, false); assert.match(sym.stderr, /symlink/);
-    // group-writable
+    // group-writable -> refuse (owner-only enforced)
     const gw = path.join(dir, 'key.gw.pem'); fs.writeFileSync(gw, fs.readFileSync(keyFile)); fs.chmodSync(gw, 0o660);
     const gwr = run(basis, JSON.stringify(ctx), runEnv({ LOOM_BROKER_KEY_FILE: gw }));
-    assert.strictEqual(gwr.ok, false); assert.match(gwr.stderr, /group- or world-writable/);
+    assert.strictEqual(gwr.ok, false); assert.match(gwr.stderr, /owner-only/);
+    // group/world-READABLE (0644) -> refuse: a readable key lets a non-broker uid mint outside the broker (CR Major)
+    const rd = path.join(dir, 'key.rd.pem'); fs.writeFileSync(rd, fs.readFileSync(keyFile)); fs.chmodSync(rd, 0o644);
+    const rdr = run(basis, JSON.stringify(ctx), runEnv({ LOOM_BROKER_KEY_FILE: rd }));
+    assert.strictEqual(rdr.ok, false); assert.match(rdr.stderr, /owner-only/);
     // the leak guard: no PEM bytes, no "at " stack frame, in ANY of the refusals
-    for (const r of [sym, gwr]) {
+    for (const r of [sym, gwr, rdr]) {
       assert.ok(!r.stderr.includes(KEY_MARKER), 'stderr must not contain key bytes');
       assert.ok(!/\n\s+at\s/.test(r.stderr), 'stderr must not contain a stack trace');
     }

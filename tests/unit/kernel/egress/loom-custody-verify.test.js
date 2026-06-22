@@ -22,7 +22,7 @@ const CROSS_UID = {
   keyStat: { ok: true, isFile: true, size: 100, ownerUid: 600 },
   hostRead: { ok: false, errno: 'EACCES' },
   sign: { signed: true, sigVerifies: true },
-  wrapper: { ok: true, isFile: true, worldOrGroupWritable: false },
+  wrapper: { ok: true, isFile: true, worldOrGroupWritable: false, ownerUid: 0 }, // root-owned (the runbook prescription)
 };
 function facts(over) { return Object.assign({}, CROSS_UID, over || {}); }
 function statusOf(report, id) { const c = report.checks.find((x) => x.id === id); return c && c.status; }
@@ -66,7 +66,12 @@ test('no sig -> C3 FAIL; sig that does not verify -> C3 FAIL', () => {
 });
 
 test('world/group-writable wrapper -> C2.5 FAIL (privesc)', () => {
-  const r = V.assessCustody(facts({ wrapper: { ok: true, isFile: true, worldOrGroupWritable: true } }));
+  const r = V.assessCustody(facts({ wrapper: { ok: true, isFile: true, worldOrGroupWritable: true, ownerUid: 0 } }));
+  assert.strictEqual(statusOf(r, 'C2.5-wrapper'), 'FAIL');
+});
+
+test('HOST-OWNED 0755 wrapper -> C2.5 FAIL (host can chmod/edit it -> privesc; CodeRabbit Major)', () => {
+  const r = V.assessCustody(facts({ wrapper: { ok: true, isFile: true, worldOrGroupWritable: false, ownerUid: 501 } })); // == runningUid
   assert.strictEqual(statusOf(r, 'C2.5-wrapper'), 'FAIL');
 });
 

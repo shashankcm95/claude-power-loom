@@ -100,7 +100,10 @@ async function main() {
   try {
     const st = fs.fstatSync(fd);                                  // the OPEN fd's inode — swap-immune
     if (!st.isFile()) { try { fs.closeSync(fd); } catch { /* */ } return fail('key file must be a regular file'); }
-    if (st.mode & 0o022) { try { fs.closeSync(fd); } catch { /* */ } return fail('key file must not be group- or world-writable'); }
+    // OWNER-ONLY: reject ANY group/world permission bit (`& 0o077`), not just writable. A group/world-READABLE
+    // key (e.g. 0644/0640) lets a non-broker uid read it and mint approvals OUTSIDE the broker — defeating custody
+    // (CodeRabbit Major, probed: a 0644 key was accepted). A 0600 key passes; anything looser refuses.
+    if (st.mode & 0o077) { try { fs.closeSync(fd); } catch { /* */ } return fail('key file must be owner-only (mode 0600) — not group/world accessible'); }
   } catch { try { fs.closeSync(fd); } catch { /* */ } return fail('key file unstattable'); }
   try { pem = fs.readFileSync(fd, 'utf8'); } finally { try { fs.closeSync(fd); } catch { /* */ } }
 

@@ -36,6 +36,9 @@ const RESERVED_ENV = /^(NODE_OPTIONS|LOOM_BROKER_KEY_FILE|LD_|DYLD_)/i;
 
 const DEFAULT_TIMEOUT_MS = 5000;
 const DEFAULT_MAX_BYTES = 4096;
+// the serialized ctx the host writes to the broker's stdin — capped to match the wrapper's stdin bound so the
+// client fails FAST (no wasted serialize/spawn) on an over-large ctx the broker would refuse anyway (CodeRabbit).
+const MAX_CTX_BYTES = 1024 * 1024;
 
 /**
  * A sync signFn over a separate-process broker.
@@ -69,6 +72,7 @@ function loomBrokerSigner(opts = {}) {
     if (ctx === null || ctx === undefined) return null; // never spawn on a null ctx (would deny broker-side anyway)
     // the broker ALWAYS recompute-binds, so the ctx preimage is ALWAYS written on the child's stdin.
     const input = typeof ctx === 'string' ? ctx : JSON.stringify(ctx);
+    if (input.length > MAX_CTX_BYTES) return null; // fail-fast: over the wrapper's stdin bound -> never spawn
     const spawnOpts = { timeout, maxBuffer, env, stdio: ['pipe', 'pipe', 'ignore'], input };
     let out;
     try {
