@@ -35,6 +35,14 @@
   advisory confirmed-weight even though every store re-verified on read. Tolerable there ONLY because
   the weight was shadow/advisory and never gated an action; the moment such a weight gates, the
   authenticated writer is mandatory.)
+- **A guard must be NON-VACUOUS — prove it can fail.** A check that never exercised its failure
+  path is theater: inject the violation (a present, planted secret; a real bypass input), watch the
+  assertion fire RED, then revert. An oracle asserted against an absent precondition — no secret to
+  scrub, an empty `/proc/self/mountinfo` to attest, no mount to escape — passes vacuously and proves
+  nothing. Require a present-target precondition so the pass is meaningful.
+- **A guard must be NON-BYPASSABLE — a hard constant, not a caller-overridable default.** A "pinned"
+  value left as a function parameter is a soft default any caller dials off from the call site; remove
+  the parameter so the guarantee cannot be overridden.
 
 ## Secret Management
 

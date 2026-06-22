@@ -10,6 +10,9 @@ Per ADR-0005 slopfiles authoring discipline, sections below are wrapped in `<imp
 - Branch naming: `feat/short-description`, `fix/short-description`
 - PRs should be reviewable in one sitting (< 400 lines changed when possible)
 - Never force-push to shared branches without explicit confirmation
+- To read a file at another ref, use `git show <ref>:file` — **never `git stash` in a worktree** (a stash in a `claude -p`-wrapped worktree can corrupt the shared object store; `git fetch --refetch` is the recovery).
+- For parallel / per-wave work use `git worktree add <dir> origin/main` — **never `git checkout -b` in a shared main checkout** (a concurrent session may share that tree; staged files can be swept into the wrong commit).
+- Base a new PR branch on **fresh `origin/main`, never off a stale feature branch** (a `git reset --soft origin/main` off a stale base stages spurious deletions of files other PRs already merged).
 
 </important>
 
@@ -110,6 +113,8 @@ When a plan contains a **claim about current substrate state** — "file X exist
 **Why**: plan prose absorbs premises from recon, prior PRs, or architect/reviewer reasoning. Premises decay (repo state moves) and abstract reasoning skips empirical verification. The failure mode is: a reviewer blesses a runtime claim abstractly → impl discovers it is wrong → mid-flight design change OR a substrate-bricking near-miss. **Multi-reviewer blessing is NOT runtime verification.**
 
 **Harness-capability extension (ADR-0012 codification — 2026-06-03)**: the probe requirement extends from "claims about *substrate* state" to "claims about *harness* behavior" — "a PreToolUse hook's `updatedInput` mutates the Agent spawn", "`WorktreeCreate` can be passively observed", "the close payload carries a `parent_tool_use_id`", "`cp -r dir/*` drops nested subdirs". These are the most dangerous claim-class: **building enforcement on an assumed harness mechanism that does not exist bricks the substrate** (a past control, `pre-spawn-tool-mask`, shipped INERT because a PreToolUse hook's `updatedInput` is inert on Agent/Task spawns — see ADR-0012 at `packages/specs/adrs/0012-*.md`). The probe is a throwaway `claude -p` spike, a `/tmp` git experiment, or a one-line harness invocation that exercises the actual mechanism — **and you must test the PATH that exercises it**, not an adjacent path (the "probe-the-path" discipline). **Multi-reviewer blessing verifies internal logic against the CODE, never the harness** — an architect+reviewer board can bless a design whose load-bearing premise is a harness capability that was never empirically confirmed.
+
+**Status-decay sibling**: a present-tense status / calibration / causal claim in any LIVING doc (ROADMAP / RFC / MEMORY / plan / code-comment) decays like a stale line-number — re-probe it against the repo before trusting or citing it, and refresh via a dated accretion rather than trusting the frozen word (a doc froze "X is unbuilt" → the thing shipped hours later → the status word was never refreshed; a "sums to 1.00" comment that was actually 1.15).
 
 **Skip the probe** for: FUTURE-state claims ("PR 3 will introduce K9"); claims already backed by a same-session probe logged in the plan; pure-design claims with no runtime referent ("the simplest factoring is X").
 

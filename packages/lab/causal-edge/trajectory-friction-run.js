@@ -28,6 +28,7 @@ const {
   FRICTION_CLASS, FRICTION_PHASE, DETECTION_LEG, buildFrictionLabelerInput,
 } = require('./trajectory-friction');
 const { splitRecord } = require('../issue-corpus/corpus');
+const { toollessArgs } = require('../_lib/claude-headless');
 
 const DEFAULT_MODEL = 'claude-sonnet-4-6';
 const DEFAULT_TIMEOUT_MS = 180000;
@@ -100,12 +101,15 @@ function captureProcessGraph(record, opts = {}) {
 // any refuse / parse-failure / unknown-enum => null block (no friction recorded).
 // --------------------------------------------------------------------------
 
-function claudeOnce(bin, prompt, timeout) {
+function claudeOnce(bin, prompt, timeout, extraArgs = []) {
   if (!bin) return { ok: false, reason: 'labeler-unavailable' };
   let res;
   // The untrusted prompt rides STDIN, never a positional argv (RP-1a-g: the variadic
   // flags eat a trailing positional; also avoids ARG_MAX on a large label input).
-  try { res = spawnSync(bin, ['-p', '--model', DEFAULT_MODEL], { input: prompt, shell: false, timeout, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 }); }
+  // extraArgs (default []) appends AFTER `--model`: the ③.2.2c live loop threads the tool-less
+  // recipe (`--tools "" --strict-mcp-config`); default [] keeps the sealed-corpus path identical.
+  const args = ['-p', '--model', DEFAULT_MODEL, ...(Array.isArray(extraArgs) ? extraArgs : [])];
+  try { res = spawnSync(bin, args, { input: prompt, shell: false, timeout, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 }); }
   catch { return { ok: false, reason: 'labeler-unavailable' }; }
   if (res.error && res.error.code === 'ETIMEDOUT') return { ok: false, reason: 'timeout' };
   if (res.status !== 0) return { ok: false, reason: 'labeler-unavailable' };
@@ -116,13 +120,16 @@ function claudeOnce(bin, prompt, timeout) {
   try { return { ok: true, obj: JSON.parse(text) }; } catch { return { ok: false, reason: 'parse-failure' }; }
 }
 
-function makeFrictionLabeler({ bin = resolveClaude(), timeout = 60000 } = {}) {
+function makeFrictionLabeler({ bin = resolveClaude(), timeout = 60000, toolless = false } = {}) {
+  // toolless (③.2.2c HIGH fold): pin `--tools "" --strict-mcp-config` for the live-loop labeler
+  // running host-side on attacker text. Default false keeps the sealed-corpus path unchanged.
+  const extraArgs = toollessArgs(toolless);
   return function frictionFn(labelerInput) {
     const prompt = 'You label the PRIMARY friction in a code-resolution attempt. Given ONLY the public problem digest, '
       + 'the candidate patch, and process-graph METRICS (no reference solution), reply strict JSON '
       + `{"friction_class": one of ${JSON.stringify(FRICTION_CLASS)}, "friction_phase": one of ${JSON.stringify(FRICTION_PHASE)}, `
       + `"detection_leg": one of ${JSON.stringify(DETECTION_LEG)}, "human_message": "..."}.\n\nINPUT:\n` + JSON.stringify(labelerInput);
-    const r = claudeOnce(bin, prompt, timeout);
+    const r = claudeOnce(bin, prompt, timeout, extraArgs);
     if (!r.ok || !r.obj || typeof r.obj !== 'object') return null;               // fail-closed
     try {
       return buildResolutionFriction({
