@@ -25,7 +25,7 @@ const D = require(path.join(ISSUE, 'docker-backend.js'));
 const A = require(path.join(ISSUE, 'container-adapter.js'));
 const CL = require(path.join(ISSUE, '_clone-lifecycle.js'));
 const {
-  buildDockerRunArgs, assertSafeMountPath, assertSafeName, hostUser, dockerName, DEFAULT_IMAGE,
+  buildDockerRunArgs, dockerHardeningFlags, assertSafeMountPath, assertSafeName, hostUser, dockerName, DEFAULT_IMAGE,
 } = D;
 const { classifyRun, selectBackend, selectAttestedBackend, RESULT_CLASS, STARTUP_SENTINEL } = A;
 
@@ -118,6 +118,34 @@ test('L1 buildDockerRunArgs REJECTS a tmpfsSize carrying an injected option', ()
 test('L1 buildDockerRunArgs accepts a bare tmpfsSize', () => {
   const a = buildDockerRunArgs({ image: DEFAULT_IMAGE, workDir: '/tmp/x', command: 'sh', name: 'loom-run-aa', tmpfsSize: '128m' });
   assert.ok(a.includes('/tmp:rw,nosuid,nodev,size=128m'));
+});
+
+// --------------------------------------------------------------------------
+// ③.2.2b — dockerHardeningFlags extraction (architect F1/F7): the SHARED posture both
+// backends compose. The grade argv must stay byte-identical (zero regression, EC.b1a).
+// --------------------------------------------------------------------------
+
+test('③.2.2b dockerHardeningFlags carries the full host-isolation posture (cap-drop/no-new-priv/read-only/tmpfs/user/name/label)', () => {
+  const f = dockerHardeningFlags({ name: 'loom-run-abc', ownerPid: 4242 });
+  assert.strictEqual(valAfter(f, '--cap-drop'), 'ALL');
+  assert.strictEqual(valAfter(f, '--security-opt'), 'no-new-privileges');
+  assert.ok(f.includes('--read-only'));
+  assert.ok(String(valAfter(f, '--tmpfs')).startsWith('/tmp:'));
+  assert.ok(/^\d+:\d+$/.test(valAfter(f, '--user')));
+  assert.strictEqual(valAfter(f, '--name'), 'loom-run-abc');
+  assert.strictEqual(valAfter(f, '--label'), 'loom-owner=4242');
+  assert.strictEqual(valAfter(f, '--memory'), valAfter(f, '--memory-swap'));
+});
+test('③.2.2b dockerHardeningFlags enforces assertSafeName + the bare-tmpfs shape', () => {
+  throws(() => dockerHardeningFlags({ name: '-rm' }));
+  throws(() => dockerHardeningFlags({ name: 'loom-run-a', tmpfsSize: '256m,exec' }));
+});
+test('③.2.2b buildDockerRunArgs COMPOSES dockerHardeningFlags — grade argv byte-identical (zero regression)', () => {
+  // The shared block appears verbatim between `--network none` and `--mount`.
+  const ni = ARGS.indexOf('--network');
+  const mi = ARGS.indexOf('--mount');
+  const middle = ARGS.slice(ni + 2, mi); // after `--network none`, up to `--mount`
+  assert.deepStrictEqual(middle, dockerHardeningFlags({ name: 'loom-run-deadbeefdeadbeef' }));
 });
 
 // --------------------------------------------------------------------------

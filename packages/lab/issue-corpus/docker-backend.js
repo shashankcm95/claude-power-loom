@@ -103,23 +103,21 @@ function hostUser() {
 // the OOMKilled oracle needs `docker inspect` AFTER exit, so the container is
 // removed explicitly by runInContainer's cleanup. The `--mount` long-form is used
 // over positional `-v src:dst` (H1: key=value is far less injection-prone).
-function buildDockerRunArgs({
-  image, workDir, command, argv = [], name,
+// The SHARED host-isolation posture (extracted ③.2.2b so the actor backend composes the SAME hardening
+// rather than a drifting copy — architect VERIFY F1/F7). This is the contiguous flag block BOTH
+// buildDockerRunArgs (grade) and buildActorRunArgs (actor) place between `--network <mode>` and the
+// `--mount`; each caller owns its OWN network mode + mount + command. assertSafeName + the bare-tmpfs
+// shape are enforced here (both callers need them). The output is byte-identical to the prior inline
+// block, so the grade argv is unchanged (proven by the docker-backend pure suite).
+function dockerHardeningFlags({
   memory = DEFAULT_LIMITS.memory, pidsLimit = DEFAULT_LIMITS.pidsLimit,
-  cpus = DEFAULT_LIMITS.cpus, cpuSec = DEFAULT_LIMITS.cpuSec,
-  tmpfsSize = DEFAULT_LIMITS.tmpfsSize, user = hostUser(), network = 'none',
+  cpus = DEFAULT_LIMITS.cpus, tmpfsSize = DEFAULT_LIMITS.tmpfsSize,
+  user = hostUser(), name, ownerPid = process.pid,
 } = {}) {
-  const src = assertSafeMountPath(workDir);
   assertSafeName(name);
-  // L1 — constrain the two containment-critical args that take a free value: the
-  // network must be allow-listed (never `--network host`), and tmpfsSize must be a
-  // bare size so it cannot append a `,exec` option to the --tmpfs spec.
-  if (!ALLOWED_NETWORKS.has(network)) throw new Error(`network must be one of {${[...ALLOWED_NETWORKS].join(',')}}: ${network}`);
+  // L1 — tmpfsSize must be a bare size so it cannot append a `,exec` option to the --tmpfs spec.
   if (!/^[0-9]+[kmg]?$/i.test(String(tmpfsSize))) throw new Error(`tmpfsSize must match /^[0-9]+[kmg]?$/i: ${tmpfsSize}`);
-  const wrapper = `echo ${STARTUP_SENTINEL}; ulimit -t ${Number(cpuSec) || 60} 2>/dev/null; exec "$@"`;
   return [
-    'run', '--init',
-    '--network', network,
     '--memory', String(memory), '--memory-swap', String(memory),
     '--pids-limit', String(pidsLimit),
     '--cpus', String(cpus),
@@ -131,7 +129,24 @@ function buildDockerRunArgs({
     '--name', name,
     // H1: tag the owner pid so reapOrphans can reclaim a container stranded by an
     // uncatchable host-process death (SIGKILL) without touching a live run's containers.
-    '--label', `loom-owner=${process.pid}`,
+    '--label', `loom-owner=${ownerPid}`,
+  ];
+}
+
+function buildDockerRunArgs({
+  image, workDir, command, argv = [], name,
+  memory = DEFAULT_LIMITS.memory, pidsLimit = DEFAULT_LIMITS.pidsLimit,
+  cpus = DEFAULT_LIMITS.cpus, cpuSec = DEFAULT_LIMITS.cpuSec,
+  tmpfsSize = DEFAULT_LIMITS.tmpfsSize, user = hostUser(), network = 'none',
+} = {}) {
+  const src = assertSafeMountPath(workDir);
+  // L1 — the network must be allow-listed (never `--network host`).
+  if (!ALLOWED_NETWORKS.has(network)) throw new Error(`network must be one of {${[...ALLOWED_NETWORKS].join(',')}}: ${network}`);
+  const wrapper = `echo ${STARTUP_SENTINEL}; ulimit -t ${Number(cpuSec) || 60} 2>/dev/null; exec "$@"`;
+  return [
+    'run', '--init',
+    '--network', network,
+    ...dockerHardeningFlags({ memory, pidsLimit, cpus, tmpfsSize, user, name }),
     '--mount', `type=bind,source=${src},destination=/work`,
     '-w', '/work',
     image, 'sh', '-c', wrapper, 'sh', command, ...argv,
@@ -211,29 +226,46 @@ function reapOrphans({ dockerBin = 'docker' } = {}) {
 // "No such container" is benign). NOTE: inspectOOMKilled + cleanup are spawnSync —
 // they block the event loop ~200 ms for the daemon round-trip; acceptable for the
 // sequential dry-run path (the caller awaits the Promise), revisit if ③.2 adds concurrency.
-function runInContainer({ dockerBin = 'docker', image, workDir, command, argv = [], limits = {}, user, name = dockerName() }) {
+function runInContainer({
+  dockerBin = 'docker', image, workDir, command, argv = [], limits = {}, user, name = dockerName(),
+  runArgs: providedRunArgs, input = null, spawnEnv = null, maxOut = 10 * 1024 * 1024,
+}) {
   return new Promise((resolve) => {
     // Filter undefined overrides so a resolver/caller omitting a field cannot
     // overwrite a DEFAULT_LIMITS value with undefined (e.g. wallClockMs=undefined
     // -> setTimeout(fn, undefined) fires immediately). VALIDATE CodeRabbit.
     const cleanLimits = Object.fromEntries(Object.entries(limits || {}).filter(([, v]) => v !== undefined));
     const L = { ...DEFAULT_LIMITS, ...cleanLimits };
-    let runArgs;
-    try {
-      runArgs = buildDockerRunArgs({
-        image, workDir, command, argv, name, user,
-        memory: L.memory, pidsLimit: L.pidsLimit, cpus: L.cpus, cpuSec: L.cpuSec, tmpfsSize: L.tmpfsSize,
-      });
-    } catch (e) {
-      return resolve({ spawnThrew: true, error: String(e), stdout: '', stderr: '', sentinelSeen: false });
+    // ③.2.2b: a caller (the actor backend) may inject pre-built argv (its own builder), a stdin
+    // `input` (the actor prompt), and `spawnEnv` (the ANTHROPIC_API_KEY pass-through). Defaults
+    // preserve the grade path VERBATIM — no providedRunArgs => build via buildDockerRunArgs; no input
+    // => stdin 'ignore'; no spawnEnv => inherit process.env.
+    let runArgs = providedRunArgs;
+    if (!runArgs) {
+      try {
+        runArgs = buildDockerRunArgs({
+          image, workDir, command, argv, name, user,
+          memory: L.memory, pidsLimit: L.pidsLimit, cpus: L.cpus, cpuSec: L.cpuSec, tmpfsSize: L.tmpfsSize,
+        });
+      } catch (e) {
+        return resolve({ spawnThrew: true, error: String(e), stdout: '', stderr: '', sentinelSeen: false });
+      }
     }
     const cleanup = () => { _inflight.delete(name); try { spawnSync(dockerBin, ['rm', '-f', name], { stdio: 'ignore', timeout: DOCKER_SYNC_TIMEOUT_MS }); } catch { /* gone */ } };
     installReaper(dockerBin);
     let child;
-    try { child = spawn(dockerBin, runArgs, { stdio: ['ignore', 'pipe', 'pipe'] }); _inflight.add(name); }
+    const spawnOpts = { stdio: [input != null ? 'pipe' : 'ignore', 'pipe', 'pipe'] };
+    if (spawnEnv) spawnOpts.env = { ...process.env, ...spawnEnv };
+    try { child = spawn(dockerBin, runArgs, spawnOpts); _inflight.add(name); }
     catch (e) { cleanup(); return resolve({ spawnThrew: true, error: String(e), stdout: '', stderr: '', sentinelSeen: false }); }
+    if (input != null) {
+      // Guard the async EPIPE: if the container exits before consuming stdin, the broken-pipe surfaces as
+      // an 'error' event (NOT caught by the sync try below) -> an uncaught exception without this listener.
+      child.stdin.on('error', () => { /* EPIPE — prompt delivered or container already exited; benign */ });
+      try { child.stdin.write(input); child.stdin.end(); } catch { /* stdin may already be closed */ }
+    }
     let stdout = '', stderr = '', timedOut = false, settled = false;
-    const MAX_OUT = 10 * 1024 * 1024; // cap the in-process accumulation (output-DoS blast radius)
+    const MAX_OUT = maxOut; // cap the in-process accumulation (output-DoS blast radius)
     child.stdout.on('data', (d) => { if (stdout.length < MAX_OUT) stdout += d; });
     child.stderr.on('data', (d) => { if (stderr.length < MAX_OUT) stderr += d; });
     // The timer callback does NOT check `settled`: if close already fired,
@@ -398,7 +430,7 @@ function createDockerBackend({
 }
 
 module.exports = {
-  createDockerBackend, buildDockerRunArgs, assertSafeMountPath, assertSafeName,
+  createDockerBackend, buildDockerRunArgs, dockerHardeningFlags, assertSafeMountPath, assertSafeName,
   runInContainer, attestDocker, dockerImageExists, dockerDaemonUp, inspectOOMKilled,
   reapOrphans, hostUser, dockerName, DEFAULT_IMAGE, DEFAULT_LIMITS, ATTEST_PAYLOAD,
 };
