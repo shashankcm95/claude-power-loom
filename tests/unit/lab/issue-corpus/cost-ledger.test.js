@@ -168,6 +168,23 @@ test('g6. recordCost rejects a negative costUsd', () => {
   try { assert.throws(() => recordCost({ ledgerPath, costUsd: -1 }), /non-negative/); }
   finally { cleanup(dir); }
 });
+test('g7. CodeRabbit #391 — estimatedUsd=0 does NOT bypass the floor (falls back to the frozen default)', () => {
+  const { dir, ledgerPath } = tmpLedger();
+  try {
+    recordCost({ ledgerPath, costUsd: 19.0, now: 0 });
+    // est=0 would make projected 19.0 < 20 (PASS); the fix forces fallback to DEFAULT_ESTIMATED_USD (1.30) -> 20.3 > 20 -> REFUSE.
+    assert.throws(() => assertWithinBudget({ ledgerPath, capUsd: 20, estimatedUsd: 0 }), /REFUSE.*cap/);
+  } finally { cleanup(dir); }
+});
+test('c4. CodeRabbit #391 — recordCost RE-HARDENS a pre-existing broad-perm ledger to 0o600', () => {
+  const { dir, ledgerPath } = tmpLedger();
+  try {
+    fs.writeFileSync(ledgerPath, `${JSON.stringify({ costUsd: 0.1 })}\n`, { mode: 0o644 });
+    fs.chmodSync(ledgerPath, 0o644); // force the broad perm regardless of umask
+    recordCost({ ledgerPath, costUsd: 0.02, now: 0 });
+    assert.strictEqual(fs.statSync(ledgerPath).mode & 0o777, 0o600, 'pre-existing ledger must be re-hardened to 600');
+  } finally { cleanup(dir); }
+});
 test('g4. warns at >= 80% of the cap (without refusing)', () => {
   const { dir, ledgerPath } = tmpLedger();
   try {

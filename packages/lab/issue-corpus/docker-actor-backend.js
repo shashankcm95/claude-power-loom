@@ -149,10 +149,12 @@ function dockerClaudeVersionOk(dockerBin, image) {
 // mapActorResult before return. Returns the strict-superset contract.
 async function runActorInContainer({
   dockerBin = 'docker', image = DEFAULT_ACTOR_IMAGE, workDir, prompt, apiKey,
-  model = DEFAULT_MODEL, allowedTools = ACTOR_TOOLS, maxBudgetUsd, limits = {}, timeout = DEFAULT_ACTOR_TIMEOUT_MS,
+  model = DEFAULT_MODEL, maxBudgetUsd, limits = {}, timeout = DEFAULT_ACTOR_TIMEOUT_MS,
 } = {}) {
   if (!apiKey) return mapActorResult({ spawnThrew: true }, { workDir }); // fail-closed: no key -> no run
-  const claudeArgv = ['-p', '--output-format', 'stream-json', '--verbose', '--model', model, '--allowedTools', allowedTools.join(',')];
+  // The toolset is the PINNED ACTOR_TOOLS — NOT a parameter (CodeRabbit #391): a caller-overridable
+  // allowedTools would let `Bash` back in and reopen the network-on key-exfil channel. Hard constant.
+  const claudeArgv = ['-p', '--output-format', 'stream-json', '--verbose', '--model', model, '--allowedTools', ACTOR_TOOLS.join(',')];
   if (Number.isFinite(maxBudgetUsd) && maxBudgetUsd > 0) claudeArgv.push('--max-budget-usd', String(maxBudgetUsd));
   const name = dockerName();
   let runArgs;

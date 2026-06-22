@@ -125,6 +125,11 @@ function recordCost({ ledgerPath, runId, issueId, costUsd, now } = {}) {
   const dir = path.dirname(p);
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   fs.appendFileSync(p, `${JSON.stringify(record)}\n`, { mode: 0o600 });
+  // The `mode` option above is IGNORED for a PRE-EXISTING file (CodeRabbit #391) — enforce 0o600/0o700
+  // explicitly so a ledger/dir created with broader perms (or by another tool) is re-hardened every write
+  // (fail-closed; the dir is secret-adjacent — it also holds the API key).
+  fs.chmodSync(dir, 0o700);
+  fs.chmodSync(p, 0o600);
   return record;
 }
 
@@ -136,7 +141,9 @@ function recordCost({ ledgerPath, runId, issueId, costUsd, now } = {}) {
 // on refuse. Cost numbers are safe to surface; the API key never reaches here.
 function assertWithinBudget({ ledgerPath, capUsd, estimatedUsd } = {}) {
   const cap = Number.isFinite(capUsd) && capUsd > 0 ? capUsd : resolveBudgetCap();
-  const est = Number.isFinite(estimatedUsd) && estimatedUsd >= 0 ? estimatedUsd : DEFAULT_ESTIMATED_USD;
+  // `> 0` not `>= 0` (CodeRabbit #391): a caller passing estimatedUsd=0 would zero the pre-spend margin
+  // and bypass the conservative floor — a 0/negative/absent estimate MUST fall back to the frozen default.
+  const est = Number.isFinite(estimatedUsd) && estimatedUsd > 0 ? estimatedUsd : DEFAULT_ESTIMATED_USD;
   const { total, malformed } = readLedgerTotal({ ledgerPath });
   if (malformed > 0) {
     throw new Error(`cost-ledger: REFUSE — ${malformed} malformed ledger line(s); cumulative cannot be proven under the $${cap} cap (fail-closed)`);
