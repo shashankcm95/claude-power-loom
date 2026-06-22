@@ -101,35 +101,41 @@ function captureProcessGraph(record, opts = {}) {
 // any refuse / parse-failure / unknown-enum => null block (no friction recorded).
 // --------------------------------------------------------------------------
 
-function claudeOnce(bin, prompt, timeout, extraArgs = []) {
+function claudeOnce(bin, prompt, timeout, extraArgs = [], maxBudgetUsd = null) {
   if (!bin) return { ok: false, reason: 'labeler-unavailable' };
   let res;
   // The untrusted prompt rides STDIN, never a positional argv (RP-1a-g: the variadic
   // flags eat a trailing positional; also avoids ARG_MAX on a large label input).
   // extraArgs (default []) appends AFTER `--model`: the ③.2.2c live loop threads the tool-less
-  // recipe (`--tools "" --strict-mcp-config`); default [] keeps the sealed-corpus path identical.
+  // recipe; default [] keeps the sealed-corpus path identical. ③.2.3 H4: maxBudgetUsd (default null)
+  // appends `--max-budget-usd` only when finite & > 0 — a per-call cost cap on the host-side judge.
   const args = ['-p', '--model', DEFAULT_MODEL, ...(Array.isArray(extraArgs) ? extraArgs : [])];
+  if (Number.isFinite(maxBudgetUsd) && maxBudgetUsd > 0) args.push('--max-budget-usd', String(maxBudgetUsd));
   try { res = spawnSync(bin, args, { input: prompt, shell: false, timeout, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 }); }
   catch { return { ok: false, reason: 'labeler-unavailable' }; }
   if (res.error && res.error.code === 'ETIMEDOUT') return { ok: false, reason: 'timeout' };
   if (res.status !== 0) return { ok: false, reason: 'labeler-unavailable' };
   let text = (res.stdout || '').trim();
   if (!text) return { ok: false, reason: 'empty' };
-  const fence = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);   // models often wrap JSON in a fence (calibration-run.js:70 precedent)
+  // ③.2.3 H3 — whole-output-ANCHORED fence strip (parity with the semantic judge,
+  // calibration-issue-run.js): a model echoing a DECOY fenced block amid wrapper prose FAILS-CLOSED
+  // (no whole-output match → non-JSON → parse-failure → null), never extracts the decoy. Parser-
+  // differential hardening; the friction verdict gates nothing. Applies to ALL callers (live + grading).
+  const fence = text.match(/^```[a-zA-Z0-9]*\r?\n([\s\S]*?)\r?\n?```$/);
   if (fence) text = fence[1].trim();
   try { return { ok: true, obj: JSON.parse(text) }; } catch { return { ok: false, reason: 'parse-failure' }; }
 }
 
-function makeFrictionLabeler({ bin = resolveClaude(), timeout = 60000, toolless = false } = {}) {
-  // toolless (③.2.2c HIGH fold): pin `--tools "" --strict-mcp-config` for the live-loop labeler
-  // running host-side on attacker text. Default false keeps the sealed-corpus path unchanged.
+function makeFrictionLabeler({ bin = resolveClaude(), timeout = 60000, toolless = false, maxBudgetUsd = null } = {}) {
+  // toolless (③.2.2c HIGH fold): pin the tool-less recipe for the live-loop labeler running host-side on
+  // attacker text. maxBudgetUsd (③.2.3 H4): per-call cost cap. Both default to the sealed-corpus behavior.
   const extraArgs = toollessArgs(toolless);
   return function frictionFn(labelerInput) {
     const prompt = 'You label the PRIMARY friction in a code-resolution attempt. Given ONLY the public problem digest, '
       + 'the candidate patch, and process-graph METRICS (no reference solution), reply strict JSON '
       + `{"friction_class": one of ${JSON.stringify(FRICTION_CLASS)}, "friction_phase": one of ${JSON.stringify(FRICTION_PHASE)}, `
       + `"detection_leg": one of ${JSON.stringify(DETECTION_LEG)}, "human_message": "..."}.\n\nINPUT:\n` + JSON.stringify(labelerInput);
-    const r = claudeOnce(bin, prompt, timeout, extraArgs);
+    const r = claudeOnce(bin, prompt, timeout, extraArgs, maxBudgetUsd);
     if (!r.ok || !r.obj || typeof r.obj !== 'object') return null;               // fail-closed
     try {
       return buildResolutionFriction({

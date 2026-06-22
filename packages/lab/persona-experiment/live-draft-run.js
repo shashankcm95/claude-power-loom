@@ -18,7 +18,8 @@ const { MAX_PATCH_BYTES } = require('./real-solve');
 const { emitPR } = require('../../kernel/egress/emit-pr');
 const { gradeLiveIssueSemantic } = require('../causal-edge/live-grade');
 const { makeBlindSemanticJudge } = require('../causal-edge/calibration-issue-run');
-const { makeFrictionLabeler, buildActorPrompt } = require('../causal-edge/trajectory-friction-run');
+const { makeFrictionLabeler, buildActorPrompt, resolveClaude } = require('../causal-edge/trajectory-friction-run');
+const { verifyToollessRuntime } = require('../_lib/claude-headless');
 
 // --------------------------------------------------------------------------
 // Pure transforms (fold #2 / fold #5)
@@ -190,6 +191,21 @@ async function runLiveDraftLoop({
 
   const recs = Array.isArray(records) ? records : [];
   const report = { runId, total: recs.length, outcomes: [], fatal: null };
+
+  // ③.2.3 H5 — RUNTIME tool-inertness gate (the FIRST, cheapest fail-closed preflight). When the judges are
+  // the REAL tool-pinned `claude -p` (i.e. NOT both dependency-injected), verify the live CLI actually exposes
+  // `tools: []` before any attacker-influenced text reaches a judge. Fail-CLOSED: anything but a confirmed empty
+  // tools array aborts the run. SKIPPED when both judges are injected (the test path uses mocks — no real claude).
+  const judgesInjected = typeof deps.semanticFn === 'function' && typeof deps.frictionFn === 'function';
+  if (!judgesInjected) {
+    const verifyToollessFn = deps.verifyToollessFn || verifyToollessRuntime;
+    // an undefined `model` falls through to verifyToollessRuntime's own default ('claude-sonnet-4-6').
+    const r = verifyToollessFn({ bin: resolveClaude(), model });
+    if (!r || r.ok !== true) {
+      report.fatal = 'tool-inertness:' + ((r && r.reason) || 'unknown');
+      return finalizeReport(report, artifactsDir);
+    }
+  }
 
   let env;
   try { env = await preflightEnv({ dockerBin, image, deps }); }

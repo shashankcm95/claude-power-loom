@@ -17,7 +17,7 @@
 //      keyring (the LIVE EC1b.1 test; it SKIPS in CI where the host is not gh-authed — host-conditional).
 //   2. The PR is built via the gh REST API from the diff-as-DATA — NEVER a `git push` from the candidate
 //      clone (a push runs the clone's pre-push hooks / credential.helper / insteadOf / submodules). The
-//      live emission is a SEAM `armedEmit()` deferred to ③.2.3; it THROWS here, so "cannot emit" is true
+//      live emission is a SEAM `armedEmit()` deferred to ③.2.4; it THROWS here, so "cannot emit" is true
 //      BY CONSTRUCTION (no live network code exists this wave).
 //   3. UNTRUSTED DATA is separated from TRUSTED POLICY: `data` carries only the bounded candidate diff +
 //      the repo/issue ref (actor-influenceable); the disposition + token come ONLY from custody. A
@@ -35,7 +35,7 @@ const { withLockSoft } = require('../_lib/lock');
 const { scrubEmitDiff } = require('./scrub');                          // ③.2.1b PR-B — body secret-scrub
 const { capExceeded, recordEmit, etiquetteKey, alreadyEmitted, recordEmitted } = require('./policy');
 // NOTE: child_process is intentionally NOT imported this wave — armedEmit() (the only network seam) is
-// unimplemented (throws). ③.2.3 adds the sanitized-env gh REST call there.
+// unimplemented (throws). ③.2.4 adds the sanitized-env gh REST call there.
 
 // --------------------------------------------------------------------------
 // Env-sanitization — the killswitch core (CRITICAL F1).
@@ -44,7 +44,7 @@ const { capExceeded, recordEmit, etiquetteKey, alreadyEmitted, recordEmitted } =
 // The non-credential vars the gh/git subprocess legitimately needs to RUN. Everything else (esp. the
 // GH_*/GITHUB_TOKEN/GIT_ASKPASS credential surface + the GIT_CONFIG_* injection family) is DROPPED by
 // starting from {} and copying ONLY this allowlist — nothing ambient can leak.
-// TODO(③.2.3): add SSL_CERT_FILE + SSL_CERT_DIR for Linux/Docker runners whose CA bundle path is
+// TODO(③.2.4): add SSL_CERT_FILE + SSL_CERT_DIR for Linux/Docker runners whose CA bundle path is
 // non-default — gh's TLS would fail there without them (macOS uses the keychain, so this wave is fine;
 // there is no live network call here regardless — armedEmit throws).
 const ENV_ALLOWLIST = Object.freeze(['PATH', 'HOME', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TMPDIR', 'USER', 'LOGNAME', 'SHELL']);
@@ -98,34 +98,52 @@ function buildEmitEnv({ token = null, ghConfigDir } = {}) {
 // --------------------------------------------------------------------------
 
 const DEFAULT_REPO_HOST_ALLOWLIST = Object.freeze(['github.com']);
-// owner/repo chars only; the `..` traversal + a dash-leading SEGMENT (an argv-flag injection shape) are
-// caught by the secondary per-segment checks below, NOT by REPO_RE itself.
+// owner/repo shape gate; the per-SEGMENT charset rules (owner vs repo are ASYMMETRIC) + the `..`/`:`
+// guards are applied below — REPO_RE is only the coarse shape.
 const REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+// ③.2.3 H1 — the OWNER (GitHub login) charset: alphanumeric + single internal hyphens, NO dots/underscores,
+// no leading/trailing hyphen, no consecutive hyphens. This alone rejects a dot-only / `.github`-as-OWNER /
+// leading-dot / dotted owner (`o.w`). The REPO name is validated separately (it MAY lead with `.`/`_` — e.g.
+// the real, common `owner/.github` community-health repo — but cannot be exactly `.`/`..`, lead with `-`, or
+// end with `.`). VERIFY-board VF1: a uniform "every segment alnum-led" rule would over-reject `.github`-the-repo.
+// NB GitHub DOES permit a digit-only owner (e.g. some bot accounts), so OWNER_RE accepting `0`/`123`
+// is correct, not an over-accept — do not "fix" it to require a leading letter.
+const OWNER_RE = /^[A-Za-z0-9](?:-?[A-Za-z0-9])*$/;
+const REPO_NAME_RE = /^[A-Za-z0-9._-]+$/;
 
-/** Throws unless `repo` is a bare `owner/repo` on an allowlisted host. */
+/** Throws unless `repo` is a bare `owner/repo` on an allowlisted host (owner-vs-repo-typed, ③.2.3 H1). */
 function assertSafeRepoRef(repo, { hostAllowlist = DEFAULT_REPO_HOST_ALLOWLIST } = {}) {
   if (typeof repo !== 'string' || !REPO_RE.test(repo)) {
     throw new Error(`emitPR: repo must be a bare owner/repo (got ${JSON.stringify(repo)})`);
   }
-  if (repo.includes(':') || repo.includes('..')) {                  // no embedded host, no traversal
+  if (repo.includes(':') || repo.includes('..')) {                  // no embedded host, no traversal (incl. mid-name `..`)
     throw new Error(`emitPR: repo contains an unsafe token: ${JSON.stringify(repo)}`);
   }
-  // reject a dash-leading owner OR repo segment — an argv-flag injection shape for the ③.2.3 emission
-  // (e.g. `owner/--upload-file`) — VALIDATE-hacker. REPO_RE alone allows a `-` anywhere.
   const [owner, name] = repo.split('/');
-  if (owner.startsWith('-') || name.startsWith('-')) {
-    throw new Error(`emitPR: a repo segment must not begin with '-' (argv-flag injection): ${JSON.stringify(repo)}`);
+  // OWNER: a GitHub login — alnum + single internal hyphens, no dots/underscores (rejects `.`/`.github`/`o.w`/`-o`).
+  if (!OWNER_RE.test(owner)) {
+    throw new Error(`emitPR: repo owner must be a valid GitHub login (alnum + single hyphens): ${JSON.stringify(repo)}`);
+  }
+  // REPO name: alnum + `. _ -`; may lead with `.`/`_` (e.g. `.github`), but NOT be exactly `.`/`..`, lead with
+  // `-` (an argv-flag-injection shape), or end with `.` (a git-ref / case-insensitive-FS foot-gun).
+  // (NB a `.git` suffix is deliberately NOT rejected here — `etiquetteKey` canonicalizes it for the
+  // one-PR-per-issue dedup; reconciling the accept-for-canonicalization vs reject-as-wrong-target tension
+  // is a ③.2.4 carry. It is non-exploitable: GitHub bounces a `.git` repo + the diff-path layer blocks `.git*`.)
+  if (!REPO_NAME_RE.test(name) || /^\.{1,2}$/.test(name) || name.startsWith('-') || name.endsWith('.')) {
+    throw new Error(`emitPR: repo name is unsafe (dot-only / leading-'-' / trailing-'.'): ${JSON.stringify(repo)}`);
   }
   if (!hostAllowlist.includes('github.com')) {
     throw new Error('emitPR: github.com must be in the host allowlist');
   }
 }
 
-/** Throws unless `issueRef` is a positive integer (a github issue number) or `#N` form. */
+/** Throws unless `issueRef` is a positive SAFE integer (a github issue number) or `#N` form (③.2.3 H2). */
 function assertSafeIssueRef(issueRef) {
   const n = typeof issueRef === 'number' ? issueRef : String(issueRef == null ? '' : issueRef).replace(/^#/, '');
-  if (!/^[0-9]+$/.test(String(n)) || Number(n) <= 0) {
-    throw new Error(`emitPR: issueRef must be a positive issue number (got ${JSON.stringify(issueRef)})`);
+  // /^[0-9]+$/ shape + > 0 + SAFE integer: a 20-digit number passes the shape but loses precision past 2^53
+  // (a wrong-issue target once armed) — reject it (VERIFY-board H2; the lab parseRecordRef has the same bound).
+  if (!/^[0-9]+$/.test(String(n)) || Number(n) <= 0 || !Number.isSafeInteger(Number(n))) {
+    throw new Error(`emitPR: issueRef must be a positive safe-integer issue number (got ${JSON.stringify(issueRef)})`);
   }
 }
 
@@ -224,7 +242,7 @@ function assertEgressSafeDiff(diff) {
 // --------------------------------------------------------------------------
 
 // DEFAULT-ON this wave: the killswitch is ON unless a custody-owned disarm file is present AND the env
-// does not force it on. (The disarm mechanism is wired at ③.2.3; this wave there is no resolvable token
+// does not force it on. (The disarm mechanism is wired at ③.2.4; this wave there is no resolvable token
 // AND no live emission seam, so it is doubly fail-closed.)
 function isKillswitchOn({ killswitchPath } = {}) {
   if (process.env.LOOM_BETA_KILLSWITCH === '1') return true;          // explicit force-on always wins
@@ -258,16 +276,16 @@ function resolveDisposition({ custodyDispositionPath } = {}) {
 }
 
 // --------------------------------------------------------------------------
-// The live-emission SEAM — deferred to ③.2.3 (no live network code this wave).
+// The live-emission SEAM — deferred to ③.2.4 (no live network code this wave).
 // --------------------------------------------------------------------------
 
 /**
  * The ONLY place the network would be touched (a gh REST blob->tree->commit->ref->pull from the diff-as-
  * DATA, NEVER a git push from the candidate clone). UNIMPLEMENTED this wave: it THROWS, so "cannot emit"
- * is true by construction. ③.2.3 implements it inside the sanitized env (buildEmitEnv).
+ * is true by construction. ③.2.4 implements it inside the sanitized env (buildEmitEnv).
  */
 function armedEmit() {
-  throw new Error('egress-not-armed-until-3.2.3: the live PR-emission seam is intentionally unimplemented this wave');
+  throw new Error('egress-not-armed-until-3.2.4: the live PR-emission seam is intentionally unimplemented this wave');
 }
 
 // --------------------------------------------------------------------------
@@ -328,7 +346,7 @@ function emitPR(data, opts = {}) {
       });
 
       // 6. emit ONLY when disposition is live AND a token resolved AND the killswitch is off (EC1b.5). On a
-      //    real emit (③.2.3) RESERVE the cap + ledger FIRST, then emit; armedEmit() THROWS this wave.
+      //    real emit (③.2.4) RESERVE the cap + ledger FIRST, then emit; armedEmit() THROWS this wave.
       if (disposition.mode === 'live' && token && !killswitchOn) {
         if (typeof opts.custodyCapStatePath === 'string') recordEmit(opts.custodyCapStatePath, { now, windowMs: opts.windowMs });
         if (typeof opts.custodyEtiquetteLedgerPath === 'string') recordEmitted(opts.custodyEtiquetteLedgerPath, etqKey);

@@ -16,7 +16,7 @@ const fs = require('fs');
 const os = require('os');
 
 const REPO = path.join(__dirname, '..', '..', '..', '..');
-const { TOOLLESS_CLAUDE_ARGS, toollessArgs } = require(path.join(REPO, 'packages', 'lab', '_lib', 'claude-headless.js'));
+const { TOOLLESS_CLAUDE_ARGS, toollessArgs, verifyToollessRuntime } = require(path.join(REPO, 'packages', 'lab', '_lib', 'claude-headless.js'));
 const { makeBlindSemanticJudge } = require(path.join(REPO, 'packages', 'lab', 'causal-edge', 'calibration-issue-run.js'));
 const { makeFrictionLabeler } = require(path.join(REPO, 'packages', 'lab', 'causal-edge', 'trajectory-friction-run.js'));
 
@@ -88,6 +88,25 @@ test('makeFrictionLabeler({toolless:true}) threads the tool-less flags into the 
 test('makeFrictionLabeler default (toolless:false) does NOT add tool flags', () => {
   const argv = capturedArgv(makeFrictionLabeler, false);
   assert.ok(!argv.includes('--tools') && !argv.includes('--strict-mcp-config'), 'no tool flags by default: ' + JSON.stringify(argv));
+});
+
+// === ③.2.3 H5 — verifyToollessRuntime FAILS CLOSED on every path but a parsed EMPTY tools[] (VF3) ===
+const initOut = (tools) => ({ status: 0, stdout: JSON.stringify({ type: 'system', subtype: 'init', tools }) + '\n' });
+test('H5: verifyToollessRuntime ok ONLY on a parsed empty tools[]', () => {
+  assert.strictEqual(verifyToollessRuntime({ bin: 'x', spawnFn: () => initOut([]) }).ok, true);
+});
+test('H5: a non-empty tools[] (a leak) FAILS CLOSED', () => {
+  const r = verifyToollessRuntime({ bin: 'x', spawnFn: () => initOut(['LSP']) });
+  assert.strictEqual(r.ok, false); assert.strictEqual(r.reason, 'tools-leaked');
+  assert.deepStrictEqual(r.tools, ['LSP']);
+});
+test('H5: every inconclusive path FAILS CLOSED (bin-absent / spawn-throw / nonzero-exit / timeout / no-init / non-array)', () => {
+  assert.strictEqual(verifyToollessRuntime({ bin: null }).ok, false);
+  assert.strictEqual(verifyToollessRuntime({ bin: 'x', spawnFn: () => { throw new Error('boom'); } }).ok, false);
+  assert.strictEqual(verifyToollessRuntime({ bin: 'x', spawnFn: () => ({ status: 1, stdout: '' }) }).ok, false);
+  assert.strictEqual(verifyToollessRuntime({ bin: 'x', spawnFn: () => ({ error: { code: 'ETIMEDOUT' } }) }).ok, false);
+  assert.strictEqual(verifyToollessRuntime({ bin: 'x', spawnFn: () => ({ status: 0, stdout: 'not json\n' }) }).ok, false);
+  assert.strictEqual(verifyToollessRuntime({ bin: 'x', spawnFn: () => ({ status: 0, stdout: JSON.stringify({ type: 'system', subtype: 'init', tools: 'nope' }) + '\n' }) }).ok, false);
 });
 
 (async () => {

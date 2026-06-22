@@ -110,6 +110,34 @@ test('EC1b.4 input-shape: a non-owner/repo, flag-injection, host, or traversal r
   assert.doesNotThrow(() => E.assertSafeIssueRef('#7'));
 });
 
+// === ③.2.3 H1 — owner-vs-repo-typed slug validation (close the dot-segment foot-guns w/o over-reject) ===
+test('③.2.3 H1: assertSafeRepoRef accepts legit owner/repo incl. a dot-led REPO name (owner/.github)', () => {
+  for (const good of ['owner/repo', 'owner/.github', 'owner/react.dev', 'o-w-ner/re.po', 'owner/_repo', 'octocat/Hello-World']) {
+    assert.doesNotThrow(() => E.assertSafeRepoRef(good), `expected ACCEPT: ${good}`);
+  }
+});
+test('③.2.3 H1: assertSafeRepoRef REJECTS a dotted/dot-only OWNER, a .-only/trailing-./leading-- REPO, and traversal', () => {
+  for (const bad of ['.github/x', './r', 'o/.', 'o.w/r', 'o_w/r', 'o--w/r', 'owner/..', 'owner/x.', 'owner/-x', '-o/r', 'o..o/r']) {
+    assert.throws(() => E.assertSafeRepoRef(bad), /repo|owner/, `expected REJECT: ${bad}`);
+  }
+});
+
+// === ③.2.3 H2 — assertSafeIssueRef magnitude bound (a precision-lost 20-digit number is a wrong target) ===
+test('③.2.3 H2: assertSafeIssueRef rejects a non-safe-integer (20-digit) issue, bare AND #-prefixed', () => {
+  assert.throws(() => E.assertSafeIssueRef('99999999999999999999'), /issueRef/);
+  assert.throws(() => E.assertSafeIssueRef('#99999999999999999999'), /issueRef/);
+  assert.doesNotThrow(() => E.assertSafeIssueRef(7));
+  assert.doesNotThrow(() => E.assertSafeIssueRef('#7'));
+  assert.doesNotThrow(() => E.assertSafeIssueRef(String(Number.MAX_SAFE_INTEGER)));
+  assert.throws(() => E.assertSafeIssueRef(String(Number.MAX_SAFE_INTEGER + 1)), /issueRef/);
+});
+
+// === ③.2.3 EC6 — this wave adds NO egress: armedEmit still throws + emit-pr.js imports no child_process ===
+test('③.2.3 EC6: emit-pr.js source imports NO child_process (no egress subprocess added this wave)', () => {
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', '..', '..', '..', 'packages', 'kernel', 'egress', 'emit-pr.js'), 'utf8');
+  assert.ok(!/require\(\s*['"]child_process['"]\s*\)/.test(src), 'emit-pr.js must not import child_process (the live seam stays unimplemented)');
+});
+
 test('EC1b.4 egress path-scope: a diff touching .github / .git* / CI / traversal is rejected', () => {
   const deny = [
     'diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml\n+++ b/.github/workflows/ci.yml\n',
@@ -175,7 +203,8 @@ test('EC1b.4 emitPR: a .github diff is fail-closed (ok:false, emitted:false)', (
 // === EC1b.5 — the live-emission seam throws; emitPR never emits even when "armed" ===
 
 test('EC1b.5 armedEmit() THROWS not-armed (no live network code this wave)', () => {
-  assert.throws(() => E.armedEmit(), /not-armed-until-3\.2\.3/);
+  // Match the STABLE prefix, not the version (③.2.3 retargeted the seam to ③.2.4 — VF6).
+  assert.throws(() => E.armedEmit(), /egress-not-armed/);
 });
 
 test('EC1b.5 emitPR: even with killswitch OFF + a custody token + LIVE disposition, the seam throws => fail-closed (zero emit)', () => {
