@@ -228,6 +228,35 @@ test('runLiveDraftLoop: a solve failure is per-record fail-soft (loop continues 
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+// === ③.2.3 H5 — the runtime tool-inertness preflight gate (fail-closed; injectable; skip-when-DI'd) ===
+test('H5: when judges are dependency-INJECTED, the tool-inertness preflight is SKIPPED (no real claude)', async () => {
+  let called = false;
+  const report = await runLiveDraftLoop({ records: [], deps: loopDeps({ verifyToollessFn: () => { called = true; return { ok: true, tools: [] }; } }) });
+  assert.strictEqual(called, false, 'preflight must be skipped when both judges are injected (the test path)');
+  assert.strictEqual(report.fatal, null);
+});
+test('H5: a PARTIAL judge injection (only one judge mocked) still RUNS the gate (the && requires BOTH to skip)', async () => {
+  // pins the `judgesInjected = semanticFn && frictionFn` semantics: with only semanticFn injected, the
+  // frictionFn defaults to the REAL tool-pinned judge, so the gate MUST run (fail-closed) — guards against
+  // a future refactor of && -> || silently reopening the hole (VALIDATE honesty negative-attestation gap).
+  let called = false;
+  const report = await runLiveDraftLoop({ records: [REC], deps: { semanticFn: okJudge, resolveKeyFn: () => 'sk', attestFn: async () => ({ attested: true }), assertBudgetFn: () => ({ ok: true }), verifyToollessFn: () => { called = true; return { ok: false, reason: 'tools-leaked' }; } } });
+  assert.strictEqual(called, true, 'with only one judge injected the gate MUST run (the other judge is real)');
+  assert.strictEqual(report.fatal, 'tool-inertness:tools-leaked');
+});
+test('H5: with REAL judges, a leaky/inconclusive preflight FAILS CLOSED — fatal tool-inertness, loop never runs', async () => {
+  // omit semanticFn/frictionFn => judges are NOT injected => the preflight runs; the mock returns a leak.
+  const report = await runLiveDraftLoop({ records: [REC], deps: { resolveKeyFn: () => 'sk', attestFn: async () => ({ attested: true }), assertBudgetFn: () => ({ ok: true }), verifyToollessFn: () => ({ ok: false, reason: 'tools-leaked' }) } });
+  assert.strictEqual(report.fatal, 'tool-inertness:tools-leaked');
+  assert.strictEqual(report.outcomes.length, 0, 'no record is processed when the tool-inertness gate fails');
+});
+test('H5: with REAL judges, a passing preflight (ok:true) proceeds PAST the gate (next fatal is the env, not tool-inertness)', async () => {
+  // preflight ok:true => the loop moves on to preflightEnv, which we make fail — proving the gate passed
+  // and the loop advanced WITHOUT invoking a real judge.
+  const report = await runLiveDraftLoop({ records: [REC], deps: { resolveKeyFn: () => 'sk', attestFn: async () => ({ attested: false, reason: 'docker-unavailable' }), assertBudgetFn: () => ({ ok: true }), verifyToollessFn: () => ({ ok: true, tools: [] }) } });
+  assert.strictEqual(report.fatal, 'containment-unattested:docker-unavailable', 'gate passed; loop proceeded to (and failed at) the env preflight');
+});
+
 (async () => {
   for (const t of _tests) {
     try { await t.fn(); passed += 1; }

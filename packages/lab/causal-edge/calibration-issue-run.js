@@ -124,7 +124,7 @@ function resolveClaude() {
 // — the calibration-run.js H5 discipline; never shell-interpreted. `--model` is PINNED
 // (the W3 lesson: the child inherits the parent's model, which may be unavailable).
 const JUDGE_MODEL = 'claude-sonnet-4-6';
-function claudeOnce(bin, prompt, timeout, extraArgs = []) {
+function claudeOnce(bin, prompt, timeout, extraArgs = [], maxBudgetUsd = null) {
   if (!bin) return { ok: false, reason: 'judge-unavailable' };
   let res;
   // The prompt rides STDIN, not a trailing argv (CodeRabbit #316 + the W3 runner pattern).
@@ -133,8 +133,10 @@ function claudeOnce(bin, prompt, timeout, extraArgs = []) {
   // trajectory-friction-run.js's claudeOnce.
   // extraArgs (default []) appends AFTER `--model`: the ③.2.2c live loop threads the tool-less
   // recipe (`--tools "" --strict-mcp-config`) so a prompt-injected judge cannot take a host action.
-  // Default [] keeps the sealed-corpus path byte-identical.
+  // Default [] keeps the sealed-corpus path byte-identical. ③.2.3 H4: maxBudgetUsd (default null)
+  // appends `--max-budget-usd` only when finite & > 0 — a per-call cost cap on the host-side judge.
   const args = ['-p', '--model', JUDGE_MODEL, ...(Array.isArray(extraArgs) ? extraArgs : [])];
+  if (Number.isFinite(maxBudgetUsd) && maxBudgetUsd > 0) args.push('--max-budget-usd', String(maxBudgetUsd));
   try { res = spawnSync(bin, args, { input: prompt, shell: false, timeout, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 }); }
   catch { return { ok: false, reason: 'judge-unavailable' }; }
   if (res.error && res.error.code === 'ETIMEDOUT') return { ok: false, reason: 'timeout' };
@@ -154,16 +156,16 @@ function claudeOnce(bin, prompt, timeout, extraArgs = []) {
 
 // LEG B — BLIND: the prompt carries ONLY the public input + the candidate. No
 // accepted_diff. Fail-closed -> harness_fallback (never launders into quality).
-function makeBlindSemanticJudge({ bin = resolveClaude(), timeout = 60000, toolless = false } = {}) {
-  // toolless (③.2.2c HIGH fold): pin `--tools "" --strict-mcp-config` so a prompt-injected
-  // judge running host-side on attacker text cannot take a host action. Default false keeps the
-  // sealed-corpus path unchanged.
+function makeBlindSemanticJudge({ bin = resolveClaude(), timeout = 60000, toolless = false, maxBudgetUsd = null } = {}) {
+  // toolless (③.2.2c HIGH fold): pin the tool-less recipe so a prompt-injected judge running host-side on
+  // attacker text cannot take a host action. maxBudgetUsd (③.2.3 H4): per-call cost cap. Both default to the
+  // sealed-corpus behavior.
   const extraArgs = toollessArgs(toolless);
   return function semanticFn(actorInput, candidate_patch) {
     const prompt = 'You are a blind code reviewer. Given ONLY this issue and a candidate patch (NO reference solution), '
       + 'judge per-criterion whether the patch genuinely fixes the described bug. Reply with strict JSON '
       + '{"supported": true|false, "reason": "..."}.\n\nISSUE:\n' + JSON.stringify(actorInput) + '\n\nCANDIDATE PATCH:\n' + String(candidate_patch || '');
-    const r = claudeOnce(bin, prompt, timeout, extraArgs);
+    const r = claudeOnce(bin, prompt, timeout, extraArgs, maxBudgetUsd);
     if (!r.ok) return { status: 'advisory_llm_checked', supported: null, outcome_source: 'harness_fallback', fallback_reason: r.reason };
     return { status: 'advisory_llm_checked', supported: r.obj.supported === true, outcome_source: 'model' };
   };
