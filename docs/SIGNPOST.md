@@ -75,6 +75,12 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/kernel/egress/approval-store.js` - ③.2.4 — the per-emission approval STORE: the fail-closed filesystem I/O over the PURE approval.js axiom (the
 - `packages/kernel/egress/approval.js` - ③.2.4 — the PER-EMISSION approval AXIOM (PURE; no I/O).
 - `packages/kernel/egress/emit-pr.js` - ③.2.1b — the PR-egress kernel: the SINGLE in-process `emitPR` chokepoint that is the SOLE holder of
+- `packages/kernel/egress/loom-broker-bind.js` - Power Loom egress — loom-broker-bind.js  (③.2.5b)
+- `packages/kernel/egress/loom-broker-caller-auth.js` - Power Loom egress — loom-broker-caller-auth.js  (③.2.5b)
+- `packages/kernel/egress/loom-broker-client.js` - Power Loom egress — loom-broker-client.js  (③.2.5b)
+- `packages/kernel/egress/loom-broker-launch.js` - Power Loom egress — loom-broker-launch.js  (③.2.5b)
+- `packages/kernel/egress/loom-broker-sign.js` - Power Loom egress — loom-broker-sign.js  (③.2.5b)
+- `packages/kernel/egress/loom-custody-verify.js` - Power Loom egress — loom-custody-verify.js  (③.2.5b)
 - `packages/kernel/egress/policy.js` - ③.2.1b PR-B — egress POLICY gates: a GLOBAL per-window emission cap, 429/abuse backpressure, and a
 - `packages/kernel/egress/scrub.js` - ③.2.1b PR-B — the egress SECRET-SCRUB (coarse, defense-in-depth).
 
