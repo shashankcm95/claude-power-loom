@@ -208,6 +208,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 
 ### `lab/_lib/`
 
+- `packages/lab/_lib/claude-headless.js` - The TOOL-LESS `claude -p` recipe — firsthand re-verified on claude 2.1.177 by the ③.2.2c dogfood
 - `packages/lab/_lib/enum-key.js` - v3.11 W1 — the shared closed-set key primitive.
 - `packages/lab/_lib/scrub-lab-secrets.js` - ③.1-W4d Item 2a — the shared lab secret-scrub helper.
 
@@ -244,6 +245,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/lab/causal-edge/lesson-derive.js` - v3.11 W1 — the lesson DERIVATION leg.
 - `packages/lab/causal-edge/lesson-merge-lift.js` - v-next MV-W1 — the FORK-6 `lesson_merge_lift` HARDEN-gate.
 - `packages/lab/causal-edge/lesson-signature.js` - v3.11 W1 — the FROZEN lesson signature + the lesson-key machinery.
+- `packages/lab/causal-edge/live-grade.js` - ③.2.2c — gradeLiveIssueSemantic: a SHADOW verdict for a LIVE (public-only) GitHub issue.
 - `packages/lab/causal-edge/manage-ops.js` - v3.5 Wave 3a - the Manage-Layer's first WRITE op: flag-conflict (the SECOND producer->consumer loop of
 - `packages/lab/causal-edge/projections.js` - v3.5 Wave 3a - the `conflicted` projection (D2): a PURE Lab projection over the causal-edge set.
 - `packages/lab/causal-edge/store.js` - v3.5 Wave 2 - Causal-edge store (the semantic-edge PRODUCER of the graph loop).
@@ -276,6 +278,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/lab/issue-corpus/_spike/docker-containment-spike.js` - v3.0 (Docker wave) — docker containment spike (green-or-block proof).
 - `packages/lab/issue-corpus/_spike/docker-dogfood.js` - v3.0 (Docker wave) — ContainerAdapter end-to-end dogfood on the DOCKER backend.
 - `packages/lab/issue-corpus/_spike/dogfood.js` - v3.9 W1 — ContainerAdapter end-to-end dogfood (macOS-only verification probe).
+- `packages/lab/issue-corpus/_spike/live-draft-dogfood.js` - _spike/live-draft-dogfood.js — ③.2.2c EC.c7 (Rule 2a-corollary: a green mock suite is a HYPOTHESIS;
 - `packages/lab/issue-corpus/live-puller.js` - ③.2.2a — the READ-ONLY good-first-issue live puller.
 - `packages/lab/issue-corpus/pytest-runner.js` - v3.9.x (real-E2E spike) — the pytest test-runner adapter.
 - `packages/lab/issue-corpus/_spike/real-e2e-actor-dogfood.js` - v3.9.x real-E2E spike — STEP B: the REAL attempt.
@@ -321,6 +324,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/lab/persona-experiment/_spike/dogfood-run.js` - 3.1-W3b DOGFOOD (_spike) -- the Rule-2a-corollary REAL-PATH proof for the run+measure layer.
 - `packages/lab/persona-experiment/earned-grounding-run.js` - 3.1-W4c -- the earned-grounding RUN driver.
 - `packages/lab/persona-experiment/grounding-slice.js` - 3.1-W3a -- the grounding-slice builder (arm C's "earned instincts").
+- `packages/lab/persona-experiment/live-draft-run.js` - ③.2.2c — the semantic-only DRAFT loop on REAL repos.
 - `packages/lab/persona-experiment/_spike/real-solve-spike.js` - 3.1-W4b SPIKE (_spike, OUTSIDE tests/unit/**) -- the Rule-2a-corollary REAL-PATH proof for the
 - `packages/lab/persona-experiment/real-solve.js` - 3.1-W4b -- the REAL `claude -p` solve+grade driver: the injectable async `solveFn` the arm-loop
 
