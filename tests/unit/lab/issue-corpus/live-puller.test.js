@@ -287,6 +287,14 @@ test('h2. assertReadOnlyGhArgs — the bounded GET-gate accepts the real reads, 
   ];
   for (const w of writes) assert.throws(() => assertReadOnlyGhArgs(w), /gh-readonly/, JSON.stringify(w));
 });
+test('h3. defaultGhRunner INVOKES the gate: a write arg throws (gh-readonly) BEFORE any spawn', () => {
+  // proves the gate is wired into the spawn path (not merely defined) — the throw is from
+  // assertReadOnlyGhArgs, which runs before the lazy require('child_process'), so no gh is ever spawned
+  // (this passes even with no `gh` on PATH). This is the runtime answer to "invocation, not symbol presence".
+  assert.throws(() => P.defaultGhRunner(['api', '-X', 'POST', 'repos/o/r/pulls']), /gh-readonly/);
+  assert.throws(() => P.defaultGhRunner(['pr', 'create', '--title', 't']), /gh-readonly/);
+  assert.throws(() => P.defaultGhRunner(['api', '-f', 'title=t', 'repos/o/r/pulls']), /gh-readonly/); // -f auto-POST, no -X GET
+});
 
 // summary — awaits ALL tests' actual completion (Promise.all), then exits on the real pass/fail count.
 Promise.all(pending).then(() => {

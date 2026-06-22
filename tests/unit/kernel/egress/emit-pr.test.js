@@ -225,7 +225,11 @@ test('EC1b.2a sole-chokepoint LINT: no PRODUCTION module outside emit-pr.js spaw
   // STILL barred from git-push + token reads. (The AUTHORITATIVE token-custody control, EC1b.2b, is
   // unaffected — the puller never touches process.env GH_TOKEN/GITHUB_TOKEN.)
   const READONLY_GH_ALLOW = [path.join('packages', 'lab', 'issue-corpus', 'live-puller.js')];
-  const GET_GATE = /assertReadOnlyGhArgs\s*\(/;   // the positive proof the exempted module is GET-only
+  // require the call form `assertReadOnlyGhArgs(args);` (CodeRabbit #390 Major) — NOT a bare symbol match,
+  // which would also accept the function DECLARATION `function assertReadOnlyGhArgs(args) {` and pass the
+  // exemption even if the runtime invocation were removed. The lab suite additionally proves defaultGhRunner
+  // INVOKES it (live-puller.test.js h3 — a write arg throws before any spawn).
+  const GET_GATE = /assertReadOnlyGhArgs\s*\(\s*args\s*\)\s*;/;
   // regression (CodeRabbit #388): the token pattern must catch BOTH the dot AND the bracket read.
   assert.ok(TOKEN_READ.test('const t = process.env.GH_TOKEN;'), 'token-CAP catches dot-notation');
   assert.ok(TOKEN_READ.test("const t = process.env['GITHUB_TOKEN'];"), 'token-CAP catches bracket-notation');
