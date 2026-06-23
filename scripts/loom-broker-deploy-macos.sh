@@ -200,8 +200,9 @@ cat <<SUDOERS
       Defaults:${HOSTUSER} env_reset, !setenv
       Defaults!${WRAPPER} env_reset, !setenv
 
-  Then AUDIT (SUDO_* in env_keep VOIDS caller-auth — this must print nothing):
-      sudo -l -U ${HOSTUSER} | grep -iE 'env_keep.*SUDO_' && echo 'FAIL: SUDO_* in env_keep'
+  Then AUDIT (a SUDO_* var in env_keep VOIDS caller-auth). Match the env-var token PRECISELY (case-sensitive
+  SUDO_<NAME>) — a loose 'env_keep.*SUDO_' false-fails on stock macOS via the /etc/sudo_lecture config path:
+      sudo -l -U ${HOSTUSER} | grep -oE 'SUDO_[A-Za-z]+' && echo 'FAIL: SUDO_* in env_keep' || echo 'OK: no SUDO_* preserved'
 SUDOERS
 
 # ---- 6. verify + the out-of-band attestation (the step only you can do) ----
