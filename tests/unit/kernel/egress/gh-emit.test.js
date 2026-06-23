@@ -8,6 +8,8 @@
 
 const assert = require('assert');
 const path = require('path');
+const fs = require('fs');
+const os = require('os');
 
 const REPO = path.join(__dirname, '..', '..', '..', '..');
 const G = require(path.join(REPO, 'packages', 'kernel', 'egress', 'gh-emit.js'));
@@ -395,13 +397,27 @@ test('#405 (architect MED — whitelist): an UNRECOGNIZED header line => parse r
   assert.throws(() => G.parseDiffStanzas(diff), /unrecognized header line|fail-closed/);
 });
 
-test('#405 VALIDATE-hacker M2: an env carrying a credential/config-injection key (GITHUB_TOKEN / GIT_CONFIG_COUNT) => refuse, zero network', () => {
-  for (const badKey of ['GITHUB_TOKEN', 'GIT_ASKPASS', 'GIT_CONFIG_COUNT']) {
+test('#405 VALIDATE-hacker M2: an env carrying a key OUTSIDE buildEmitEnv output (GITHUB_TOKEN / GIT_CONFIG_COUNT / a stray) => refuse, zero network', () => {
+  for (const badKey of ['GITHUB_TOKEN', 'GIT_ASKPASS', 'GIT_CONFIG_COUNT', 'SHLVL', 'PWD']) {
     const gh = makeGh();
     const env = { PATH: '/usr/bin', [badKey]: 'x' };
     assert.throws(() => G.ghEmit({ draft: draftFor(NEWFILE_DIFF), approvalHash: hashFor(NEWFILE_DIFF), env }, { runGh: gh }), /not a buildEmitEnv-sanitized env|killswitch/);
     assert.strictEqual(gh.calls.length, 0, `env with ${badKey} refuses before any network`);
   }
+});
+
+test('#405 REGRESSION (first live broker-signed dogfood, Rule-2a-corollary): a REAL buildEmitEnv() env PASSES the sanitization gate — NOT refused on its own GIT_CONFIG_NOSYSTEM/GIT_CONFIG_GLOBAL', () => {
+  // the mock `env:{}` tests never exercised the real sanitizer; the v1 `startsWith('GIT_CONFIG')` denylist
+  // refused buildEmitEnv's OWN hardening keys -> emitPR could never emit live. Use the REAL buildEmitEnv output.
+  const { buildEmitEnv } = require(path.join(REPO, 'packages', 'kernel', 'egress', 'emit-pr.js'));
+  const ghcfg = fs.mkdtempSync(path.join(os.tmpdir(), 'loom-ghcfg-'));   // assertIsolatedGhConfigDir requires an EMPTY dir
+  try {
+    const env = buildEmitEnv({ token: 'x'.repeat(40), ghConfigDir: ghcfg });
+    assert.ok('GIT_CONFIG_NOSYSTEM' in env && 'GIT_CONFIG_GLOBAL' in env, 'buildEmitEnv really sets the GIT_CONFIG_* hardening keys (the trap)');
+    const gh = makeGh();
+    const r = G.ghEmit({ draft: draftFor(NEWFILE_DIFF), approvalHash: hashFor(NEWFILE_DIFF), env }, { runGh: gh });
+    assert.ok(r && r.number, 'a real buildEmitEnv env completes the emit — the env gate did NOT false-refuse its own hardening keys');
+  } finally { fs.rmSync(ghcfg, { recursive: true, force: true }); }
 });
 
 test('#405 (architect MED — attribution): a hunk whose context/removed line extends PAST base EOF => distinct refuse reason', () => {

@@ -56,7 +56,7 @@
 
 const { execFileSync } = require('child_process');
 const { computeEmissionHash } = require('./approval');
-const { parseDiffPaths, isEgressDeniedPath } = require('./emit-pr');
+const { parseDiffPaths, isEgressDeniedPath, ENV_ALLOWLIST } = require('./emit-pr');
 
 const HASH64 = /^[0-9a-f]{64}$/;
 const SAFE_BRANCH = /^[A-Za-z0-9._/-]+$/;          // the API-resolved default_branch charset (rides into argv + a ref path)
@@ -74,10 +74,16 @@ const MAX_POST_IMAGE_BYTES = 2 * 1024 * 1024;
 // — all unbounded primitives in a maintainer's repo. The egress emits REGULAR FILES ONLY (the #273 "never trust
 // a self-asserted field" class). Anything else fails closed.
 const ALLOWED_FILE_MODES = new Set(['100644', '100755']);
-// #405 VALIDATE-hacker M2 (defense-in-depth) — buildEmitEnv (the killswitch) builds the subprocess env from an
-// ALLOWLIST and never sets these credential/config-injection keys. Their PRESENCE in the passed env means it was
-// NOT buildEmitEnv-sanitized — refuse (gh-emit must not be one refactor away from inheriting an ambient token).
-const CREDENTIAL_ENV_KEYS = Object.freeze(['GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GIT_ASKPASS', 'SSH_ASKPASS']);
+// #405 VALIDATE-hacker M2 (defense-in-depth) — the passed env MUST be a buildEmitEnv() product, not process.env
+// (a refactor handing the ambient env would reintroduce the very credentials the killswitch dropped). Check by
+// ALLOWLIST, not denylist: refuse any key OUTSIDE buildEmitEnv's known output. buildEmitEnv copies ENV_ALLOWLIST
+// from process.env then SETS these hardening/credential keys (emit-pr.js:86-94) — so a benign GIT_CONFIG_NOSYSTEM /
+// GIT_CONFIG_GLOBAL it sets must NOT be refused (the v1 `startsWith('GIT_CONFIG')` denylist false-refused the
+// sanitizer's OWN output — a CRITICAL the mock-`env:{}` tests missed; caught by the first live broker-signed
+// dogfood, Rule-2a-corollary). This MUST track buildEmitEnv's output; the real-buildEmitEnv regression test fails
+// if buildEmitEnv adds a key not listed here.
+const BUILD_EMIT_ENV_SET_KEYS = ['GIT_CONFIG_NOSYSTEM', 'GIT_CONFIG_GLOBAL', 'GIT_TERMINAL_PROMPT', 'GIT_ALLOW_PROTOCOL', 'GH_CONFIG_DIR', 'GH_PROMPT_DISABLED', 'GH_NO_UPDATE_NOTIFIER', 'GH_TOKEN'];
+const SANITIZED_ENV_KEYS = new Set([...ENV_ALLOWLIST, ...BUILD_EMIT_ENV_SET_KEYS]);
 
 // ③.2.5c — a HIGH-VISIBILITY alert on a SECURITY-sensitive egress reject (the OBS carry 2026-06-22 +
 // security.md fail-closed-must-be-observable): a tamper / forgery / laundering / killswitch-bypass attempt must
@@ -420,12 +426,12 @@ function validateEmitInputs({ draft, approvalHash, env }) {
     emitEgressAlert('env-missing', { note: 'undefined env would inherit process.env (killswitch bypass)' });
     throw new Error('ghEmit: a sanitized env (from buildEmitEnv) is required — undefined inherits process.env');
   }
-  // #405 VALIDATE-hacker M2 (defense-in-depth): an object env is necessary but not sufficient — it must be
-  // buildEmitEnv-sanitized. buildEmitEnv NEVER sets these credential/config-injection keys, so their presence
-  // means the env was NOT sanitized (a refactor handing process.env). Refuse, observable. GH_TOKEN (the single
-  // injected credential) is allowed; a GIT_CONFIG* family member is an injection vector buildEmitEnv drops.
+  // #405 VALIDATE-hacker M2 (defense-in-depth): an object env is necessary but not sufficient — it must be a
+  // buildEmitEnv product. Refuse any key OUTSIDE buildEmitEnv's known output set (process.env carries dozens of
+  // extra keys; a hand-rolled env carries the wrong ones) — so a refactor handing the ambient env (re-introducing
+  // the dropped credentials) fails closed + observable, WITHOUT false-refusing buildEmitEnv's own hardening keys.
   for (const k of Object.keys(env)) {
-    if (CREDENTIAL_ENV_KEYS.includes(k) || k.startsWith('GIT_CONFIG')) {
+    if (!SANITIZED_ENV_KEYS.has(k)) {
       emitEgressAlert('env-not-sanitized', { key: k });
       throw new Error(`ghEmit: env carries ${k} — not a buildEmitEnv-sanitized env (killswitch integrity); refusing`);
     }
