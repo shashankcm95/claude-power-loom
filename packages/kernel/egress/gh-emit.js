@@ -34,8 +34,9 @@
 //      gate's INDEPENDENTLY-threaded approvalHash (computeEmissionHash(draft) === approvalHash — catches a seam
 //      divergence where a future refactor hands the seam a draft other than the one the gate hashed); the
 //      exact positional reconstruction (ascending+non-overlap, newStart===running-offset, exact context/removed
-//      match, exact old-side consumption === base.length) + path-membership bind the emitted file CONTENT
-//      faithfully to that diff. Both are load-bearing for DIFFERENT properties — neither is the rejected
+//      match, exactly oldCount consumed per hunk, no line past base EOF, verbatim tail-carry) + path-membership
+//      bind the emitted file CONTENT faithfully to that diff. Both are load-bearing for DIFFERENT properties —
+//      neither is the rejected
 //      self-rehash tautology (a re-hash of the draft against a hash computed from the SAME draft in the SAME call).
 //      A FORWARD-CONTRACT residual remains (#405 honesty HIGH): the human approved the DIFF; for a MODIFY the
 //      emitted bytes are live-base + approved-hunks, and the inter-hunk gap/tail come from the emit-time base the
@@ -512,11 +513,35 @@ function ghEmit({ draft, approvalHash, env } = {}, deps = {}) {
   const baseTreeSha = baseCommit && baseCommit.tree && baseCommit.tree.sha;
   if (typeof baseTreeSha !== 'string') throw new Error('ghEmit: could not resolve the base tree sha');
 
-  // 2b. build each emitted file's post-image. ADD => the pre-built content; MODIFY => fetch the base content at the
-  //     RESOLVED base commit (gh contents API, the SAME validated stanza.pathB) and apply the approved hunks. A
-  //     moved base / binary / >1MB base => fail-CLOSED before any tree POST (zero bytes leave on a mismatch).
+  // 2a. for any MODIFY, resolve the base file MODES (#405 VALIDATE-hacker H2 + CodeRabbit Major): the contents
+  //     API carries content but NOT the executable bit, so defaulting a modify to 100644 would silently FLIP a
+  //     100755 base file's mode in the candidate PR. Read the base tree ONCE (recursive) for a path->mode map; a
+  //     truncated tree (a huge repo) fails CLOSED — base-mode preservation can't be guaranteed, so don't guess.
+  let baseModes = null;
+  if (stanzas.some((s) => s.type === 'modify')) {
+    const treeResp = ghJson(gh, ['api', `repos/${repo}/git/trees/${baseTreeSha}?recursive=1`], { env });
+    if (!treeResp || treeResp.truncated === true || !Array.isArray(treeResp.tree)) {
+      emitEgressAlert('base-tree-unavailable', { truncated: treeResp && treeResp.truncated });
+      throw new Error('ghEmit: base tree truncated/unavailable — cannot resolve modify file modes (fail-closed)');
+    }
+    baseModes = new Map();
+    for (const e of treeResp.tree) {
+      if (e && e.type === 'blob' && typeof e.path === 'string') baseModes.set(e.path, e.mode);
+    }
+  }
+
+  // 2b. build each emitted file's post-image. ADD => the pre-built content + the (allowlisted) declared mode;
+  //     MODIFY => fetch the base content at the RESOLVED base commit (gh contents API, the SAME validated
+  //     stanza.pathB), apply the approved hunks, and PRESERVE the base file's mode. A moved base / binary /
+  //     >1MB base / a non-regular base mode => fail-CLOSED before any tree POST (zero bytes leave on a mismatch).
   const files = stanzas.map((st) => {
     if (st.type === 'add') return { path: st.pathB, mode: st.mode, content: st.content };
+    const baseMode = baseModes.get(st.pathB);
+    if (!ALLOWED_FILE_MODES.has(baseMode)) {
+      // the base path isn't a regular file at HEAD (a symlink/gitlink/submodule, or absent) — don't modify-emit it.
+      emitEgressAlert('base-mode-unsupported', { path: st.pathB, mode: baseMode });
+      throw new Error(`ghEmit: base file ${JSON.stringify(st.pathB)} mode ${JSON.stringify(baseMode)} is not a regular file (100644/100755) — fail-closed`);
+    }
     let enc;
     try {
       enc = ghJson(gh, ['api', `repos/${repo}/contents/${st.pathB}?ref=${baseCommitSha}`], { env });
@@ -542,7 +567,7 @@ function ghEmit({ draft, approvalHash, env } = {}, deps = {}) {
       emitEgressAlert('cannot-apply-hunk', { path: st.pathB, message: err && err.message });
       throw err;
     }
-    return { path: st.pathB, mode: st.mode, content };
+    return { path: st.pathB, mode: baseMode, content };   // PRESERVE the base mode (no silent 755->644 flip)
   });
 
   // 3. tree (base_tree preserves unlisted files; inline content per entry — no separate blob POST). Defense-in-depth

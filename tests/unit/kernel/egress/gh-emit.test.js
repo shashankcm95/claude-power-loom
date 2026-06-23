@@ -62,7 +62,7 @@ function applyAdd(diff) { const st = singleStanza(diff); assert.strictEqual(st.t
 // A configurable mock gh: records calls, dispatches on the endpoint (args[1]) + method, can trigger a
 // ref-already-exists 422 / a pulls failure, and serves base content for `contents?ref=` (the #405 modify fetch).
 function makeGh({ repo = GOOD_REPO, defaultBranch = 'main', refExists = false, failPulls = false, existingPulls,
-  baseContents = {}, encNoneFor = [], binaryFor = [] } = {}) {
+  baseContents = {}, encNoneFor = [], binaryFor = [], baseTreeModes = {}, treeTruncated = false } = {}) {
   const calls = [];
   function method(args) { const i = args.indexOf('--method'); return i >= 0 ? args[i + 1] : 'GET'; }
   function gh(args, o) {
@@ -82,6 +82,12 @@ function makeGh({ repo = GOOD_REPO, defaultBranch = 'main', refExists = false, f
     }
     if (/\/git\/ref\/heads\//.test(ep)) return JSON.stringify({ object: { sha: 'a'.repeat(40) } });
     if (/\/git\/commits\/[0-9a-f]+$/.test(ep)) return JSON.stringify({ tree: { sha: 'b'.repeat(40) } });
+    if (/\/git\/trees\/[0-9a-f]+\?recursive=1$/.test(ep) && m === 'GET') {     // #405 base-mode resolution
+      if (treeTruncated) return JSON.stringify({ truncated: true, tree: [] });
+      const allPaths = new Set([...Object.keys(baseContents), ...Object.keys(baseTreeModes)]);
+      const tree = [...allPaths].map((p) => ({ path: p, mode: (baseTreeModes[p] || '100644'), type: 'blob' }));
+      return JSON.stringify({ truncated: false, tree });
+    }
     if (/\/git\/trees$/.test(ep) && m === 'POST') return JSON.stringify({ sha: 'c'.repeat(40) });
     if (/\/git\/commits$/.test(ep) && m === 'POST') return JSON.stringify({ sha: 'd'.repeat(40) });
     if (/\/git\/refs$/.test(ep) && m === 'POST') {
@@ -131,12 +137,13 @@ test('#405 probe 1 happy MODIFY: a modify diff => base fetched at the base commi
     'GET repos/owner/repo',
     'GET repos/owner/repo/git/ref/heads/main',
     'GET repos/owner/repo/git/commits/' + 'a'.repeat(40),
-    'GET repos/owner/repo/contents/f.txt?ref=' + 'a'.repeat(40),   // <- the #405 base fetch at the resolved base commit
+    'GET repos/owner/repo/git/trees/' + 'b'.repeat(40) + '?recursive=1',   // <- #405 base-mode resolution (once)
+    'GET repos/owner/repo/contents/f.txt?ref=' + 'a'.repeat(40),           // <- the base fetch at the resolved base commit
     'POST repos/owner/repo/git/trees',
     'POST repos/owner/repo/git/commits',
     'POST repos/owner/repo/git/refs',
     'POST repos/owner/repo/pulls',
-  ], 'a MODIFY inserts exactly ONE contents fetch before the tree POST');
+  ], 'a MODIFY resolves base modes once, then one contents fetch, before the tree POST');
   const tree = treeBodyOf(gh);
   assert.strictEqual(tree.tree[0].path, 'f.txt');
   assert.strictEqual(tree.tree[0].content, MODIFY_EXPECTED, 'the emitted content === base + hunks applied');
@@ -229,7 +236,7 @@ test('#405 probe 2: a moved base (a removed/context line differs from live) => r
   const gh = makeGh({ baseContents: { 'f.txt': 'line1\nDIFFERENT\nline3\n' } });
   assert.throws(() => G.ghEmit({ draft: draftFor(MODIFY_DIFF), approvalHash: hashFor(MODIFY_DIFF), env: {} }, { runGh: gh }),
     /moved base|cannot-apply-hunk/);
-  assert.ok(!endpointsOf(gh).some((e) => /\/git\/trees/.test(e)), 'zero bytes leave on a moved base (no tree POST)');
+  assert.ok(!endpointsOf(gh).some((e) => e === 'POST repos/owner/repo/git/trees'), 'zero bytes leave on a moved base (no tree POST)');
 });
 
 test('#405 probe 2 (pure): a moved base => applyHunks refuses', () => {
@@ -296,14 +303,14 @@ test('#405 probe 7a: a base file > 1MB (contents API encoding:"none") => refuse,
   const diff = 'diff --git a/big2.txt b/big2.txt\n--- a/big2.txt\n+++ b/big2.txt\n@@ -1,1 +1,1 @@\n-x\n+y\n';
   const gh = makeGh({ encNoneFor: ['big2.txt'] });
   assert.throws(() => G.ghEmit({ draft: draftFor(diff), approvalHash: hashFor(diff), env: {} }, { runGh: gh }), /not base64|encoding:none|fail-closed/);
-  assert.ok(!endpointsOf(gh).some((e) => /\/git\/trees/.test(e)), 'no tree POST on an unavailable base');
+  assert.ok(!endpointsOf(gh).some((e) => e === 'POST repos/owner/repo/git/trees'), 'no tree POST on an unavailable base');
 });
 
 test('#405 probe 7b: a binary base (a NUL byte) => refuse, no tree POST', () => {
   const diff = 'diff --git a/bin.txt b/bin.txt\n--- a/bin.txt\n+++ b/bin.txt\n@@ -1,1 +1,1 @@\n-x\n+y\n';
   const gh = makeGh({ binaryFor: ['bin.txt'] });
   assert.throws(() => G.ghEmit({ draft: draftFor(diff), approvalHash: hashFor(diff), env: {} }, { runGh: gh }), /binary|fail-closed/);
-  assert.ok(!endpointsOf(gh).some((e) => /\/git\/trees/.test(e)), 'no tree POST on a binary base');
+  assert.ok(!endpointsOf(gh).some((e) => e === 'POST repos/owner/repo/git/trees'), 'no tree POST on a binary base');
 });
 
 // === #405 probe 8: amplification size caps ===
@@ -312,7 +319,7 @@ test('#405 probe 8a: a base > MAX_BASE_BYTES => refuse, no tree POST', () => {
   const diff = 'diff --git a/big.txt b/big.txt\n--- a/big.txt\n+++ b/big.txt\n@@ -1,1 +1,1 @@\n-x\n+y\n';
   const gh = makeGh({ baseContents: { 'big.txt': 'A'.repeat(1 * 1024 * 1024 + 1) } });   // 1MB + 1 > MAX_BASE_BYTES
   assert.throws(() => G.ghEmit({ draft: draftFor(diff), approvalHash: hashFor(diff), env: {} }, { runGh: gh }), /MAX_BASE_BYTES|fail-closed/);
-  assert.ok(!endpointsOf(gh).some((e) => /\/git\/trees/.test(e)), 'no tree POST on an oversize base');
+  assert.ok(!endpointsOf(gh).some((e) => e === 'POST repos/owner/repo/git/trees'), 'no tree POST on an oversize base');
 });
 
 test('#405 probe 8b: a produced post-image > MAX_POST_IMAGE_BYTES (a huge added line) => refuse, ZERO network', () => {
@@ -339,7 +346,7 @@ test('#405 probe 9: a `[REDACTED]`-bearing old-side (context) line != the live b
     '@@ -1,3 +1,3 @@', ' config', ' API_KEY=[REDACTED]', '-footer', '+FOOTER', ''].join('\n');
   const gh = makeGh({ baseContents: { 'c.txt': 'config\nAPI_KEY=sk-realrealrealsecret\nfooter\n' } });
   assert.throws(() => G.ghEmit({ draft: draftFor(diff), approvalHash: hashFor(diff), env: {} }, { runGh: gh }), /context mismatch|moved base|cannot-apply-hunk/);
-  assert.ok(!endpointsOf(gh).some((e) => /\/git\/trees/.test(e)), 'a scrub-touched old-side never emits a corrupting post-image');
+  assert.ok(!endpointsOf(gh).some((e) => e === 'POST repos/owner/repo/git/trees'), 'a scrub-touched old-side never emits a corrupting post-image');
 });
 
 // === #405 probe 10 / M1: a path bearing a contents-URL-unsafe char => refuse at parse ===
@@ -420,6 +427,32 @@ test('#405 probe 5d (code-reviewer LOW): a `\\ No newline` marker as the FIRST h
 
 test('#405 (code-reviewer LOW): applyHunks([]) on the exported util => throws (no silent base passthrough)', () => {
   assert.throws(() => G.applyHunks('whatever\n', []), /no hunks|fail-closed/);
+});
+
+// === #405 VALIDATE-hacker H2 + CodeRabbit Major: MODIFY preserves the base file mode (no silent 755->644 flip) ===
+
+test('#405 H2: a MODIFY of an EXECUTABLE (100755) base preserves mode 100755 in the emitted tree (base-tree mode map)', () => {
+  const gh = makeGh({ baseContents: { 'f.txt': MODIFY_BASE }, baseTreeModes: { 'f.txt': '100755' } });
+  G.ghEmit({ draft: draftFor(MODIFY_DIFF), approvalHash: hashFor(MODIFY_DIFF), env: {} }, { runGh: gh });
+  assert.strictEqual(treeBodyOf(gh).tree[0].mode, '100755', 'the executable bit survives the content modify');
+  // and a regular (100644) base stays 100644
+  const gh2 = makeGh({ baseContents: { 'f.txt': MODIFY_BASE } });   // default tree mode 100644
+  G.ghEmit({ draft: draftFor(MODIFY_DIFF), approvalHash: hashFor(MODIFY_DIFF), env: {} }, { runGh: gh2 });
+  assert.strictEqual(treeBodyOf(gh2).tree[0].mode, '100644');
+});
+
+test('#405 H2: a MODIFY whose base path is a SYMLINK (120000) at HEAD => refuse, NO tree POST (not a regular file)', () => {
+  const gh = makeGh({ baseContents: { 'f.txt': MODIFY_BASE }, baseTreeModes: { 'f.txt': '120000' } });
+  assert.throws(() => G.ghEmit({ draft: draftFor(MODIFY_DIFF), approvalHash: hashFor(MODIFY_DIFF), env: {} }, { runGh: gh }), /not a regular file|base-mode|fail-closed/);
+  assert.ok(!endpointsOf(gh).some((e) => e === 'POST repos/owner/repo/git/trees'), 'no tree POST on a non-regular base mode');
+  // the base-mode check fires BEFORE the content fetch (no contents GET for the refused path)
+  assert.ok(!endpointsOf(gh).some((e) => /\/contents\//.test(e)), 'refuses before fetching content of a non-regular base');
+});
+
+test('#405 H2: a TRUNCATED base tree (huge repo) => refuse (cannot guarantee base modes), NO tree POST', () => {
+  const gh = makeGh({ baseContents: { 'f.txt': MODIFY_BASE }, treeTruncated: true });
+  assert.throws(() => G.ghEmit({ draft: draftFor(MODIFY_DIFF), approvalHash: hashFor(MODIFY_DIFF), env: {} }, { runGh: gh }), /truncated|base tree|fail-closed/);
+  assert.ok(!endpointsOf(gh).some((e) => e === 'POST repos/owner/repo/git/trees'), 'no tree POST on a truncated base tree');
 });
 
 // === rename/copy/delete are DEFERRED (fail-closed) ===
