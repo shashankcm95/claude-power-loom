@@ -113,7 +113,7 @@ sudo -l -U <hostuser>           # human-scan: NO env_keep carries NODE_OPTIONS /
 # SUDO_* is the LOAD-BEARING one for caller-auth — assert it explicitly. Match the env-var token PRECISELY
 # (case-sensitive SUDO_<NAME>): a loose `env_keep.*SUDO_` FALSE-fails on stock macOS because the greedy `.*`
 # reaches `lecture_file=/etc/sudo_lecture` (a sudo CONFIG PATH, not an env var). This should print `OK`:
-sudo -l -U <hostuser> | grep -oE 'SUDO_[A-Za-z]+' \
+sudo -l -U <hostuser> | grep -oE 'SUDO_[A-Za-z0-9_]+' \
   && echo 'FAIL: env_keep carries a SUDO_* var -- the caller-auth premise is VOID; fix the policy before trusting this deployment' \
   || echo 'OK: no SUDO_* preserved'
 ```
