@@ -138,10 +138,13 @@ test('③.2.3 H2: assertSafeIssueRef rejects a non-safe-integer (20-digit) issue
   assert.throws(() => E.assertSafeIssueRef(String(Number.MAX_SAFE_INTEGER + 1)), /issueRef/);
 });
 
-// === ③.2.3 EC6 — this wave adds NO egress: armedEmit still throws + emit-pr.js imports no child_process ===
-test('③.2.3 EC6: emit-pr.js source imports NO child_process (no egress subprocess added this wave)', () => {
+// === ③.2.3 EC6 — the CHOKEPOINT module stays subprocess-free: the gh subprocess lives in the DELEGATE ===
+// ③.2.5c armed the seam, but the subprocess lives in gh-emit.js — emit-pr.js itself STILL imports no
+// child_process (it delegates via a lazy require). Keeping the gate module spawn-free is the ongoing invariant:
+// the chokepoint reasons about policy; only the dedicated seam touches the network.
+test('③.2.3 EC6: emit-pr.js source imports NO child_process directly (the gh subprocess lives in the gh-emit delegate)', () => {
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', '..', '..', '..', 'packages', 'kernel', 'egress', 'emit-pr.js'), 'utf8');
-  assert.ok(!/require\(\s*['"]child_process['"]\s*\)/.test(src), 'emit-pr.js must not import child_process (the live seam stays unimplemented)');
+  assert.ok(!/require\(\s*['"]child_process['"]\s*\)/.test(src), 'emit-pr.js must not import child_process directly (the live seam is gh-emit.js)');
 });
 
 test('EC1b.4 egress path-scope: a diff touching .github / .git* / CI / traversal is rejected', () => {
@@ -208,8 +211,13 @@ test('EC1b.4 emitPR: a .github diff is fail-closed (ok:false, emitted:false)', (
 
 // === EC1b.5 — the live seam (③.2.4 gate: live AND token AND killswitch-off AND a per-emission approval) ===
 
-test('EC1b.5 armedEmit() THROWS not-armed (no live network code this wave; retargeted ③.2.5)', () => {
-  assert.throws(() => E.armedEmit(), /egress-not-armed/);                 // match the STABLE prefix, not the version
+test('EC1b.5 armedEmit is WIRED to the gh-REST seam + fails-closed on a missing custody env (③.2.5c; no accidental no-arg emit)', () => {
+  // ③.2.5c flipped armedEmit from the `egress-not-armed` throw to a real delegation. It now builds the sanitized
+  // env (buildEmitEnv REQUIRES a ghConfigDir) then delegates to gh-emit. With no ghConfigDir it fails-closed at
+  // buildEmitEnv — zero network, no accidental no-arg emit. The live network path is unit-tested in gh-emit.test.js
+  // (injected mock runGh). The outer-catch fail-closed (any armedEmit throw => ok:false) is proven by EC1b.5b.
+  assert.throws(() => E.armedEmit(), /ghConfigDir/);
+  assert.throws(() => E.armedEmit({ draft: {}, token: FAKE_CUSTODY, approvalHash: 'x' }), /ghConfigDir/);
 });
 
 // An "armed" custody (killswitch OFF + token + LIVE disposition + an empty approvals dir). The 4th AND — a
@@ -287,16 +295,19 @@ test('EC1b.5a3 armed + an UNSIGNED or WRONG-KEY approval planted in custody => a
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('EC1b.5b armed + a VALID approval => reaches the throwing armedEmit => fail-closed; cap+ledger+approval UNCHANGED (I2)', () => {
+test('EC1b.5b armed + a VALID approval but a THROWING seam => fail-closed; cap+ledger+approval UNCHANGED (I2 reservation-fold)', () => {
   const dir = scratch('loom-custody-');
   try {
     withKillswitchEnvCleared(() => {
       const opts = Object.assign(armedCustody(dir), { custodyCapStatePath: path.join(dir, 'cap.json'), custodyEtiquetteLedgerPath: path.join(dir, 'ledger') });
       const { hash } = mintApprovalFor(opts);
-      const r = E.emitPR(goodData(), opts);                               // default armedEmit THROWS this wave
-      assert.strictEqual(r.ok, false, 'the not-armed seam fails closed even with a valid approval');
+      // ③.2.5c — the seam is now ARMED (the real armedEmit fail-closed on a missing env is EC1b.5; the live
+      // network path is gh-emit.test.js). HERE we prove the I2 reservation-fold is seam-IMPLEMENTATION-INDEPENDENT:
+      // ANY seam throw => the outer catch => fail-closed with cap+ledger UNWRITTEN and the approval UN-consumed.
+      const r = E.emitPR(goodData(), Object.assign({}, opts, { armedEmitFn: () => { throw new Error('seam-blew-up'); } }));
+      assert.strictEqual(r.ok, false, 'a throwing seam fails closed even with a valid approval');
       assert.strictEqual(r.emitted, false);
-      assert.ok(/not-armed/.test(r.reason), `reason is the seam (got ${r.reason})`);
+      assert.ok(/seam-blew-up/.test(r.reason), `the seam error surfaces as the reason (got ${r.reason})`);
       // emit-then-record: a throwing emit leaves the cap + ledger UNWRITTEN and the approval UN-consumed.
       assert.strictEqual(fs.existsSync(opts.custodyCapStatePath), false, 'cap state never written (reservation fold)');
       assert.strictEqual(fs.existsSync(opts.custodyEtiquetteLedgerPath), false, 'ledger never written');
@@ -313,9 +324,14 @@ test('EC1b.5c armed + valid approval + an injected SUCCEEDING armedEmitFn => emi
       const { hash } = mintApprovalFor(opts);
       // NB the emit-then-record ORDERING (record AFTER emit) is proven by EC1b.5b/5b2 (the throwing path), not
       // here — a succeeding emit records + consumes under either order. This proves the on-SUCCESS state only.
-      let emitCalls = 0;
-      const r = E.emitPR(goodData(), Object.assign({}, opts, { armedEmitFn: () => { emitCalls += 1; return { pr_url: 'https://example/pr/1' }; } }));
+      let emitCalls = 0; let seen = null;
+      const r = E.emitPR(goodData(), Object.assign({}, opts, { armedEmitFn: (a) => { emitCalls += 1; seen = a; return { pr_url: 'https://example/pr/1' }; } }));
       assert.strictEqual(emitCalls, 1, 'armedEmitFn invoked exactly once');
+      // ③.2.5c CRITICAL-2 — the gate THREADS its independently-computed approvalHash into the seam (so gh-emit's
+      // self-check has a value to cross-check against; re-hashing the same draft would be a tautology).
+      assert.ok(seen && /^[a-f0-9]{64}$/.test(seen.approvalHash), 'the seam receives a 64-hex approvalHash');
+      assert.strictEqual(seen.approvalHash, r.approvalHash, 'the threaded approvalHash === the surfaced one');
+      assert.ok(seen.draft && seen.draft.diff && typeof seen.token === 'string', 'the seam receives the draft + token');
       assert.strictEqual(r.ok, true); assert.strictEqual(r.emitted, true, 'valid approval + succeeding emit => emitted');
       assert.deepStrictEqual(r.pr, { pr_url: 'https://example/pr/1' });
       assert.strictEqual(fs.existsSync(opts.custodyCapStatePath), true, 'cap recorded AFTER the successful emit');
@@ -357,7 +373,7 @@ test('EC1b.5b2 a throwing emit leaves PRE-EXISTING cap/ledger state byte-UNCHANG
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('EC1b.5e partial-commit residual: a SUCCEEDING emit whose recordEmit then throws => ok:false + approval NOT consumed (Forward-Contract #6 — INERT this wave)', () => {
+test('EC1b.5e partial-commit residual: a SUCCEEDING emit whose recordEmit then throws => ok:false + approval NOT consumed (③.2.5c: the DUPLICATE-PR risk is closed by dedup; the bookkeeping drift is the bounded residual)', () => {
   const dir = scratch('loom-custody-');
   try {
     withKillswitchEnvCleared(() => {
@@ -365,9 +381,16 @@ test('EC1b.5e partial-commit residual: a SUCCEEDING emit whose recordEmit then t
       const opts = Object.assign(armedCustody(dir), { custodyCapStatePath: path.join(dir, 'no-such-subdir', 'cap.json') });
       const { hash } = mintApprovalFor(opts);
       const r = E.emitPR(goodData(), Object.assign({}, opts, { armedEmitFn: () => ({ pr_url: 'https://example/pr/9' }) }));
-      // documents the known reserve->rollback gap deferred to ③.2.5: the emit "happened" but the result reads ok:false.
-      assert.strictEqual(r.ok, false, 'a post-emit record throw surfaces as ok:false (the documented partial-commit lie)');
-      assert.strictEqual(S.readVerifiedApproval(opts.custodyApprovalsDir, hash, { now: opts.now, ttlMs: opts.ttlMs, selfUid: SELF_UID, verifyKeyPem: KP.publicKeyPem }).ok, true, 'the approval is NOT consumed when the post-emit record throws (③.2.5 reserve->rollback closes this)');
+      // The post-network record ordering is UNCHANGED (emit-then-record): a record throw still surfaces as ok:false
+      // and leaves the approval un-consumed. ③.2.5c does NOT change THIS path — instead it makes a RETRY safe at the
+      // gh-emit layer: the branch name is deterministic from approvalHash, so a re-emit of the SAME approved content
+      // hits a 422 "Reference already exists" and (a) DEDUP-RECONCILES to the matching OPEN loom PR if one exists, or
+      // (b) FAILS CLOSED (ref-exists-no-open-pr) rather than auto-creating on a pre-existing branch. So the
+      // DUPLICATE-OPEN-PR harm is closed; the residual is (i) the cap/ledger bookkeeping drift on a post-network
+      // record failure and (ii) an orphan tree+commit object created before the ref step on each retry — both bounded
+      // by the per-window cap + the human gate (NOT a duplicate PR).
+      assert.strictEqual(r.ok, false, 'a post-emit record throw surfaces as ok:false (the bookkeeping residual)');
+      assert.strictEqual(S.readVerifiedApproval(opts.custodyApprovalsDir, hash, { now: opts.now, ttlMs: opts.ttlMs, selfUid: SELF_UID, verifyKeyPem: KP.publicKeyPem }).ok, true, 'the approval is NOT consumed when the post-emit record throws (a retry 422-dedups to the existing PR)');
     });
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
@@ -400,6 +423,11 @@ test('EC1b.2a sole-chokepoint LINT: no PRODUCTION module outside emit-pr.js spaw
   // STILL barred from git-push + token reads. (The AUTHORITATIVE token-custody control, EC1b.2b, is
   // unaffected — the puller never touches process.env GH_TOKEN/GITHUB_TOKEN.)
   const READONLY_GH_ALLOW = [path.join('packages', 'lab', 'issue-corpus', 'live-puller.js')];
+  // ③.2.5c: gh-emit.js is emit-pr's DEDICATED write-egress DELEGATE — armedEmit (lazily) calls ghEmit ONLY after
+  // the full gate (live + token + killswitch-off + signed approval). It is NOT an independent egress path: it
+  // receives the sanitized env (with GH_TOKEN already injected by buildEmitEnv) as a PARAMETER, so it is exempt
+  // from the GH_SPAWN cap but STILL barred from reading an ambient token (TOKEN_READ) and from git-push.
+  const CHOKEPOINT_DELEGATE_ALLOW = [path.join('packages', 'kernel', 'egress', 'gh-emit.js')];
   // require the call form `assertReadOnlyGhArgs(args);` (CodeRabbit #390 Major) — NOT a bare symbol match,
   // which would also accept the function DECLARATION `function assertReadOnlyGhArgs(args) {` and pass the
   // exemption even if the runtime invocation were removed. The lab suite additionally proves defaultGhRunner
@@ -422,6 +450,11 @@ test('EC1b.2a sole-chokepoint LINT: no PRODUCTION module outside emit-pr.js spaw
         // exempt from GH_SPAWN ONLY with the positive GET-gate; still barred from git-push + token reads.
         if (!GET_GATE.test(src)) offenders.push(`${rel} (missing assertReadOnlyGhArgs GET-gate)`);
         if (GIT_PUSH.test(src) || TOKEN_READ.test(src)) offenders.push(rel);
+        continue;
+      }
+      if (CHOKEPOINT_DELEGATE_ALLOW.includes(rel)) {
+        // the write-egress delegate: exempt from GH_SPAWN; STILL barred from git-push + ambient token reads.
+        if (GIT_PUSH.test(src) || TOKEN_READ.test(src)) offenders.push(`${rel} (delegate must not git-push or read an ambient token)`);
         continue;
       }
       if (CAP.some((re) => re.test(src))) offenders.push(rel);
