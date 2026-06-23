@@ -264,5 +264,50 @@ test('T13c: judge-fail (ok:false) -> producer returns ok:false, no emit', () => 
   } finally { fx.cleanup(); }
 });
 
+// --- Drift-evidence triage (2026-06-23): detailed-survivor + threading ------
+test('T14: verifyJudgeOutputDetailed returns {driftClass, evidence}, caps, keeps first-occurrence evidence', () => {
+  // intra-pass dedup keeps the FIRST occurrence's evidence.
+  const d = D.verifyJudgeOutputDetailed([
+    { class: 'plan-honesty', evidence: 'first', confidence: 0.9 },
+    { class: 'plan-honesty', evidence: 'second', confidence: 0.9 },
+  ], { sessionId: 's' });
+  assert.deepStrictEqual(d, [{ driftClass: 'plan-honesty', evidence: 'first' }]);
+  // verifyJudgeOutput is a pure projection of the detailed survivors.
+  assert.deepStrictEqual(
+    D.verifyJudgeOutput([{ class: 'plan-honesty', evidence: 'first', confidence: 0.9 }], { sessionId: 's' }),
+    ['plan-honesty']);
+  // the maxEmit cap lives in the detailed core (not the string wrapper).
+  const distinct = ['plan-honesty', 'recon-depth', 'claim-false', 'scope-creep', 'fail-silent'].map((c) => ({ class: c, evidence: `${c}-ev`, confidence: 0.9 }));
+  assert.strictEqual(D.verifyJudgeOutputDetailed(distinct, { sessionId: 's', maxEmit: 3 }).length, 3);
+});
+
+// Real-path proof (Rule 2a-corollary: exercise the REAL subprocess, not a mock):
+// auditTranscript with NO emitFn -> the default bumpSignal -> the real
+// self-improve-store bump -> the evidence + sessionId land in the counter ring.
+test('T15: auditTranscript default emit threads evidence+sessionId into the real store', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ghb-thread-'));
+  fs.mkdirSync(path.join(home, '.claude', 'checkpoints'), { recursive: true });
+  const fx = fixture('thread-sess', [{ type: 'user', sessionId: 'thread-sess', message: { role: 'user', content: 'planning' } }]);
+  const prevHome = process.env.HOME;
+  process.env.HOME = home;
+  try {
+    const judgeFn = () => ({ ok: true, text: '[{"class":"plan-honesty","evidence":"the unprobed premise quote","confidence":0.9}]' });
+    const res = D.auditTranscript({ transcriptPath: fx.p, judgeFn, statePath: fx.statePath });
+    assert.strictEqual(res.ok, true);
+    assert.deepStrictEqual(res.emitted, ['plan-honesty']);
+    const counters = JSON.parse(fs.readFileSync(path.join(home, '.claude', 'self-improve-counters.json'), 'utf8'));
+    const entry = counters.signals['drift:plan-honesty'];
+    assert.ok(entry, 'drift:plan-honesty counter entry exists');
+    assert.ok(Array.isArray(entry.samples) && entry.samples.length === 1, 'one evidence sample persisted');
+    assert.strictEqual(entry.samples[0].evidence, 'the unprobed premise quote');
+    assert.strictEqual(entry.samples[0].sessionId, 'thread-sess');
+    assert.ok(typeof entry.samples[0].at === 'string' && entry.samples[0].at.length > 0, 'at timestamp threaded');
+  } finally {
+    if (prevHome === undefined) delete process.env.HOME; else process.env.HOME = prevHome;
+    fx.cleanup();
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
 process.stdout.write(`\n  Passed: ${passed}  Failed: ${failed}\n`);
 process.exit(failed > 0 ? 1 : 0);

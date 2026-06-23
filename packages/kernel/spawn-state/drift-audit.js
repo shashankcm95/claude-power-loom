@@ -52,6 +52,9 @@ const DEFAULT_MAX_EMIT_PER_SESSION = 6;
 const MAX_TRANSCRIPT_BYTES = 8 * 1024 * 1024; // pre-digest size cap (DoS guard)
 const MAX_TURN_CHARS = 2000;
 const BUMP_TIMEOUT_MS = 10000; // bound the store-bump subprocess (no unbounded hang)
+// Bound the evidence ARGV element (defense: keep argv small). The store re-scrubs and
+// re-bounds to its own MAX before persisting — this is only a transport cap.
+const MAX_EVIDENCE_ARG_LEN = 2000;
 
 function isValidDriftClass(driftClass) {
   return typeof driftClass === 'string' && (FROZEN_DRIFT_CLASSES.has(driftClass) || CWE_CLASS_RE.test(driftClass));
@@ -194,9 +197,13 @@ function parseJudgeJson(text) {
 }
 
 // --- Verify: the deterministic boundary guard -------------------------------
-// Returns surviving drift-CLASS strings (allowlisted / cwe-bounded, deduped,
-// capped). No judge free-text crosses this boundary.
-function verifyJudgeOutput(items, { sessionId, state, minConfidence = DEFAULT_MIN_CONFIDENCE, maxEmit = DEFAULT_MAX_EMIT_PER_SESSION } = {}) {
+// verifyJudgeOutputDetailed is the SINGLE source of the verify logic: it returns the
+// surviving { driftClass, evidence } pairs (allowlisted / cwe-bounded, deduped to the
+// FIRST occurrence, cross-session-deduped, capped). The cap + dedup live HERE so the
+// string projection below cannot diverge from the evidence map auditTranscript builds.
+// The evidence is the judge's RAW quote — the STORE scrubs + bounds it before persisting;
+// only an allowlisted/bounded CLASS string ever drives a side effect at this boundary.
+function verifyJudgeOutputDetailed(items, { sessionId, state, minConfidence = DEFAULT_MIN_CONFIDENCE, maxEmit = DEFAULT_MAX_EMIT_PER_SESSION } = {}) {
   const survivors = [];
   const seen = new Set();
   for (const it of Array.isArray(items) ? items : []) {
@@ -205,13 +212,20 @@ function verifyJudgeOutput(items, { sessionId, state, minConfidence = DEFAULT_MI
     if (!isValidDriftClass(driftClass)) continue;                       // allowlist + cwe-bound
     if (typeof it.confidence !== 'number' || it.confidence < minConfidence) continue;
     if (typeof it.evidence !== 'string' || it.evidence.trim().length === 0) continue;
-    if (seen.has(driftClass)) continue;                                 // intra-pass dedup
+    if (seen.has(driftClass)) continue;                                 // intra-pass dedup (keep first)
     if (state && isEmitted(state, sessionId, driftClass)) continue;     // cross-session dedup
     seen.add(driftClass);
-    survivors.push(driftClass);
+    survivors.push({ driftClass, evidence: it.evidence });
     if (survivors.length >= maxEmit) break;
   }
   return survivors;
+}
+
+// Returns surviving drift-CLASS strings — a PURE projection of the detailed survivors
+// (no extra logic; the cap + dedup are already applied above). No judge free-text crosses
+// this boundary.
+function verifyJudgeOutput(items, opts) {
+  return verifyJudgeOutputDetailed(items, opts).map((d) => d.driftClass);
 }
 
 // --- Record: emit via the store bump CLI ------------------------------------
@@ -219,8 +233,17 @@ function verifyJudgeOutput(items, { sessionId, state, minConfidence = DEFAULT_MI
 // is still recorded as emitted, so the signal is lost for this session — tolerable
 // for an advisory counter (it recurs next session; convergence is cross-session),
 // but it must be observable, not swallowed.
-function bumpSignal(signal) {
-  const r = spawnSync(process.execPath, [STORE_SCRIPT, 'bump', '--signal', signal], { encoding: 'utf8', stdio: ['ignore', 'ignore', 'pipe'], timeout: BUMP_TIMEOUT_MS });
+function bumpSignal(signal, { evidence, sessionId, at } = {}) {
+  const argv = [STORE_SCRIPT, 'bump', '--signal', signal];
+  // Thread the per-occurrence detail so a converged drift candidate is triageable. Evidence
+  // is passed as `--evidence=<value>` (the =-form) so a quote with spaces or a LEADING '--'
+  // round-trips as ONE argv element; the STORE scrubs + bounds it before persisting.
+  if (typeof evidence === 'string' && evidence.length > 0) {
+    argv.push(`--evidence=${evidence.slice(0, MAX_EVIDENCE_ARG_LEN)}`);
+    if (typeof sessionId === 'string' && sessionId.length > 0) argv.push(`--session=${sessionId}`);
+    if (typeof at === 'string' && at.length > 0) argv.push(`--at=${at}`);
+  }
+  const r = spawnSync(process.execPath, argv, { encoding: 'utf8', stdio: ['ignore', 'ignore', 'pipe'], timeout: BUMP_TIMEOUT_MS });
   if (r.error || r.status !== 0) {
     process.stderr.write(`[drift-audit] bump-failed signal=${signal} status=${r.status} ${r.error ? r.error.message : (r.stderr || '').slice(0, 120)}\n`);
   }
@@ -241,14 +264,20 @@ function auditTranscript({ transcriptPath, judgeFn, emitFn, statePath = DEFAULT_
   const jres = judge(buildJudgePrompt(dg.digest));
   if (!jres || !jres.ok) { log('judge-fail', jres && jres.reason); return { ok: false, reason: (jres && jres.reason) || 'judge-fail', emitted: [], ...sid }; }
   const state = loadState(statePath);
-  const survivors = verifyJudgeOutput(parseJudgeJson(jres.text), { sessionId: dg.sessionId, state });
+  const detailed = verifyJudgeOutputDetailed(parseJudgeJson(jres.text), { sessionId: dg.sessionId, state });
+  const survivors = detailed.map((d) => d.driftClass);
   if (survivors.length === 0) { log('no-drift', dg.sessionId); return { ok: true, reason: 'no-drift', emitted: [], ...sid }; }
-  const emit = emitFn || ((driftClass) => bumpSignal(`drift:${driftClass}`));
+  // Map each surviving class -> its FIRST-occurrence evidence quote (built from the SAME
+  // deduped survivor list, so a later duplicate cannot overwrite the kept quote). Threaded
+  // into the store bump so the converged candidate is triageable on real evidence.
+  const evidenceByClass = new Map(detailed.map((d) => [d.driftClass, d.evidence]));
+  const reviewedAt = new Date().toISOString();
+  const emit = emitFn || ((driftClass) => bumpSignal(`drift:${driftClass}`, { evidence: evidenceByClass.get(driftClass), sessionId: dg.sessionId, at: reviewedAt }));
   // writeAtomic can throw (disk-full / permission). Keep the producer's fail-soft
   // contract (a carrier hook must never see a throw) — catch + return cleanly.
   let rec;
   try {
-    rec = recordEmissions({ sessionId: dg.sessionId, classes: survivors, reviewedAt: new Date().toISOString(), emitFn: emit, statePath, lockPath });
+    rec = recordEmissions({ sessionId: dg.sessionId, classes: survivors, reviewedAt, emitFn: emit, statePath, lockPath });
   } catch (err) {
     log('state-write-error', err && err.message);
     return { ok: false, reason: 'state-write-error', emitted: [], ...sid };
@@ -259,7 +288,7 @@ function auditTranscript({ transcriptPath, judgeFn, emitFn, statePath = DEFAULT_
 }
 
 module.exports = {
-  buildDigest, buildJudgePrompt, parseJudgeJson, verifyJudgeOutput,
+  buildDigest, buildJudgePrompt, parseJudgeJson, verifyJudgeOutput, verifyJudgeOutputDetailed,
   isValidDriftClass, auditTranscript, FROZEN_DRIFT_CLASSES, CWE_CLASS_RE,
 };
 
