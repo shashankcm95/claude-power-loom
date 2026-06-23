@@ -9,10 +9,12 @@ lifecycle: persistent
 ## Problem (verified firsthand 2026-06-23)
 
 The Ghost-Heartbeat drift judge classifies a session into a FROZEN drift class AND produces a
-validated `evidence` string (`drift-audit.js:207` rejects an item without it). But
-`drift-audit.js:246` emits `bumpSignal('drift:' + driftClass)`, and `bumpSignal`
-(`drift-audit.js:222-227`) runs `self-improve-store.js bump --signal drift:<class>` — passing ONLY
-the class. The evidence + sessionId are DISCARDED before the bump. `self-improve-store.js cmdBump`
+validated `evidence` string (`drift-audit.js:207` @origin/main rejects an item without it). But
+`drift-audit.js:246` @origin/main emits `bumpSignal('drift:' + driftClass)`, and `bumpSignal`
+(`drift-audit.js:222-227` @origin/main) runs `self-improve-store.js bump --signal drift:<class>` —
+passing ONLY the class. (All `@origin/main` citations describe the PRE-CHANGE bug; the post-fix code
+moved — pinned to the ref so they do not decay.) The evidence + sessionId are DISCARDED before the
+bump. `self-improve-store.js cmdBump`
 persists per signal only `{count, firstSeen, lastSeen}`. At `/self-improve` triage a converged
 `drift:*` candidate cannot be characterized → the 2026-06-23 triage of `cand-…-09d26d`
 (`drift:contract-violation` ×3) was DISMISSED because the class was un-describable.
@@ -42,10 +44,11 @@ genuine recurrence shows up across days.
 a bounded ring (last `MAX_EVIDENCE_SAMPLES = 10`, newest-last). Absent on old records + on
 evidence-less bumps ⇒ backward-compatible.
 
-**`self-improve-store.js`**
-- `parseArgs`: also accept `--key=value` (split on FIRST `=`). Backward-compatible (no existing
-  caller uses `=`); lets an evidence value that starts with `--`/contains spaces round-trip as ONE
-  token (the probe-5 bug). Existing `--key value` space form preserved.
+**`self-improve-store.js`** _(the argv `=`-form transport below was SUPERSEDED by a stdin transport
+in the CodeRabbit fold — see the final section; evidence now arrives on stdin, parseArgs is
+unchanged from origin/main, session/at are space-form.)_
+- ~~`parseArgs`: also accept `--key=value`~~ (REVERTED in the fold — evidence moved to stdin, so the
+  `=`-form's only justification, a leading-`--` evidence value, no longer applies).
 - `cmdBump`: new optional args `--evidence=<quote>`, `--session=<sid>`, `--at=<iso>`. When evidence
   present → `sanitizeEvidence` (lazy-require `egress/scrub.scrubEmitDiff` → strip control chars →
   collapse ws → bound `MAX_EVIDENCE_LEN = 500`) → `appendSample` (immutable, bounded). sid bounded
@@ -160,5 +163,43 @@ was code-only). Folds applied:
   not regressions of this diff. **PRINCIPLE (extract scrubEmitDiff to `_lib`)** — deferred follow-up.
 
 Non-vacuous proofs CONFIRMED by the hacker (removed each guard, watched T24/T28/T34 fire RED).
-Final gate: store 37/0 · drift-audit 21/0 · kernel 101/101 · scripts+hooks green · eslint clean ·
-`install.sh --all --test` 129/0 · FROZEN taxonomy untouched.
+Gate after VALIDATE folds: store 37/0 · drift-audit 21/0 · kernel 101/101 · scripts+hooks green ·
+eslint clean · `install.sh --all --test` 129/0 · FROZEN taxonomy untouched.
+
+## CodeRabbit review fold (PR #420, 2026-06-23)
+
+CI 11/11 green; CodeRabbit posted 3 actionable comments (CHILL). Each premise-probed firsthand
+(all valid) and folded:
+
+- **F-CR1 (security) — evidence moved from argv to STDIN.** The producer passed the raw judge quote
+  as `--evidence=<value>`; argv is visible in `ps` / `/proc/<pid>/cmdline` to other local processes
+  BEFORE the store scrubs it — a transient secret-exposure channel the persistence-side scrub cannot
+  close (the same channel the egress path closes with JSON-on-stdin). Now `bumpSignal` passes
+  `--evidence-stdin` + writes the quote on `spawnSync` `input`; `cmdBump` reads it via
+  `readStdinEvidence` (bounded 64KB, isTTY-guarded, fail-open) only when `--evidence-stdin` is set,
+  then scrubs. The argv `=`-form + its parseArgs change are REVERTED (session/at are non-sensitive →
+  argv space-form). Tests: T27/T28/T29/T33/T34 pass the quote on stdin; T36 (empty stdin → no
+  sample), T37 (no `--evidence-stdin` → no sample; the argv channel stays closed) added.
+- **F-CR2 (efficiency) — defer the egress require.** `sanitizeEvidence(raw, mod = getScrubMod())`
+  evaluated the lazy require on EVERY call incl. evidence-less bumps (early-return). `getScrubMod()`
+  now resolves INSIDE the body after the empty-input guard; `mod` stays injectable for T35.
+- **F-CR3 (doc) — stale line numbers.** The Problem/Probe citations are pinned to `@origin/main`
+  (they describe the PRE-CHANGE bug; the post-fix code moved). The argv-transport Design bullets are
+  marked SUPERSEDED by this section.
+
+Re-validated after the fold (code-reviewer + hacker re-probed the NEW stdin transport, 11 live
+probes, 0 bypasses / 0 secret leaks). Four more hardening items surfaced + folded:
+
+- **F-CR1a (hacker M1) — EAGAIN partial-drop.** A child-spawned pipe fd0 can be non-blocking;
+  `readStdinEvidence` let an `EAGAIN` propagate, silently dropping an already-read partial (harmless
+  to the pre-buffered <=2KB producer, but a footgun for a streaming caller). Now it RETRIES `EAGAIN`
+  (bounded `MAX_STDIN_EAGAIN_SPINS`) and keeps the partial. Confirmed: a stalling drip-pipe now
+  delivers the full quote.
+- **F-CR1b (hacker L1) — argv mis-parse via a crafted self-asserted sessionId.** A `--`-leading sid
+  could mis-key the producer's argv (advisory denial). Producer now skips a `--`-leading session/at;
+  the store rejects a non-string signal (T38). No escalation (advisory either way).
+- **F-CR1c/d (code-reviewer) — two comment-clarity fixes** (the `entry.samples=` immutability note;
+  the emitFn-only-receives-driftClass note).
+
+Final gate: store 40/0 · drift-audit 21/0 · kernel 101/101 · scripts+hooks green · eslint clean ·
+`install.sh --all --test` 129/0 · plan markdownlint clean · FROZEN taxonomy untouched.

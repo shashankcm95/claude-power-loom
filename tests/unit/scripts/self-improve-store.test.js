@@ -117,14 +117,13 @@ function readObservations(observationsPath) {
   }
 }
 
-// Array-arg runner — runCmd splits a string on spaces, which mangles a
-// `--evidence=multi word quote` token. The evidence-ring tests pass argv as an
-// array so a value with spaces / leading dashes reaches the store as ONE argv element.
-function runArgs(home, args) {
-  const r = spawnSync('node', [STORE, ...args], {
-    encoding: 'utf8',
-    env: { ...process.env, HOME: home, CLAUDE_HOOKS_QUIET: '1' },
-  });
+// Array-arg runner with optional STDIN `input` — evidence is passed on stdin (never argv),
+// so the evidence-ring tests provide the quote via the third arg (a value with spaces / a
+// leading `--` round-trips through stdin without any flag-parsing hazard).
+function runArgs(home, args, input) {
+  const opts = { encoding: 'utf8', env: { ...process.env, HOME: home, CLAUDE_HOOKS_QUIET: '1' } };
+  if (input !== undefined) opts.input = input;
+  const r = spawnSync('node', [STORE, ...args], opts);
   return { stdout: r.stdout || '', stderr: r.stderr || '', exitCode: r.status };
 }
 
@@ -810,7 +809,7 @@ test('T27: cmdBump_persists_bounded_evidence_samples_ring', () => {
   const h = mkHome();
   try {
     for (let i = 1; i <= 12; i++) {
-      runArgs(h.home, ['bump', '--signal', 'drift:plan-honesty', `--evidence=quote-${i}`, `--session=sess-${i}`, '--at=2026-06-23T10:00:00.000Z']);
+      runArgs(h.home, ['bump', '--signal', 'drift:plan-honesty', '--evidence-stdin', '--session', `sess-${i}`, '--at', '2026-06-23T10:00:00.000Z'], `quote-${i}`);
     }
     const entry = readCounters(h.countersPath).signals['drift:plan-honesty'];
     if (!entry) throw new Error('signal entry missing');
@@ -830,7 +829,7 @@ test('T28: cmdBump_scrubs_secrets_from_evidence_before_persisting', () => {
   try {
     // Non-vacuous: plant a real anthropic-key-shaped token; the store must redact it.
     const secret = `sk-ant-${'A'.repeat(25)}`;
-    runArgs(h.home, ['bump', '--signal', 'drift:claim-false', `--evidence=leaked ${secret} here`]);
+    runArgs(h.home, ['bump', '--signal', 'drift:claim-false', '--evidence-stdin'], `leaked ${secret} here`);
     const entry = readCounters(h.countersPath).signals['drift:claim-false'];
     if (!entry || !entry.samples || entry.samples.length !== 1) throw new Error('evidence sample not persisted');
     const ev = entry.samples[0].evidence;
@@ -839,10 +838,12 @@ test('T28: cmdBump_scrubs_secrets_from_evidence_before_persisting', () => {
   } finally { h.cleanup(); }
 });
 
-test('T29: cmdBump_evidence_equals_form_round_trips_leading_dashes', () => {
+test('T29: cmdBump_evidence_stdin_round_trips_leading_dashes', () => {
   const h = mkHome();
   try {
-    runArgs(h.home, ['bump', '--signal', 'drift:recon-depth', '--evidence=--force was the unprobed premise']);
+    // A quote starting with `--` round-trips through STDIN with no flag-parsing hazard
+    // (the whole point of moving evidence off argv).
+    runArgs(h.home, ['bump', '--signal', 'drift:recon-depth', '--evidence-stdin'], '--force was the unprobed premise');
     const entry = readCounters(h.countersPath).signals['drift:recon-depth'];
     if (!entry || !entry.samples || entry.samples.length !== 1) throw new Error('evidence sample not persisted');
     const ev = entry.samples[0].evidence;
@@ -888,7 +889,7 @@ test('T31: evidence_less_bump_is_backward_compatible_and_preserves_existing_ring
     if (entry.count !== 5) throw new Error(`expected count=5, got ${entry.count}`);
     if (Object.prototype.hasOwnProperty.call(entry, 'samples')) throw new Error('evidence-less bump must not add a samples key');
     // (b) a record WITH a ring, evidence-less bump -> ring preserved unchanged.
-    runArgs(h.home, ['bump', '--signal', 'drift:scope-creep', '--evidence=first quote', '--session=s1']);
+    runArgs(h.home, ['bump', '--signal', 'drift:scope-creep', '--evidence-stdin', '--session', 's1'], 'first quote');
     runArgs(h.home, ['bump', '--signal', 'drift:scope-creep']);
     entry = readCounters(h.countersPath).signals['drift:scope-creep'];
     if (entry.count !== 2) throw new Error(`expected count=2, got ${entry.count}`);
@@ -910,9 +911,9 @@ test('T32: cross_window_gate_fails_closed_on_malformed_timestamps', () => {
 test('T33: evidence_samples_are_immutable_across_rebumps', () => {
   const h = mkHome();
   try {
-    runArgs(h.home, ['bump', '--signal', 'drift:plan-honesty', '--evidence=alpha', '--session=s1', '--at=2026-06-23T10:00:00.000Z']);
+    runArgs(h.home, ['bump', '--signal', 'drift:plan-honesty', '--evidence-stdin', '--session', 's1', '--at', '2026-06-23T10:00:00.000Z'], 'alpha');
     const before = readCounters(h.countersPath).signals['drift:plan-honesty'].samples[0];
-    runArgs(h.home, ['bump', '--signal', 'drift:plan-honesty', '--evidence=beta', '--session=s2', '--at=2026-06-23T11:00:00.000Z']);
+    runArgs(h.home, ['bump', '--signal', 'drift:plan-honesty', '--evidence-stdin', '--session', 's2', '--at', '2026-06-23T11:00:00.000Z'], 'beta');
     const after = readCounters(h.countersPath).signals['drift:plan-honesty'].samples;
     if (after.length !== 2) throw new Error(`expected 2 samples, got ${after.length}`);
     if (JSON.stringify(after[0]) !== JSON.stringify(before)) throw new Error('prior sample was mutated by a later bump');
@@ -927,7 +928,7 @@ test('T34: cmdBump_redacts_high_entropy_non_canonical_secret_in_evidence', () =>
     // catches it. scrubEmitDiff's entropy pass is inert on prose (no `+` line), so this
     // asserts the store's OWN unconditional entropy redaction (VALIDATE-hacker H1 fold).
     const cred = 'Xq9vR2mNp7wK4tL8sZ3jF6yH1bD5gC0nM2aP4eU';
-    runArgs(h.home, ['bump', '--signal', 'drift:fail-silent', `--evidence=db password is ${cred} here`]);
+    runArgs(h.home, ['bump', '--signal', 'drift:fail-silent', '--evidence-stdin'], `db password is ${cred} here`);
     const entry = readCounters(h.countersPath).signals['drift:fail-silent'];
     if (!entry || !entry.samples || entry.samples.length !== 1) throw new Error('evidence sample not persisted');
     const ev = entry.samples[0].evidence;
@@ -952,6 +953,42 @@ test('T35: sanitizeEvidence_fails_closed_when_scrub_module_unreachable', () => {
   if (store.sanitizeEvidence(`key ${secret} here`, real).includes('sk-ant-')) {
     throw new Error('a canonical secret must not survive the real scrubber');
   }
+});
+
+test('T36: cmdBump_evidence_stdin_empty_input_records_no_sample', () => {
+  const h = mkHome();
+  try {
+    runArgs(h.home, ['bump', '--signal', 'drift:plan-honesty', '--evidence-stdin'], '');
+    const entry = readCounters(h.countersPath).signals['drift:plan-honesty'];
+    if (entry.count !== 1) throw new Error(`count should still bump on empty stdin, got ${entry.count}`);
+    if (Object.prototype.hasOwnProperty.call(entry, 'samples')) throw new Error('empty stdin must not record a sample');
+  } finally { h.cleanup(); }
+});
+
+test('T37: cmdBump_does_not_read_evidence_from_argv_channel_closed', () => {
+  // The argv evidence channel is CLOSED (it transiently exposed secrets in the process table).
+  // A bump WITHOUT --evidence-stdin records NO sample, even if a stray --evidence-like arg is
+  // present — only stdin (opted-in via --evidence-stdin) is read.
+  const h = mkHome();
+  try {
+    runArgs(h.home, ['bump', '--signal', 'drift:claim-false', '--evidence', 'should be ignored'], 'unread stdin');
+    const entry = readCounters(h.countersPath).signals['drift:claim-false'];
+    if (entry.count !== 1) throw new Error(`count should bump, got ${entry.count}`);
+    if (Object.prototype.hasOwnProperty.call(entry, 'samples')) throw new Error('no --evidence-stdin -> no sample (argv channel must stay closed)');
+  } finally { h.cleanup(); }
+});
+
+test('T38: cmdBump_rejects_non_string_signal_from_argv_misparse', () => {
+  // `--signal` with no value (next token is a flag) parses to boolean true; the store must
+  // reject it (non-zero exit) rather than record a junk `true` signal (VALIDATE-hacker L1).
+  const h = mkHome();
+  try {
+    const r = runArgs(h.home, ['bump', '--signal', '--evidence-stdin'], 'x');
+    if (r.exitCode === 0) throw new Error('a non-string signal must be rejected (non-zero exit)');
+    let hasJunk = false;
+    try { hasJunk = Object.prototype.hasOwnProperty.call(readCounters(h.countersPath).signals, 'true'); } catch { /* no counters file = fine */ }
+    if (hasJunk) throw new Error('a mis-parsed boolean signal must not be recorded');
+  } finally { h.cleanup(); }
 });
 
 process.stdout.write(`\n=== Summary ===\n`);

@@ -87,13 +87,7 @@ function parseArgs(argv) {
   const args = {};
   for (let i = 0; i < argv.length; i++) {
     if (argv[i].startsWith('--')) {
-      const body = argv[i].slice(2);
-      // --key=value form: the whole token is ONE arg; never consume argv[i+1].
-      // Split on the FIRST '=' so a value containing '=' or LEADING '--' (a judge
-      // evidence quote) round-trips verbatim instead of being mis-parsed as a flag.
-      const eq = body.indexOf('=');
-      if (eq !== -1) { args[body.slice(0, eq)] = body.slice(eq + 1); continue; }
-      const key = body;
+      const key = argv[i].slice(2);
       const next = argv[i + 1];
       if (next !== undefined && !next.startsWith('--')) { args[key] = next; i++; }
       else args[key] = true;
@@ -224,18 +218,53 @@ function redactHighEntropyTokens(mod, s) {
   return s.replace(ENTROPY_TOKEN_RE, (tok) => (mod.shannonEntropy(tok) >= mod.ENTROPY_BITS ? '[REDACTED-ENTROPY]' : tok));
 }
 
+const MAX_EVIDENCE_STDIN_BYTES = 64 * 1024; // bound the stdin read (DoS guard)
+const MAX_STDIN_EAGAIN_SPINS = 10000;       // bounded retry on a not-yet-ready non-blocking pipe
+// Read the evidence quote from STDIN (fd 0), bounded + fail-open. Evidence (an untrusted judge
+// quote that may carry a secret) is passed on stdin, NOT argv — argv is visible in `ps` /
+// `/proc/<pid>/cmdline` to other local processes BEFORE the store scrubs it (the same channel
+// the egress path closes by using JSON-on-stdin). The producer provides it via spawnSync `input`
+// (the full <=2KB payload is pre-buffered before the child reads). isTTY guard: a manual
+// `--evidence-stdin` with no piped input returns '' (no sample) rather than blocking on a tty.
+// Bounded read so a crafted multi-GB pipe cannot exhaust memory; sanitizeEvidence re-bounds to
+// MAX_EVIDENCE_LEN. EAGAIN handling (VALIDATE-hacker M1): a child-spawned pipe fd0 can be
+// non-blocking, so a read before the bytes land throws EAGAIN — RETRY (bounded, so a
+// never-delivering stream cannot spin forever) and KEEP any partial read, rather than letting
+// EAGAIN drop already-read bytes.
+function readStdinEvidence() {
+  if (process.stdin.isTTY) return '';
+  const buf = Buffer.alloc(MAX_EVIDENCE_STDIN_BYTES);
+  let total = 0;
+  let spins = 0;
+  while (total < MAX_EVIDENCE_STDIN_BYTES) {
+    let bytes;
+    try {
+      bytes = fs.readSync(0, buf, total, MAX_EVIDENCE_STDIN_BYTES - total, null);
+    } catch (err) {
+      if (err && err.code === 'EAGAIN' && spins++ < MAX_STDIN_EAGAIN_SPINS) continue;
+      break; // EOF / closed / other error / spin budget exhausted -> stop, keep the partial read
+    }
+    if (bytes === 0) break; // EOF
+    total += bytes;
+    spins = 0;              // progress resets the spin budget
+  }
+  return buf.toString('utf8', 0, total);
+}
+
 // Sanitize an UNTRUSTED judge evidence quote before persisting it: scrub known secrets +
 // high-entropy tokens, strip control chars, collapse whitespace, bound length. Returns '' for
 // a nullish/empty input OR when the scrubber is unreachable (fail-closed: drop rather than
 // persist raw). `mod` is injectable for testability (a test passes `null` to exercise the
-// unreachable fail-closed path; default is the memoized lazy require).
-function sanitizeEvidence(raw, mod = getScrubMod()) {
+// unreachable fail-closed path). getScrubMod() is resolved INSIDE the body (after the
+// empty-input early-return) so an evidence-less bump never loads egress (CodeRabbit).
+function sanitizeEvidence(raw, mod) {
   if (typeof raw !== 'string' || raw.length === 0) return '';
-  if (!mod || typeof mod.scrubEmitDiff !== 'function') return ''; // unreachable -> drop, never raw
+  const m = mod !== undefined ? mod : getScrubMod();
+  if (!m || typeof m.scrubEmitDiff !== 'function') return ''; // unreachable -> drop, never raw
   // Pre-bound the scrub input (a pathological multi-KB quote) before the O(n) passes.
   let s = raw.length > MAX_EVIDENCE_LEN * 4 ? raw.slice(0, MAX_EVIDENCE_LEN * 4) : raw;
-  s = mod.scrubEmitDiff(s);              // canonical classes + decodable single-base64
-  s = redactHighEntropyTokens(mod, s);  // novel high-entropy tokens (H1: prose has no `+` lines)
+  s = m.scrubEmitDiff(s);              // canonical classes + decodable single-base64
+  s = redactHighEntropyTokens(m, s);  // novel high-entropy tokens (H1: prose has no `+` lines)
   s = sanitizeForJsonl(s).replace(/\s+/g, ' ').trim();
   if (s.length > MAX_EVIDENCE_LEN) s = s.slice(0, MAX_EVIDENCE_LEN);
   return s;
@@ -369,21 +398,27 @@ function newCandidateId() {
 
 function cmdBump(args) {
   const signal = args.signal;
-  if (!signal) { console.error('Usage: bump --signal <type:value> [--n <count>] [--evidence=<quote> --session=<sid> --at=<iso>]'); process.exit(1); }
+  // A non-STRING signal means an argv mis-parse (e.g. `--signal` with no value parsed to the
+  // boolean `true`) — reject it rather than record a junk `true` signal (VALIDATE-hacker L1).
+  if (!signal || typeof signal !== 'string') { console.error('Usage: bump --signal <type:value> [--n <count>] [--evidence-stdin --session <sid> --at <iso>]'); process.exit(1); }
   const n = parseInt(args.n || '1', 10);
   if (!Number.isFinite(n) || n < 1) { console.error('--n must be a positive integer'); process.exit(1); }
 
   // Optional per-occurrence evidence — the drift-audit producer threads the judge's
   // (scrubbed) quote + the session it came from so a converged drift candidate is
-  // TRIAGEABLE. Evidence-less bumps (every non-drift caller) are byte-for-byte unchanged.
-  const evidence = sanitizeEvidence(args.evidence);
+  // TRIAGEABLE. Evidence arrives on STDIN (never argv -> no process-table exposure of a
+  // possibly-secret-bearing quote); --evidence-stdin opts in. Evidence-less bumps (every
+  // non-drift caller) are byte-for-byte unchanged.
+  const evidence = args['evidence-stdin'] ? sanitizeEvidence(readStdinEvidence()) : '';
   const sessionId = sanitizeSampleSid(args.session);
 
   withLock(COUNTERS_PATH + '.lock', () => {
     const counters = loadCounters();
     const now = new Date().toISOString();
     const prev = counters.signals[signal] || { count: 0, firstSeen: now, lastSeen: now };
-    // Immutable: a NEW entry object + a NEW signals map (no in-place mutation).
+    // Immutable wrt the loaded state: `prev` and the prior `signals` map are never mutated — a
+    // NEW entry object is built (and `entry.samples` is set on it BEFORE it is placed in a NEW
+    // signals map below, while still locally owned).
     const entry = { ...prev, count: prev.count + n, lastSeen: now };
     if (evidence) {
       const at = sanitizeSampleAt(args.at) || now;

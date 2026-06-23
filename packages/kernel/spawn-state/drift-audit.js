@@ -52,9 +52,9 @@ const DEFAULT_MAX_EMIT_PER_SESSION = 6;
 const MAX_TRANSCRIPT_BYTES = 8 * 1024 * 1024; // pre-digest size cap (DoS guard)
 const MAX_TURN_CHARS = 2000;
 const BUMP_TIMEOUT_MS = 10000; // bound the store-bump subprocess (no unbounded hang)
-// Bound the evidence ARGV element (defense: keep argv small). The store re-scrubs and
-// re-bounds to its own MAX before persisting — this is only a transport cap.
-const MAX_EVIDENCE_ARG_LEN = 2000;
+// Bound the evidence STDIN write (defense: keep the piped payload small). The store reads it
+// bounded too, then re-scrubs + re-bounds to its own MAX before persisting — only a transport cap.
+const MAX_EVIDENCE_INPUT_LEN = 2000;
 
 function isValidDriftClass(driftClass) {
   return typeof driftClass === 'string' && (FROZEN_DRIFT_CLASSES.has(driftClass) || CWE_CLASS_RE.test(driftClass));
@@ -235,15 +235,24 @@ function verifyJudgeOutput(items, opts) {
 // but it must be observable, not swallowed.
 function bumpSignal(signal, { evidence, sessionId, at } = {}) {
   const argv = [STORE_SCRIPT, 'bump', '--signal', signal];
-  // Thread the per-occurrence detail so a converged drift candidate is triageable. Evidence
-  // is passed as `--evidence=<value>` (the =-form) so a quote with spaces or a LEADING '--'
-  // round-trips as ONE argv element; the STORE scrubs + bounds it before persisting.
+  const opts = { encoding: 'utf8', stdio: ['ignore', 'ignore', 'pipe'], timeout: BUMP_TIMEOUT_MS };
+  // Thread the per-occurrence detail. The EVIDENCE (an untrusted judge quote that may carry a
+  // secret) is passed on STDIN, never argv — argv is visible in `ps` / `/proc/<pid>/cmdline` to
+  // other local processes BEFORE the store scrubs it (the same channel the egress path closes by
+  // using JSON-on-stdin). sessionId + at are non-sensitive -> argv space-form is fine. A leading
+  // '--' or spaces in the quote round-trip trivially via stdin (no flag-parsing hazard).
   if (typeof evidence === 'string' && evidence.length > 0) {
-    argv.push(`--evidence=${evidence.slice(0, MAX_EVIDENCE_ARG_LEN)}`);
-    if (typeof sessionId === 'string' && sessionId.length > 0) argv.push(`--session=${sessionId}`);
-    if (typeof at === 'string' && at.length > 0) argv.push(`--at=${at}`);
+    argv.push('--evidence-stdin');
+    // Skip a `--`-leading session/at (VALIDATE-hacker L1): sessionId is a SELF-ASSERTED
+    // in-transcript field, so a crafted `--`-leading value would mis-parse the store's argv
+    // (the space-form parser treats a `--`-leading token as the next FLAG). Real sids (UUIDs) +
+    // a machine ISO `at` never start with `--`, so this only drops a forged value.
+    if (typeof sessionId === 'string' && sessionId.length > 0 && !sessionId.startsWith('--')) argv.push('--session', sessionId);
+    if (typeof at === 'string' && at.length > 0 && !at.startsWith('--')) argv.push('--at', at);
+    opts.input = evidence.slice(0, MAX_EVIDENCE_INPUT_LEN);
+    opts.stdio = ['pipe', 'ignore', 'pipe'];
   }
-  const r = spawnSync(process.execPath, argv, { encoding: 'utf8', stdio: ['ignore', 'ignore', 'pipe'], timeout: BUMP_TIMEOUT_MS });
+  const r = spawnSync(process.execPath, argv, opts);
   if (r.error || r.status !== 0) {
     process.stderr.write(`[drift-audit] bump-failed signal=${signal} status=${r.status} ${r.error ? r.error.message : (r.stderr || '').slice(0, 120)}\n`);
   }
@@ -272,6 +281,8 @@ function auditTranscript({ transcriptPath, judgeFn, emitFn, statePath = DEFAULT_
   // into the store bump so the converged candidate is triageable on real evidence.
   const evidenceByClass = new Map(detailed.map((d) => [d.driftClass, d.evidence]));
   const reviewedAt = new Date().toISOString();
+  // NOTE: evidence threading is a bumpSignal-internal concern of the DEFAULT emit. A caller that
+  // supplies its own emitFn (the cron carrier / a test) receives only driftClass — by design.
   const emit = emitFn || ((driftClass) => bumpSignal(`drift:${driftClass}`, { evidence: evidenceByClass.get(driftClass), sessionId: dg.sessionId, at: reviewedAt }));
   // writeAtomic can throw (disk-full / permission). Keep the producer's fail-soft
   // contract (a carrier hook must never see a throw) — catch + return cleanly.
