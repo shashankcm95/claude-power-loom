@@ -65,8 +65,8 @@ assert_abs_safe() {
     *) echo "REFUSE: ${2:-path} must be absolute: $1" >&2; exit 2 ;;
   esac
   case "$1" in
-    *..*|*' '*|*';'*|*'&'*|*'|'*|*'$'*|*'`'*|*'*'*|*'('*|*'<'*|*'>'*|*$'\n'*)
-      echo "REFUSE: ${2:-path} contains an unsafe token (.. / whitespace / shell metachar): $1" >&2; exit 2 ;;
+    *..*|*' '*|*$'\t'*|*';'*|*'&'*|*'|'*|*'$'*|*'`'*|*'*'*|*'('*|*'<'*|*'>'*|*'"'*|*"'"*|*\\*|*$'\n'*)
+      echo "REFUSE: ${2:-path} contains an unsafe token (.. / whitespace / quote / backslash / shell metachar): $1" >&2; exit 2 ;;
   esac
 }
 
@@ -97,9 +97,13 @@ assert_root_locked() {
 say "preflight"
 [ "$(uname -s)" = "Darwin" ] || { echo "macOS-only (Linux: docs/deployment/loom-broker.md)" >&2; exit 1; }
 if "$APPLY" && [ "$(id -u)" -ne 0 ]; then echo "--apply requires root: 'sudo bash $0 ... --apply'" >&2; exit 1; fi
-# M2 — under --apply, never silently allowlist uid 0: demand sudo (so SUDO_UID = the real operator) or an explicit --host-uid.
+# M2 — never allowlist uid 0: demand sudo (SUDO_UID = the real operator) OR explicit --host-uid, AND reject a resolved 0.
+# (sudo-invoked-while-root gives SUDO_UID=0; `--host-uid 0` is explicit — BOTH must be refused; CodeRabbit Major.)
 if "$APPLY" && [ -z "${SUDO_UID:-}" ] && ! "$HOST_UID_EXPLICIT"; then
-  echo "--apply must run via 'sudo' (so SUDO_UID is the real operator uid) or pass --host-uid <uid>; refusing to allowlist uid 0" >&2; exit 1
+  echo "--apply must run via 'sudo' (so SUDO_UID is the real operator uid) or pass --host-uid <uid>" >&2; exit 1
+fi
+if "$APPLY" && [ "${HOST_UID}" = "0" ]; then
+  echo "REFUSE: refusing to allowlist uid 0 on the broker (M2) — sudo as a NON-root operator, or pass --host-uid <non-zero>" >&2; exit 1
 fi
 assert_abs_safe "$NODE_BIN" "--node"
 assert_abs_safe "$STAGE_DIR" "--stage-dir"
@@ -107,15 +111,17 @@ assert_abs_safe "$REPO" "--repo"
 case "$BROKER_UID$HOST_UID" in *[!0-9]*) echo "REFUSE: uids must be numeric" >&2; exit 2 ;; esac
 [ -x "$NODE_BIN" ] || { echo "node not executable at $NODE_BIN (install a ROOT-OWNED node and pass --node)" >&2; exit 1; }
 [ -d "${REPO}/packages/kernel/egress" ] || { echo "repo packages/kernel not found at ${REPO}" >&2; exit 1; }
+# C1 — the node root-lock gate MUST run BEFORE node is ever EXECUTED (CodeRabbit CRITICAL: the `--version` probe
+# below executes node, and under --apply the preflight runs as ROOT — a non-root-locked node would be root
+# code-exec BEFORE the gate fired). So the gate precedes the first execution.
+say "preflight: node interpreter must be root-locked (C1)"
+assert_root_locked "$NODE_BIN" "the broker execs this node as loom-broker; a writable node = code-exec as the broker (root, here)"
 note "node            : ${NODE_BIN} -> $(resolve "$NODE_BIN") ($("${NODE_BIN}" --version 2>/dev/null || echo '?'))"
 note "repo            : ${REPO}"
 note "stage dir       : ${STAGE_DIR}/packages/kernel  (root-owned, world-readable, never world-writable)"
 note "broker user/uid : ${BROKER_USER} / ${BROKER_UID}"
 note "host (operator) : uid ${HOST_UID}  (the ONLY uid on the broker allowlist)"
 "$APPLY" || note "MODE            : DRY-RUN (nothing changed; re-run with sudo --apply)"
-# C1 — the interpreter the broker execs MUST be root-locked (a Homebrew node is owner-writable -> REFUSED).
-say "preflight: node interpreter must be root-locked (C1)"
-assert_root_locked "$NODE_BIN" "the broker execs this node as loom-broker; a writable node = code-exec as the broker"
 
 # ---- 1. stage the broker code (root-owned, world-readable, NEVER world-writable) ----
 say "1. stage broker code -> ${STAGE_DIR}/packages/kernel"
@@ -166,6 +172,9 @@ fi
 
 # ---- 4. the wrapper: root-owned, NOT host-writable (a host-writable wrapper is a privesc hole) ----
 say "4. install the broker wrapper ${WRAPPER} (root-owned 0755)"
+# the wrapper FILE is locked below, but a writable PARENT dir lets the actor unlink+recreate it (CodeRabbit Major,
+# same class as C1/C2). Verify the wrapper's dir + ancestors are root-locked BEFORE writing into it.
+assert_root_locked "$(dirname "${WRAPPER}")" "the broker execs this wrapper; a writable wrapper dir lets the actor swap it -> code-exec as the broker"
 WRAPPER_BODY="#!/bin/sh
 export LOOM_BROKER_KEY_FILE=${KEY_DIR}/broker.key
 export LOOM_BROKER_ALLOWED_UIDS=${HOST_UID}
