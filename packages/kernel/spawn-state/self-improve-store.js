@@ -83,6 +83,11 @@ const KIND_RISK = {
   'agent-evolution': 'high',         // rewrite persona prompt — load-bearing
 };
 
+// SPACE-FORM ONLY (`--key value` as separate tokens, or a bare `--flag` -> true). The `=`-form
+// (`--key=value`) is NOT supported — `--key=value` would become the whole-token key with the value
+// lost. This is safe for the in-repo callers, which invoke the store via spawnSync with an argv
+// ARRAY (no shell parsing) and only ever pass space-form; a direct CLI / shell caller must use
+// space-form too. (Evidence is NOT an arg at all — it is read from stdin via --evidence-stdin.)
 function parseArgs(argv) {
   const args = {};
   for (let i = 0; i < argv.length; i++) {
@@ -158,6 +163,160 @@ function loadPending() {
 // pattern. 3 highest-touched sites (registry.js writeStore + pattern-recorder.js
 // saveStore + session-self-improve-prompt.js writeAtomic) migrate alongside.
 const { writeAtomic } = require('../_lib/atomic-write');
+// Control-char hygiene reuses the canonical lint-safe primitives (char-code scans, not
+// /[control]/ regexes, which trip eslint no-control-regex): sanitizeForJsonl TRANSFORMS
+// (strip/replace) for the evidence quote; hasControlChars REJECTS for the sid key.
+const { sanitizeForJsonl } = require('../_lib/sanitize');
+const { hasControlChars } = require('../_lib/free-string-checks');
+
+// --- Drift-evidence triage (2026-06-23) -------------------------------------
+// A per-occurrence evidence ring on a counter signal entry + a cross-window
+// convergence gate. The ring lets a converged `drift:*` candidate be TRIAGED on
+// real evidence (the judge's short quote + the session it came from); the gate stops
+// a single intense arc (which compaction can split into several sessionIds) from
+// triple-counting one root cause into a HIGH-risk rule-candidate.
+
+const MAX_EVIDENCE_SAMPLES = 10;   // bounded ring: keep the newest N per signal
+const MAX_EVIDENCE_LEN = 500;      // bound a single quote (DoS guard + readable triage)
+const ONE_DAY_MS = 86400000;
+const MIN_CONVERGENCE_SPAN_MS = ONE_DAY_MS; // a drift class converges only once its
+                                            // firstSeen..lastSeen span exceeds this.
+const MAX_SAMPLE_SID_LEN = 128;
+
+// The scrub primitive (kernel/_lib/scrub.js) is the SAME secret scrubber the egress PR-body path
+// uses (egress/scrub.js re-exports it), so the known-secret-class list can never drift out of sync
+// (the secret-class-drift lesson). The require points INWARD (spawn-state -> _lib): _lib/scrub is a
+// leaf depending only on _lib/secret-patterns, so this is not a layering inversion. Lazy-required so
+// the hot bumpBatch path (which carries NO evidence) never loads the scrub module, and so an
+// unreachable module fails CLOSED (drop the evidence) rather than persisting it raw. FORWARD-CONTRACT:
+// bumpBatch carries no evidence today; if it ever does, move the scrub into a shared appendSample
+// helper both paths call.
+let _scrubMod;           // memoized: the _lib/scrub module | null (null => unreachable)
+let _scrubWarned = false;
+function getScrubMod() {
+  if (_scrubMod !== undefined) return _scrubMod;
+  try {
+    _scrubMod = require('../_lib/scrub');
+  } catch {
+    _scrubMod = null;
+    if (!_scrubWarned) {
+      _scrubWarned = true;
+      process.stderr.write('[self-improve-store] WARNING: _lib/scrub unreachable; drift evidence is DROPPED (never persisted raw).\n');
+    }
+  }
+  return _scrubMod;
+}
+
+// A >=32-char base64-alphabet run is an entropy-token candidate (mirrors scrub.js's
+// ENTROPY_TOKEN). Hex digests/git shas use a 16-symbol alphabet (entropy < 4.0 bits/char)
+// so they stay under the threshold and are NOT redacted; only true high-entropy
+// (base64-alphabet) secrets exceed it.
+const ENTROPY_TOKEN_RE = /[A-Za-z0-9+/=_-]{32,}/g;
+
+// VALIDATE-hacker H1: scrubEmitDiff's entropy pass only fires on `+`-prefixed DIFF lines, so
+// it is INERT on a prose evidence quote — a high-entropy NON-canonical credential (a DB/SaaS
+// password the prefix classes don't match) would survive. Run the entropy net over the WHOLE
+// quote here so the prose path gets the same novel-secret coverage the diff path gets.
+function redactHighEntropyTokens(mod, s) {
+  if (!mod || typeof mod.shannonEntropy !== 'function' || typeof mod.ENTROPY_BITS !== 'number') return s;
+  return s.replace(ENTROPY_TOKEN_RE, (tok) => (mod.shannonEntropy(tok) >= mod.ENTROPY_BITS ? '[REDACTED-ENTROPY]' : tok));
+}
+
+const MAX_EVIDENCE_STDIN_BYTES = 64 * 1024; // bound the stdin read (DoS guard)
+const MAX_STDIN_EAGAIN_SPINS = 10000;       // bounded retry on a not-yet-ready non-blocking pipe
+// Read the evidence quote from STDIN (fd 0), bounded + fail-open. Evidence (an untrusted judge
+// quote that may carry a secret) is passed on stdin, NOT argv — argv is visible in `ps` /
+// `/proc/<pid>/cmdline` to other local processes BEFORE the store scrubs it (the same channel
+// the egress path closes by using JSON-on-stdin). The producer provides it via spawnSync `input`
+// (the full <=2KB payload is pre-buffered before the child reads). isTTY guard: a manual
+// `--evidence-stdin` with no piped input returns '' (no sample) rather than blocking on a tty.
+// Bounded read so a crafted multi-GB pipe cannot exhaust memory; sanitizeEvidence re-bounds to
+// MAX_EVIDENCE_LEN. EAGAIN handling (VALIDATE-hacker M1): a child-spawned pipe fd0 can be
+// non-blocking, so a read before the bytes land throws EAGAIN — RETRY (bounded, so a
+// never-delivering stream cannot spin forever) and KEEP any partial read, rather than letting
+// EAGAIN drop already-read bytes.
+function readStdinEvidence() {
+  if (process.stdin.isTTY) return '';
+  const buf = Buffer.alloc(MAX_EVIDENCE_STDIN_BYTES);
+  let total = 0;
+  let spins = 0;
+  while (total < MAX_EVIDENCE_STDIN_BYTES) {
+    let bytes;
+    try {
+      bytes = fs.readSync(0, buf, total, MAX_EVIDENCE_STDIN_BYTES - total, null);
+    } catch (err) {
+      if (err && err.code === 'EAGAIN' && spins++ < MAX_STDIN_EAGAIN_SPINS) continue;
+      break; // EOF / closed / other error / spin budget exhausted -> stop, keep the partial read
+    }
+    if (bytes === 0) break; // EOF
+    total += bytes;
+    spins = 0;              // progress resets the spin budget
+  }
+  return buf.toString('utf8', 0, total);
+}
+
+// Sanitize an UNTRUSTED judge evidence quote before persisting it: scrub known secrets +
+// high-entropy tokens, strip control chars, collapse whitespace, bound length. Returns '' for
+// a nullish/empty input OR when the scrubber is unreachable (fail-closed: drop rather than
+// persist raw). `mod` is injectable for testability (a test passes `null` to exercise the
+// unreachable fail-closed path). getScrubMod() is resolved INSIDE the body (after the
+// empty-input early-return) so an evidence-less bump never loads the scrub module (CodeRabbit).
+function sanitizeEvidence(raw, mod) {
+  if (typeof raw !== 'string' || raw.length === 0) return '';
+  const m = mod !== undefined ? mod : getScrubMod();
+  if (!m || typeof m.scrubEmitDiff !== 'function') return ''; // unreachable -> drop, never raw
+  // Pre-bound the scrub input (a pathological multi-KB quote) before the O(n) passes.
+  let s = raw.length > MAX_EVIDENCE_LEN * 4 ? raw.slice(0, MAX_EVIDENCE_LEN * 4) : raw;
+  s = m.scrubEmitDiff(s);              // canonical classes + decodable single-base64
+  s = redactHighEntropyTokens(m, s);  // novel high-entropy tokens (H1: prose has no `+` lines)
+  s = sanitizeForJsonl(s).replace(/\s+/g, ' ').trim();
+  if (s.length > MAX_EVIDENCE_LEN) s = s.slice(0, MAX_EVIDENCE_LEN);
+  return s;
+}
+
+// sessionId is a self-asserted field; bound length + reject control chars (it becomes a
+// stored key in the ring). An out-of-shape value drops to null (the sample still records,
+// just without a session anchor).
+function sanitizeSampleSid(raw) {
+  if (typeof raw !== 'string' || raw.length === 0) return null;
+  if (hasControlChars(raw)) return null;
+  return raw.length > MAX_SAMPLE_SID_LEN ? raw.slice(0, MAX_SAMPLE_SID_LEN) : raw;
+}
+
+// at is an ISO timestamp; an unparseable value drops to null (caller substitutes `now`). A
+// parseable-but-lenient value (whitespace-padded / non-ISO) is NORMALIZED to canonical ISO
+// so the stored field is always a clean, fixed-shape timestamp (VALIDATE-hacker L1).
+function sanitizeSampleAt(raw) {
+  if (typeof raw !== 'string' || raw.length === 0) return null;
+  const t = Date.parse(raw);
+  return Number.isNaN(t) ? null : new Date(t).toISOString();
+}
+
+// Immutable append to the bounded ring (newest-last). Each element is frozen so a later
+// bump can never mutate a prior sample (the read-back/update immutability rule that has
+// bitten this codebase twice). Returns a NEW array; never mutates `prevSamples`.
+function appendSample(prevSamples, sample) {
+  const ring = Array.isArray(prevSamples) ? prevSamples : [];
+  const next = [...ring, Object.freeze(sample)];
+  return next.length > MAX_EVIDENCE_SAMPLES ? next.slice(next.length - MAX_EVIDENCE_SAMPLES) : next;
+}
+
+// Cross-window gate: a drift class converges only once its observed span exceeds
+// MIN_CONVERGENCE_SPAN_MS. Span-only (NOT distinct-sessionId): compaction rotates the
+// in-transcript sessionId, so ONE arc can carry several sids — the wall-clock span is the
+// robust discriminator. Malformed/absent timestamps -> NaN -> false (fail-closed: defer a
+// record we cannot date rather than graduate it). ADVISORY-ONLY (integrity != provenance,
+// VALIDATE-hacker M1): firstSeen/lastSeen are read from the open-writable counters file and
+// are NOT authenticated, so a local writer could forge convergence — tolerable because a
+// converged drift: candidate is risk:high and NEVER auto-graduates (it only surfaces for
+// human /self-improve triage). If this gate ever drives an ACTION, the timestamps must come
+// from a kernel-owned/authenticated writer the actor cannot set.
+function hasConvergenceSpan(entry) {
+  const a = Date.parse(entry && entry.firstSeen);
+  const b = Date.parse(entry && entry.lastSeen);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
+  return (b - a) > MIN_CONVERGENCE_SPAN_MS;
+}
 
 // Ghost Heartbeat W1 (2026-06-19): the SINGLE classification + convergence-
 // threshold chokepoint. Returns { kind, risk, candidateThreshold } for a signal.
@@ -171,11 +330,16 @@ const { writeAtomic } = require('../_lib/atomic-write');
 const DRIFT_FAMILY_CANDIDATE_THRESHOLD = 3;
 
 function signalPolicy(signal) {
-  if (signal.startsWith('drift:') || signal.startsWith('rule-recurrence:')) {
+  const isDrift = signal.startsWith('drift:');
+  if (isDrift || signal.startsWith('rule-recurrence:')) {
     return {
       kind: 'rule-candidate',
       risk: KIND_RISK['rule-candidate'],
       candidateThreshold: DRIFT_FAMILY_CANDIDATE_THRESHOLD,
+      // Only `drift:*` gets the cross-window convergence gate (a single intense arc can
+      // triple-count one root cause). `rule-recurrence:*` is a different family — a
+      // graduated rule that keeps failing — and should surface PROMPTLY, so it is NOT gated.
+      requiresCrossWindow: isDrift,
     };
   }
   let kind;
@@ -186,7 +350,7 @@ function signalPolicy(signal) {
   // filePath:, skill:, improvement-effectiveness:, and any unknown signal fall
   // through to the unchanged low-risk catch-all.
   else kind = 'observation-log';
-  return { kind, risk: KIND_RISK[kind] || 'medium', candidateThreshold: THRESHOLDS.candidate };
+  return { kind, risk: KIND_RISK[kind] || 'medium', candidateThreshold: THRESHOLDS.candidate, requiresCrossWindow: false };
 }
 
 // Back-compat shim: the kind half of signalPolicy. Exported + relied on by
@@ -238,17 +402,33 @@ function newCandidateId() {
 
 function cmdBump(args) {
   const signal = args.signal;
-  if (!signal) { console.error('Usage: bump --signal <type:value> [--n <count>]'); process.exit(1); }
+  // A non-STRING signal means an argv mis-parse (e.g. `--signal` with no value parsed to the
+  // boolean `true`) — reject it rather than record a junk `true` signal (VALIDATE-hacker L1).
+  if (!signal || typeof signal !== 'string') { console.error('Usage: bump --signal <type:value> [--n <count>] [--evidence-stdin --session <sid> --at <iso>]'); process.exit(1); }
   const n = parseInt(args.n || '1', 10);
   if (!Number.isFinite(n) || n < 1) { console.error('--n must be a positive integer'); process.exit(1); }
+
+  // Optional per-occurrence evidence — the drift-audit producer threads the judge's
+  // (scrubbed) quote + the session it came from so a converged drift candidate is
+  // TRIAGEABLE. Evidence arrives on STDIN (never argv -> no process-table exposure of a
+  // possibly-secret-bearing quote); --evidence-stdin opts in. Evidence-less bumps (every
+  // non-drift caller) are byte-for-byte unchanged.
+  const evidence = args['evidence-stdin'] ? sanitizeEvidence(readStdinEvidence()) : '';
+  const sessionId = sanitizeSampleSid(args.session);
 
   withLock(COUNTERS_PATH + '.lock', () => {
     const counters = loadCounters();
     const now = new Date().toISOString();
-    const entry = counters.signals[signal] || { count: 0, firstSeen: now, lastSeen: now };
-    entry.count += n;
-    entry.lastSeen = now;
-    counters.signals[signal] = entry;
+    const prev = counters.signals[signal] || { count: 0, firstSeen: now, lastSeen: now };
+    // Immutable wrt the loaded state: `prev` and the prior `signals` map are never mutated — a
+    // NEW entry object is built (and `entry.samples` is set on it BEFORE it is placed in a NEW
+    // signals map below, while still locally owned).
+    const entry = { ...prev, count: prev.count + n, lastSeen: now };
+    if (evidence) {
+      const at = sanitizeSampleAt(args.at) || now;
+      entry.samples = appendSample(prev.samples, { evidence, sessionId, at });
+    }
+    counters.signals = { ...counters.signals, [signal]: entry };
     writeAtomic(COUNTERS_PATH, counters);
   });
   console.log(JSON.stringify({ action: 'bump', signal, n }));
@@ -338,6 +518,9 @@ function _runScan(counters, pending) {
       // auto-bury under a stale low-risk field.
       existing.occurrences = entry.count;
       existing.lastSeen = entry.lastSeen;
+      // Surface the evidence ring for triage (the elements are frozen at the bump site,
+      // so the slice shares immutable values — safe to expose on the candidate).
+      if (Array.isArray(entry.samples)) existing.samples = entry.samples.slice(-MAX_EVIDENCE_SAMPLES);
       if (existing.kind !== policy.kind) {
         existing.kind = policy.kind;
         existing.proposedAction = signalToProposedAction(signal, policy.kind);
@@ -352,6 +535,13 @@ function _runScan(counters, pending) {
       continue;
     }
 
+    // Cross-window convergence gate (drift-family only): defer a signal that reached its
+    // count threshold inside a single arc (span <= 1 day). It stays in counters and
+    // re-evaluates on a later scan once it recurs across a day boundary — DEFERRED, not
+    // dropped (the evidence ring is preserved). Only NEW candidates are gated; an
+    // already-pending candidate took the `existing` branch above and is never un-converged.
+    if (policy.requiresCrossWindow && !hasConvergenceSpan(entry)) continue;
+
     // Unknown signal at >= its candidate threshold — new candidate.
     const candidate = {
       id: newCandidateId(),
@@ -361,6 +551,9 @@ function _runScan(counters, pending) {
       firstSeen: entry.firstSeen,
       lastSeen: entry.lastSeen,
       risk: policy.risk,
+      // Per-occurrence evidence ring (frozen elements) — surfaced in `pending --json`
+      // so a triage reads the judge's actual quotes, not just a class name + a count.
+      samples: Array.isArray(entry.samples) ? entry.samples.slice(-MAX_EVIDENCE_SAMPLES) : [],
       summary: signalToSummary(signal, entry),
       proposedAction: signalToProposedAction(signal, policy.kind),
       status: 'pending',
@@ -642,6 +835,10 @@ module.exports = {
   inferKindFromSignal,
   signalPolicy,
   executeGraduation,
+  // Drift-evidence triage — exposed for unit-testing the evidence sanitizer's
+  // fail-closed (scrub-unreachable) + entropy-redaction paths directly.
+  sanitizeEvidence,
+  hasConvergenceSpan,
 };
 
 if (require.main === module) {

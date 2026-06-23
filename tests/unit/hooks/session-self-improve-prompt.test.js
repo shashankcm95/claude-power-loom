@@ -137,8 +137,11 @@ test('S6: mixed_queue_surfaces_only_high_value_pending', () => {
 // store scan PRODUCES the record and the REAL hook CONSUMES it.
 function seedCounters(home, signalsArr) {
   const now = new Date().toISOString();
+  // The drift cross-window convergence gate requires firstSeen..lastSeen to span > 1 day
+  // (a one-arc burst is deferred); seed a 3-day span so a `drift:` signal converges.
+  const firstSeen = new Date(Date.now() - 3 * 86400000).toISOString();
   const counters = { version: 1, createdAt: now, turnCounter: 100, signals: {}, lastScanAt: null, lastScanTurn: 0 };
-  for (const s of signalsArr) counters.signals[s.signal] = { count: s.count, firstSeen: now, lastSeen: now };
+  for (const s of signalsArr) counters.signals[s.signal] = { count: s.count, firstSeen, lastSeen: now };
   fs.writeFileSync(path.join(home, '.claude', 'self-improve-counters.json'), JSON.stringify(counters, null, 2));
 }
 

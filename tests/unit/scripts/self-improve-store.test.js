@@ -117,6 +117,20 @@ function readObservations(observationsPath) {
   }
 }
 
+// Array-arg runner with optional STDIN `input` — evidence is passed on stdin (never argv),
+// so the evidence-ring tests provide the quote via the third arg (a value with spaces / a
+// leading `--` round-trips through stdin without any flag-parsing hazard).
+function runArgs(home, args, input) {
+  const opts = { encoding: 'utf8', env: { ...process.env, HOME: home, CLAUDE_HOOKS_QUIET: '1' } };
+  if (input !== undefined) opts.input = input;
+  const r = spawnSync('node', [STORE, ...args], opts);
+  return { stdout: r.stdout || '', stderr: r.stderr || '', exitCode: r.status };
+}
+
+function readCounters(countersPath) {
+  return JSON.parse(fs.readFileSync(countersPath, 'utf8'));
+}
+
 process.stdout.write('\n=== self-improve-store (GAP-H Phase 1 test contract) ===\n');
 
 // ============================================================================
@@ -580,7 +594,9 @@ process.stdout.write('\n=== ghost-heartbeat-w1 (drift: classification + converge
 test('T16: drift_signal_converges_at_3_as_rule_candidate_high', () => {
   const h = mkHome();
   try {
-    seedCounters(h.countersPath, [{ signal: 'drift:plan-honesty', count: 3 }]);
+    // Cross-window gate: a drift signal converges only once its firstSeen..lastSeen
+    // spans > 1 day (genuine recurrence). Seed a 3-day span so the convergence asserts.
+    seedCounters(h.countersPath, [{ signal: 'drift:plan-honesty', count: 3, firstSeen: '2026-05-01T00:00:00.000Z', lastSeen: '2026-05-04T00:00:00.000Z' }]);
     runCmd(h.home, 'scan');
     const pending = readPending(h.pendingPath);
     if (pending.candidates.length !== 1) throw new Error(`expected 1 candidate at drift count=3, got ${pending.candidates.length}`);
@@ -604,7 +620,7 @@ test('T17: drift_signal_below_threshold_3_does_not_queue', () => {
 test('T18: drift_signal_never_auto_graduates_even_at_count_10', () => {
   const h = mkHome();
   try {
-    seedCounters(h.countersPath, [{ signal: 'drift:plan-honesty', count: 10 }]);
+    seedCounters(h.countersPath, [{ signal: 'drift:plan-honesty', count: 10, firstSeen: '2026-05-01T00:00:00.000Z', lastSeen: '2026-05-04T00:00:00.000Z' }]);
     runCmd(h.home, 'scan');
     const pending = readPending(h.pendingPath);
     const c = pending.candidates[0];
@@ -618,7 +634,7 @@ test('T19: per_class_threshold_isolation_drift_at_3_queues_filePath_at_3_does_no
   const h = mkHome();
   try {
     seedCounters(h.countersPath, [
-      { signal: 'drift:dictionary-gap', count: 3 },
+      { signal: 'drift:dictionary-gap', count: 3, firstSeen: '2026-05-01T00:00:00.000Z', lastSeen: '2026-05-04T00:00:00.000Z' },
       { signal: 'filePath:/a.js', count: 3 },
     ]);
     runCmd(h.home, 'scan');
@@ -729,6 +745,250 @@ test('T23: signalPolicy_export_returns_kind_risk_candidateThreshold', () => {
   if (store.inferKindFromSignal('command:/x') !== 'skill-candidate') {
     throw new Error('inferKindFromSignal(command:) regression');
   }
+});
+
+// ============================================================================
+// Drift-evidence triage (2026-06-23) — per-occurrence evidence ring +
+// cross-window convergence gate. Part 1 (samples ring) + Part 2 (span gate).
+// ============================================================================
+
+process.stdout.write('\n=== drift-evidence-triage (evidence ring + cross-window gate) ===\n');
+
+test('T24: cross_window_gate_blocks_same_day_one_arc_drift_burst', () => {
+  const h = mkHome();
+  try {
+    // count >= threshold but the whole span sits inside one ~4h arc (< 1 day).
+    seedCounters(h.countersPath, [{ signal: 'drift:contract-violation', count: 5, firstSeen: '2026-06-23T10:00:00.000Z', lastSeen: '2026-06-23T13:00:00.000Z' }]);
+    runCmd(h.home, 'scan');
+    const pending = readPending(h.pendingPath);
+    if (pending.candidates.length !== 0) throw new Error(`a same-day one-arc drift burst must be deferred (0 candidates), got ${pending.candidates.length}`);
+  } finally { h.cleanup(); }
+});
+
+test('T25: cross_window_gate_is_strict_greater_than_one_day', () => {
+  const h = mkHome();
+  try {
+    // exactly 24h span -> NOT > 1 day -> deferred.
+    seedCounters(h.countersPath, [{ signal: 'drift:scope-creep', count: 3, firstSeen: '2026-06-22T00:00:00.000Z', lastSeen: '2026-06-23T00:00:00.000Z' }]);
+    runCmd(h.home, 'scan');
+    if (readPending(h.pendingPath).candidates.length !== 0) throw new Error('exactly 24h span must not converge (strict >)');
+    // 24h + 1ms -> converges.
+    seedCounters(h.countersPath, [{ signal: 'drift:scope-creep', count: 3, firstSeen: '2026-06-22T00:00:00.000Z', lastSeen: '2026-06-23T00:00:00.001Z' }]);
+    runCmd(h.home, 'scan');
+    if (readPending(h.pendingPath).candidates.length !== 1) throw new Error('span just over 1 day must converge');
+  } finally { h.cleanup(); }
+});
+
+test('T26: cross_window_gate_does_not_un_converge_existing_pending_drift_candidate', () => {
+  const h = mkHome();
+  try {
+    // span 0 AND a candidate already exists (pending) -> the gate must not touch it
+    // (the gate only guards NEW-candidate creation, after the existing-branch continue).
+    seedCounters(h.countersPath, [{ signal: 'drift:fail-silent', count: 4, firstSeen: '2026-06-23T10:00:00.000Z', lastSeen: '2026-06-23T11:00:00.000Z' }]);
+    seedPending(h.pendingPath, [{
+      id: 'cand-existing-drift',
+      kind: 'rule-candidate',
+      signal: 'drift:fail-silent',
+      occurrences: 3,
+      firstSeen: '2026-06-23T10:00:00.000Z',
+      lastSeen: '2026-06-23T10:30:00.000Z',
+      risk: 'high',
+      summary: 'existing',
+      proposedAction: 'existing',
+      status: 'pending',
+      createdAt: '2026-06-23T10:30:00.000Z',
+    }]);
+    runCmd(h.home, 'scan');
+    const cands = readPending(h.pendingPath).candidates;
+    if (cands.length !== 1) throw new Error(`existing pending drift candidate must survive (1), got ${cands.length}`);
+    if (cands[0].status !== 'pending') throw new Error(`existing pending drift candidate must stay pending, got '${cands[0].status}'`);
+  } finally { h.cleanup(); }
+});
+
+test('T27: cmdBump_persists_bounded_evidence_samples_ring', () => {
+  const h = mkHome();
+  try {
+    for (let i = 1; i <= 12; i++) {
+      runArgs(h.home, ['bump', '--signal', 'drift:plan-honesty', '--evidence-stdin', '--session', `sess-${i}`, '--at', '2026-06-23T10:00:00.000Z'], `quote-${i}`);
+    }
+    const entry = readCounters(h.countersPath).signals['drift:plan-honesty'];
+    if (!entry) throw new Error('signal entry missing');
+    if (entry.count !== 12) throw new Error(`expected count=12, got ${entry.count}`);
+    if (!Array.isArray(entry.samples)) throw new Error('expected samples array');
+    if (entry.samples.length !== 10) throw new Error(`expected bounded ring of 10, got ${entry.samples.length}`);
+    // newest-last; the ring drops the two oldest (quote-1, quote-2).
+    if (entry.samples[entry.samples.length - 1].evidence !== 'quote-12') throw new Error(`expected newest=quote-12, got '${entry.samples[entry.samples.length - 1].evidence}'`);
+    if (entry.samples[0].evidence !== 'quote-3') throw new Error(`expected oldest-retained=quote-3, got '${entry.samples[0].evidence}'`);
+    if (entry.samples[0].sessionId !== 'sess-3') throw new Error(`expected sessionId threaded, got '${entry.samples[0].sessionId}'`);
+    if (entry.samples[0].at !== '2026-06-23T10:00:00.000Z') throw new Error(`expected at threaded, got '${entry.samples[0].at}'`);
+  } finally { h.cleanup(); }
+});
+
+test('T28: cmdBump_scrubs_secrets_from_evidence_before_persisting', () => {
+  const h = mkHome();
+  try {
+    // Non-vacuous: plant a real anthropic-key-shaped token; the store must redact it.
+    const secret = `sk-ant-${'A'.repeat(25)}`;
+    runArgs(h.home, ['bump', '--signal', 'drift:claim-false', '--evidence-stdin'], `leaked ${secret} here`);
+    const entry = readCounters(h.countersPath).signals['drift:claim-false'];
+    if (!entry || !entry.samples || entry.samples.length !== 1) throw new Error('evidence sample not persisted');
+    const ev = entry.samples[0].evidence;
+    if (ev.includes(secret)) throw new Error(`raw secret persisted in evidence: ${ev}`);
+    if (!ev.includes('[REDACTED]')) throw new Error(`expected [REDACTED] marker, got: ${ev}`);
+  } finally { h.cleanup(); }
+});
+
+test('T29: cmdBump_evidence_stdin_round_trips_leading_dashes', () => {
+  const h = mkHome();
+  try {
+    // A quote starting with `--` round-trips through STDIN with no flag-parsing hazard
+    // (the whole point of moving evidence off argv).
+    runArgs(h.home, ['bump', '--signal', 'drift:recon-depth', '--evidence-stdin'], '--force was the unprobed premise');
+    const entry = readCounters(h.countersPath).signals['drift:recon-depth'];
+    if (!entry || !entry.samples || entry.samples.length !== 1) throw new Error('evidence sample not persisted');
+    const ev = entry.samples[0].evidence;
+    if (ev !== '--force was the unprobed premise') throw new Error(`evidence value not preserved verbatim, got: '${ev}'`);
+  } finally { h.cleanup(); }
+});
+
+test('T30: pending_json_surfaces_evidence_samples_on_converged_drift_candidate', () => {
+  const h = mkHome();
+  try {
+    const counters = {
+      version: 1, createdAt: '2026-06-20T00:00:00.000Z', turnCounter: 100, lastScanAt: null, lastScanTurn: 0,
+      signals: {
+        'drift:contract-violation': {
+          count: 3,
+          firstSeen: '2026-06-20T00:00:00.000Z',
+          lastSeen: '2026-06-23T00:00:00.000Z',
+          samples: [
+            { evidence: 'subset .includes post-condition', sessionId: 's1', at: '2026-06-20T00:00:00.000Z' },
+            { evidence: 'exact-set not enforced', sessionId: 's2', at: '2026-06-23T00:00:00.000Z' },
+          ],
+        },
+      },
+    };
+    fs.writeFileSync(h.countersPath, JSON.stringify(counters, null, 2));
+    runCmd(h.home, 'scan');
+    const r = runCmd(h.home, 'pending --json');
+    const out = JSON.parse(r.stdout);
+    const c = out.candidates.find((x) => x.signal === 'drift:contract-violation');
+    if (!c) throw new Error('converged drift candidate not in pending --json');
+    if (!Array.isArray(c.samples) || c.samples.length !== 2) throw new Error(`expected 2 samples surfaced, got ${c.samples && c.samples.length}`);
+    if (!c.samples.some((s) => /exact-set/.test(s.evidence))) throw new Error('evidence text not surfaced in pending --json');
+  } finally { h.cleanup(); }
+});
+
+test('T31: evidence_less_bump_is_backward_compatible_and_preserves_existing_ring', () => {
+  const h = mkHome();
+  try {
+    // (a) old-shape record, evidence-less bump -> count bumps, no samples key added.
+    seedCounters(h.countersPath, [{ signal: 'filePath:/legacy.js', count: 4 }]);
+    runArgs(h.home, ['bump', '--signal', 'filePath:/legacy.js']);
+    let entry = readCounters(h.countersPath).signals['filePath:/legacy.js'];
+    if (entry.count !== 5) throw new Error(`expected count=5, got ${entry.count}`);
+    if (Object.prototype.hasOwnProperty.call(entry, 'samples')) throw new Error('evidence-less bump must not add a samples key');
+    // (b) a record WITH a ring, evidence-less bump -> ring preserved unchanged.
+    runArgs(h.home, ['bump', '--signal', 'drift:scope-creep', '--evidence-stdin', '--session', 's1'], 'first quote');
+    runArgs(h.home, ['bump', '--signal', 'drift:scope-creep']);
+    entry = readCounters(h.countersPath).signals['drift:scope-creep'];
+    if (entry.count !== 2) throw new Error(`expected count=2, got ${entry.count}`);
+    if (!entry.samples || entry.samples.length !== 1) throw new Error(`evidence-less bump must preserve the existing ring, got ${entry.samples && entry.samples.length}`);
+    if (entry.samples[0].evidence !== 'first quote') throw new Error('existing sample mutated/dropped');
+  } finally { h.cleanup(); }
+});
+
+test('T32: cross_window_gate_fails_closed_on_malformed_timestamps', () => {
+  const h = mkHome();
+  try {
+    seedCounters(h.countersPath, [{ signal: 'drift:estimate-accuracy', count: 5, firstSeen: 'not-a-date', lastSeen: 'also-bad' }]);
+    const r = runCmd(h.home, 'scan');
+    if (r.exitCode !== 0) throw new Error(`scan must not crash on malformed timestamps, exit=${r.exitCode} stderr=${r.stderr}`);
+    if (readPending(h.pendingPath).candidates.length !== 0) throw new Error('malformed-timestamp drift must fail closed (deferred, 0 candidates)');
+  } finally { h.cleanup(); }
+});
+
+test('T33: evidence_samples_are_immutable_across_rebumps', () => {
+  const h = mkHome();
+  try {
+    runArgs(h.home, ['bump', '--signal', 'drift:plan-honesty', '--evidence-stdin', '--session', 's1', '--at', '2026-06-23T10:00:00.000Z'], 'alpha');
+    const before = readCounters(h.countersPath).signals['drift:plan-honesty'].samples[0];
+    runArgs(h.home, ['bump', '--signal', 'drift:plan-honesty', '--evidence-stdin', '--session', 's2', '--at', '2026-06-23T11:00:00.000Z'], 'beta');
+    const after = readCounters(h.countersPath).signals['drift:plan-honesty'].samples;
+    if (after.length !== 2) throw new Error(`expected 2 samples, got ${after.length}`);
+    if (JSON.stringify(after[0]) !== JSON.stringify(before)) throw new Error('prior sample was mutated by a later bump');
+    if (after[0].evidence !== 'alpha' || after[1].evidence !== 'beta') throw new Error('ring order/content wrong');
+  } finally { h.cleanup(); }
+});
+
+test('T34: cmdBump_redacts_high_entropy_non_canonical_secret_in_evidence', () => {
+  const h = mkHome();
+  try {
+    // A base64-alphabet credential matching NO canonical prefix class — only the entropy net
+    // catches it. scrubEmitDiff's entropy pass is inert on prose (no `+` line), so this
+    // asserts the store's OWN unconditional entropy redaction (VALIDATE-hacker H1 fold).
+    const cred = 'Xq9vR2mNp7wK4tL8sZ3jF6yH1bD5gC0nM2aP4eU';
+    runArgs(h.home, ['bump', '--signal', 'drift:fail-silent', '--evidence-stdin'], `db password is ${cred} here`);
+    const entry = readCounters(h.countersPath).signals['drift:fail-silent'];
+    if (!entry || !entry.samples || entry.samples.length !== 1) throw new Error('evidence sample not persisted');
+    const ev = entry.samples[0].evidence;
+    if (ev.includes(cred)) throw new Error(`high-entropy credential persisted raw: ${ev}`);
+    if (!ev.includes('[REDACTED-ENTROPY]')) throw new Error(`expected [REDACTED-ENTROPY], got: ${ev}`);
+  } finally { h.cleanup(); }
+});
+
+test('T35: sanitizeEvidence_fails_closed_when_scrub_module_unreachable', () => {
+  // Secret built at runtime (the secrets gate blocks a literal token in source).
+  const secret = `sk-ant-${'A'.repeat(25)}`;
+  // Non-vacuous F7: null mod (scrub unreachable) -> drop, never persist raw. Without the
+  // fail-closed guard this would return the raw quote (a secret leak on the failure path).
+  if (store.sanitizeEvidence(`${secret} leaked`, null) !== '') {
+    throw new Error('scrub-unreachable must return empty string (drop evidence)');
+  }
+  // a present, real module scrubs known secrets + round-trips a benign quote.
+  const real = require('../../../packages/kernel/egress/scrub');
+  if (store.sanitizeEvidence('plain triage quote', real) !== 'plain triage quote') {
+    throw new Error('a benign quote should round-trip through the real scrubber');
+  }
+  if (store.sanitizeEvidence(`key ${secret} here`, real).includes('sk-ant-')) {
+    throw new Error('a canonical secret must not survive the real scrubber');
+  }
+});
+
+test('T36: cmdBump_evidence_stdin_empty_input_records_no_sample', () => {
+  const h = mkHome();
+  try {
+    runArgs(h.home, ['bump', '--signal', 'drift:plan-honesty', '--evidence-stdin'], '');
+    const entry = readCounters(h.countersPath).signals['drift:plan-honesty'];
+    if (entry.count !== 1) throw new Error(`count should still bump on empty stdin, got ${entry.count}`);
+    if (Object.prototype.hasOwnProperty.call(entry, 'samples')) throw new Error('empty stdin must not record a sample');
+  } finally { h.cleanup(); }
+});
+
+test('T37: cmdBump_does_not_read_evidence_from_argv_channel_closed', () => {
+  // The argv evidence channel is CLOSED (it transiently exposed secrets in the process table).
+  // A bump WITHOUT --evidence-stdin records NO sample, even if a stray --evidence-like arg is
+  // present — only stdin (opted-in via --evidence-stdin) is read.
+  const h = mkHome();
+  try {
+    runArgs(h.home, ['bump', '--signal', 'drift:claim-false', '--evidence', 'should be ignored'], 'unread stdin');
+    const entry = readCounters(h.countersPath).signals['drift:claim-false'];
+    if (entry.count !== 1) throw new Error(`count should bump, got ${entry.count}`);
+    if (Object.prototype.hasOwnProperty.call(entry, 'samples')) throw new Error('no --evidence-stdin -> no sample (argv channel must stay closed)');
+  } finally { h.cleanup(); }
+});
+
+test('T38: cmdBump_rejects_non_string_signal_from_argv_misparse', () => {
+  // `--signal` with no value (next token is a flag) parses to boolean true; the store must
+  // reject it (non-zero exit) rather than record a junk `true` signal (VALIDATE-hacker L1).
+  const h = mkHome();
+  try {
+    const r = runArgs(h.home, ['bump', '--signal', '--evidence-stdin'], 'x');
+    if (r.exitCode === 0) throw new Error('a non-string signal must be rejected (non-zero exit)');
+    let hasJunk = false;
+    try { hasJunk = Object.prototype.hasOwnProperty.call(readCounters(h.countersPath).signals, 'true'); } catch { /* no counters file = fine */ }
+    if (hasJunk) throw new Error('a mis-parsed boolean signal must not be recorded');
+  } finally { h.cleanup(); }
 });
 
 process.stdout.write(`\n=== Summary ===\n`);
