@@ -20,6 +20,8 @@
 //   * `--verify-key` is OPTIONAL: when given, recordApproval verifies the broker sig over the basis at the MINT
 //     boundary (catch a value-swap signFn early); when omitted, that mint-time check is SKIPPED and sig-verification
 //     defers to emitPR's read gate (the mint still produces a signed approval). Recommended for a real deployment.
+//     The anchor may be owned by the OPERATOR uid OR root (uid 0) — the cross-uid deploy pins /etc/loom/verify.pem
+//     root-owned so neither actor nor operator can swap it (root is the STRONGER anchor); pass that exact file.
 
 'use strict';
 
@@ -123,7 +125,24 @@ function readTtyConfirm(renderText) {
   } finally { try { fs.closeSync(fd); } catch { /* */ } }
 }
 
-/** Read the operator custody verify-key (public) fail-closed: O_NOFOLLOW + fstat-the-fd + uid-owned + not w-able. */
+const VERIFY_KEY_ROOT_UID = 0;
+
+/**
+ * Owner policy for the verify-key trust anchor: this WIDENS the accepted-owner set from {operator} to {operator,
+ * root(uid 0)}. The cross-uid deploy installs /etc/loom/verify.pem root-owned (0644) in a ROOT-OWNED dir
+ * (scripts/loom-broker-deploy-macos.sh; runbook step 2) so no non-root principal can swap it — IN THAT DEPLOY root
+ * is the stronger anchor, not weaker. The strength is a property of the root-locked DIR, which this owner-check
+ * cannot itself verify; the check only admits root as a second acceptable owner. The blast radius is bounded: this
+ * is the OPTIONAL mint-time early-catch — emit-pr's resolveVerifyKey re-verifies the broker sig authoritatively at
+ * EMIT time (and with NO owner check at all), so a wrong owner here cannot ship an unapproved emission. selfUid===null
+ * (no getuid, e.g. Windows) -> ownership unenforceable, accept (parity with the prior skip). True == owner acceptable.
+ */
+function verifyKeyOwnerOk(stUid, selfUid) {
+  if (typeof selfUid !== 'number') return true;     // ownership unenforceable (no getuid) -> skip, as before
+  return stUid === selfUid || stUid === VERIFY_KEY_ROOT_UID;
+}
+
+/** Read the verify-key (public trust anchor) fail-closed: O_NOFOLLOW + fstat-the-fd + owner=operator-or-root + not w-able. */
 function readVerifyKeySafe(keyPath, selfUid) {
   if (typeof keyPath !== 'string' || keyPath.length === 0) return null; // optional — recordApproval handles absent
   let fd;
@@ -132,7 +151,7 @@ function readVerifyKeySafe(keyPath, selfUid) {
   try {
     const st = fs.fstatSync(fd);
     if (!st.isFile()) throw new Error('approve-cli: verify-key must be a regular file');
-    if (typeof selfUid === 'number' && st.uid !== selfUid) throw new Error('approve-cli: verify-key must be owned by the operator uid (not actor-writable)');
+    if (!verifyKeyOwnerOk(st.uid, selfUid)) throw new Error('approve-cli: verify-key must be owned by the operator uid or root (not actor-writable)');
     if (st.mode & 0o022) throw new Error('approve-cli: verify-key must not be group/world-writable');
     return fs.readFileSync(fd, 'utf8');
   } finally { try { fs.closeSync(fd); } catch { /* */ } }
@@ -228,4 +247,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { validateDraft, freezeScrubbed, confirmTokenFor, checkConfirmation, reviewText, readVerifyKeySafe, runApprove };
+module.exports = { validateDraft, freezeScrubbed, confirmTokenFor, checkConfirmation, reviewText, verifyKeyOwnerOk, readVerifyKeySafe, runApprove };

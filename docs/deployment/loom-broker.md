@@ -48,16 +48,18 @@ the **private** key where only `loom-broker` can read it, and pin the **public**
 (step 5).
 
 ```sh
-sudo install -d -o loom-broker -g loom-broker -m 0755 /etc/loom            # traversable key DIR (key stays 0600) so the verifier can read the key's OWNER
+sudo install -d -o root -g wheel -m 0755 /etc/loom                         # ROOT-owned, traversable key DIR (L1: neither broker nor actor nor operator can SWAP verify.pem); key file stays 0600
 sudo install -o loom-broker -g loom-broker -m 0600 broker.key /etc/loom/broker.key
 sudo rm -f broker.key                                                      # remove the host-side copy
 ```
 
-The key DIR is **0755** (the key itself is **0600**) on purpose: the host uid can then `lstat` the key and
-CONFIRM it is owned by a *different* uid — the verifier's necessary condition. A **0700** dir would BLIND the
-verifier (owner-unknown -> FAIL). **Additionally, the actor (autonomous) uid must gain nothing from a direct
-invoke**: keep `/etc/loom` and the key un-readable to the actor uid (the actor is never the host/operator uid).
-Custody comes from the key's `0600` + a different owner, NOT from the dir mode.
+The key DIR is **root-owned, 0755** (the key itself is **0600**) on purpose: it is traversable so the host uid can
+`lstat` the key and CONFIRM it is owned by a *different* uid (the verifier's necessary condition — a **0700** dir
+would BLIND the verifier, owner-unknown -> FAIL), and it is **root-owned** so no non-root principal (not the broker
+uid, not the operator, not the actor) can rename/replace the pinned `verify.pem` entry inside it. **Additionally,
+the actor (autonomous) uid must gain nothing from a direct invoke**: keep `/etc/loom` and the key un-readable to the
+actor uid (the actor is never the host/operator uid). Broker-key custody comes from the key's `0600` + a different
+owner; verify.pem swap-resistance comes from the **root-owned dir**. (Matches `scripts/loom-broker-deploy-macos.sh`.)
 
 ## 3. Install a wrapper the broker uid runs (owned root, NOT host-writable)
 
@@ -130,6 +132,11 @@ is BOTH the `loom-custody-verify` `--verify-key` AND the egress emit gate's `cus
 ```sh
 sudo install -m 0644 broker.pub /etc/loom/verify.pem      # the pinned verify key (public; selects the authoritative sig)
 ```
+
+This same root-owned `verify.pem` is also what you pass to the approve-CLI's optional `--verify-key` (the mint-time
+sig early-catch). The CLI accepts an anchor owned by **the operator uid OR root** — root is the stronger anchor (the
+root-owned file in a root-owned dir cannot be swapped by actor or operator). `--verify-key` may also be omitted: the
+emit gate verifies the broker signature against this file authoritatively at emit time regardless.
 
 ## 6. Wire the host (zero seam change)
 
