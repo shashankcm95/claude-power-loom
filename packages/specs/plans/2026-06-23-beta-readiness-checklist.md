@@ -27,8 +27,8 @@ SHADOW-tolerable to *start* ③.2.3 (the grade/loop stay advisory under PATH-1) 
 | # | Item | Severity | Issue | Status |
 |---|---|---|---|---|
 | 1 | Deploy the cross-uid loom-broker (provenance follow-on) — deploy helper + operator deploy + custody-verify + re-dogfood | **BLOCKER** | [#404](https://github.com/shashankcm95/claude-power-loom/issues/404) | ▶ helper built+hardened+reviewed; **needs a root-owned node**; necessary-not-sufficient → #412 |
-| 2 | `gh-emit` modify-diff post-image applier (new-file-add only today) | **BLOCKER** | [#405](https://github.com/shashankcm95/claude-power-loom/issues/405) | queued (after #404) |
-| 3 | ③.2.3 the first real EXTERNAL PR (the launch gate) — depends on #404 + #405 | **BLOCKER** | [#406](https://github.com/shashankcm95/claude-power-loom/issues/406) | blocked |
+| 2 | `gh-emit` modify-diff post-image applier (new-file-add only today) | **BLOCKER** | [#405](https://github.com/shashankcm95/claude-power-loom/issues/405) | ✅ DONE — merged #414 (`282be33`); EXACT positional applier + base-fetch, 4-lens VALIDATE + CodeRabbit clean |
+| 3 | ③.2.3 the first real EXTERNAL PR (the launch gate) — depends on #404 + #405 | **BLOCKER** | [#406](https://github.com/shashankcm95/claude-power-loom/issues/406) | blocked on #404 + #412 (#405 ✅) |
 | 4 | OQ-21 — calibrate the real-LLM judge on live stranger code | MAJOR | [#407](https://github.com/shashankcm95/claude-power-loom/issues/407) | open (measure during ③.2.3) |
 | 5 | Measure K13 close-path lock contention at real spawn scale | MAJOR | [#408](https://github.com/shashankcm95/claude-power-loom/issues/408) | open |
 | 6 | Reconcile actor-clone W1/W2 path divergence (size-cap + maxBuffer) | MAJOR | [#409](https://github.com/shashankcm95/claude-power-loom/issues/409) | open |
@@ -46,7 +46,7 @@ SHADOW-tolerable to *start* ③.2.3 (the grade/loop stay advisory under PATH-1) 
 
 1. **#404 broker deploy** (helper built; awaiting operator deploy with a root-owned node) — ships KEY non-exfiltration.
 2. **#412 actor-uid-separation** — pairs with #404 to make the human-gate a *real* authorization boundary (until then a rogue actor at the operator uid can still call the broker; PATH-1 human-at-push is the backstop).
-3. **#405 modify-diff applier** — makes a real (non-trivial) good-first-issue emittable.
+3. **#405 modify-diff applier** — makes a real (non-trivial) good-first-issue emittable. ✅ DONE (merged #414).
 4. **#407–#410** measured/closed (can overlap with #406 since the grade/loop are SHADOW).
 5. **#406 the first real external PR** — only once #404 + #412 + #405 are closed.
 
