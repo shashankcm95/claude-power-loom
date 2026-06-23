@@ -304,18 +304,25 @@ function resolveDisposition({ custodyDispositionPath } = {}) {
 }
 
 // --------------------------------------------------------------------------
-// The live-emission SEAM — deferred to ③.2.4 (no live network code this wave).
+// The live-emission SEAM — ③.2.5c: armed (delegates to the gh-REST mechanism).
 // --------------------------------------------------------------------------
 
 /**
- * The ONLY place the network would be touched (a gh REST blob->tree->commit->ref->pull, NEVER a git push from
- * the candidate clone). STILL UNIMPLEMENTED: it THROWS, so "cannot emit" is true by construction THIS wave too
- * (the ③.2.4 wave builds + proves the per-emission approval GATE; the live seam is ③.2.5, behind this gate,
- * once the blob-source + signed-minter Forward-Contract is met). Injectable via opts.armedEmitFn so the gated
- * emit-then-record path is provable without the network.
+ * The ONLY place the network is touched: a gh REST tree->commit->ref->pull (NEVER a git push from the candidate
+ * clone). ③.2.5c flips this from a throw to a real DRAFT-PR creation, delegating to gh-emit.js, behind the
+ * now-complete gate (live AND token AND killswitch-off AND a VALID signed human approval). The token reaches gh
+ * ONLY via buildEmitEnv({token, ghConfigDir}).GH_TOKEN — the sole credential path (killswitch off => no token =>
+ * capability gone, and this seam is never reached). approvalHash is the gate's independently-computed emission
+ * hash, threaded so gh-emit's self-check has a value to cross-check against (CRITICAL-2 — re-hashing the same
+ * draft would be a tautology). The require of gh-emit is LAZY (inside the function) so the back-edge gh-emit ->
+ * emit-pr (for parseDiffPaths/isEgressDeniedPath) is not a load-time cycle. Injectable via opts.armedEmitFn so
+ * the gated emit-then-record path stays unit-provable without the network.
+ * @param {{ draft: object, token: string, ghConfigDir: string, approvalHash: string }} args
  */
-function armedEmit() {
-  throw new Error('egress-not-armed-until-3.2.5: the live PR-emission seam is intentionally unimplemented (gate built ③.2.4; network ③.2.5)');
+function armedEmit({ draft, token, ghConfigDir, approvalHash } = {}) {
+  const { ghEmit } = require('./gh-emit');                            // lazy — breaks the emit-pr<->gh-emit cycle
+  const env = buildEmitEnv({ token, ghConfigDir });
+  return ghEmit({ draft, approvalHash, env });
 }
 
 // --------------------------------------------------------------------------
@@ -394,7 +401,7 @@ function emitPR(data, opts = {}) {
         // ONLY on success RESERVE the cap + ledger and CONSUME the one-shot approval. A throw -> the outer
         // catch -> fail-closed, with cap + ledger + approval all UNCHANGED (proven via an injected armedEmitFn).
         const armedEmitFn = typeof opts.armedEmitFn === 'function' ? opts.armedEmitFn : armedEmit;
-        const pr = armedEmitFn({ draft, token, ghConfigDir: opts.ghConfigDir });
+        const pr = armedEmitFn({ draft, token, ghConfigDir: opts.ghConfigDir, approvalHash });
         if (typeof opts.custodyCapStatePath === 'string') recordEmit(opts.custodyCapStatePath, { now, windowMs: opts.windowMs });
         if (typeof opts.custodyEtiquetteLedgerPath === 'string') recordEmitted(opts.custodyEtiquetteLedgerPath, etqKey);
         consumeApproval(opts.custodyApprovalsDir, approvalHash);
