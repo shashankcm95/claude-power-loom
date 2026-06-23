@@ -110,9 +110,12 @@ Defaults!/usr/local/bin/loom-broker-sign env_reset, !setenv
 ```sh
 sudo -l -U <hostuser>           # human-scan: NO env_keep carries NODE_OPTIONS / BASH_ENV / LD_* / DYLD_*
 
-# SUDO_* is the LOAD-BEARING one for caller-auth — assert it explicitly. This MUST print nothing:
-sudo -l -U <hostuser> | grep -iE 'env_keep.*SUDO_' \
-  && echo 'FAIL: env_keep carries SUDO_* -- the caller-auth premise is VOID; fix the policy before trusting this deployment'
+# SUDO_* is the LOAD-BEARING one for caller-auth — assert it explicitly. Match the env-var token PRECISELY
+# (case-sensitive SUDO_<NAME>): a loose `env_keep.*SUDO_` FALSE-fails on stock macOS because the greedy `.*`
+# reaches `lecture_file=/etc/sudo_lecture` (a sudo CONFIG PATH, not an env var). This should print `OK`:
+sudo -l -U <hostuser> | grep -oE 'SUDO_[A-Za-z0-9_]+' \
+  && echo 'FAIL: env_keep carries a SUDO_* var -- the caller-auth premise is VOID; fix the policy before trusting this deployment' \
+  || echo 'OK: no SUDO_* preserved'
 ```
 
 **`SUDO_UID` is load-bearing for caller-auth:** the whole WHO gate rests on sudo SETTING `SUDO_UID` from the real
