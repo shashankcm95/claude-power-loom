@@ -137,7 +137,33 @@ test('readVerifyKeySafe: symlinked path -> throw; foreign-uid -> throw; absent -
     assert.strictEqual(C.readVerifyKeySafe(real, SELF), 'PEM', 'uid-owned regular file reads');
     const link = path.join(dir, 'verify.link'); fs.symlinkSync(real, link);
     assert.throws(() => C.readVerifyKeySafe(link, SELF), /symlink|unreadable/, 'symlink refused (O_NOFOLLOW)');
-    assert.throws(() => C.readVerifyKeySafe(real, SELF + 1), /operator uid/, 'foreign-uid refused');
+    // foreign + non-root owner refused. Guard on SELF!==0: a root runner OWNS `real` as uid 0, which is an ACCEPTED
+    // anchor (the cross-uid deploy case), so the throw assertion only holds when the file owner is non-root.
+    if (SELF !== 0) assert.throws(() => C.readVerifyKeySafe(real, SELF + 1), /operator uid/, 'foreign non-root uid refused');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// === verify-key owner POLICY: operator uid OR root (uid 0) — the cross-uid deploy installs verify.pem root-owned ===
+
+test('verifyKeyOwnerOk: operator-owned and root-owned accepted; foreign non-root refused; no-uid skipped', () => {
+  // Pure policy — deterministic everywhere (no chown / root needed). The verify-key is a trust anchor; the deploy
+  // pins /etc/loom/verify.pem ROOT-owned in a root-owned dir SO neither the actor NOR the operator can swap it ->
+  // root is a STRONGER anchor than the operator, not weaker. emit-pr's resolveVerifyKey already trusts the same
+  // root-owned file at EMIT time, so the mint-time check must accept it too.
+  assert.strictEqual(C.verifyKeyOwnerOk(1000, 1000), true, 'operator-owned accepted');
+  assert.strictEqual(C.verifyKeyOwnerOk(0, 1000), true, 'root-owned accepted (the cross-uid deploy case)');
+  assert.strictEqual(C.verifyKeyOwnerOk(1001, 1000), false, 'foreign non-root owner refused');
+  assert.strictEqual(C.verifyKeyOwnerOk(0, 0), true, 'operator IS root -> accepted');
+  assert.strictEqual(C.verifyKeyOwnerOk(1000, null), true, 'no operator uid (Windows) -> ownership unenforceable, accept');
+});
+
+test('readVerifyKeySafe: a root-owned verify.pem is ACCEPTED (real fstat path; runs only AS root)', () => {
+  if (WIN) { skipped += 1; return; }
+  if (SELF !== 0) { skipped += 1; return; }   // can only create a uid-0-owned file when the runner IS root
+  const dir = scratch();
+  try {
+    const real = path.join(dir, 'verify.pem'); fs.writeFileSync(real, 'PEM', { mode: 0o644 }); // owned by root (SELF===0)
+    assert.strictEqual(C.readVerifyKeySafe(real, 999), 'PEM', 'root-owned key read even when selfUid != owner');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
