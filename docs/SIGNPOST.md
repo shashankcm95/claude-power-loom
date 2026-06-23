@@ -58,6 +58,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/kernel/_lib/safe-read.js` - TOCTOU-safe regular-file read primitive.
 - `packages/kernel/_lib/safe-resolve.js` - safe-resolve.js — choose a script candidate that is SAFE to hand to
 - `packages/kernel/_lib/sanitize.js` - JSONL hygiene primitives — per post-compact PR-1 R1 F-2 resolution.
+- `packages/kernel/_lib/scrub.js` - The coarse SECRET-SCRUB primitive (PURE; defense-in-depth).
 - `packages/kernel/_lib/secret-patterns.js` - ③.0-W2 (2026-06-17): the SINGLE source of truth for the HIGH-PRECISION,
 - `packages/kernel/_lib/settings-resolution.js` - K2.b settings.json resolution walk per v6 §6.5 In-Scope.
 - `packages/kernel/_lib/synthid.js` - HETS-SynthId — content-addressed agent identifier (v2.8.0 — Shape A only).
@@ -84,7 +85,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/kernel/egress/loom-broker-sign.js` - Power Loom egress — loom-broker-sign.js  (③.2.5b)
 - `packages/kernel/egress/loom-custody-verify.js` - Power Loom egress — loom-custody-verify.js  (③.2.5b)
 - `packages/kernel/egress/policy.js` - ③.2.1b PR-B — egress POLICY gates: a GLOBAL per-window emission cap, 429/abuse backpressure, and a
-- `packages/kernel/egress/scrub.js` - ③.2.1b PR-B — the egress SECRET-SCRUB (coarse, defense-in-depth).
+- `packages/kernel/egress/scrub.js` - ③.2.1b PR-B — the egress SECRET-SCRUB entry point (coarse, defense-in-depth).
 
 ### `kernel/enforcement/`
 

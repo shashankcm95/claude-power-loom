@@ -183,26 +183,25 @@ const MIN_CONVERGENCE_SPAN_MS = ONE_DAY_MS; // a drift class converges only once
                                             // firstSeen..lastSeen span exceeds this.
 const MAX_SAMPLE_SID_LEN = 128;
 
-// The egress scrub module is the SAME secret scrubber the egress PR-body path uses, so the
-// known-secret-class list can never drift out of sync (the secret-class-drift lesson).
-// DELIBERATE outward require (spawn-state -> egress): scrubEmitDiff is the deeper module;
-// reimplementing a thinner scrub here would be a second drift surface. Lazy-required so the
-// hot bumpBatch path (which carries NO evidence) never loads egress, and so an unreachable
-// module fails CLOSED (drop the evidence) rather than persisting it raw. FORWARD-CONTRACT:
-// bumpBatch carries no evidence today; if it ever does, move the scrub into a shared
-// appendSample helper both paths call. (A future cleanup may extract scrubEmitDiff into
-// kernel/_lib so this require points inward — tracked, not blocking.)
-let _scrubMod;           // memoized: the egress/scrub module | null (null => unreachable)
+// The scrub primitive (kernel/_lib/scrub.js) is the SAME secret scrubber the egress PR-body path
+// uses (egress/scrub.js re-exports it), so the known-secret-class list can never drift out of sync
+// (the secret-class-drift lesson). The require points INWARD (spawn-state -> _lib): _lib/scrub is a
+// leaf depending only on _lib/secret-patterns, so this is not a layering inversion. Lazy-required so
+// the hot bumpBatch path (which carries NO evidence) never loads the scrub module, and so an
+// unreachable module fails CLOSED (drop the evidence) rather than persisting it raw. FORWARD-CONTRACT:
+// bumpBatch carries no evidence today; if it ever does, move the scrub into a shared appendSample
+// helper both paths call.
+let _scrubMod;           // memoized: the _lib/scrub module | null (null => unreachable)
 let _scrubWarned = false;
 function getScrubMod() {
   if (_scrubMod !== undefined) return _scrubMod;
   try {
-    _scrubMod = require('../egress/scrub');
+    _scrubMod = require('../_lib/scrub');
   } catch {
     _scrubMod = null;
     if (!_scrubWarned) {
       _scrubWarned = true;
-      process.stderr.write('[self-improve-store] WARNING: egress/scrub unreachable; drift evidence is DROPPED (never persisted raw).\n');
+      process.stderr.write('[self-improve-store] WARNING: _lib/scrub unreachable; drift evidence is DROPPED (never persisted raw).\n');
     }
   }
   return _scrubMod;
@@ -261,7 +260,7 @@ function readStdinEvidence() {
 // a nullish/empty input OR when the scrubber is unreachable (fail-closed: drop rather than
 // persist raw). `mod` is injectable for testability (a test passes `null` to exercise the
 // unreachable fail-closed path). getScrubMod() is resolved INSIDE the body (after the
-// empty-input early-return) so an evidence-less bump never loads egress (CodeRabbit).
+// empty-input early-return) so an evidence-less bump never loads the scrub module (CodeRabbit).
 function sanitizeEvidence(raw, mod) {
   if (typeof raw !== 'string' || raw.length === 0) return '';
   const m = mod !== undefined ? mod : getScrubMod();
