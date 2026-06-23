@@ -247,7 +247,16 @@ function validateEmitInputs({ draft, approvalHash, env }) {
   if (!Number.isInteger(issueRef) || issueRef <= 0) throw new Error('ghEmit: draft.issueRef is not a positive integer');
   if (Buffer.byteLength(diff, 'utf8') > MAX_DIFF_BYTES) throw new Error('ghEmit: diff exceeds the size bound (fail-closed)');
   const validated = new Set(parseDiffPaths(diff).paths);
-  const files = reconstructPostImages(diff);
+  // reconstructPostImages stays PURE (standalone-testable); its attack-shaped rejects (path-divergence,
+  // multi-hunk truncation-laundering) are made OBSERVABLE here at the ghEmit boundary (CodeRabbit #402) — the
+  // header's "fail-closed must be observable" invariant covers these too. Re-throw unchanged (fail-closed).
+  let files;
+  try {
+    files = reconstructPostImages(diff);
+  } catch (err) {
+    emitEgressAlert('cannot-reconstruct', { message: err && err.message });
+    throw err;
+  }
   if (files.length === 0) throw new Error('ghEmit: the approved diff reconstructs to zero files');
   for (const f of files) {
     if (!validated.has(f.path) || isEgressDeniedPath(f.path)) {
