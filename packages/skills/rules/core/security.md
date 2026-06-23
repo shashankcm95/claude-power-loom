@@ -43,6 +43,14 @@
 - **A guard must be NON-BYPASSABLE — a hard constant, not a caller-overridable default.** A "pinned"
   value left as a function parameter is a soft default any caller dials off from the call site; remove
   the parameter so the guarantee cannot be overridden.
+- **A fail-CLOSED security decision must be OBSERVABLE, not a silent `{ok:false}`.** A bare reject
+  (`{ok:false, reason}`) with no telemetry hides BOTH an attack (a tamper attempt — a forged/mismatched
+  signature, a body-hash mismatch, a verify-key-fallback attempt) AND a bug (a misconfigured trust-anchor
+  silently rejecting every *legitimate* approval). Emit a high-visibility signal on the reason-bearing
+  reject path — cheap while the gate is SHADOW/advisory, load-bearing the moment it gates a live action:
+  you cannot alert on, or debug, a gate whose failures never surface. (`drift:fail-silent` ×3; the
+  v3.2.5a egress `verifyApproval` returns `sig-invalid` / `no-verify-key` / `body-hash-mismatch` /
+  `expired` with no emit.)
 
 ## Secret Management
 
