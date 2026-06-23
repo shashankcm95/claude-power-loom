@@ -1,9 +1,10 @@
 'use strict';
 
-// tests/unit/kernel/egress/gh-emit.test.js — ③.2.5c the gh-REST emission MECHANISM.
-// The live network is NEVER touched: a mock `runGh` (deps.runGh) returns canned gh-api JSON and records every
-// call, so the sequence + the argv discipline + the self-check + the reconstruction + dedup + rollback are all
-// unit-provable offline. runGh's OWN fail-closed contract is exercised against a guaranteed-local gh failure.
+// tests/unit/kernel/egress/gh-emit.test.js — ③.2.5c the gh-REST emission MECHANISM + #405 the modify-diff applier.
+// The live network is NEVER touched: a mock `runGh` (deps.runGh) returns canned gh-api JSON (incl. a contents?ref=
+// base-content responder) and records every call, so the sequence + the argv discipline + the self-check + the
+// EXACT positional reconstruction (parse + apply) + dedup + rollback are all unit-provable offline. runGh's OWN
+// fail-closed contract is exercised against a guaranteed-local gh failure.
 
 const assert = require('assert');
 const path = require('path');
@@ -15,6 +16,7 @@ const { computeEmissionHash } = require(path.join(REPO, 'packages', 'kernel', 'e
 let passed = 0; let failed = 0; let skipped = 0;
 const tests = [];
 function test(name, fn) { tests.push({ name, fn }); }
+function b64(s) { return Buffer.from(s, 'utf8').toString('base64'); }
 
 // A new-file-add diff whose 3rd body line ITSELF starts with `+` (the HIGH-4 case a `startsWith('+++')` test would drop).
 const NEWFILE_DIFF = [
@@ -30,14 +32,37 @@ const NEWFILE_DIFF = [
   '',
 ].join('\n');
 
+// A clean MODIFY diff (#405 probe 1): change line 2, append line 4. base "line1\nline2\nline3\n".
+const MODIFY_BASE = 'line1\nline2\nline3\n';
+const MODIFY_DIFF = [
+  'diff --git a/f.txt b/f.txt',
+  'index 1111111..2222222 100644',
+  '--- a/f.txt',
+  '+++ b/f.txt',
+  '@@ -1,3 +1,4 @@',
+  ' line1',
+  '-line2',
+  '+LINE-TWO-CHANGED',
+  ' line3',
+  '+line4-added',
+  '',
+].join('\n');
+const MODIFY_EXPECTED = 'line1\nLINE-TWO-CHANGED\nline3\nline4-added\n';
+
 const GOOD_REPO = 'owner/repo';
 const GOOD_ISSUE = 42;
 function draftFor(diff) { return { repo: GOOD_REPO, issueRef: GOOD_ISSUE, diff, title: 't', touched_paths: [] }; }
 function hashFor(diff) { return computeEmissionHash(draftFor(diff)); }
 
-// A configurable mock gh: records calls, dispatches on the endpoint (args[1]) + method, and can trigger a
-// ref-already-exists 422 or a pulls failure. Returns raw JSON stdout (what runGh would return).
-function makeGh({ repo = GOOD_REPO, defaultBranch = 'main', refExists = false, failPulls = false, existingPulls } = {}) {
+// PURE-applier helpers (no mock): parse a single-stanza diff and apply it to `base`.
+function singleStanza(diff) { const s = G.parseDiffStanzas(diff); assert.strictEqual(s.length, 1, 'one stanza'); return s[0]; }
+function applyDiff(diff, base) { return G.applyHunks(base, singleStanza(diff).hunks); }
+function applyAdd(diff) { const st = singleStanza(diff); assert.strictEqual(st.type, 'add'); return G.applyHunks('', st.hunks); }
+
+// A configurable mock gh: records calls, dispatches on the endpoint (args[1]) + method, can trigger a
+// ref-already-exists 422 / a pulls failure, and serves base content for `contents?ref=` (the #405 modify fetch).
+function makeGh({ repo = GOOD_REPO, defaultBranch = 'main', refExists = false, failPulls = false, existingPulls,
+  baseContents = {}, encNoneFor = [], binaryFor = [] } = {}) {
   const calls = [];
   function method(args) { const i = args.indexOf('--method'); return i >= 0 ? args[i + 1] : 'GET'; }
   function gh(args, o) {
@@ -45,6 +70,16 @@ function makeGh({ repo = GOOD_REPO, defaultBranch = 'main', refExists = false, f
     const ep = args[1] || '';
     const m = method(args);
     if (ep === `repos/${repo}`) return JSON.stringify({ default_branch: defaultBranch });
+    if (/\/contents\//.test(ep)) {
+      const mm = ep.match(/\/contents\/(.+?)\?ref=/);
+      const p = mm ? mm[1] : null;
+      if (encNoneFor.includes(p)) return JSON.stringify({ encoding: 'none', content: '', size: 2 * 1024 * 1024 });
+      if (binaryFor.includes(p)) return JSON.stringify({ encoding: 'base64', content: Buffer.from([0x41, 0x00, 0x42]).toString('base64'), size: 3 });
+      if (Object.prototype.hasOwnProperty.call(baseContents, p)) {
+        return JSON.stringify({ encoding: 'base64', content: b64(baseContents[p]), size: Buffer.byteLength(baseContents[p], 'utf8') });
+      }
+      const e = new Error('404'); e.stderr = 'gh: Not Found (HTTP 404)'; throw e;
+    }
     if (/\/git\/ref\/heads\//.test(ep)) return JSON.stringify({ object: { sha: 'a'.repeat(40) } });
     if (/\/git\/commits\/[0-9a-f]+$/.test(ep)) return JSON.stringify({ tree: { sha: 'b'.repeat(40) } });
     if (/\/git\/trees$/.test(ep) && m === 'POST') return JSON.stringify({ sha: 'c'.repeat(40) });
@@ -67,16 +102,16 @@ function makeGh({ repo = GOOD_REPO, defaultBranch = 'main', refExists = false, f
 
 function endpointsOf(gh) { return gh.calls.map((c) => `${c.method} ${c.args[1]}`); }
 function writeCalls(gh) { return gh.calls.filter((c) => c.method === 'POST' || c.method === 'DELETE'); }
+function treeBodyOf(gh) { return JSON.parse(gh.calls.find((c) => /\/git\/trees$/.test(c.args[1]) && c.method === 'POST').input); }
 
-// === happy path + sequence ===
+// === happy paths + sequence ===
 
-test('happy: a new-file diff => DRAFT PR; the tree->commit->ref->pull sequence in order', () => {
+test('happy ADD: a new-file diff => DRAFT PR; the tree->commit->ref->pull sequence in order', () => {
   const gh = makeGh();
   const diff = NEWFILE_DIFF;
   const r = G.ghEmit({ draft: draftFor(diff), approvalHash: hashFor(diff), env: {} }, { runGh: gh });
   assert.deepStrictEqual(r, { pr_url: 'https://github.com/o/r/pull/9', number: 9, branch: `loom/issue-42-${hashFor(diff).slice(0, 12)}` });
-  const eps = endpointsOf(gh);
-  assert.deepStrictEqual(eps, [
+  assert.deepStrictEqual(endpointsOf(gh), [
     'GET repos/owner/repo',
     'GET repos/owner/repo/git/ref/heads/main',
     'GET repos/owner/repo/git/commits/' + 'a'.repeat(40),
@@ -84,21 +119,44 @@ test('happy: a new-file diff => DRAFT PR; the tree->commit->ref->pull sequence i
     'POST repos/owner/repo/git/commits',
     'POST repos/owner/repo/git/refs',
     'POST repos/owner/repo/pulls',
-  ], 'exact tree->commit->ref->pull order');
+  ], 'an ADD needs no contents fetch — exact tree->commit->ref->pull order');
 });
 
-// === CRITICAL-1: transport discipline (--input -, never -f/-F) ===
+test('#405 probe 1 happy MODIFY: a modify diff => base fetched at the base commit, hunks applied, full post-image emitted', () => {
+  const gh = makeGh({ baseContents: { 'f.txt': MODIFY_BASE } });
+  const diff = MODIFY_DIFF;
+  const r = G.ghEmit({ draft: draftFor(diff), approvalHash: hashFor(diff), env: {} }, { runGh: gh });
+  assert.strictEqual(r.number, 9);
+  assert.deepStrictEqual(endpointsOf(gh), [
+    'GET repos/owner/repo',
+    'GET repos/owner/repo/git/ref/heads/main',
+    'GET repos/owner/repo/git/commits/' + 'a'.repeat(40),
+    'GET repos/owner/repo/contents/f.txt?ref=' + 'a'.repeat(40),   // <- the #405 base fetch at the resolved base commit
+    'POST repos/owner/repo/git/trees',
+    'POST repos/owner/repo/git/commits',
+    'POST repos/owner/repo/git/refs',
+    'POST repos/owner/repo/pulls',
+  ], 'a MODIFY inserts exactly ONE contents fetch before the tree POST');
+  const tree = treeBodyOf(gh);
+  assert.strictEqual(tree.tree[0].path, 'f.txt');
+  assert.strictEqual(tree.tree[0].content, MODIFY_EXPECTED, 'the emitted content === base + hunks applied');
+  assert.strictEqual(tree.tree[0].sha, undefined, 'inline content, never a pre-created blob sha');
+});
 
-test('CRITICAL-1: every WRITE uses `--input -`; NO `-f`/`-F`/`--field`/`--raw-field` anywhere (the @file-read exfil channel)', () => {
-  const gh = makeGh();
-  const diff = NEWFILE_DIFF;
-  G.ghEmit({ draft: draftFor(diff), approvalHash: hashFor(diff), env: {} }, { runGh: gh });
+test('#405 probe 1 (pure): parse + apply reconstructs the exact post-image', () => {
+  assert.strictEqual(applyDiff(MODIFY_DIFF, MODIFY_BASE), MODIFY_EXPECTED);
+});
+
+// === CRITICAL-1: transport discipline (--input -, never -f/-F) — now spanning the contents fetch too ===
+
+test('CRITICAL-1: every WRITE uses `--input -`; NO `-f`/`-F`/`--field`/`--raw-field` anywhere (incl. the contents fetch)', () => {
+  const gh = makeGh({ baseContents: { 'f.txt': MODIFY_BASE } });
+  G.ghEmit({ draft: draftFor(MODIFY_DIFF), approvalHash: hashFor(MODIFY_DIFF), env: {} }, { runGh: gh });
   for (const c of gh.calls) {
     for (const bad of ['-f', '-F', '--field', '--raw-field']) {
       assert.ok(!c.args.includes(bad), `no ${bad} in ${c.args.join(' ')}`);
     }
   }
-  // every POST body rides on stdin via `--input -` (DELETE has no body).
   for (const c of writeCalls(gh).filter((w) => w.method === 'POST')) {
     const i = c.args.indexOf('--input');
     assert.ok(i >= 0 && c.args[i + 1] === '-', `POST uses --input - : ${c.args.join(' ')}`);
@@ -106,7 +164,16 @@ test('CRITICAL-1: every WRITE uses `--input -`; NO `-f`/`-F`/`--field`/`--raw-fi
   }
 });
 
-// === CRITICAL-2: the REAL self-check ===
+test('#405 probe 12: the contents fetch uses the SAME validated stanza.pathB (no re-parse) + is a plain GET (no body)', () => {
+  const gh = makeGh({ baseContents: { 'f.txt': MODIFY_BASE } });
+  G.ghEmit({ draft: draftFor(MODIFY_DIFF), approvalHash: hashFor(MODIFY_DIFF), env: {} }, { runGh: gh });
+  const fetch = gh.calls.find((c) => /\/contents\//.test(c.args[1]));
+  assert.strictEqual(fetch.args[1], `repos/owner/repo/contents/f.txt?ref=${'a'.repeat(40)}`, 'exact pathB + base sha');
+  assert.strictEqual(fetch.method, 'GET');
+  assert.strictEqual(fetch.input, undefined, 'a GET carries no stdin body');
+});
+
+// === CRITICAL-2: the REAL self-check (pre-network) ===
 
 test('CRITICAL-2: a draft whose computeEmissionHash != approvalHash => refuse, ZERO network calls', () => {
   const gh = makeGh();
@@ -123,9 +190,9 @@ test('CRITICAL-2: a missing/short approvalHash => refuse, zero network', () => {
   assert.strictEqual(gh.calls.length, 0);
 });
 
-// === VALIDATE HIGH (code-reviewer): the env guard — env=undefined would inherit process.env (killswitch bypass) ===
+// === VALIDATE HIGH: the env guard — env=undefined would inherit process.env (killswitch bypass) ===
 
-test('VALIDATE-HIGH env-guard: ghEmit with NO env => refuse (would inherit process.env + ambient GH_TOKEN), zero network', () => {
+test('VALIDATE-HIGH env-guard: ghEmit with NO env (or a non-object) => refuse, zero network', () => {
   const gh = makeGh();
   assert.throws(() => G.ghEmit({ draft: draftFor(NEWFILE_DIFF), approvalHash: hashFor(NEWFILE_DIFF) }, { runGh: gh }), /sanitized env|required/);
   for (const badEnv of [null, undefined, [], 'x', 5]) {
@@ -134,79 +201,273 @@ test('VALIDATE-HIGH env-guard: ghEmit with NO env => refuse (would inherit proce
   assert.strictEqual(gh.calls.length, 0, 'the env guard refuses BEFORE any network');
 });
 
-// === VALIDATE HIGH (hacker live-probe): content-fidelity — a multi-hunk new-file must NOT silently truncate ===
+// === #405 probe 11: new-file adds still reconstruct (no regression of the ③.2.5c hardening) ===
 
-test('VALIDATE-HIGH fidelity: a multi-hunk new-file stanza => fail-closed (unconsumed content), NOT a silent drop', () => {
-  // header says +1,2 then a SECOND @@ hunk follows — the old parser collected 2 lines + silently skipped the rest.
-  const multi = [
-    'diff --git a/x.md b/x.md', 'new file mode 100644', '--- /dev/null', '+++ b/x.md',
-    '@@ -0,0 +1,2 @@', '+line a', '+line b',
-    '@@ -0,0 +3,1 @@', '+line c DROPPED',
-    '',
-  ].join('\n');
-  assert.throws(() => G.reconstructPostImages(multi), /unconsumed content|cannot-reconstruct/);
+test('#405 probe 11 / HIGH-4: a `+`-leading body line is PRESERVED (positional); trailing newline added', () => {
+  const content = applyAdd(NEWFILE_DIFF);
+  assert.strictEqual(content, '# Dogfood\na normal line\n++ a body line that starts with a plus\n');
+});
+
+test('#405 probe 11: a new-file add still emits the full post-image through ghEmit (empty base, no contents fetch)', () => {
   const gh = makeGh();
-  assert.throws(() => G.ghEmit({ draft: draftFor(multi), approvalHash: hashFor(multi), env: {} }, { runGh: gh }), /unconsumed content|cannot-reconstruct/);
-  assert.strictEqual(gh.calls.length, 0, 'the fidelity check refuses before any network');
+  G.ghEmit({ draft: draftFor(NEWFILE_DIFF), approvalHash: hashFor(NEWFILE_DIFF), env: {} }, { runGh: gh });
+  assert.ok(!endpointsOf(gh).some((e) => /\/contents\//.test(e)), 'an ADD never fetches base content');
+  assert.strictEqual(treeBodyOf(gh).tree[0].content, '# Dogfood\na normal line\n++ a body line that starts with a plus\n');
 });
 
-test('VALIDATE fold: a `new file mode` stanza with a non -0,0 hunk old-side => fail-closed (malformed/Byzantine)', () => {
-  const bad = 'diff --git a/x b/x\nnew file mode 100644\n--- /dev/null\n+++ b/x\n@@ -5,3 +1,1 @@\n+x\n';
-  assert.throws(() => G.reconstructPostImages(bad), /-0,0|cannot-reconstruct/);
+test('HIGH-4: a `\\ No newline at end of file` marker on a new-file => NO trailing newline', () => {
+  const diff = [
+    'diff --git a/x.txt b/x.txt', 'new file mode 100644', '--- /dev/null', '+++ b/x.txt',
+    '@@ -0,0 +1,1 @@', '+no trailing nl', '\\ No newline at end of file', '',
+  ].join('\n');
+  assert.strictEqual(applyAdd(diff), 'no trailing nl');
 });
 
-test('VALIDATE LOW: ghEmit self-defends its own diff-size bound (kernel module, independent of the upstream cap)', () => {
+// === #405 probe 2: a moved base => refuse, zero bytes leave ===
+
+test('#405 probe 2: a moved base (a removed/context line differs from live) => refuse; NO tree POST', () => {
+  const gh = makeGh({ baseContents: { 'f.txt': 'line1\nDIFFERENT\nline3\n' } });
+  assert.throws(() => G.ghEmit({ draft: draftFor(MODIFY_DIFF), approvalHash: hashFor(MODIFY_DIFF), env: {} }, { runGh: gh }),
+    /moved base|cannot-apply-hunk/);
+  assert.ok(!endpointsOf(gh).some((e) => /\/git\/trees/.test(e)), 'zero bytes leave on a moved base (no tree POST)');
+});
+
+test('#405 probe 2 (pure): a moved base => applyHunks refuses', () => {
+  assert.throws(() => applyDiff(MODIFY_DIFF, 'line1\nDIFFERENT\nline3\n'), /moved base|cannot-apply-hunk/);
+});
+
+// === #405 probe 3: cross-hunk positional integrity (the VERIFY CRITICAL) ===
+
+test('#405 probe 3a: out-of-order / overlapping hunks (descending oldStart) => refuse', () => {
+  const diff = [
+    'diff --git a/g.txt b/g.txt', '--- a/g.txt', '+++ b/g.txt',
+    '@@ -5,1 +5,1 @@', '-five', '+FIVE',
+    '@@ -2,1 +2,1 @@', '-two', '+TWO', '',
+  ].join('\n');
+  assert.throws(() => applyDiff(diff, 'one\ntwo\nthree\nfour\nfive\n'), /ascending|overlap|cannot-apply-hunk/);
+});
+
+test('#405 probe 3b: a hunk whose newStart LIES about its position => refuse (running-offset invariant)', () => {
+  const diff = [
+    'diff --git a/g.txt b/g.txt', '--- a/g.txt', '+++ b/g.txt',
+    '@@ -1,1 +1,1 @@', '-one', '+ONE',
+    '@@ -3,1 +9,1 @@', '-three', '+THREE', '',
+  ].join('\n');
+  assert.throws(() => applyDiff(diff, 'one\ntwo\nthree\n'), /newStart|cannot-apply-hunk/);
+});
+
+// === #405 probe 4: a hunk-body count that lies about the header => parse refuses ===
+
+test('#405 probe 4: a hunk body count != the @@ header count => parse refuses', () => {
+  const diff = ['diff --git a/g.txt b/g.txt', '--- a/g.txt', '+++ b/g.txt', '@@ -1,3 +1,1 @@', ' one', '+x', ''].join('\n');
+  assert.throws(() => G.parseDiffStanzas(diff), /count mismatch|fail-closed/);
+});
+
+// === #405 probe 5: per-side `\ No newline` semantics ===
+
+test('#405 probe 5a: a `+` line marked no-newline (new side loses its trailing NL)', () => {
+  const diff = ['diff --git a/g.txt b/g.txt', '--- a/g.txt', '+++ b/g.txt',
+    '@@ -1,2 +1,2 @@', ' a', '-b', '+B', '\\ No newline at end of file', ''].join('\n');
+  assert.strictEqual(applyDiff(diff, 'a\nb\n'), 'a\nB');
+});
+
+test('#405 probe 5b: a `-` line marked no-newline (old side) — the NEW side adds the trailing NL', () => {
+  const diff = ['diff --git a/g.txt b/g.txt', '--- a/g.txt', '+++ b/g.txt',
+    '@@ -1,2 +1,2 @@', ' a', '-b', '\\ No newline at end of file', '+b', ''].join('\n');
+  assert.strictEqual(applyDiff(diff, 'a\nb'), 'a\nb\n');
+});
+
+test('#405 probe 5c: a duplicate `\\ No newline` marker on one line => parse refuses', () => {
+  const diff = ['diff --git a/g.txt b/g.txt', '--- a/g.txt', '+++ b/g.txt',
+    '@@ -1,1 +1,1 @@', '-b', '\\ No newline at end of file', '\\ No newline at end of file', '+B', ''].join('\n');
+  assert.throws(() => G.parseDiffStanzas(diff), /duplicate.*No newline|fail-closed/);
+});
+
+// === #405 probe 6: a blank context line (truly empty '') advances base ===
+
+test('#405 probe 6: a blank (empty) context line inside a hunk is treated as context (advances base)', () => {
+  const diff = 'diff --git a/g.txt b/g.txt\n--- a/g.txt\n+++ b/g.txt\n@@ -1,3 +1,3 @@\n a\n\n-b\n+B\n';
+  assert.strictEqual(applyDiff(diff, 'a\n\nb\n'), 'a\n\nB\n');
+});
+
+// === #405 probe 7: binary / non-base64 / encoding:none base => refuse ===
+
+test('#405 probe 7a: a base file > 1MB (contents API encoding:"none") => refuse, no tree POST', () => {
+  const diff = 'diff --git a/big2.txt b/big2.txt\n--- a/big2.txt\n+++ b/big2.txt\n@@ -1,1 +1,1 @@\n-x\n+y\n';
+  const gh = makeGh({ encNoneFor: ['big2.txt'] });
+  assert.throws(() => G.ghEmit({ draft: draftFor(diff), approvalHash: hashFor(diff), env: {} }, { runGh: gh }), /not base64|encoding:none|fail-closed/);
+  assert.ok(!endpointsOf(gh).some((e) => /\/git\/trees/.test(e)), 'no tree POST on an unavailable base');
+});
+
+test('#405 probe 7b: a binary base (a NUL byte) => refuse, no tree POST', () => {
+  const diff = 'diff --git a/bin.txt b/bin.txt\n--- a/bin.txt\n+++ b/bin.txt\n@@ -1,1 +1,1 @@\n-x\n+y\n';
+  const gh = makeGh({ binaryFor: ['bin.txt'] });
+  assert.throws(() => G.ghEmit({ draft: draftFor(diff), approvalHash: hashFor(diff), env: {} }, { runGh: gh }), /binary|fail-closed/);
+  assert.ok(!endpointsOf(gh).some((e) => /\/git\/trees/.test(e)), 'no tree POST on a binary base');
+});
+
+// === #405 probe 8: amplification size caps ===
+
+test('#405 probe 8a: a base > MAX_BASE_BYTES => refuse, no tree POST', () => {
+  const diff = 'diff --git a/big.txt b/big.txt\n--- a/big.txt\n+++ b/big.txt\n@@ -1,1 +1,1 @@\n-x\n+y\n';
+  const gh = makeGh({ baseContents: { 'big.txt': 'A'.repeat(1 * 1024 * 1024 + 1) } });   // 1MB + 1 > MAX_BASE_BYTES
+  assert.throws(() => G.ghEmit({ draft: draftFor(diff), approvalHash: hashFor(diff), env: {} }, { runGh: gh }), /MAX_BASE_BYTES|fail-closed/);
+  assert.ok(!endpointsOf(gh).some((e) => /\/git\/trees/.test(e)), 'no tree POST on an oversize base');
+});
+
+test('#405 probe 8b: a produced post-image > MAX_POST_IMAGE_BYTES (a huge added line) => refuse, ZERO network', () => {
+  const big = 'A'.repeat(3 * 1024 * 1024);   // 3MB add: under MAX_DIFF (5MB) but over MAX_POST_IMAGE (2MB)
+  const diff = `diff --git a/big.md b/big.md\nnew file mode 100644\n--- /dev/null\n+++ b/big.md\n@@ -0,0 +1,1 @@\n+${big}\n`;
+  const gh = makeGh();
+  assert.throws(() => G.ghEmit({ draft: draftFor(diff), approvalHash: hashFor(diff), env: {} }, { runGh: gh }), /MAX_POST_IMAGE_BYTES|fail-closed/);
+  assert.strictEqual(gh.calls.length, 0, 'an ADD post-image cap refuses BEFORE any network');
+});
+
+test('VALIDATE LOW: ghEmit self-defends its own diff-size bound (independent of the upstream cap)', () => {
   const gh = makeGh();
   const huge = `diff --git a/big.md b/big.md\nnew file mode 100644\n--- /dev/null\n+++ b/big.md\n@@ -0,0 +1,1 @@\n+${'A'.repeat(6 * 1024 * 1024)}\n`;
   assert.throws(() => G.ghEmit({ draft: draftFor(huge), approvalHash: hashFor(huge), env: {} }, { runGh: gh }), /size bound/);
   assert.strictEqual(gh.calls.length, 0);
 });
 
-// === HIGH-4: positional reconstruction ===
+// === #405 probe 9: a scrub-touched old-side line won't match the live base => refuse (the honest-scope fail-closed) ===
 
-test('HIGH-4: a `+`-leading body line is PRESERVED (positional, not a startsWith(+++) drop); trailing newline added', () => {
-  const files = G.reconstructPostImages(NEWFILE_DIFF);
-  assert.strictEqual(files.length, 1);
-  assert.strictEqual(files[0].path, 'loom-dogfood.md');
-  assert.strictEqual(files[0].mode, '100644');
-  assert.strictEqual(files[0].content, '# Dogfood\na normal line\n++ a body line that starts with a plus\n');
+test('#405 probe 9: a `[REDACTED]`-bearing old-side (context) line != the live base => refuse, NO tree POST', () => {
+  // the live base holds the real secret; the SCRUBBED diff carries a [REDACTED] context line => a faithful apply
+  // is impossible (emitting [REDACTED] would CORRUPT the file), so the applier REFUSES (safe egress philosophy).
+  const diff = ['diff --git a/c.txt b/c.txt', '--- a/c.txt', '+++ b/c.txt',
+    '@@ -1,3 +1,3 @@', ' config', ' API_KEY=[REDACTED]', '-footer', '+FOOTER', ''].join('\n');
+  const gh = makeGh({ baseContents: { 'c.txt': 'config\nAPI_KEY=sk-realrealrealsecret\nfooter\n' } });
+  assert.throws(() => G.ghEmit({ draft: draftFor(diff), approvalHash: hashFor(diff), env: {} }, { runGh: gh }), /context mismatch|moved base|cannot-apply-hunk/);
+  assert.ok(!endpointsOf(gh).some((e) => /\/git\/trees/.test(e)), 'a scrub-touched old-side never emits a corrupting post-image');
 });
 
-test('HIGH-4: a `\\ No newline at end of file` marker => NO trailing newline', () => {
-  const diff = [
-    'diff --git a/x.txt b/x.txt', 'new file mode 100644', '--- /dev/null', '+++ b/x.txt',
-    '@@ -0,0 +1,1 @@', '+no trailing nl', '\\ No newline at end of file', '',
-  ].join('\n');
-  assert.strictEqual(G.reconstructPostImages(diff)[0].content, 'no trailing nl');
+// === #405 probe 10 / M1: a path bearing a contents-URL-unsafe char => refuse at parse ===
+
+test('#405 probe 10: a path with a non-allowlisted char (? # % & space @) => parse refuses (positive path allowlist)', () => {
+  for (const bad of ['a?b.txt', 'a#b.txt', 'a%2e.txt', 'a&b.txt', 'a b.txt', 'a@b.txt']) {
+    const diff = `diff --git a/${bad} b/${bad}\n--- a/${bad}\n+++ b/${bad}\n@@ -1,1 +1,1 @@\n-x\n+y\n`;
+    assert.throws(() => G.parseDiffStanzas(diff), /not a safe relative path|fail-closed/);
+  }
 });
 
-test('HIGH-4: a MODIFY-hunk diff (no `new file mode`) => cannot-reconstruct-postimage (fail-closed)', () => {
-  const modify = 'diff --git a/src/foo.py b/src/foo.py\n--- a/src/foo.py\n+++ b/src/foo.py\n@@ -1 +1 @@\n-old\n+new\n';
-  assert.throws(() => G.reconstructPostImages(modify), /cannot-reconstruct-postimage/);
+// === #405 VALIDATE-board folds (architect + code-reviewer + hacker live-probe + honesty) ===
+
+test('#405 VALIDATE-hacker C1 (CRITICAL): a `new file mode 120000` (symlink) ADD => parse refuses (mode allowlist)', () => {
+  const sym = 'diff --git a/link b/link\nnew file mode 120000\n--- /dev/null\n+++ b/link\n@@ -0,0 +1,1 @@\n+../../../../etc/passwd\n';
+  assert.throws(() => G.parseDiffStanzas(sym), /not an allowed file mode|symlink|fail-closed/);
+  const gli = 'diff --git a/sub b/sub\nnew file mode 160000\n--- /dev/null\n+++ b/sub\n@@ -0,0 +1,1 @@\n+deadbeef\n';
+  assert.throws(() => G.parseDiffStanzas(gli), /not an allowed file mode|gitlink|fail-closed/);
+  // and end-to-end through ghEmit: ZERO network (the parse refuses before any gh call)
+  const gh = makeGh();
+  assert.throws(() => G.ghEmit({ draft: draftFor(sym), approvalHash: hashFor(sym), env: {} }, { runGh: gh }), /allowed file mode|symlink|fail-closed/);
+  assert.strictEqual(gh.calls.length, 0, 'a symlink-mode add never reaches the network');
 });
 
-test('HIGH-4: a DIVERGENT stanza path (diff --git b/safe.md vs +++ b/EVIL.md) => refuse', () => {
+test('#405: a 100755 (executable) new-file add is ALLOWED and emits mode 100755', () => {
+  const exe = 'diff --git a/run.sh b/run.sh\nnew file mode 100755\n--- /dev/null\n+++ b/run.sh\n@@ -0,0 +1,1 @@\n+#!/bin/sh\n';
+  const gh = makeGh();
+  G.ghEmit({ draft: draftFor(exe), approvalHash: hashFor(exe), env: {} }, { runGh: gh });
+  assert.strictEqual(treeBodyOf(gh).tree[0].mode, '100755', 'an executable add preserves 100755');
+});
+
+test('#405 (code-reviewer MED): a mode-change stanza (old mode / new mode) => parse refuses (never emit a wrong explicit mode)', () => {
+  const diff = ['diff --git a/s.sh b/s.sh', 'old mode 100644', 'new mode 100755', '--- a/s.sh', '+++ b/s.sh',
+    '@@ -1,1 +1,1 @@', '-echo old', '+echo new', ''].join('\n');
+  assert.throws(() => G.parseDiffStanzas(diff), /mode-change|fail-closed/);
+});
+
+test('#405 (architect MED — whitelist): a binary-patch header => parse refuses', () => {
+  const diff = ['diff --git a/img.png b/img.png', 'index 1..2 100644', 'GIT binary patch', 'literal 4', '', ''].join('\n');
+  assert.throws(() => G.parseDiffStanzas(diff), /binary|fail-closed/);
+});
+
+test('#405 (architect MED — whitelist): an UNRECOGNIZED header line => parse refuses (the parser is a whitelist)', () => {
+  const diff = ['diff --git a/x.txt b/x.txt', 'totally-bogus-header-line: evil', '--- a/x.txt', '+++ b/x.txt',
+    '@@ -1,1 +1,1 @@', '-a', '+A', ''].join('\n');
+  assert.throws(() => G.parseDiffStanzas(diff), /unrecognized header line|fail-closed/);
+});
+
+test('#405 VALIDATE-hacker M2: an env carrying a credential/config-injection key (GITHUB_TOKEN / GIT_CONFIG_COUNT) => refuse, zero network', () => {
+  for (const badKey of ['GITHUB_TOKEN', 'GIT_ASKPASS', 'GIT_CONFIG_COUNT']) {
+    const gh = makeGh();
+    const env = { PATH: '/usr/bin', [badKey]: 'x' };
+    assert.throws(() => G.ghEmit({ draft: draftFor(NEWFILE_DIFF), approvalHash: hashFor(NEWFILE_DIFF), env }, { runGh: gh }), /not a buildEmitEnv-sanitized env|killswitch/);
+    assert.strictEqual(gh.calls.length, 0, `env with ${badKey} refuses before any network`);
+  }
+});
+
+test('#405 (architect MED — attribution): a hunk whose context/removed line extends PAST base EOF => distinct refuse reason', () => {
+  const diff = 'diff --git a/e.txt b/e.txt\n--- a/e.txt\n+++ b/e.txt\n@@ -1,2 +1,2 @@\n a\n-b\n+B\n';
+  assert.throws(() => applyDiff(diff, 'a\n'), /past base EOF/);
+});
+
+test('#405 VALIDATE-architect F5 / hacker H1: the resolved baseCommitSha is bound into the commit message AND the PR body (attestable base,diff pair)', () => {
+  const gh = makeGh({ baseContents: { 'f.txt': MODIFY_BASE } });
+  G.ghEmit({ draft: draftFor(MODIFY_DIFF), approvalHash: hashFor(MODIFY_DIFF), env: {} }, { runGh: gh });
+  const baseSha = 'a'.repeat(40);
+  const commit = JSON.parse(gh.calls.find((c) => /\/git\/commits$/.test(c.args[1]) && c.method === 'POST').input);
+  assert.ok(commit.message.includes(`base-commit: ${baseSha}`), 'commit message binds the base sha');
+  const pull = JSON.parse(gh.calls.find((c) => /\/pulls$/.test(c.args[1]) && c.method === 'POST').input);
+  assert.ok(pull.body.includes(`base-commit: ${baseSha}`), 'PR body binds the base sha');
+});
+
+test('#405 probe 5d (code-reviewer LOW): a `\\ No newline` marker as the FIRST hunk line (no preceding line) => parse refuses', () => {
+  const diff = ['diff --git a/g.txt b/g.txt', '--- a/g.txt', '+++ b/g.txt',
+    '@@ -1,1 +1,1 @@', '\\ No newline at end of file', '-b', '+B', ''].join('\n');
+  assert.throws(() => G.parseDiffStanzas(diff), /no preceding|fail-closed/);
+});
+
+test('#405 (code-reviewer LOW): applyHunks([]) on the exported util => throws (no silent base passthrough)', () => {
+  assert.throws(() => G.applyHunks('whatever\n', []), /no hunks|fail-closed/);
+});
+
+// === rename/copy/delete are DEFERRED (fail-closed) ===
+
+test('#405: a rename / copy / delete stanza => parse refuses (deferred)', () => {
+  const ren = ['diff --git a/old.txt b/new.txt', 'similarity index 100%', 'rename from old.txt', 'rename to new.txt', ''].join('\n');
+  assert.throws(() => G.parseDiffStanzas(ren), /rename\/copy|fail-closed/);
+  const del = ['diff --git a/gone.txt b/gone.txt', 'deleted file mode 100644', '--- a/gone.txt', '+++ /dev/null', '@@ -1,1 +0,0 @@', '-x', ''].join('\n');
+  assert.throws(() => G.parseDiffStanzas(del), /delete|fail-closed/);
+});
+
+// === path divergence + new-file shape (HIGH-4 + the documented -0,0 shape) ===
+
+test('HIGH-4: a DIVERGENT stanza path (diff --git b/safe.md vs +++ b/EVIL.md) => parse refuses', () => {
   const diff = 'diff --git a/safe.md b/safe.md\nnew file mode 100644\n--- /dev/null\n+++ b/EVIL.md\n@@ -0,0 +1,1 @@\n+x\n';
-  assert.throws(() => G.reconstructPostImages(diff), /diverges|cannot-reconstruct/);
+  assert.throws(() => G.parseDiffStanzas(diff), /!=|diverge|fail-closed/);
 });
 
-test('HIGH-4: a hunk-count mismatch (header +2, body 1) => refuse', () => {
-  const diff = 'diff --git a/x b/x\nnew file mode 100644\n--- /dev/null\n+++ b/x\n@@ -0,0 +1,2 @@\n+only one\n';
-  assert.throws(() => G.reconstructPostImages(diff), /count mismatch|cannot-reconstruct/);
+test('VALIDATE fold: a `new file mode` stanza with a non -0,0 hunk old-side => parse refuses (byzantine)', () => {
+  const bad = 'diff --git a/x b/x\nnew file mode 100644\n--- /dev/null\n+++ b/x\n@@ -5,3 +1,1 @@\n+x\n';
+  assert.throws(() => G.parseDiffStanzas(bad), /-0,0|fail-closed/);
 });
 
-test('HIGH-4: ghEmit re-validates the reconstructed path — an egress-denied (.github) path => refuse, zero network past recon', () => {
+test('VALIDATE-HIGH fidelity: a multi-hunk new-file (both -0,0) => fail-closed via the non-ascending invariant, NOT a silent drop', () => {
+  const multi = [
+    'diff --git a/x.md b/x.md', 'new file mode 100644', '--- /dev/null', '+++ b/x.md',
+    '@@ -0,0 +1,2 @@', '+line a', '+line b',
+    '@@ -0,0 +3,1 @@', '+line c',
+    '',
+  ].join('\n');
+  // both hunks claim oldStart 0 => the strictly-ascending invariant refuses (a new file is single-hunk by construction).
+  const gh = makeGh();
+  assert.throws(() => G.ghEmit({ draft: draftFor(multi), approvalHash: hashFor(multi), env: {} }, { runGh: gh }), /ascending|overlap|cannot-apply-hunk/);
+  assert.strictEqual(gh.calls.length, 0, 'refuses before any network — never truncates');
+});
+
+test('HIGH-4: ghEmit re-validates the stanza path — an egress-denied (.github) path => refuse, ZERO network', () => {
   const gh = makeGh();
   const diff = 'diff --git a/.github/workflows/x.yml b/.github/workflows/x.yml\nnew file mode 100644\n--- /dev/null\n+++ b/.github/workflows/x.yml\n@@ -0,0 +1,1 @@\n+evil\n';
   assert.throws(() => G.ghEmit({ draft: draftFor(diff), approvalHash: hashFor(diff), env: {} }, { runGh: gh }), /egress-denied/);
   assert.strictEqual(gh.calls.length, 0, 'refused before any network');
 });
 
-// === HIGH-3: kernel-constant envelope + draft:true hard constant ===
+// === HIGH-3: kernel-constant envelope + draft:true hard constant (via the modify path) ===
 
 test('HIGH-3 + draft-const: the PR body/title/commit-message carry ONLY issueRef + the hash; draft:true', () => {
-  const gh = makeGh();
-  const diff = NEWFILE_DIFF; const h = hashFor(diff);
+  const gh = makeGh({ baseContents: { 'f.txt': MODIFY_BASE } });
+  const diff = MODIFY_DIFF; const h = hashFor(diff);
   G.ghEmit({ draft: draftFor(diff), approvalHash: h, env: {} }, { runGh: gh });
   const pull = JSON.parse(gh.calls.find((c) => /\/pulls$/.test(c.args[1]) && c.method === 'POST').input);
   assert.strictEqual(pull.draft, true, 'draft:true is a hard constant');
@@ -214,11 +475,8 @@ test('HIGH-3 + draft-const: the PR body/title/commit-message carry ONLY issueRef
   assert.ok(pull.body.includes(h) && pull.body.includes(`#${GOOD_ISSUE}`), 'body interpolates only the hash + issueRef');
   const commit = JSON.parse(gh.calls.find((c) => /\/git\/commits$/.test(c.args[1]) && c.method === 'POST').input);
   assert.ok(commit.message.includes(h) && commit.message.includes(`#${GOOD_ISSUE}`), 'commit message: hash + issueRef only');
-  // the tree body carries the reconstructed inline content (no blob sha) for base_tree-preserves-unlisted.
-  const tree = JSON.parse(gh.calls.find((c) => /\/git\/trees$/.test(c.args[1]) && c.method === 'POST').input);
+  const tree = treeBodyOf(gh);
   assert.strictEqual(typeof tree.base_tree, 'string');
-  assert.strictEqual(tree.tree[0].content, '# Dogfood\na normal line\n++ a body line that starts with a plus\n');
-  assert.strictEqual(tree.tree[0].sha, undefined, 'inline content, never a pre-created blob sha');
 });
 
 // === HIGH-1 / MEDIUM-5: dedup-on-key ===
@@ -232,12 +490,12 @@ test('HIGH-1: a 422 "Reference already exists" + an OPEN PR on THAT branch => de
   assert.ok(!endpointsOf(gh).some((e) => e === 'POST repos/owner/repo/pulls'), 'NO second create-PR');
 });
 
-test('HIGH-1 fold (laundering): ref exists but NO open loom PR => fail-CLOSED (ref-exists-no-open-pr), no PR created, no DELETE', () => {
-  const gh = makeGh({ refExists: true, existingPulls: [] });   // an actor pre-created the branch; no loom PR points at it
+test('HIGH-1 fold (laundering): ref exists but NO open loom PR => fail-CLOSED (ref-exists-no-open-pr), no PR, no DELETE', () => {
+  const gh = makeGh({ refExists: true, existingPulls: [] });
   const diff = NEWFILE_DIFF;
   assert.throws(() => G.ghEmit({ draft: draftFor(diff), approvalHash: hashFor(diff), env: {} }, { runGh: gh }), /ref-exists-no-open-pr|pre-existing branch/);
   assert.ok(!endpointsOf(gh).some((e) => e === 'POST repos/owner/repo/pulls'), 'never auto-creates a PR on a foreign ref');
-  assert.ok(!gh.calls.some((c) => c.method === 'DELETE'), 'no DELETE — we did NOT reserve this ref (must not delete a foreign branch)');
+  assert.ok(!gh.calls.some((c) => c.method === 'DELETE'), 'no DELETE — we did NOT reserve this ref');
 });
 
 test('LOW fold (dedup head-ref): an OPEN PR with a DIFFERENT head.ref is NOT trusted as deduped => fail-closed', () => {
@@ -271,10 +529,26 @@ test('runGh is FAIL-CLOSED: a non-zero gh exit THROWS (not null) and carries std
   if (ghPath.status !== 0) { skipped += 1; process.stdout.write('  SKIP (gh absent) runGh fail-closed\n'); return; }
   let threw = false;
   try {
-    // an unknown gh subcommand exits non-zero LOCALLY (usage error) — no network. fail-OPEN would return null.
     G.runGh(['loom-no-such-subcommand-xyz'], { env: { PATH: process.env.PATH }, timeoutMs: 8000 });
   } catch (e) { threw = true; assert.ok(typeof e.stderr === 'string', 'the error carries stderr'); }
   assert.ok(threw, 'runGh THROWS on a non-zero exit (fail-closed, NOT a swallowed null)');
+});
+
+// === CRLF + multi-hunk modify (faithful reconstruction across the new-side shift) ===
+
+test('#405: a CRLF base is reconstructed faithfully (\\r preserved as line content)', () => {
+  const diff = ['diff --git a/w.txt b/w.txt', '--- a/w.txt', '+++ b/w.txt',
+    '@@ -1,2 +1,2 @@', ' a\r', '-b\r', '+B\r', ''].join('\n');
+  assert.strictEqual(applyDiff(diff, 'a\r\nb\r\n'), 'a\r\nB\r\n');
+});
+
+test('#405: a 2-hunk modify with a net new-side shift reconstructs exactly', () => {
+  const base = 'l1\nl2\nl3\nl4\nl5\n';
+  const diff = ['diff --git a/m.txt b/m.txt', '--- a/m.txt', '+++ b/m.txt',
+    '@@ -1,2 +1,3 @@', ' l1', '-l2', '+L2', '+inserted',
+    '@@ -4,2 +5,2 @@', ' l4', '-l5', '+L5', ''].join('\n');
+  // l3 is the inter-hunk gap (carried verbatim from base between the two changed regions).
+  assert.strictEqual(applyDiff(diff, base), 'l1\nL2\ninserted\nl3\nl4\nL5\n');
 });
 
 (async () => {
