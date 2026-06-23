@@ -165,8 +165,13 @@ test('the REAL CLI in a DETACHED session: piping the token to STDIN does NOT min
     // test runner has a tty (VALIDATE reviewer HIGH — without detach the CLI blocks on /dev/tty for the full
     // timeout in a local tty env). This is the headless contract the CLI fail-closes on.
     const r = spawnSync(process.execPath, [CLI, '--draft', t.draftPath, '--approvals-dir', t.approvalsDir, '--broker-user', 'lb', '--wrapper', '/opt/w'],
-      { input: t.hash.slice(0, 8) + '\n', stdio: ['pipe', 'pipe', 'pipe'], detached: true, timeout: 8000 });
+      { input: t.hash.slice(0, 8) + '\n', stdio: ['pipe', 'pipe', 'pipe'], detached: true, timeout: 8000, encoding: 'utf8' });
+    // non-vacuous (CodeRabbit nitpick): assert the CLI exited ON ITS OWN (not killed by the harness timeout) AND
+    // fail-closed on the missing tty SPECIFICALLY — else a timeout-kill / require-crash would also leave the dir
+    // empty and pass for the wrong reason.
+    assert.ok(!r.error, 'the CLI exited on its own, not killed by the harness (' + (r.error && r.error.message) + ')');
     assert.notStrictEqual(r.status, 0, 'the CLI exited non-zero (no /dev/tty in a detached session)');
+    assert.match(String(r.stderr), /tty/i, 'the CLI fail-closed on the missing controlling terminal');
     assert.strictEqual(fs.readdirSync(t.approvalsDir).length, 0, 'NO approval minted from a piped-stdin token');
   } finally { fs.rmSync(t.dir, { recursive: true, force: true }); }
 });
