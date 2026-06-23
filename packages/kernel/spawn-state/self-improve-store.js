@@ -83,6 +83,11 @@ const KIND_RISK = {
   'agent-evolution': 'high',         // rewrite persona prompt — load-bearing
 };
 
+// SPACE-FORM ONLY (`--key value` as separate tokens, or a bare `--flag` -> true). The `=`-form
+// (`--key=value`) is NOT supported — `--key=value` would become the whole-token key with the value
+// lost. This is safe for the in-repo callers, which invoke the store via spawnSync with an argv
+// ARRAY (no shell parsing) and only ever pass space-form; a direct CLI / shell caller must use
+// space-form too. (Evidence is NOT an arg at all — it is read from stdin via --evidence-stdin.)
 function parseArgs(argv) {
   const args = {};
   for (let i = 0; i < argv.length; i++) {

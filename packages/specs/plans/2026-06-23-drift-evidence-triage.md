@@ -34,7 +34,7 @@ genuine recurrence shows up across days.
 | `drift:` is emitted ONLY by drift-audit's bumpSignal | `grep -rn 'drift:' --include=*.js packages \| grep bump\|signal` | only `drift-audit.js:246`; rest are `signalPolicy`/comments |
 | Baseline green | `node tests/unit/scripts/{self-improve-store,drift-audit}.test.js` | 25/0 and 19/0 |
 | `scrubEmitDiff` redacts a plain-quote secret (not just diffs) | `scrubEmitDiff('leaked sk-ant-AAAA… in code')` | `leaked [REDACTED] in code` |
-| `parseArgs` mis-parses an evidence value starting with `--` | `parseArgs(['--signal','drift:x','--evidence','--force was used'])` | `{signal, evidence:true, "force was used":true}` — evidence LOST ⇒ `=`-form fix justified |
+| argv cannot safely carry an evidence value starting with `--` | `parseArgs(['--signal','drift:x','--evidence','--force was used'])` | `{signal, evidence:true, "force was used":true}` — evidence LOST ⇒ evidence must NOT be an argv value (final design: stdin) |
 
 ## Design
 
@@ -44,19 +44,23 @@ genuine recurrence shows up across days.
 a bounded ring (last `MAX_EVIDENCE_SAMPLES = 10`, newest-last). Absent on old records + on
 evidence-less bumps ⇒ backward-compatible.
 
-**`self-improve-store.js`** _(the argv `=`-form transport below was SUPERSEDED by a stdin transport
-in the CodeRabbit fold — see the final section; evidence now arrives on stdin, parseArgs is
-unchanged from origin/main, session/at are space-form.)_
-- ~~`parseArgs`: also accept `--key=value`~~ (REVERTED in the fold — evidence moved to stdin, so the
-  `=`-form's only justification, a leading-`--` evidence value, no longer applies).
-- `cmdBump`: new optional args `--evidence=<quote>`, `--session=<sid>`, `--at=<iso>`. When evidence
-  present → `sanitizeEvidence` (lazy-require `egress/scrub.scrubEmitDiff` → strip control chars →
-  collapse ws → bound `MAX_EVIDENCE_LEN = 500`) → `appendSample` (immutable, bounded). sid bounded
-  +control-char-rejected; `at` parse-checked, else `now`. **Immutable**: new entry object + new
-  `signals` map (no in-place mutation). Evidence-less bump = today's behavior exactly.
-- Lazy require keeps the hot `bumpBatch` path free of egress; the store is the scrub authority so it
-  never accretes raw secrets regardless of caller (task requirement). Fail-open w/ stderr warning if
-  scrub unreachable (same pattern as the lock fallback) — but it is in-package, always present.
+_The transport below describes the FINAL (post-fold) design: evidence is passed on STDIN, NOT argv.
+An earlier draft used an argv `--evidence=<quote>` `=`-form (with a `parseArgs` `=`-form change); the
+CodeRabbit fold moved it to stdin to close the argv process-table exposure, and reverted `parseArgs`._
+
+**`self-improve-store.js`**
+- `parseArgs`: UNCHANGED from origin/main (space-form `--key value` only; documented in the function).
+- `cmdBump`: reads evidence from STDIN when `--evidence-stdin` is set (`readStdinEvidence`, bounded
+  64KB, isTTY-guarded, EAGAIN-retry, fail-open); `--session <sid>` + `--at <iso>` are space-form argv
+  (non-sensitive). When evidence present → `sanitizeEvidence` (lazy-require `egress/scrub` →
+  `scrubEmitDiff` canonical+base64 → unconditional entropy pass → `sanitizeForJsonl` → collapse ws →
+  bound `MAX_EVIDENCE_LEN = 500`) → `appendSample` (immutable, frozen elements, bounded). sid bounded
+  +control-char-rejected; `at` parse-checked + normalized to ISO, else `now`. A non-string signal
+  (argv mis-parse) is rejected. **Immutable**: new entry object + new `signals` map (no mutation of
+  the loaded state). Evidence-less bump = origin/main behavior exactly.
+- Lazy require (resolved inside `sanitizeEvidence` after the empty-input early-return) keeps the hot
+  `bumpBatch` path + every evidence-less bump free of egress; the store is the scrub authority so it
+  never accretes raw secrets regardless of caller. Scrub-unreachable ⇒ drop the evidence (never raw).
 
 **`drift-audit.js`**
 - `verifyJudgeOutputDetailed(items, opts)` returns `[{driftClass, evidence}]` (same allowlist /
@@ -65,9 +69,9 @@ unchanged from origin/main, session/at are space-form.)_
 - `auditTranscript`: build `evidenceByClass` Map from the detailed survivors; compute `reviewedAt`
   once; default emit threads the evidence via `bumpSignal('drift:'+c, {evidence, sessionId, at})`,
   with evidence read from `evidenceByClass.get(c)`. Tests pass their own `emitFn(c)` ⇒ unaffected.
-- `bumpSignal(signal, {evidence, sessionId, at} = {})`: pass `--evidence=<value>` (=-form, bounded),
-  `--session=<sid>`, `--at=<iso>` only when evidence present. Not exported; only the CLI default emit
-  uses it.
+- `bumpSignal(signal, {evidence, sessionId, at} = {})`: pushes `--evidence-stdin` + writes the quote
+  on `spawnSync` `input` (bounded `MAX_EVIDENCE_INPUT_LEN`); `--session`/`--at` space-form, skipped if
+  `--`-leading (anti-mis-parse). Not exported; only the CLI default emit uses it.
 
 ### Part 2 — cross-window convergence gate (drift-family only)
 
