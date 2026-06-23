@@ -103,9 +103,9 @@ paths). `cmdPending --json` already serializes full candidates ⇒ samples appea
 1. Update T16/T18/T19: seed `firstSeen`/`lastSeen` >1 day apart.
 2. NEW: gate blocks a same-day one-arc drift burst (count≥3, span 0) → 0 candidates.
 3. NEW: gate opens at >1-day span → 1 candidate.
-4. NEW: `cmdBump --evidence/--session/--at` persists samples ring; bounded to 10 (newest kept).
+4. NEW: `cmdBump --evidence-stdin` (quote on STDIN; optional `--session`/`--at` argv) persists samples ring; bounded to 10 (newest kept).
 5. NEW (non-vacuous): evidence carrying a planted `sk-ant-…` secret is `[REDACTED]` in the store.
-6. NEW: `--evidence=--force …` round-trips (proves the `=`-form parser fix).
+6. NEW: STDIN evidence beginning with `--` (e.g. `--force …`) round-trips verbatim (proves the stdin transport avoids the argv flag-parsing hazard).
 7. NEW: converged drift candidate exposes `samples` in `pending --json`.
 8. NEW: old counters record (no samples) + evidence-less bump = no crash, no samples key added.
 9. drift-audit: extend an e2e test to assert the default emit threads evidence (or unit-test
