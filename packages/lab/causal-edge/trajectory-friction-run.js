@@ -30,7 +30,11 @@ const {
 const { splitRecord } = require('../issue-corpus/corpus');
 const { toollessArgs } = require('../_lib/claude-headless');
 const { emitEgressAlert } = require('../../kernel/egress/alert');   // #412 — observable refusal (node-core leaf; no cycle)
-const { assertHostClaudeAllowed } = require('../_lib/host-claude-guard');   // #430 — the shared fail-closed armed-decision (the actor + the judges)
+const {
+  assertHostClaudeAllowed,   // #430 — the shared fail-closed armed-decision (the actor + the judges)
+  resolveCrossUidPresence, isDeployFlagSet, actorKeyMarkerPresent,   // #430 PR-2 — the single-home cross-uid presence/polarity core
+  resolveJudgeLaunch,   // #430 PR-2 — the shared judge cross-uid routing seam (the friction labeler is a judge chokepoint)
+} = require('../_lib/host-claude-guard');
 
 const DEFAULT_MODEL = 'claude-sonnet-4-6';
 const DEFAULT_TIMEOUT_MS = 180000;
@@ -48,17 +52,17 @@ const MAX_BUFFER = 16 * 1024 * 1024;
 function defaultActorLauncher() {
   const actorUser = (process.env.LOOM_ACTOR_USER || '').trim();
   const wrapperPath = (process.env.LOOM_ACTOR_WRAPPER || '').trim();
-  if (actorUser.length && wrapperPath.length) return { mode: 'cross-uid', actorUser, wrapperPath };
-  if (actorUser.length || wrapperPath.length) return { mode: 'refuse', reason: 'half-configured' };
-  // both empty/unset: a deployed box (the explicit flag, OR the deploy-installed custody marker) fails CLOSED.
-  // the explicit deployed-signal — boolean-NORMALIZED so a typo fails CLOSED (deployed), never OPEN (direct):
-  // 1/true/yes/on (trimmed, case-insensitive) all count (VALIDATE-hacker M1 — a flag-only deploy with `true` must
-  // not silently run as 501).
-  const flag = (process.env.LOOM_ACTOR_REQUIRE_UID_SEP || '').trim().toLowerCase();
-  const flagged = flag === '1' || flag === 'true' || flag === 'yes' || flag === 'on';
-  const marker = process.env.LOOM_ACTOR_KEY_MARKER || '/etc/loom/actor-anthropic.key';
-  const markerPresent = fs.existsSync(marker);   // existsSync returns false on ANY error (incl. an unreadable path) and never throws => a clean/dev/CI box (no such file) is not-deployed
-  if (flagged || markerPresent) return { mode: 'refuse', reason: 'deployed-unconfigured' };
+  // #430 PR-2 — the presence/polarity now lives in the shared resolveCrossUidPresence (single-home with the judge
+  // launcher; VERIFY architect #1/#6). The deployed-signal stays actor-specific: the explicit LOOM_ACTOR_REQUIRE_UID_SEP
+  // flag OR the deploy-installed custody marker. isDeployFlagSet is LENIENT (any non-falsey token, incl. an operator
+  // TYPO, counts as deployed) so a typo'd flag fails CLOSED (deployed-unconfigured), never OPEN to direct/501 — this
+  // makes the "a typo fails CLOSED" intent TRUE (CodeRabbit major: the prior normalizeBool deployed-signal treated a
+  // typo as not-deployed => fail-OPEN). The valid-token + '0' behavior is unchanged (truth-table test :152 guards it).
+  const deployedSignal = isDeployFlagSet(process.env.LOOM_ACTOR_REQUIRE_UID_SEP) || actorKeyMarkerPresent();
+  const p = resolveCrossUidPresence({ actorUser, wrapperPath, deployedSignal });
+  if (p.mode === 'present') return { mode: 'cross-uid', actorUser: p.actorUser, wrapperPath: p.wrapperPath };
+  if (p.mode === 'half-configured') return { mode: 'refuse', reason: 'half-configured' };
+  if (p.mode === 'deployed-unconfigured') return { mode: 'refuse', reason: 'deployed-unconfigured' };
   return { mode: 'direct' };
 }
 
@@ -171,21 +175,33 @@ function captureProcessGraph(record, opts = {}) {
 // any refuse / parse-failure / unknown-enum => null block (no friction recorded).
 // --------------------------------------------------------------------------
 
-function claudeOnce(bin, prompt, timeout, extraArgs = [], maxBudgetUsd = null, { isEmitArmedFn, spawnFn } = {}) {
+function claudeOnce(bin, prompt, timeout, extraArgs = [], maxBudgetUsd = null, { isEmitArmedFn, spawnFn, judgeLauncherFn } = {}) {
   // #430 — the armed-refusal guard, BEFORE any spawn: a host-side claude -p must NOT run while a live emit is armed.
   const gate = assertHostClaudeAllowed({ isEmitArmedFn, spawn: 'friction-labeler' });
   if (!gate.allowed) return { ok: false, reason: gate.reason };
-  if (!bin) return { ok: false, reason: 'labeler-unavailable' };
+  // #430 PR-2 — cross-uid routing, resolved STRICTLY AFTER the armed guard (the de-correlation invariant: never build
+  // a cross-uid spawn while armed). DIRECT (unset/clean — the common case) is byte-identical below; CROSS-UID runs as
+  // the non-allowlisted loom-actor uid via the wrapper (which owns the tool-less recipe + model + cost cap — no caller
+  // arg rides it); REFUSE fails closed.
+  const launch = resolveJudgeLaunch({ judgeLauncherFn });
+  if (launch.mode === 'refuse') return { ok: false, reason: launch.reason };
   let res;
-  // The untrusted prompt rides STDIN, never a positional argv (RP-1a-g: the variadic
-  // flags eat a trailing positional; also avoids ARG_MAX on a large label input).
-  // extraArgs (default []) appends AFTER `--model`: the ③.2.2c live loop threads the tool-less
-  // recipe; default [] keeps the sealed-corpus path identical. ③.2.3 H4: maxBudgetUsd (default null)
-  // appends `--max-budget-usd` only when finite & > 0 — a per-call cost cap on the host-side judge.
-  const args = ['-p', '--model', DEFAULT_MODEL, ...(Array.isArray(extraArgs) ? extraArgs : [])];
-  if (Number.isFinite(maxBudgetUsd) && maxBudgetUsd > 0) args.push('--max-budget-usd', String(maxBudgetUsd));
   const spawn = (typeof spawnFn === 'function' ? spawnFn : spawnSync);   // #430 test seam — non-vacuity (mocked-armed => spawn never called)
-  try { res = spawn(bin, args, { input: prompt, shell: false, timeout, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 }); }
+  let command; let args;
+  if (launch.mode === 'cross-uid') {
+    command = launch.command; args = launch.args;   // sudo -n -u loom-actor <wrapper> --loom-judge; prompt on STDIN
+  } else {
+    // DIRECT — run as the operator uid (byte-identical to the pre-PR-2 path). The untrusted prompt rides STDIN, never a
+    // positional argv (RP-1a-g: the variadic flags eat a trailing positional; also avoids ARG_MAX on a large input).
+    // extraArgs (default []) appends AFTER `--model`: the ③.2.2c live loop threads the tool-less recipe; default []
+    // keeps the sealed-corpus path identical. ③.2.3 H4: maxBudgetUsd (default null) appends `--max-budget-usd` only
+    // when finite & > 0 — a per-call cost cap on the host-side judge.
+    if (!bin) return { ok: false, reason: 'labeler-unavailable' };
+    command = bin;
+    args = ['-p', '--model', DEFAULT_MODEL, ...(Array.isArray(extraArgs) ? extraArgs : [])];
+    if (Number.isFinite(maxBudgetUsd) && maxBudgetUsd > 0) args.push('--max-budget-usd', String(maxBudgetUsd));
+  }
+  try { res = spawn(command, args, { input: prompt, shell: false, timeout, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 }); }
   catch { return { ok: false, reason: 'labeler-unavailable' }; }
   if (res.error && res.error.code === 'ETIMEDOUT') return { ok: false, reason: 'timeout' };
   if (res.status !== 0) return { ok: false, reason: 'labeler-unavailable' };

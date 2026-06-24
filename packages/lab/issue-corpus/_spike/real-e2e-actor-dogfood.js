@@ -79,9 +79,9 @@ function git(args, cwd) { return execFileSync('git', args, { cwd, encoding: 'utf
   out('\n--- grading the candidate (behavioral in the sandbox + blind-semantic + reference) ... ---');
   const legs = {
     behavioralFn: makeBehavioralFn(backend),
-    semanticFn: makeBlindSemanticJudge({ bin: claudeBin }),
-    referenceFn: makeReferenceTeacher({ bin: claudeBin }),
-    frictionFn: makeFrictionLabeler({ bin: claudeBin }),
+    semanticFn: makeBlindSemanticJudge({ bin: claudeBin, toolless: true }),   // #430 PR-2 — direct-path tool-less pin
+    referenceFn: makeReferenceTeacher({ bin: claudeBin, toolless: true }),
+    frictionFn: makeFrictionLabeler({ bin: claudeBin, toolless: true }),
   };
   const result = await scoreAttempt(record, candidate, 0, legs, { tier: record.contamination_tier, trajectory: cap.events });
   out(`  behavioral: ${JSON.stringify(result.behavioral)}`);

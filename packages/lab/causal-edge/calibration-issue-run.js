@@ -26,7 +26,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { spawnSync } = require('child_process');
 const { toollessArgs } = require('../_lib/claude-headless');
-const { assertHostClaudeAllowed } = require('../_lib/host-claude-guard');   // #430 — shared fail-closed armed-decision
+const { assertHostClaudeAllowed, resolveJudgeLaunch } = require('../_lib/host-claude-guard');   // #430 — shared armed-decision + PR-2 cross-uid routing
 const {
   scoreIssueCalibration, WORKED_EXAMPLE_FIELDS,
   isTestInfraPath,  // ③.2.1a A6 — the SINGLE-home test-infra path predicate (hashTestTree reuses it)
@@ -125,24 +125,32 @@ function resolveClaude() {
 // — the calibration-run.js H5 discipline; never shell-interpreted. `--model` is PINNED
 // (the W3 lesson: the child inherits the parent's model, which may be unavailable).
 const JUDGE_MODEL = 'claude-sonnet-4-6';
-function claudeOnce(bin, prompt, timeout, extraArgs = [], maxBudgetUsd = null, { isEmitArmedFn, spawnFn } = {}) {
+function claudeOnce(bin, prompt, timeout, extraArgs = [], maxBudgetUsd = null, { isEmitArmedFn, spawnFn, judgeLauncherFn } = {}) {
   // #430 — the armed-refusal guard, BEFORE any spawn (covers BOTH leg B blind judge + leg C reference teacher).
   const gate = assertHostClaudeAllowed({ isEmitArmedFn, spawn: 'calibration-judge' });
   if (!gate.allowed) return { ok: false, reason: gate.reason };
-  if (!bin) return { ok: false, reason: 'judge-unavailable' };
+  // #430 PR-2 — cross-uid routing, STRICTLY AFTER the armed guard. DIRECT (the common case) is byte-identical below;
+  // CROSS-UID runs as the non-allowlisted loom-actor uid via the wrapper (which owns the tool-less recipe + model +
+  // cost cap — no caller arg rides it); REFUSE fails closed.
+  const launch = resolveJudgeLaunch({ judgeLauncherFn });
+  if (launch.mode === 'refuse') return { ok: false, reason: launch.reason };
   let res;
-  // The prompt rides STDIN, not a trailing argv (CodeRabbit #316 + the W3 runner pattern).
-  // NOT a shell-injection fix — `shell:false` already passes argv straight to execve, never a
-  // shell — but ARG_MAX-robust for a large issue+patch prompt + consistent with
-  // trajectory-friction-run.js's claudeOnce.
-  // extraArgs (default []) appends AFTER `--model`: the ③.2.2c live loop threads the tool-less
-  // recipe (`--tools "" --strict-mcp-config`) so a prompt-injected judge cannot take a host action.
-  // Default [] keeps the sealed-corpus path byte-identical. ③.2.3 H4: maxBudgetUsd (default null)
-  // appends `--max-budget-usd` only when finite & > 0 — a per-call cost cap on the host-side judge.
-  const args = ['-p', '--model', JUDGE_MODEL, ...(Array.isArray(extraArgs) ? extraArgs : [])];
-  if (Number.isFinite(maxBudgetUsd) && maxBudgetUsd > 0) args.push('--max-budget-usd', String(maxBudgetUsd));
   const spawn = (typeof spawnFn === 'function' ? spawnFn : spawnSync);   // #430 test seam — non-vacuity (mocked-armed => spawn never called)
-  try { res = spawn(bin, args, { input: prompt, shell: false, timeout, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 }); }
+  let command; let args;
+  if (launch.mode === 'cross-uid') {
+    command = launch.command; args = launch.args;   // sudo -n -u loom-actor <wrapper> --loom-judge; prompt on STDIN
+  } else {
+    // DIRECT — run as the operator uid (byte-identical to the pre-PR-2 path). The prompt rides STDIN, not a trailing
+    // argv (CodeRabbit #316 + the W3 runner pattern; ARG_MAX-robust for a large issue+patch prompt). extraArgs
+    // (default []) appends AFTER `--model`: the ③.2.2c live loop threads the tool-less recipe so a prompt-injected
+    // judge cannot take a host action; default [] keeps the sealed-corpus path byte-identical. ③.2.3 H4: maxBudgetUsd
+    // (default null) appends `--max-budget-usd` only when finite & > 0 — a per-call cost cap on the host-side judge.
+    if (!bin) return { ok: false, reason: 'judge-unavailable' };
+    command = bin;
+    args = ['-p', '--model', JUDGE_MODEL, ...(Array.isArray(extraArgs) ? extraArgs : [])];
+    if (Number.isFinite(maxBudgetUsd) && maxBudgetUsd > 0) args.push('--max-budget-usd', String(maxBudgetUsd));
+  }
+  try { res = spawn(command, args, { input: prompt, shell: false, timeout, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 }); }
   catch { return { ok: false, reason: 'judge-unavailable' }; }
   if (res.error && res.error.code === 'ETIMEDOUT') return { ok: false, reason: 'timeout' };
   if (res.status !== 0) return { ok: false, reason: 'judge-unavailable' };
@@ -177,7 +185,12 @@ function makeBlindSemanticJudge({ bin = resolveClaude(), timeout = 60000, toolle
 }
 
 // LEG C — TEACHING: MAY include accepted_diff; separate invocation; write-only.
-function makeReferenceTeacher({ bin = resolveClaude(), timeout = 60000 } = {}) {
+// #430 PR-2 (VERIFY hacker HIGH): leg C is the highest-value chokepoint — the ONLY judge that may see accepted_diff
+// AND it ran un-pinned (tool-BEARING) in the direct path. toolless (default false = byte-identical sealed-corpus
+// path) pins the tool-less recipe as the direct-path inner layer; maxBudgetUsd caps the cost. The cross-uid path
+// (deployed boxes) is tool-less by construction via the wrapper regardless of this flag.
+function makeReferenceTeacher({ bin = resolveClaude(), timeout = 60000, toolless = false, maxBudgetUsd = null } = {}) {
+  const extraArgs = toollessArgs(toolless);
   return function referenceFn(refInput, candidate_patch /* , verdicts */) {
     const base = {};
     for (const f of WORKED_EXAMPLE_FIELDS) base[f] = null;
@@ -190,7 +203,7 @@ function makeReferenceTeacher({ bin = resolveClaude(), timeout = 60000 } = {}) {
     const prompt = 'Compare a candidate patch to the ACCEPTED reference fix. Reply strict JSON '
       + '{"reference_divergence": 0.0-1.0}. Higher = more divergent.\n\nACCEPTED:\n' + String(refInput.accepted_diff || '')
       + '\n\nCANDIDATE:\n' + String(candidate_patch || '');
-    const r = claudeOnce(bin, prompt, timeout);
+    const r = claudeOnce(bin, prompt, timeout, extraArgs, maxBudgetUsd);
     base.reference_divergence = (r.ok && typeof r.obj.reference_divergence === 'number') ? r.obj.reference_divergence : null;
     return base;
   };
@@ -205,13 +218,16 @@ async function runIssueCalibration(records, attemptsPerIssue, { backend, patchFo
   // claudeBin: undefined => resolve the real binary (live run); null => disable
   // the LLM legs (fail-closed) for a deterministic/CI-safe run.
   const bin = claudeBin === undefined ? resolveClaude() : claudeBin;
+  // #430 PR-2 (VALIDATE code-reviewer HIGH) — this is the module's public live-run API; pin toolless:true on the
+  // LLM legs so its DIRECT path has the tool-less inner layer too (consistency with earned-grounding; the cross-uid
+  // path is tool-less via the wrapper regardless). A passed frictionFn keeps the caller's choice.
   const legs = {
     behavioralFn: makeBehavioralFn(backend),
-    semanticFn: makeBlindSemanticJudge({ bin }),
-    referenceFn: makeReferenceTeacher({ bin }),
+    semanticFn: makeBlindSemanticJudge({ bin, toolless: true }),
+    referenceFn: makeReferenceTeacher({ bin, toolless: true }),
     // W4: WIRE the W3 friction labeler — without a frictionFn, scoreAttempt builds NO
     // resolution_friction block and the friction map is empty-by-construction (§6a).
-    frictionFn: frictionFn || makeFrictionLabeler({ bin }),
+    frictionFn: frictionFn || makeFrictionLabeler({ bin, toolless: true }),
   };
   // W4: capture the top-level `claude -p` trajectory per attempt (the actor runs
   // top-level — the parent PostToolUse:Agent hook cannot see a sub-agent's tool calls).

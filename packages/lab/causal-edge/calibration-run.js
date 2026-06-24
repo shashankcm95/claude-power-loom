@@ -23,7 +23,8 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const { spawnSync } = require('child_process');
-const { assertHostClaudeAllowed } = require('../_lib/host-claude-guard');   // #430 — shared fail-closed armed-decision
+const { assertHostClaudeAllowed, resolveJudgeLaunch } = require('../_lib/host-claude-guard');   // #430 — shared armed-decision + PR-2 cross-uid routing
+const { toollessArgs } = require('../_lib/claude-headless');   // #430 PR-2 — direct-path tool-less inner layer (B ⊇ A)
 
 const PROMPT_PATH = path.join(__dirname, 'rung2-judge-prompt.md');
 const FIXTURES_PATH = path.join(__dirname, 'calibration-fixtures.json');
@@ -91,25 +92,43 @@ function makeClaudePJudge(opts) {
   const promptSpec = o.promptSpec || fs.readFileSync(PROMPT_PATH, 'utf8');
   const timeout = o.timeoutMs || DEFAULT_TIMEOUT_MS;
   const model = o.model;
+  // #430 PR-2 — toolless (default false = byte-identical) pins the tool-less recipe in the DIRECT path: claudePJudge
+  // was the ONE chokepoint with no tool-less inner layer (B ⊇ A; VERIFY architect #8). maxBudgetUsd (default null) is
+  // the per-call cost-cap parity with the other three chokepoints. The cross-uid path is tool-less via the wrapper.
+  const extraArgs = toollessArgs(o.toolless || false);
+  const maxBudgetUsd = o.maxBudgetUsd;
   // #430 — isEmitArmedFn is a TEST-ONLY seam: NO production caller may set it (it would disarm the armed guard).
   // runCalibration (the production caller) builds this with explicit fields only — never a spread of an opts bag.
   // The CI invariant (judge-labeler-armed-guard.test.js) + the leaf comment (host-claude-guard.js) guard the drift.
   const isEmitArmedFn = o.isEmitArmedFn;
   const spawnFn = o.spawnFn;               // #430 test seam (non-vacuity; a spawn impl, NOT a disarm lever)
+  const judgeLauncherFn = o.judgeLauncherFn;   // #430 PR-2 TEST-ONLY routing seam (mirrors actorLauncherFn)
   return function claudePJudge(edge) {
     // #430 — the armed-refusal guard, BEFORE any spawn: no host-side claude -p while a live emit is armed.
     const gate = assertHostClaudeAllowed({ isEmitArmedFn, spawn: 'rung2-judge' });
     if (!gate.allowed) return { supported: false, fallback_reason: gate.reason };
-    if (!bin) return { supported: false, fallback_reason: 'judge-unavailable' };
-    // PR-2 (#430 plan §8): normalize to STDIN (input: renderPrompt(...), args:['-p']) BEFORE cross-uid routing —
-    // the positional-argv form is incompatible with the --loom-judge wrapper contract (stdin-based). Left as argv
-    // for PR-1 (the armed guard above is purely additive; the spawn shape is unchanged in this PR).
-    const args = ['-p', renderPrompt(promptSpec, edge)];
-    if (model) args.push('--model', model);
-    let res;
+    // #430 PR-2 — cross-uid routing, STRICTLY AFTER the armed guard. DIRECT (the common case) is byte-identical to the
+    // (now stdin-normalized) path below; CROSS-UID runs as the non-allowlisted loom-actor uid via the wrapper; REFUSE
+    // fails closed to the judge's native shape.
+    const launch = resolveJudgeLaunch({ judgeLauncherFn });
+    if (launch.mode === 'refuse') return { supported: false, fallback_reason: launch.reason };
     const spawn = (typeof spawnFn === 'function' ? spawnFn : spawnSync);
+    // PR-2 stdin-normalize: the prompt rides STDIN (was a positional argv + input:'') — the contract the --loom-judge
+    // wrapper requires + parity with the other three claudeOnce chokepoints. shell:false already passes argv straight
+    // to execve, so this is ARG_MAX-robustness + wrapper-compatibility, not a shell-injection fix.
+    const prompt = renderPrompt(promptSpec, edge);
+    let command; let args;
+    if (launch.mode === 'cross-uid') {
+      command = launch.command; args = launch.args;   // sudo -n -u loom-actor <wrapper> --loom-judge; prompt on STDIN
+    } else {
+      if (!bin) return { supported: false, fallback_reason: 'judge-unavailable' };
+      command = bin;
+      args = ['-p', ...(model ? ['--model', model] : []), ...extraArgs];
+      if (Number.isFinite(maxBudgetUsd) && maxBudgetUsd > 0) args.push('--max-budget-usd', String(maxBudgetUsd));
+    }
+    let res;
     try {
-      res = spawn(bin, args, { input: '', shell: false, timeout, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 });
+      res = spawn(command, args, { input: prompt, shell: false, timeout, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 });
     } catch {
       return { supported: false, fallback_reason: 'judge-unavailable' };
     }

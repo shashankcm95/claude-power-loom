@@ -12,6 +12,7 @@
 // call site maps { allowed:false } to its OWN native fail-closed shape (#430 VERIFY architect HIGH). The security
 // polarity lives HERE, in ONE place, so it cannot diverge across the (now five) call sites — the DIP win.
 
+const fs = require('fs');
 const { emitEgressAlert } = require('../../kernel/egress/alert');   // node-core leaf; no cycle
 
 // The DEFAULT arm-state source (a DIP seam: tests inject isEmitArmedFn). Reads the deployment's egress custody via
@@ -50,4 +51,130 @@ function assertHostClaudeAllowed({ isEmitArmedFn, spawn, alertToken = 'host-judg
   return { allowed: true };
 }
 
-module.exports = { assertHostClaudeAllowed, defaultIsEmitArmed };
+// ===========================================================================================================
+// #430 PR-2 — cross-uid judge routing (the disarmed-window structural close).
+//
+// The four chokepoints, when uid-611 (loom-actor) is deployed + the operator has confirmed the wrapper is
+// judge-aware, run their `claude -p` as the NON-allowlisted loom-actor uid (so a prompt-injected judge cannot
+// `sudo -n -u loom-broker` and mint an approval — the broker authorizes uid-501 ONLY; this is OS/sudoers-enforced +
+// DEPLOY-CONTINGENT, not a kernel hook). The close is STRUCTURAL *once the judge-aware wrapper is deployed +
+// LOOM_JUDGE_REQUIRE_UID_SEP set + custody-verify C5 attested*; until then the box runs the DIRECT path and the
+// residual is held by the armed guard above + the PATH-1 human approve-CLI + the tool-less pin (NOT closed).
+// ===========================================================================================================
+
+// Normalize a deploy flag to a STRICT boolean: a real boolean passes through; 1/true/yes/on (trimmed,
+// case-insensitive) => true; everything else (unset / '' / '0' / a typo) => false. This is the gate that ENABLES the
+// privileged cross-uid path (judgeAware), so it stays STRICT — a typo must NOT enable cross-uid. (CodeRabbit minor:
+// preserve a boolean config value rather than coerce it to '' => false.)
+function normalizeBool(v) {
+  if (typeof v === 'boolean') return v;
+  const s = (typeof v === 'string' ? v : '').trim().toLowerCase();
+  return s === '1' || s === 'true' || s === 'yes' || s === 'on';
+}
+
+// Is a deploy flag SET (vs explicitly off / unset)? LENIENT — the inverse posture of normalizeBool: a real `false`,
+// unset, '', or an explicit falsey token (0/false/no/off) => NOT set; ANY OTHER non-empty token (incl. an operator
+// TYPO like 'ture'/'enabled') => SET. Used ONLY for the deployed-SIGNAL (the fail-CLOSED direction): a box whose
+// operator wrote SOMETHING non-falsey intends uid-separation, so a typo must REFUSE (deployed-unconfigured), never
+// silently run as 501 (CodeRabbit major — the prior normalizeBool deployed-signal treated a typo as not-deployed =>
+// fail-OPEN, contradicting the "a typo fails CLOSED" claim). The asymmetry is deliberate: ENABLING cross-uid needs an
+// explicit valid truthy (normalizeBool); being treated as a deployed box that must fail closed needs only non-falsey.
+function isDeployFlagSet(v) {
+  if (typeof v === 'boolean') return v;
+  const s = (typeof v === 'string' ? v : '').trim().toLowerCase();
+  if (s === '') return false;                                  // unset
+  if (s === '0' || s === 'false' || s === 'no' || s === 'off') return false;   // explicit falsey
+  return true;                                                 // truthy OR a typo (intent to deploy => fail closed)
+}
+
+// The SHARED cross-uid presence/polarity core — single-home so the actor (defaultActorLauncher) + the judge
+// (defaultJudgeLauncher) launchers cannot diverge on the security-critical fail-closed precedence (VERIFY architect
+// #1/#6). Presence is checked FIRST (the explicit user+wrapper pair is primary); only when BOTH are empty/unset is
+// the caller-computed deployedSignal consulted. Empty/whitespace env values are treated as UNSET.
+//   { mode:'present', actorUser, wrapperPath } | { mode:'half-configured' } | { mode:'deployed-unconfigured' } | { mode:'clean' }
+function resolveCrossUidPresence({ actorUser = '', wrapperPath = '', deployedSignal = false } = {}) {
+  const u = (typeof actorUser === 'string' ? actorUser : '').trim();
+  const w = (typeof wrapperPath === 'string' ? wrapperPath : '').trim();
+  if (u.length && w.length) return { mode: 'present', actorUser: u, wrapperPath: w };
+  if (u.length || w.length) return { mode: 'half-configured' };
+  return { mode: deployedSignal ? 'deployed-unconfigured' : 'clean' };
+}
+
+// The deploy-installed custody marker (existsSync returns false on ANY error incl. an unreadable path + never throws
+// => a clean/dev/CI box with no such file is not-deployed). Shared by both launchers' deployedSignal.
+function actorKeyMarkerPresent() {
+  return fs.existsSync(process.env.LOOM_ACTOR_KEY_MARKER || '/etc/loom/actor-anthropic.key');
+}
+
+// Does a HOST judge/labeler/deriver run DIRECT (operator uid; dev/shadow/CI/un-deployed — the common case),
+// CROSS-UID (the non-allowlisted loom-actor uid; a deployed + judge-aware box), or REFUSE (fail-closed)? Lean-B
+// reuses the loom-actor uid + wrapper (no 2nd uid). The judge-aware confirmation is LOOM_JUDGE_REQUIRE_UID_SEP — the
+// operator sets it ONLY after re-deploying the judge-aware wrapper + custody-verify C5 passes (the runtime cannot
+// probe the wrapper per-spawn). FAIL-CLOSED-on-deployed:
+//   - presence pair set + judge flag truthy            -> cross-uid
+//   - presence pair set + judge flag NOT truthy        -> refuse:judge-wrapper-unconfirmed (an OLD actor-only wrapper
+//                                                          must NOT route --loom-judge into its --model slot)
+//   - exactly one of user/wrapper                       -> refuse:half-configured
+//   - both unset + ANY deployed-signal (judge flag, actor flag, or marker) -> refuse:deployed-unconfigured
+//                                                          (VERIFY architect #2: judge-flag-set + presence-unset must
+//                                                           NEVER silently run as 501)
+//   - clean                                            -> direct
+function defaultJudgeLauncher() {
+  const actorUser = (process.env.LOOM_ACTOR_USER || '').trim();
+  const wrapperPath = (process.env.LOOM_ACTOR_WRAPPER || '').trim();
+  const judgeAware = normalizeBool(process.env.LOOM_JUDGE_REQUIRE_UID_SEP);   // STRICT: only a valid truthy ENABLES cross-uid
+  // the judge flag is ITSELF a deployed-signal: judge-flag-set + presence-pair-unset must fail CLOSED, never `direct`.
+  // LENIENT isDeployFlagSet: a TYPO'd judge or actor flag also counts as deployed (=> refuse), never silent-direct.
+  const deployedSignal = isDeployFlagSet(process.env.LOOM_JUDGE_REQUIRE_UID_SEP)
+    || isDeployFlagSet(process.env.LOOM_ACTOR_REQUIRE_UID_SEP) || actorKeyMarkerPresent();
+  const p = resolveCrossUidPresence({ actorUser, wrapperPath, deployedSignal });
+  if (p.mode === 'present') {
+    return judgeAware
+      ? { mode: 'cross-uid', actorUser: p.actorUser, wrapperPath: p.wrapperPath }
+      : { mode: 'refuse', reason: 'judge-wrapper-unconfirmed' };
+  }
+  if (p.mode === 'half-configured') return { mode: 'refuse', reason: 'half-configured' };
+  if (p.mode === 'deployed-unconfigured') return { mode: 'refuse', reason: 'deployed-unconfigured' };
+  return { mode: 'direct' };
+}
+
+// The SHARED routing seam for the four chokepoints (mirrors runActorTrajectory's inline #428 resolution, in ONE
+// place). Returns the launch decision the chokepoint acts on AFTER the armed guard:
+//   { mode:'direct' }                    -> run the existing spawn (the tool-less pin retained; byte-identical)
+//   { mode:'cross-uid', command, args }  -> spawn this `sudo -n -u loom-actor <wrapper> --loom-judge`; prompt on STDIN
+//   { mode:'refuse', reason }            -> the chokepoint returns its OWN native fail-closed shape
+// FAIL-CLOSED: a launcher that THROWS, a cross-uid arg-build that THROWS, or an UNKNOWN mode all REFUSE + emit an
+// observable alert (never silently fall to direct/501). judgeLauncherFn is a TEST-ONLY seam (mirrors actorLauncherFn);
+// no production caller threads it.
+function resolveJudgeLaunch({ judgeLauncherFn } = {}) {
+  let launch;
+  try { launch = (typeof judgeLauncherFn === 'function' ? judgeLauncherFn : defaultJudgeLauncher)() || {}; }
+  catch (e) {
+    // fail-CLOSED + OBSERVABLE: a resolver that throws cannot decide => REFUSE, and the reject MUST emit (security.md:
+    // a fail-closed security decision must not be a SILENT reject — parity with the other three refuse paths below).
+    emitEgressAlert('judge-launch-resolver-threw', { detail: (e && e.message) || 'resolver-error' });
+    return { mode: 'refuse', reason: 'judge-launch-resolver-threw' };
+  }
+  if (launch.mode === 'direct') return { mode: 'direct' };
+  if (launch.mode === 'cross-uid') {
+    try {
+      const { crossUidJudgeArgs } = require('../../kernel/egress/loom-actor-launch');   // lazy: only a deployed box loads it
+      const { command, args } = crossUidJudgeArgs({ actorUser: launch.actorUser, wrapperPath: launch.wrapperPath });
+      return { mode: 'cross-uid', command, args };
+    } catch (e) {
+      emitEgressAlert('judge-launch-build-failed', { detail: (e && e.message) || 'build-error' });
+      return { mode: 'refuse', reason: 'judge-launch-build-failed' };
+    }
+  }
+  if (launch.mode === 'refuse') {
+    emitEgressAlert('judge-launch-refused', { launchMode: launch.reason });   // sub-reason under a non-`reason` key (positional reason wins — alert.js precedence)
+    return { mode: 'refuse', reason: launch.reason };
+  }
+  emitEgressAlert('judge-launch-unknown-mode', { mode: String(launch.mode) });
+  return { mode: 'refuse', reason: 'judge-launch-unknown-mode' };
+}
+
+module.exports = {
+  assertHostClaudeAllowed, defaultIsEmitArmed,
+  normalizeBool, isDeployFlagSet, resolveCrossUidPresence, actorKeyMarkerPresent, defaultJudgeLauncher, resolveJudgeLaunch,
+};

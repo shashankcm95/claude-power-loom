@@ -209,17 +209,33 @@ else
   note "[dry-run] would prompt for the ANTHROPIC_API_KEY on STDIN (hidden), umask 077, builtin printf | tee -> ${KEY_FILE}, chown ${ACTOR_USER}, chmod 0600 — NOT reading it now"
 fi
 
-# ---- 3. the wrapper: root-owned, NOT host-writable; no-Bash; --model "$1"; the version-probe sentinel ----
+# ---- 3. the wrapper: root-owned, NOT host-writable; a FAIL-CLOSED case dispatch over $1 (actor model + judge modes) ----
 say "3. install the actor wrapper ${WRAPPER} (root-owned 0755)"
 # a writable wrapper PARENT lets the operator unlink+recreate it -> code-exec as the actor uid. Lock it first.
 assert_root_locked "$(dirname "${WRAPPER}")" "the actor execs this wrapper; a writable wrapper dir lets the operator swap it -> code-exec as the actor uid"
+# #430 PR-2 — the dispatch is an EXPLICIT-ALLOWLIST case (NOT a -*)-denylist-then-*)-actor): an empty / whitespace /
+# leading-dash / unknown \$1 fails CLOSED (exit 2), never the tool-bearing actor recipe (VERIFY hacker CRITICAL C1,
+# reproduced firsthand). The model arm allowlist MUST stay in sync with ALLOWED_ACTOR_MODELS
+# (packages/kernel/egress/loom-actor-launch.js) — a drift fails CLOSED (an unknown model hits *)), and the launcher
+# validates the model before it reaches here (defense-in-depth). The --loom-judge model + budget cap are LITERALS
+# (pulled DOWN into the wrapper) so no attacker-influenced positional rides the cross-uid argv.
 WRAPPER_BODY="#!/bin/sh
-# loom-actor-run — runs claude -p as ${ACTOR_USER}. \$1 = the version-probe sentinel OR an allowlisted model (the
-# launcher validates it). The prompt rides STDIN. No-Bash toolset. Installed root-owned by loom-actor-deploy-macos.sh.
+# loom-actor-run — runs claude -p as ${ACTOR_USER}. \$1 selects the mode (the prompt rides STDIN):
+#   --loom-actor-version-probe  -> claude --version           (custody-verify C3; free, no API call)
+#   --loom-judge-version-probe  -> tool-less judge + stream-json (custody-verify C5; reads init tools[])
+#   --loom-judge                -> the TOOL-LESS, PLAIN-output judge recipe (#430 PR-2)
+#   an allowlisted MODEL        -> the actor recipe (no-Bash toolset)
+#   anything else (empty / leading-dash / unknown) -> FAIL CLOSED (exit 2)
+# Installed root-owned by loom-actor-deploy-macos.sh. The judge model (claude-sonnet-4-6) duplicates JUDGE_MODEL in the
+# JS chokepoints — the cross-ref is the SOLE model-drift guard (custody-verify C5 checks tools[], NOT the model).
 PATH=${NODE_DIR}:/usr/bin:/bin
-if [ \"\$1\" = \"--loom-actor-version-probe\" ]; then exec ${CLAUDE_BIN} --version; fi
-export ANTHROPIC_API_KEY=\"\$(cat ${KEY_FILE})\"
-exec ${CLAUDE_BIN} -p --output-format stream-json --verbose --model \"\$1\" --allowedTools Read,Grep,Glob,Edit,Write
+case \"\$1\" in
+  --loom-actor-version-probe) exec ${CLAUDE_BIN} --version ;;
+  --loom-judge-version-probe) export ANTHROPIC_API_KEY=\"\$(cat ${KEY_FILE})\"; exec ${CLAUDE_BIN} -p --tools \"\" --strict-mcp-config --disallowedTools LSP --model claude-sonnet-4-6 --output-format stream-json --verbose ;;
+  --loom-judge) export ANTHROPIC_API_KEY=\"\$(cat ${KEY_FILE})\"; exec ${CLAUDE_BIN} -p --tools \"\" --strict-mcp-config --disallowedTools LSP --model claude-sonnet-4-6 --max-budget-usd 0.50 ;;
+  claude-sonnet-4-6|claude-opus-4-8|claude-haiku-4-5) export ANTHROPIC_API_KEY=\"\$(cat ${KEY_FILE})\"; exec ${CLAUDE_BIN} -p --output-format stream-json --verbose --model \"\$1\" --allowedTools Read,Grep,Glob,Edit,Write ;;
+  *) echo \"loom-actor-run: unrecognized mode '\$1' -- refusing (fail-closed)\" >&2; exit 2 ;;
+esac
 "
 if "$APPLY"; then
   printf '%s' "${WRAPPER_BODY}" > "${WRAPPER}"

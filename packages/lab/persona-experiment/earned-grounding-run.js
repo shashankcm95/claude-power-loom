@@ -337,14 +337,17 @@ async function main(opts = {}) {
 
     // The shared real legs (the full 4-leg scoreAttempt assembly -- leg A graded through OUR Docker
     // backend, so recall_eligible is leg-derived AND the test_tree_mutated->FAIL gate is built in).
+    // #430 PR-2 — this is the CANONICAL live leg (the judges/labeler/deriver run host-side over attacker-influenced
+    // text). Pin toolless:true on ALL FOUR so the direct path (an un-deployed box) has the tool-less inner layer;
+    // the cross-uid path (a deployed box) is tool-less via the wrapper regardless.
     const legs = {
       behavioralFn: makeBehavioralFn(backend),
-      semanticFn: makeBlindSemanticJudge({ bin: claudeBin }),
-      referenceFn: makeReferenceTeacher({ bin: claudeBin }),
-      frictionFn: makeFrictionLabeler({ bin: claudeBin }),
+      semanticFn: makeBlindSemanticJudge({ bin: claudeBin, toolless: true }),
+      referenceFn: makeReferenceTeacher({ bin: claudeBin, toolless: true }),
+      frictionFn: makeFrictionLabeler({ bin: claudeBin, toolless: true }),
     };
     const behavioralFn = makeBehavioralFn(backend);   // for candidate B's grade (no semantic/reference needed to confirm)
-    const deriveFn = makeLessonDeriver({ bin: claudeBin });   // the inner contrast leg captureLessons injects into deriveLesson
+    const deriveFn = makeLessonDeriver({ bin: claudeBin, toolless: true });   // the inner contrast leg captureLessons injects into deriveLesson
 
     // The real actor seam: clone @ base_sha (host-allowlisted) -> actor -> git add -A -> diff --cached.
     // NOTE (VALIDATE-reviewer MED, DRY): this lifecycle MIRRORS real-solve.js `runActorSolve` (the

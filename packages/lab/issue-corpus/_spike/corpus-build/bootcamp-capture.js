@@ -64,7 +64,7 @@ const wd = setTimeout(() => { process.stdout.write('BACKSTOP TIMEOUT — a deriv
 (async () => {
   process.stdout.write(`[capture] ${dry ? 'DRY' : 'REAL'} leg over records [${start}, ${start + batch.length}) of ${records.length}\n`);
   const items = batch.map(itemFor);
-  const r = await runCaptureRerun(items, { recallGraphDir, sidecarDir, reportFile, provenance: 'backtest', dry });
+  const r = await runCaptureRerun(items, { recallGraphDir, sidecarDir, reportFile, provenance: 'backtest', dry, toolless: true });   // #430 PR-2 — direct-path tool-less pin on the deriver
   process.stdout.write(`[capture] counters: ${JSON.stringify({ n_eligible: r.n_eligible, n_written: r.n_written, n_deduped: r.n_deduped, n_off_floor: r.n_off_floor, n_leak: r.n_leak, n_derive_fallback: r.n_derive_fallback, n_sidecar_failed: r.n_sidecar_failed })}\n`);
   for (const n of r.minted) {
     process.stdout.write(`  MINTED ${n.lesson_signature}  <-  ${n.worked_example_ref.issue_id}\n`);

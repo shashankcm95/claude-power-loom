@@ -32,7 +32,8 @@ Separate trust domain (its own uid, key, wrapper, allowlist entry) for blast-rad
 
 - **The load-bearing gate (always holds): the broker's sudoers runas binding.** `operator ALL=(loom-broker)
   NOPASSWD: <wrapper>` authorizes only the operator uid to `sudo -u loom-broker`. 611 is not `operator`, so `sudo -n
-  -u loom-broker` is denied by sudo itself, regardless of any env 611 controls. Kernel-enforced.
+  -u loom-broker` is denied by sudo itself, regardless of any env 611 controls. OS/sudoers-enforced (the runas
+  binding), deploy-contingent — not a kernel hook.
 - **A second, deploy-CONTINGENT layer (defense-in-depth): the broker's caller-auth allowlist.** `LOOM_BROKER_ALLOWED_UIDS`
   (operator only) rejects 611 — but only under the broker deploy's `env_reset, !setenv` (on a DIRECT non-sudo invoke
   `SUDO_UID` is forgeable; see `loom-broker-caller-auth.js`). Do NOT treat caller-auth as an independent guarantee;
@@ -113,27 +114,38 @@ non-root-locked one under `--apply` — so a writable binary fails closed rather
 copy above still trusts your `$HOME` claude AT COPY TIME; that trust is yours to make (do it when no autonomous
 actor is running), and the helper's refusal forces it to be a conscious step rather than a silent one.
 
-## 4. Install the actor wrapper (root-owned 0755; no-Bash; `--model "$1"`; prompt on stdin)
+## 4. Install the actor wrapper (root-owned 0755; no-Bash actor + tool-less judge; FAIL-CLOSED `case` dispatch)
 
-A **host-writable wrapper is a privesc hole** — own it root, not group/world-writable. The wrapper takes ONLY `$1`
-(the allowlisted model, OR the version-probe sentinel); the prompt rides STDIN; the toolset is hardcoded no-Bash
-(the host actor, like the contained actor, must not be able to open a socket and exfil its own API key):
+A **host-writable wrapper is a privesc hole** — own it root, not group/world-writable. The wrapper dispatches on `$1`
+through an **explicit-allowlist `case`** (NOT a denylist): the actor modes are the three allowlisted models, the
+judge modes (#430) are the `--loom-judge*` sentinels, and **anything else — an empty / whitespace / leading-dash /
+unknown `$1` — FAILS CLOSED (`exit 2`)**, never the tool-bearing actor recipe (the launcher validates `$1` before it
+gets here; the `case` is the defense-in-depth backstop). The prompt rides STDIN; the actor toolset is hardcoded
+no-Bash; the judge recipe is tool-less (a prompt-injected judge gets no host action):
 
 ```sh
 sudo tee /usr/local/bin/loom-actor-run >/dev/null <<'EOF'
 #!/bin/sh
-# $1 = the version-probe sentinel OR an allowlisted model (the launcher validates it). The prompt rides STDIN.
-PATH=<dir-of-your---node>:/usr/bin:/bin                             # so claude's node shebang resolves under sudo env_reset (the helper fills this from --node; e.g. /usr/local/bin for the nodejs.org node)
-if [ "$1" = "--loom-actor-version-probe" ]; then exec /opt/loom-actor/claude --version; fi
-export ANTHROPIC_API_KEY="$(cat /etc/loom/actor-anthropic.key)"     # NAME in the child env, never argv; value never echoed
-exec /opt/loom-actor/claude -p --output-format stream-json --verbose --model "$1" --allowedTools Read,Grep,Glob,Edit,Write
+# $1 selects the mode (the prompt rides STDIN). Anything not listed -> FAIL CLOSED.
+PATH=<dir-of-your---node>:/usr/bin:/bin                             # so claude's node shebang resolves under sudo env_reset (the helper fills this from --node)
+case "$1" in
+  --loom-actor-version-probe) exec /opt/loom-actor/claude --version ;;                                            # C3: free, no key
+  --loom-judge-version-probe) export ANTHROPIC_API_KEY="$(cat /etc/loom/actor-anthropic.key)"; exec /opt/loom-actor/claude -p --tools "" --strict-mcp-config --disallowedTools LSP --model claude-sonnet-4-6 --output-format stream-json --verbose ;;  # C5: tool-less probe
+  --loom-judge) export ANTHROPIC_API_KEY="$(cat /etc/loom/actor-anthropic.key)"; exec /opt/loom-actor/claude -p --tools "" --strict-mcp-config --disallowedTools LSP --model claude-sonnet-4-6 --max-budget-usd 0.50 ;;            # #430 PR-2: the tool-less, PLAIN-output judge
+  claude-sonnet-4-6|claude-opus-4-8|claude-haiku-4-5) export ANTHROPIC_API_KEY="$(cat /etc/loom/actor-anthropic.key)"; exec /opt/loom-actor/claude -p --output-format stream-json --verbose --model "$1" --allowedTools Read,Grep,Glob,Edit,Write ;;  # the actor
+  *) echo "loom-actor-run: unrecognized mode '$1' — refusing (fail-closed)" >&2; exit 2 ;;
+esac
 EOF
 sudo chown root:wheel /usr/local/bin/loom-actor-run
 sudo chmod 0755 /usr/local/bin/loom-actor-run                       # NOT group/world-writable (the verifier checks this)
 ```
 
 The version-probe branch runs `claude --version` BEFORE the key export — the custody-verifier's C3 exec-liveness
-proves the cross-uid exec path without ever touching the API key.
+proves the cross-uid exec path without ever touching the API key. The model-arm allowlist MUST stay in sync with
+`ALLOWED_ACTOR_MODELS` (`packages/kernel/egress/loom-actor-launch.js`) — a drift fails CLOSED. The judge model
+(`claude-sonnet-4-6`) duplicates `JUDGE_MODEL` in the JS chokepoints; the cross-ref is the SOLE model-drift guard
+(custody-verify C5 checks the judge `tools[]`, NOT the model). `scripts/loom-actor-deploy-macos.sh` installs exactly
+this body — prefer the helper; this manual form is the contract it implements.
 
 ## 5. Authorize the operator uid to run ONLY that wrapper as `loom-actor` — and PIN the env policy
 
@@ -160,10 +172,13 @@ node /opt/loom/packages/kernel/egress/loom-actor-custody-verify.js \
   --claude-bin /opt/loom-actor/claude --node-bin /usr/local/bin/node
 ```
 
-Expect `C0`/`C1`/`C2`/`C3`/`C2.5`/`C4` and `hostObservableChecksPassed: true` with
+Expect `C0`/`C1`/`C2`/`C3`/`C2.5`/`C4`/`C5` and `hostObservableChecksPassed: true` with
 `requiresOutOfBandUidConfirmation: true`. The tool **deliberately exits non-zero** until you attest. A `C3` "did
 NOT run" under otherwise-correct wiring most likely means the operator uid is not authorized in the sudoers (step
-5), NOT a key failure. Now do the out-of-band check the tool structurally cannot:
+5), NOT a key failure. **`C5` (#430) is the judge tool-lessness + judge-aware-wrapper gate** — it runs the
+`--loom-judge-version-probe` arm (a real, cheap `claude -p`) AS 611 and asserts the init `tools[]` is empty; a `C5`
+FAIL means either an OLD wrapper without the judge arm (re-install step 4) or a tool leak. Now do the out-of-band
+check the tool structurally cannot:
 
 ```sh
 id                                       # note YOUR uid
@@ -211,22 +226,46 @@ by the operator (501). uid-611 needs read+write there, or the cross-uid actor RU
 `ok:true` result with an empty trajectory that LOOKS like a weak actor, not a perms bug. The operator dogfood MUST
 exercise an Edit/Write and confirm the diff lands; grant 611 access to the clone (e.g. an ACL or a shared group).
 
+## 8. Wire the JUDGE routing seam (#430 PR-2 — set ONLY after C5 passes)
+
+The four host-side judge/labeler/deriver `claude -p` chokepoints (the blind semantic judge + reference teacher, the
+friction labeler, the rung-2 judge, the lesson deriver) route cross-uid through the SAME `loom-actor` uid + wrapper
+(lean-B: no second uid). Because they reuse the actor wrapper, the routing has an extra **judge-aware confirmation**:
+the runtime cannot probe the wrapper per-spawn, so an explicit operator flag is the signal — and a box on an OLD
+(actor-only) wrapper must NOT route judges into it. The launcher is FAIL-CLOSED-on-deployed: presence pair set +
+flag truthy => cross-uid; presence set + flag absent => REFUSE `judge-wrapper-unconfirmed`; flag set + presence
+unset => REFUSE `deployed-unconfigured` (never silent 501); clean box => direct.
+
+```sh
+# ONLY after `loom-actor-custody-verify ... ` reports C5 PASS (the wrapper is confirmed judge-aware + tool-less):
+export LOOM_JUDGE_REQUIRE_UID_SEP=1     # the judge-aware confirmation — DO NOT set it before C5 is green
+```
+
+Persist it in the SAME environment as the step-7 actor vars. Setting it BEFORE re-deploying the judge-aware wrapper
+(step 4's `case` form) is the one hazard the runtime can't catch by itself — but it fails NOISILY, not openly: the
+`--loom-judge` sentinel is dash-leading, so an OLD wrapper lands it in `--model "--loom-judge"`, which claude rejects
+(the judge degrades to its fail-closed fallback), never a tool-bearing run over judge input. C5 is the gate that
+prevents even that — confirm it green first.
+
+**Until you set this flag, the judges run `direct` (as 501) — exactly the pre-#430 posture, held by the PR-1
+armed-window guard + the PATH-1 human gate + the tool-less pin (NOT closed).** The structural close is in force only
+once the judge-aware wrapper is deployed, C5 attested, and this flag set.
+
 ## Residuals (open — NOT closed by this deployment)
 
 - **#412 is NOT flipped closed by this arc.** This ships the VEHICLE; the operator's deploy + dogfood (this runbook)
   is the close, exactly as #404 was for the broker. PATH-1 (human-at-push) is the backstop until then.
 - **Host-compromise at uid-501 still mints.** A compromised orchestration, or the operator, can mint+emit — a
   DIFFERENT threat. uid-611 closes the autonomous *actor's* mint-ability, not a 501-equivalent.
-- **Sibling `claude -p` spawns still run as 501 (NAMED, tracked follow-on).** The blind semantic judge, the
-  reference teacher, and the friction labeler (`claudeOnce` / `claudePJudge` in `trajectory-friction-run.js`,
-  `calibration-issue-run.js`, `calibration-run.js`) are also host-side `claude -p` over attacker-influenced text
-  running as 501, tool-bearing by default (the labeler + blind judge default `toolless=false`; `claudePJudge` sets
-  no `--allowedTools` restriction at all — all Bash-capable). uid-611 here scopes to the resolution ACTOR (the named
-  #412 target + the highest-value one). The judge/labeler path is a sibling residual: today the human
-  sign-what-you-see gate is the real boundary (a pre-minted approval is hash-bound to a specific emission + TTL +
-  nonce, and the human approves the emission they SEE), and the live loop already pins the `--tools ""` recipe. The
-  armed-window judge close (extend the armed-refusal to `claudeOnce`) + the disarmed-window judge-uid-611 routing
-  are a tracked follow-on, NOT claimed here.
+- **Sibling judge/labeler `claude -p` spawns — now ADDRESSED by #430 (was a NAMED residual here).** PR-1 (#431)
+  added the armed-window guard to all four (`assertHostClaudeAllowed` — they refuse to spawn while a live emit is
+  armed); PR-2 (this) routes them cross-uid through the SAME `loom-actor` uid when deployed + confirmed (step 8), and
+  pins the tool-less recipe in the direct path. The structural close is deploy-contingent exactly like the actor's:
+  until step 8's flag is set on a judge-aware box, the judges run `direct` (as 501) held by the PR-1 armed guard +
+  the PATH-1 human gate + the tool-less pin. The tool-less recipe is an ENUMERATED denylist (`claude-headless.js`) —
+  a future always-on built-in would leak until added; the load-bearing close is the uid-separation, not the flag.
+  The `--loom-judge` PLAIN-output branch's parseability is proven by the operator's judge dogfood (C5 proves the
+  PROBE branch is tool-less, not the real branch's output shape).
 - **The verifier checks the necessary condition, not the sufficient one.** It confirms the API-key is owned by a
   different uid, the host can't read it, and the cross-uid wrapper runs claude; it cannot confirm the *running actor
   process* is that uid. That is the out-of-band attestation in step 6.
