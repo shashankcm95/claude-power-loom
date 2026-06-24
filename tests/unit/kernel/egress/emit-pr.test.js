@@ -551,6 +551,67 @@ test('③.2.4 H5: draft.repo is the NORMALIZED canonical (a .git / case input co
   }
 });
 
+// === #412 — isEmitArmed: the single "is a live emit currently possible" predicate the host-actor guard reads ===
+// armed IFF the killswitch is DISARMED (an ARM file == 'ARMED') AND the disposition resolves to live. Fail-safe:
+// any missing/unset/unreadable input => false. (LOOM_BETA_KILLSWITCH force-on must always win => false.)
+function armedCustodyDir() {
+  const dir = scratch('loom-armed-');
+  fs.writeFileSync(path.join(dir, 'killswitch'), 'ARMED');                               // disarmed (emit possible)
+  fs.writeFileSync(path.join(dir, 'disposition'), JSON.stringify({ mode: 'live', draft: false }));
+  return dir;
+}
+test('#412 isEmitArmed: true ONLY when killswitch disarmed AND disposition live', () => {
+  const save = process.env.LOOM_BETA_KILLSWITCH; delete process.env.LOOM_BETA_KILLSWITCH;
+  const dir = armedCustodyDir();
+  try {
+    const ksp = path.join(dir, 'killswitch'); const dp = path.join(dir, 'disposition');
+    assert.strictEqual(E.isEmitArmed({ killswitchPath: ksp, custodyDispositionPath: dp }), true, 'disarmed + live => armed');
+    // killswitch ON (ARM file not the literal token) => not armed
+    fs.writeFileSync(path.join(dir, 'ks-off'), 'DISARMED-typo');
+    assert.strictEqual(E.isEmitArmed({ killswitchPath: path.join(dir, 'ks-off'), custodyDispositionPath: dp }), false, 'killswitch on => not armed');
+    // disposition dry-run => not armed (even with the killswitch disarmed)
+    fs.writeFileSync(path.join(dir, 'disp-dry'), JSON.stringify({ mode: 'dry-run' }));
+    assert.strictEqual(E.isEmitArmed({ killswitchPath: ksp, custodyDispositionPath: path.join(dir, 'disp-dry') }), false, 'dry-run => not armed');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); if (save !== undefined) process.env.LOOM_BETA_KILLSWITCH = save; }
+});
+test('#412 isEmitArmed: fail-safe false on missing/unset inputs AND when LOOM_BETA_KILLSWITCH forces on', () => {
+  const dir = armedCustodyDir();
+  const save = process.env.LOOM_BETA_KILLSWITCH; delete process.env.LOOM_BETA_KILLSWITCH;
+  try {
+    const ksp = path.join(dir, 'killswitch'); const dp = path.join(dir, 'disposition');
+    assert.strictEqual(E.isEmitArmed({}), false, 'no paths => fail-safe false');
+    assert.strictEqual(E.isEmitArmed({ killswitchPath: ksp }), false, 'no disposition path => false');
+    assert.strictEqual(E.isEmitArmed({ killswitchPath: path.join(dir, 'nope'), custodyDispositionPath: dp }), false, 'unreadable killswitch => killswitch-on => false');
+    process.env.LOOM_BETA_KILLSWITCH = '1';                                              // force-on always wins
+    assert.strictEqual(E.isEmitArmed({ killswitchPath: ksp, custodyDispositionPath: dp }), false, 'env force-on => never armed');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); if (save === undefined) delete process.env.LOOM_BETA_KILLSWITCH; else process.env.LOOM_BETA_KILLSWITCH = save; }
+});
+test('#412 isEmitArmed: ARMED+trailing-newline still disarms; {mode:live,draft:true} is armed (draft flag is not a gate input)', () => {
+  const save = process.env.LOOM_BETA_KILLSWITCH; delete process.env.LOOM_BETA_KILLSWITCH;
+  const dir = scratch('loom-armed-edge-');
+  try {
+    fs.writeFileSync(path.join(dir, 'ks-nl'), 'ARMED\n');                                // isKillswitchOn .trim()s -> disarmed
+    fs.writeFileSync(path.join(dir, 'disp-draft'), JSON.stringify({ mode: 'live', draft: true }));
+    assert.strictEqual(E.isEmitArmed({ killswitchPath: path.join(dir, 'ks-nl'), custodyDispositionPath: path.join(dir, 'disp-draft') }), true,
+      'a trailing newline is trimmed (disarmed) and draft:true is the PR-draft flag, NOT a gate condition => armed');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); if (save !== undefined) process.env.LOOM_BETA_KILLSWITCH = save; }
+});
+test('#412 RESIDUAL (acknowledged, NOT closed): emitPR has NO actor-containment gate — a uid-501-minted approval still emits', () => {
+  // The #412 guard closes the ACTOR's broker-reachability (it cannot run while armed); it does NOT — and is not
+  // claimed to — gate a uid-501 ORCHESTRATION that drives emitPR directly with a 501-minted approval. That is the
+  // documented host-compromise residual (the literal uid-611 separation is deferred). This test pins the scope-of-
+  // claim: emitPR itself emits on a valid (501-minted) approval regardless of any actor-spawn state.
+  const dir = scratch('loom-custody-');
+  try {
+    withKillswitchEnvCleared(() => {
+      const opts = armedCustody(dir);
+      mintApprovalFor(opts);                                                             // a uid-501 (this-process) mint
+      const r = E.emitPR(goodData(), Object.assign({}, opts, { armedEmitFn: () => ({ pr_url: 'x' }) }));
+      assert.strictEqual(r.emitted, true, 'emitPR has no actor-gate — a 501-minted approval emits (the acknowledged residual)');
+    });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 (async () => {
   for (const { name, fn } of tests) {
     try { await fn(); process.stdout.write(`  PASS ${name}\n`); passed += 1; }

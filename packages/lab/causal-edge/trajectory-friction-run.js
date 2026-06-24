@@ -29,10 +29,25 @@ const {
 } = require('./trajectory-friction');
 const { splitRecord } = require('../issue-corpus/corpus');
 const { toollessArgs } = require('../_lib/claude-headless');
+const { emitEgressAlert } = require('../../kernel/egress/alert');   // #412 — observable refusal (node-core leaf; no cycle)
 
 const DEFAULT_MODEL = 'claude-sonnet-4-6';
 const DEFAULT_TIMEOUT_MS = 180000;
 const MAX_BUFFER = 16 * 1024 * 1024;
+
+// #412 — the DEFAULT arm-state source (a dependency-inversion seam: tests/callers inject isEmitArmedFn). Reads the
+// deployment's egress custody via an env convention. UNSET (tests / shadow / dev — the common case) => NOT armed =>
+// the guard is a no-op and existing behavior is unchanged. SET by a live deployment => the guard fires when armed.
+// isEmitArmed is LAZY-required (emit-pr pulls the egress kernel) so this module's load stays light for its many callers.
+function defaultIsEmitArmed() {
+  const killswitchPath = process.env.LOOM_EGRESS_KILLSWITCH_PATH;
+  if (typeof killswitchPath !== 'string' || killswitchPath.length === 0) return false; // not a live deployment => not armed
+  try {
+    return require('../../kernel/egress/emit-pr').isEmitArmed({
+      killswitchPath, custodyDispositionPath: process.env.LOOM_EGRESS_DISPOSITION_PATH,
+    });
+  } catch { return false; }                                          // unresolvable kernel/custody => fail-safe not-armed
+}
 
 function resolveClaude() {
   const which = spawnSync('command', ['-v', 'claude'], { shell: '/bin/bash', encoding: 'utf8' });
@@ -71,7 +86,19 @@ function buildActorPrompt(record, extraContext) {
   return prompt;
 }
 
-function runActorTrajectory({ record, claudeBin, model = DEFAULT_MODEL, timeout = DEFAULT_TIMEOUT_MS, cwd, allowedTools = ['Read', 'Grep', 'Glob', 'Edit', 'Write', 'Bash'], extraContext = null } = {}) {
+function runActorTrajectory({ record, claudeBin, model = DEFAULT_MODEL, timeout = DEFAULT_TIMEOUT_MS, cwd, allowedTools = ['Read', 'Grep', 'Glob', 'Edit', 'Write', 'Bash'], extraContext = null, isEmitArmedFn } = {}) {
+  // #412 — THE armed-refusal guard, at the SINGLE chokepoint every HOST-LEVEL (broker-reachable, uid-501) actor
+  // spawn funnels through. While a live emit is ARMED, a host actor could `sudo -n -u loom-broker` and mint an
+  // approval, so it must NOT run. Fires BEFORE any spawn; NON-BYPASSABLE (no caller override — security.md); the
+  // refusal is OBSERVABLE (emitEgressAlert). The structural close (the CONTAINED actor cannot reach the broker)
+  // is enforced by Docker; this guard keeps the broker-reachable HOST path out of the armed window.
+  let armed;
+  try { armed = (typeof isEmitArmedFn === 'function' ? isEmitArmedFn : defaultIsEmitArmed)(); }
+  catch { armed = true; }   // fail-CLOSED: a guard that CANNOT decide must REFUSE (VALIDATE-hacker; distinct from the benign unset-env not-armed default, where the absence of a live deployment is a KNOWN not-armed)
+  if (armed) {
+    emitEgressAlert('host-actor-refused-while-armed', { spawn: 'runActorTrajectory' });   // positional reason == the return reason (no detail-key clobber)
+    return { ok: false, reason: 'host-actor-refused-while-armed', events: [] };
+  }
   const bin = claudeBin === undefined ? resolveClaude() : claudeBin;
   if (!bin) return { ok: false, reason: 'actor-unavailable', events: [] };
   const prompt = buildActorPrompt(record, extraContext);
