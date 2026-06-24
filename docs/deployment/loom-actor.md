@@ -224,7 +224,8 @@ not just an interactive shell. A fresh login shell that loses them makes the sea
 error): the first operator dogfood hit exactly this, refusing with
 `[LOOM-EGRESS-ALERT] {"launchMode":"deployed-unconfigured","reason":"judge-launch-refused"}` because the key-marker is a
 deployed-signal while the presence-pair was unset. Re-export (or fix the plist) and re-run. Persist via the
-orchestration's launchd plist `EnvironmentVariables` (add `LOOM_JUDGE_REQUIRE_UID_SEP` here ONLY after C5 is green, step 8):
+orchestration's launchd plist `EnvironmentVariables`. The three ACTOR vars go in at step 7; add
+`LOOM_JUDGE_REQUIRE_UID_SEP` to this same dict at step 8, ONLY after C5 is green (never before):
 
 ```xml
 <key>EnvironmentVariables</key>
@@ -232,7 +233,8 @@ orchestration's launchd plist `EnvironmentVariables` (add `LOOM_JUDGE_REQUIRE_UI
   <key>LOOM_ACTOR_USER</key><string>loom-actor</string>
   <key>LOOM_ACTOR_WRAPPER</key><string>/usr/local/bin/loom-actor-run</string>
   <key>LOOM_ACTOR_REQUIRE_UID_SEP</key><string>1</string>
-  <key>LOOM_JUDGE_REQUIRE_UID_SEP</key><string>1</string>
+  <!-- add ONLY after C5 is green (step 8), never before: -->
+  <!-- <key>LOOM_JUDGE_REQUIRE_UID_SEP</key><string>1</string> -->
 </dict>
 ```
 
