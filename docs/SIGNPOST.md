@@ -79,6 +79,8 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/kernel/egress/approve-cli.js` - Power Loom egress — approve-cli.js  (③.2.5b.2)
 - `packages/kernel/egress/emit-pr.js` - ③.2.1b — the PR-egress kernel: the SINGLE in-process `emitPR` chokepoint that is the SOLE holder of
 - `packages/kernel/egress/gh-emit.js` - ③.2.5c — the gh-REST emission MECHANISM: the live network seam behind the now-complete signed approval gate
+- `packages/kernel/egress/loom-actor-custody-verify.js` - Power Loom egress — loom-actor-custody-verify.js  (③.2.5 uid-611)
+- `packages/kernel/egress/loom-actor-launch.js` - Power Loom egress — loom-actor-launch.js  (③.2.5 uid-611)
 - `packages/kernel/egress/loom-broker-bind.js` - Power Loom egress — loom-broker-bind.js  (③.2.5b)
 - `packages/kernel/egress/loom-broker-caller-auth.js` - Power Loom egress — loom-broker-caller-auth.js  (③.2.5b)
 - `packages/kernel/egress/loom-broker-client.js` - Power Loom egress — loom-broker-client.js  (③.2.5b)
