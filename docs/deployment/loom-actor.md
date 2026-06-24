@@ -217,6 +217,27 @@ or an export in the service's profile). On env-loss WITH the deployed-signal pre
 rather than silently running as 501. (The key-marker `/etc/loom/actor-anthropic.key` is the *backstop* deployed-signal;
 `LOOM_ACTOR_REQUIRE_UID_SEP=1` is the primary, explicit one — set it. Override the marker path with `LOOM_ACTOR_KEY_MARKER`.)
 
+### Persisting the env (the first dogfood proved this necessary)
+
+The four vars are read from the process env per spawn, so the SERVICE that launches the orchestration must carry them,
+not just an interactive shell. A fresh login shell that loses them makes the seam fail CLOSED (correct behavior, not an
+error): the first operator dogfood hit exactly this, refusing with
+`[LOOM-EGRESS-ALERT] {"launchMode":"deployed-unconfigured","reason":"judge-launch-refused"}` because the key-marker is a
+deployed-signal while the presence-pair was unset. Re-export (or fix the plist) and re-run. Persist via the
+orchestration's launchd plist `EnvironmentVariables` (add `LOOM_JUDGE_REQUIRE_UID_SEP` here ONLY after C5 is green, step 8):
+
+```xml
+<key>EnvironmentVariables</key>
+<dict>
+  <key>LOOM_ACTOR_USER</key><string>loom-actor</string>
+  <key>LOOM_ACTOR_WRAPPER</key><string>/usr/local/bin/loom-actor-run</string>
+  <key>LOOM_ACTOR_REQUIRE_UID_SEP</key><string>1</string>
+  <key>LOOM_JUDGE_REQUIRE_UID_SEP</key><string>1</string>
+</dict>
+```
+
+(Tracking: have `scripts/loom-actor-deploy-macos.sh` emit this plist template so it is not hand-authored, in #435.)
+
 The #422 armed-refusal guard stays UNCONDITIONAL and FIRST (never relaxed by uid-611 — `isEmitArmed` reads custody
 the guard cannot prove is wired, so "611 ⇒ safe to run armed" would couple correctness to an unobservable deploy
 property). uid-611 is purely additive: the belt to #422's suspenders.
