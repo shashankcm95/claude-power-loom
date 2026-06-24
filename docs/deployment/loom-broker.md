@@ -214,3 +214,46 @@ printf '{}' | sudo -n -u loom-broker /usr/local/bin/loom-broker-sign "$HEX"
 - **integrity != provenance (the verify half, ③.2.5a).** `verifyApproval` proves an approval is self-consistent
   and broker-signed; the cross-uid deployment here is what makes "broker-signed" mean "the actor did not mint it."
   Un-deployed (same-uid), a host process co-forges a byte-valid signed approval. SHADOW until ③.2.5c arms emission.
+
+## #412 — keep the broker-reachable HOST actor out of the armed window
+
+The deployment above makes the human's approval un-forgeable by the actor ONLY if the actor cannot itself drive the
+broker. The autonomous actor reaches the broker exactly when it runs as a broker-allowlisted (operator) uid on the
+HOST. Two complementary controls keep it out:
+
+1. **Structural (the load-bearing close): run the actor CONTAINED.** The contained actor
+   (`runActorInContainer`, #391) runs in Docker with `--cap-drop ALL`, `--security-opt no-new-privileges`,
+   `--read-only`, ONLY the throwaway clone bind-mounted at `/work` (NO `docker.sock`, NO host path, `bridge` not
+   `host` network). A container has no host `sudo` and no access to the host `sudoers` / the broker wrapper, so the
+   contained actor genuinely CANNOT `sudo -n -u loom-broker` — it cannot mint an approval. (`buildActorRunArgs` is
+   pinned + unit-asserted; the broker is a sudo-only wrapper with NO network listener, so network-on does not help.)
+
+2. **Guard (defense-in-depth): the HOST-level actor refuses to run while a live emit is ARMED.** The single
+   chokepoint every broker-reachable host `claude -p` spawn passes through (`runActorTrajectory`) fail-closes with
+   `host-actor-refused-while-armed` + a `[LOOM-EGRESS-ALERT]` whenever `isEmitArmed` is true. The guard is
+   NON-BYPASSABLE (no caller override). It reads the deployment's egress arm-state via an env convention:
+
+   ```sh
+   # In the SAME environment that runs the orchestration (so the actor child inherits it and cannot unset it):
+   export LOOM_EGRESS_KILLSWITCH_PATH=/etc/loom/killswitch      # the SAME custody file emitPR's killswitch reads
+   export LOOM_EGRESS_DISPOSITION_PATH=/etc/loom/disposition    # the SAME custody file emitPR's disposition reads
+   ```
+
+   UNSET (tests / shadow / dev) => the guard is a no-op (the egress cannot be armed anyway). A live-armed
+   deployment MUST set both, pointing at the SAME custody files `emitPR`'s `opts` reference.
+
+   **Config-divergence forward-contract (VALIDATE-hacker MEDIUM).** `emitPR` reads its arm-state from its `opts`
+   (caller-passed paths); the guard's DEFAULT reads it from the env convention. These are two surfaces that can
+   silently diverge (arm via `opts`, forget the `export` => the guard no-ops with no telemetry). When the armed-emit
+   driver is built, it MUST close this by being the SINGLE arm-source: compute `isEmitArmed(opts)` ONCE and pass it
+   to `runActorTrajectory` via the `isEmitArmedFn` seam (so the guard and `emitPR` cannot de-correlate). The env
+   convention is only the fallback for callers that do not inject. Until the armed driver exists, this is SHADOW
+   (no `opts`-armed path runs), so the divergence is not yet reachable — but the armed driver MUST not ship without
+   the single-source wiring.
+
+**Residual (honest scope — #412 is NOT fully closed here).** Both controls are uid-501-side: a uid-501 host process
+that is NOT the actor — a compromised orchestration, or you — can still mint+emit (host-compromise, a DIFFERENT
+threat). The *actor* (a contained child, or a guarded host-spawn) cannot. The literal **actor-uid-separation** (run
+`claude -p` as a separate non-allowlisted uid, e.g. `loom-actor`/611, so the OS itself refuses the actor at the
+broker) is a STRONGER, deferred hardening — tracked, not delivered here. **PATH-1** (human-at-push) remains the
+backstop. This section closes the *actor's* broker-reachability; it does not claim the uid-611 separation.

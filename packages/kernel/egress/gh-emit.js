@@ -57,6 +57,7 @@
 const { execFileSync } = require('child_process');
 const { computeEmissionHash } = require('./approval');
 const { parseDiffPaths, isEgressDeniedPath, ENV_ALLOWLIST } = require('./emit-pr');
+const { emitEgressAlert } = require('./alert');                       // #412 — extracted shared egress alert (also used by the host-actor guard)
 
 const HASH64 = /^[0-9a-f]{64}$/;
 const SAFE_BRANCH = /^[A-Za-z0-9._/-]+$/;          // the API-resolved default_branch charset (rides into argv + a ref path)
@@ -85,14 +86,8 @@ const ALLOWED_FILE_MODES = new Set(['100644', '100755']);
 const BUILD_EMIT_ENV_SET_KEYS = ['GIT_CONFIG_NOSYSTEM', 'GIT_CONFIG_GLOBAL', 'GIT_TERMINAL_PROMPT', 'GIT_ALLOW_PROTOCOL', 'GH_CONFIG_DIR', 'GH_PROMPT_DISABLED', 'GH_NO_UPDATE_NOTIFIER', 'GH_TOKEN'];
 const SANITIZED_ENV_KEYS = new Set([...ENV_ALLOWLIST, ...BUILD_EMIT_ENV_SET_KEYS]);
 
-// ③.2.5c — a HIGH-VISIBILITY alert on a SECURITY-sensitive egress reject (the OBS carry 2026-06-22 +
-// security.md fail-closed-must-be-observable): a tamper / forgery / laundering / killswitch-bypass attempt must
-// NOT fail silently. A structured single-line stderr signal — cheap while SHADOW, load-bearing once the network
-// is live. NOT emitted on benign outcomes (a normal 422-dedup, an ordinary HTTP error) — only the attack-shaped
-// reject paths, so the signal stays high-signal. Telemetry must never throw (a logging failure cannot fail the gate).
-function emitEgressAlert(reason, detail = {}) {
-  try { process.stderr.write(`[LOOM-EGRESS-ALERT] ${JSON.stringify(Object.assign({ reason }, detail))}\n`); } catch { /* never throw from telemetry */ }
-}
+// ③.2.5c — emitEgressAlert: the HIGH-VISIBILITY alert on a SECURITY-sensitive egress reject. #412 extracted it to
+// ./alert.js (verbatim) so the host-level-actor armed-refusal guard emits the SAME signal; imported above.
 
 // --------------------------------------------------------------------------
 // runGh — the sanitized, FAIL-CLOSED gh subprocess primitive.

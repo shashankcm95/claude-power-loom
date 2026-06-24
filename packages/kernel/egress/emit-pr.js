@@ -303,6 +303,18 @@ function resolveDisposition({ custodyDispositionPath } = {}) {
   return Object.freeze({ mode, draft });
 }
 
+/**
+ * #412 — the single "is a live emit currently possible?" predicate. TRUE iff the killswitch is DISARMED (the custody
+ * ARM file holds the literal token AND LOOM_BETA_KILLSWITCH is not forcing on) AND the disposition resolves to 'live'.
+ * Composes the EXISTING isKillswitchOn + resolveDisposition (the same custody the emit gate honors) — no new policy.
+ * Fail-safe: a missing/unset/unreadable path => killswitch reads ON / disposition reads dry-run => false. The
+ * host-level-actor guard (runActorTrajectory) reads this so a broker-reachable host actor never runs while armed.
+ */
+function isEmitArmed({ killswitchPath, custodyDispositionPath } = {}) {
+  if (isKillswitchOn({ killswitchPath })) return false;
+  return resolveDisposition({ custodyDispositionPath }).mode === 'live';
+}
+
 // --------------------------------------------------------------------------
 // The live-emission SEAM — ③.2.5c: armed (delegates to the gh-REST mechanism).
 // --------------------------------------------------------------------------
@@ -422,6 +434,6 @@ module.exports = {
   emitPR,
   buildEmitEnv, assertIsolatedGhConfigDir, armedEmit,
   assertDataIsPolicyFree, assertSafeRepoRef, assertSafeIssueRef, assertEgressSafeDiff,
-  isKillswitchOn, resolveToken, resolveDisposition, resolveVerifyKey, parseDiffPaths, isEgressDeniedPath,
+  isKillswitchOn, isEmitArmed, resolveToken, resolveDisposition, resolveVerifyKey, parseDiffPaths, isEgressDeniedPath,
   DISPOSITION_KEYS, DEFAULT_REPO_HOST_ALLOWLIST, ENV_ALLOWLIST,
 };
