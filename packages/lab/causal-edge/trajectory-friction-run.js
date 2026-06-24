@@ -126,7 +126,9 @@ function runActorTrajectory({ record, claudeBin, model = DEFAULT_MODEL, timeout 
   // #412 PR 3 — the cross-uid routing seam, resolved STRICTLY AFTER the armed guard. UNSET env / clean box => 'direct'
   // (existing behavior, byte-identical). A deployed box runs the actor as the non-allowlisted loom-actor uid
   // ('cross-uid') or fails CLOSED ('refuse') — see defaultActorLauncher.
-  const launch = (typeof actorLauncherFn === 'function' ? actorLauncherFn : defaultActorLauncher)() || {};
+  let launch;
+  try { launch = (typeof actorLauncherFn === 'function' ? actorLauncherFn : defaultActorLauncher)() || {}; }
+  catch { launch = { mode: 'refuse', reason: 'launcher-threw' }; }   // fail-CLOSED: a resolver that THROWS cannot decide => REFUSE (mirrors the #422 armed-guard catch; never propagate, never run as 501)
   if (launch.mode === 'refuse') {
     emitEgressAlert('actor-launch-refused', { spawn: 'runActorTrajectory', launchMode: launch.reason });   // sub-reason under a non-`reason` key (the positional reason wins — alert.js precedence)
     return { ok: false, reason: 'actor-launch-refused', detail: launch.reason, events: [] };

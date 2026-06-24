@@ -202,6 +202,15 @@ test('PR3 seam: an UNRECOGNIZED launch mode FAILS CLOSED (never silently runs as
   assert.strictEqual(spy2.calls.length, 0);
 });
 
+test('PR3 seam: a THROWING launcher resolver FAILS CLOSED (refuses), never propagates (CodeRabbit Major)', () => {
+  const spy = spySpawn();
+  const { ret } = captureStderr(() => runActorTrajectory({ record: REC, claudeBin: '/stub/claude', isEmitArmedFn: () => false, actorLauncherFn: () => { throw new Error('resolver boom'); }, spawnFn: spy }));
+  assert.strictEqual(ret.ok, false, 'a resolver throw must NOT propagate — it returns a structured fail-closed result');
+  assert.strictEqual(ret.reason, 'actor-launch-refused', 'a resolver that cannot decide REFUSES (mirrors the armed-guard catch)');
+  assert.strictEqual(ret.detail, 'launcher-threw');
+  assert.strictEqual(spy.calls.length, 0, 'no spawn when the resolver threw');
+});
+
 test('PR3 seam: cross-uid mode => spawnFn called with the sudo crossUidActorArgs argv (prompt on stdin, NOT argv)', () => {
   const spy = spySpawn();
   const r = runActorTrajectory({ record: REC, model: OK_MODEL, isEmitArmedFn: () => false,
