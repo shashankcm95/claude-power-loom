@@ -40,14 +40,24 @@ Separate trust domain (its own uid, key, wrapper, allowlist entry) for blast-rad
 ## 0. Prerequisites (note the macOS wrinkle)
 
 - A POSIX host where you can create a system user and edit `sudoers`.
-- **A `claude` CLI + a `node` that the actor uid (611) can execute AND that are root-locked.** On a home-dir-locked
-  dev box the operator's `claude` (`~/.local/bin/claude`) is unreadable to 611 and a Homebrew node is
-  owner-writable. Stage a root-owned `claude` + node (reuse the broker's `/opt/loom` + the nodejs.org `.pkg` node at
-  `/usr/local/bin/node`); a 501-writable `claude`/node that runs AS 611 is privilege-escalation, so the staging +
-  every ancestor dir must be root-owned + non-group/world-writable (`loom-actor-custody-verify` C4 asserts this).
-- **A macOS deploy helper (`scripts/loom-actor-deploy-macos.sh`) automates steps 1-4** (mirroring
+- **A root-owned `claude` + `node` (paths you pass to the helper).** On a home-dir-locked dev box the operator's
+  `claude` (`~/.local/bin/claude`) is operator-uid-writable, and a Homebrew node is owner-writable. A 501-writable
+  `claude`/node that runs AS 611 is privilege-escalation, so the helper REQUIRES root-owned binaries and REFUSES a
+  non-root-locked one (`loom-actor-custody-verify` C4 re-asserts it at verify time). Obtain them out-of-band — see
+  step 3.
+- **The macOS deploy helper `scripts/loom-actor-deploy-macos.sh` automates steps 1-4** (mirroring
   `scripts/loom-broker-deploy-macos.sh`; dry-run by default, `--apply` requires root, prints sudoers, never
-  auto-edits it). The manual steps below are the contract it implements.
+  auto-edits it). It does NOT copy your `$HOME` claude (a deploy-time trojan surface — see step 3); you pass
+  `--claude-bin` + `--node` (both root-owned):
+
+  ```sh
+  # preview (touches nothing):
+  bash scripts/loom-actor-deploy-macos.sh --claude-bin /opt/loom-actor/claude --node /usr/local/bin/node
+  # apply (creates the uid, prompts for the API key on STDIN, installs the wrapper, prints sudoers):
+  sudo bash scripts/loom-actor-deploy-macos.sh --claude-bin /opt/loom-actor/claude --node /usr/local/bin/node --apply
+  ```
+
+  The manual steps below are the contract it implements.
 
 ## 1. Create the actor system user (no login, no shell)
 
@@ -77,15 +87,30 @@ unset ANTHROPIC_API_KEY                                            # clear it fr
 The key DIR is **root-owned 0755** (traversable so the host can `lstat` the key and CONFIRM a different owner — a
 `0700` dir would BLIND the verifier); the key FILE is **0600 owned by 611** (the host/operator uid cannot read it).
 
-## 3. Stage a root-locked `claude` + `node` the actor uid can exec
+## 3. Provide a root-owned `claude` + `node` (the helper REFUSES a `$HOME` source — the C1 privesc)
+
+The wrapper execs `claude` (and its `node`) AS uid 611. A 501-writable `claude`/node — or any 501-writable ancestor —
+that runs as 611 is privilege-escalation: a 501 actor swaps the binary at deploy time and runs arbitrary code as 611
+with the API key. So the helper does **NOT** copy your `~/.local/bin/claude` (the source is operator-writable;
+copying-then-root-locking only blesses a possible trojan). Provide root-owned binaries out-of-band and pass their paths:
 
 ```sh
-# Reuse the broker's root-owned staging convention. Both targets + every ancestor dir MUST be root-owned + not
-# group/world-writable (C4). A Homebrew node (/opt/homebrew, owner-writable) is REFUSED — use the nodejs.org .pkg.
+# node: the nodejs.org .pkg installs a root-owned /usr/local/bin/node (a Homebrew /opt/homebrew node is owner-writable -> REFUSED).
+stat -f '%Su %Sp' /usr/local/bin/node            # expect: root -rwxr-xr-x
+
+# claude: obtain a ROOT-OWNED claude. Either install it at a root-level location, OR copy it as root ONLY at a moment
+# you trust your $HOME copy (no autonomous actor running), into a root-owned dir, then confirm it is root-locked.
+# NOTE: stock/older macOS `readlink -f` lacks -f; resolve the symlink portably with python3:
+CLAUDE_SRC="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$(command -v claude)")"
 sudo install -d -o root -g wheel -m 0755 /opt/loom-actor
-sudo install -o root -g wheel -m 0755 "$(command -v claude)" /opt/loom-actor/claude    # root-owned copy
-# node: use the root-owned /usr/local/bin/node (nodejs.org .pkg); confirm `stat -f '%Su' /usr/local/bin/node` = root
+sudo install -o root -g wheel -m 0755 "${CLAUDE_SRC}" /opt/loom-actor/claude
+stat -f '%Su %Sp' /opt/loom-actor/claude         # expect: root -rwxr-xr-x
 ```
+
+The helper `assert_root_locked`s both `--claude-bin` and `--node` (the resolved path + every ancestor) and REFUSES a
+non-root-locked one under `--apply` — so a writable binary fails closed rather than being silently blessed. The
+copy above still trusts your `$HOME` claude AT COPY TIME; that trust is yours to make (do it when no autonomous
+actor is running), and the helper's refusal forces it to be a conscious step rather than a silent one.
 
 ## 4. Install the actor wrapper (root-owned 0755; no-Bash; `--model "$1"`; prompt on stdin)
 
@@ -97,6 +122,7 @@ A **host-writable wrapper is a privesc hole** — own it root, not group/world-w
 sudo tee /usr/local/bin/loom-actor-run >/dev/null <<'EOF'
 #!/bin/sh
 # $1 = the version-probe sentinel OR an allowlisted model (the launcher validates it). The prompt rides STDIN.
+PATH=<dir-of-your---node>:/usr/bin:/bin                             # so claude's node shebang resolves under sudo env_reset (the helper fills this from --node; e.g. /usr/local/bin for the nodejs.org node)
 if [ "$1" = "--loom-actor-version-probe" ]; then exec /opt/loom-actor/claude --version; fi
 export ANTHROPIC_API_KEY="$(cat /etc/loom/actor-anthropic.key)"     # NAME in the child env, never argv; value never echoed
 exec /opt/loom-actor/claude -p --output-format stream-json --verbose --model "$1" --allowedTools Read,Grep,Glob,Edit,Write
