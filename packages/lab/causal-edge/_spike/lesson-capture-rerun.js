@@ -30,6 +30,7 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 const { TRIGGER_CLASS, GOTCHA_CLASS, CORRECTIVE_CLASS } = require('../lesson-signature');
 const { captureLessons } = require('../lesson-capture');
+const { assertHostClaudeAllowed } = require('../../_lib/host-claude-guard');   // #430 — shared fail-closed armed-decision (LIVE leg via earned-grounding-run/bootcamp-capture)
 
 const JUDGE_MODEL = 'claude-sonnet-4-6';
 
@@ -41,10 +42,14 @@ function resolveClaude() {
   return fs.existsSync(fallback) ? fallback : null;
 }
 
-function claudeOnce(bin, prompt, timeout) {
+function claudeOnce(bin, prompt, timeout, { isEmitArmedFn, spawnFn } = {}) {
+  // #430 — the armed-refusal guard, BEFORE any spawn (the lesson-deriver runs host-side over attacker-influenced text).
+  const gate = assertHostClaudeAllowed({ isEmitArmedFn, spawn: 'lesson-deriver' });
+  if (!gate.allowed) return { ok: false, reason: gate.reason };
   if (!bin) return { ok: false, reason: 'judge-unavailable' };
   let res;
-  try { res = spawnSync(bin, ['-p', '--model', JUDGE_MODEL], { input: prompt, shell: false, timeout, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 }); }
+  const spawn = (typeof spawnFn === 'function' ? spawnFn : spawnSync);   // #430 test seam — non-vacuity
+  try { res = spawn(bin, ['-p', '--model', JUDGE_MODEL], { input: prompt, shell: false, timeout, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 }); }
   catch { return { ok: false, reason: 'judge-unavailable' }; }
   if (res.error && res.error.code === 'ETIMEDOUT') return { ok: false, reason: 'timeout' };
   if (res.status !== 0) return { ok: false, reason: 'judge-unavailable' };
@@ -100,4 +105,4 @@ async function runCaptureRerun(items, opts = {}) {
   return captureLessons(items, deriveFn, opts);
 }
 
-module.exports = { makeLessonDeriver, runCaptureRerun, resolveClaude };
+module.exports = { makeLessonDeriver, runCaptureRerun, resolveClaude, claudeOnce };

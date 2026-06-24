@@ -26,6 +26,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { spawnSync } = require('child_process');
 const { toollessArgs } = require('../_lib/claude-headless');
+const { assertHostClaudeAllowed } = require('../_lib/host-claude-guard');   // #430 — shared fail-closed armed-decision
 const {
   scoreIssueCalibration, WORKED_EXAMPLE_FIELDS,
   isTestInfraPath,  // ③.2.1a A6 — the SINGLE-home test-infra path predicate (hashTestTree reuses it)
@@ -124,7 +125,10 @@ function resolveClaude() {
 // — the calibration-run.js H5 discipline; never shell-interpreted. `--model` is PINNED
 // (the W3 lesson: the child inherits the parent's model, which may be unavailable).
 const JUDGE_MODEL = 'claude-sonnet-4-6';
-function claudeOnce(bin, prompt, timeout, extraArgs = [], maxBudgetUsd = null) {
+function claudeOnce(bin, prompt, timeout, extraArgs = [], maxBudgetUsd = null, { isEmitArmedFn, spawnFn } = {}) {
+  // #430 — the armed-refusal guard, BEFORE any spawn (covers BOTH leg B blind judge + leg C reference teacher).
+  const gate = assertHostClaudeAllowed({ isEmitArmedFn, spawn: 'calibration-judge' });
+  if (!gate.allowed) return { ok: false, reason: gate.reason };
   if (!bin) return { ok: false, reason: 'judge-unavailable' };
   let res;
   // The prompt rides STDIN, not a trailing argv (CodeRabbit #316 + the W3 runner pattern).
@@ -137,7 +141,8 @@ function claudeOnce(bin, prompt, timeout, extraArgs = [], maxBudgetUsd = null) {
   // appends `--max-budget-usd` only when finite & > 0 — a per-call cost cap on the host-side judge.
   const args = ['-p', '--model', JUDGE_MODEL, ...(Array.isArray(extraArgs) ? extraArgs : [])];
   if (Number.isFinite(maxBudgetUsd) && maxBudgetUsd > 0) args.push('--max-budget-usd', String(maxBudgetUsd));
-  try { res = spawnSync(bin, args, { input: prompt, shell: false, timeout, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 }); }
+  const spawn = (typeof spawnFn === 'function' ? spawnFn : spawnSync);   // #430 test seam — non-vacuity (mocked-armed => spawn never called)
+  try { res = spawn(bin, args, { input: prompt, shell: false, timeout, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 }); }
   catch { return { ok: false, reason: 'judge-unavailable' }; }
   if (res.error && res.error.code === 'ETIMEDOUT') return { ok: false, reason: 'timeout' };
   if (res.status !== 0) return { ok: false, reason: 'judge-unavailable' };
@@ -262,5 +267,5 @@ async function runIssueCalibration(records, attemptsPerIssue, { backend, patchFo
 
 module.exports = {
   makeBehavioralFn, makeBlindSemanticJudge, makeReferenceTeacher,
-  runIssueCalibration, hashTestTree, resolveClaude,
+  runIssueCalibration, hashTestTree, resolveClaude, claudeOnce,
 };
