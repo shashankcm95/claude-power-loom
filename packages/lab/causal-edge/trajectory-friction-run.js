@@ -30,24 +30,14 @@ const {
 const { splitRecord } = require('../issue-corpus/corpus');
 const { toollessArgs } = require('../_lib/claude-headless');
 const { emitEgressAlert } = require('../../kernel/egress/alert');   // #412 — observable refusal (node-core leaf; no cycle)
+const { assertHostClaudeAllowed } = require('../_lib/host-claude-guard');   // #430 — the shared fail-closed armed-decision (the actor + the judges)
 
 const DEFAULT_MODEL = 'claude-sonnet-4-6';
 const DEFAULT_TIMEOUT_MS = 180000;
 const MAX_BUFFER = 16 * 1024 * 1024;
 
-// #412 — the DEFAULT arm-state source (a dependency-inversion seam: tests/callers inject isEmitArmedFn). Reads the
-// deployment's egress custody via an env convention. UNSET (tests / shadow / dev — the common case) => NOT armed =>
-// the guard is a no-op and existing behavior is unchanged. SET by a live deployment => the guard fires when armed.
-// isEmitArmed is LAZY-required (emit-pr pulls the egress kernel) so this module's load stays light for its many callers.
-function defaultIsEmitArmed() {
-  const killswitchPath = process.env.LOOM_EGRESS_KILLSWITCH_PATH;
-  if (typeof killswitchPath !== 'string' || killswitchPath.length === 0) return false; // not a live deployment => not armed
-  try {
-    return require('../../kernel/egress/emit-pr').isEmitArmed({
-      killswitchPath, custodyDispositionPath: process.env.LOOM_EGRESS_DISPOSITION_PATH,
-    });
-  } catch { return false; }                                          // unresolvable kernel/custody => fail-safe not-armed
-}
+// #430 — defaultIsEmitArmed MOVED to ../_lib/host-claude-guard.js (the fail-closed armed-decision now lives in ONE
+// place, shared by the actor + the judge/labeler/deriver chokepoints). The #422 guard below calls assertHostClaudeAllowed.
 
 // #412 PR 3 — the actor-launch resolver: does the HOST actor run DIRECT (as the operator uid; dev / shadow / CI) or
 // CROSS-UID (as the non-allowlisted loom-actor uid; a deployed box)? FAIL-CLOSED polarity (the INVERSE of
@@ -116,13 +106,10 @@ function runActorTrajectory({ record, claudeBin, model = DEFAULT_MODEL, timeout 
   // invariant: never build a cross-uid spawn while armed); NON-BYPASSABLE (no caller override — security.md); the
   // refusal is OBSERVABLE (emitEgressAlert). The structural close (the CONTAINED actor cannot reach the broker)
   // is enforced by Docker; this guard keeps the broker-reachable HOST path out of the armed window.
-  let armed;
-  try { armed = (typeof isEmitArmedFn === 'function' ? isEmitArmedFn : defaultIsEmitArmed)(); }
-  catch { armed = true; }   // fail-CLOSED: a guard that CANNOT decide must REFUSE (VALIDATE-hacker; distinct from the benign unset-env not-armed default, where the absence of a live deployment is a KNOWN not-armed)
-  if (armed) {
-    emitEgressAlert('host-actor-refused-while-armed', { spawn: 'runActorTrajectory' });   // positional reason == the return reason (no detail-key clobber)
-    return { ok: false, reason: 'host-actor-refused-while-armed', events: [] };
-  }
+  // #430 — refactored to the shared leaf helper (the fail-closed catch + the observable emit now live there). The
+  // actor KEEPS its exact token + return shape: byte-identical to the inline #422 guard (VERIFY architect HIGH).
+  const gate = assertHostClaudeAllowed({ isEmitArmedFn, spawn: 'runActorTrajectory', alertToken: 'host-actor-refused-while-armed' });
+  if (!gate.allowed) return { ok: false, reason: gate.reason, events: [] };
   // #412 PR 3 — the cross-uid routing seam, resolved STRICTLY AFTER the armed guard. UNSET env / clean box => 'direct'
   // (existing behavior, byte-identical). A deployed box runs the actor as the non-allowlisted loom-actor uid
   // ('cross-uid') or fails CLOSED ('refuse') — see defaultActorLauncher.
@@ -184,7 +171,10 @@ function captureProcessGraph(record, opts = {}) {
 // any refuse / parse-failure / unknown-enum => null block (no friction recorded).
 // --------------------------------------------------------------------------
 
-function claudeOnce(bin, prompt, timeout, extraArgs = [], maxBudgetUsd = null) {
+function claudeOnce(bin, prompt, timeout, extraArgs = [], maxBudgetUsd = null, { isEmitArmedFn, spawnFn } = {}) {
+  // #430 — the armed-refusal guard, BEFORE any spawn: a host-side claude -p must NOT run while a live emit is armed.
+  const gate = assertHostClaudeAllowed({ isEmitArmedFn, spawn: 'friction-labeler' });
+  if (!gate.allowed) return { ok: false, reason: gate.reason };
   if (!bin) return { ok: false, reason: 'labeler-unavailable' };
   let res;
   // The untrusted prompt rides STDIN, never a positional argv (RP-1a-g: the variadic
@@ -194,7 +184,8 @@ function claudeOnce(bin, prompt, timeout, extraArgs = [], maxBudgetUsd = null) {
   // appends `--max-budget-usd` only when finite & > 0 — a per-call cost cap on the host-side judge.
   const args = ['-p', '--model', DEFAULT_MODEL, ...(Array.isArray(extraArgs) ? extraArgs : [])];
   if (Number.isFinite(maxBudgetUsd) && maxBudgetUsd > 0) args.push('--max-budget-usd', String(maxBudgetUsd));
-  try { res = spawnSync(bin, args, { input: prompt, shell: false, timeout, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 }); }
+  const spawn = (typeof spawnFn === 'function' ? spawnFn : spawnSync);   // #430 test seam — non-vacuity (mocked-armed => spawn never called)
+  try { res = spawn(bin, args, { input: prompt, shell: false, timeout, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 }); }
   catch { return { ok: false, reason: 'labeler-unavailable' }; }
   if (res.error && res.error.code === 'ETIMEDOUT') return { ok: false, reason: 'timeout' };
   if (res.status !== 0) return { ok: false, reason: 'labeler-unavailable' };
@@ -232,5 +223,5 @@ function makeFrictionLabeler({ bin = resolveClaude(), timeout = 60000, toolless 
 
 module.exports = {
   runActorTrajectory, buildActorPrompt, parseStreamJson, captureProcessGraph, makeFrictionLabeler,
-  resolveClaude, buildFrictionLabelerInput, detectRecallSmell, defaultActorLauncher,
+  resolveClaude, buildFrictionLabelerInput, detectRecallSmell, defaultActorLauncher, claudeOnce,
 };

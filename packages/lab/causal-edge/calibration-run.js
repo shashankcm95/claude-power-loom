@@ -23,6 +23,7 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const { spawnSync } = require('child_process');
+const { assertHostClaudeAllowed } = require('../_lib/host-claude-guard');   // #430 — shared fail-closed armed-decision
 
 const PROMPT_PATH = path.join(__dirname, 'rung2-judge-prompt.md');
 const FIXTURES_PATH = path.join(__dirname, 'calibration-fixtures.json');
@@ -90,13 +91,25 @@ function makeClaudePJudge(opts) {
   const promptSpec = o.promptSpec || fs.readFileSync(PROMPT_PATH, 'utf8');
   const timeout = o.timeoutMs || DEFAULT_TIMEOUT_MS;
   const model = o.model;
+  // #430 — isEmitArmedFn is a TEST-ONLY seam: NO production caller may set it (it would disarm the armed guard).
+  // runCalibration (the production caller) builds this with explicit fields only — never a spread of an opts bag.
+  // The CI invariant (judge-labeler-armed-guard.test.js) + the leaf comment (host-claude-guard.js) guard the drift.
+  const isEmitArmedFn = o.isEmitArmedFn;
+  const spawnFn = o.spawnFn;               // #430 test seam (non-vacuity; a spawn impl, NOT a disarm lever)
   return function claudePJudge(edge) {
+    // #430 — the armed-refusal guard, BEFORE any spawn: no host-side claude -p while a live emit is armed.
+    const gate = assertHostClaudeAllowed({ isEmitArmedFn, spawn: 'rung2-judge' });
+    if (!gate.allowed) return { supported: false, fallback_reason: gate.reason };
     if (!bin) return { supported: false, fallback_reason: 'judge-unavailable' };
+    // PR-2 (#430 plan §8): normalize to STDIN (input: renderPrompt(...), args:['-p']) BEFORE cross-uid routing —
+    // the positional-argv form is incompatible with the --loom-judge wrapper contract (stdin-based). Left as argv
+    // for PR-1 (the armed guard above is purely additive; the spawn shape is unchanged in this PR).
     const args = ['-p', renderPrompt(promptSpec, edge)];
     if (model) args.push('--model', model);
     let res;
+    const spawn = (typeof spawnFn === 'function' ? spawnFn : spawnSync);
     try {
-      res = spawnSync(bin, args, { input: '', shell: false, timeout, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 });
+      res = spawn(bin, args, { input: '', shell: false, timeout, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 });
     } catch {
       return { supported: false, fallback_reason: 'judge-unavailable' };
     }

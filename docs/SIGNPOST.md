@@ -224,6 +224,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 
 - `packages/lab/_lib/claude-headless.js` - The TOOL-LESS `claude -p` recipe — firsthand re-verified on claude 2.1.177 by the ③.2.2c dogfood
 - `packages/lab/_lib/enum-key.js` - v3.11 W1 — the shared closed-set key primitive.
+- `packages/lab/_lib/host-claude-guard.js` - #430 — the SINGLE fail-closed armed-decision for every HOST-SIDE `claude -p` chokepoint (the resolution actor +
 - `packages/lab/_lib/scrub-lab-secrets.js` - ③.1-W4d Item 2a — the shared lab secret-scrub helper.
 
 ### `lab/attribution/`
