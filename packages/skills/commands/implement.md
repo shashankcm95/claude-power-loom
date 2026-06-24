@@ -102,6 +102,7 @@ Then proceed to phase N+1.
 When all phases are `[x]` and verification has passed throughout:
 - Update plan frontmatter `status: complete`
 - Surface the completed plan path to the user
+- **Pre-PR secondary lens:** before suggesting the PR, offer a local CodeRabbit pass as the VALIDATE-stage complement — `coderabbit review --agent --base main` (secret-free tree first; the CLI uploads the diff to an external API) — so CodeRabbit-class findings surface locally and the PR opens one round-trip cleaner. See `docs/coderabbit-options.md`.
 - Suggest next steps (commit, PR, post-fix review, etc.)
 
 ## Multi-phase execution
