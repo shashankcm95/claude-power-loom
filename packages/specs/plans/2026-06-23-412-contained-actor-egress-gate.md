@@ -190,8 +190,10 @@ Total impl ~55 LoC, tests ~180 LoC. `emitPR` essentially untouched (one export);
 
 - **R1 — over-claiming the close.** Mitigation: the honest-residual section + a RESIDUAL test; the close excludes
   the ACTOR (in Docker), not a uid-501-equivalent orchestration. The hacker + honesty lenses gate this.
-- **R2 — the guard breaks ③.1 shadow grading.** Mitigation: the `allowHostActorWhileArmed` explicit override for
-  the documented shadow case; default-refuse only when genuinely armed (live disposition + disarmed killswitch).
+- **R2 — the guard breaks ③.1 shadow grading.** Mitigation: NO override (the guard is NON-BYPASSABLE per Design §1).
+  It refuses ONLY when genuinely armed (live disposition + disarmed killswitch) — and ③.1 grading runs PRE-LIVE, so
+  the egress is not armed then. There is no legitimate need to run a broker-reachable host actor while armed, so no
+  exception path exists (CodeRabbit #422 Major: an override would contradict the non-bypassable contract).
 - **R3 — alert.js extraction breaks gh-emit's grep/test contract.** Mitigation: verbatim extract; existing
   gh-emit `[LOOM-EGRESS-ALERT]` assertions stay green.
 - **R4 — Docker dependency on the user's box.** USER-accepted (the chosen option's trade-off). Reuses #391.

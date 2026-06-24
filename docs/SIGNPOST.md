@@ -73,7 +73,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 
 ### `kernel/egress/`
 
-- `packages/kernel/egress/alert.js` - egress/alert.js (#412) — the SHARED high-visibility egress alert, extracted VERBATIM from gh-emit.js so BOTH the
+- `packages/kernel/egress/alert.js` - egress/alert.js (#412) — the SHARED `[LOOM-EGRESS-ALERT]` emitter for gh-emit AND the host-actor guard.
 - `packages/kernel/egress/approval-store.js` - ③.2.4 — the per-emission approval STORE: the fail-closed filesystem I/O over the PURE approval.js axiom (the
 - `packages/kernel/egress/approval.js` - ③.2.4 — the PER-EMISSION approval AXIOM (PURE; no I/O).
 - `packages/kernel/egress/approve-cli.js` - Power Loom egress — approve-cli.js  (③.2.5b.2)

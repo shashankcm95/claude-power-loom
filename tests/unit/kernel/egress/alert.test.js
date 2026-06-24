@@ -33,6 +33,13 @@ test('emitEgressAlert writes a single [LOOM-EGRESS-ALERT] line with reason + det
   assert.strictEqual(json.path, '/x'); assert.strictEqual(json.n, 3);
 });
 
+test('emitEgressAlert: the POSITIONAL reason is authoritative — a reason key in detail CANNOT clobber it (CodeRabbit #422)', () => {
+  const out = captureStderr(() => A.emitEgressAlert('the-real-token', { reason: 'attacker-supplied', spawn: 'x' }));
+  const json = JSON.parse(out.slice('[LOOM-EGRESS-ALERT] '.length).trim());
+  assert.strictEqual(json.reason, 'the-real-token', 'detail.reason must NOT override the positional token');
+  assert.strictEqual(json.spawn, 'x', 'other detail keys still ride along');
+});
+
 test('emitEgressAlert tolerates an absent detail (reason only)', () => {
   const out = captureStderr(() => A.emitEgressAlert('forward-contract-violation'));
   const json = JSON.parse(out.slice('[LOOM-EGRESS-ALERT] '.length).trim());

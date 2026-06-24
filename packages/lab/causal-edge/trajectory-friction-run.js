@@ -96,7 +96,7 @@ function runActorTrajectory({ record, claudeBin, model = DEFAULT_MODEL, timeout 
   try { armed = (typeof isEmitArmedFn === 'function' ? isEmitArmedFn : defaultIsEmitArmed)(); }
   catch { armed = true; }   // fail-CLOSED: a guard that CANNOT decide must REFUSE (VALIDATE-hacker; distinct from the benign unset-env not-armed default, where the absence of a live deployment is a KNOWN not-armed)
   if (armed) {
-    emitEgressAlert('host-actor-while-armed', { spawn: 'runActorTrajectory', reason: 'host-actor-refused-while-armed' });
+    emitEgressAlert('host-actor-refused-while-armed', { spawn: 'runActorTrajectory' });   // positional reason == the return reason (no detail-key clobber)
     return { ok: false, reason: 'host-actor-refused-while-armed', events: [] };
   }
   const bin = claudeBin === undefined ? resolveClaude() : claudeBin;

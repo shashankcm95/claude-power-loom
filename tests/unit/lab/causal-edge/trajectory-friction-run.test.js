@@ -42,7 +42,8 @@ test('#412 guard: isEmitArmedFn -> true REFUSES the host actor (no spawn) + emit
   assert.strictEqual(ret.reason, 'host-actor-refused-while-armed', `guard reason (got ${ret.reason})`);
   assert.deepStrictEqual(ret.events, [], 'no events on the refusal');
   assert.ok(err.startsWith('[LOOM-EGRESS-ALERT] '), 'the refusal is OBSERVABLE (fail-closed-observable)');
-  assert.ok(/host-actor-while-armed|host-actor-refused/.test(err), `the alert names the reason (got ${err.trim()})`);
+  const alertJson = JSON.parse(err.slice('[LOOM-EGRESS-ALERT] '.length).trim());
+  assert.strictEqual(alertJson.reason, 'host-actor-refused-while-armed', 'the alert reason == the return reason (no detail-key clobber, CodeRabbit #422)');
 });
 
 test('#412 guard: isEmitArmedFn -> false does NOT refuse (normal short-circuit applies; claudeBin:null => actor-unavailable)', () => {
