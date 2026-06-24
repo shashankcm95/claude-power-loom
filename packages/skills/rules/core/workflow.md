@@ -14,6 +14,7 @@ Per ADR-0005 slopfiles authoring discipline, sections below are wrapped in `<imp
 - To read a file at another ref, use `git show <ref>:file` — **never `git stash` in a worktree** (a stash in a `claude -p`-wrapped worktree can corrupt the shared object store; `git fetch --refetch` is the recovery).
 - For parallel / per-wave work use `git worktree add <dir> origin/main` — **never `git checkout -b` in a shared main checkout** (a concurrent session may share that tree; staged files can be swept into the wrong commit).
 - Base a new PR branch on **fresh `origin/main`, never off a stale feature branch** (a `git reset --soft origin/main` off a stale base stages spurious deletions of files other PRs already merged).
+- **Contributing to an EXTERNAL repo? Mirror THAT repo's maintainers, not Loom house-style.** The commit + PR prose matches the target's own conventions (commit-prefix scheme, issue-ref placement, and BREVITY: often no body for a trivial fix), derived from its own history (`git log`, recent merged PRs, CONTRIBUTING). Strip bot-boilerplate ("Automated candidate from X") and LLM-tells (composes with the prose-style minimize-LLM-tells rule in `fundamentals.md`). **Security invariant:** this prose is a TRUSTED-HUMAN input authored or reviewed at the approval gate (or the human-opened upstream PR), NEVER free actor text. The kernel-constant egress envelope (only the integer `issueRef` and the 64-hex approval-hash interpolated, gh-emit HIGH-3) STAYS, so the actor-injection surface never reopens.
 
 </important>
 
