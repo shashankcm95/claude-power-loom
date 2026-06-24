@@ -21,12 +21,14 @@ const { emitEgressAlert } = require('../../kernel/egress/alert');   // node-core
 function defaultIsEmitArmed() {
   const killswitchPath = process.env.LOOM_EGRESS_KILLSWITCH_PATH;
   if (typeof killswitchPath !== 'string' || killswitchPath.length === 0) return false; // not a live deployment => not armed
-  try {
-    return require('../../kernel/egress/emit-pr').isEmitArmed({
-      killswitchPath, custodyDispositionPath: process.env.LOOM_EGRESS_DISPOSITION_PATH,
-    });
-  } catch { return false; }   // unresolvable kernel/custody => not-armed HERE — but emit-pr's isKillswitchOn reads ON
-}                             // on ANY unreadable custody, so a set-but-corrupt deployment still cannot emit (defense-in-depth)
+  // No inner catch: once a deployment is signaled (killswitchPath SET), a require/isEmitArmed FAILURE must NOT be
+  // swallowed to not-armed (that is fail-OPEN — CodeRabbit Major). The throw propagates to assertHostClaudeAllowed's
+  // OUTER catch (=> armed => REFUSE), so an undeterminable arm-state on a deployed box fails CLOSED. The benign
+  // not-armed default is the killswitchPath-unset early return above (dev / test / shadow — the common case).
+  return require('../../kernel/egress/emit-pr').isEmitArmed({
+    killswitchPath, custodyDispositionPath: process.env.LOOM_EGRESS_DISPOSITION_PATH,
+  });
+}
 
 // assertHostClaudeAllowed — the shared armed-refusal gate. Returns { allowed:true } when a host-side `claude -p` may
 // run, or { allowed:false, reason } when a live emit is ARMED. FAIL-CLOSED: a decision that THROWS counts as ARMED

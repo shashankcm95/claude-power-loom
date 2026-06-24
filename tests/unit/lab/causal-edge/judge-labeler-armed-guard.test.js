@@ -113,7 +113,9 @@ test('CI invariant: every host-side `claude -p` spawn in packages/lab is GUARDED
       const spawnsClaude = /spawnSync|execFileSync|child_process/.test(src) && /'-p'|"-p"/.test(src) && /claude/i.test(src);
       if (!spawnsClaude) continue;
       const rel = path.relative(LAB, p);
-      if (/host-claude-guard/.test(src)) continue;   // GUARDED — routes through assertHostClaudeAllowed
+      // GUARDED — require an actual assertHostClaudeAllowed(...) CALL, not a mere import/mention (CodeRabbit Major:
+      // a file that only imports the guard but leaves a spawn unguarded must still FAIL this check).
+      if (/assertHostClaudeAllowed\s*\(/.test(src)) continue;
       if (Object.prototype.hasOwnProperty.call(ALLOW, rel)) continue;   // explicitly allowlisted WITH a reason
       unguarded.push(rel);
     }

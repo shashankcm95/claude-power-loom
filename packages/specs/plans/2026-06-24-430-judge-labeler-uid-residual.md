@@ -52,14 +52,17 @@ resolution actor. Two windows:
 
 ### PR-1 — the armed-window guard (REQUIRED; mirrors #422; pure / fail-closed / SHADOW-safe)
 
-Extract a shared leaf helper `packages/lab/causal-edge/_lib/host-claude-guard.js` (DIP — depends only on the
-kernel `isEmitArmed`, lazily) exporting `assertHostClaudeAllowed({ isEmitArmedFn })`:
+Extract a shared leaf helper `packages/lab/_lib/host-claude-guard.js` (DIP — depends only on the
+kernel `isEmitArmed`, lazily) exporting `assertHostClaudeAllowed({ isEmitArmedFn, spawn, alertToken })`:
 
-- returns `{ allowed: true }` when not armed; `{ allowed: false, reason: 'host-claude-refused-while-armed' }`
-  when armed; **fail-CLOSED** (`catch => armed`), and emits `emitEgressAlert(reason, { spawn })` (observable).
+- returns `{ allowed: true }` when not armed; `{ allowed: false, reason }` when armed, where the caller passes its
+  own `alertToken` (the actor keeps `host-actor-refused-while-armed`; the judges use the
+  `host-judge-refused-while-armed` default); **fail-CLOSED** (`catch => armed`), emits
+  `emitEgressAlert(alertToken, { spawn })` (observable).
 - The security-critical fail-closed polarity lives in ONE place (it must NOT diverge across copies).
 
-Apply it at the top of all three chokepoints (`claudeOnce` ×2, `claudePJudge` ×1) BEFORE the spawn — return
+Apply it at the top of all FOUR chokepoints (`claudeOnce` ×3 — friction labeler + calibration judge + lesson
+deriver — and `claudePJudge` ×1) BEFORE the spawn — return
 the existing fail-closed shape (`{ ok:false, reason }` / `{ supported:false, fallback_reason }`). Refactor
 `runActorTrajectory`'s inline #422 guard to call the shared helper (NO behavior change — byte-identical when
 unset). SHADOW-safe: unset env => not armed => unchanged.
@@ -196,5 +199,5 @@ defects folded into §1/§2/§6 + carried as VALIDATE live-probes.
 ### Build order (revised)
 
 PR-1 (armed-window guard, 4 chokepoints + leaf helper + spawnFn seams; pure / fail-closed / SHADOW-safe) FIRST.
-PR-2 (claudePJudge stdin-normalize -> leg C toolless -> `crossUidJudgeArgs`/`JUDGE_SENTINEL` -> wrapper judge branch
-+ fail-closed dispatch -> `resolveJudgeLaunch` routing -> custody-verify C5 + Forward-Contract -> runbook) SECOND.
+PR-2 (claudePJudge stdin-normalize -> leg C toolless -> `crossUidJudgeArgs`/`JUDGE_SENTINEL` -> the wrapper judge
+branch with fail-closed dispatch -> `resolveJudgeLaunch` routing -> custody-verify C5 + Forward-Contract -> runbook) SECOND.
