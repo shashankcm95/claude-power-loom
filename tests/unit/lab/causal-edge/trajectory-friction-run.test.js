@@ -168,8 +168,14 @@ test('PR3 defaultActorLauncher truth table — fail-closed polarity (empty/white
     for (const v of ['1', 'true', 'TRUE', 'yes', 'on', ' 1 ']) {
       assert.strictEqual(withActorEnv({ LOOM_ACTOR_REQUIRE_UID_SEP: v, LOOM_ACTOR_KEY_MARKER: markerFile }, () => defaultActorLauncher()).reason, 'deployed-unconfigured', `flag '${v}' => deployed-unconfigured`);
     }
-    // a NON-truthy flag (no marker) => direct (the flag genuinely off)
-    assert.deepStrictEqual(withActorEnv({ LOOM_ACTOR_REQUIRE_UID_SEP: '0', LOOM_ACTOR_KEY_MARKER: markerFile }, () => defaultActorLauncher()), { mode: 'direct' });
+    // an EXPLICIT-falsey flag (no marker) => direct (the flag genuinely off)
+    for (const off of ['0', 'false', 'no', 'off']) {
+      assert.deepStrictEqual(withActorEnv({ LOOM_ACTOR_REQUIRE_UID_SEP: off, LOOM_ACTOR_KEY_MARKER: markerFile }, () => defaultActorLauncher()), { mode: 'direct' }, `'${off}' => direct`);
+    }
+    // #430 PR-2 (CodeRabbit major): a TYPO'd flag (not explicit-falsey) FAILS CLOSED — never silent-direct/501
+    for (const typo of ['ture', 'enabled', 'yes please', '2']) {
+      assert.strictEqual(withActorEnv({ LOOM_ACTOR_REQUIRE_UID_SEP: typo, LOOM_ACTOR_KEY_MARKER: markerFile }, () => defaultActorLauncher()).reason, 'deployed-unconfigured', `typo '${typo}' => deployed-unconfigured`);
+    }
     // both empty + marker file present => deployed-unconfigured (the backstop)
     fs.writeFileSync(markerFile, 'k');
     assert.strictEqual(withActorEnv({ LOOM_ACTOR_KEY_MARKER: markerFile }, () => defaultActorLauncher()).reason, 'deployed-unconfigured');

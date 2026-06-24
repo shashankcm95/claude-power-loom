@@ -201,3 +201,239 @@ defects folded into §1/§2/§6 + carried as VALIDATE live-probes.
 PR-1 (armed-window guard, 4 chokepoints + leaf helper + spawnFn seams; pure / fail-closed / SHADOW-safe) FIRST.
 PR-2 (claudePJudge stdin-normalize -> leg C toolless -> `crossUidJudgeArgs`/`JUDGE_SENTINEL` -> the wrapper judge
 branch with fail-closed dispatch -> `resolveJudgeLaunch` routing -> custody-verify C5 + Forward-Contract -> runbook) SECOND.
+
+## §9 PR-2 build spec (refreshed probes @ `b6f50f93` post-PR-1 + firmed design) — pre-VERIFY
+
+> PR-1 (#431) merged: the four chokepoints now carry `assertHostClaudeAllowed` + a `spawnFn` seam, so the §1
+> line numbers shifted. Re-probed firsthand this session; the design below is the input to the §10 PR-2 VERIFY board.
+
+### §9.1 Refreshed runtime probes (firsthand)
+
+- **The seam to mirror** = `runActorTrajectory` (`trajectory-friction-run.js:102-157`): armed guard (`:111-112`) THEN
+  `defaultActorLauncher()` (`:48-63`) -> `{mode}` -> lazy `crossUidActorArgs` (`:131-132`) -> `spawn`. Modes:
+  `cross-uid` | `direct` (byte-identical existing) | `refuse`/unknown (fail-closed + `emitEgressAlert`).
+- **The validated argv base** = `crossUidSudoArgs({brokerUser,wrapperPath,sudoPath})` (`loom-broker-launch.js:50-64`):
+  `USERNAME_RE` + absolute/no-dotdot/no-control-char; returns `{command:'sudo', args:['-n','-u',user,wrapper]}`.
+  `crossUidActorArgs` (`loom-actor-launch.js:51-58`) reuses it + appends an exact-set-allowlisted model.
+- **The four chokepoints (post-PR-1):** `claudeOnce` in `trajectory-friction-run.js:174` (friction labeler; STDIN;
+  `{isEmitArmedFn,spawnFn}` seam), `claudeOnce` in `calibration-issue-run.js:128` (leg B blind + leg C teacher;
+  STDIN; seam), `claudePJudge` in `calibration-run.js:99` (rung-2; **argv `['-p', renderPrompt]` + `input:''`** —
+  the PR-1 comment `:104-106` flags the PR-2 stdin-normalize), `claudeOnce` in `_spike/lesson-capture-rerun.js:45`
+  (lesson deriver; STDIN; seam; **NO `toolless`/extraArgs param at all**).
+- **Tool-bearing-in-direct-path chokepoints:** leg C `makeReferenceTeacher` (`calibration-issue-run.js:180` — calls
+  `claudeOnce(bin,prompt,timeout)` no extraArgs; sees `accepted_diff` at `:191`) + the deriver `makeLessonDeriver`
+  (`lesson-capture-rerun.js:65` — sees `accepted_diff`+`candidate`+`failed_patch`). Both un-pinned. Leg B
+  (`makeBlindSemanticJudge`) + friction (`makeFrictionLabeler`) ALREADY thread `toolless` (default false).
+- **The tool-less recipe** = `TOOLLESS_CLAUDE_ARGS` (`claude-headless.js:21`) = `--tools "" --strict-mcp-config
+  --disallowedTools LSP`; `verifyToollessRuntime` (`:38-59`) = the real-`-p`-init-`tools[]` gate (the C5 shape).
+- **The wrapper** (`loom-actor-deploy-macos.sh:216-223`) = `#!/bin/sh`, `PATH=<node>:/usr/bin:/bin`, an
+  `if --loom-actor-version-probe -> claude --version; fi`, then `export ANTHROPIC_API_KEY=$(cat KEY)` +
+  `exec claude -p --output-format stream-json --verbose --model "$1" --allowedTools Read,Grep,Glob,Edit,Write`.
+- **custody-verify C3** (`loom-actor-custody-verify.js:88-92,183-190`) = `crossUidActorVersionProbeArgs` -> `claude
+  --version` as 611, `{ran,exitZero}`. C5 mirrors it but runs the judge probe sentinel + asserts init `tools==[]`.
+- **Live callers to pin** (`toolless:true`): `earned-grounding-run.js:342-344,347` (the canonical real leg — TODAY
+  passes NO toolless to ANY leg), spikes `real-e2e-actor-dogfood.js:82-84`, `e7-live-dogfood.js:148-150`,
+  `bootcamp-capture.js:67` (via `runCaptureRerun`). Leg B/friction already pinned at `live-draft-run.js:189-190` +
+  `live-draft-dogfood.js:79`.
+
+### §9.2 Firmed design (the build contract — modulo VERIFY folds)
+
+1. **`claudePJudge` stdin-normalize** (`calibration-run.js`): `const args=['-p']; if(model) args.push('--model',model);`
+   spawn with `input: renderPrompt(promptSpec, edge)` (was the positional argv + `input:''`). Prereq for cross-uid.
+2. **kernel `loom-actor-launch.js`** — add `crossUidJudgeArgs({actorUser,wrapperPath,sudoPath})` (reuse
+   `crossUidSudoArgs`, append frozen `JUDGE_SENTINEL='--loom-judge'` — NO model arg; model pinned in the wrapper) +
+   `crossUidJudgeProbeArgs` (append `JUDGE_PROBE_SENTINEL='--loom-judge-version-probe'`). Both export.
+3. **lab leaf `host-claude-guard.js`** — add `normalizeBool` + `defaultJudgeLauncher()` + `resolveJudgeLaunch({judgeLauncherFn})`
+   (the routing polarity + lazy `crossUidJudgeArgs`, in ONE place). `resolveJudgeLaunch` returns
+   `{mode:'direct'}` | `{mode:'cross-uid',command,args}` | `{mode:'refuse',reason}` (a build/launcher throw + an
+   unknown mode -> refuse + `emitEgressAlert`). **Forward-Contract polarity (`defaultJudgeLauncher`):**
+   - `LOOM_ACTOR_USER` + `LOOM_ACTOR_WRAPPER` set + `LOOM_JUDGE_REQUIRE_UID_SEP` truthy -> `cross-uid` (reuse the
+     loom-actor uid + wrapper — lean B). The judge flag is the operator's "I re-deployed the judge-aware wrapper +
+     C5 passed" confirmation (the wrapper can't be probed per-spawn).
+   - actor user+wrapper set but judge flag NOT truthy -> `refuse:'judge-wrapper-unconfirmed'` (a box on the OLD
+     actor-only wrapper must NOT route `--loom-judge` into a `--model` slot — fail-closed).
+   - exactly one of user/wrapper -> `refuse:'half-configured'`.
+   - both unset + any deployed-signal (judge flag OR `LOOM_ACTOR_REQUIRE_UID_SEP` OR the key marker) ->
+     `refuse:'deployed-unconfigured'`; else `direct`.
+4. **Route all FOUR chokepoints** through `resolveJudgeLaunch` AFTER the armed guard: `direct` keeps the existing
+   spawn (toolless pin retained); `cross-uid` spawns the returned `command,args` with the prompt on STDIN (no model
+   / no extraArgs / no budget flag — the wrapper owns the recipe); `refuse` returns each site's native fail-closed
+   shape (`{ok:false,reason}` / `{supported:false,fallback_reason}`). A `judgeLauncherFn` test seam mirrors the
+   `actorLauncherFn` seam.
+5. **Wrapper dispatch -> `case "$1"`** with fail-closed: `--loom-actor-version-probe) claude --version` (free, no
+   key) | `--loom-judge-version-probe) export KEY; claude -p <TOOLLESS> --model M --output-format stream-json
+   --verbose` | `--loom-judge) export KEY; claude -p <TOOLLESS> --model M` (PLAIN output) | `-*) echo unrecognized
+   >&2; exit 2` (leading-dash fails closed, never falls to `--model`) | `*) export KEY; <existing actor model exec>`.
+6. **custody-verify C5** — `gatherActorCustodyFacts` runs `crossUidJudgeProbeArgs` (an actual but cheap `-p` with `input:'hi'`),
+   parses init `tools[]`, `assessActorCustody` adds a `C5-judgeless` check (PASS only on a parsed empty array;
+   fail-closed on no-init / not-array / leaked / non-zero). C5 ALSO empirically confirms the wrapper is judge-aware
+   (the Forward-Contract's out-of-band half). `--claude-bin`/`--node-bin` already required; C5 needs no new required flag.
+7. **leg C + deriver toolless** — add `toolless`(+`maxBudgetUsd`) to `makeReferenceTeacher` + a `toolless`/extraArgs
+   param to the deriver's `claudeOnce` + `makeLessonDeriver`; pin `toolless:true` at the canonical live leg
+   (`earned-grounding`) + spikes. (Direct-path defense-in-depth; cross-uid already tool-less via the wrapper.)
+
+### §9.3 Open questions for the §10 VERIFY board
+
+- **Q1 (Forward-Contract signal):** is `LOOM_JUDGE_REQUIRE_UID_SEP` (a SECOND explicit operator flag, set only
+  post-C5) the right judge-aware confirmation, vs reusing the actor's signals? (rationale: the runtime cannot probe
+  the wrapper per-spawn; an explicit post-C5 flag is the honest mechanism; fail-closed if absent on a deployed box.)
+- **Q2 (model DRY-drift):** the wrapper pins `--model claude-sonnet-4-6` (matching `DEFAULT_MODEL`/`JUDGE_MODEL`),
+  duplicated in a shell artifact. Cross-ref comment + the C5 init-probe is the drift guard. Acceptable?
+- **Q3 (budget cap lost in cross-uid):** the exact-set `--loom-judge` sentinel carries no `--max-budget-usd`; a
+  runaway cross-uid judge burns the loom-actor key. Hardcode a conservative cap in the wrapper, or accept + name it?
+- **Q4 (all four vs three):** §2 said "3 judge/labeler chokepoints"; §6 corrected the deriver to a LIVE 4th. Route
+  ALL FOUR (consistent with PR-1)? Confirm the two refuse-shape variants.
+- **Q5 (scope of the direct-path toolless pin):** §8 named leg C + the deriver. `earned-grounding` ALSO leaves leg B
+  with friction un-pinned today. Pin all four legs there (small, consistent), or hold PR-2 to leg C + deriver?
+
+## §10 PR-2 VERIFY board (3-lens, recorded 2026-06-24) + the FOLDED build contract
+
+**Verdicts:** architect `APPROVE-WITH-NITS`, hacker `NEEDS-REVISION` (2 must-fix), honesty `APPROVE-WITH-NITS` (5 binding
+conditions). Lean-B SURVIVES — no kill finding (architect: "the simplest sound design, symmetric with #412"; the
+load-bearing close does NOT rest on a `claude -p` flag — the ADR-0012/LSP-leak class is avoided).
+
+### MUST-FIX before/at build (premise-probed firsthand)
+
+- **[hacker CRITICAL C1] wrapper `case "$1"` fail-OPENs an empty/whitespace `$1` into the tool-bearing actor arm.**
+  REPRODUCED firsthand (`/tmp` `/bin/sh` probe): the spec'd `--loom-judge) | -*) exit2 | *) actor` lets `""`, `" "`,
+  and `evil` fall to `*) --model "$1" --allowedTools Edit,Write`. **FOLD:** the wrapper actor arm is an EXPLICIT
+  allowlisted-model match `claude-sonnet-4-6|claude-opus-4-8|claude-haiku-4-5) <actor exec>` with a fail-closed `*)
+  echo unrecognized >&2; exit 2` default. Verified firsthand: `""`/`" "`/`-rf`/`evil`/`"model x"` ALL fail-closed;
+  only the 3 models + the 3 sentinels dispatch. (This ALSO hardens the EXISTING merged actor wrapper, which has the
+  same latent fail-open masked only by `crossUidActorArgs`'s validation — defense-in-depth at the wrapper layer.)
+  Cross-ref `ALLOWED_ACTOR_MODELS` (`loom-actor-launch.js:28`); drift is fail-SAFE (a JS-ahead model -> wrapper `*)`
+  -> fail-closed until re-deploy).
+- **[hacker HIGH H1 / architect #3] deploy-ordering: old wrapper + judge-flag set.** `--loom-judge` into an OLD
+  actor-only wrapper's `--model "$1"` slot. **FOLD:** (a) the C1 allowlisted-model arm means a stray `--loom-judge`
+  can never reach a tool-bearing exec on the NEW wrapper; (b) the `--loom-judge` sentinel is dash-leading by design
+  so an OLD wrapper's `--model "--loom-judge"` is rejected by claude (fail-noisy -> `judge-unavailable`); (c) the
+  runbook REQUIRES custody-verify C5 green BEFORE the operator sets `LOOM_JUDGE_REQUIRE_UID_SEP`. C5 + the wrapper
+  fail-closed dispatch are the load-bearing VALIDATE probes (NOT assertion-blessed).
+- **[architect HIGH #1/#6/#2] single-home the launch polarity.** Extract `resolveCrossUidPresence({actorUser,
+  wrapperPath, deployedSignal})` into the leaf `host-claude-guard.js` (returns `present|half-configured|
+  deployed-unconfigured|clean`); BOTH `defaultActorLauncher` (refactor `trajectory-friction-run.js:48-63` to consume
+  it — its truth-table test `:152-177` guards byte-identity) AND `defaultJudgeLauncher` use it. **architect #2 GAP
+  CLOSED:** the judge `deployedSignal` set INCLUDES `LOOM_JUDGE_REQUIRE_UID_SEP` truthy, so judge-flag-set +
+  presence-pair-UNSET -> `refuse:deployed-unconfigured` (never silent `direct` as 501).
+- **[architect #4] model is a wrapper LITERAL, not a `$2` passthrough.** `crossUidJudgeArgs` args end EXACTLY
+  `[-n,-u,user,wrapper,--loom-judge]`; the wrapper pins `--model claude-sonnet-4-6` as a literal.
+- **[hacker M3 / honesty F5] C5 reuses `verifyToollessRuntime`'s EXACT init-`tools[]` ladder** (first-init-
+  authoritative; fail-closed on no-init / not-array / leaked / non-zero) — NOT C3's weaker `{ran,exitZero}`.
+- **[architect #8 / honesty F3 / Q5] `claudePJudge` gets a toolless seam too** (B superset A in the direct path — it
+  is the one chokepoint with no tool-less inner layer today). Pin all four legs `toolless:true` at `earned-grounding`
+  (the canonical live leg) + spikes.
+
+### Q-answers (locked)
+
+- **Q1:** `LOOM_JUDGE_REQUIRE_UID_SEP` is acceptable ONLY because a mis-set flag is forced fail-closed (the wrapper's
+  C1 allowlist + the dash-leading sentinel + C5-as-runbook-gate); the flag itself proves nothing (honesty F4).
+- **Q2:** wrapper-literal model (pull the recipe DOWN into the wrapper); the cross-ref comment is the SOLE model-drift
+  guard — **C5 does NOT cover model drift** (it asserts `tools[]`, not the model — honesty F6 correction).
+- **Q3:** hardcode a conservative `--max-budget-usd` LITERAL in the wrapper judge branch (non-overridable; the
+  cross-uid path has no caller seam — `security.md` hard-constant-not-overridable-default).
+- **Q4:** route ALL FOUR (the deriver is the confirmed live 4th; a routed-3/guarded-4 split leaves it as 501).
+  Refuse-shapes: `{ok:false,reason}` (the three `claudeOnce`) + `{supported:false,fallback_reason}` (`claudePJudge`).
+- **Q5:** pin all four legs at `earned-grounding` + add the `claudePJudge` seam.
+
+### Claim-scoping folds (honesty F1/F2/F3/F4 — into shipped comments + the runbook, NOT just the plan)
+
+- "structural close" -> "**structural ONCE the judge-aware wrapper is deployed + `LOOM_JUDGE_REQUIRE_UID_SEP` set +
+  C5 attested**"; until then the box runs `direct` and the residual is held by the PR-1 armed guard + PATH-1 human
+  gate + tool-less (NOT closed).
+- "tool-less -> no host-action blast radius" -> scope to the ENUMERATED toolset; the load-bearing close is
+  uid-separation, tool-less is the documented inner layer (enumerative-denylist residual per `claude-headless.js:17`).
+- "C5 confirms judge-awareness" -> C5 confirms the PROBE sentinel branch is tool-less; the `--loom-judge` plain-output
+  branch is proven by the operator dogfood (named residual). "611 cannot mint" is OS/sudoers-enforced + deploy-
+  contingent (not "kernel-enforced" — honesty F2 nit).
+
+### Carried to §5 VALIDATE live-probes (NOT blessed on assertion — Rule 2a)
+
+- C1 wrapper fail-closed dispatch: drive the built wrapper body with `""`/`" "`/`-x`/`evil` -> exit 2 (never actor arm).
+- Armed-window ordering at ALL FOUR sites: mocked-armed `isEmitArmedFn` -> BOTH `judgeLauncherFn` AND `spawnFn`
+  uncalled (hacker M1 — assert the launcher-uncalled too, not just the spawn).
+- cross-uid `claudePJudge`: `args===['-p']` + prompt on STDIN (never argv); a multi-line + fenced-decoy stdin ->
+  fail-closed `parse-failure` (never decoy extraction).
+- C5 `tools==[]` RED-fire: a stubbed leaked-tool init -> C5 FAIL; an un-probeable box -> C5 FAIL (non-vacuous).
+- `crossUidJudgeArgs` throws on leading-dash actorUser / relative / `..` wrapperPath (-> caught -> refuse).
+
+### Re-deferred (honesty F6, with reason)
+
+- `verifyToollessRuntime` + `live-draft-dogfood.js legP` stay UN-gated by the armed guard: both spawn with the FIXED
+  constant `'hi'` (never attacker text) so neither carries the §0 prompt-injection-to-mint vector. Allowlisted in the
+  PR-1 CI invariant; gating them for the broader "no host `claude -p` while armed" intent is a NAMED future
+  defense-in-depth, not a #430 requirement.
+
+## §11 PR-2 VALIDATE board (4-lens, post-build @ `c7b5b09`) — result + folds
+
+**Verdicts:** hacker `APPROVE` (11 attack classes, **0 bypasses** — the C1 wrapper fail-closed + the claudePJudge
+stdin-normalize re-probed LIVE in the BUILT code per Rule 2a; 3 LOW nits all fail-safe), architect
+`APPROVE-WITH-NITS` (build faithfully implements §9/§10; **`defaultActorLauncher` refactor confirmed byte-identical**;
+no drift / no #428 regression), honesty `A / NO-OVERCLAIM` (all 8 §10 claim-scoping conditions honored in shipped
+artifacts), code-reviewer `Warning` (1 HIGH + 1 MEDIUM + 2 LOW). No CRITICAL, no kill.
+
+### FOLDED (premise-probed firsthand)
+
+- **[code-reviewer HIGH] `runIssueCalibration` built its legs un-pinned.** The public live-run API
+  (`calibration-issue-run.js`) constructed `makeBlindSemanticJudge`/`makeReferenceTeacher`/`makeFrictionLabeler`
+  WITHOUT `toolless:true` (the earned-grounding pin missed this separate construction path). FOLDED — pin all three
+  (the cross-uid path is tool-less via the wrapper regardless; this restores the direct-path inner layer).
+- **[code-reviewer MEDIUM] `makeLessonDeriver` lacked `maxBudgetUsd` parity.** §9.2-7 said add `toolless(+maxBudgetUsd)`;
+  only `toolless` landed. FOLDED — the deriver's `claudeOnce` + `makeLessonDeriver` now thread `maxBudgetUsd` (direct
+  path appends `--max-budget-usd`); +2 unit tests.
+- **[code-reviewer LOW] em-dash in the generated wrapper `echo` line.** The `*) echo ... refusing` em-dash lands a
+  non-ASCII byte in the installed wrapper. FOLDED to `--` (ASCII). (`.sh` is not eslint-gated, but the runtime artifact
+  is now ASCII-clean; the file's pre-existing comment em-dashes are left consistent with its style.)
+- **[code-reviewer LOW] C5 NOTE comment inaccurate.** The gather ALWAYS produces a non-null `judgeProbe` (a build/spawn
+  throw => `ran:false` => C5 FAIL, not NOTE), so the NOTE is programmatic-caller-only (mirrors C3). FOLDED — comment
+  corrected.
+- **[honesty LOW] inherited "kernel-enforced" wording.** PR-1 lines (`loom-actor-launch.js:8`, `loom-actor.md:35`)
+  called the sudoers runas gate "kernel-enforced"; PR-2's own surfaces correctly say "OS/sudoers-enforced". FOLDED for
+  consistency (both files were already in the diff). The commit/plan test-count corrected (C5/assessInitTools = 8).
+
+### NOT folded (fail-safe / accepted at VERIFY — with reason)
+
+- **[hacker L1] whitespace-`LOOM_ACTOR_USER` + flag => `half-configured`** (not `deployed-unconfigured`). Still a
+  REFUSE (never `direct`/501) — a less-precise diagnostic reason, NOT a security hole. The hacker rated "no fix
+  required."
+- **[hacker L2 / architect] wrapper model-allowlist drift vs `ALLOWED_ACTOR_MODELS`** — fail-SAFE (a JS-ahead model
+  hits `*)` => exit 2 until re-deploy) + documented cross-ref; accepted at VERIFY Q2 as the agreed guard.
+- **[hacker L3] cross-uid budget cap is a wrapper literal** — the CORRECT hard-constant-not-overridable posture
+  (`security.md`); the cross-uid path deliberately carries no caller arg.
+
+### VALIDATE live-probes RUN (Rule 2a — all HELD)
+
+The hacker BUILT + ran probes against the committed modules: the wrapper `case` dispatch (every garbage `$1` => exit
+2; only the 3 models + 3 sentinels dispatch; `--loom-judge` genuinely tool-less), armed-window de-correlation at all
+four (armed => neither launcher nor spawn reached), cross-uid argv (exactly `[-n,-u,user,wrapper,--loom-judge]`,
+prompt on STDIN never argv), `crossUidJudgeArgs` injection (bad user/wrapper THROW => refuse), C5 non-vacuity (leaked
+/ not-array / no-init / leaked-first all `{ok:false}`; a leaked/non-zero/not-run probe FAILs the verdict), a 672-combo
+launcher env sweep (0 silent-501 holes), and the broker sudoers cross-check (611 cannot reach the broker). The
+orchestrator independently re-confirmed the C1 wrapper fail-closed + the judge-vs-actor recipe split against the
+generated wrapper body.
+
+**Gate after folds:** kernel 105/0, lab 94/0, smoke 129/0, eslint + shellcheck + markdownlint clean,
+SIGNPOST/doc-path/release-surface OK.
+
+### §11.1 Pre-PR CodeRabbit lens (5 findings — ALL premise-probed firsthand + folded)
+
+The VALIDATE-stage `coderabbit review --agent` (secret-free tree, run BEFORE the PR) returned 5 findings; all valid,
+none false-positive — two were real gaps the 4-lens board under-weighted:
+
+- **[major] resolver-throw was a SILENT fail-closed reject.** `resolveJudgeLaunch`'s `catch` returned
+  `refuse:judge-launch-resolver-threw` with NO `emitEgressAlert` — the ONE refuse path without telemetry (the other
+  three emit). `security.md`: a fail-closed security decision MUST be observable (same class as the #431 SCAR). FOLDED.
+- **[major] typo-fails-OPEN in the deployed-signal.** A garbage `LOOM_ACTOR_REQUIRE_UID_SEP`/`LOOM_JUDGE_REQUIRE_UID_SEP`
+  token (operator typo) on a presence-unset box ran `direct` (501) under the strict `normalizeBool` deployed-signal —
+  contradicting the "a typo fails CLOSED" claim. The 4-lens hacker's 672-combo sweep used only VALID tokens, so it
+  missed this. FOLDED via a new LENIENT `isDeployFlagSet` (any non-falsey token, incl. a typo, => deployed => refuse),
+  while `normalizeBool` (STRICT) stays the cross-uid ENABLE gate. Both launchers single-home it. +tests (actor + judge).
+- **[major] C5 trusted `toolsResult.ok` without verifying the array.** `assessActorCustody` is pure over arbitrary
+  facts; a forged `{ok:true, tools:['LSP']}` would PASS. Tightened to require `Array.isArray(tools) && length===0`
+  (#273 verify-don't-trust). +tests (forged toolsResult).
+- **[major] `runCaptureRerun` dropped `maxBudgetUsd`.** The public driver built the deriver without threading the cost
+  cap (the MEDIUM fold was incomplete). FOLDED.
+- **[minor] `normalizeBool` coerced a boolean to false.** Added a boolean passthrough. FOLDED.
+
+Re-gate after the CodeRabbit folds: kernel 105/0, lab 94/0, smoke 129/0, eslint clean (routing test 33/0,
+custody-verify 28/0, friction 15/0). **The async-bot-gate held: the green pre-review status was not trusted — the
+findings surface was read + every finding premise-probed before folding.**

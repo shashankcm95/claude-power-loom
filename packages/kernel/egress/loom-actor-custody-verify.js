@@ -19,14 +19,38 @@
 //       group/world-writable (hacker VERIFY H2: a 501-writable claude/node that runs AS 611 is privesc; the macOS
 //       home-dir wrinkle forces a staged claude/node, so this gate is load-bearing here where the broker did not
 //       need it — its wrapper only execs a staged sign.js).
+//   C5 JUDGE tool-lessness (#430 PR-2) — runs the --loom-judge-version-probe arm AS 611 + asserts the init tools[] is
+//       EMPTY. Doubles as the judge-aware-wrapper confirmation (an OLD actor-only wrapper fails closed at the case
+//       *) -> exit 2): it is the EMPIRICAL gate the operator confirms BEFORE setting LOOM_JUDGE_REQUIRE_UID_SEP
+//       (the deploy-ordering Forward-Contract). Unlike C3's free `--version`, C5 is a real (cheap, 'hi') `claude -p`.
 
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { crossUidActorVersionProbeArgs } = require('./loom-actor-launch');
+const { crossUidActorVersionProbeArgs, crossUidJudgeProbeArgs } = require('./loom-actor-launch');
 
 const DENIAL_ERRNOS = new Set(['EACCES', 'EPERM']);
 const PROBE_TIMEOUT_MS = 8000;
+const JUDGE_PROBE_TIMEOUT_MS = 90000;   // #430 PR-2 — the judge probe is a REAL (cheap, 'hi') `claude -p`, unlike C3's free `--version`
+
+// #430 PR-2 — the init-tools[] fail-closed ladder. A kernel-local TWIN of the lab claude-headless.js
+// verifyToollessRuntime inline ladder (the LAYER rule forbids the kernel custody-verifier importing a lab module);
+// the two MUST stay in sync (cross-ref). PURE: parses the FIRST system/init event's tools[] and fail-closes on EVERY
+// path that is not a successfully-parsed EMPTY array (no-init / not-array / leaked). Unit-tested via the export.
+function assessInitTools(stdout) {
+  let initTools = null;
+  for (const line of String(stdout || '').split('\n')) {
+    if (!line.trim()) continue;
+    let e; try { e = JSON.parse(line); } catch { continue; }
+    // first parseable init is authoritative — the real `claude -p` emits EXACTLY ONE system/init, so a forged second
+    // init cannot relax the gate (and a leaked-first/empty-second sequence still fails closed).
+    if (e && e.type === 'system' && e.subtype === 'init') { initTools = Array.isArray(e.tools) ? e.tools : 'NOT_ARRAY'; break; }
+  }
+  if (initTools === null) return { ok: false, reason: 'no-init-event' };
+  if (initTools === 'NOT_ARRAY') return { ok: false, reason: 'tools-not-array' };
+  if (initTools.length > 0) return { ok: false, reason: 'tools-leaked', tools: initTools };
+  return { ok: true, tools: [] };
+}
 
 /**
  * PURE verdict over observed facts. No I/O.
@@ -35,6 +59,7 @@ const PROBE_TIMEOUT_MS = 8000;
  *   keyStat:{ok:true,isFile:boolean,size:number,ownerUid:number}|{ok:false,errno:string},
  *   hostRead:{ok:true}|{ok:false,errno:string},
  *   liveProbe:{ran:boolean,exitZero:boolean},
+ *   judgeProbe:null|{ran:boolean,exitZero:boolean,toolsResult:{ok:boolean,tools?:string[],reason?:string}},
  *   wrapper:null|{ok:true,isFile:boolean,worldOrGroupWritable:boolean,ownerUid:number}|{ok:false,errno:string},
  *   execTargets:null|Array<{label:string,ok:boolean,isFile?:boolean,ownerUid?:number,worldOrGroupWritable?:boolean,ancestorsRootLocked?:boolean,errno?:string}>
  * }} facts
@@ -123,6 +148,35 @@ function assessActorCustody(facts = {}) {
     note('C4-exectargets', 'exec-target root-lock NOT checked — pass --claude-bin + --node-bin to enable');
   }
 
+  // C5 — judge tool-lessness + judge-aware-wrapper confirmation (#430 PR-2). Runs the --loom-judge-version-probe arm
+  // (the SAME tool-less judge recipe + stream-json the --loom-judge real branch uses) AS the actor uid and asserts the
+  // init tools[] is EMPTY. Two things at once: (1) the judge recipe is genuinely tool-less (a prompt-injected judge
+  // has no host-action blast radius via the enumerated toolset); (2) the wrapper RECOGNIZES the judge sentinels — an
+  // OLD actor-only wrapper has no --loom-judge-version-probe arm so it fail-closes (*) -> exit 2), which is the
+  // EMPIRICAL gate the operator confirms BEFORE setting LOOM_JUDGE_REQUIRE_UID_SEP (the deploy-ordering Forward-
+  // Contract). HONEST SCOPE: C5 proves the PROBE branch is tool-less; the --loom-judge PLAIN-output branch's
+  // parseability is proven by the operator's judge dogfood (a named residual), and tool-lessness is over the
+  // ENUMERATED toolset (a future always-on built-in would leak until added — claude-headless.js residual). Fail-
+  // closed on every non-empty-array path (mirrors verifyToollessRuntime). Skips C5 only if the judge probe was not
+  // gathered (same condition as C3 — actor-user + wrapper present).
+  const jp = facts.judgeProbe;
+  if (jp) {
+    // VERIFY-the-array, don't TRUST the ok flag (#273): C5 PASSes ONLY when tools is independently a parsed-EMPTY
+    // array — assessInitTools guarantees ok:true ⟺ tools:[], but assessActorCustody is a PURE fn over arbitrary facts,
+    // so a forged/inconsistent { ok:true, tools:['LSP'] } must still FAIL (CodeRabbit major: ok-alone is too permissive).
+    const tr = jp.toolsResult;
+    const verifiedEmpty = !!(tr && tr.ok === true && Array.isArray(tr.tools) && tr.tools.length === 0);
+    if (!jp.ran) fail('C5-judgeless', 'the cross-uid JUDGE probe did NOT run — sudo/wiring/exec failure, OR an OLD wrapper with no --loom-judge-version-probe arm (NOT judge-aware). Re-deploy the judge-aware wrapper before setting LOOM_JUDGE_REQUIRE_UID_SEP.');
+    else if (!jp.exitZero) fail('C5-judgeless', 'the cross-uid judge probe ran but exited non-zero — the wrapper does not recognize --loom-judge-version-probe (an OLD actor-only wrapper fails closed at *) -> exit 2), or the tool-less judge recipe failed. NOT judge-aware.');
+    else if (!verifiedEmpty) fail('C5-judgeless', 'the judge probe ran but its init tools[] is not a verified-EMPTY array (' + ((tr && tr.reason) || (!tr ? 'no-tools-result' : !Array.isArray(tr.tools) ? 'tools-not-array' : tr.tools.length > 0 ? 'tools-leaked' : 'ok-flag-not-set')) + (tr && Array.isArray(tr.tools) && tr.tools.length > 0 ? ': ' + JSON.stringify(tr.tools) : '') + ') — the judge recipe is NOT tool-less (a prompt-injected judge could take a host action via the leaked tool)');
+    else pass('C5-judgeless', 'the cross-uid --loom-judge recipe runs TOOL-LESS as the actor uid (init tools: []) — the wrapper is confirmed judge-aware + tool-less (the PLAIN-output --loom-judge branch is proven by the operator dogfood; tool-lessness is over the enumerated toolset)');
+  } else {
+    // reachable ONLY from a programmatic caller that omits judgeProbe — gatherActorCustodyFacts ALWAYS produces a
+    // non-null judgeProbe (a probe-build throw / spawn error leaves ran:false => C5 FAIL, not this NOTE), exactly as
+    // C3's liveProbe is always gathered. The CLI requires --actor-user + --wrapper, so C5 is always evaluated there.
+    note('C5-judgeless', 'judge tool-lessness NOT checked (no judgeProbe in the supplied facts — a programmatic-caller path; the CLI always gathers it alongside C3)');
+  }
+
   // The bind-gap is UNCONDITIONAL on the passed path (integrity != provenance): the tool checks only what the host
   // uid can observe; the binding (that the actor PROCESS runs as that uid) is the operator's out-of-band call.
   if (denialLegTaken) {
@@ -189,6 +243,18 @@ function gatherActorCustodyFacts(opts = {}) {
     liveProbe = { ran: !r.error, exitZero: r.status === 0 };
   } catch { /* fail-closed — ran stays false */ }
 
+  // C5 — the judge tool-less exec probe (#430 PR-2): run the --loom-judge-version-probe arm AS the actor uid (a REAL
+  // but cheap `claude -p` over a fixed 'hi') + parse the init tools[]. ran:false on spawn error / an old wrapper that
+  // throws in the arg-build; exitZero:false on a non-zero exit (old wrapper *) -> exit 2, sudo -n denied, recipe fail).
+  let judgeProbe = { ran: false, exitZero: false, toolsResult: { ok: false, reason: 'not-run' } };
+  try {
+    const { command, args } = crossUidJudgeProbeArgs({ actorUser, wrapperPath, sudoPath });
+    const r = spawnSync(command, args, { input: 'hi', encoding: 'utf8', timeout: JUDGE_PROBE_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 });
+    const ran = !r.error;
+    const exitZero = r.status === 0;
+    judgeProbe = { ran, exitZero, toolsResult: (ran && exitZero) ? assessInitTools(r.stdout) : { ok: false, reason: ran ? 'nonzero-exit' : 'spawn-error' } };
+  } catch { /* fail-closed — ran stays false */ }
+
   // C2.5 — wrapper integrity (optional). lstat (not follow) + the group/world-writable bit-logic.
   let wrapper = null;
   if (typeof wrapperPath === 'string' && wrapperPath.length) {
@@ -206,7 +272,7 @@ function gatherActorCustodyFacts(opts = {}) {
     if (typeof nodeBin === 'string' && nodeBin.length) execTargets.push(gatherExecTarget('node', nodeBin));
   }
 
-  return { isRoot, runningUid: ruid, keyStat, hostRead, liveProbe, wrapper, execTargets };
+  return { isRoot, runningUid: ruid, keyStat, hostRead, liveProbe, judgeProbe, wrapper, execTargets };
 }
 
 /** gather -> assess. */
@@ -273,4 +339,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { assessActorCustody, gatherActorCustodyFacts, verifyActorCustody, gatherExecTarget, formatReport };
+module.exports = { assessActorCustody, gatherActorCustodyFacts, verifyActorCustody, gatherExecTarget, assessInitTools, formatReport };

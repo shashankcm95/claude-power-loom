@@ -30,7 +30,8 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 const { TRIGGER_CLASS, GOTCHA_CLASS, CORRECTIVE_CLASS } = require('../lesson-signature');
 const { captureLessons } = require('../lesson-capture');
-const { assertHostClaudeAllowed } = require('../../_lib/host-claude-guard');   // #430 — shared fail-closed armed-decision (LIVE leg via earned-grounding-run/bootcamp-capture)
+const { assertHostClaudeAllowed, resolveJudgeLaunch } = require('../../_lib/host-claude-guard');   // #430 — shared armed-decision + PR-2 cross-uid routing (LIVE leg via earned-grounding-run/bootcamp-capture)
+const { toollessArgs } = require('../../_lib/claude-headless');   // #430 PR-2 — direct-path tool-less inner layer (the deriver sees accepted_diff + the failed_patch)
 
 const JUDGE_MODEL = 'claude-sonnet-4-6';
 
@@ -42,14 +43,28 @@ function resolveClaude() {
   return fs.existsSync(fallback) ? fallback : null;
 }
 
-function claudeOnce(bin, prompt, timeout, { isEmitArmedFn, spawnFn } = {}) {
+function claudeOnce(bin, prompt, timeout, { isEmitArmedFn, spawnFn, judgeLauncherFn, extraArgs = [], maxBudgetUsd = null } = {}) {
   // #430 — the armed-refusal guard, BEFORE any spawn (the lesson-deriver runs host-side over attacker-influenced text).
   const gate = assertHostClaudeAllowed({ isEmitArmedFn, spawn: 'lesson-deriver' });
   if (!gate.allowed) return { ok: false, reason: gate.reason };
-  if (!bin) return { ok: false, reason: 'judge-unavailable' };
-  let res;
+  // #430 PR-2 — cross-uid routing, STRICTLY AFTER the armed guard. DIRECT (the common case) is byte-identical below
+  // (the optional extraArgs tool-less pin appends after --model); CROSS-UID runs as the non-allowlisted loom-actor uid
+  // via the wrapper (which owns the recipe — no caller arg rides it); REFUSE fails closed.
+  const launch = resolveJudgeLaunch({ judgeLauncherFn });
+  if (launch.mode === 'refuse') return { ok: false, reason: launch.reason };
   const spawn = (typeof spawnFn === 'function' ? spawnFn : spawnSync);   // #430 test seam — non-vacuity
-  try { res = spawn(bin, ['-p', '--model', JUDGE_MODEL], { input: prompt, shell: false, timeout, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 }); }
+  let command; let args;
+  if (launch.mode === 'cross-uid') {
+    command = launch.command; args = launch.args;   // sudo -n -u loom-actor <wrapper> --loom-judge; prompt on STDIN
+  } else {
+    if (!bin) return { ok: false, reason: 'judge-unavailable' };
+    command = bin;
+    args = ['-p', '--model', JUDGE_MODEL, ...(Array.isArray(extraArgs) ? extraArgs : [])];
+    // #430 PR-2 (VALIDATE code-reviewer MEDIUM) — per-call cost cap parity with the other three chokepoints.
+    if (Number.isFinite(maxBudgetUsd) && maxBudgetUsd > 0) args.push('--max-budget-usd', String(maxBudgetUsd));
+  }
+  let res;
+  try { res = spawn(command, args, { input: prompt, shell: false, timeout, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 }); }
   catch { return { ok: false, reason: 'judge-unavailable' }; }
   if (res.error && res.error.code === 'ETIMEDOUT') return { ok: false, reason: 'timeout' };
   if (res.status !== 0) return { ok: false, reason: 'judge-unavailable' };
@@ -62,7 +77,12 @@ function claudeOnce(bin, prompt, timeout, { isEmitArmedFn, spawnFn } = {}) {
 
 // The real derive leg. Returns the deriveFn captureLessons/deriveLesson expect: an object
 // { trigger_class, gotcha_class, corrective_class, lesson_body } or null (fail-closed).
-function makeLessonDeriver({ bin = resolveClaude(), timeout = 60000 } = {}) {
+function makeLessonDeriver({ bin = resolveClaude(), timeout = 60000, toolless = false, maxBudgetUsd = null } = {}) {
+  // #430 PR-2: toolless (default false = byte-identical) pins the tool-less recipe in the DIRECT path — the deriver
+  // sees accepted_diff + the candidate + the failed_patch (attacker-influenced) and ran un-pinned. The cross-uid path
+  // (deployed boxes) is tool-less via the wrapper regardless of this flag. maxBudgetUsd is the per-call cost-cap
+  // parity with the other three chokepoints (VALIDATE code-reviewer MEDIUM).
+  const extraArgs = toollessArgs(toolless);
   return function deriveFn(contrastInput) {
     const failed = String(contrastInput.failed_patch || '');
     // W3 trap seam: the failed attempt is the gotcha made concrete (contrast it against the accepted
@@ -83,7 +103,7 @@ function makeLessonDeriver({ bin = resolveClaude(), timeout = 60000 } = {}) {
       + 'CANDIDATE PATCH (the passing attempt):\n' + String(contrastInput.candidate_patch || '')
       + trapContrast + '\n\n'
       + 'ACCEPTED FIX (reference — do NOT quote):\n' + String(contrastInput.accepted_diff || '');
-    const r = claudeOnce(bin, prompt, timeout);
+    const r = claudeOnce(bin, prompt, timeout, { extraArgs, maxBudgetUsd });
     if (!r.ok || !r.obj || typeof r.obj !== 'object') return null;  // -> deriveLesson harness_fallback
     return {
       trigger_class: r.obj.trigger_class,
@@ -101,7 +121,7 @@ async function runCaptureRerun(items, opts = {}) {
   const dry = opts.dry || process.argv.includes('--dry');
   const deriveFn = dry
     ? (() => ({ trigger_class: TRIGGER_CLASS[0], gotcha_class: GOTCHA_CLASS[0], corrective_class: CORRECTIVE_CLASS[0], lesson_body: 'dry-run stub lesson' }))
-    : makeLessonDeriver({ bin: opts.bin });
+    : makeLessonDeriver({ bin: opts.bin, toolless: opts.toolless, maxBudgetUsd: opts.maxBudgetUsd });   // #430 PR-2 — thread toolless + the cost cap (CodeRabbit major: the public driver dropped maxBudgetUsd)
   return captureLessons(items, deriveFn, opts);
 }
 

@@ -26,6 +26,7 @@ const CROSS_UID = {
   keyStat: { ok: true, isFile: true, size: 100, ownerUid: 611 },
   hostRead: { ok: false, errno: 'EACCES' },
   liveProbe: { ran: true, exitZero: true },
+  judgeProbe: { ran: true, exitZero: true, toolsResult: { ok: true, tools: [] } },   // #430 PR-2 C5 — judge ran tool-less
   wrapper: { ok: true, isFile: true, worldOrGroupWritable: false, ownerUid: 0 },
   execTargets: [{ label: 'claude', ...ROOT_TARGET }, { label: 'node', ...ROOT_TARGET }],
 };
@@ -120,6 +121,61 @@ test('C0: a non-integer runningUid (NaN) -> FAIL (fail-closed; never a denial-le
 
 test('C4: omitted execTargets -> NOTE (programmatic-caller flexibility; the CLI REQUIRES --claude-bin + --node-bin)', () => {
   assert.strictEqual(statusOf(V.assessActorCustody(facts({ execTargets: null })), 'C4-exectargets'), 'NOTE');
+});
+
+// ---- #430 PR-2 — C5 judge tool-lessness + the assessInitTools ladder (fail-closed, NON-VACUOUS) ----
+
+test('assessInitTools: an EMPTY init tools[] => {ok:true, tools:[]}', () => {
+  const out = '{"type":"system","subtype":"init","tools":[]}\n{"type":"result"}\n';
+  assert.deepStrictEqual(V.assessInitTools(out), { ok: true, tools: [] });
+});
+
+test('assessInitTools: fail-closed ladder (no-init / not-array / leaked) — every non-empty-array path FAILS', () => {
+  assert.deepStrictEqual(V.assessInitTools(''), { ok: false, reason: 'no-init-event' });
+  assert.deepStrictEqual(V.assessInitTools('{"type":"result"}\n'), { ok: false, reason: 'no-init-event' });
+  assert.deepStrictEqual(V.assessInitTools('{"type":"system","subtype":"init","tools":"LSP"}\n'), { ok: false, reason: 'tools-not-array' });
+  const leaked = V.assessInitTools('{"type":"system","subtype":"init","tools":["LSP"]}\n');
+  assert.strictEqual(leaked.ok, false); assert.strictEqual(leaked.reason, 'tools-leaked'); assert.deepStrictEqual(leaked.tools, ['LSP']);
+});
+
+test('assessInitTools: the FIRST init is authoritative — a leaked-first / empty-second sequence still FAILS', () => {
+  const out = '{"type":"system","subtype":"init","tools":["Bash"]}\n{"type":"system","subtype":"init","tools":[]}\n';
+  assert.strictEqual(V.assessInitTools(out).ok, false, 'a forged second init cannot relax the gate');
+});
+
+test('C5 happy path: a tool-less judge probe (init tools:[]) => C5 PASS', () => {
+  assert.strictEqual(statusOf(V.assessActorCustody(CROSS_UID), 'C5-judgeless'), 'PASS');
+});
+
+test('C5 NON-VACUOUS: a LEAKED tool in the judge init => C5 FAIL (the gate provably fires red)', () => {
+  const r = V.assessActorCustody(facts({ judgeProbe: { ran: true, exitZero: true, toolsResult: { ok: false, reason: 'tools-leaked', tools: ['LSP'] } } }));
+  assert.strictEqual(statusOf(r, 'C5-judgeless'), 'FAIL');
+  assert.strictEqual(r.hostObservableChecksPassed, false, 'a leaked-tool judge fails the whole verdict');
+});
+
+test('C5: an OLD wrapper (no judge-probe arm => non-zero exit) => C5 FAIL (the judge-aware confirmation)', () => {
+  const r = V.assessActorCustody(facts({ judgeProbe: { ran: true, exitZero: false, toolsResult: { ok: false, reason: 'nonzero-exit' } } }));
+  assert.strictEqual(statusOf(r, 'C5-judgeless'), 'FAIL');
+});
+
+test('C5: the probe did NOT run (sudo/wiring failure) => C5 FAIL (fail-closed, not vacuous-pass)', () => {
+  const r = V.assessActorCustody(facts({ judgeProbe: { ran: false, exitZero: false, toolsResult: { ok: false, reason: 'spawn-error' } } }));
+  assert.strictEqual(statusOf(r, 'C5-judgeless'), 'FAIL');
+});
+
+test('C5 verify-the-array (#273): a FORGED toolsResult { ok:true, tools:["LSP"] } still FAILs (ok flag alone not trusted)', () => {
+  const r = V.assessActorCustody(facts({ judgeProbe: { ran: true, exitZero: true, toolsResult: { ok: true, tools: ['LSP'] } } }));
+  assert.strictEqual(statusOf(r, 'C5-judgeless'), 'FAIL', 'C5 must verify tools is an EMPTY array, not trust ok:true');
+  assert.strictEqual(r.hostObservableChecksPassed, false);
+});
+
+test('C5 verify-the-array: ok:true but tools NOT an array => FAIL (no vacuous pass on a malformed fact)', () => {
+  const r = V.assessActorCustody(facts({ judgeProbe: { ran: true, exitZero: true, toolsResult: { ok: true, tools: 'LSP' } } }));
+  assert.strictEqual(statusOf(r, 'C5-judgeless'), 'FAIL');
+});
+
+test('C5: omitted judgeProbe -> NOTE (programmatic flexibility; the CLI always gathers it alongside C3)', () => {
+  assert.strictEqual(statusOf(V.assessActorCustody(facts({ judgeProbe: null })), 'C5-judgeless'), 'NOTE');
 });
 
 (async () => {

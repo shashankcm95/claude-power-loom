@@ -64,6 +64,43 @@ test('crossUidActorVersionProbeArgs still validates the user + wrapper (reuses c
   assert.throws(() => L.crossUidActorVersionProbeArgs({ actorUser: 'loom-actor', wrapperPath: 'rel/w' }), /ABSOLUTE/);
 });
 
+// ---- #430 PR-2 — the cross-uid JUDGE argv builders (mirror the actor builders; NO model passthrough) ----
+
+test('crossUidJudgeArgs reuses the sudo base + appends ONLY the frozen --loom-judge sentinel (no model arg)', () => {
+  const { command, args } = L.crossUidJudgeArgs({ actorUser: 'loom-actor', wrapperPath: '/usr/local/bin/loom-actor-run' });
+  assert.strictEqual(command, 'sudo');
+  assert.deepStrictEqual(args, ['-n', '-u', 'loom-actor', '/usr/local/bin/loom-actor-run', '--loom-judge']);
+  assert.strictEqual(args[args.length - 1], L.JUDGE_SENTINEL);
+  assert.strictEqual(L.JUDGE_SENTINEL, '--loom-judge');
+});
+
+test('JUDGE_SENTINEL / JUDGE_PROBE_SENTINEL are dash-leading constants (so an OLD wrapper rejects them as a --model value)', () => {
+  assert.ok(typeof L.JUDGE_SENTINEL === 'string' && L.JUDGE_SENTINEL.startsWith('--'), 'dash-leading by design (H1 deploy-ordering)');
+  assert.ok(typeof L.JUDGE_PROBE_SENTINEL === 'string' && L.JUDGE_PROBE_SENTINEL.startsWith('--'));
+  assert.notStrictEqual(L.JUDGE_SENTINEL, L.JUDGE_PROBE_SENTINEL);
+});
+
+test('crossUidJudgeProbeArgs builds sudo+wrapper+probe-sentinel (the C5 leg; no model)', () => {
+  const { command, args } = L.crossUidJudgeProbeArgs({ actorUser: 'loom-actor', wrapperPath: '/opt/w' });
+  assert.strictEqual(command, 'sudo');
+  assert.deepStrictEqual(args, ['-n', '-u', 'loom-actor', '/opt/w', L.JUDGE_PROBE_SENTINEL]);
+});
+
+test('crossUidJudgeArgs/ProbeArgs THROW on a flag-injection user / relative / dotdot wrapper (reuses crossUidSudoArgs)', () => {
+  for (const build of [L.crossUidJudgeArgs, L.crossUidJudgeProbeArgs]) {
+    assert.throws(() => build({ actorUser: '-x', wrapperPath: '/opt/w' }), /(brokerUser|actorUser|user)/i);
+    assert.throws(() => build({ actorUser: 'a;b', wrapperPath: '/opt/w' }), /(brokerUser|actorUser|user)/i);
+    assert.throws(() => build({ actorUser: 'loom-actor', wrapperPath: 'rel/w' }), /ABSOLUTE/);
+    assert.throws(() => build({ actorUser: 'loom-actor', wrapperPath: '/opt/../etc/w' }), /\.\./);
+  }
+});
+
+test('crossUidJudgeArgs carries NO attacker-influenced positional — the args are EXACTLY base + the constant sentinel', () => {
+  // the judge model + recipe + budget are wrapper LITERALS; the cross-uid argv must never carry a model/extraArg.
+  const { args } = L.crossUidJudgeArgs({ actorUser: 'loom-actor', wrapperPath: '/opt/w' });
+  assert.strictEqual(args.length, 5, 'exactly [-n,-u,user,wrapper,--loom-judge] — no 6th positional');
+});
+
 (async () => {
   for (const { name, fn } of tests) {
     try { await fn(); process.stdout.write(`  PASS ${name}\n`); passed += 1; }
