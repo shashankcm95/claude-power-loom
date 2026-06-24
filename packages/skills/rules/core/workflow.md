@@ -9,6 +9,7 @@ Per ADR-0005 slopfiles authoring discipline, sections below are wrapped in `<imp
 - Conventional commits: `feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`
 - Branch naming: `feat/short-description`, `fix/short-description`
 - PRs should be reviewable in one sitting (< 400 lines changed when possible)
+- **Commit + PR bodies explain the CHANGE, not the work-narrative.** State what changed and why, reviewer-scannable (structured lists > prose walls). Cut session-process framing ("the gate that earned its keep", a blow-by-blow of what each review caught) — that belongs in the durable plan/artifact, not the PR body. For a non-trivial rationale, prefer **Condition → Failure mode → Resolution** (or **Problem → Fix**) over a paragraph re-telling how the work unfolded.
 - Never force-push to shared branches without explicit confirmation
 - To read a file at another ref, use `git show <ref>:file` — **never `git stash` in a worktree** (a stash in a `claude -p`-wrapped worktree can corrupt the shared object store; `git fetch --refetch` is the recovery).
 - For parallel / per-wave work use `git worktree add <dir> origin/main` — **never `git checkout -b` in a shared main checkout** (a concurrent session may share that tree; staged files can be swept into the wrong commit).
