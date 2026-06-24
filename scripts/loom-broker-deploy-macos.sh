@@ -163,8 +163,21 @@ fi
 # ---- 3. keypair: private 0600 owned by the broker; public pinned host-readable — idempotent + trap-shredded ----
 say "3. keypair (private 0600 ${BROKER_USER}; public 0644 host-readable)"
 run install -d -o root -g wheel -m 0755 "${KEY_DIR}"      # L1 — key DIR root-owned (broker can't swap verify.pem); key file stays broker-owned 0600
-if [ -f "${KEY_DIR}/broker.key" ]; then
-  note "${KEY_DIR}/broker.key already exists — NOT regenerating (delete it first to rotate)"
+if [ -L "${KEY_DIR}/broker.key" ]; then
+  echo "REFUSE: ${KEY_DIR}/broker.key is a symlink — refusing (a symlinked key path is a redirect attack); delete it" >&2; exit 1
+elif [ -f "${KEY_DIR}/broker.key" ]; then
+  # exists — validate BOTH ownership AND mode 0600 before trusting it (M-2 parity with the actor helper). broker.key
+  # is the PRIVATE signing key: a stale group/world-readable (e.g. 0644) key lets any uid — incl. the actor — read it
+  # and mint approvals directly (full custody bypass); a mis-owned one is unusable by the broker. Fail closed on either.
+  kowner="$(stat -f '%Su' "${KEY_DIR}/broker.key" 2>/dev/null || echo '?')"
+  kmode="$(stat -f '%Sp' "${KEY_DIR}/broker.key" 2>/dev/null || echo '?')"
+  if [ "${kowner}" != "${BROKER_USER}" ]; then
+    echo "REFUSE: ${KEY_DIR}/broker.key exists but is owned by '${kowner}' (expected ${BROKER_USER}) — delete it and re-run to rotate" >&2; exit 1
+  elif [ "${kmode}" != "-rw-------" ]; then
+    echo "REFUSE: ${KEY_DIR}/broker.key exists with unsafe mode '${kmode}' (expected -rw------- / 0600) — a group/world-readable signing key defeats cross-uid custody; fix (chmod 0600) or delete and re-run" >&2; exit 1
+  else
+    note "${KEY_DIR}/broker.key already exists (owner ${kowner}, 0600) — NOT regenerating (delete it first to rotate)"
+  fi
 elif "$APPLY"; then
   TMPK="$(mktemp -d /tmp/loom-keygen.XXXXXX)"
   trap 'rm -rf "${TMPK}" 2>/dev/null || true' EXIT        # H1 — shred the priv-key temp on ANY exit (incl. set -e abort)
