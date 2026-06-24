@@ -18,8 +18,9 @@ audience: operator (deploys + attests; NOT the build)
 >
 > This is the symmetric twin of `loom-broker.md`: the broker put the SIGNER on a separate uid (610); this puts the
 > ACTOR on a separate uid (611). It pairs with the broker deploy (#404) to make the human-gate a *real*
-> authorization boundary against a rogue actor. Everything here is **SHADOW** until the routing seam wires
-> `runActorTrajectory` through the cross-uid launcher (a later PR — see "The routing seam (forward-contract)").
+> authorization boundary against a rogue actor. The routing seam (`runActorTrajectory` -> the cross-uid launcher) is
+> SHIPPED and fails CLOSED on a deployed-but-unconfigured box (step 7); until you run this deploy + dogfood, the
+> actor still runs as the operator uid (clean box => `direct`), so #412 stays open until then.
 
 ## Why a DEDICATED `loom-actor` uid
 
@@ -176,23 +177,39 @@ Only if the owner is a **different** uid AND the read is denied is custody real.
 node .../loom-actor-custody-verify.js ... --attested-cross-uid     # exits 0 ONLY now
 ```
 
-## The routing seam (forward-contract — a later PR; SHADOW until then)
+## 7. Wire the routing seam (the env the deployed box MUST export)
 
-This runbook + the vehicle (`loom-actor-launch.js`, `loom-actor-custody-verify.js`) are the deployable mechanism.
-The actor does not RUN as 611 until the routing seam wires `runActorTrajectory` through `crossUidActorArgs`. That
-seam MUST **fail CLOSED on a deployed-but-unconfigured box** (hacker VERIFY H1 — the polarity trap): unlike the
-broker's arm-check (benign-on-unset = not-armed = safe), an actor launcher that defaulted benign-on-unset would run
-the actor as the *privileged* operator uid (501), re-opening the mint path. So:
+The routing seam in `runActorTrajectory` is SHIPPED. It routes the host actor through `crossUidActorArgs` (run as
+611) when this env is set, and **fails CLOSED on a deployed-but-unconfigured box** (the H1 polarity trap: unlike the
+broker's arm-check, a launcher that defaulted benign-on-unset would run the actor as the *privileged* uid-501). The
+resolver's precedence (firsthand — `defaultActorLauncher`): BOTH set => cross-uid; exactly-one (or empty/whitespace,
+which counts as unset) => REFUSE `half-configured`; both unset + a deployed-signal => REFUSE `deployed-unconfigured`;
+clean box (no signal) => direct (unchanged).
 
-- `LOOM_ACTOR_USER` set => `LOOM_ACTOR_WRAPPER` MUST also be set + valid => cross-uid launch; a half-set config
-  REFUSES.
-- A deployment marker present (`/etc/loom/actor-anthropic.key` exists, or `LOOM_ACTOR_REQUIRE_UID_SEP=1`) but the
-  config unset => REFUSE (deployed-but-unconfigured fails closed).
-- Only a clean dev/shadow/CI box (no marker, no config) direct-spawns as today, byte-for-byte unchanged.
+**Export BOTH the config AND the explicit pin, and PERSIST them** (in the SAME environment that launches the
+orchestration, so the actor child inherits — and cannot unset — them):
 
-The #422 armed-refusal guard stays UNCONDITIONAL and FIRST (it is never relaxed by uid-611 — `isEmitArmed` reads
-custody the guard cannot prove is wired, so "611 ⇒ safe to run armed" would couple correctness to an unobservable
-deploy property). uid-611 is purely additive: the belt to #422's suspenders.
+```sh
+export LOOM_ACTOR_USER=loom-actor
+export LOOM_ACTOR_WRAPPER=/usr/local/bin/loom-actor-run
+export LOOM_ACTOR_REQUIRE_UID_SEP=1     # MANDATORY: the explicit deployed-signal (the PRIMARY backstop). Without it,
+                                        # the fail-closed guarantee on env-loss rests only on the default key-marker
+                                        # path existing — set the flag so "never run as 501" holds by construction.
+```
+
+Persist them so env-loss is the abnormal case (a launchd `EnvironmentVariables` dict in the orchestration's plist,
+or an export in the service's profile). On env-loss WITH the deployed-signal present, the seam REFUSES (fails closed)
+rather than silently running as 501. (The key-marker `/etc/loom/actor-anthropic.key` is the *backstop* deployed-signal;
+`LOOM_ACTOR_REQUIRE_UID_SEP=1` is the primary, explicit one — set it. Override the marker path with `LOOM_ACTOR_KEY_MARKER`.)
+
+The #422 armed-refusal guard stays UNCONDITIONAL and FIRST (never relaxed by uid-611 — `isEmitArmed` reads custody
+the guard cannot prove is wired, so "611 ⇒ safe to run armed" would couple correctness to an unobservable deploy
+property). uid-611 is purely additive: the belt to #422's suspenders.
+
+**The clone must be 611-accessible** (R3): the throwaway repo clone the actor works in (the spawn `cwd`) is created
+by the operator (501). uid-611 needs read+write there, or the cross-uid actor RUNS BUT PRODUCES ZERO EDITS — an
+`ok:true` result with an empty trajectory that LOOKS like a weak actor, not a perms bug. The operator dogfood MUST
+exercise an Edit/Write and confirm the diff lands; grant 611 access to the clone (e.g. an ACL or a shared group).
 
 ## Residuals (open — NOT closed by this deployment)
 

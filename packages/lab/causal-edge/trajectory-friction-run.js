@@ -49,6 +49,29 @@ function defaultIsEmitArmed() {
   } catch { return false; }                                          // unresolvable kernel/custody => fail-safe not-armed
 }
 
+// #412 PR 3 — the actor-launch resolver: does the HOST actor run DIRECT (as the operator uid; dev / shadow / CI) or
+// CROSS-UID (as the non-allowlisted loom-actor uid; a deployed box)? FAIL-CLOSED polarity (the INVERSE of
+// defaultIsEmitArmed's benign-on-unset): a deployed-but-unconfigured box REFUSES — it must NEVER silently run the
+// actor as the privileged uid-501 (PR-1 VERIFY H1). Precedence (PINNED): USER/WRAPPER presence is checked FIRST;
+// only when BOTH are empty/unset is the deployed-signal consulted (the EXPLICIT flag is primary; the key-file marker
+// is the backstop). Empty/whitespace env values are treated as UNSET (mirrors defaultIsEmitArmed's length guard).
+function defaultActorLauncher() {
+  const actorUser = (process.env.LOOM_ACTOR_USER || '').trim();
+  const wrapperPath = (process.env.LOOM_ACTOR_WRAPPER || '').trim();
+  if (actorUser.length && wrapperPath.length) return { mode: 'cross-uid', actorUser, wrapperPath };
+  if (actorUser.length || wrapperPath.length) return { mode: 'refuse', reason: 'half-configured' };
+  // both empty/unset: a deployed box (the explicit flag, OR the deploy-installed custody marker) fails CLOSED.
+  // the explicit deployed-signal — boolean-NORMALIZED so a typo fails CLOSED (deployed), never OPEN (direct):
+  // 1/true/yes/on (trimmed, case-insensitive) all count (VALIDATE-hacker M1 — a flag-only deploy with `true` must
+  // not silently run as 501).
+  const flag = (process.env.LOOM_ACTOR_REQUIRE_UID_SEP || '').trim().toLowerCase();
+  const flagged = flag === '1' || flag === 'true' || flag === 'yes' || flag === 'on';
+  const marker = process.env.LOOM_ACTOR_KEY_MARKER || '/etc/loom/actor-anthropic.key';
+  const markerPresent = fs.existsSync(marker);   // existsSync returns false on ANY error (incl. an unreadable path) and never throws => a clean/dev/CI box (no such file) is not-deployed
+  if (flagged || markerPresent) return { mode: 'refuse', reason: 'deployed-unconfigured' };
+  return { mode: 'direct' };
+}
+
 function resolveClaude() {
   const which = spawnSync('command', ['-v', 'claude'], { shell: '/bin/bash', encoding: 'utf8' });
   const fromPath = which.status === 0 ? (which.stdout || '').trim() : '';
@@ -86,10 +109,11 @@ function buildActorPrompt(record, extraContext) {
   return prompt;
 }
 
-function runActorTrajectory({ record, claudeBin, model = DEFAULT_MODEL, timeout = DEFAULT_TIMEOUT_MS, cwd, allowedTools = ['Read', 'Grep', 'Glob', 'Edit', 'Write', 'Bash'], extraContext = null, isEmitArmedFn } = {}) {
+function runActorTrajectory({ record, claudeBin, model = DEFAULT_MODEL, timeout = DEFAULT_TIMEOUT_MS, cwd, allowedTools = ['Read', 'Grep', 'Glob', 'Edit', 'Write', 'Bash'], extraContext = null, isEmitArmedFn, actorLauncherFn, spawnFn } = {}) {
   // #412 — THE armed-refusal guard, at the SINGLE chokepoint every HOST-LEVEL (broker-reachable, uid-501) actor
   // spawn funnels through. While a live emit is ARMED, a host actor could `sudo -n -u loom-broker` and mint an
-  // approval, so it must NOT run. Fires BEFORE any spawn; NON-BYPASSABLE (no caller override — security.md); the
+  // approval, so it must NOT run. Fires BEFORE any spawn AND before the launch resolution (the de-correlation
+  // invariant: never build a cross-uid spawn while armed); NON-BYPASSABLE (no caller override — security.md); the
   // refusal is OBSERVABLE (emitEgressAlert). The structural close (the CONTAINED actor cannot reach the broker)
   // is enforced by Docker; this guard keeps the broker-reachable HOST path out of the armed window.
   let armed;
@@ -99,12 +123,42 @@ function runActorTrajectory({ record, claudeBin, model = DEFAULT_MODEL, timeout 
     emitEgressAlert('host-actor-refused-while-armed', { spawn: 'runActorTrajectory' });   // positional reason == the return reason (no detail-key clobber)
     return { ok: false, reason: 'host-actor-refused-while-armed', events: [] };
   }
-  const bin = claudeBin === undefined ? resolveClaude() : claudeBin;
-  if (!bin) return { ok: false, reason: 'actor-unavailable', events: [] };
+  // #412 PR 3 — the cross-uid routing seam, resolved STRICTLY AFTER the armed guard. UNSET env / clean box => 'direct'
+  // (existing behavior, byte-identical). A deployed box runs the actor as the non-allowlisted loom-actor uid
+  // ('cross-uid') or fails CLOSED ('refuse') — see defaultActorLauncher.
+  const launch = (typeof actorLauncherFn === 'function' ? actorLauncherFn : defaultActorLauncher)() || {};
+  if (launch.mode === 'refuse') {
+    emitEgressAlert('actor-launch-refused', { spawn: 'runActorTrajectory', launchMode: launch.reason });   // sub-reason under a non-`reason` key (the positional reason wins — alert.js precedence)
+    return { ok: false, reason: 'actor-launch-refused', detail: launch.reason, events: [] };
+  }
   const prompt = buildActorPrompt(record, extraContext);
-  const args = ['-p', '--output-format', 'stream-json', '--verbose', '--model', model, '--allowedTools', allowedTools.join(',')];
+  const spawn = (typeof spawnFn === 'function' ? spawnFn : spawnSync);   // injection seam (testable; defaults to spawnSync)
+  let command; let args;
+  if (launch.mode === 'cross-uid') {
+    // run as the non-allowlisted loom-actor uid via the cross-uid wrapper. claudeBin/resolveClaude/allowedTools are
+    // NOT used here: the wrapper has the staged claude + hardcodes the no-Bash toolset (the security pin). The model
+    // is allowlist-gated by crossUidActorArgs (a non-allowlisted model THROWS => caught fail-closed below).
+    try {
+      const { crossUidActorArgs } = require('../../kernel/egress/loom-actor-launch');   // lazy: only a deployed box loads it
+      ({ command, args } = crossUidActorArgs({ actorUser: launch.actorUser, wrapperPath: launch.wrapperPath, model }));
+    } catch (e) {
+      emitEgressAlert('actor-launch-build-failed', { spawn: 'runActorTrajectory', detail: (e && e.message) || 'build-error' });
+      return { ok: false, reason: 'actor-launch-build-failed', events: [] };   // a build throw is fail-closed, never propagated (keeps the structured-result contract)
+    }
+  } else if (launch.mode === 'direct') {
+    // direct (the existing path): run as the operator uid.
+    const bin = claudeBin === undefined ? resolveClaude() : claudeBin;
+    if (!bin) return { ok: false, reason: 'actor-unavailable', events: [] };
+    command = bin;
+    args = ['-p', '--output-format', 'stream-json', '--verbose', '--model', model, '--allowedTools', allowedTools.join(',')];
+  } else {
+    // an UNRECOGNIZED launch mode (a misbehaving injected actorLauncherFn / a future mode) => fail CLOSED, never
+    // silently run as the operator uid 501 (VALIDATE code-reviewer: the `else` must not default to direct).
+    emitEgressAlert('actor-launch-unknown-mode', { spawn: 'runActorTrajectory', mode: String(launch.mode) });
+    return { ok: false, reason: 'actor-launch-unknown-mode', events: [] };
+  }
   let res;
-  try { res = spawnSync(bin, args, { cwd, input: prompt, shell: false, timeout, encoding: 'utf8', maxBuffer: MAX_BUFFER }); }
+  try { res = spawn(command, args, { cwd, input: prompt, shell: false, timeout, encoding: 'utf8', maxBuffer: MAX_BUFFER }); }
   catch { return { ok: false, reason: 'actor-spawn-failed', events: [] }; }
   if (res.error && res.error.code === 'ETIMEDOUT') return { ok: false, reason: 'timeout', events: [] };
   if (res.error && res.error.code === 'ENOBUFS') return { ok: false, reason: 'output-too-large', events: parseStreamJson(res.stdout) };
@@ -176,5 +230,5 @@ function makeFrictionLabeler({ bin = resolveClaude(), timeout = 60000, toolless 
 
 module.exports = {
   runActorTrajectory, buildActorPrompt, parseStreamJson, captureProcessGraph, makeFrictionLabeler,
-  resolveClaude, buildFrictionLabelerInput, detectRecallSmell,
+  resolveClaude, buildFrictionLabelerInput, detectRecallSmell, defaultActorLauncher,
 };
