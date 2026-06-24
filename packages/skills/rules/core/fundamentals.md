@@ -71,6 +71,15 @@ When locating *where* to change a symbol, `grep` returns **text matches** — ev
 
 **Origin**: recurring grep-and-guess mis-targeting; `grep` is a *locator*, never a *binding resolver*. Kept always-on (not predicate-gated) for the same reason as the ASCII rule above — it applies to nearly every code edit, and the core-rules predicate-block count is at the T76 ceiling of 14.
 
+## Prose style: minimize LLM tells (prose, not source)
+
+When writing prose for a human reader (chat replies, commit and PR bodies, new docs), avoid the punctuation that reads as machine-generated:
+
+- **Em-dash: use sparingly.** Overuse is one of the most-cited tells of LLM-written text. Prefer a comma, colon, parentheses, or two sentences. Reach for an em-dash only when no cleaner ASCII punctuation fits.
+- **Times sign: avoid in prose.** Write "3x" or "3 times", not the unicode multiply glyph. A weaker signal than the em-dash, but it still reads as machine-formatted rather than hand-typed.
+
+This is a style preference for human-readable prose, distinct from the ASCII-only-in-source rule above: that one prevents lint failures in code, this one is about how the prose reads. It applies going forward and does not require rewriting existing files. **Origin**: USER feedback 2026-06-24, captured via `/self-improve`. Kept always-on (not predicate-gated): nearly every turn produces prose, and it adds no predicate block to the T76 ceiling of 14.
+
 <important if "task involves multi-file changes (≥2 distinct files) or task is at completion">
 
 ## Pre-Completion Checklist

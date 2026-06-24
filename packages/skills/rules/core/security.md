@@ -48,9 +48,21 @@
   signature, a body-hash mismatch, a verify-key-fallback attempt) AND a bug (a misconfigured trust-anchor
   silently rejecting every *legitimate* approval). Emit a high-visibility signal on the reason-bearing
   reject path — cheap while the gate is SHADOW/advisory, load-bearing the moment it gates a live action:
-  you cannot alert on, or debug, a gate whose failures never surface. (`drift:fail-silent` ×3; the
+  you cannot alert on, or debug, a gate whose failures never surface. (`drift:fail-silent` ×4; the
   v3.2.5a egress `verifyApproval` returns `sig-invalid` / `no-verify-key` / `body-hash-mismatch` /
-  `expired` with no emit.)
+  `expired` with no emit; and v3.2.5 #430 PR-2's `resolveJudgeLaunch` resolver-throw `catch` refused
+  with no `emitEgressAlert` while its 3 sibling refuse paths emit.)
+- **A deploy/config FLAG that gates a privileged path must parse ASYMMETRICALLY — a typo fails
+  CLOSED, never OPEN.** Two predicates, not one shared `normalizeBool`: ENABLING the privileged path
+  (e.g. routing cross-uid) needs a STRICT explicit-truthy (`1`/`true`/`yes`/`on`); deciding a box is
+  DEPLOYED-and-must-fail-closed needs only a LENIENT non-falsey token (anything not empty/`0`/`false`/
+  `no`/`off` — including an operator typo like `ture`). Share one parser and a garbage value reads
+  false on the deployed-signal, so the gate silently runs the unprivileged DIRECT path instead of
+  refusing. The asymmetry makes an unrecognized token fail CLOSED (treated as "intent to deploy, so
+  refuse"). **Adversarial corollary:** an env/flag fuzz MUST include typos / garbage tokens, not just
+  the valid on/off set — a valid-token-only sweep is blind to exactly this bug. (v3.2.5 #430 PR-2: a
+  typo-fails-OPEN deployed-signal, missed by a 672-combo hacker env-sweep using only valid tokens,
+  caught by the pre-PR CodeRabbit lens.)
 
 ## Secret Management
 
