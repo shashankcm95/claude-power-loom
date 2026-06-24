@@ -99,9 +99,11 @@ copying-then-root-locking only blesses a possible trojan). Provide root-owned bi
 stat -f '%Su %Sp' /usr/local/bin/node            # expect: root -rwxr-xr-x
 
 # claude: obtain a ROOT-OWNED claude. Either install it at a root-level location, OR copy it as root ONLY at a moment
-# you trust your $HOME copy (no autonomous actor running), into a root-owned dir, then confirm it is root-locked:
+# you trust your $HOME copy (no autonomous actor running), into a root-owned dir, then confirm it is root-locked.
+# NOTE: stock/older macOS `readlink -f` lacks -f; resolve the symlink portably with python3:
+CLAUDE_SRC="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$(command -v claude)")"
 sudo install -d -o root -g wheel -m 0755 /opt/loom-actor
-sudo install -o root -g wheel -m 0755 "$(readlink -f "$(command -v claude)")" /opt/loom-actor/claude
+sudo install -o root -g wheel -m 0755 "${CLAUDE_SRC}" /opt/loom-actor/claude
 stat -f '%Su %Sp' /opt/loom-actor/claude         # expect: root -rwxr-xr-x
 ```
 
@@ -120,7 +122,7 @@ A **host-writable wrapper is a privesc hole** — own it root, not group/world-w
 sudo tee /usr/local/bin/loom-actor-run >/dev/null <<'EOF'
 #!/bin/sh
 # $1 = the version-probe sentinel OR an allowlisted model (the launcher validates it). The prompt rides STDIN.
-PATH=/usr/local/bin:/usr/bin:/bin                                   # so claude's node shebang resolves under sudo env_reset (use your --node dir)
+PATH=<dir-of-your---node>:/usr/bin:/bin                             # so claude's node shebang resolves under sudo env_reset (the helper fills this from --node; e.g. /usr/local/bin for the nodejs.org node)
 if [ "$1" = "--loom-actor-version-probe" ]; then exec /opt/loom-actor/claude --version; fi
 export ANTHROPIC_API_KEY="$(cat /etc/loom/actor-anthropic.key)"     # NAME in the child env, never argv; value never echoed
 exec /opt/loom-actor/claude -p --output-format stream-json --verbose --model "$1" --allowedTools Read,Grep,Glob,Edit,Write

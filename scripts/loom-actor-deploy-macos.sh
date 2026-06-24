@@ -59,7 +59,16 @@ done
 say()  { printf '\n=== %s ===\n' "$1"; }
 note() { printf '  %s\n' "$1"; }
 run()  { if "$APPLY"; then "$@"; else printf '  [dry-run] %s\n' "$*"; fi; }
-resolve() { readlink -f "$1" 2>/dev/null || echo "$1"; }
+# portable canonicalize: BSD/stock macOS `readlink` lacks -f (CodeRabbit), which would silently make this a no-op and
+# weaken assert_root_locked's symlink resolution. Try `readlink -f` (GNU / newer macOS), then python3 realpath
+# (always present on macOS), then a pure-shell `cd -P` dir-resolve, finally the raw path.
+resolve() {
+  local r d b
+  r="$(readlink -f "$1" 2>/dev/null)" && [ -n "$r" ] && { printf '%s\n' "$r"; return 0; }
+  r="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1" 2>/dev/null)" && [ -n "$r" ] && { printf '%s\n' "$r"; return 0; }
+  d="$(dirname "$1")"; b="$(basename "$1")"
+  if d="$(cd "$d" 2>/dev/null && pwd -P)"; then printf '%s/%s\n' "$d" "$b"; else printf '%s\n' "$1"; fi
+}
 
 # reject a path that is not absolute, contains '..', or carries shell-metachars/whitespace (interpolated into the
 # generated /bin/sh wrapper + into argv). Mirrors loom-broker-deploy-macos.sh.
@@ -152,7 +161,14 @@ note "host (operator) : uid ${HOST_UID}"
 # ---- 1. create the actor system user (no login, no shell) — idempotent ----
 say "1. create the ${ACTOR_USER} system user (uid ${ACTOR_UID})"
 if id "${ACTOR_USER}" >/dev/null 2>&1; then
-  note "user ${ACTOR_USER} already exists — skipping"
+  # an existing user with a DIFFERENT uid is a silent trust-domain mismatch: we skip creation but the sudoers/custody
+  # all assume ${ACTOR_UID} (CodeRabbit). Verify the uid matches; refuse otherwise.
+  existing_uid="$(id -u "${ACTOR_USER}" 2>/dev/null || echo '?')"
+  if [ "${existing_uid}" != "${ACTOR_UID}" ]; then
+    echo "REFUSE: user ${ACTOR_USER} already exists with uid ${existing_uid}, not the requested ${ACTOR_UID} — fix the uid or pass --actor-uid ${existing_uid} (and re-check the distinct-uid refusal)" >&2
+    exit 1
+  fi
+  note "user ${ACTOR_USER} already exists (uid ${existing_uid}) — skipping"
 else
   run sysadminctl -addUser "${ACTOR_USER}" -UID "${ACTOR_UID}" -shell /usr/bin/false -home /var/empty
 fi
@@ -167,12 +183,16 @@ assert_root_locked "${KEY_DIR}" "the actor key dir; a writable ancestor lets the
 if [ -L "${KEY_FILE}" ]; then
   echo "REFUSE: ${KEY_FILE} is a symlink — refusing (a symlinked key path is a redirect attack); delete it" >&2; exit 1
 elif [ -f "${KEY_FILE}" ]; then
-  # exists — validate ownership (a stale half-write left root-owned would make the actor unable to read its own key — VALIDATE-hacker M-2).
+  # exists — validate BOTH ownership AND mode 0600 (a stale 0644 key is world-readable; a root-owned one is
+  # unreadable by the actor — VALIDATE-hacker M-2 + CodeRabbit). Fail closed on either.
   kowner="$(stat -f '%Su' "${KEY_FILE}" 2>/dev/null || echo '?')"
+  kmode="$(stat -f '%Sp' "${KEY_FILE}" 2>/dev/null || echo '?')"
   if [ "${kowner}" != "${ACTOR_USER}" ]; then
-    note "WARNING: ${KEY_FILE} exists but is owned by '${kowner}' (expected ${ACTOR_USER}) — the actor cannot read a mis-owned key; delete it and re-run to rotate"
+    echo "REFUSE: ${KEY_FILE} exists but is owned by '${kowner}' (expected ${ACTOR_USER}) — the actor cannot read a mis-owned key; delete it and re-run to rotate" >&2; exit 1
+  elif [ "${kmode}" != "-rw-------" ]; then
+    echo "REFUSE: ${KEY_FILE} exists with unsafe mode '${kmode}' (expected -rw------- / 0600) — fix it (chmod 0600) or delete and re-run" >&2; exit 1
   else
-    note "${KEY_FILE} already exists (owner ${kowner}) — NOT overwriting (delete it first to rotate)"
+    note "${KEY_FILE} already exists (owner ${kowner}, 0600) — NOT overwriting (delete it first to rotate)"
   fi
 elif "$APPLY"; then
   # umask 077 so the tee CREATES 0600 (default umask 022 would leave a world-readable window); the value rides the

@@ -47,7 +47,8 @@ From `scripts/loom-broker-deploy-macos.sh` (read firsthand):
    shebang finds the root node under sudo `env_reset`. (No copy -> no TOCTOU; C1 closed.)
 3. **The wrapper body** is the actor wrapper from the runbook (no-Bash `--allowedTools Read,Grep,Glob,Edit,Write`;
    `--model "$1"`; the `--loom-actor-version-probe` sentinel branch execs `claude --version` BEFORE the key export;
-   `ANTHROPIC_API_KEY="$(cat <keyfile>)"` then `exec <staged-claude> -p ...`). All interpolated paths `assert_abs_safe`.
+   `ANTHROPIC_API_KEY="$(cat <keyfile>)"` then `exec <--claude-bin> -p ...` (the operator-provided root-owned claude,
+   NOT a staged copy — per delta #2). All interpolated paths `assert_abs_safe`.
 4. **Sudoers**: `<hostuser> ALL=(loom-actor) NOPASSWD: <wrapper>` + `Defaults env_reset, !setenv` (env_reset is
    load-bearing here — it STRIPS the operator's `ANTHROPIC_API_KEY` so 611 uses its OWN from custody).
 5. **Verify step** PRINTS the `loom-actor-custody-verify.js` invocation WITH `--claude-bin` + `--node-bin` (the CLI
