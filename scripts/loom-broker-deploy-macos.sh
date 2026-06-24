@@ -55,7 +55,13 @@ done
 say()  { printf '\n=== %s ===\n' "$1"; }
 note() { printf '  %s\n' "$1"; }
 run()  { if "$APPLY"; then "$@"; else printf '  [dry-run] %s\n' "$*"; fi; }
-resolve() { readlink -f "$1" 2>/dev/null || echo "$1"; }
+resolve() {
+  local r d b
+  r="$(readlink -f "$1" 2>/dev/null)" && [ -n "$r" ] && { printf '%s\n' "$r"; return 0; }
+  r="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1" 2>/dev/null)" && [ -n "$r" ] && { printf '%s\n' "$r"; return 0; }
+  d="$(dirname "$1")"; b="$(basename "$1")"
+  if d="$(cd "$d" 2>/dev/null && pwd -P)"; then printf '%s/%s\n' "$d" "$b"; else printf '%s\n' "$1"; fi
+}
 
 # reject a path that is not absolute, contains '..', or carries shell-metachars/whitespace (M1 — these are
 # interpolated into the generated /bin/sh wrapper + into argv). Mirrors loom-broker-launch.js's discipline.
@@ -142,7 +148,14 @@ fi
 # ---- 2. create the broker system user (no login, no shell) — idempotent ----
 say "2. create the ${BROKER_USER} system user (uid ${BROKER_UID})"
 if id "${BROKER_USER}" >/dev/null 2>&1; then
-  note "user ${BROKER_USER} already exists — skipping"
+  # an existing user with a DIFFERENT uid is a silent trust-domain mismatch: we skip creation but the sudoers/custody
+  # all assume ${BROKER_UID} (CodeRabbit). Verify the uid matches; refuse otherwise.
+  existing_uid="$(id -u "${BROKER_USER}" 2>/dev/null || echo '?')"
+  if [ "${existing_uid}" != "${BROKER_UID}" ]; then
+    echo "REFUSE: user ${BROKER_USER} already exists with uid ${existing_uid}, not the requested ${BROKER_UID} — fix the uid or pass --broker-uid ${existing_uid}" >&2
+    exit 1
+  fi
+  note "user ${BROKER_USER} already exists (uid ${existing_uid}) — skipping"
 else
   run sysadminctl -addUser "${BROKER_USER}" -UID "${BROKER_UID}" -shell /usr/bin/false -home /var/empty
 fi
