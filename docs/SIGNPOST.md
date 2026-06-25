@@ -368,6 +368,12 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/lab/verdict-attestation/enrich-from-spawn-state.js` - v3.4 Wave 1 — the verdict-attestation ENRICHER.
 - `packages/lab/verdict-attestation/store.js` - v3.4 Wave 1 — Verdict-emission attestation store.
 
+### `lab/world-anchor/`
+
+- `packages/lab/world-anchor/cli.js` - Wave 1, autonomous-SDE ingress.
+- `packages/lab/world-anchor/lesson.js` - Wave 1, autonomous-SDE ingress.
+- `packages/lab/world-anchor/world-anchor-store.js` - Wave 1, autonomous-SDE ingress (packages/specs/plans/2026-06-25-world-anchor-ingress-mvp.md).
+
 ## specs/
 
 ### `specs/bench/`
