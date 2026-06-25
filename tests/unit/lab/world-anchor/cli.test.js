@@ -17,6 +17,12 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
+// Test isolation: pin the lab-state base to a throwaway tmp dir BEFORE the store modules are required
+// (they read LOOM_LAB_STATE_DIR at module load), so a test that omits an injected dir can NEVER write
+// to the real ~/.claude/lab-state store. The dogfood surfaced this: a merged record-merge that injected
+// `dir` but not `liveDir` minted a live node into the REAL recall-graph-live/ (the default fallback).
+process.env.LOOM_LAB_STATE_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'loom-test-labstate-'));
+
 const REPO = path.join(__dirname, '..', '..', '..', '..');
 const cli = require(path.join(REPO, 'packages', 'lab', 'world-anchor', 'cli.js'));
 const store = require(path.join(REPO, 'packages', 'lab', 'world-anchor', 'world-anchor-store.js'));
@@ -63,7 +69,7 @@ test('runRecordMerge: an attested PR resolves + records a confirmation', () => {
     lesson_signature: 'lesson:boundary-contract|unguarded-edge-case|handle-edge-explicitly',
     built_by: 'anonymous-actor', approval_hash: 'd'.repeat(64), emitted_at: '2026-06-25T00:00:00.000Z',
   }, { dir });
-  const r = cli.runRecordMerge({ pr: 'https://github.com/octo/widget/pull/77', outcome: 'merged', mergeSha: 'cafef00d' }, { dir, now: '2026-06-26T00:00:00.000Z' });
+  const r = cli.runRecordMerge({ pr: 'https://github.com/octo/widget/pull/77', outcome: 'merged', mergeSha: 'cafef00d' }, { dir, liveDir: liveDir(dir), now: '2026-06-26T00:00:00.000Z' });
   assert.strictEqual(r.ok, true);
   const back = store.readAnchor(r.anchor_id, { dir });
   assert.strictEqual(back.confirmation.outcome, 'merged');

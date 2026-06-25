@@ -18,6 +18,11 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
+// Test isolation: pin the lab-state base to a throwaway tmp dir BEFORE the store modules are required
+// (they read LOOM_LAB_STATE_DIR at module load), so a test that omits an injected dir can NEVER write to
+// the real ~/.claude/lab-state store.
+process.env.LOOM_LAB_STATE_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'loom-test-labstate-'));
+
 const REPO = path.join(__dirname, '..', '..', '..', '..');
 const recallStore = require(path.join(REPO, 'packages', 'lab', 'attribution', 'recall-graph-store.js'));
 const groundingSlice = require(path.join(REPO, 'packages', 'lab', 'persona-experiment', 'grounding-slice.js'));
