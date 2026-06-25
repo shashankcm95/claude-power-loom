@@ -61,7 +61,7 @@ verify-on-read, `O_NOFOLLOW` + fstat-same-fd reads, `wx` exclusive writes, dir u
    `lesson_body`, taxonomy-compatible. For the MVP the lesson is orchestrator-authored (future: auto-minted by the
    live `captureLessons` leg, ladder item 3). `lesson_signature` = the frozen cluster key.
 3. **`cli.js`** — `record-merge --pr <url> --outcome merged|closed [--merge-sha <sha>]`: the human-invoked OBSERVER.
-   Resolves the `anchor_id` by joining `--pr` against the attestation (`pr_url`/`issueRef`), calls
+   Resolves the `anchor_id` via the exact `(repo, pr_number, pr_url)` tuple (exactly one matching attestation), calls
    `recordConfirmation`. Fail-closed if no matching attestation (so a merge of an un-attested PR is loudly skipped,
    not silently laundered). This is the Q1 MVP: a human-invoked world-anchored signal, no poller/webhook.
 

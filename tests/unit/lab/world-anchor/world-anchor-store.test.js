@@ -105,6 +105,20 @@ test('content-verify-on-read: a tampered repo (body no longer derives anchor_id)
   assert.ok(alerts.some((al) => al.reason === 'world-anchor-verify-mismatch'), 'verify-mismatch alert fires (NON-VACUOUS)');
 });
 
+test('read-path DoS bound: an oversize file planted at a valid anchor name is REJECTED before readFileSync -> null + oversize alert', () => {
+  const dir = tmp();
+  const w = recordAttestation(att(), { dir });
+  const f = path.join(dir, `${w.anchor_id}.json`);
+  fs.writeFileSync(f, 'x'.repeat(70 * 1024));                         // a multi-GB plant, simulated past the 64KB st.size cap
+  const alerts = captureAlerts(() => {
+    assert.strictEqual(readAnchor(w.anchor_id, { dir }), null, 'an oversize record is refused before it is read into memory');
+  });
+  assert.ok(
+    alerts.some((al) => al.reason === 'world-anchor-verify-mismatch' && al.kind === 'oversize'),
+    'oversize alert fires (NON-VACUOUS)',
+  );
+});
+
 test('content-verify-on-read: a tampered diff_hash (identity-basis field) is REJECTED -> null', () => {
   const dir = tmp();
   const w = recordAttestation(att(), { dir });

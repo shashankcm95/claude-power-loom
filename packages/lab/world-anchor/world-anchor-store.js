@@ -61,6 +61,11 @@ const OUTCOMES = Object.freeze(['merged', 'closed', 'stale']);
 
 // Hard field-length caps (DoS bound; a malformed/forged giant field cannot write an unbounded file).
 const MAX = Object.freeze({ repo: 200, pr_url: 2048, branch: 255, built_by: 128, emitted_at: 40, lesson_signature: 512 });
+// Total on-disk record cap, enforced on the READ path via st.size BEFORE readFileSync. The field caps above
+// bound a record WRITTEN through validateAttestation, but a same-uid process can plant a multi-GB file directly
+// at a valid <64-hex>.json name (bypassing the write path); reading it fully into memory before the hash check
+// is the DoS this closes. A fully-populated attestation/confirmation is < 4KB; 64KB is generous.
+const MAX_RECORD_BYTES = 64 * 1024;
 
 // The full attestation field set (validated at the boundary). The IDENTITY basis is the first three.
 const ATT_FIELDS = Object.freeze([
@@ -295,6 +300,7 @@ function readAnchorRaw(anchor_id, dir, selfUid) {
     const st = fs.fstatSync(fd);
     if (!st.isFile()) { emitEgressAlert('world-anchor-verify-mismatch', { anchor_id, kind: 'non-regular-file' }); return null; }
     if (isForeign(st, selfUid)) { emitEgressAlert('world-anchor-verify-mismatch', { anchor_id, kind: 'foreign-owned' }); return null; }
+    if (st.size > MAX_RECORD_BYTES) { emitEgressAlert('world-anchor-verify-mismatch', { anchor_id, kind: 'oversize', size: st.size }); return null; }
     const parsed = JSON.parse(fs.readFileSync(fd, 'utf8'));
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
     const reId = deriveAnchorId({ repo: parsed.repo, issueRef: parsed.issueRef, diff_hash: parsed.diff_hash });
@@ -329,6 +335,7 @@ function readConfirmationRaw(anchor_id, dir, selfUid) {
     const st = fs.fstatSync(fd);
     if (!st.isFile()) { emitEgressAlert('world-anchor-verify-mismatch', { anchor_id, kind: 'confirmation-non-regular-file' }); return null; }
     if (isForeign(st, selfUid)) { emitEgressAlert('world-anchor-verify-mismatch', { anchor_id, kind: 'confirmation-foreign-owned' }); return null; }
+    if (st.size > MAX_RECORD_BYTES) { emitEgressAlert('world-anchor-verify-mismatch', { anchor_id, kind: 'confirmation-oversize', size: st.size }); return null; }
     const parsed = JSON.parse(fs.readFileSync(fd, 'utf8'));
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
     if (parsed.anchor_id !== anchor_id) {                            // a sidecar that lies about its anchor
