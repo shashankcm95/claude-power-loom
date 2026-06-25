@@ -37,7 +37,7 @@ Score each entry on three signals, then demote the lowest:
 
 Rules:
 
-1. **Demote** a stale, low-importance, not-currently-relevant entry to its topical `[[topic-file]]` (verbatim), or to `memory/_archive/<YYYY-MM>-demoted.md` when no obvious topic file exists. Leave a ONE-LINE `[[link]]` pointer (a short summary plus the link) in the index. Preserved verbatim, retrievable via the link / `loom-recall`.
+1. **Demote the LOWEST-SCORING entries** (ranked by recency + importance + relevance together, NOT a conjunctive all-three test — a low total score is enough). Importance is also a PROTECTIVE signal: an `invariant`-class entry is exempt regardless of score (rule 2). Move each demoted entry to its topical `[[topic-file]]` (verbatim) when one exists, otherwise to `memory/_archive/<YYYY-MM>-demoted.md`. Leave a ONE-LINE `[[link]]` pointer (a short summary plus the link) in the index. Preserved verbatim, retrievable via the link / `loom-recall`.
 2. **PROTECT `invariant` from staleness eviction (load-bearing).** A stale-but-`invariant` entry (kernel record-store rules, security invariants, canonical decisions) STAYS HOT regardless of age. Demotion gates on LOW IMPORTANCE too, never staleness alone.
 3. **Demote, never delete.** The hot index keeps the summary + link for continuity; the archive keeps the full entry. The byte budget is met by MOVING content down a tier, not by rewriting it shorter.
 4. A deterministic `memory demote` helper (script ranks lowest-score candidates, the curator confirms the move) is the planned follow-up; until it lands, do the demotion by hand following these rules.
