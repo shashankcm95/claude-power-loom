@@ -10,12 +10,17 @@
 //       Parse owner/repo + pr_number from the PR URL, resolveAnchorForPr (the EXACT-SET join),
 //       then recordConfirmation. Fail-closed + observable if no UNIQUE attestation matches (a merge
 //       of an un-attested / ambiguous PR is loudly skipped, never laundered into a confirmation).
+//       On --outcome merged (EXACT string) it ALSO mints a world_anchored lesson node from the
+//       VERIFIED attestation (item 3); closed/stale record the confirmation but mint nothing.
 //   backfill-2137 [--diff <path>] [--dir <store>] [--allow-placeholder]
 //       BUILD (in memory) the #2137 attestation + lesson and write it to the store. The diff_hash is
 //       RE-DERIVED from the diff file bytes (default /tmp/spec-kitty-2097.diff), never hardcoded; a
 //       missing file falls back to a DOCUMENTED placeholder hash. A placeholder anchor_id is NOT the
 //       real content-address, so the backfill REFUSES it unless --allow-placeholder is passed (it
-//       must never be silently resolvable/confirmable as the real merge).
+//       must never be silently resolvable/confirmable as the real merge). Records the attestation
+//       ONLY; it does NOT mint a live lesson (the mint requires a record-merge --outcome merged).
+//   list-live [--dir <store>]
+//       Print every verified world_anchored lesson node in the live store (a pure-read observer).
 //
 // Exit codes: 0 on success; 1 on usage / fail-closed refusal (a clean message, never a stack dump).
 
@@ -24,7 +29,18 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const store = require('./world-anchor-store');
+const liveStore = require('./live-recall-store');
 const { buildWorldAnchorLesson, LESSON_2137 } = require('./lesson');
+const { emitEgressAlert } = require('../../kernel/egress/alert');
+
+// The orchestrator-authored lesson FLOOR (D7): a sealed lesson_signature -> the orchestrator-authored
+// block whose body carries the world-grounded learning (D8). The mint NEVER reads a caller-supplied
+// body (hacker H2); it looks the body up by the attestation's content_hash-SEALED lesson_signature.
+// For the MVP this is LESSON_2137 only; item 4's classifier extends this map (append-only, mirroring
+// the frozen taxonomy floor). An attestation whose sealed signature is not in the floor mints nothing.
+const ORCHESTRATOR_LESSONS = Object.freeze({
+  [buildWorldAnchorLesson(LESSON_2137).lesson_signature]: LESSON_2137,
+});
 
 // The #2137 constants (the spec-kitty PR this wave confirms). diff_hash is NOT here  -  it is
 // re-derived from the diff bytes at backfill time.
@@ -63,10 +79,14 @@ function parsePrUrl(url) {
 
 /**
  * The record-merge flow as a pure-ish module function (dir-injectable for tests). Resolves the
- * anchor by the FULL (repo, pr_number, pr_url) tuple, then records the confirmation.
+ * anchor by the FULL (repo, pr_number, pr_url) tuple, records the confirmation, and -- ONLY when the
+ * outcome is the EXACT string 'merged' -- mints a world_anchored lesson node into the live store
+ * (item 3). The mint derives its identity from the content_hash-SEALED attestation (NEVER a
+ * caller-supplied lesson field -- hacker H2); a closed/stale/un-attested outcome mints NOTHING and the
+ * non-mint is observable (the live store's refuse paths emit; a no-floor-lesson logs a reason).
  * @param {{pr: string, outcome: string, mergeSha?: string}} args
- * @param {{dir?: string, now?: string}} [opts]
- * @returns {{ok: boolean, anchor_id?: string, reason?: string}}
+ * @param {{dir?: string, liveDir?: string, now?: string}} [opts]
+ * @returns {{ok: boolean, anchor_id?: string, reason?: string, minted?: boolean, live_node_id?: string}}
  */
 function runRecordMerge(args, opts = {}) {
   if (!store.OUTCOMES.includes(args.outcome)) return { ok: false, reason: 'bad-outcome' };
@@ -81,7 +101,67 @@ function runRecordMerge(args, opts = {}) {
     confirmed_at,
   }, { dir: opts.dir });
   if (!conf.ok) return conf;
-  return { ok: true, anchor_id: resolved.anchor_id, outcome: args.outcome };
+  const base = { ok: true, anchor_id: resolved.anchor_id, outcome: args.outcome };
+  // The MINT gate: EXACT-string 'merged' only (not a subset/includes); closed/stale never mint.
+  if (args.outcome !== 'merged') return base;
+  const mint = mintFromAttestation(resolved.anchor_id, args.mergeSha, { dir: opts.dir, liveDir: opts.liveDir });
+  return { ...base, minted: mint.minted, minted_deduped: !!mint.deduped, live_node_id: mint.node_id, mint_reason: mint.reason };
+}
+
+/**
+ * Mint a world_anchored lesson from the VERIFIED attestation (re-read via store.readAnchor, never a
+ * caller field). The lesson_body is looked up from the orchestrator-authored floor by the
+ * attestation's content_hash-SEALED lesson_signature; the world-evidence merge_sha comes from the
+ * gh-verified --merge-sha. Every non-mint reason is observable (the live store emits on a refuse; a
+ * missing SHA or no-floor-lesson is a returned reason a caller surfaces, M1).
+ * @returns {{minted: boolean, node_id?: string, reason?: string}}
+ */
+function mintFromAttestation(anchor_id, mergeSha, opts) {
+  const att = store.readAnchor(anchor_id, { dir: opts.dir });        // VERIFIED + content_hash-sealed
+  // M1: every mint-refuse path that short-circuits BEFORE the live store is itself observable (the
+  // store emits on its own refuses). A merged outcome that fails to mint a lesson is a fail-closed
+  // decision; emit so it can never silently swallow a genuine world-anchor.
+  // NOTE: the positional `reason` is authoritative in emitEgressAlert (detail is spread FIRST), so
+  // the distinguishing token goes in `mint_reason`, never a detail `reason` key (which is clobbered).
+  if (!att) { emitEgressAlert('live-recall-mint-refused', { anchor_id, mint_reason: 'attestation-unreadable' }); return { minted: false, reason: 'attestation-unreadable' }; }
+  if (typeof mergeSha !== 'string' || mergeSha.length === 0) {
+    emitEgressAlert('live-recall-mint-refused', { anchor_id, mint_reason: 'no-merge-sha' });
+    return { minted: false, reason: 'no-merge-sha' };
+  }
+  const seed = ORCHESTRATOR_LESSONS[att.lesson_signature];           // by the SEALED signature, never a caller field
+  if (!seed) {
+    emitEgressAlert('live-recall-mint-refused', { anchor_id, mint_reason: 'no-floor-lesson', lesson_signature: att.lesson_signature });
+    return { minted: false, reason: 'no-floor-lesson' };
+  }
+  let lesson;
+  // M1: the build-failed path is fail-closed and must be OBSERVABLE too (currently unreachable
+  // because the floor seeds are frozen + validated at module load, but item 4 loads seeds at
+  // runtime — a silent swallow then would hide a genuine world-anchor). Emit, like every sibling.
+  try { lesson = buildWorldAnchorLesson(seed); }
+  catch (e) {
+    emitEgressAlert('live-recall-mint-refused', { anchor_id, mint_reason: 'lesson-build-failed', detail: (e && e.message) || 'error' });
+    return { minted: false, reason: 'lesson-build-failed' };
+  }
+  const m = liveStore.mintWorldAnchoredNode({
+    anchor_id,
+    merge_sha: mergeSha,
+    lesson_signature: lesson.lesson_signature,                       // re-derived from the floor block (== att.lesson_signature)
+    lesson_body: lesson.lesson_body,
+  }, { dir: opts.liveDir });
+  if (!m.ok) return { minted: false, reason: m.reason };             // the live store already emitted an observable alert
+  // Propagate `deduped` so a re-mint (same content-address) is not reported as a NEW world-anchor
+  // event: minted:true + deduped:true means "the node exists", minted:true + deduped:false is a
+  // genuine first write. A log/automation consumer must be able to tell them apart.
+  return { minted: true, node_id: m.node_id, deduped: !!m.deduped };
+}
+
+/**
+ * The list-live observer: every verified world_anchored node in the live store. Pure read; never throws.
+ * @param {{dir?: string}} [opts]
+ * @returns {object[]}
+ */
+function listLive(opts = {}) {
+  return liveStore.listLiveNodes(opts.dir ? { dir: opts.dir } : {});
 }
 
 /**
@@ -136,7 +216,7 @@ function parseArgs(argv) {
   return args;
 }
 
-const USAGE = 'Usage: cli.js <record-merge --pr <url> --outcome merged|closed|stale [--merge-sha <sha>] | backfill-2137 [--diff <path>] [--dir <store>] [--allow-placeholder]>\n';
+const USAGE = 'Usage: cli.js <record-merge --pr <url> --outcome merged|closed|stale [--merge-sha <sha>] [--live-dir <dir>] | list-live [--live-dir <dir>] | backfill-2137 [--diff <path>] [--dir <store>] [--allow-placeholder]>\n';
 
 function emit(obj) { process.stdout.write(`${JSON.stringify(obj, null, 2)}\n`); }
 
@@ -144,9 +224,17 @@ function main(argv) {
   const sub = argv[0];
   const args = parseArgs(argv.slice(1));
   if (sub === 'record-merge') {
-    const r = runRecordMerge({ pr: args.pr, outcome: args.outcome, mergeSha: args['merge-sha'] }, { dir: args.dir });
+    const r = runRecordMerge(
+      { pr: args.pr, outcome: args.outcome, mergeSha: args['merge-sha'] },
+      { dir: args.dir, liveDir: args['live-dir'] },
+    );
     emit(r);
     return r.ok ? 0 : 1;
+  }
+  if (sub === 'list-live') {
+    const nodes = listLive({ dir: args['live-dir'] });
+    emit({ ok: true, count: nodes.length, nodes });
+    return 0;
   }
   if (sub === 'backfill-2137') {
     const r = backfill2137({ dir: args.dir, diffPath: args.diff, allowPlaceholder: args['allow-placeholder'] === true });
@@ -161,4 +249,4 @@ if (require.main === module) {
   process.exit(main(process.argv.slice(2)));
 }
 
-module.exports = { parsePrUrl, runRecordMerge, backfill2137, main, SPEC_KITTY_2137, PLACEHOLDER_DIFF_HASH };
+module.exports = { parsePrUrl, runRecordMerge, mintFromAttestation, listLive, backfill2137, main, SPEC_KITTY_2137, PLACEHOLDER_DIFF_HASH };

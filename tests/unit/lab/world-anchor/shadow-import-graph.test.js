@@ -46,6 +46,13 @@ function walkJs(dir) {
 // path prefix up to the distinctive basename.
 const IMPORT_RE = /(?:require\(\s*|import\s+(?:[^;'"]*\sfrom\s+)?|import\(\s*)['"][^'"]*world-anchor-store(?:\.js)?['"]/;
 
+// A SEPARATE matcher for the live recall store (item 3). The world-anchor-store matcher above is
+// basename-specific and would pass VACUOUSLY against live-recall-store (the substrings differ), so
+// the live store needs its own matcher. Same four require/import forms; the distinctive basename is
+// `live-recall-store`. The SHADOW invariant is identical: no module outside packages/lab/world-anchor/
+// may import the live store until the authenticated minter + LIVE_SOURCES land (#273, ladder item 5).
+const LIVE_IMPORT_RE = /(?:require\(\s*|import\s+(?:[^;'"]*\sfrom\s+)?|import\(\s*)['"][^'"]*live-recall-store(?:\.js)?['"]/;
+
 test('SHADOW import-graph matcher catches the .js-extension + ESM + dynamic-import forms (not just bare require)', () => {
   const samples = [
     "require('../world-anchor/world-anchor-store.js')",
@@ -67,6 +74,36 @@ test('SHADOW import-graph: NO module outside packages/lab/world-anchor/ imports 
     if (IMPORT_RE.test(src)) offenders.push(path.relative(REPO, file));
   }
   assert.deepStrictEqual(offenders, [], `world-anchor-store must stay SHADOW  -  these modules import it: ${offenders.join(', ')}`);
+});
+
+test('SHADOW import-graph matcher (live store) catches the .js + ESM + dynamic-import forms; no false-positive', () => {
+  const samples = [
+    "require('../world-anchor/live-recall-store.js')",
+    "require('./live-recall-store')",
+    "import { readLiveNode } from '../world-anchor/live-recall-store.js'",
+    "import liveStore from './live-recall-store'",
+    "const m = import('../world-anchor/live-recall-store.js')",
+  ];
+  for (const s of samples) assert.ok(LIVE_IMPORT_RE.test(s), `the live-store matcher must catch: ${s}`);
+  // non-vacuous: it must NOT match the sibling world-anchor-store, nor an adjacent name
+  assert.ok(!LIVE_IMPORT_RE.test("require('./world-anchor-store')"), 'distinct from the world-anchor-store matcher');
+  assert.ok(!LIVE_IMPORT_RE.test("require('./live-recall-cli')"), 'no false-positive on an adjacent module name');
+});
+
+test('SHADOW import-graph: NO module outside packages/lab/world-anchor/ imports live-recall-store', () => {
+  const offenders = [];
+  for (const file of walkJs(PACKAGES)) {
+    if (file.startsWith(WORLD_ANCHOR_DIR + path.sep)) continue;       // the module + its own siblings may import it
+    const src = fs.readFileSync(file, 'utf8');
+    if (LIVE_IMPORT_RE.test(src)) offenders.push(path.relative(REPO, file));
+  }
+  assert.deepStrictEqual(offenders, [], `live-recall-store must stay SHADOW  -  these modules import it: ${offenders.join(', ')}`);
+});
+
+test('SHADOW header invariant: live-recall-store.js carries the SHADOW / LIVE_SOURCES / #273 header', () => {
+  const src = fs.readFileSync(path.join(WORLD_ANCHOR_DIR, 'live-recall-store.js'), 'utf8');
+  assert.ok(/SHADOW/.test(src), 'the live store names its SHADOW status');
+  assert.ok(/LIVE_SOURCES/.test(src), 'the header references the LIVE_SOURCES / authenticated-minter prerequisite (#273)');
 });
 
 test('SHADOW header invariant: world-anchor-store.js carries the SHADOW/LIVE_SOURCES header comment', () => {
