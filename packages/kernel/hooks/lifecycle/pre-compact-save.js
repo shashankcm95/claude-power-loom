@@ -167,7 +167,7 @@ function buildSavePrompt(activeRuns) {
 
 Now do the intelligent part that only you can do:
 
-1. **Update project MEMORY.md** with: current task status, key decisions, discovered patterns, next steps.
+1. **Update project MEMORY.md** with: current task status, key decisions, discovered patterns, next steps. If it exceeds the hot byte budget, **DEMOTE the lowest-scoring entries (stale + low-importance + not-currently-relevant) to their topical \`[[topic-file]]\` or \`memory/_archive/\`, leaving a one-line \`[[link]]\` pointer — do NOT lossy-compress.** PROTECT \`invariant\`-class entries (Canonical / Load-bearing invariants / Live process rules) from staleness eviction. See the curation policy in \`rules/core/self-improvement.md\` (Pre-Compact Awareness).
 2. **Update library snapshot** (H.9.21 v2.1.0): write a session snapshot to \`~/.claude/library/sections/toolkit/stacks/session-snapshots/volumes/<YYYY-MM-DD>-<slug>.md\` (or use the legacy \`~/.claude/checkpoints/mempalace-fallback.md\` path which symlinks to the library post-migration). Include: session learnings, domain conventions, decisions worth preserving.
 3. **Self-improvement candidates**: patterns that recurred, gaps detected, rules to codify.`;
 
