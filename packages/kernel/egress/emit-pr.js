@@ -17,8 +17,10 @@
 //      keyring (the LIVE EC1b.1 test; it SKIPS in CI where the host is not gh-authed — host-conditional).
 //   2. The PR is built via the gh REST API from the diff-as-DATA — NEVER a `git push` from the candidate
 //      clone (a push runs the clone's pre-push hooks / credential.helper / insteadOf / submodules). The
-//      live emission is a SEAM `armedEmit()` deferred to ③.2.4; it THROWS here, so "cannot emit" is true
-//      BY CONSTRUCTION (no live network code exists this wave).
+//      live emission SEAM `armedEmit()` IS armed (③.2.5c): it delegates to gh-emit.js (the gh-REST
+//      tree->commit->ref->pull) and the live network egress has been proven (spec-kitty#2137). Emission is
+//      gated by the full chain (live AND token AND killswitch-off AND a VALID signed human approval), not
+//      by an absent seam.
 //   3. UNTRUSTED DATA is separated from TRUSTED POLICY: `data` carries only the bounded candidate diff +
 //      the repo/issue ref (actor-influenceable); the disposition + token come ONLY from custody. A
 //      disposition-shaped key in `data` is fail-closed REJECTED (the #273 exact-set lesson — never merge).
@@ -36,8 +38,9 @@ const { scrubEmitDiff } = require('./scrub');                          // ③.2.
 const { capExceeded, recordEmit, etiquetteKey, alreadyEmitted, recordEmitted } = require('./policy');
 const { computeEmissionHash, normalizeRepo } = require('./approval');                       // ③.2.4 — the per-emission gate
 const { readVerifiedApproval, consumeApproval } = require('./approval-store');
-// NOTE: child_process is STILL intentionally NOT imported — armedEmit() (the only network seam) remains
-// unimplemented (throws). ③.2.5 adds the sanitized-env gh REST call there, behind THIS wave's approval gate.
+// NOTE: child_process is STILL intentionally NOT imported here — the network is touched by gh-emit.js (the
+// gh-REST mechanism armedEmit() lazily delegates to), behind THIS module's approval gate, not by a direct
+// child_process call in emit-pr.
 
 // --------------------------------------------------------------------------
 // Env-sanitization — the killswitch core (CRITICAL F1).
@@ -48,7 +51,8 @@ const { readVerifiedApproval, consumeApproval } = require('./approval-store');
 // starting from {} and copying ONLY this allowlist — nothing ambient can leak.
 // ③.2.4 I4 — SSL_CERT_FILE + SSL_CERT_DIR are allowlisted for the ③.2.5 Linux/Docker gh-REST runner whose CA
 // bundle path is non-default (gh's TLS fails there without them; macOS uses the keychain). Additive + benign:
-// these are CA-bundle PATHS, not credentials, and there is no live network call this wave (armedEmit throws).
+// these are CA-bundle PATHS, not credentials. The live gh-REST call (via armedEmit -> gh-emit) needs them on
+// the Linux/Docker runner; macOS uses the keychain.
 const ENV_ALLOWLIST = Object.freeze(['PATH', 'HOME', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TMPDIR', 'USER', 'LOGNAME', 'SHELL', 'SSL_CERT_FILE', 'SSL_CERT_DIR']);
 
 /**
@@ -250,9 +254,10 @@ function assertEgressSafeDiff(diff) {
 // Killswitch (file-backed) + custody (TRUSTED policy) — re-read under the lock.
 // --------------------------------------------------------------------------
 
-// DEFAULT-ON this wave: the killswitch is ON unless a custody-owned disarm file is present AND the env
-// does not force it on. (The disarm mechanism is wired at ③.2.4; this wave there is no resolvable token
-// AND no live emission seam, so it is doubly fail-closed.)
+// DEFAULT-ON: the killswitch is ON unless a custody-owned disarm file is present AND the env does not
+// force it on. The live emission seam (armedEmit -> gh-emit) IS armed now, so the killswitch is the
+// load-bearing capability gate: ON => no resolvable token => buildEmitEnv injects no GH_TOKEN => gh cannot
+// authenticate (capability removed), and the seam is never reached.
 function isKillswitchOn({ killswitchPath } = {}) {
   if (process.env.LOOM_BETA_KILLSWITCH === '1') return true;          // explicit force-on always wins
   // A custody-owned ARM file must exist with the literal armed token to disarm. Absent/unreadable => ON.
@@ -338,7 +343,8 @@ function armedEmit({ draft, token, ghConfigDir, approvalHash } = {}) {
 }
 
 // --------------------------------------------------------------------------
-// emitPR — the single chokepoint. Fail-closed everywhere; zero bytes this wave.
+// emitPR — the single chokepoint. Fail-closed everywhere; bytes leave ONLY when the full gate passes
+// (live AND token AND killswitch-off AND a VALID signed human approval).
 // --------------------------------------------------------------------------
 
 const DEFAULT_LOCK_PATH = path.join(os.tmpdir(), 'loom-egress-emit.lock');
@@ -349,7 +355,8 @@ const DEFAULT_LOCK_PATH = path.join(os.tmpdir(), 'loom-egress-emit.lock');
  *   killswitchPath, ghConfigDir, lockPath, hostAllowlist, custodyCapStatePath,
  *   custodyEtiquetteLedgerPath, perWindowCap, windowMs, now }. (PR-B adds the cap/etiquette state paths.)
  * @returns {{ok: boolean, emitted: boolean, disposition?: object, draft?: object, reason?: string}}
- *   Fail-closed: any validation/lock/error => { ok:false, emitted:false }. This wave NEVER emits.
+ *   Fail-closed: any validation/lock/error => { ok:false, emitted:false }. A real PR is emitted only on
+ *   the full armed path (live AND token AND killswitch-off AND a VALID signed human approval).
  */
 function emitPR(data, opts = {}) {
   try {
