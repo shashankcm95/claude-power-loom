@@ -372,6 +372,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 
 - `packages/lab/world-anchor/cli.js` - Wave 1, autonomous-SDE ingress.
 - `packages/lab/world-anchor/lesson.js` - Wave 1, autonomous-SDE ingress.
+- `packages/lab/world-anchor/live-recall-store.js` - Autonomous-SDE ladder item 3 (packages/specs/plans/2026-06-25-live-lesson-minting-item3.md).
 - `packages/lab/world-anchor/world-anchor-store.js` - Wave 1, autonomous-SDE ingress (packages/specs/plans/2026-06-25-world-anchor-ingress-mvp.md).
 
 ## specs/

@@ -54,14 +54,20 @@ function buildWorldAnchorLesson(block) {
 }
 
 // The #2137 lesson (the spec-kitty PR the ingress wave confirms). Maps to FROZEN members; the
-// natural-language specifics live in lesson_body (bounded by LESSON_BODY_MAX). Orchestrator-authored.
+// natural-language specifics live in lesson_body (bounded by LESSON_BODY_MAX). Orchestrator-authored,
+// now GROUNDED in the merged diff (D8). The merged run_tests.sh at d91785ea is `uv run pytest tests/
+// "$@"` - it DELEGATES to the project's canonical runner, NOT interpreter-guessing. The prior body
+// (preferring bare `python`) was a FIRST-AUTHORING error the internal 3-lens VALIDATE could not catch;
+// only the EXTERNAL maintainer's review surfaced it (the world-anchored-lens proof). Corrected from
+// the world, not re-guessed.
 const LESSON_2137 = Object.freeze({
   trigger_class: 'boundary-contract',
   gotcha_class: 'unguarded-edge-case',
   corrective_class: 'handle-edge-explicitly',
-  lesson_body: 'A host shell script invoking bare `python` breaks on python3-only hosts '
-    + '(Ubuntu/Debian, no python symlink); resolve the interpreter preferring python (honors '
-    + 'venv/pyenv) then python3, erroring if neither is on PATH.',
+  lesson_body: 'A host shell test-runner invoking a bare interpreter (`python`) is unsafe: it is '
+    + 'absent on python3-only hosts, or resolves to python2 below the project requires-python. Do '
+    + 'not guess the interpreter; delegate to the project canonical runner (the merged fix is '
+    + '`uv run pytest`), honoring the declared test authority (Makefile/CONTRIBUTING).',
 });
 
 module.exports = { buildWorldAnchorLesson, LESSON_2137 };
