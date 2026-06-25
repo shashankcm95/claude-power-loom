@@ -116,7 +116,10 @@ function runRecordMerge(args, opts = {}) {
  * missing SHA or no-floor-lesson is a returned reason a caller surfaces, M1).
  * @returns {{minted: boolean, node_id?: string, reason?: string}}
  */
-function mintFromAttestation(anchor_id, mergeSha, opts) {
+// PRIVATE (not exported): the ONLY legitimate caller is runRecordMerge, which gates on the EXACT
+// 'merged' outcome + a recorded confirmation. Exposing this would let a caller mint a live node
+// straight from a stored attestation, bypassing that gate (the confirmation-mint-only contract).
+function mintFromAttestation(anchor_id, mergeSha, opts = {}) {
   const att = store.readAnchor(anchor_id, { dir: opts.dir });        // VERIFIED + content_hash-sealed
   // M1: every mint-refuse path that short-circuits BEFORE the live store is itself observable (the
   // store emits on its own refuses). A merged outcome that fails to mint a lesson is a fail-closed
@@ -136,7 +139,7 @@ function mintFromAttestation(anchor_id, mergeSha, opts) {
   let lesson;
   // M1: the build-failed path is fail-closed and must be OBSERVABLE too (currently unreachable
   // because the floor seeds are frozen + validated at module load, but item 4 loads seeds at
-  // runtime — a silent swallow then would hide a genuine world-anchor). Emit, like every sibling.
+  // runtime - a silent swallow then would hide a genuine world-anchor). Emit, like every sibling.
   try { lesson = buildWorldAnchorLesson(seed); }
   catch (e) {
     emitEgressAlert('live-recall-mint-refused', { anchor_id, mint_reason: 'lesson-build-failed', detail: (e && e.message) || 'error' });
@@ -249,4 +252,6 @@ if (require.main === module) {
   process.exit(main(process.argv.slice(2)));
 }
 
-module.exports = { parsePrUrl, runRecordMerge, mintFromAttestation, listLive, backfill2137, main, SPEC_KITTY_2137, PLACEHOLDER_DIFF_HASH };
+// mintFromAttestation is deliberately NOT exported: it must only be reached through runRecordMerge's
+// merged-gate (the confirmation-mint-only contract). The public surface is the gated entry points.
+module.exports = { parsePrUrl, runRecordMerge, listLive, backfill2137, main, SPEC_KITTY_2137, PLACEHOLDER_DIFF_HASH };

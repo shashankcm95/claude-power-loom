@@ -59,6 +59,10 @@ const NODE_SUFFIX = '.json';
 
 // The identity basis fields, in a fixed shape. node_id seals these; content_hash seals the full body.
 const BASIS_FIELDS = Object.freeze(['anchor_id', 'provenance', 'merge_sha', 'lesson_signature', 'lesson_body']);
+// The EXACT stored shape (buildBody emits precisely these 7 keys). The read path rejects any body whose
+// key-set is not exactly this set (exact-set, NOT subset), so an injected extra key can never ride
+// inside the content_hash seal of a "verified" node (#273 exact-set-not-subset, applied to object keys).
+const STORED_KEYS = Object.freeze([...BASIS_FIELDS, 'node_id', 'content_hash']);
 
 // Hard field-length caps (DoS bound; a malformed/forged giant field cannot write an unbounded file).
 const MAX = Object.freeze({ merge_sha: 128, lesson_signature: 512, lesson_body: 4096 });
@@ -175,6 +179,16 @@ function mintWorldAnchoredNode(block, opts = {}) {
   try {
     fs.writeFileSync(file, JSON.stringify(body), { flag: 'wx', mode: 0o600 }); // exclusive create; no symlink-follow
   } catch (err) {
+    // TOCTOU: another process minted the same node in the gap between the dedup-read above and this
+    // exclusive create. EEXIST is a content-addressed dedup-or-collision, NOT a generic write failure:
+    // re-read and classify the same way as the pre-write branch (idempotent => deduped; divergent =>
+    // observable collision). Any other error stays a fail-closed write-failed.
+    if (err && err.code === 'EEXIST') {
+      const raced = readNodeRaw(body.node_id, dir, selfUid);
+      if (raced && bodiesEqual(raced, body)) return { ok: true, deduped: true, node_id: body.node_id };
+      alert('collision', { node_id: body.node_id });
+      return { ok: false, reason: 'collision', node_id: body.node_id };
+    }
     alert('write-failed', { code: (err && err.code) || 'error' });
     return { ok: false, reason: 'write-failed' };
   }
@@ -198,6 +212,19 @@ function readNodeRaw(node_id, dir, selfUid) {
     const parsed = JSON.parse(fs.readFileSync(fd, 'utf8'));
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
     if (parsed.provenance !== WORLD_ANCHORED) { alert('verify-mismatch', { node_id, kind: 'provenance' }); return null; }
+    // Schema validation on READ, symmetric with the write path: node_id + content_hash seal a body's
+    // self-CONSISTENCY, not its schema-validity. A same-uid writer can plant a self-consistent record
+    // with a missing/wrong-typed merge_sha / lesson_signature / lesson_body that derives a matching
+    // node_id (deriveLiveNodeId maps null -> '') and content_hash. Reuse validateBlock so a malformed
+    // node never reads back as "verified" (the immutability-of-read-paths / verify-content discipline).
+    const bad = validateBlock(parsed);
+    if (bad) { alert('verify-mismatch', { node_id, kind: bad }); return null; }
+    // Closed-shape (exact-set, not subset): validateBlock checks the REQUIRED fields but ignores extra
+    // keys. computeContentHash seals ALL keys, so an injected source/weight/trusted field is inside the
+    // seal and self-consistent. Reject any key outside the stored 7-field shape so a future consumer can
+    // never read an injected field off a "verified" node (Rule-2a re-probe finding; #273 exact-set).
+    const unexpected = Object.keys(parsed).filter((k) => !STORED_KEYS.includes(k));
+    if (unexpected.length > 0) { alert('verify-mismatch', { node_id, kind: 'unexpected-field', unexpected }); return null; }
     const reId = deriveLiveNodeId(parsed);
     if (reId !== node_id || parsed.node_id !== node_id) {              // basis must derive the filename id
       alert('verify-mismatch', { node_id, kind: 'node-id', derived: reId });

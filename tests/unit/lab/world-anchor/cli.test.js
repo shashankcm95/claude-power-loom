@@ -275,15 +275,30 @@ test('merged but NO --merge-sha: no mint, observable refuse (the world-evidence 
   assert.ok(alerted, 'the no-merge-sha refuse is observable (M1)');
 });
 
-test('list-live: main(list-live) reads the live store without throwing (observer subcommand)', () => {
+test('main(list-live) exercises the CLI branch + arg parsing, emitting the {ok,count,nodes} payload', () => {
   const dir = tmp();
   const live = liveDir(dir);
   attest(dir);
   cli.runRecordMerge({ pr: 'https://github.com/octo/widget/pull/77', outcome: 'merged', mergeSha: 'd91785ea' }, { dir, liveDir: live, now: '2026-06-26T00:00:00.000Z' });
-  const listed = cli.listLive({ dir: live });
-  assert.ok(Array.isArray(listed), 'list-live returns an array of live nodes');
-  assert.strictEqual(listed.length, 1);
-  assert.strictEqual(listed[0].provenance, liveStore.WORLD_ANCHORED);
+  // Route through main() (NOT listLive() directly) so the `list-live` branch + --live-dir parsing are
+  // actually covered; assert the emitted payload + exit code (CodeRabbit #441 nitpick).
+  const chunks = [];
+  const orig = process.stdout.write;
+  process.stdout.write = (chunk) => { chunks.push(String(chunk)); return true; };
+  let code;
+  try { code = cli.main(['list-live', '--live-dir', live]); } finally { process.stdout.write = orig; }
+  assert.strictEqual(code, 0, 'list-live exits 0');
+  const listed = JSON.parse(chunks.join('').trim());
+  assert.strictEqual(listed.ok, true);
+  assert.strictEqual(listed.count, 1);
+  assert.strictEqual(listed.nodes[0].provenance, liveStore.WORLD_ANCHORED);
+});
+
+test('mintFromAttestation is NOT exported (confirmation-mint-only gate cannot be bypassed)', () => {
+  // CodeRabbit #441 (security): the internal mint helper must stay private so no consumer can mint a
+  // live node straight from a stored attestation, skipping runRecordMerge's exact 'merged' gate.
+  assert.strictEqual(cli.mintFromAttestation, undefined, 'the internal mint helper stays private');
+  assert.strictEqual(typeof cli.runRecordMerge, 'function', 'the gated entry point is the public surface');
 });
 
 console.log(`cli.test.js: ${passed} passed`);

@@ -201,4 +201,53 @@ test('LIVE_DEFAULT_DIR is the recall-graph-live sibling, NOT recall-graph-backte
 // silence the unused import lint in case crypto is not used directly
 void crypto;
 
+// CodeRabbit #441 (data-integrity): readNodeRaw must reject a SCHEMA-invalid record on read, not only
+// a hash-invalid one. node_id + content_hash seal SELF-CONSISTENCY, not schema-validity: a same-uid
+// writer can plant a self-consistent body with an EMPTY merge_sha (deriveLiveNodeId maps '' for it) that
+// passes the id + hash gates. We rebuild a node with the SAME canonical hashing the store uses, guarded
+// by a self-check (a faithfully-built VALID node reads back, so a divergent replication can't make the
+// malformed case pass for the wrong reason).
+const { canonicalJsonSerialize } = require(path.join(REPO, 'packages', 'kernel', '_lib', 'canonical-json'));
+function sha256hex(s) { return crypto.createHash('sha256').update(s).digest('hex'); }
+const BASIS = ['anchor_id', 'provenance', 'merge_sha', 'lesson_signature', 'lesson_body'];
+function selfConsistentNode(over) {
+  const body = {
+    anchor_id: 'a'.repeat(64), provenance: store.WORLD_ANCHORED, merge_sha: 'd91785ea',
+    lesson_signature: 'lesson:boundary-contract|unguarded-edge-case|handle-edge-explicitly',
+    lesson_body: 'a short world-grounded lesson', ...over,
+  };
+  body.node_id = sha256hex(canonicalJsonSerialize(BASIS.map((f) => (body[f] == null ? '' : String(body[f])))));
+  const seal = {};
+  for (const k of Object.keys(body)) { if (k !== 'content_hash') seal[k] = body[k]; }
+  body.content_hash = sha256hex(canonicalJsonSerialize(seal));
+  return body;
+}
+
+test('read path REJECTS a SCHEMA-invalid but self-consistent node (validateBlock on read, #441)', () => {
+  const dir = tmp();
+  // self-check: a VALID self-consistent node (built with the store's own hashing) reads back OK.
+  const good = selfConsistentNode({});
+  fs.writeFileSync(path.join(dir, `${good.node_id}.json`), JSON.stringify(good));
+  assert.ok(store.readLiveNode(good.node_id, { dir }), 'self-check: a faithfully-built valid node reads back');
+  // the attack: an EMPTY merge_sha - self-consistent (id + hash derive over ''), but schema-invalid.
+  const bad = selfConsistentNode({ merge_sha: '' });
+  fs.writeFileSync(path.join(dir, `${bad.node_id}.json`), JSON.stringify(bad));
+  const { r, alerted } = captureAlert(() => store.readLiveNode(bad.node_id, { dir }));
+  assert.strictEqual(r, null, 'a schema-invalid (empty merge_sha) node is rejected on read, not returned as verified');
+  assert.ok(alerted, 'the schema reject is OBSERVABLE');
+});
+
+test('read path REJECTS a self-consistent node carrying INJECTED extra keys (closed-shape, exact-set #273)', () => {
+  const dir = tmp();
+  // a self-consistent body (correct node_id + content_hash) with extra keys validateBlock ignores -
+  // source/weight/trusted would be readable off a "verified" node by a future consumer. Exact-set rejects it.
+  const injected = selfConsistentNode({ source: 'world_anchored', weight: 999, trusted: true });
+  fs.writeFileSync(path.join(dir, `${injected.node_id}.json`), JSON.stringify(injected));
+  const { r, alerted } = captureAlert(() => store.readLiveNode(injected.node_id, { dir }));
+  assert.strictEqual(r, null, 'a node with injected extra keys is rejected on read (not returned with the keys intact)');
+  assert.ok(alerted, 'the unexpected-field reject is OBSERVABLE');
+  // and listLiveNodes must not surface it either
+  assert.strictEqual(store.listLiveNodes({ dir }).length, 0, 'an injected-key node never appears in list-live');
+});
+
 console.log(`live-recall-store.test.js: ${passed} passed`);
