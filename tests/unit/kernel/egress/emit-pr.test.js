@@ -612,6 +612,190 @@ test('#412 RESIDUAL (acknowledged, NOT closed): emitPR has NO actor-containment 
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// ==========================================================================
+// gap-map item 1 (PR-1): the kernel egress JOIN-KEY is written at emit-success (additive, non-reverting)
+// ==========================================================================
+
+const JK = require(path.join(REPO, 'packages', 'kernel', 'egress', 'join-key-store.js'));
+
+// Capture stderr egress-alerts for the duration of `fn`; returns the joined alert text.
+function captureAlerts(fn) {
+  const orig = process.stderr.write;
+  let buf = '';
+  process.stderr.write = (chunk) => { buf += String(chunk); return true; };
+  try { return { value: fn(), alerts: buf }; } finally { process.stderr.write = orig; }
+}
+// A succeeding seam returning a realistic gh-emit result (gh PR-URL + HEX40 base_sha).
+function fakePr(over) {
+  return Object.assign({ pr_url: 'https://github.com/owner/repo/pull/7', number: 7, branch: 'loom/issue-42-abc', base_sha: 'b'.repeat(40) }, over || {});
+}
+function jkFilesIn(dir) { return fs.readdirSync(dir).filter((n) => n.endsWith('.json')); }
+
+test('item1: emitPR writes the join-key ONLY on emitted:true (a succeeding seam + custodyJoinKeyDir)', () => {
+  const dir = scratch('loom-custody-');
+  const jkDir = scratch('loom-jk-');
+  try {
+    withKillswitchEnvCleared(() => {
+      const opts = armedCustody(dir);
+      mintApprovalFor(opts);
+      const r = E.emitPR(goodData(), Object.assign({}, opts, {
+        custodyJoinKeyDir: jkDir,
+        armedEmitFn: () => fakePr(),
+      }));
+      assert.strictEqual(r.emitted, true, 'emitted on the full armed path');
+      assert.strictEqual(jkFilesIn(jkDir).length, 1, 'exactly one join-key file written');
+      // the join-key seals approval_hash + pr identity + base_sha.
+      const res = JK.resolveJoinKeyForPr({ repo: 'owner/repo', pr_number: 7, pr_url: 'https://github.com/owner/repo/pull/7' }, { dir: jkDir, selfUid: SELF_UID });
+      assert.strictEqual(res.ok, true, 'the join-key joins on the gh PR identity');
+      const body = JK.loadJoinKey(res.id, { dir: jkDir, selfUid: SELF_UID });
+      assert.strictEqual(body.approval_hash, r.approvalHash, 'sealed to the approval content-address');
+      assert.strictEqual(body.base_sha, 'b'.repeat(40), 'seals the gh base_sha');
+    });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(jkDir, { recursive: true, force: true }); }
+});
+
+test('item1: NO join-key on awaiting-approval / refused / cap / etiquette (never on a non-emit path)', () => {
+  const jkDir = scratch('loom-jk-');
+  try {
+    withKillswitchEnvCleared(() => {
+      // (a) awaiting-approval — armed but no approval minted.
+      const d1 = scratch('loom-custody-');
+      try {
+        const opts = armedCustody(d1);
+        const r = E.emitPR(goodData(), Object.assign({}, opts, { custodyJoinKeyDir: jkDir }));
+        assert.strictEqual(r.reason, 'awaiting-approval');
+        assert.strictEqual(jkFilesIn(jkDir).length, 0, 'no join-key on awaiting-approval');
+      } finally { fs.rmSync(d1, { recursive: true, force: true }); }
+      // (b) a refused (dry-run, non-live) emit.
+      const r2 = E.emitPR(goodData(), { custodyJoinKeyDir: jkDir, lockPath: path.join(jkDir, 'lock') });
+      assert.strictEqual(r2.emitted, false, 'no token/disposition => not emitted');
+      assert.strictEqual(jkFilesIn(jkDir).length, 0, 'no join-key on a non-live emit');
+    });
+  } finally { fs.rmSync(jkDir, { recursive: true, force: true }); }
+});
+
+test('item1: NOT written on pr.deduped===true (a prior emit already wrote it; no second file, no null-base_sha)', () => {
+  const dir = scratch('loom-custody-');
+  const jkDir = scratch('loom-jk-');
+  try {
+    withKillswitchEnvCleared(() => {
+      const opts = armedCustody(dir);
+      mintApprovalFor(opts);
+      // the seam reports a 422-reconcile dedup — re-resolved base may be wrong, so the write is skipped.
+      const r = E.emitPR(goodData(), Object.assign({}, opts, {
+        custodyJoinKeyDir: jkDir,
+        armedEmitFn: () => fakePr({ deduped: true }),
+      }));
+      assert.strictEqual(r.emitted, true, 'a dedup is still a successful emit');
+      assert.strictEqual(jkFilesIn(jkDir).length, 0, 'NO join-key written on a deduped emit (first write authoritative)');
+    });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(jkDir, { recursive: true, force: true }); }
+});
+
+test('item1: additive-failure isolation — a THROWING writeJoinKey path (e.g. an unwritable dir) still returns emitted:true + emits the alert', () => {
+  const dir = scratch('loom-custody-');
+  try {
+    withKillswitchEnvCleared(() => {
+      const opts = armedCustody(dir);
+      mintApprovalFor(opts);
+      // point custodyJoinKeyDir at a FILE (not a dir) so ensureStoreDir fails-closed; writeJoinKey returns
+      // {ok:false} (store-dir) — the emit must NOT revert, and the write site emits its own alert via the
+      // store's observable refuse. (The write-failed alert is store-internal; the emission still succeeds.)
+      const badDir = path.join(dir, 'a-file'); fs.writeFileSync(badDir, 'x');
+      const { value: r, alerts } = captureAlerts(() => E.emitPR(goodData(), Object.assign({}, opts, {
+        custodyJoinKeyDir: badDir,
+        armedEmitFn: () => fakePr(),
+      })));
+      assert.strictEqual(r.ok, true); assert.strictEqual(r.emitted, true, 'the join-key failure NEVER reverts the emission');
+      // #1: a NON-throwing writeJoinKey refusal ({ok:false}) must surface the write-site signal — without
+      // this assertion the test would pass even if the alert never fired (the fail-silent gap). The store
+      // ALSO self-emits its own store-dir alert (defense-in-depth); both are acceptable.
+      assert.ok(/egress-join-key-write-failed/.test(alerts), 'the non-throwing write refusal is observable at the write site');
+    });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('item1: additive-failure isolation — a disposition-shaped joinKeyMeta throws in assertRecordedClaim but emission still emitted:true + alert', () => {
+  const dir = scratch('loom-custody-');
+  const jkDir = scratch('loom-jk-');
+  try {
+    withKillswitchEnvCleared(() => {
+      const opts = armedCustody(dir);
+      mintApprovalFor(opts);
+      const { value: r, alerts } = captureAlerts(() => E.emitPR(goodData(), Object.assign({}, opts, {
+        custodyJoinKeyDir: jkDir,
+        joinKeyMeta: { token: 'sneaky' },   // a disposition-shaped key in the metadata
+        armedEmitFn: () => fakePr(),
+      })));
+      assert.strictEqual(r.emitted, true, 'a poisoned joinKeyMeta NEVER reverts the emission');
+      assert.ok(/egress-join-key-write-failed/.test(alerts), 'the write-site failure is observable');
+      assert.strictEqual(jkFilesIn(jkDir).length, 0, 'no join-key written (the metadata gate threw before the write)');
+    });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(jkDir, { recursive: true, force: true }); }
+});
+
+test('item1: a clean joinKeyMeta.built_by is RECORDED into the join-key (recorded-claim, not authority)', () => {
+  const dir = scratch('loom-custody-');
+  const jkDir = scratch('loom-jk-');
+  try {
+    withKillswitchEnvCleared(() => {
+      const opts = armedCustody(dir);
+      mintApprovalFor(opts);
+      const r = E.emitPR(goodData(), Object.assign({}, opts, {
+        custodyJoinKeyDir: jkDir,
+        joinKeyMeta: { built_by: '13-node-backend.river' },
+        armedEmitFn: () => fakePr(),
+      }));
+      const res = JK.resolveJoinKeyForPr({ repo: 'owner/repo', pr_number: 7, pr_url: 'https://github.com/owner/repo/pull/7' }, { dir: jkDir, selfUid: SELF_UID });
+      const body = JK.loadJoinKey(res.id, { dir: jkDir, selfUid: SELF_UID });
+      assert.strictEqual(body.built_by, '13-node-backend.river', 'the recorded-claim built_by is sealed');
+      assert.strictEqual(r.emitted, true);
+    });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(jkDir, { recursive: true, force: true }); }
+});
+
+test('item1: no custodyJoinKeyDir => no join-key write attempted (opt-in only)', () => {
+  const dir = scratch('loom-custody-');
+  try {
+    withKillswitchEnvCleared(() => {
+      const opts = armedCustody(dir);
+      mintApprovalFor(opts);
+      const r = E.emitPR(goodData(), Object.assign({}, opts, { armedEmitFn: () => fakePr() }));
+      assert.strictEqual(r.emitted, true, 'emit succeeds with no join-key dir (the feature is opt-in)');
+    });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// === assertRecordedClaim — the metadata gate (non-vacuous) ===
+
+test('item1: assertRecordedClaim — absent => {}; a plain object with built_by => {built_by}; everything else throws', () => {
+  assert.deepStrictEqual(E.assertRecordedClaim(undefined), {}, 'absent => {}');
+  assert.deepStrictEqual(E.assertRecordedClaim({}), {}, 'empty object => {} (no built_by)');
+  assert.deepStrictEqual(E.assertRecordedClaim({ built_by: 'ok' }), { built_by: 'ok' }, 'only built_by is forwarded');
+  // an array is not a plain object.
+  assert.throws(() => E.assertRecordedClaim([]), /plain object|array/i, 'an array throws');
+  assert.throws(() => E.assertRecordedClaim('x'), /plain object/i, 'a string throws');
+  // a disposition / prototype-pollution-shaped key throws (the #273 exact-set lesson).
+  assert.throws(() => E.assertRecordedClaim({ token: 'x' }), /policy key/i, 'a disposition key throws');
+  assert.throws(() => E.assertRecordedClaim({ approvalHash: 'x' }), /policy key/i, 'an approval key throws');
+  assert.throws(() => E.assertRecordedClaim(JSON.parse('{"__proto__":{"x":1}}')), /policy key/i, 'a __proto__ key throws');
+  // a malformed built_by throws (bounded plain string).
+  assert.throws(() => E.assertRecordedClaim({ built_by: 123 }), /built_by/i, 'a non-string built_by throws');
+  assert.throws(() => E.assertRecordedClaim({ built_by: 'x'.repeat(257) }), /built_by/i, 'an over-long built_by throws');
+  assert.throws(() => E.assertRecordedClaim({ built_by: 'a\nb' }), /built_by/i, 'a control-char built_by throws');
+});
+
+// === the data deny-list rejects custodyJoinKeyDir / joinKeyMeta as untrusted data keys (VERIFY Q6b) ===
+
+test('item1: custodyJoinKeyDir / joinKeyMeta are on the data deny-list (an actor cannot inject them via data)', () => {
+  for (const k of ['custodyJoinKeyDir', 'joinKeyMeta']) {
+    assert.ok(E.DISPOSITION_KEYS.includes(k), `${k} must be a declared disposition key`);
+    const r = E.emitPR(goodData({ [k]: 'x' }));
+    assert.strictEqual(r.ok, false, `data.${k} rejected end-to-end`);
+    assert.ok(/policy key/.test(r.reason), `data.${k} names the policy-key rejection (got ${r.reason})`);
+  }
+});
+
 (async () => {
   for (const { name, fn } of tests) {
     try { await fn(); process.stdout.write(`  PASS ${name}\n`); passed += 1; }
