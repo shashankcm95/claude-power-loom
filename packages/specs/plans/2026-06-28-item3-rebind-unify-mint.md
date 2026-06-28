@@ -180,7 +180,7 @@ synthesize a fake join-key, which would be a #273 forgery + a fail-closed bypass
 | `packages/lab/world-anchor/world-anchor-mint.js` (NEW) | `mintFromMergeOutcome({join_key_id}, opts)`; relocate `mintWorldAnchorEdge` + `ORCHESTRATOR_LESSONS`; D1-D2; to_delta_ref=record.approval_hash, merge_sha=record.merge_commit_sha; the approval_hash cross-check; node-result-first additive edge; every refuse observable | ~120 |
 | `packages/lab/world-anchor/cli.js` | `mainObserveMerge` auto-mints after a merged record (D3); `runRecordMerge` loses the mint (D4, confirmation-only); delete `mintFromAttestation`/`mintWorldAnchorEdge`/`ORCHESTRATOR_LESSONS`; import the minter; header + USAGE update | ~ -60 / +25 |
 | `packages/lab/world-anchor/merge-observer.js` | header note update - **REQUIRED, not doc-polish (architect A2 - it is a security-dam correctness claim)**: replace the stale ":27-29" line ("item 3 re-loads the join-key to obtain issueRef for the edge basis") with: item-3 reads `record.approval_hash` from the merge-outcome record; the edge basis carries NO issueRef, so NO join-key re-load occurs and the kernel REQUIRE_ALLOWLIST stays at two readers. A stale header would imply a (non-existent, dam-breaching) third join-key reader. | REQUIRED |
-| `tests/unit/lab/world-anchor/world-anchor-mint.test.js` (NEW) | the minter: merged-record -> node+unsigned edge (`to_delta_ref===record.approval_hash`, `merge_sha===record.merge_commit_sha`); approval-hash-divergence refuse (att != record); no-match/ambiguous/unreadable refuses (each emits); additive byte-identical-node on edge-failure (FAILS RED first); re-mint DEDUPS on record.observed_at; a join-key-store require absent (structural) | tests |
+| `tests/unit/lab/world-anchor/world-anchor-mint.test.js` (NEW) | the minter: merged-record -> node+unsigned edge (`to_delta_ref===record.approval_hash`, `merge_sha===record.merge_commit_sha`); approval-hash-divergence EMITS but STILL MINTS (att != record -> binds `record.approval_hash`, NOT a refuse - D1/D1a); no-match/ambiguous/unreadable refuses (each emits); additive byte-identical-node on edge-failure (FAILS RED first); re-mint DEDUPS on record.observed_at; a join-key-store require absent (structural) | tests |
 | `tests/unit/lab/world-anchor/item5-merge-edge-wire.test.js` | rehome the W3d-lite composition onto the new mint path (D5); the old record-merge mint assertions move/retire | tests |
 | `tests/unit/lab/world-anchor/cli.test.js` | record-merge no longer mints (assert NO `minted`/`edge_*` on the merged path; confirmation still recorded); observe-merge now mints (assert the `minted`/`edge_*` fields on a merged record); keep the no-`resolveSigner`/`LOOM_EDGE_SIGNING_KEY` structural assert | tests |
 | `docs/SIGNPOST.md` | regenerate (NEW .js file -> CI Test 121 SIGNPOST-drift otherwise) | gen |
@@ -257,9 +257,10 @@ folds below are applied above (D1/D1a/Security invariants) + are the BUILD check
    pasted-sha forge path is gone), while the confirmation IS still recorded.
 4. **Structural test in `world-anchor-mint.test.js`: the minter source carries NO `join-key-store` require**
    (belt + suspenders with the kernel dam, which already fails on a third requirer - H2).
-5. **Emit-on-every-refuse**, asserted: `approval-hash-divergence` (the load-bearing SHADOW signal),
-   `merge-outcome-unreadable`, `no-floor-lesson`, `lesson-build-failed`, `no-match`/`ambiguous` - each emits with
-   a distinguishing token on a NON-`reason` key (M1).
+5. **Observable signals**, asserted: `approval-hash-divergence` EMITS but STILL MINTS (the load-bearing SHADOW
+   signal; binds `record.approval_hash`, NOT a refuse - D1/D1a); the REFUSE paths `merge-outcome-unreadable`,
+   `no-floor-lesson`, `lesson-build-failed`, `no-match`/`ambiguous` each emit AND return a refuse - all with a
+   distinguishing token on a NON-`reason` key (M1).
 6. **Auto-mint non-fatal** (M2): a planted off-floor / unreadable / foreign merge-outcome or attestation ->
    `observe-merge` still exits 0 with `edge_minted:false` + an emitted reason; the recorded outcome is untouched.
 7. **HEX40 merge_sha** (honesty MED-3): exercise a real 40-hex `record.merge_commit_sha` flowing through

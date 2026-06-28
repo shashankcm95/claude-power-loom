@@ -260,13 +260,13 @@ test('observe-merge on a merged record AUTO-MINTS the node + the edge (the SOLE 
   const liveD = liveDir(dir);
   const edgeD = path.join(dir, 'edges');
   const outcomeD = path.join(dir, 'outcomes');
-  // inject the gh runner via the env-free seam: cli.main(observe-merge) calls runMergeObserve with
-  // opts.ghRunner only through the module; we drive runMergeObserve+mint through main by passing the
-  // injected runner via the test-only opts the cli threads. Since main() reads argv, we instead drive
-  // the dedicated arm function with an injected runner.
+  // inject the gh runner + the COHERENT FOUR-dir isolation set (FOLD B: all-or-nothing; the minter
+  // fail-closes a partial set). outcomeDir is shared by the observer's record store + the minter; the
+  // attestation store IS the tmp root (attest(dir) wrote there). We drive the dedicated arm function
+  // with the injected runner (main() reads argv + has no --dir flag now).
   const r = await cli.mainObserveMerge(
     { pr: 'https://github.com/octo/widget/pull/77' },
-    { ghRunner: runnerMerged(), dir: outcomeD, anchorDir: dir, liveDir: liveD, edgeDir: edgeD, now: '2026-06-28T12:00:00.000Z' },
+    { ghRunner: runnerMerged(), outcomeDir: outcomeD, anchorDir: dir, liveDir: liveD, edgeDir: edgeD, now: '2026-06-28T12:00:00.000Z' },
   );
   assert.strictEqual(r.code, 0, 'observe-merge exits 0');
   assert.strictEqual(r.payload.ok, true, 'the record succeeded');
@@ -295,7 +295,7 @@ test('observe-merge auto-mint is NON-FATAL: a mint failure leaves the record suc
   fs.writeFileSync(badEdgeDir, 'not a dir', { mode: 0o600 });
   const r = await cli.mainObserveMerge(
     { pr: 'https://github.com/octo/widget/pull/77' },
-    { ghRunner: runnerMerged(), dir: outcomeD, anchorDir: dir, liveDir: liveD, edgeDir: badEdgeDir, now: '2026-06-28T12:00:00.000Z' },
+    { ghRunner: runnerMerged(), outcomeDir: outcomeD, anchorDir: dir, liveDir: liveD, edgeDir: badEdgeDir, now: '2026-06-28T12:00:00.000Z' },
   );
   assert.strictEqual(r.code, 0, 'the record success exit code stands despite the edge-mint failure');
   assert.strictEqual(r.payload.ok, true, 'the recorded outcome is untouched');

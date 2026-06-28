@@ -165,6 +165,52 @@ test('mintFromMergeOutcome({join_key_id}, null) is TOTAL: returns a refuse, does
 });
 
 // ---------------------------------------------------------------------------
+// FOLD B (isolation is all-or-nothing): a PARTIAL per-store dir set silently lets the un-wired stores
+// fall back to the REAL ~/.claude/lab-state, cross-writing real state. The minter fail-closes a partial
+// set (incomplete-dir-wiring) + a stray legacy `dir` key (unsupported-dir-key). Both are TOTAL refuses.
+// ---------------------------------------------------------------------------
+
+test('partial dir wiring (outcomeDir only) refuses incomplete-dir-wiring + emits, never touches real state', () => {
+  const dir = tmp();
+  attest(dir);
+  const jkid = recordOutcome(outcomeDir(dir));
+  const { r, alerts } = captureAlerts(() => mintFromMergeOutcome(
+    { join_key_id: jkid },
+    { outcomeDir: outcomeDir(dir) },   // only 1 of 4 -> incomplete
+  ));
+  assert.strictEqual(r.minted, false, 'a partial dir set refuses');
+  assert.strictEqual(r.mint_reason, 'incomplete-dir-wiring');
+  assert.ok(alerts.some((a) => JSON.stringify(a).includes('incomplete-dir-wiring')), 'the partial-wiring refuse is observable');
+  // non-vacuous: nothing was minted (the guard short-circuits BEFORE any store read/write)
+  assert.strictEqual(liveStore.listLiveNodes({ dir: liveDir(dir) }).length, 0, 'no node minted on a partial dir set');
+});
+
+test('a stray legacy `dir` key refuses unsupported-dir-key + emits (never silently ignored)', () => {
+  const dir = tmp();
+  attest(dir);
+  const jkid = recordOutcome(outcomeDir(dir));
+  const { r, alerts } = captureAlerts(() => mintFromMergeOutcome(
+    { join_key_id: jkid },
+    { dir, outcomeDir: outcomeDir(dir), liveDir: liveDir(dir), edgeDir: edgeDir(dir) },   // legacy `dir` present
+  ));
+  assert.strictEqual(r.minted, false, 'a stray `dir` key refuses');
+  assert.strictEqual(r.mint_reason, 'unsupported-dir-key');
+  assert.ok(alerts.some((a) => JSON.stringify(a).includes('unsupported-dir-key')), 'the unsupported-dir-key refuse is observable');
+});
+
+test('a full FOUR-dir set passes the wiring guard and mints (the all-or-nothing happy case)', () => {
+  const dir = tmp();
+  attest(dir);
+  const jkid = recordOutcome(outcomeDir(dir));
+  const r = mintFromMergeOutcome(
+    { join_key_id: jkid },
+    { anchorDir: dir, outcomeDir: outcomeDir(dir), liveDir: liveDir(dir), edgeDir: edgeDir(dir) },
+  );
+  assert.strictEqual(r.minted, true, 'a complete four-dir set mints');
+  assert.strictEqual(r.edge_minted, true, 'and the edge mints');
+});
+
+// ---------------------------------------------------------------------------
 // Identity derives from the VERIFIED attestation, never a caller field (hacker H2). The minter takes ONLY
 // { join_key_id }; there is NO caller surface for a lesson body / merge_sha / approval_hash. Prove the
 // lesson identity comes from the on-disk sealed attestation's lesson_signature, not anything passed in.

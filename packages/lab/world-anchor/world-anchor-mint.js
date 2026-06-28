@@ -61,15 +61,20 @@ const { writeWorldAnchorEdge, loadWorldAnchorEdge, WORLD_ANCHOR_EDGE_TYPE } = re
 const { buildWorldAnchorLesson, LESSON_2137 } = require('./lesson');
 const { emitEgressAlert } = require('../../kernel/egress/alert');
 
-// The orchestrator-authored lesson FLOOR (relocated here from cli.js): a sealed lesson_signature -> the
-// orchestrator-authored block whose body carries the world-grounded learning. The mint NEVER reads a
-// caller-supplied body (hacker H2); it looks the body up by the VERIFIED attestation's content_hash-SEALED
-// lesson_signature. For the MVP this is LESSON_2137 only; item 4's classifier extends this map (append-only,
-// mirroring the frozen taxonomy floor). An attestation whose sealed signature is not in the floor mints
-// nothing (refuse `no-floor-lesson` + emit).
-const ORCHESTRATOR_LESSONS = Object.freeze({
-  [buildWorldAnchorLesson(LESSON_2137).lesson_signature]: LESSON_2137,
-});
+// The orchestrator-authored lesson FLOOR (relocated here from cli.js): a STATIC list of seed blocks. The
+// mint NEVER reads a caller-supplied body (hacker H2); it builds each seed INSIDE the guarded mint path
+// and matches the built lesson_signature against the VERIFIED attestation's content_hash-SEALED one. For
+// the MVP this is LESSON_2137 only; item 4's classifier extends this list (append-only, mirroring the
+// frozen taxonomy floor). An attestation whose sealed signature matches no built seed mints nothing
+// (refuse `no-floor-lesson` + emit).
+//
+// CodeRabbit Major (FOLD A): this is a STATIC SEED LIST, NOT a derived-key map. The prior shape
+// (`{ [buildWorldAnchorLesson(SEED).lesson_signature]: SEED }`) called the builder at MODULE-LOAD - a
+// seed/builder regression would throw at REQUIRE, BEFORE the guarded `lesson-build-failed` path,
+// breaking the documented TOTAL/non-fatal contract observe-merge relies on (and it is exactly wrong for
+// item 4, when the floor becomes a runtime classifier map). All building now happens inside the mint's
+// try/catch, so a regression surfaces `lesson-build-failed`/`no-floor-lesson`, never a load-time crash.
+const ORCHESTRATOR_LESSON_SEEDS = Object.freeze([LESSON_2137]);
 
 /**
  * Emit a namespaced, observable mint-refuse alert. The distinguishing classifier rides `mint_reason` (a
@@ -139,6 +144,25 @@ function mintFromMergeOutcome(args, opts = {}) {
   const join_key_id = args && typeof args === 'object' && !Array.isArray(args) ? args.join_key_id : undefined;
   const buildLesson = typeof o.buildLesson === 'function' ? o.buildLesson : buildWorldAnchorLesson;
 
+  // FOLD B (CodeRabbit Major): isolation is ALL-OR-NOTHING. The minter reads + writes FOUR stores
+  // (anchorDir/outcomeDir/liveDir/edgeDir); a PARTIAL set silently lets the un-wired stores fall back to
+  // the REAL ~/.claude/lab-state, so a run that LOOKS isolated cross-writes real state. Enforce: the
+  // supported per-store dir keys must be supplied either 0 (production - all real, fully consistent) or 4
+  // (fully isolated). A stray legacy `dir` key (the pre-FOLD-2 attestation key) is rejected outright -
+  // silently ignoring it would let a "dir"-passing caller think it isolated the attestation store. Both
+  // are TOTAL refuses (emit + return; never throw). The correct ISOLATION ROOT for the CLI is
+  // LOOM_LAB_STATE_DIR (each store derives its own subdir natively); these opt keys are the TEST seam.
+  if ('dir' in o) {
+    mintRefuseAlert({ join_key_id, mint_reason: 'unsupported-dir-key' });
+    return { minted: false, mint_reason: 'unsupported-dir-key' };
+  }
+  const dirKeys = ['anchorDir', 'outcomeDir', 'liveDir', 'edgeDir'];
+  const supplied = dirKeys.filter((k) => o[k] !== undefined);
+  if (supplied.length !== 0 && supplied.length !== dirKeys.length) {
+    mintRefuseAlert({ join_key_id, mint_reason: 'incomplete-dir-wiring', supplied });
+    return { minted: false, mint_reason: 'incomplete-dir-wiring' };
+  }
+
   // 1. the gh-verified merge-outcome RECORD (verify-on-read; null on absent/tampered/foreign/oversize).
   //    The minter ALSO emits its own merge-outcome-unreadable so a triager sees "the minter refused",
   //    not just a store returning null (VERIFY M1).
@@ -189,20 +213,24 @@ function mintFromMergeOutcome(args, opts = {}) {
   }
 
   // 5. lesson lookup by the VERIFIED attestation's content_hash-SEALED lesson_signature (never a caller
-  //    field - hacker H2). No floor lesson -> refuse + emit.
-  const seed = ORCHESTRATOR_LESSONS[att.lesson_signature];
-  if (!seed) {
-    mintRefuseAlert({ join_key_id, anchor_id: resolved.anchor_id, mint_reason: 'no-floor-lesson', lesson_signature: att.lesson_signature });
-    return { minted: false, mint_reason: 'no-floor-lesson' };
-  }
-  // TOTALITY (VERIFY M2): wrap the lesson build in try/catch -> emit lesson-build-failed + refuse, NEVER
-  // throw (the floor is frozen-validated today, but item 4 loads seeds at runtime; a throw here would
-  // crash the cli auto-mint arm).
-  let lesson;
-  try { lesson = buildLesson(seed); }
-  catch (err) {
+  //    field - hacker H2). BUILD each STATIC floor seed INSIDE the totality guard (FOLD A: no build at
+  //    require-time) and match the built signature against the sealed one. TOTALITY (VERIFY M2): a build
+  //    throw -> emit lesson-build-failed + refuse, NEVER throw (the floor is frozen-validated today, but
+  //    item 4 loads seeds at runtime; a throw here would crash the cli auto-mint arm). No match across
+  //    all seeds -> no-floor-lesson + refuse. The reasons are unchanged.
+  let lesson = null;
+  try {
+    for (const seed of ORCHESTRATOR_LESSON_SEEDS) {
+      const built = buildLesson(seed);
+      if (built && built.lesson_signature === att.lesson_signature) { lesson = built; break; }
+    }
+  } catch (err) {
     mintRefuseAlert({ join_key_id, anchor_id: resolved.anchor_id, mint_reason: 'lesson-build-failed', detail: (err && err.message) || 'error' });
     return { minted: false, mint_reason: 'lesson-build-failed' };
+  }
+  if (!lesson) {
+    mintRefuseAlert({ join_key_id, anchor_id: resolved.anchor_id, mint_reason: 'no-floor-lesson', lesson_signature: att.lesson_signature });
+    return { minted: false, mint_reason: 'no-floor-lesson' };
   }
 
   // 6. node: the gh-verified record.merge_commit_sha is world-EVIDENCE (live-recall-store.js:24), NEVER a
