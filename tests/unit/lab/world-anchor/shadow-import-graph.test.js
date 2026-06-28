@@ -53,6 +53,15 @@ const IMPORT_RE = /(?:require\(\s*|import\s+(?:[^;'"]*\sfrom\s+)?|import\(\s*)['
 // may import the live store until the authenticated minter + LIVE_SOURCES land (#273, ladder item 5).
 const LIVE_IMPORT_RE = /(?:require\(\s*|import\s+(?:[^;'"]*\sfrom\s+)?|import\(\s*)['"][^'"]*live-recall-store(?:\.js)?['"]/;
 
+// A THIRD matcher for the world-anchored-by edge store (item 5, PR-A.1). The two matchers above are
+// basename-specific (the substrings differ from world-anchor-edge-store), so the new store needs its
+// own. Same four require/import forms; the distinctive basename is `world-anchor-edge-store`. The
+// SHADOW invariant is identical: no module outside packages/lab/world-anchor/ may import the edge
+// store, AND its authenticated reader / source deriver have ZERO production callers, until the
+// authenticated minter + a LIVE_SOURCES flip land (#273, PR-B). The new store's source token is
+// admitted by NO consumer; this test is the structural backing of that no-consumer guarantee.
+const EDGE_IMPORT_RE = /(?:require\(\s*|import\s+(?:[^;'"]*\sfrom\s+)?|import\(\s*)['"][^'"]*world-anchor-edge-store(?:\.js)?['"]/;
+
 test('SHADOW import-graph matcher catches the .js-extension + ESM + dynamic-import forms (not just bare require)', () => {
   const samples = [
     "require('../world-anchor/world-anchor-store.js')",
@@ -110,6 +119,55 @@ test('SHADOW header invariant: world-anchor-store.js carries the SHADOW/LIVE_SOU
   const src = fs.readFileSync(path.join(WORLD_ANCHOR_DIR, 'world-anchor-store.js'), 'utf8');
   assert.ok(/SHADOW/.test(src), 'the store names its SHADOW status');
   assert.ok(/LIVE_SOURCES/.test(src), 'the header references the LIVE_SOURCES / authenticated-minter prerequisite (#273)');
+});
+
+test('SHADOW import-graph matcher (edge store) catches the .js + ESM + dynamic-import forms; no false-positive', () => {
+  const samples = [
+    "require('../world-anchor/world-anchor-edge-store.js')",
+    "require('./world-anchor-edge-store')",
+    "import { writeWorldAnchorEdge } from '../world-anchor/world-anchor-edge-store.js'",
+    "import edgeStore from './world-anchor-edge-store'",
+    "const m = import('../world-anchor/world-anchor-edge-store.js')",
+  ];
+  for (const s of samples) assert.ok(EDGE_IMPORT_RE.test(s), `the edge-store matcher must catch: ${s}`);
+  // non-vacuous: it must NOT match the sibling world-anchor-store (a substring of it), nor an adjacent name
+  assert.ok(!EDGE_IMPORT_RE.test("require('./world-anchor-store')"), 'distinct from the world-anchor-store matcher (not just a substring hit)');
+  assert.ok(!EDGE_IMPORT_RE.test("require('./world-anchor-edge-cli')"), 'no false-positive on an adjacent module name');
+});
+
+test('SHADOW import-graph: NO module outside packages/lab/world-anchor/ imports world-anchor-edge-store', () => {
+  const offenders = [];
+  for (const file of walkJs(PACKAGES)) {
+    if (file.startsWith(WORLD_ANCHOR_DIR + path.sep)) continue;       // the module + its own siblings may import it
+    const src = fs.readFileSync(file, 'utf8');
+    if (EDGE_IMPORT_RE.test(src)) offenders.push(path.relative(REPO, file));
+  }
+  assert.deepStrictEqual(offenders, [], `world-anchor-edge-store must stay SHADOW  -  these modules import it: ${offenders.join(', ')}`);
+});
+
+// The no-consumer guarantee made STRUCTURAL: authenticatedWorldAnchorIds / deriveWorldAnchorSource
+// (the reader + the source deriver) have ZERO production callers. Only the composition TEST (PR-A.2)
+// reads them. Absent this assertion the SHADOW guarantee is unbacked prose. We grep packages/ for a
+// CALL of either function (excluding the test tree + any _spike scratch), counting only the
+// world-anchor module itself (where they are defined, not called) as legal.
+const READER_CALL_RE = /\b(?:authenticatedWorldAnchorIds|deriveWorldAnchorSource)\s*\(/;
+
+test('SHADOW: authenticatedWorldAnchorIds / deriveWorldAnchorSource have ZERO production callers', () => {
+  const offenders = [];
+  for (const file of walkJs(PACKAGES)) {
+    if (file.startsWith(WORLD_ANCHOR_DIR + path.sep)) continue;       // the module defines them (not a production caller)
+    if (file.includes(`${path.sep}_spike${path.sep}`)) continue;     // scratch spikes are not production
+    const src = fs.readFileSync(file, 'utf8');
+    if (READER_CALL_RE.test(src)) offenders.push(path.relative(REPO, file));
+  }
+  assert.deepStrictEqual(offenders, [], `the world-anchor reader/deriver must have NO production caller  -  these call it: ${offenders.join(', ')}`);
+});
+
+test('SHADOW header invariant: world-anchor-edge-store.js carries the SHADOW / LIVE_SOURCES / #273 header', () => {
+  const src = fs.readFileSync(path.join(WORLD_ANCHOR_DIR, 'world-anchor-edge-store.js'), 'utf8');
+  assert.ok(/SHADOW/.test(src), 'the edge store names its SHADOW status');
+  assert.ok(/LIVE_SOURCES/.test(src), 'the header references the LIVE_SOURCES / authenticated-minter prerequisite (#273)');
+  assert.ok(/#273/.test(src), 'the header carries the #273 integrity-not-provenance residual');
 });
 
 console.log(`shadow-import-graph.test.js: ${passed} passed`);
