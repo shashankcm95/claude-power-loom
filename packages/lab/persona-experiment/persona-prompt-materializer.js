@@ -150,4 +150,6 @@ function _materializeWithDeps(persona, deps = {}) {
   }
 }
 
-module.exports = { materialize, _materializeWithDeps, MATERIALIZE_MAX_BYTES };
+// MATERIALIZE_MAX_BYTES stays module-PRIVATE (not exported) - the cap is this module's to own;
+// a test asserts its presence via source inspection, not an import (CodeRabbit).
+module.exports = { materialize, _materializeWithDeps };

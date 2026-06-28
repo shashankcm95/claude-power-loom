@@ -216,11 +216,12 @@ for (const good of ['1', 'true', 'yes', 'on', 'TRUE', ' On ']) {
   });
 }
 
-// === F4 - the LOOP-LEVEL catch (record-threw) also carries the classify fields ================
-test('F4: an unexpected throw in solveGradeDraftOne -> loop-level outcome carries persona:null/classify-threw/matched:null', async () => {
+// === CodeRabbit Major #3 - a downstream throw PRESERVES the real classification ================
+// solveFn/emitFn throws are caught INSIDE solveGradeDraftOne (not the loop-catch), so a persona
+// that already classified is NOT lost to classify-threw (the data-integrity fix).
+test('CR#3: an emitFn throw -> emit-threw outcome PRESERVES the real persona (not classify-threw)', async () => {
   const dir = mkArtifacts();
   delete process.env.LOOM_PERSONA_MATERIALIZE;
-  // emitFn THROWS (not ok:false) -> propagates past solveGradeDraftOne to the loop-level catch.
   const deps = loopDeps({
     solveFn: async () => ({ ok: true, candidate: BENIGN_DIFF, costUsd: 0.01 }),
     emitFn: async () => { throw new Error('emit exploded'); },
@@ -228,8 +229,42 @@ test('F4: an unexpected throw in solveGradeDraftOne -> loop-level outcome carrie
   const report = await runLiveDraftLoop({ records: [PYREC], artifactsDir: dir, deps });
   assert.strictEqual(report.fatal, null, 'a per-record throw is fail-soft, not fatal');
   const o = report.outcomes[0];
+  assert.match(o.reason, /^emit-threw:/, 'an emitFn throw is caught in solveGradeDraftOne, not the loop-catch');
+  assert.strictEqual(o.persona, 'python-backend', 'the REAL persona survives a downstream throw');
+  assert.strictEqual(o.classify_signal, 'matched', 'the REAL classify_signal survives');
+  assert.strictEqual(o.matched, 'pytest', 'the REAL matched phrase survives');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('CR#3: a solveFn throw -> solve-threw outcome PRESERVES the real persona', async () => {
+  const dir = mkArtifacts();
+  delete process.env.LOOM_PERSONA_MATERIALIZE;
+  const deps = loopDeps({ solveFn: async () => { throw new Error('solve exploded'); } });
+  const report = await runLiveDraftLoop({ records: [PYREC], artifactsDir: dir, deps });
+  assert.strictEqual(report.fatal, null);
+  const o = report.outcomes[0];
+  assert.match(o.reason, /^solve-threw:/, 'a solveFn throw is caught in solveGradeDraftOne');
+  assert.strictEqual(o.persona, 'python-backend', 'the REAL persona survives a solveFn throw');
+  assert.strictEqual(o.classify_signal, 'matched');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// === F4 - the LOOP-LEVEL catch is now LAST-RESORT defense-in-depth (the common throw sources are
+// caught above with the persona preserved). A pathological record whose `id` getter throws still
+// reaches it; the stamp keeps the "classify fields on every outcome" invariant unconditional. =====
+test('F4: a truly-unexpected throw -> the loop-level catch stamps the total classify fields', async () => {
+  const dir = mkArtifacts();
+  delete process.env.LOOM_PERSONA_MATERIALIZE;
+  // A normal record (so the loop-catch can still read record.id), but the solve candidate's
+  // toString throws -> the UNWRAPPED `hasSymlinkEntry(candidate)` sync step throws -> escapes
+  // solveGradeDraftOne to the loop-level catch (its only remaining trigger after the #3 fix).
+  const deps = loopDeps({
+    solveFn: async () => ({ ok: true, candidate: { toString() { throw new Error('candidate boom'); } }, costUsd: 0.01 }),
+  });
+  const report = await runLiveDraftLoop({ records: [PYREC], artifactsDir: dir, deps });
+  assert.strictEqual(report.fatal, null, 'a per-record throw is fail-soft, not fatal');
+  const o = report.outcomes[0];
   assert.match(o.reason, /^record-threw:/, 'the loop-level catch fired');
-  // F4: the classify fields are stamped UNCONDITIONALLY, even on the loop-level catch
   assert.strictEqual(o.persona, null, 'loop-level outcome carries persona:null');
   assert.strictEqual(o.classify_signal, 'classify-threw', 'loop-level outcome carries classify-threw');
   assert.strictEqual(o.matched, null, 'loop-level outcome carries matched:null');

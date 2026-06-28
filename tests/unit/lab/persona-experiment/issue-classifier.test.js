@@ -86,7 +86,7 @@ test('a genuine tie between exactly two personas resolves by fixed priority, sig
   // 'helm' (devops-sre) + 'maven' (java-backend): one distinct phrase each -> a 1-1 tie.
   const r = classifyIssue(rec('the helm chart and the maven build both fail'));
   // deterministic: the higher-priority persona wins; the signal records the tie was present
-  assert.ok(r.persona !== null, 'a tie must still resolve to the priority winner, not null');
+  assert.strictEqual(r.persona, 'java-backend', 'the tie resolves to java-backend (priority 3) over devops-sre (priority 8) - the explicit priority winner');
   assert.strictEqual(r.classify_signal, 'ambiguous-tie');
 });
 
@@ -115,11 +115,14 @@ test('a thrown-internal (bad record) yields {persona:null, classify_signal:class
   assert.strictEqual(r.classify_signal, 'classify-threw');
   assert.strictEqual(r.matched, null);
 });
-test('null / non-object record -> null, never throws', () => {
-  assert.strictEqual(classifyIssue(null).persona, null);
-  assert.strictEqual(classifyIssue(undefined).persona, null);
-  assert.strictEqual(classifyIssue(42).persona, null);
-  assert.strictEqual(classifyIssue('a string').persona, null);
+test('null / non-object record -> {persona:null, classify-threw}, never throws (CodeRabbit #2)', () => {
+  // a malformed (non-object) record is a FAILURE signal, distinct from a valid record with no match.
+  for (const bad of [null, undefined, 42, 'a string']) {
+    const r = classifyIssue(bad);
+    assert.strictEqual(r.persona, null, `non-object ${JSON.stringify(bad)} -> persona null`);
+    assert.strictEqual(r.classify_signal, 'classify-threw', `non-object ${JSON.stringify(bad)} -> classify-threw, not no-keyword-match`);
+    assert.strictEqual(r.matched, null);
+  }
 });
 
 // --- every table key is a materializable builder (D2 defensive enforcement) ---

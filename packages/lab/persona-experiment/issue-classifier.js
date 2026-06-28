@@ -117,7 +117,9 @@ function scorePersona(persona, haystack) {
 function classifyIssue(record, opts = {}) {
   try {
     if (!record || typeof record !== 'object') {
-      return { persona: null, classify_signal: 'no-keyword-match', matched: null };
+      // A malformed record shape is a FAILURE signal (CodeRabbit), distinct from a valid record
+      // with no keyword hit -> so the shadow data never confuses "bad upstream record" with "no match".
+      return { persona: null, classify_signal: 'classify-threw', matched: null };
     }
     const problem = typeof record.problem_statement === 'string' ? record.problem_statement : '';
     const repo = typeof record.repo === 'string' ? record.repo : '';

@@ -55,7 +55,10 @@ function defangFences(text) {
  *          candidate line was skipped for the budget.
  */
 function renderFencedBoundedBlock({ header, lines, maxBytes } = {}) {
-  const safeHeader = typeof header === 'string' ? header : '';
+  // The header is part of the framed block, so it gets the SAME defang + a newline-collapse as a
+  // body line (CodeRabbit): a caller-supplied newline or fence sentinel in the header must not
+  // break the one-line-header / single-fence contract while still passing byte accounting.
+  const safeHeader = typeof header === 'string' ? defangFences(header.replace(/[\r\n]+/g, ' ')) : '';
   const safeLines = Array.isArray(lines) ? lines : [];
   // F5 - accept a float gracefully (floor it); NaN / <= 0 fail closed to 0.
   const cap = Number.isFinite(maxBytes) && maxBytes > 0 ? Math.floor(maxBytes) : 0;

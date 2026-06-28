@@ -176,11 +176,18 @@ async function solveGradeDraftOne(ctx) {
   try { ref = parseRecordRef(record); }
   catch (e) { return recordOutcome(record, { stage: 'parse', ok: false, reason: (e && e.message) || 'bad-record', ...classifyFields }); }
 
-  const solveRes = await solveFn({
-    record, apiKey: env.apiKey, model: ctx.model, timeout: ctx.timeout, ledgerPath: ctx.ledgerPath,
-    runId: ctx.runId, maxBudgetUsd: ctx.maxBudgetUsd, dockerBin: ctx.dockerBin, image: ctx.image,
-    persona: classifyFields.persona, deps: ctx.deps,
-  });
+  // item 4 (CodeRabbit Major): a throw from solveFn must NOT escape to the loop-catch (which would
+  // stamp classify-threw and DROP a persona that already classified). Catch here, preserve classifyFields.
+  let solveRes;
+  try {
+    solveRes = await solveFn({
+      record, apiKey: env.apiKey, model: ctx.model, timeout: ctx.timeout, ledgerPath: ctx.ledgerPath,
+      runId: ctx.runId, maxBudgetUsd: ctx.maxBudgetUsd, dockerBin: ctx.dockerBin, image: ctx.image,
+      persona: classifyFields.persona, deps: ctx.deps,
+    });
+  } catch (e) {
+    return recordOutcome(record, { stage: 'solve', ok: false, reason: 'solve-threw:' + ((e && e.message) || 'error'), ...classifyFields });
+  }
   if (!solveRes || solveRes.ok !== true) {
     return recordOutcome(record, { stage: 'solve', ok: false, reason: (solveRes && solveRes.reason) || 'solve-failed', cost_usd: solveRes && solveRes.costUsd, ...classifyFields });
   }
@@ -193,12 +200,18 @@ async function solveGradeDraftOne(ctx) {
   catch (e) { verdict = { error: 'grade-threw:' + ((e && e.message) || 'error') }; }
 
   // fold #4 — emitPR dry-run is NOT guaranteed ok:true (lock / empty / .github -> ok:false). Fail-soft.
-  const emitRes = await emitFn({ repo: ref.slug, issueRef: ref.issueRef, diff: solveRes.candidate }, {});
+  // item 4 (CodeRabbit Major): an emitFn throw must also preserve classifyFields, not escape to the loop-catch.
+  let emitRes;
+  try {
+    emitRes = await emitFn({ repo: ref.slug, issueRef: ref.issueRef, diff: solveRes.candidate }, {});
+  } catch (e) {
+    return recordOutcome(record, { stage: 'draft', ok: false, reason: 'emit-threw:' + ((e && e.message) || 'error'), verdict, cost_usd: solveRes.costUsd, ...classifyFields });
+  }
   if (!emitRes || emitRes.ok !== true) {
     return recordOutcome(record, { stage: 'draft', ok: false, reason: 'emit:' + ((emitRes && emitRes.reason) || 'unknown'), verdict, cost_usd: solveRes.costUsd, ...classifyFields });
   }
   if (emitRes.emitted !== false) { // defense-in-depth: a dry-run MUST never emit
-    return recordOutcome(record, { stage: 'draft', ok: false, reason: 'UNEXPECTED-EMISSION', cost_usd: solveRes.costUsd, ...classifyFields });
+    return recordOutcome(record, { stage: 'draft', ok: false, reason: 'UNEXPECTED-EMISSION', verdict, cost_usd: solveRes.costUsd, ...classifyFields });
   }
   // writeArtifact is the one post-gate step that touches the filesystem; an fs error (ENOSPC, perms)
   // must stay per-record fail-soft (VALIDATE HIGH), not abort the loop.
