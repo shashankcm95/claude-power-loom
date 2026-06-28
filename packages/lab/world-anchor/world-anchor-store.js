@@ -340,7 +340,7 @@ function readAnchorRaw(anchor_id, dir, selfUid) {
     const text = readBoundedText(fd, MAX_RECORD_BYTES);
     if (text === null) { emitEgressAlert('world-anchor-verify-mismatch', { anchor_id, kind: 'oversize-race' }); return null; }
     const parsed = JSON.parse(text);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) { emitEgressAlert('world-anchor-verify-mismatch', { anchor_id, kind: 'not-an-object' }); return null; }
     const reId = deriveAnchorId({ repo: parsed.repo, issueRef: parsed.issueRef, diff_hash: parsed.diff_hash });
     if (reId !== anchor_id || parsed.anchor_id !== anchor_id) {       // basis must derive the filename id
       emitEgressAlert('world-anchor-verify-mismatch', { anchor_id, kind: 'anchor-id', derived: reId });
@@ -381,7 +381,7 @@ function readConfirmationRaw(anchor_id, dir, selfUid) {
     const text = readBoundedText(fd, MAX_RECORD_BYTES);
     if (text === null) { emitEgressAlert('world-anchor-verify-mismatch', { anchor_id, kind: 'confirmation-oversize-race' }); return null; }
     const parsed = JSON.parse(text);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) { emitEgressAlert('world-anchor-verify-mismatch', { anchor_id, kind: 'confirmation-not-an-object' }); return null; }
     if (parsed.anchor_id !== anchor_id) {                            // a sidecar that lies about its anchor
       emitEgressAlert('world-anchor-verify-mismatch', { anchor_id, kind: 'confirmation' });
       return null;

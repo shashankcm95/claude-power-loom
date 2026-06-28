@@ -542,12 +542,14 @@ test('C3: readBoundedText boundary - EXACTLY cap returns text, EXACTLY cap+1 ret
 test('C3/F2: a literal-null attestation body (within cap) is rejected (not mislabeled oversize)', () => {
   const dir = tmp();
   const w = recordAttestation(att(), { dir });
+  assert.strictEqual(w.ok, true, 'the seed attestation lands (so a later null read is the body rejection, not a missing seed)');
   // overwrite the attestation file with the JSON literal `null` (within cap; parses to JS null). With
   // readBoundedText the caller parses it and the not-an-object guard rejects it - never an oversize-race.
   fs.writeFileSync(path.join(dir, `${w.anchor_id}.json`), 'null');
   const alerts = captureAlerts(() => {
     assert.strictEqual(readAnchor(w.anchor_id, { dir }), null, 'a literal-null body is rejected on read');
   });
+  assert.ok(alerts.some((al) => al.kind === 'not-an-object'), 'the rejection is OBSERVABLE as not-an-object (the invalid-body signal, CodeRabbit)');
   assert.ok(!alerts.some((al) => al.kind === 'oversize-race'), 'a within-cap literal-null is never mislabeled oversize-race');
 });
 

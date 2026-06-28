@@ -239,7 +239,7 @@ function readNodeRaw(node_id, dir, selfUid) {
     const text = readBoundedText(fd, MAX_RECORD_BYTES);
     if (text === null) { alert('verify-mismatch', { node_id, kind: 'oversize-race' }); return null; }
     const parsed = JSON.parse(text);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) { alert('verify-mismatch', { node_id, kind: 'not-an-object' }); return null; }
     if (parsed.provenance !== WORLD_ANCHORED) { alert('verify-mismatch', { node_id, kind: 'provenance' }); return null; }
     // Schema validation on READ, symmetric with the write path: node_id + content_hash seal a body's
     // self-CONSISTENCY, not its schema-validity. A same-uid writer can plant a self-consistent record

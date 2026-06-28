@@ -337,6 +337,7 @@ test('C3/F2: a literal-null node body (within cap) is rejected, NOT mislabeled o
   fs.writeFileSync(path.join(dir, `${id}.json`), 'null');
   const { r, lastReason } = captureAlert(() => store.readLiveNode(id, { dir }));
   assert.strictEqual(r, null, 'a literal-null body is rejected on read');
+  assert.ok(/not-an-object/.test(lastReason || ''), 'the rejection is OBSERVABLE as not-an-object (the invalid-body signal, CodeRabbit)');
   assert.ok(!/oversize-race/.test(lastReason || ''), 'a within-cap literal-null is never mislabeled oversize-race');
 });
 
