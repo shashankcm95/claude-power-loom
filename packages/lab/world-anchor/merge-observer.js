@@ -25,8 +25,12 @@
 // This OBSERVER is the ONE module the kernel join-key dam (join-key-shadow.test.js) admits as a reader
 // (by its FULL relative path). It mints NO node/edge, flips NO LIVE_SOURCES, calls NO signer. The record
 // it writes is SHADOW (the merge-outcome store gates nothing). issueRef is NOT denormalized into the
-// record - it is in the SEALED join-key, retrievable via loadJoinKey(join_key_id); item 3 re-loads the
-// join-key to obtain issueRef for the edge basis (it cannot be parsed from the URL - reviewer LOW-2).
+// record - it is in the SEALED join-key, retrievable via loadJoinKey(join_key_id). item 3 (PR-3) reads
+// `record.approval_hash` (the SEALED field) FROM the merge-outcome record for the edge's to_delta_ref; the
+// edge basis is [from_node_id, to_delta_ref=approval_hash, edge_type] and carries NO issueRef, so item 3
+// does NO join-key re-load and the kernel REQUIRE_ALLOWLIST stays at exactly two readers (emit-pr.js +
+// THIS observer). A third join-key reader would be a dam breach; item 3's minter reads the record, not
+// the join-key.
 //
 // merge_commit_sha is gh-reported-at-observe-time, NOT verified-equal-to-the-approved-content; item-3
 // trust derives ONLY from the SEALED approval_hash (the NAMED post-approval-drift residual - see the

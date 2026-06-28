@@ -5,21 +5,30 @@
 // Wave 1, autonomous-SDE ingress. The human-invoked OBSERVER CLI for the world-anchor ledger.
 // ADVISORY/SHADOW: it only records/reads the Lab-owned ledger; nothing here blocks or gates.
 //
+// MINT PATH (PR-3): observe-merge is the SOLE mint path - the gh-verified, kernel-sealed-approval_hash-
+// anchored lane. record-merge is CONFIRMATION-ONLY (it records the world-anchor-store sidecar but mints
+// NO node/edge). The legacy pasted-sha mint (att.diff_hash + a pasted --merge-sha) is REMOVED: there is
+// EXACTLY ONE mint path now, and it cannot bind a forged/pasted field (the minter reads the gh-verified
+// record's merge_commit_sha + the kernel-SEALED approval_hash, never a caller arg).
+//
 // Subcommands:
-//   observe-merge --pr <url> [--merge-sha <sha>]   (gap-map item 2, PR-2 - the gh-verified successor
-//       to record-merge below) Parse the PR URL, JOIN on the KERNEL egress join-key (resolveJoinKeyForPr,
-//       the SEALED approval_hash), gh-VERIFY the merge in-process (merged===true), then write a
-//       content-addressed merge-outcome RECORD bound to approval_hash. Fail-closed if the PR has no
-//       kernel join-key (the orphan grandfather: ca648110 predates #447). SHADOW: mints NO node/edge,
-//       flips no LIVE_SOURCES. The flow lives in merge-observer.js; this arm is the thin dispatch.
+//   observe-merge --pr <url> [--merge-sha <sha>]   (gap-map item 2/3, PR-2 + PR-3 - the gh-verified,
+//       kernel-sealed lane; the SOLE mint path) Parse the PR URL, JOIN on the KERNEL egress join-key
+//       (resolveJoinKeyForPr, the SEALED approval_hash), gh-VERIFY the merge in-process (merged===true),
+//       then write a content-addressed merge-outcome RECORD bound to approval_hash. Fail-closed if the PR
+//       has no kernel join-key (the orphan grandfather: ca648110 predates #447). On a `merged` record it
+//       AUTO-MINTS the world_anchored NODE + the UNSIGNED world-anchored-by EDGE (to_delta_ref =
+//       record.approval_hash, merge_sha = record.merge_commit_sha) via world-anchor-mint.js - additive:
+//       a mint failure NEVER reverts the recorded outcome's success. SHADOW: the edge is UNSIGNED, flips
+//       no LIVE_SOURCES. The record flow lives in merge-observer.js; the mint in world-anchor-mint.js.
 //   record-merge --pr <url> --outcome merged|closed|stale [--merge-sha <sha>]
-//       (LEGACY, attestation-anchored, pasted --merge-sha - NO gh call) Parse owner/repo + pr_number
-//       from the PR URL, resolveAnchorForPr (the EXACT-SET join), then recordConfirmation. Fail-closed
-//       + observable if no UNIQUE attestation matches (a merge of an un-attested / ambiguous PR is
-//       loudly skipped, never laundered into a confirmation). On --outcome merged (EXACT string) it
-//       ALSO mints a world_anchored lesson node from the VERIFIED attestation (item 3); closed/stale
-//       record the confirmation but mint nothing. STAYS LIVE (it serves ca648110 + is the item-3
-//       scaffold); observe-merge is its gh-verified join-key successor.
+//       (LEGACY, attestation-anchored - NO gh call; CONFIRMATION-ONLY as of PR-3) Parse owner/repo +
+//       pr_number from the PR URL, resolveAnchorForPr (the EXACT-SET join), then recordConfirmation.
+//       Fail-closed + observable if no UNIQUE attestation matches (a merge of an un-attested / ambiguous
+//       PR is loudly skipped, never laundered into a confirmation). It mints NOTHING (PR-3 removed the
+//       legacy pasted-sha mint; observe-merge is the SOLE mint path). It STAYS as the un-gh-verified
+//       confirmation residual + serves ca648110 (which predates the kernel join-key, so observe-merge
+//       fails-closed on it).
 //   backfill-2137 [--diff <path>] [--dir <store>] [--allow-placeholder]
 //       BUILD (in memory) the #2137 attestation + lesson and write it to the store. The diff_hash is
 //       RE-DERIVED from the diff file bytes (default /tmp/spec-kitty-2097.diff), never hardcoded; a
@@ -38,20 +47,10 @@ const crypto = require('crypto');
 const fs = require('fs');
 const store = require('./world-anchor-store');
 const liveStore = require('./live-recall-store');
-const { writeWorldAnchorEdge, loadWorldAnchorEdge, WORLD_ANCHOR_EDGE_TYPE } = require('./world-anchor-edge-store');
 const { buildWorldAnchorLesson, LESSON_2137 } = require('./lesson');
 const { parsePrUrl } = require('./parse-pr-url');
 const { runMergeObserve } = require('./merge-observer');
-const { emitEgressAlert } = require('../../kernel/egress/alert');
-
-// The orchestrator-authored lesson FLOOR (D7): a sealed lesson_signature -> the orchestrator-authored
-// block whose body carries the world-grounded learning (D8). The mint NEVER reads a caller-supplied
-// body (hacker H2); it looks the body up by the attestation's content_hash-SEALED lesson_signature.
-// For the MVP this is LESSON_2137 only; item 4's classifier extends this map (append-only, mirroring
-// the frozen taxonomy floor). An attestation whose sealed signature is not in the floor mints nothing.
-const ORCHESTRATOR_LESSONS = Object.freeze({
-  [buildWorldAnchorLesson(LESSON_2137).lesson_signature]: LESSON_2137,
-});
+const { mintFromMergeOutcome } = require('./world-anchor-mint');
 
 // The #2137 constants (the spec-kitty PR this wave confirms). diff_hash is NOT here  -  it is
 // re-derived from the diff bytes at backfill time.
@@ -76,15 +75,15 @@ const PLACEHOLDER_DIFF_HASH = crypto.createHash('sha256').update('world-anchor-2
 // merge-observer.js uses, so record-merge and observe-merge DRY on ONE parse + the EXACT join tuple.
 
 /**
- * The record-merge flow as a pure-ish module function (dir-injectable for tests). Resolves the
- * anchor by the FULL (repo, pr_number, pr_url) tuple, records the confirmation, and -- ONLY when the
- * outcome is the EXACT string 'merged' -- mints a world_anchored lesson node into the live store
- * (item 3). The mint derives its identity from the content_hash-SEALED attestation (NEVER a
- * caller-supplied lesson field -- hacker H2); a closed/stale/un-attested outcome mints NOTHING and the
- * non-mint is observable (the live store's refuse paths emit; a no-floor-lesson logs a reason).
+ * The record-merge flow as a pure-ish module function (dir-injectable for tests). CONFIRMATION-ONLY as
+ * of PR-3: resolve the anchor by the FULL (repo, pr_number, pr_url) tuple + record the world-anchor-store
+ * confirmation sidecar. It mints NOTHING (the legacy pasted-sha node/edge mint is REMOVED - observe-merge
+ * is the SOLE mint path, gh-verified + kernel-approval_hash-anchored). A no-UNIQUE-attestation match is
+ * fail-closed + observable (resolveAnchorForPr emits). The mergeSha is recorded into the confirmation
+ * sidecar as a human note ONLY; it is NEVER bound into a node/edge (the pasted-sha forge surface is gone).
  * @param {{pr: string, outcome: string, mergeSha?: string}} args
- * @param {{dir?: string, liveDir?: string, edgeDir?: string, edgeSigner?: (id: string) => string|null|undefined, now?: string}} [opts]
- * @returns {{ok: boolean, anchor_id?: string, reason?: string, minted?: boolean, live_node_id?: string}}
+ * @param {{dir?: string, now?: string}} [opts]
+ * @returns {{ok: boolean, anchor_id?: string, outcome?: string, reason?: string}}
  */
 function runRecordMerge(args, opts = {}) {
   if (!store.OUTCOMES.includes(args.outcome)) return { ok: false, reason: 'bad-outcome' };
@@ -99,119 +98,9 @@ function runRecordMerge(args, opts = {}) {
     confirmed_at,
   }, { dir: opts.dir });
   if (!conf.ok) return conf;
-  const base = { ok: true, anchor_id: resolved.anchor_id, outcome: args.outcome };
-  // The MINT gate: EXACT-string 'merged' only (not a subset/includes); closed/stale never mint.
-  if (args.outcome !== 'merged') return base;
-  // Thread `now: confirmed_at` (the STABLE per-anchor timestamp computed above) so the additive edge's
-  // recorded_at is deterministic across a re-merge (a fresh Date() would COLLIDE-refuse the edge dedup,
-  // since recorded_at is in bodiesEqual but NOT the edge_id basis). edgeSigner is UNDEFINED in
-  // production -> the edge is UNSIGNED (SHADOW); PR-A2's off-host vehicle supplies it with no edit here.
-  const mint = mintFromAttestation(resolved.anchor_id, args.mergeSha, {
-    dir: opts.dir,
-    liveDir: opts.liveDir,
-    edgeDir: opts.edgeDir,
-    edgeSigner: opts.edgeSigner,
-    now: confirmed_at,
-  });
-  return {
-    ...base,
-    minted: mint.minted,
-    minted_deduped: !!mint.deduped,
-    live_node_id: mint.node_id,
-    mint_reason: mint.reason,
-    edge_minted: mint.edge_minted,
-    edge_id: mint.edge_id,
-    edge_deduped: mint.edge_deduped,
-    edge_signed: mint.edge_signed,
-    edge_reason: mint.edge_reason,
-  };
-}
-
-/**
- * Mint ONE world-anchored-by EDGE binding the minted node to the merged diff (ladder item 5, PR-A.2).
- * A SMALL TOTAL helper so the additive-failure isolation lives in one named, testable place: it NEVER
- * throws (the store is total) and always returns the edge_* shape. UNSIGNED by default (production
- * passes no edgeSigner -> the store's signer is undefined -> a SHADOW, integrity-only edge that gates
- * nothing - no production consumer admits the world-anchor source).
- * @param {string} node_id  the minted node's id (the edge's from_node_id)
- * @param {string} diffHash  the VERIFIED att.diff_hash (attestation-sealed HEX64) - the to_delta_ref
- * @param {{edgeDir?: string, edgeSigner?: (id: string) => string|null|undefined, now?: string}} opts
- * @returns {{edge_minted: boolean, edge_id?: string, edge_deduped?: boolean, edge_signed: boolean, edge_reason?: string}}
- */
-function mintWorldAnchorEdge(node_id, diffHash, opts = {}) {
-  // recorded_at = the STABLE per-anchor confirmation timestamp (opts.now), so a re-merge DEDUPS
-  // (recorded_at is in bodiesEqual but NOT the edge_id basis -> a fresh Date() would COLLIDE-refuse).
-  const recorded_at = typeof opts.now === 'string' && opts.now.length > 0 ? opts.now : new Date().toISOString();
-  // to_delta_ref = the VERIFIED att.diff_hash (attestation-sealed HEX64), NEVER mergeSha (an untyped
-  // CLI arg). The store re-validates to_delta_ref is HEX64 (-> {ok:false,reason:'bad-to-delta-ref'});
-  // att.diff_hash is sealed-HEX64 so that store refuse is defense-in-depth, surfaced as edge_reason.
-  const e = writeWorldAnchorEdge(
-    { from_node_id: node_id, to_delta_ref: diffHash, edge_type: WORLD_ANCHOR_EDGE_TYPE[0], recorded_at },
-    { dir: opts.edgeDir, signer: opts.edgeSigner },   // signer UNDEFINED in production -> UNSIGNED
-  );
-  if (!e.ok) return { edge_minted: false, edge_signed: false, edge_reason: e.reason };
-  // edge_signed = the PERSISTED on-disk truth, NOT `typeof signer` (VALIDATE hacker H1: a supplied-but-
-  // failing signer degrades to UNSIGNED in the store, so deriving from the input would LIE). Re-read the
-  // verified edge: production (no signer) is always false; a failed/garbage signer is also false.
-  const persisted = loadWorldAnchorEdge(e.edge_id, { dir: opts.edgeDir });
-  return { edge_minted: true, edge_id: e.edge_id, edge_deduped: !!e.deduped, edge_signed: !!(persisted && persisted.sig_alg) };
-}
-
-/**
- * Mint a world_anchored lesson from the VERIFIED attestation (re-read via store.readAnchor, never a
- * caller field). The lesson_body is looked up from the orchestrator-authored floor by the
- * attestation's content_hash-SEALED lesson_signature; the world-evidence merge_sha comes from the
- * gh-verified --merge-sha. Every non-mint reason is observable (the live store emits on a refuse; a
- * missing SHA or no-floor-lesson is a returned reason a caller surfaces, M1).
- * @returns {{minted: boolean, node_id?: string, deduped?: boolean, reason?: string, edge_minted?: boolean,
- *   edge_id?: string, edge_deduped?: boolean, edge_signed?: boolean, edge_reason?: string}}
- */
-// PRIVATE (not exported): the ONLY legitimate caller is runRecordMerge, which gates on the EXACT
-// 'merged' outcome + a recorded confirmation. Exposing this would let a caller mint a live node
-// straight from a stored attestation, bypassing that gate (the confirmation-mint-only contract).
-function mintFromAttestation(anchor_id, mergeSha, opts = {}) {
-  const att = store.readAnchor(anchor_id, { dir: opts.dir });        // VERIFIED + content_hash-sealed
-  // M1: every mint-refuse path that short-circuits BEFORE the live store is itself observable (the
-  // store emits on its own refuses). A merged outcome that fails to mint a lesson is a fail-closed
-  // decision; emit so it can never silently swallow a genuine world-anchor.
-  // NOTE: the positional `reason` is authoritative in emitEgressAlert (detail is spread FIRST), so
-  // the distinguishing token goes in `mint_reason`, never a detail `reason` key (which is clobbered).
-  if (!att) { emitEgressAlert('live-recall-mint-refused', { anchor_id, mint_reason: 'attestation-unreadable' }); return { minted: false, reason: 'attestation-unreadable' }; }
-  if (typeof mergeSha !== 'string' || mergeSha.length === 0) {
-    emitEgressAlert('live-recall-mint-refused', { anchor_id, mint_reason: 'no-merge-sha' });
-    return { minted: false, reason: 'no-merge-sha' };
-  }
-  const seed = ORCHESTRATOR_LESSONS[att.lesson_signature];           // by the SEALED signature, never a caller field
-  if (!seed) {
-    emitEgressAlert('live-recall-mint-refused', { anchor_id, mint_reason: 'no-floor-lesson', lesson_signature: att.lesson_signature });
-    return { minted: false, reason: 'no-floor-lesson' };
-  }
-  let lesson;
-  // M1: the build-failed path is fail-closed and must be OBSERVABLE too (currently unreachable
-  // because the floor seeds are frozen + validated at module load, but item 4 loads seeds at
-  // runtime - a silent swallow then would hide a genuine world-anchor). Emit, like every sibling.
-  try { lesson = buildWorldAnchorLesson(seed); }
-  catch (e) {
-    emitEgressAlert('live-recall-mint-refused', { anchor_id, mint_reason: 'lesson-build-failed', detail: (e && e.message) || 'error' });
-    return { minted: false, reason: 'lesson-build-failed' };
-  }
-  const m = liveStore.mintWorldAnchoredNode({
-    anchor_id,
-    merge_sha: mergeSha,
-    lesson_signature: lesson.lesson_signature,                       // re-derived from the floor block (== att.lesson_signature)
-    lesson_body: lesson.lesson_body,
-  }, { dir: opts.liveDir });
-  if (!m.ok) return { minted: false, reason: m.reason };             // the live store already emitted an observable alert
-  // NODE-RESULT-FIRST + additive edge (D2): the node mint is the load-bearing result. Propagate
-  // `deduped` so a re-mint (same content-address) is not reported as a NEW world-anchor event:
-  // minted:true + deduped:true means "the node exists", minted:true + deduped:false is a genuine
-  // first write. A log/automation consumer must be able to tell them apart.
-  const nodeResult = { minted: true, node_id: m.node_id, deduped: !!m.deduped };
-  // The edge is ADDITIVE - it NEVER reverts nodeResult. mintWorldAnchorEdge is total (it cannot throw),
-  // and a FRESH spread (never a mutation) keeps the node-result byte-identical on an edge failure.
-  // att.diff_hash is read from the in-scope VERIFIED + content_hash-sealed `att` (no re-read, no TOCTOU).
-  const edge = mintWorldAnchorEdge(m.node_id, att.diff_hash, opts);
-  return { ...nodeResult, ...edge };
+  // CONFIRMATION-ONLY (PR-3): record-merge mints NO node/edge. observe-merge (gh-verified, kernel-sealed)
+  // is the SOLE mint path. Return ONLY the confirmation result; no `minted`/`edge_*` fields surface here.
+  return { ok: true, anchor_id: resolved.anchor_id, outcome: args.outcome };
 }
 
 /**
@@ -275,38 +164,72 @@ function parseArgs(argv) {
   return args;
 }
 
-const USAGE = 'Usage: cli.js <observe-merge --pr <url> [--merge-sha <sha>] [--dir <store>] | record-merge --pr <url> --outcome merged|closed|stale [--merge-sha <sha>] [--live-dir <dir>] | list-live [--live-dir <dir>] | backfill-2137 [--diff <path>] [--dir <store>] [--allow-placeholder]>\n';
+const USAGE = 'Usage: cli.js <observe-merge --pr <url> [--merge-sha <sha>] [--dir <store>] (gh-verified; the SOLE mint path) | record-merge --pr <url> --outcome merged|closed|stale [--merge-sha <sha>] [--dir <store>] (confirmation-only; mints nothing) | list-live [--live-dir <dir>] | backfill-2137 [--diff <path>] [--dir <store>] [--allow-placeholder]>\n';
 
 function emit(obj) { process.stdout.write(`${JSON.stringify(obj, null, 2)}\n`); }
 
-// observe-merge is the ONLY async arm (it gh-verifies the merge in-process). Returns a Promise<number>;
-// the sync arms return a number directly. The bottom invocation Promise.resolve()-wraps both.
-async function mainObserveMerge(args) {
+// observe-merge is the ONLY async arm (it gh-verifies the merge in-process). It is also the SOLE mint
+// path (PR-3): after runMergeObserve records a `merged` outcome, this arm AUTO-MINTS the world_anchored
+// node + the UNSIGNED world-anchored-by edge from the gh-verified, kernel-sealed merge-outcome RECORD via
+// world-anchor-mint.js. The mint is ADDITIVE - a mint failure NEVER changes the record's success exit code.
+// Returns { code, payload } (the payload is the emitted JSON); the `main` dispatch extracts .code. opts is
+// a TEST seam (an injected gh runner + store dirs) so tests never shell real gh; production passes none.
+// @param {object} args  the parsed argv flags
+// @param {{ghRunner?: Function, dir?: string, anchorDir?: string, liveDir?: string, edgeDir?: string,
+//   edgeSigner?: Function, now?: string}} [opts]  dir = the merge-outcome store dir; anchorDir = the
+//   world-anchor attestation store dir; the rest thread to the minter. UNDEFINED in production (defaults).
+async function mainObserveMerge(args, opts = {}) {
   // A bare `--merge-sha` (no value) parses to `true` (CodeRabbit Minor): fail-CLOSED on the operator
   // mistake rather than silently dropping the cross-check (which omitting --merge-sha legitimately does).
   if (args['merge-sha'] === true) {
     const r = { ok: false, reason: 'bad-merge-sha', detail: '--merge-sha requires a value' };
     emit(r);
-    return 1;
+    return { code: 1, payload: r };
   }
   const r = await runMergeObserve(
     { pr: args.pr, expectedMergeSha: args['merge-sha'] },
-    { dir: args.dir },
+    { dir: opts.dir !== undefined ? opts.dir : args.dir, ghRunner: opts.ghRunner, now: opts.now },
   );
-  emit(r);
-  return r.ok ? 0 : 1;
+  // AUTO-MINT (PR-3): only on a freshly recorded OR deduped `merged` outcome. The mint is additive +
+  // observable-but-non-fatal: a thrown/failed mint NEVER reverts the record's success (the recorded
+  // outcome's exit code stands). mintFromMergeOutcome is TOTAL (it never throws), but a defensive
+  // try/catch keeps the additive guarantee even if a future store path changes.
+  let payload = r;
+  if (r.ok && r.outcome === 'merged' && typeof r.join_key_id === 'string') {
+    let mint;
+    try {
+      mint = mintFromMergeOutcome(
+        { join_key_id: r.join_key_id },
+        {
+          outcomeDir: opts.dir !== undefined ? opts.dir : args.dir,
+          anchorDir: opts.anchorDir,   // the world-anchor attestation store dir (production: default)
+          liveDir: opts.liveDir,
+          edgeDir: opts.edgeDir,
+          edgeSigner: opts.edgeSigner,
+        },
+      );
+    } catch (err) {
+      // observable-but-non-fatal: the record success stands; surface the mint throw.
+      mint = { minted: false, mint_reason: 'mint-threw', detail: (err && err.message) || 'error' };
+    }
+    payload = { ...r, ...mint };
+  }
+  emit(payload);
+  // a mint failure does NOT change the exit code from the record's success (additive).
+  return { code: r.ok ? 0 : 1, payload };
 }
 
 function main(argv) {
   const sub = argv[0];
   const args = parseArgs(argv.slice(1));
   if (sub === 'observe-merge') {
-    return mainObserveMerge(args);          // a Promise<number> (the only async arm)
+    return mainObserveMerge(args).then((res) => res.code);   // a Promise<number> (the only async arm)
   }
   if (sub === 'record-merge') {
+    // CONFIRMATION-ONLY (PR-3): record-merge mints nothing, so no live/edge dir is threaded.
     const r = runRecordMerge(
       { pr: args.pr, outcome: args.outcome, mergeSha: args['merge-sha'] },
-      { dir: args.dir, liveDir: args['live-dir'] },
+      { dir: args.dir },
     );
     emit(r);
     return r.ok ? 0 : 1;
@@ -334,6 +257,7 @@ if (require.main === module) {
     .catch((e) => { process.stderr.write(`observe-merge: unexpected error: ${(e && e.message) || 'error'}\n`); process.exit(1); });
 }
 
-// mintFromAttestation is deliberately NOT exported: it must only be reached through runRecordMerge's
-// merged-gate (the confirmation-mint-only contract). The public surface is the gated entry points.
-module.exports = { parsePrUrl, runRecordMerge, listLive, backfill2137, main, SPEC_KITTY_2137, PLACEHOLDER_DIFF_HASH };
+// The mint logic lives in world-anchor-mint.js (the SOLE mint path is observe-merge). cli.js exports the
+// gated entry points; mainObserveMerge is exported so a test can drive the gh-verified auto-mint arm with
+// an injected gh runner + store dirs (production passes no opts).
+module.exports = { parsePrUrl, runRecordMerge, mainObserveMerge, listLive, backfill2137, main, SPEC_KITTY_2137, PLACEHOLDER_DIFF_HASH };
