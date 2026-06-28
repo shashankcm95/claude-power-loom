@@ -19,10 +19,15 @@
 // DELIBERATE-DUPLICATION DRY decision (recall-edge-store header): each store's verify predicate is
 // security-load-bearing and DIFFERS, so independent auditability wins over a shared factory.
 //
-// SHADOW / TRUST-INERT: this store gates NOTHING. No production consumer READS the join-key yet
-// (PR-2 wires the lab merge-ingress join). LIVE_SOURCES stays untouched; deriveWorldAnchorSource still
-// returns 'mock'. The import-graph dam (join-key-shadow.test.js) asserts ZERO production READER of
-// loadJoinKey / resolveJoinKeyForPr - emit-pr.js is the WRITER ONLY. Moves trust zero.
+// SHADOW / TRUST-INERT: this store gates NOTHING. As of PR-2 (gap-map item 2) EXACTLY ONE production
+// consumer READS the join-key - packages/lab/world-anchor/merge-observer.js, the gh-verified merge
+// observer. It is READ-ONLY (resolveJoinKeyForPr + loadJoinKey) and ADMITS NO WEIGHT: it records a
+// SHADOW merge-outcome that gates nothing, mints no node/edge, and flips no LIVE_SOURCES. LIVE_SOURCES
+// stays untouched; deriveWorldAnchorSource still returns 'mock'. The import-graph dam
+// (join-key-shadow.test.js) moves from "ZERO readers" to "EXACTLY ONE named reader, by full relative
+// path" - merge-observer.js - and asserts NO OTHER module reads or imports a reader (under any alias).
+// emit-pr.js remains the WRITER ONLY. The store's first reader gaining read access moves trust ZERO (no
+// weight is admitted, nothing is gated).
 //
 // #273 HONEST RESIDUAL (the SAME framing approval-store.js:19-22 carries): this store proves INTEGRITY
 // (a join-key is self-consistent + content-addressed) AND that an emission occurred via the approved

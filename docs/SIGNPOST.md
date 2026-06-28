@@ -376,8 +376,12 @@ Auto-generated map of where things live, derived from the repo structure + each 
 ### `lab/world-anchor/`
 
 - `packages/lab/world-anchor/cli.js` - Wave 1, autonomous-SDE ingress.
+- `packages/lab/world-anchor/gh-verify.js` - Autonomous-SDE ladder gap-map item 2, PR-2 - the gh merge-outcome verifier (SHADOW, read-only GET).
 - `packages/lab/world-anchor/lesson.js` - Wave 1, autonomous-SDE ingress.
 - `packages/lab/world-anchor/live-recall-store.js` - Autonomous-SDE ladder item 3 (packages/specs/plans/2026-06-25-live-lesson-minting-item3.md).
+- `packages/lab/world-anchor/merge-observer.js` - Autonomous-SDE ladder gap-map item 2, PR-2 - the merge OBSERVER (SHADOW).
+- `packages/lab/world-anchor/merge-outcome-store.js` - Autonomous-SDE ladder gap-map item 2, PR-2 - the gh-verified MERGE-OUTCOME record store (SHADOW).
+- `packages/lab/world-anchor/parse-pr-url.js` - Autonomous-SDE ladder gap-map item 2, PR-2 - the shared GitHub PR-URL parser.
 - `packages/lab/world-anchor/world-anchor-edge-store.js` - Autonomous-SDE ladder item 5, PR-A.1 - the SIGNABLE `world-anchored-by` edge lane (SHADOW).
 - `packages/lab/world-anchor/world-anchor-store.js` - Wave 1, autonomous-SDE ingress (packages/specs/plans/2026-06-25-world-anchor-ingress-mvp.md).
 

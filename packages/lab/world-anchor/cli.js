@@ -6,12 +6,20 @@
 // ADVISORY/SHADOW: it only records/reads the Lab-owned ledger; nothing here blocks or gates.
 //
 // Subcommands:
+//   observe-merge --pr <url> [--merge-sha <sha>]   (gap-map item 2, PR-2 - the gh-verified successor
+//       to record-merge below) Parse the PR URL, JOIN on the KERNEL egress join-key (resolveJoinKeyForPr,
+//       the SEALED approval_hash), gh-VERIFY the merge in-process (merged===true), then write a
+//       content-addressed merge-outcome RECORD bound to approval_hash. Fail-closed if the PR has no
+//       kernel join-key (the orphan grandfather: ca648110 predates #447). SHADOW: mints NO node/edge,
+//       flips no LIVE_SOURCES. The flow lives in merge-observer.js; this arm is the thin dispatch.
 //   record-merge --pr <url> --outcome merged|closed|stale [--merge-sha <sha>]
-//       Parse owner/repo + pr_number from the PR URL, resolveAnchorForPr (the EXACT-SET join),
-//       then recordConfirmation. Fail-closed + observable if no UNIQUE attestation matches (a merge
-//       of an un-attested / ambiguous PR is loudly skipped, never laundered into a confirmation).
-//       On --outcome merged (EXACT string) it ALSO mints a world_anchored lesson node from the
-//       VERIFIED attestation (item 3); closed/stale record the confirmation but mint nothing.
+//       (LEGACY, attestation-anchored, pasted --merge-sha - NO gh call) Parse owner/repo + pr_number
+//       from the PR URL, resolveAnchorForPr (the EXACT-SET join), then recordConfirmation. Fail-closed
+//       + observable if no UNIQUE attestation matches (a merge of an un-attested / ambiguous PR is
+//       loudly skipped, never laundered into a confirmation). On --outcome merged (EXACT string) it
+//       ALSO mints a world_anchored lesson node from the VERIFIED attestation (item 3); closed/stale
+//       record the confirmation but mint nothing. STAYS LIVE (it serves ca648110 + is the item-3
+//       scaffold); observe-merge is its gh-verified join-key successor.
 //   backfill-2137 [--diff <path>] [--dir <store>] [--allow-placeholder]
 //       BUILD (in memory) the #2137 attestation + lesson and write it to the store. The diff_hash is
 //       RE-DERIVED from the diff file bytes (default /tmp/spec-kitty-2097.diff), never hardcoded; a
@@ -32,6 +40,8 @@ const store = require('./world-anchor-store');
 const liveStore = require('./live-recall-store');
 const { writeWorldAnchorEdge, loadWorldAnchorEdge, WORLD_ANCHOR_EDGE_TYPE } = require('./world-anchor-edge-store');
 const { buildWorldAnchorLesson, LESSON_2137 } = require('./lesson');
+const { parsePrUrl } = require('./parse-pr-url');
+const { runMergeObserve } = require('./merge-observer');
 const { emitEgressAlert } = require('../../kernel/egress/alert');
 
 // The orchestrator-authored lesson FLOOR (D7): a sealed lesson_signature -> the orchestrator-authored
@@ -62,21 +72,8 @@ const DEFAULT_2137_DIFF = '/tmp/spec-kitty-2097.diff';
 // real content-address (it is a stand-in to keep the backfill non-crashing in a dry run).
 const PLACEHOLDER_DIFF_HASH = crypto.createHash('sha256').update('world-anchor-2137-diff-unavailable').digest('hex');
 
-const PR_URL_RE = /^https:\/\/github\.com\/([A-Za-z0-9][A-Za-z0-9-]*\/[A-Za-z0-9._-]+)\/pull\/([0-9]+)$/;
-
-/**
- * Parse owner/repo + pr_number from a GitHub PR URL. Throws on a non-PR / malformed URL (fail-closed).
- * @param {string} url
- * @returns {{repo: string, pr_number: number, pr_url: string}}
- */
-function parsePrUrl(url) {
-  if (typeof url !== 'string') throw new Error('record-merge: --pr must be a GitHub PR URL');
-  const m = PR_URL_RE.exec(url.trim());
-  if (!m) throw new Error(`record-merge: --pr is not a github.com PR URL: ${JSON.stringify(url)}`);
-  const pr_number = Number(m[2]);
-  if (!Number.isSafeInteger(pr_number) || pr_number <= 0) throw new Error(`record-merge: bad pr_number in ${JSON.stringify(url)}`);
-  return { repo: m[1], pr_number, pr_url: url.trim() };
-}
+// parsePrUrl is now the SHARED dependency-free parser in parse-pr-url.js (imported above) - the same one
+// merge-observer.js uses, so record-merge and observe-merge DRY on ONE parse + the EXACT join tuple.
 
 /**
  * The record-merge flow as a pure-ish module function (dir-injectable for tests). Resolves the
@@ -278,13 +275,27 @@ function parseArgs(argv) {
   return args;
 }
 
-const USAGE = 'Usage: cli.js <record-merge --pr <url> --outcome merged|closed|stale [--merge-sha <sha>] [--live-dir <dir>] | list-live [--live-dir <dir>] | backfill-2137 [--diff <path>] [--dir <store>] [--allow-placeholder]>\n';
+const USAGE = 'Usage: cli.js <observe-merge --pr <url> [--merge-sha <sha>] [--dir <store>] | record-merge --pr <url> --outcome merged|closed|stale [--merge-sha <sha>] [--live-dir <dir>] | list-live [--live-dir <dir>] | backfill-2137 [--diff <path>] [--dir <store>] [--allow-placeholder]>\n';
 
 function emit(obj) { process.stdout.write(`${JSON.stringify(obj, null, 2)}\n`); }
+
+// observe-merge is the ONLY async arm (it gh-verifies the merge in-process). Returns a Promise<number>;
+// the sync arms return a number directly. The bottom invocation Promise.resolve()-wraps both.
+async function mainObserveMerge(args) {
+  const r = await runMergeObserve(
+    { pr: args.pr, expectedMergeSha: args['merge-sha'] === true ? undefined : args['merge-sha'] },
+    { dir: args.dir },
+  );
+  emit(r);
+  return r.ok ? 0 : 1;
+}
 
 function main(argv) {
   const sub = argv[0];
   const args = parseArgs(argv.slice(1));
+  if (sub === 'observe-merge') {
+    return mainObserveMerge(args);          // a Promise<number> (the only async arm)
+  }
   if (sub === 'record-merge') {
     const r = runRecordMerge(
       { pr: args.pr, outcome: args.outcome, mergeSha: args['merge-sha'] },
@@ -308,7 +319,12 @@ function main(argv) {
 }
 
 if (require.main === module) {
-  process.exit(main(process.argv.slice(2)));
+  // main may return a number (sync arms) or a Promise<number> (observe-merge); Promise.resolve unifies both.
+  // A truly unexpected throw (every internal reject is already caught) exits 1 with a clean message, never a
+  // raw stack under Node's --unhandled-rejections=throw (VALIDATE code-reviewer LOW-2).
+  Promise.resolve(main(process.argv.slice(2)))
+    .then((code) => process.exit(code))
+    .catch((e) => { process.stderr.write(`observe-merge: unexpected error: ${(e && e.message) || 'error'}\n`); process.exit(1); });
 }
 
 // mintFromAttestation is deliberately NOT exported: it must only be reached through runRecordMerge's
