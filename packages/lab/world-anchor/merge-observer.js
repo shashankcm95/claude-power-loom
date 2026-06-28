@@ -55,12 +55,15 @@ function alert(reason, detail) { emitEgressAlert('merge-observe-refused', Object
  *   deduped?: boolean, reason?: string}>}
  */
 async function runMergeObserve(args, opts = {}) {
-  const outcome = typeof args.outcome === 'string' ? args.outcome : 'merged';
+  // Normalize a bad caller input to {} so a null/undefined/non-object args fail-CLOSES with an observable
+  // refusal instead of throwing (CodeRabbit Major: a bad input must not crash the process).
+  const input = args && typeof args === 'object' && !Array.isArray(args) ? args : {};
+  const outcome = typeof input.outcome === 'string' ? input.outcome : 'merged';
   if (!OUTCOMES.includes(outcome)) { alert('bad-outcome', { outcome: String(outcome).slice(0, 40) }); return { ok: false, reason: 'bad-outcome' }; }
 
   // 1. parse the PR URL (fail-closed on a malformed URL).
   let parsed;
-  try { parsed = parsePrUrl(args.pr); }
+  try { parsed = parsePrUrl(input.pr); }
   catch (err) { alert('bad-pr-url', { detail: (err && err.message) || 'error' }); return { ok: false, reason: 'bad-pr-url' }; }
 
   // 2. resolve the kernel egress join-key (the resolver already emits `unjoined-pr` on 0/>1; surface it).
@@ -83,8 +86,8 @@ async function runMergeObserve(args, opts = {}) {
   }
 
   // 5. optional operator cross-check: the pasted sha must equal what gh reports merged.
-  if (args.expectedMergeSha != null) {
-    if (args.expectedMergeSha !== verify.merge_commit_sha) {
+  if (input.expectedMergeSha != null) {
+    if (input.expectedMergeSha !== verify.merge_commit_sha) {
       alert('merge-sha-mismatch', { join_key_id: id });
       return { ok: false, reason: 'merge-sha-mismatch' };
     }

@@ -120,7 +120,7 @@ test('verify-on-read: a WRONG join_key_id FIELD (valid filename) is REJECTED -> 
   assert.ok(alerts.some((al) => al.reason === 'merge-outcome-verify-mismatch' && (al.mo_reason === 'content-hash' || al.mo_reason === 'join-key-id-mismatch')), 'the mismatch is observable');
 });
 
-test('verify-on-read: a join_key_id field that matches the filename but with a re-sealed content_hash is still rejected if any OTHER field is tampered', () => {
+test('verify-on-read: a tampered field with a stale content_hash is rejected', () => {
   const dir = tmp();
   recordMergeOutcome(rec(), { dir });
   const f = path.join(dir, `${'a'.repeat(64)}.json`);

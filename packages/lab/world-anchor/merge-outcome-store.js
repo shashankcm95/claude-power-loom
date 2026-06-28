@@ -62,7 +62,13 @@ const HEX40 = /^[0-9a-f]{40}$/;
 // owner/repo: two gh-name-safe segments. issueRef/pr_number not parsed here; this store carries
 // repo/pr_url for the join provenance + the human-readable record. pr_url is the gh html_url shape.
 const GH_PR_URL = /^https:\/\/github\.com\/[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+\/pull\/[1-9][0-9]*$/;
-const ISO_8601_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
+// owner/repo/pr_number CAPTURED, so validateRecord can cross-check pr_url against the rec.repo/rec.pr_number
+// fields (CodeRabbit Major: the content_hash would otherwise seal an internally-inconsistent record).
+const GH_PR_URL_PARTS = /^https:\/\/github\.com\/([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+)\/pull\/([1-9][0-9]*)$/;
+// The fractional second is BOUNDED to 1-9 digits (CodeRabbit Major: a bare `\.\d+` accepts a 9000-digit
+// fractional that passes Date.parse but bloats the body past MAX_OUTCOME_BYTES -> WRITTEN-but-unreadable).
+// `new Date().toISOString()` emits millisecond precision, so 1-9 digits is generous.
+const ISO_8601_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/;
 
 const OUTCOME_SUFFIX = '.json';
 // A merge-outcome record is tiny (a few short strings + two ints). 8 KB is generous; a same-uid process
@@ -115,6 +121,10 @@ function validateRecord(rec) {
   if (!isBoundedString(rec.repo, MAX_REPO_BYTES) || rec.repo.split('/').length !== 2 || rec.repo.split('/').some((s) => s.length === 0)) return 'bad-repo';
   if (!isPositiveSafeInt(rec.pr_number)) return 'bad-pr-number';
   if (!isBoundedString(rec.pr_url, MAX_PR_URL_BYTES) || !GH_PR_URL.test(rec.pr_url)) return 'bad-pr-url';
+  // Cross-check repo + pr_number against pr_url (CodeRabbit Major): the content_hash seals whatever we store,
+  // so an internally-inconsistent record (repo X but pr_url for Y) must be rejected at the boundary, not sealed.
+  const m = GH_PR_URL_PARTS.exec(rec.pr_url);
+  if (!m || `${m[1]}/${m[2]}` !== rec.repo || m[3] !== String(rec.pr_number)) return 'pr-url-mismatch';
   if (!isHex64(rec.approval_hash)) return 'bad-approval-hash';
   if (!OUTCOMES.includes(rec.outcome)) return 'bad-outcome';
   if (typeof rec.merge_commit_sha !== 'string' || !HEX40.test(rec.merge_commit_sha)) return 'bad-merge-commit-sha';
@@ -142,7 +152,13 @@ function ensureStoreDir(dir, selfUid) {
  */
 function validateReadDir(dir, selfUid) {
   let st;
-  try { st = fs.lstatSync(dir); } catch { return 'absent'; }
+  // Only ENOENT/ENOTDIR is a benign not-yet-created store (silent 'absent'); EACCES/EPERM/etc. are real
+  // refusals the caller must alert on (CodeRabbit Major: the "benign absence stays silent, refusals are
+  // observable" contract - mapping every stat error to 'absent' hid a permission-misconfigured store).
+  try { st = fs.lstatSync(dir); } catch (err) {
+    if (err && (err.code === 'ENOENT' || err.code === 'ENOTDIR')) return 'absent';
+    return (err && err.code) || 'stat-error';
+  }
   if (st.isSymbolicLink()) return 'symlink';
   if (!st.isDirectory()) return 'not-a-dir';
   if (isForeign(st, selfUid)) return 'foreign';

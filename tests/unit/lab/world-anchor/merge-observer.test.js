@@ -161,7 +161,7 @@ test('refuse: AMBIGUOUS join-keys (>1 for one PR tuple) -> {ok:false, reason:amb
   assert.ok(alerts.some((al) => al.reason === 'merge-observe-refused' && al.observe_reason === 'no-join-key'), 'ambiguity is observable');
 });
 
-test('refuse: loadJoinKey returns null (the join-key file was tampered) -> {ok:false, reason:join-key-unreadable}', async () => {
+test('refuse: a corrupt join-key file is filtered out during resolution -> {ok:false, reason:no-match}', async () => {
   clearJoinKeys();
   const id = seedJoinKey();
   // tamper the join-key file on disk so loadJoinKey verify-on-read returns null. resolveJoinKeyForPr
@@ -182,7 +182,7 @@ test('refuse: loadJoinKey returns null (the join-key file was tampered) -> {ok:f
   fs.writeFileSync(f, JSON.stringify(body));
   const r = await runMergeObserve({ pr: PR_URL }, { ghRunner: runnerMerged(), dir: tmp() });
   assert.strictEqual(r.ok, false);
-  assert.ok(r.reason === 'no-match' || r.reason === 'join-key-unreadable', 'a corrupt join-key file fails closed (resolve skips the unverified row)');
+  assert.strictEqual(r.reason, 'no-match', 'corruption BEFORE resolution is rejected by resolveJoinKeyForPr (the unverified row is skipped during enumeration -> no-match, never reaching loadJoinKey)');
 });
 
 test('refuse: gh verification FAILS (404) -> {ok:false, reason:gh-unverifiable} + observable (NOT recorded as not-merged)', async () => {

@@ -113,8 +113,7 @@ function defaultRunner(args, { timeoutMs, maxBytes, env }) {
 // Build the from-scratch sanitized env for the gh subprocess: PATH + HOME (gh needs them to find its
 // config + binary) + the gh non-interactive hardening keys. NO token is passed in argv or set here -
 // gh resolves ambient credentials itself (a GET); the env is minimized, not credential-bearing.
-function buildVerifyEnv() {
-  const src = process.env || {};
+function buildVerifyEnv(src = process.env || {}) {
   const env = {};
   if (typeof src.PATH === 'string') env.PATH = src.PATH;
   if (typeof src.HOME === 'string') env.HOME = src.HOME;
@@ -149,7 +148,9 @@ async function verifyMerge(q, opts = {}) {
   const runOpts = {
     timeoutMs: typeof opts.timeoutMs === 'number' ? opts.timeoutMs : DEFAULT_TIMEOUT_MS,
     maxBytes: typeof opts.maxBytes === 'number' ? opts.maxBytes : DEFAULT_MAX_BYTES,
-    env: opts.env && typeof opts.env === 'object' ? opts.env : buildVerifyEnv(),
+    // ALWAYS allowlist-filter through buildVerifyEnv so a caller-supplied opts.env cannot drop the
+    // GH_PROMPT_DISABLED / GH_NO_UPDATE_NOTIFIER hardening by replacing the env wholesale (CodeRabbit Major).
+    env: buildVerifyEnv(opts.env && typeof opts.env === 'object' ? opts.env : process.env),
   };
 
   let stdout;

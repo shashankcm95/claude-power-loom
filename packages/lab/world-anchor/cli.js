@@ -282,8 +282,15 @@ function emit(obj) { process.stdout.write(`${JSON.stringify(obj, null, 2)}\n`); 
 // observe-merge is the ONLY async arm (it gh-verifies the merge in-process). Returns a Promise<number>;
 // the sync arms return a number directly. The bottom invocation Promise.resolve()-wraps both.
 async function mainObserveMerge(args) {
+  // A bare `--merge-sha` (no value) parses to `true` (CodeRabbit Minor): fail-CLOSED on the operator
+  // mistake rather than silently dropping the cross-check (which omitting --merge-sha legitimately does).
+  if (args['merge-sha'] === true) {
+    const r = { ok: false, reason: 'bad-merge-sha', detail: '--merge-sha requires a value' };
+    emit(r);
+    return 1;
+  }
   const r = await runMergeObserve(
-    { pr: args.pr, expectedMergeSha: args['merge-sha'] === true ? undefined : args['merge-sha'] },
+    { pr: args.pr, expectedMergeSha: args['merge-sha'] },
     { dir: args.dir },
   );
   emit(r);

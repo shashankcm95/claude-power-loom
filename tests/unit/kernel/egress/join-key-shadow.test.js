@@ -85,6 +85,14 @@ const REQUIRE_ALLOWLIST = [EMIT_PR_FILE, ALLOWED_READER].sort();
 // newlines (a multi-line destructure has none of `{`/`}` inside). The path matcher tolerates ./ , ../ , .js suffix.
 const STORE_REQUIRE_RE = /(?:const|let|var)\s*\{([^{}]*?)\}\s*=\s*require\(\s*['"][^'"]*join-key-store(?:\.js)?['"]\s*\)/g;
 
+// CodeRabbit Major: strip COMMENTS before the matchers so a commented-out reader/require can neither trip
+// nor satisfy the dam (the demonstrated bypass class). We deliberately do NOT also strip string literals:
+// a naive string-strip regex over-consumes JS REGEX LITERALS (a `/[...'...]/` quote starts a false
+// "string" and swallows real code to the next quote) - it regressed live-puller.js's gate in the sibling
+// EC1b.2a lint. The string-literal-satisfies case is contrived; the access-pattern-agnostic require-allowlist
+// (REQUIRE_RE, below) is the robust backstop for the call-grep, so comment-strip alone is correct + safe.
+function stripComments(s) { return s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, ''); }
+
 // Parse the destructure brace body into the IMPORTED identifier names (the LHS before any `:` alias).
 // `{ loadJoinKey: read }` -> 'loadJoinKey' (the source binding, NOT the local alias `read`).
 function importedNames(braceBody) {
@@ -108,7 +116,7 @@ test('SHADOW: the join-key reader has EXACTLY ONE production caller — merge-ob
     if (file === STORE_FILE) continue;                 // the module DEFINES them (not a production caller)
     const rel = path.relative(REPO, file);
     if (rel === ALLOWED_READER) continue;              // the ONE allowed reader (exact full-path ===, not basename/substring)
-    const src = fs.readFileSync(file, 'utf8');
+    const src = stripComments(fs.readFileSync(file, 'utf8'));   // a call token in a comment/string is not a real call
     if (READER_CALL_RE.test(src)) offenders.push(rel);
   }
   // exact-set, NOT a cardinality-only length===1: any reader other than the allowlisted full path is an offender.
@@ -121,7 +129,7 @@ test('SHADOW: the ONE allowed reader (merge-observer.js) actually CALLS a reader
   // AND exercises the reader surface.
   const allowed = path.join(REPO, ALLOWED_READER);
   assert.ok(fs.existsSync(allowed), `the allowlisted reader ${ALLOWED_READER} must exist`);
-  const src = fs.readFileSync(allowed, 'utf8');
+  const src = stripComments(fs.readFileSync(allowed, 'utf8'));
   assert.ok(READER_CALL_RE.test(src), 'merge-observer.js must actually CALL a join-key reader (resolveJoinKeyForPr/loadJoinKey)');
 });
 
@@ -147,7 +155,7 @@ test('SHADOW: emit-pr.js is the WRITER ONLY — it imports writeJoinKey and neve
   const src = fs.readFileSync(path.join(PACKAGES, 'kernel', 'egress', 'emit-pr.js'), 'utf8');
   assert.ok(/require\(['"]\.\/join-key-store['"]\)/.test(src), 'emit-pr.js imports the join-key store');
   assert.ok(/writeJoinKey/.test(src), 'emit-pr.js uses the WRITER');
-  assert.ok(!READER_CALL_RE.test(src), 'emit-pr.js never CALLS a reader (write-only)');
+  assert.ok(!READER_CALL_RE.test(stripComments(src)), 'emit-pr.js never CALLS a reader (write-only)');
 });
 
 test('SHADOW import-parser: aliased + multi-line reader imports are caught; the writer import is allowed', () => {
@@ -175,7 +183,7 @@ test('SHADOW import-graph: ONLY merge-observer.js (full path) may import a reade
     if (file === STORE_FILE) continue;                       // the module DEFINES the surface
     const rel = path.relative(REPO, file);
     const isAllowedReader = rel === ALLOWED_READER;
-    const src = fs.readFileSync(file, 'utf8');
+    const src = stripComments(fs.readFileSync(file, 'utf8'));   // comments only - STORE_REQUIRE_RE needs the require PATH string
     let m;
     STORE_REQUIRE_RE.lastIndex = 0;
     while ((m = STORE_REQUIRE_RE.exec(src)) !== null) {
@@ -194,7 +202,7 @@ test('SHADOW import-graph: ONLY merge-observer.js (full path) may import a reade
 test('SHADOW import-graph: merge-observer.js DOES import a reader (the import-allowlist is not vacuous)', () => {
   // non-vacuity on the import-graph allowlist: confirm merge-observer.js actually destructure-imports a reader
   // from the join-key store, so the relaxation has a live subject (not a dead exemption).
-  const src = fs.readFileSync(path.join(REPO, ALLOWED_READER), 'utf8');
+  const src = stripComments(fs.readFileSync(path.join(REPO, ALLOWED_READER), 'utf8'));
   const imported = [];
   let m;
   STORE_REQUIRE_RE.lastIndex = 0;
@@ -212,7 +220,7 @@ test('SHADOW require-allowlist (C-1, access-pattern-agnostic): ONLY emit-pr.js (
   for (const file of walkJs(PACKAGES)) {
     if (file === STORE_FILE) continue;                 // the module defines itself
     const rel = path.relative(REPO, file);
-    if (REQUIRE_RE.test(fs.readFileSync(file, 'utf8'))) requirers.push(rel);
+    if (REQUIRE_RE.test(stripComments(fs.readFileSync(file, 'utf8')))) requirers.push(rel);   // comments only - REQUIRE_RE needs the path string
   }
   assert.deepStrictEqual(requirers.sort(), REQUIRE_ALLOWLIST, `only ${REQUIRE_ALLOWLIST.join(' + ')} may require the join-key store — these also do: ${requirers.join(', ')}`);
 });

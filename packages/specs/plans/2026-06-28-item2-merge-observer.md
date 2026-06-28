@@ -300,6 +300,32 @@ causal-edge test failures are **pre-existing on main** (environmental sandbox/ju
 regression. Real-gh dogfood: `verifyMerge` against merged PR #447 → `{ok:true, merged:true, c698d52…}`; the
 orphan (no join-key) fail-closes E2E.
 
+## CodeRabbit fold (post-un-draft incremental review, 2026-06-28)
+
+"Actionable comments posted: 9" (+1 outside-diff). All premise-probed firsthand; all VALID this round
+(the async bot complemented the lens tier again - it caught real gaps the 3-lens VALIDATE board missed).
+Folded:
+
+- **gh-verify env (Major)** - `opts.env` could replace the hardened env wholesale (dropping the
+  GH_PROMPT/UPDATE_NOTIFIER hardening). Now `buildVerifyEnv(src)` always allowlist-filters (non-bypassable).
+- **merge-outcome repo/pr_url consistency (Major)** - the content_hash would seal an internally-inconsistent
+  record (repo X, pr_url for Y). Now `validateRecord` re-derives owner/repo/pr_number from pr_url and rejects
+  a `pr-url-mismatch` at the boundary.
+- **observed_at cap (Major)** - a 9000-digit fractional second passed `Date.parse` but bloated the body past
+  MAX_OUTCOME_BYTES (WRITTEN-but-unreadable). The ISO regex now bounds the fractional to 1-9 digits.
+- **validateReadDir EACCES (Major)** - mapped ALL lstat errors to silent 'absent'; now only ENOENT/ENOTDIR
+  is silent, other errors return an alertable reason (fail-silent close).
+- **observer args normalization (Major)** - `runMergeObserve(null)` threw; now normalizes to `{}` -> observable refuse.
+- **cli bare `--merge-sha` (Minor)** - a value-less flag silently skipped the cross-check; now fail-closed.
+- **2 test-precision fixes (Minor)** - tightened the corrupt-join-key assertion to `no-match`; renamed the stale-hash test.
+- **dam + GET-gate non-code-token strip (Major)** - PARTIALLY folded: strip COMMENTS (closes the demonstrated
+  bypass). REJECTED the string-strip half after firsthand probing - a naive string-strip over-consumes JS
+  REGEX LITERALS and regressed live-puller.js's real gate; the string-literal-satisfies case is contrived and
+  the access-pattern-agnostic require-allowlist is the robust backstop. (premise-probe-rejected mechanism, intent honored.)
+
+Re-verified: kernel **107/0**, lab/world-anchor **11/0**, eslint clean, signpost current; M-1 + C-1
+mitigations re-proven against their exact exploits after the revert.
+
 ## Drift Notes
 
 - route-decide scored `root` but fired `[ROUTE-META-UNCERTAIN]` (token "attestation") — escalated to the

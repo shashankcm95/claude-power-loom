@@ -441,7 +441,9 @@ test('EC1b.2a sole-chokepoint LINT: no PRODUCTION module outside emit-pr.js spaw
   const GET_GATE = /assertReadOnlyGhArgs\s*\(\s*args\s*\)\s*;/;
   // VALIDATE-hacker M-1: the GET-gate is a POSITIVE check (the gate MUST be present), so it must match the
   // RUNTIME CALL, never a commented-out token. Strip block + line comments before testing GET_GATE, else a
-  // `// assertReadOnlyGhArgs(args);` line would satisfy the gate after the real call was removed.
+  // `// assertReadOnlyGhArgs(args);` line would satisfy the gate after the real call was removed. We strip
+  // comments ONLY (not string literals): a naive string-strip over-consumes JS regex literals and regressed
+  // live-puller.js's real gate; the string-literal-satisfies case is contrived and not worth a fragile regex.
   const stripComments = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
   // regression (CodeRabbit #388): the token pattern must catch BOTH the dot AND the bracket read.
   assert.ok(TOKEN_READ.test('const t = process.env.GH_TOKEN;'), 'token-CAP catches dot-notation');
