@@ -351,6 +351,8 @@ test('loadJoinKey: a SYMLINK store dir is refused on READ (a record behind the l
       assert.strictEqual(S.loadJoinKey(id, { dir: link, selfUid: SELF }), null, 'a symlinked read root is refused');
     });
     assert.ok(/egress-join-key-read-dir/.test(alerts), 'a symlinked read root is observable');
+    // the symlink classification survives in the emitted detail (dir_reason, NOT a clobbered reason key).
+    assert.ok(/"dir_reason":"symlink"/.test(alerts), 'the symlink classification survives the emit (not clobbered)');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -365,6 +367,7 @@ test('listJoinKeys: a SYMLINK store dir is refused on READ -> [] + observable', 
     const alerts = captureAlerts(() => { out = S.listJoinKeys({ dir: link, selfUid: SELF }); });
     assert.deepStrictEqual(out, [], 'a symlinked read root enumerates nothing');
     assert.ok(/egress-join-key-read-dir/.test(alerts), 'a symlinked enumeration root is observable');
+    assert.ok(/"dir_reason":"symlink"/.test(alerts), 'the symlink classification survives the emit (not clobbered)');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -378,10 +381,12 @@ test('loadJoinKey / listJoinKeys: a FOREIGN-uid store dir is refused on READ + o
       assert.strictEqual(S.loadJoinKey(id, { dir, selfUid: SELF + 1 }), null, 'a foreign read root is refused (load)');
     });
     assert.ok(/egress-join-key-read-dir/.test(aLoad), 'a foreign load root is observable');
+    assert.ok(/"dir_reason":"foreign"/.test(aLoad), 'the foreign classification survives the emit (not clobbered)');
     let out;
     const aList = captureAlerts(() => { out = S.listJoinKeys({ dir, selfUid: SELF + 1 }); });
     assert.deepStrictEqual(out, [], 'a foreign read root enumerates nothing');
     assert.ok(/egress-join-key-read-dir/.test(aList), 'a foreign enumeration root is observable');
+    assert.ok(/"dir_reason":"foreign"/.test(aList), 'the foreign classification survives the emit (not clobbered)');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 

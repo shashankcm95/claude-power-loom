@@ -339,7 +339,9 @@ function loadJoinKey(id, opts = {}) {
   // a normal not-yet-created store (silent null); a symlink/foreign/non-dir root is observable then null.
   const dirReason = validateReadDir(dir, selfUid);
   if (dirReason) {
-    if (dirReason !== 'absent') alert('read-dir', { reason: dirReason });
+    // dir_reason (NOT reason) carries the classification: emitEgressAlert forces the positional reason
+    // token last, so a `reason` detail key is clobbered and the symlink/foreign/not-a-dir value is lost.
+    if (dirReason !== 'absent') alert('read-dir', { dir_reason: dirReason });
     return null;
   }
   const body = readJoinKeyRaw(id, dir, selfUid);
@@ -359,7 +361,9 @@ function listJoinKeys(opts = {}) {
   // a normal not-yet-created store (silent []); a symlink/foreign/non-dir root is observable then [].
   const dirReason = validateReadDir(dir, selfUid);
   if (dirReason) {
-    if (dirReason !== 'absent') alert('read-dir', { reason: dirReason });
+    // dir_reason (NOT reason) carries the classification: emitEgressAlert forces the positional reason
+    // token last, so a `reason` detail key is clobbered and the symlink/foreign/not-a-dir value is lost.
+    if (dirReason !== 'absent') alert('read-dir', { dir_reason: dirReason });
     return [];
   }
   let entries;
