@@ -82,13 +82,19 @@ const MAX_EDGE_BYTES = 16384;
 const UNSIGNED_KEYS = Object.freeze(['edge_id', 'from_node_id', 'to_delta_ref', 'edge_type', 'recorded_at']);
 const SIGNED_KEYS = Object.freeze([...UNSIGNED_KEYS, 'sig_alg', 'edge_sig']);
 
+/** Resolve the edge dir: the opts-injected dir (test isolation) or the require-time DEFAULT_DIR. */
 function storeDir(opts) { return (opts && opts.dir) || DEFAULT_DIR; }
+/** True when `st`'s owner uid differs from `selfUid` (a foreign-owned file; skipped when selfUid is null). */
 function isForeign(st, selfUid) { return selfUid !== null && st.uid !== selfUid; }
+/** 64-hex sha256 of a string. */
 function sha256hex(s) { return crypto.createHash('sha256').update(s).digest('hex'); }
+/** Emit a namespaced, observable egress alert for a refuse/anomaly path (fail-closed must be observable). */
 function alert(reason, detail) { emitEgressAlert(`world-anchor-edge-${reason}`, detail || {}); }
 
-// STRICT - typeof===string BEFORE the regex (NOT String()-coercing), so a `[hex]` / number cannot
-// self-consistently address an edge (the recall-edge-store.js:70 #273 coercion guard).
+/**
+ * STRICT 64-hex test: typeof===string BEFORE the regex (NOT String()-coercing), so a `[hex]` / number
+ * cannot self-consistently address an edge (the recall-edge-store.js:70 #273 coercion guard).
+ */
 function isHex64(v) { return typeof v === 'string' && HEX64.test(v); }
 
 /**
@@ -109,7 +115,7 @@ function deriveWorldAnchorEdgeId(rec) {
   ]));
 }
 
-// Throws unless `dir` exists, is a real (non-symlink) directory owned by selfUid. mkdir + harden first.
+/** Throws unless `dir` exists, is a real (non-symlink) directory owned by selfUid. mkdir + harden first. */
 function ensureStoreDir(dir, selfUid) {
   try { fs.mkdirSync(dir, { recursive: true, mode: 0o700 }); fs.chmodSync(dir, 0o700); } catch { /* best-effort create */ }
   const st = fs.lstatSync(dir);                                       // throws (fail-closed) if absent
@@ -118,9 +124,11 @@ function ensureStoreDir(dir, selfUid) {
   if (isForeign(st, selfUid)) throw new Error('world-anchor-edge: store dir is foreign-owned (refused)');
 }
 
-// Build the canonical stored body (fixed shape) + the derived edge_id. A present, well-formed sig is
-// carried through OUTSIDE the id basis (additive). When absent, the body is byte-identical to having
-// no edge-sig (shadow-clean). Immutable: a fresh object, never a mutation of the caller's input.
+/**
+ * Build the canonical stored body (fixed shape) + the derived edge_id. A present, well-formed sig is
+ * carried through OUTSIDE the id basis (additive). When absent, the body is byte-identical to having
+ * no edge-sig (shadow-clean). Immutable: a fresh object, never a mutation of the caller's input.
+ */
 function buildBody(rec, sig) {
   const base = {
     edge_id: deriveWorldAnchorEdgeId(rec),
@@ -135,8 +143,10 @@ function buildBody(rec, sig) {
     : base;
 }
 
-// Two bodies equal? edge_id is the identity seal AND the body has no free-prose field, but a signed
-// twin differs from an unsigned one (the sig is OUTSIDE the basis) - so compare the FULL on-disk shape.
+/**
+ * Two bodies equal? edge_id is the identity seal AND the body has no free-prose field, but a signed
+ * twin differs from an unsigned one (the sig is OUTSIDE the basis) - so compare the FULL on-disk shape.
+ */
 function bodiesEqual(a, b) {
   return a.edge_id === b.edge_id
     && a.from_node_id === b.from_node_id
@@ -209,11 +219,13 @@ function writeWorldAnchorEdge(rec, opts = {}) {
   return { ok: true, deduped: false, edge_id };
 }
 
-// The ENUMERATED verify-on-read predicate (D4 a-i). Open no-follow, fstat the SAME fd, reject
-// non-regular / foreign / oversize (each OBSERVABLE) BEFORE readFileSync, parse, exact-set closed-
-// shape, STRICT endpoint HEX64, closed edge_type, valid recorded_at, edge_id == filename == derived
-// basis, a present sig SHAPE-checked (no crypto). Returns the verified body or null. Templated on
-// live-recall-store's readNodeRaw, NOT recall-edge-store's bare readFileSync (#439).
+/**
+ * The ENUMERATED verify-on-read predicate (D4 a-i). Open no-follow, fstat the SAME fd, reject
+ * non-regular / foreign / oversize (each OBSERVABLE) BEFORE readFileSync, parse, exact-set closed-
+ * shape, STRICT endpoint HEX64, closed edge_type, valid recorded_at, edge_id == filename == derived
+ * basis, a present sig SHAPE-checked (no crypto). Returns the verified body or null. Templated on
+ * live-recall-store's readNodeRaw, NOT recall-edge-store's bare readFileSync (#439).
+ */
 function readEdgeRaw(edge_id, dir, selfUid) {
   if (typeof edge_id !== 'string' || !HEX64.test(edge_id)) return null;
   const file = path.join(dir, edge_id + EDGE_SUFFIX);
@@ -255,7 +267,7 @@ function readEdgeRaw(edge_id, dir, selfUid) {
   }
 }
 
-// Two sorted string arrays equal (exact-set on the already-sorted key lists).
+/** Two sorted string arrays equal (exact-set on the already-sorted key lists). */
 function keysEqual(a, b) {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i += 1) if (a[i] !== b[i]) return false;
