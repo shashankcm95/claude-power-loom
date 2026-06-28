@@ -38,6 +38,8 @@ const { scrubEmitDiff } = require('./scrub');                          // ③.2.
 const { capExceeded, recordEmit, etiquetteKey, alreadyEmitted, recordEmitted } = require('./policy');
 const { computeEmissionHash, normalizeRepo } = require('./approval');                       // ③.2.4 — the per-emission gate
 const { readVerifiedApproval, consumeApproval } = require('./approval-store');
+const { emitEgressAlert } = require('./alert');                        // observable signal for the additive join-key write
+const { writeJoinKey } = require('./join-key-store');                  // gap-map item 1 — the SHADOW egress join-key (write-only here)
 // NOTE: child_process is STILL intentionally NOT imported here — the network is touched by gh-emit.js (the
 // gh-REST mechanism armedEmit() lazily delegates to), behind THIS module's approval gate, not by a direct
 // child_process call in emit-pr.
@@ -175,6 +177,10 @@ const DISPOSITION_KEYS = Object.freeze([
   // ③.2.5a — the broker-signature verify vocab is CUSTODY-only; an actor must never inject the verify key or a
   // sig via untrusted data (the #273 exact-set deny-list; VERIFY-arch F3 / honesty H1).
   'sig', 'key_id', 'keyId', 'signFn', 'verifyKeyPem', 'verifyKey', 'publicKeyPem', 'custodyVerifyKeyPath',
+  // gap-map item 1 — the egress join-key custody dir + the recorded-claim metadata are CUSTODY/orchestrator-
+  // supplied; an actor must never inject the store path OR the (recorded-but-not-trusted) metadata via data
+  // (VERIFY Q6b — the #273 exact-set deny-list).
+  'custodyJoinKeyDir', 'joinKeyMeta',
 ]);
 // CASE-FOLDED match set (+ the prototype-pollution keys) so a casing/spelling variant (Live / DRY_RUN /
 // __proto__) cannot slip the deny-list (VALIDATE-hacker).
@@ -192,6 +198,41 @@ function assertDataIsPolicyFree(data) {
       throw new Error(`emitPR: untrusted data carries a policy key '${k}' (rejected; policy comes only from custody)`);
     }
   }
+}
+
+// gap-map item 1 — the recorded-claim metadata cap on the bounded built_by string.
+const MAX_JOIN_KEY_BUILT_BY = 256;
+
+/**
+ * The join-key METADATA gate. opts.joinKeyMeta is custody/orchestrator-supplied recorded-claim
+ * provenance — NOT trusted, just RECORDED (the join-key's AUTHORITY is approval_hash + pr_url, both
+ * kernel-derived). Returns the allowlisted `{built_by}` (or `{}`), or THROWS. The throw is caught at the
+ * write site (additive, non-reverting) — it never reverts the emission. Fail-closed against injection:
+ *  - absent => {} (no recorded claim; the join-key omits built_by).
+ *  - must be a plain object (non-array) — else throw.
+ *  - the DISPOSITION_KEY_SET check over its keys (a disposition/token/__proto__-shaped key => throw; the
+ *    #273 exact-set lesson — metadata can never carry policy).
+ *  - built_by, if present, must be a bounded plain string (<=256 chars, no control chars) — else throw.
+ *  - returns ONLY {built_by} (no other key is forwarded into the record).
+ * @param {object|undefined} joinKeyMeta
+ * @returns {{built_by?: string}}
+ */
+function assertRecordedClaim(joinKeyMeta) {
+  if (joinKeyMeta === undefined || joinKeyMeta === null) return {};
+  if (typeof joinKeyMeta !== 'object' || Array.isArray(joinKeyMeta)) {
+    throw new Error('emitPR: joinKeyMeta must be a plain object { built_by? }');
+  }
+  for (const k of Object.keys(joinKeyMeta)) {
+    if (DISPOSITION_KEY_SET.has(k.toLowerCase())) {
+      throw new Error(`emitPR: joinKeyMeta carries a policy key '${k}' (rejected; metadata is recorded-claim only)`);
+    }
+  }
+  const builtBy = joinKeyMeta.built_by;
+  if (builtBy === undefined) return {};
+  const bounded = typeof builtBy === 'string' && builtBy.length >= 1 && builtBy.length <= MAX_JOIN_KEY_BUILT_BY
+    && !Array.prototype.some.call(builtBy, (c) => c.charCodeAt(0) < 0x20);
+  if (!bounded) throw new Error('emitPR: joinKeyMeta.built_by must be a bounded plain string (<=256 chars, no control chars)');
+  return { built_by: builtBy };
 }
 
 // --------------------------------------------------------------------------
@@ -424,6 +465,29 @@ function emitPR(data, opts = {}) {
         if (typeof opts.custodyCapStatePath === 'string') recordEmit(opts.custodyCapStatePath, { now, windowMs: opts.windowMs });
         if (typeof opts.custodyEtiquetteLedgerPath === 'string') recordEmitted(opts.custodyEtiquetteLedgerPath, etqKey);
         consumeApproval(opts.custodyApprovalsDir, approvalHash);
+        // gap-map item 1 — ADDITIVE, NON-REVERTING: persist the kernel-authoritative join-key sealing the
+        // approved approval_hash to the gh PR identity + base_sha. A failure (incl. a thrown
+        // assertRecordedClaim) NEVER reverts the emission — the PR already shipped; it is observable but
+        // non-fatal. SKIP on pr.deduped (a prior emit already wrote THIS join-key; the deduped path's
+        // re-resolved base_sha could be a wrong current base — first write is authoritative). SHADOW: no
+        // consumer reads the join-key yet (PR-2 wires the lab merge-ingress join).
+        if (typeof opts.custodyJoinKeyDir === 'string' && pr && !pr.deduped) {
+          try {
+            const { built_by } = assertRecordedClaim(opts.joinKeyMeta);   // throws on a policy-shaped/oversized key
+            writeJoinKey({
+              repo: draft.repo,
+              issueRef: draft.issueRef,
+              pr_number: pr.number,
+              pr_url: pr.pr_url,
+              approval_hash: approvalHash,
+              base_sha: pr.base_sha,
+              ...(built_by ? { built_by } : {}),
+              emitted_at: new Date(now).toISOString(),
+            }, { dir: opts.custodyJoinKeyDir, selfUid: opts.selfUid });
+          } catch (e) {
+            emitEgressAlert('egress-join-key-write-failed', { pr_url: pr && pr.pr_url, reason: (e && e.message) || 'error' });
+          }
+        }
         return { ok: true, emitted: true, disposition, draft, approvalHash, pr };
       }
       return { ok: true, emitted: false, disposition, draft, approvalHash };
@@ -440,7 +504,7 @@ function emitPR(data, opts = {}) {
 module.exports = {
   emitPR,
   buildEmitEnv, assertIsolatedGhConfigDir, armedEmit,
-  assertDataIsPolicyFree, assertSafeRepoRef, assertSafeIssueRef, assertEgressSafeDiff,
+  assertDataIsPolicyFree, assertRecordedClaim, assertSafeRepoRef, assertSafeIssueRef, assertEgressSafeDiff,
   isKillswitchOn, isEmitArmed, resolveToken, resolveDisposition, resolveVerifyKey, parseDiffPaths, isEgressDeniedPath,
   DISPOSITION_KEYS, DEFAULT_REPO_HOST_ALLOWLIST, ENV_ALLOWLIST,
 };

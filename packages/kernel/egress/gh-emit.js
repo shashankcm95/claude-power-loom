@@ -490,7 +490,9 @@ function validateEmitInputs({ draft, approvalHash, env }) {
  * armedEmit ONLY after the gate passed. `env` already carries GH_TOKEN (buildEmitEnv) — the sole credential path.
  * @param {{ draft: object, approvalHash: string, env: object }} args
  * @param {{ runGh?: Function }} [deps]  inject a mock gh for unit tests (the real network is never touched)
- * @returns {{ pr_url: string, number: number, branch: string, deduped?: boolean }}
+ * @returns {{ pr_url: string, number: number, branch: string, base_sha: string, deduped?: boolean }}
+ *   base_sha (HEX, the resolved base commit sha) is additive on BOTH returns — the kernel egress
+ *   join-key (item 1) seals it; existing callers ignore the extra field.
  */
 function ghEmit({ draft, approvalHash, env } = {}, deps = {}) {
   const gh = deps.runGh || runGh;
@@ -611,7 +613,7 @@ function ghEmit({ draft, approvalHash, env } = {}, deps = {}) {
     const pr = Array.isArray(existing)
       ? existing.find((p) => p && p.head && p.head.ref === branch && p.draft === true)
       : null;
-    if (pr) return { pr_url: pr.html_url, number: pr.number, branch, deduped: true };
+    if (pr) return { pr_url: pr.html_url, number: pr.number, branch, base_sha: baseCommitSha, deduped: true };
     // VALIDATE-hacker MEDIUM (dedup laundering) — the ref EXISTS but no OPEN loom PR points at it. DO NOT auto-create
     // a PR on a pre-existing branch: an actor with push access could pre-create the (publicly-computable) loom branch
     // with arbitrary content, and a silent re-PR would brand attacker content with loom's approval envelope. Fail
@@ -624,7 +626,7 @@ function ghEmit({ draft, approvalHash, env } = {}, deps = {}) {
   try {
     const prBodyJson = JSON.stringify({ title: prTitle(issueRef), head: branch, base, body: prBody(issueRef, approvalHash, baseCommitSha), draft: true });
     const pr = ghJson(gh, ['api', `repos/${repo}/pulls`, '--method', 'POST', '--input', '-'], { env, input: prBodyJson });
-    return { pr_url: pr.html_url, number: pr.number, branch };
+    return { pr_url: pr.html_url, number: pr.number, branch, base_sha: baseCommitSha };
   } catch (err) {
     if (reserved) {
       // best-effort rollback of the orphan ref so a retry isn't blocked; never throw over the original error.

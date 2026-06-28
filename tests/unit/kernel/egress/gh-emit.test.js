@@ -118,7 +118,7 @@ test('happy ADD: a new-file diff => DRAFT PR; the tree->commit->ref->pull sequen
   const gh = makeGh();
   const diff = NEWFILE_DIFF;
   const r = G.ghEmit({ draft: draftFor(diff), approvalHash: hashFor(diff), env: {} }, { runGh: gh });
-  assert.deepStrictEqual(r, { pr_url: 'https://github.com/o/r/pull/9', number: 9, branch: `loom/issue-42-${hashFor(diff).slice(0, 12)}` });
+  assert.deepStrictEqual(r, { pr_url: 'https://github.com/o/r/pull/9', number: 9, branch: `loom/issue-42-${hashFor(diff).slice(0, 12)}`, base_sha: 'a'.repeat(40) });
   assert.deepStrictEqual(endpointsOf(gh), [
     'GET repos/owner/repo',
     'GET repos/owner/repo/git/ref/heads/main',
@@ -534,7 +534,7 @@ test('HIGH-1: a 422 "Reference already exists" + an OPEN PR on THAT branch => de
   const diff = NEWFILE_DIFF; const branch = `loom/issue-42-${hashFor(diff).slice(0, 12)}`;
   const gh = makeGh({ refExists: true, existingPulls: [{ html_url: 'https://github.com/o/r/pull/7', number: 7, head: { ref: branch }, draft: true }] });
   const r = G.ghEmit({ draft: draftFor(diff), approvalHash: hashFor(diff), env: {} }, { runGh: gh });
-  assert.deepStrictEqual(r, { pr_url: 'https://github.com/o/r/pull/7', number: 7, branch, deduped: true });
+  assert.deepStrictEqual(r, { pr_url: 'https://github.com/o/r/pull/7', number: 7, branch, deduped: true, base_sha: 'a'.repeat(40) });
   assert.ok(endpointsOf(gh).some((e) => /pulls\?head=/.test(e)), 'the dedup GET pulls?head fired');
   assert.ok(!endpointsOf(gh).some((e) => e === 'POST repos/owner/repo/pulls'), 'NO second create-PR');
 });
@@ -598,6 +598,23 @@ test('#405: a 2-hunk modify with a net new-side shift reconstructs exactly', () 
     '@@ -4,2 +5,2 @@', ' l4', '-l5', '+L5', ''].join('\n');
   // l3 is the inter-hunk gap (carried verbatim from base between the two changed regions).
   assert.strictEqual(applyDiff(diff, base), 'l1\nL2\ninserted\nl3\nl4\nL5\n');
+});
+
+// === gap-map item 1 (PR-1): base_sha returned on BOTH success sites (threaded to the join-key) ===
+
+test('item1: ghEmit returns base_sha on the NORMAL (create-PR) success path', () => {
+  const gh = makeGh();   // resolves git/ref/heads/main -> sha 'a'*40
+  const r = G.ghEmit({ draft: draftFor(NEWFILE_DIFF), approvalHash: hashFor(NEWFILE_DIFF), env: {} }, { runGh: gh });
+  assert.strictEqual(r.base_sha, 'a'.repeat(40), 'the base commit sha is surfaced on the normal return');
+  assert.ok(/^[a-f0-9]{40}$/.test(r.base_sha), 'a HEX40 base_sha');
+});
+
+test('item1: ghEmit returns base_sha on the DEDUP (422-reconcile) success path too', () => {
+  const branch = `loom/issue-42-${hashFor(NEWFILE_DIFF).slice(0, 12)}`;
+  const gh = makeGh({ refExists: true, existingPulls: [{ html_url: 'https://github.com/o/r/pull/7', number: 7, head: { ref: branch }, draft: true }] });
+  const r = G.ghEmit({ draft: draftFor(NEWFILE_DIFF), approvalHash: hashFor(NEWFILE_DIFF), env: {} }, { runGh: gh });
+  assert.strictEqual(r.deduped, true);
+  assert.strictEqual(r.base_sha, 'a'.repeat(40), 'the dedup return also carries base_sha (additive on both sites)');
 });
 
 (async () => {
