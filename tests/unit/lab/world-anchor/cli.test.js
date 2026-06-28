@@ -27,9 +27,14 @@ const REPO = path.join(__dirname, '..', '..', '..', '..');
 const cli = require(path.join(REPO, 'packages', 'lab', 'world-anchor', 'cli.js'));
 const store = require(path.join(REPO, 'packages', 'lab', 'world-anchor', 'world-anchor-store.js'));
 const liveStore = require(path.join(REPO, 'packages', 'lab', 'world-anchor', 'live-recall-store.js'));
+const edgeStore = require(path.join(REPO, 'packages', 'lab', 'world-anchor', 'world-anchor-edge-store.js'));
+const jkStore = require(path.join(REPO, 'packages', 'kernel', 'egress', 'join-key-store.js'));
 
 let passed = 0;
-function test(name, fn) { fn(); passed += 1; }
+// A deferred runner (mirrors merge-observer.test.js) so an async test (the observe-merge auto-mint arm)
+// is AWAITED - a sync `fn()` call would float a rejected promise and miscount/swallow the failure.
+const tests = [];
+function test(name, fn) { tests.push({ name, fn }); }
 function tmp() { return fs.mkdtempSync(path.join(os.tmpdir(), 'loom-wanchor-cli-')); }
 
 // Attest a PR so a subsequent record-merge can resolve it. Returns the anchor_id.
@@ -139,53 +144,52 @@ test('backfill2137: --allow-placeholder explicitly opts in to the documented sta
 });
 
 // --------------------------------------------------------------------------
-// Item 3: the merge -> live-lesson MINT wire (record-merge --outcome merged mints exactly one
-// world_anchored node into recall-graph-live/, derived from the VERIFIED attestation, never a
-// caller field; closed/stale/absent mint NOTHING and emit a reason).
+// PR-3 (item 3 rebind): record-merge is CONFIRMATION-ONLY. The legacy pasted-sha mint
+// (att.diff_hash + a pasted --merge-sha) is REMOVED; observe-merge (the gh-verified lane) is now the
+// SOLE mint path. A merged record-merge records the world-anchor-store confirmation but mints NO
+// node/edge - the legacy forge surface (mintFromAttestation + a pasted/forged --merge-sha) is gone.
 // --------------------------------------------------------------------------
 
 function liveDir(store_dir) { return path.join(store_dir, 'live'); }
 
-test('record-merge --outcome merged MINTS exactly one world_anchored live node', () => {
+test('record-merge --outcome merged RECORDS the confirmation but MINTS NOTHING (PR-3: legacy mint removed)', () => {
   const dir = tmp();
   const live = liveDir(dir);
-  attest(dir);
+  const edges = path.join(dir, 'edges');
+  const anchor_id = attest(dir);
   const r = cli.runRecordMerge(
     { pr: 'https://github.com/octo/widget/pull/77', outcome: 'merged', mergeSha: 'd91785ea' },
-    { dir, liveDir: live, now: '2026-06-26T00:00:00.000Z' },
+    { dir, liveDir: live, edgeDir: edges, now: '2026-06-26T00:00:00.000Z' },
   );
-  assert.strictEqual(r.ok, true);
-  assert.ok(r.minted, 'the merge minted a live lesson node');
-  assert.ok(/^[0-9a-f]{64}$/.test(r.live_node_id), 'a 64-hex live node id is returned');
-  const nodes = liveStore.listLiveNodes({ dir: live });
-  assert.strictEqual(nodes.length, 1, 'exactly one live node minted');
-  assert.strictEqual(nodes[0].provenance, liveStore.WORLD_ANCHORED);
-  assert.strictEqual(nodes[0].merge_sha, 'd91785ea', 'the gh-verified merge SHA is world-evidence in the node');
+  assert.strictEqual(r.ok, true, 'the confirmation still records');
+  // the confirmation IS recorded (the world-anchor-store sidecar)
+  const back = store.readAnchor(anchor_id, { dir });
+  assert.strictEqual(back.confirmation.outcome, 'merged', 'the merged confirmation is recorded');
+  // but NOTHING is minted on the legacy path now
+  assert.strictEqual(r.minted, undefined, 'record-merge no longer mints a node (no `minted` field)');
+  assert.strictEqual(r.live_node_id, undefined, 'no live node id surfaced from record-merge');
+  assert.strictEqual(r.edge_minted, undefined, 'record-merge no longer mints an edge (no `edge_*` fields)');
+  assert.strictEqual(r.edge_id, undefined, 'no edge id surfaced from record-merge');
+  assert.strictEqual(liveStore.listLiveNodes({ dir: live }).length, 0, 'record-merge mints ZERO live nodes (PR-3)');
 });
 
-test('the minted lesson identity derives from the VERIFIED attestation, NOT a caller-supplied field (hacker H2)', () => {
+test('record-merge --outcome merged --merge-sha <forged> mints NOTHING (the pasted-sha forge surface is gone)', () => {
   const dir = tmp();
   const live = liveDir(dir);
-  const anchor_id = attest(dir);
-  // pass a hostile caller field that, if read, would change the lesson identity
+  const edges = path.join(dir, 'edges');
+  attest(dir);
+  // a hostile/forged 64-hex sha that the LEGACY path would have bound; PR-3 mints nothing from it.
   const r = cli.runRecordMerge(
-    {
-      pr: 'https://github.com/octo/widget/pull/77', outcome: 'merged', mergeSha: 'd91785ea',
-      lesson_signature: 'lesson:state-mutation|silent-coercion|fail-closed',
-      lesson_body: 'attacker-supplied body',
-    },
-    { dir, liveDir: live, now: '2026-06-26T00:00:00.000Z' },
+    { pr: 'https://github.com/octo/widget/pull/77', outcome: 'merged', mergeSha: 'f'.repeat(40) },
+    { dir, liveDir: live, edgeDir: edges, now: '2026-06-26T00:00:00.000Z' },
   );
-  assert.strictEqual(r.ok, true);
-  const node = liveStore.readLiveNode(r.live_node_id, { dir: live });
-  // the sealed attestation's lesson_signature wins, not the caller's hostile one
-  const att = store.readAnchor(anchor_id, { dir });
-  assert.strictEqual(node.lesson_signature, att.lesson_signature, 'identity from the sealed attestation');
-  assert.notStrictEqual(node.lesson_signature, 'lesson:state-mutation|silent-coercion|fail-closed', 'the caller field is ignored');
-  assert.notStrictEqual(node.lesson_body, 'attacker-supplied body', 'the caller body is ignored');
+  assert.strictEqual(r.ok, true, 'the confirmation still records');
+  assert.strictEqual(r.minted, undefined, 'no node minted from the pasted --merge-sha');
+  assert.strictEqual(liveStore.listLiveNodes({ dir: live }).length, 0, 'the pasted-sha forge surface mints nothing');
+  assert.strictEqual(edgeStore.listWorldAnchorEdges({ dir: edges }).length, 0, 'no edge from the pasted-sha path');
 });
 
-test('record-merge --outcome closed mints NOTHING and the (non-)mint is observable (no live dir populated)', () => {
+test('record-merge --outcome closed records the confirmation + mints nothing', () => {
   const dir = tmp();
   const live = liveDir(dir);
   attest(dir);
@@ -194,26 +198,11 @@ test('record-merge --outcome closed mints NOTHING and the (non-)mint is observab
     { dir, liveDir: live, now: '2026-06-26T00:00:00.000Z' },
   );
   assert.strictEqual(r.ok, true, 'recording a closed confirmation succeeds');
-  assert.ok(!r.minted, 'a closed outcome mints no lesson');
-  // no live node exists
-  const nodes = liveStore.listLiveNodes({ dir: live });
-  assert.strictEqual(nodes.length, 0, 'closed -> zero live nodes');
+  assert.strictEqual(r.minted, undefined, 'a closed outcome mints nothing');
+  assert.strictEqual(liveStore.listLiveNodes({ dir: live }).length, 0, 'closed -> zero live nodes');
 });
 
-test('record-merge --outcome stale mints NOTHING', () => {
-  const dir = tmp();
-  const live = liveDir(dir);
-  attest(dir);
-  const r = cli.runRecordMerge(
-    { pr: 'https://github.com/octo/widget/pull/77', outcome: 'stale' },
-    { dir, liveDir: live, now: '2026-06-26T00:00:00.000Z' },
-  );
-  assert.strictEqual(r.ok, true);
-  assert.ok(!r.minted, 'a stale outcome mints no lesson');
-  assert.strictEqual(liveStore.listLiveNodes({ dir: live }).length, 0);
-});
-
-test('record-merge of an UN-ATTESTED PR mints nothing and is fail-closed (no live node, observable refuse)', () => {
+test('record-merge of an UN-ATTESTED PR is fail-closed (observable refuse), mints nothing', () => {
   const dir = tmp();
   const live = liveDir(dir);
   const orig = process.stderr.write;
@@ -228,118 +217,91 @@ test('record-merge of an UN-ATTESTED PR mints nothing and is fail-closed (no liv
   assert.strictEqual(liveStore.listLiveNodes({ dir: live }).length, 0, 'no live node for an un-attested merge');
 });
 
-test('record-merge merged twice is idempotent: still exactly one live node', () => {
-  const dir = tmp();
-  const live = liveDir(dir);
-  attest(dir);
-  const args = { pr: 'https://github.com/octo/widget/pull/77', outcome: 'merged', mergeSha: 'd91785ea' };
-  const opts = { dir, liveDir: live, now: '2026-06-26T00:00:00.000Z' };
-  const r1 = cli.runRecordMerge(args, opts);
-  const r2 = cli.runRecordMerge(args, opts);
-  assert.strictEqual(r1.ok, true);
-  assert.strictEqual(r2.ok, true, 'a re-confirm of the same merge is idempotent');
-  assert.strictEqual(liveStore.listLiveNodes({ dir: live }).length, 1, 'exactly one live node after a double record');
-  // The re-mint must be HONESTLY flagged: minted:true + minted_deduped:false on the FIRST write,
-  // minted:true + minted_deduped:true on the SECOND (the node already existed). A log/automation
-  // consumer must be able to tell a NEW world-anchor event from a re-confirm.
-  assert.strictEqual(r1.minted_deduped, false, 'first record is a genuine first write (not deduped)');
-  assert.strictEqual(r2.minted_deduped, true, 'second record is a dedup, not a new world-anchor event');
-});
-
-test('merged but the sealed signature is OFF the orchestrator floor: no mint, observable refuse (M1)', () => {
-  const dir = tmp();
-  const live = liveDir(dir);
-  // attest with a taxonomy-valid signature that is NOT in the orchestrator floor (a different cluster)
-  attest(dir, { lesson_signature: 'lesson:data-parse|silent-coercion|fail-closed' });
-  const orig = process.stderr.write;
-  let alerted = false;
-  process.stderr.write = (chunk) => { if (String(chunk).includes('live-recall-mint-refused') && String(chunk).includes('"mint_reason":"no-floor-lesson"')) alerted = true; return true; };
-  let r;
-  try {
-    r = cli.runRecordMerge({ pr: 'https://github.com/octo/widget/pull/77', outcome: 'merged', mergeSha: 'd91785ea' }, { dir, liveDir: live, now: '2026-06-26T00:00:00.000Z' });
-  } finally { process.stderr.write = orig; }
-  assert.strictEqual(r.ok, true, 'the confirmation still records');
-  assert.ok(!r.minted, 'a no-floor-lesson outcome mints nothing');
-  assert.strictEqual(r.mint_reason, 'no-floor-lesson');
-  assert.ok(alerted, 'the no-floor-lesson refuse is observable (M1)');
-  assert.strictEqual(liveStore.listLiveNodes({ dir: live }).length, 0);
-});
-
-test('merged but NO --merge-sha: no mint, observable refuse (the world-evidence is mandatory, M1)', () => {
-  const dir = tmp();
-  const live = liveDir(dir);
-  attest(dir);
-  const orig = process.stderr.write;
-  let alerted = false;
-  process.stderr.write = (chunk) => { if (String(chunk).includes('live-recall-mint-refused') && String(chunk).includes('"mint_reason":"no-merge-sha"')) alerted = true; return true; };
-  let r;
-  try {
-    r = cli.runRecordMerge({ pr: 'https://github.com/octo/widget/pull/77', outcome: 'merged' }, { dir, liveDir: live, now: '2026-06-26T00:00:00.000Z' });
-  } finally { process.stderr.write = orig; }
-  assert.ok(!r.minted, 'a merge with no world-evidence SHA mints nothing');
-  assert.strictEqual(r.mint_reason, 'no-merge-sha');
-  assert.ok(alerted, 'the no-merge-sha refuse is observable (M1)');
-});
-
-test('main(list-live) exercises the CLI branch + arg parsing, emitting the {ok,count,nodes} payload', () => {
-  const dir = tmp();
-  const live = liveDir(dir);
-  attest(dir);
-  cli.runRecordMerge({ pr: 'https://github.com/octo/widget/pull/77', outcome: 'merged', mergeSha: 'd91785ea' }, { dir, liveDir: live, now: '2026-06-26T00:00:00.000Z' });
-  // Route through main() (NOT listLive() directly) so the `list-live` branch + --live-dir parsing are
-  // actually covered; assert the emitted payload + exit code (CodeRabbit #441 nitpick).
-  const chunks = [];
-  const orig = process.stdout.write;
-  process.stdout.write = (chunk) => { chunks.push(String(chunk)); return true; };
-  let code;
-  try { code = cli.main(['list-live', '--live-dir', live]); } finally { process.stdout.write = orig; }
-  assert.strictEqual(code, 0, 'list-live exits 0');
-  const listed = JSON.parse(chunks.join('').trim());
-  assert.strictEqual(listed.ok, true);
-  assert.strictEqual(listed.count, 1);
-  assert.strictEqual(listed.nodes[0].provenance, liveStore.WORLD_ANCHORED);
-});
-
-test('mintFromAttestation is NOT exported (confirmation-mint-only gate cannot be bypassed)', () => {
-  // CodeRabbit #441 (security): the internal mint helper must stay private so no consumer can mint a
-  // live node straight from a stored attestation, skipping runRecordMerge's exact 'merged' gate.
-  assert.strictEqual(cli.mintFromAttestation, undefined, 'the internal mint helper stays private');
-  assert.strictEqual(typeof cli.runRecordMerge, 'function', 'the gated entry point is the public surface');
+test('mintFromAttestation is NO LONGER exported (the legacy mint helper is removed, not just private)', () => {
+  // PR-3 deletes the legacy attestation-anchored mint from cli.js entirely (relocated logic lives in the
+  // gh-verified minter). The export must be gone so no consumer can mint from a stored attestation.
+  assert.strictEqual(cli.mintFromAttestation, undefined, 'the legacy mint helper is no longer exported');
+  assert.strictEqual(typeof cli.runRecordMerge, 'function', 'record-merge (confirmation-only) is still the public surface');
 });
 
 // --------------------------------------------------------------------------
-// Item 5, PR-A.2: the merged path additively mints a world-anchored-by EDGE (UNSIGNED, SHADOW). The
-// dedicated wire suite (item5-merge-edge-wire.test.js) exercises the edge binding + composition; here
-// we assert ONLY that the cli merged-path return now SURFACES the edge_* fields the wire produces.
+// PR-3: observe-merge is the SOLE mint path. After a gh-verified `merged` record, mainObserveMerge
+// auto-mints (the node + the UNSIGNED edge bound to the SEALED approval_hash). The mint is additive: a
+// mint failure does NOT change the record's success exit code. We inject the gh runner so no real gh is
+// shelled, and pin the kernel join-key store via DEFAULT_DIR (LOOM_LAB_STATE_DIR is the throwaway base).
 // --------------------------------------------------------------------------
 
-test('record-merge --outcome merged surfaces the edge_* fields (UNSIGNED edge minted alongside the node)', () => {
+const SELF_UID = typeof process.getuid === 'function' ? process.getuid() : null;
+const OBSERVE_SHA40 = 'b'.repeat(40);
+const OBSERVE_APPROVAL = 'd'.repeat(64);
+
+function seedJoinKey(over = {}) {
+  const rec = {
+    repo: 'octo/widget', issueRef: 42, pr_number: 77,
+    pr_url: 'https://github.com/octo/widget/pull/77',
+    approval_hash: OBSERVE_APPROVAL, base_sha: 'f'.repeat(40),
+    emitted_at: '2026-06-28T00:00:00.000Z', ...over,
+  };
+  const w = jkStore.writeJoinKey(rec, { dir: jkStore.DEFAULT_DIR, selfUid: SELF_UID === null ? undefined : SELF_UID });
+  assert.strictEqual(w.ok, true, `seedJoinKey must succeed (got ${w.reason})`);
+  return w.id;
+}
+function clearJoinKeys() {
+  try { for (const f of fs.readdirSync(jkStore.DEFAULT_DIR)) fs.unlinkSync(path.join(jkStore.DEFAULT_DIR, f)); } catch { /* absent ok */ }
+}
+const runnerMerged = () => async () => ({ stdout: JSON.stringify({ merged: true, merge_commit_sha: OBSERVE_SHA40, state: 'closed' }) });
+
+test('observe-merge on a merged record AUTO-MINTS the node + the edge (the SOLE mint path, PR-3)', async () => {
+  clearJoinKeys();
+  // the attestation the minter resolves (same tuple as the join-key)
   const dir = tmp();
-  const live = liveDir(dir);
-  const edges = path.join(dir, 'edges');
-  attest(dir);
-  const r = cli.runRecordMerge(
-    { pr: 'https://github.com/octo/widget/pull/77', outcome: 'merged', mergeSha: 'd91785ea' },
-    { dir, liveDir: live, edgeDir: edges, now: '2026-06-26T00:00:00.000Z' },
+  attest(dir, { approval_hash: OBSERVE_APPROVAL });
+  seedJoinKey();
+  const liveD = liveDir(dir);
+  const edgeD = path.join(dir, 'edges');
+  const outcomeD = path.join(dir, 'outcomes');
+  // inject the gh runner + the COHERENT FOUR-dir isolation set (FOLD B: all-or-nothing; the minter
+  // fail-closes a partial set). outcomeDir is shared by the observer's record store + the minter; the
+  // attestation store IS the tmp root (attest(dir) wrote there). We drive the dedicated arm function
+  // with the injected runner (main() reads argv + has no --dir flag now).
+  const r = await cli.mainObserveMerge(
+    { pr: 'https://github.com/octo/widget/pull/77' },
+    { ghRunner: runnerMerged(), outcomeDir: outcomeD, anchorDir: dir, liveDir: liveD, edgeDir: edgeD, now: '2026-06-28T12:00:00.000Z' },
   );
-  assert.strictEqual(r.ok, true);
-  assert.strictEqual(r.minted, true, 'the node still mints (the edge is additive)');
-  assert.strictEqual(r.edge_minted, true, 'the merged path now mints an edge');
-  assert.strictEqual(r.edge_signed, false, 'production supplies no signer -> the edge is UNSIGNED (SHADOW)');
-  assert.ok(/^[0-9a-f]{64}$/.test(r.edge_id), 'a 64-hex edge id is surfaced');
+  assert.strictEqual(r.code, 0, 'observe-merge exits 0');
+  assert.strictEqual(r.payload.ok, true, 'the record succeeded');
+  assert.strictEqual(r.payload.recorded, true, 'the merge-outcome recorded');
+  assert.strictEqual(r.payload.minted, true, 'observe-merge auto-minted the node');
+  assert.ok(/^[0-9a-f]{64}$/.test(r.payload.node_id), 'a 64-hex node id surfaced');
+  assert.strictEqual(r.payload.edge_minted, true, 'observe-merge auto-minted the edge');
+  assert.strictEqual(r.payload.edge_signed, false, 'the production edge is UNSIGNED (SHADOW)');
+  // the edge binds the SEALED approval_hash, never att.diff_hash
+  const edge = edgeStore.loadWorldAnchorEdge(r.payload.edge_id, { dir: edgeD });
+  assert.strictEqual(edge.to_delta_ref, OBSERVE_APPROVAL, 'to_delta_ref === the kernel-sealed approval_hash');
+  // the node binds the gh-verified merge_commit_sha
+  const node = liveStore.readLiveNode(r.payload.node_id, { dir: liveD });
+  assert.strictEqual(node.merge_sha, OBSERVE_SHA40, 'node merge_sha === the gh-verified merge_commit_sha');
 });
 
-test('a NON-merged outcome surfaces NO edge_* fields (closed/stale mint nothing)', () => {
+test('observe-merge auto-mint is NON-FATAL: a mint failure leaves the record success exit code (additive)', async () => {
+  clearJoinKeys();
   const dir = tmp();
-  const live = liveDir(dir);
-  const edges = path.join(dir, 'edges');
-  attest(dir);
-  const r = cli.runRecordMerge(
-    { pr: 'https://github.com/octo/widget/pull/77', outcome: 'closed' },
-    { dir, liveDir: live, edgeDir: edges, now: '2026-06-26T00:00:00.000Z' },
+  attest(dir, { approval_hash: OBSERVE_APPROVAL });
+  seedJoinKey();
+  const liveD = liveDir(dir);
+  const outcomeD = path.join(dir, 'outcomes');
+  // edgeDir is a regular FILE -> the edge mint fails; the node still mints; the record success stands.
+  const badEdgeDir = path.join(dir, 'edge-as-file');
+  fs.writeFileSync(badEdgeDir, 'not a dir', { mode: 0o600 });
+  const r = await cli.mainObserveMerge(
+    { pr: 'https://github.com/octo/widget/pull/77' },
+    { ghRunner: runnerMerged(), outcomeDir: outcomeD, anchorDir: dir, liveDir: liveD, edgeDir: badEdgeDir, now: '2026-06-28T12:00:00.000Z' },
   );
-  assert.strictEqual(r.ok, true);
-  assert.strictEqual(r.edge_minted, undefined, 'a closed outcome mints no edge (no edge_minted field)');
+  assert.strictEqual(r.code, 0, 'the record success exit code stands despite the edge-mint failure');
+  assert.strictEqual(r.payload.ok, true, 'the recorded outcome is untouched');
+  assert.strictEqual(r.payload.minted, true, 'the node still minted');
+  assert.strictEqual(r.payload.edge_minted, false, 'the edge mint failed (non-fatal)');
+  assert.ok(typeof r.payload.edge_reason === 'string' && r.payload.edge_reason.length > 0, 'the edge failure reason is surfaced');
 });
 
 test('cli.js source references NEITHER resolveSigner NOR LOOM_EDGE_SIGNING_KEY (production-unsigned guarantee, hacker H2)', () => {
@@ -350,4 +312,10 @@ test('cli.js source references NEITHER resolveSigner NOR LOOM_EDGE_SIGNING_KEY (
   assert.strictEqual(src.includes('LOOM_EDGE_SIGNING_KEY'), false, 'cli.js never references the env signing key');
 });
 
-console.log(`cli.test.js: ${passed} passed`);
+(async () => {
+  for (const { name, fn } of tests) {
+    try { await fn(); passed += 1; }
+    catch (e) { console.error(`FAIL: ${name}`); throw e; }
+  }
+  console.log(`cli.test.js: ${passed} passed`);
+})();

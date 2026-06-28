@@ -7,8 +7,9 @@
 // Extracted from cli.js (the legacy record-merge inline copy) into a DEPENDENCY-FREE module so the
 // two callers DRY on ONE parser: cli.js (record-merge + observe-merge dispatch) AND merge-observer.js
 // (the SOLE kernel-join-key reader). merge-observer.js imports THIS module, NOT cli.js, so the narrow
-// kernel-reader does not transitively require all of cli.js (which constructs ORCHESTRATOR_LESSONS at
-// load) - the VERIFY-board "keep the reader narrow" fold (reviewer MEDIUM-1).
+// kernel-reader does not transitively require all of cli.js (which pulls the mint chain - the lesson
+// FLOOR ORCHESTRATOR_LESSONS now lives in world-anchor-mint.js, built at load) - the VERIFY-board
+// "keep the reader narrow" fold (reviewer MEDIUM-1).
 //
 // PURE: a single regex + integer parse, zero I/O, zero deps. It returns the EXACT three-field join
 // tuple {repo, pr_number, pr_url} that resolveJoinKeyForPr / resolveAnchorForPr exact-set match on.
