@@ -1,6 +1,6 @@
 ---
 lifecycle: persistent
-status: DRAFT — awaiting /verify-plan + USER approval
+status: BUILT + VALIDATED — PR #447 (awaiting USER merge)
 phase: ③.2 autonomous-SDE ladder — basis-strengthening (re-scoped from PR-A2)
 routing: route (kernel egress chokepoint; security/data-mutation diff)
 ---
@@ -264,3 +264,23 @@ The two NEEDS-REVISION carried build-correctness fixes, now folded in:
 VALIDATE (post-build) carries forward: the hacker **live-probes the BUILT store** (a real same-uid
 co-forge via the exported `writeJoinKey` → confirm `loadJoinKey` accepts it → NARROWED-not-closed,
 Rule 2a); the SHADOW dam is a real import/grep test, not a comment.
+
+## VALIDATE result (post-build 3-lens board, 2026-06-28 — PR #447)
+
+Board: **code-reviewer** (correctness/resource-safety) PASS · **hacker** (adversarial, live-probe)
+PASS · **honesty-auditor** (claim-vs-evidence) PASS. No FAIL, no CRITICAL/HIGH. The hacker built
+throwaway probes against the BUILT modules and **live-confirmed** the documented residual (a forged
+join-key for a never-emitted PR is accepted by `loadJoinKey`; an in-basis-field tamper re-derives a
+mismatching id and is rejected) — NARROWS-not-closes, honestly framed. Three non-blocking FLAGs
+folded before commit:
+
+| FLAG | Resolution |
+|---|---|
+| hacker: `base_sha`/`pr_url`/`built_by`/`emitted_at` are OUT of the content-address basis (in-place same-uid tamper accepted on read), yet presented as kernel-authoritative + read by PR-2 | store-header SEALED-vs-RECORDED note added: only `approval_hash` + the id basis are sealed; PR-2 MUST bind `to_delta_ref` to `approval_hash`, never `pr_url`/`base_sha`. (No basis change — `pr_url` is deliberately out-of-basis so a divergent pr_url is a collision.) |
+| code-reviewer: `emitted_at` used bare `Date.parse` (accepts `'2026'`) | tightened to a strict `ISO_8601_UTC` regex paired with the existing `Date.parse` calendar check. |
+| honesty: an unused `name` param in the shadow-dam test harness | turned into a real improvement (named failures: `catch → console.error(\`FAIL: ${name}\`)`). |
+
+Firsthand verification (verify-by-execution, Rule 2a-corollary): `join-key-store` 25, `join-key-shadow`
+4, `emit-pr` 51, `gh-emit` 57 — all green; full egress suite 18/18; **full kernel suite 107 suites,
+0 failures**; eslint + markdownlint clean; release-surface clean. Honesty note: the builder reported
+"+10" emitPR item-1 tests; the firsthand-verified total is `emit-pr.test.js` = 51 passed (was 46).
