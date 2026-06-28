@@ -92,13 +92,19 @@ function deriveAnchorId(basis) {
   ]));
 }
 
-/** Throws unless `dir` exists, is a real (non-symlink) directory owned by selfUid. mkdir+harden first. */
+/**
+ * Throws unless `dir` exists, is a real (non-symlink) directory owned by selfUid. VALIDATE BEFORE
+ * MUTATE: mkdir is best-effort (its `mode` applies only on create + does NOT follow an existing
+ * symlink's target), but `chmod` FOLLOWS a symlink, so it runs ONLY AFTER the lstat symlink/non-dir/
+ * foreign checks pass - never chmod a symlink target before rejecting it.
+ */
 function ensureStoreDir(dir, selfUid) {
-  try { fs.mkdirSync(dir, { recursive: true, mode: 0o700 }); fs.chmodSync(dir, 0o700); } catch { /* best-effort create */ }
+  try { fs.mkdirSync(dir, { recursive: true, mode: 0o700 }); } catch { /* best-effort; lstat below fail-closes if absent */ }
   const st = fs.lstatSync(dir);                                       // throws (fail-closed) if absent
   if (st.isSymbolicLink()) throw new Error('world-anchor: store dir is a symlink (refused)');
   if (!st.isDirectory()) throw new Error('world-anchor: store dir is not a directory');
   if (isForeign(st, selfUid)) throw new Error('world-anchor: store dir is foreign-owned (refused)');
+  fs.chmodSync(dir, 0o700);                                           // only AFTER validation - never chmod a symlink target
 }
 
 // --------------------------------------------------------------------------
@@ -175,7 +181,12 @@ function recordAttestation(att, opts = {}) {
   }
   let dir;
   try { dir = storeDir(opts); ensureStoreDir(dir, selfUid); }
-  catch (err) { return { ok: false, reason: 'store-dir', detail: (err && err.message) || 'error' }; }
+  catch (err) {
+    // Fail-closed MUST be observable (security.md): a silent store-dir refusal hides both an attack
+    // (a planted symlink/foreign dir) and a misconfig. Mirror the sibling stores' emit-then-reject shape.
+    emitEgressAlert('world-anchor-store-dir', { detail: (err && err.message) || 'error' });
+    return { ok: false, reason: 'store-dir', detail: (err && err.message) || 'error' };
+  }
   const file = path.join(dir, body.anchor_id + ATT_SUFFIX);
   // Dedup-collision: on an existing file, compare the FULL body. Identical => idempotent ok.
   // ANY divergence => an observable collision signal + reject (never silently keep first-eligible).
@@ -212,7 +223,11 @@ function recordConfirmation(anchor_id, outcome, opts = {}) {
   const selfUid = opts.selfUid === undefined ? currentUid() : opts.selfUid;
   let dir;
   try { dir = storeDir(opts); ensureStoreDir(dir, selfUid); }
-  catch (err) { return { ok: false, reason: 'store-dir', detail: (err && err.message) || 'error' }; }
+  catch (err) {
+    // Fail-closed MUST be observable (security.md): parity with recordAttestation's store-dir emit above.
+    emitEgressAlert('world-anchor-store-dir', { detail: (err && err.message) || 'error' });
+    return { ok: false, reason: 'store-dir', detail: (err && err.message) || 'error' };
+  }
   // EXACT-set: the attestation must already exist + verify. An absent attestation is refused
   // (a merge cannot confirm an anchor we never attested)  -  never auto-created.
   if (!readAnchorRaw(anchor_id, dir, selfUid)) return { ok: false, reason: 'attestation-absent' };
@@ -286,8 +301,25 @@ function prTupleMatches(att, q) {
 // surface the confirmation sidecar, deep-freeze the result.
 // --------------------------------------------------------------------------
 
+// Bounded positional read: read at most cap+1 bytes through the fd (the loop handles short reads), so a
+// same-uid writer that grows the file AFTER the fstat size-check cannot make us read an unbounded amount
+// (the #439/TOCTOU close). cap+1 and Buffer.alloc(cap+1) are LOAD-BEARING - never Buffer.alloc(cap) (the
+// cap+1-n read would overflow it). Returns the bounded UTF-8 TEXT (a string), or null ONLY for the
+// oversize case, so the caller's `text === null` test is an UNAMBIGUOUS oversize signal. The JSON.parse
+// stays in the caller (inside its outer try) - a malformed body throws there, and a literal-'null' body
+// parses to JS null and flows to the caller's not-an-object guard (never mislabeled oversize). A per-store
+// helper, NOT cross-store-shared (the deliberate-duplication header: each read path is audited independently).
+function readBoundedText(fd, cap) {
+  const buf = Buffer.alloc(cap + 1);
+  let n = 0;
+  let r = 0;
+  do { r = fs.readSync(fd, buf, n, cap + 1 - n, n); n += r; } while (r > 0 && n <= cap);
+  if (n > cap) return null;                    // grew past the cap after fstat -> reject
+  return buf.toString('utf8', 0, n);
+}
+
 // The raw read: open no-follow, fstat the same fd, reject non-regular / foreign (each OBSERVABLE),
-// parse, re-derive the anchor_id (3-field identity seal) AND the content_hash (full-record seal),
+// bounded-read, re-derive the anchor_id (3-field identity seal) AND the content_hash (full-record seal),
 // reject a mismatch (with an observable alert). Returns the verified body or null.
 // The content_hash check closes the same-uid in-place metadata launder (an edited pr_url/pr_number
 // no longer passes verify-on-read even though the anchor_id basis is untouched).
@@ -301,8 +333,14 @@ function readAnchorRaw(anchor_id, dir, selfUid) {
     if (!st.isFile()) { emitEgressAlert('world-anchor-verify-mismatch', { anchor_id, kind: 'non-regular-file' }); return null; }
     if (isForeign(st, selfUid)) { emitEgressAlert('world-anchor-verify-mismatch', { anchor_id, kind: 'foreign-owned' }); return null; }
     if (st.size > MAX_RECORD_BYTES) { emitEgressAlert('world-anchor-verify-mismatch', { anchor_id, kind: 'oversize', size: st.size }); return null; }
-    const parsed = JSON.parse(fs.readFileSync(fd, 'utf8'));
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    // BOUNDED read (race-proof): st.size above is a fast early reject, but a same-uid writer can grow the
+    // file between the fstat and the read. readBoundedText caps the read at MAX_RECORD_BYTES+1 and returns
+    // null ONLY if the content grew past the cap after the fstat - an observable oversize-race, never
+    // unbounded. The JSON.parse is here (inside the outer try) so a malformed body throws to the catch.
+    const text = readBoundedText(fd, MAX_RECORD_BYTES);
+    if (text === null) { emitEgressAlert('world-anchor-verify-mismatch', { anchor_id, kind: 'oversize-race' }); return null; }
+    const parsed = JSON.parse(text);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) { emitEgressAlert('world-anchor-verify-mismatch', { anchor_id, kind: 'not-an-object' }); return null; }
     const reId = deriveAnchorId({ repo: parsed.repo, issueRef: parsed.issueRef, diff_hash: parsed.diff_hash });
     if (reId !== anchor_id || parsed.anchor_id !== anchor_id) {       // basis must derive the filename id
       emitEgressAlert('world-anchor-verify-mismatch', { anchor_id, kind: 'anchor-id', derived: reId });
@@ -336,8 +374,14 @@ function readConfirmationRaw(anchor_id, dir, selfUid) {
     if (!st.isFile()) { emitEgressAlert('world-anchor-verify-mismatch', { anchor_id, kind: 'confirmation-non-regular-file' }); return null; }
     if (isForeign(st, selfUid)) { emitEgressAlert('world-anchor-verify-mismatch', { anchor_id, kind: 'confirmation-foreign-owned' }); return null; }
     if (st.size > MAX_RECORD_BYTES) { emitEgressAlert('world-anchor-verify-mismatch', { anchor_id, kind: 'confirmation-oversize', size: st.size }); return null; }
-    const parsed = JSON.parse(fs.readFileSync(fd, 'utf8'));
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    // BOUNDED read (race-proof): the second read site. Same TOCTOU close as readAnchorRaw - cap the read
+    // at MAX_RECORD_BYTES+1 so a sidecar grown past the cap after the fstat is rejected, never read unbounded.
+    // Its own label (confirmation-oversize-race) is distinct from the st.size confirmation-oversize above,
+    // mirroring readAnchorRaw's oversize / oversize-race split (the fast-path vs the race-path reject).
+    const text = readBoundedText(fd, MAX_RECORD_BYTES);
+    if (text === null) { emitEgressAlert('world-anchor-verify-mismatch', { anchor_id, kind: 'confirmation-oversize-race' }); return null; }
+    const parsed = JSON.parse(text);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) { emitEgressAlert('world-anchor-verify-mismatch', { anchor_id, kind: 'confirmation-not-an-object' }); return null; }
     if (parsed.anchor_id !== anchor_id) {                            // a sidecar that lies about its anchor
       emitEgressAlert('world-anchor-verify-mismatch', { anchor_id, kind: 'confirmation' });
       return null;
@@ -395,4 +439,7 @@ function listAnchors(opts = {}) {
 module.exports = {
   recordAttestation, recordConfirmation, resolveAnchorForPr, readAnchor, listAnchors,
   deriveAnchorId, DEFAULT_DIR, OUTCOMES,
+  // Exported for the C3 bounded-read unit test (drive the helper DIRECTLY on a >cap fd, bypassing the
+  // st.size pre-check that would otherwise shadow it). MAX_RECORD_BYTES is the cap the read path enforces.
+  readBoundedText, MAX_RECORD_BYTES,
 };

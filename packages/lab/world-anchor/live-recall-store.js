@@ -131,13 +131,19 @@ function buildBody(block) {
   return body;
 }
 
-/** Throws unless `dir` exists, is a real (non-symlink) directory owned by selfUid. mkdir+harden first. */
+/**
+ * Throws unless `dir` exists, is a real (non-symlink) directory owned by selfUid. VALIDATE BEFORE
+ * MUTATE: mkdir is best-effort (its `mode` applies only on create + does NOT follow an existing
+ * symlink's target), but `chmod` FOLLOWS a symlink, so it runs ONLY AFTER the lstat symlink/non-dir/
+ * foreign checks pass - never chmod a symlink target before rejecting it.
+ */
 function ensureStoreDir(dir, selfUid) {
-  try { fs.mkdirSync(dir, { recursive: true, mode: 0o700 }); fs.chmodSync(dir, 0o700); } catch { /* best-effort create */ }
+  try { fs.mkdirSync(dir, { recursive: true, mode: 0o700 }); } catch { /* best-effort; lstat below fail-closes if absent */ }
   const st = fs.lstatSync(dir);                                       // throws (fail-closed) if absent
   if (st.isSymbolicLink()) throw new Error('live-recall: store dir is a symlink (refused)');
   if (!st.isDirectory()) throw new Error('live-recall: store dir is not a directory');
   if (isForeign(st, selfUid)) throw new Error('live-recall: store dir is foreign-owned (refused)');
+  fs.chmodSync(dir, 0o700);                                           // only AFTER validation - never chmod a symlink target
 }
 
 // Two bodies equal? content_hash is the order-independent full-record digest (a single field
@@ -195,8 +201,25 @@ function mintWorldAnchoredNode(block, opts = {}) {
   return { ok: true, deduped: false, node_id: body.node_id };
 }
 
+// Bounded positional read: read at most cap+1 bytes through the fd (the loop handles short reads), so a
+// same-uid writer that grows the file AFTER the fstat size-check cannot make us read an unbounded amount
+// (the #439/TOCTOU close). cap+1 and Buffer.alloc(cap+1) are LOAD-BEARING - never Buffer.alloc(cap) (the
+// cap+1-n read would overflow it). Returns the bounded UTF-8 TEXT (a string), or null ONLY for the
+// oversize case, so the caller's `text === null` test is an UNAMBIGUOUS oversize signal. The JSON.parse
+// stays in the caller (inside its outer try) - a malformed body throws there, and a literal-'null' body
+// parses to JS null and flows to the caller's not-an-object guard (never mislabeled oversize). A per-store
+// helper, NOT cross-store-shared (the deliberate-duplication header: each read path is audited independently).
+function readBoundedText(fd, cap) {
+  const buf = Buffer.alloc(cap + 1);
+  let n = 0;
+  let r = 0;
+  do { r = fs.readSync(fd, buf, n, cap + 1 - n, n); n += r; } while (r > 0 && n <= cap);
+  if (n > cap) return null;                    // grew past the cap after fstat -> reject
+  return buf.toString('utf8', 0, n);
+}
+
 // The raw read: open no-follow, fstat the SAME fd, reject non-regular / foreign / oversize (each
-// OBSERVABLE) BEFORE readFileSync, parse, re-derive BOTH node_id (identity seal) and content_hash
+// OBSERVABLE) BEFORE the bounded read, re-derive BOTH node_id (identity seal) and content_hash
 // (full-body seal), reject a mismatch. Returns the verified body or null. Templated on
 // world-anchor-store.js's readAnchorRaw, NOT recall-graph-store's bare readFileSync (#439).
 function readNodeRaw(node_id, dir, selfUid) {
@@ -209,8 +232,14 @@ function readNodeRaw(node_id, dir, selfUid) {
     if (!st.isFile()) { alert('verify-mismatch', { node_id, kind: 'non-regular-file' }); return null; }
     if (isForeign(st, selfUid)) { alert('verify-mismatch', { node_id, kind: 'foreign-owned' }); return null; }
     if (st.size > MAX_RECORD_BYTES) { alert('verify-mismatch', { node_id, kind: 'oversize', size: st.size }); return null; }
-    const parsed = JSON.parse(fs.readFileSync(fd, 'utf8'));
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    // BOUNDED read (race-proof): st.size above is a fast early reject, but a same-uid writer can grow the
+    // file between the fstat and the read. readBoundedText caps the read at MAX_RECORD_BYTES+1 and returns
+    // null ONLY if the content grew past the cap after the fstat - an observable oversize-race, never
+    // unbounded. The JSON.parse is here (inside the outer try) so a malformed body throws to the catch.
+    const text = readBoundedText(fd, MAX_RECORD_BYTES);
+    if (text === null) { alert('verify-mismatch', { node_id, kind: 'oversize-race' }); return null; }
+    const parsed = JSON.parse(text);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) { alert('verify-mismatch', { node_id, kind: 'not-an-object' }); return null; }
     if (parsed.provenance !== WORLD_ANCHORED) { alert('verify-mismatch', { node_id, kind: 'provenance' }); return null; }
     // Schema validation on READ, symmetric with the write path: node_id + content_hash seal a body's
     // self-CONSISTENCY, not its schema-validity. A same-uid writer can plant a self-consistent record
@@ -282,4 +311,7 @@ function listLiveNodes(opts = {}) {
 module.exports = {
   mintWorldAnchoredNode, readLiveNode, listLiveNodes, deriveLiveNodeId,
   WORLD_ANCHORED, LIVE_DEFAULT_DIR,
+  // Exported for the C3 bounded-read unit test (drive the helper DIRECTLY on a >cap fd, bypassing the
+  // st.size pre-check that would otherwise shadow it). MAX_RECORD_BYTES is the cap the read path enforces.
+  readBoundedText, MAX_RECORD_BYTES,
 };

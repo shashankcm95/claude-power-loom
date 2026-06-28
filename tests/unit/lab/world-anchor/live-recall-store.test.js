@@ -255,4 +255,90 @@ test('read path REJECTS a self-consistent node carrying INJECTED extra keys (clo
   assert.strictEqual(store.listLiveNodes({ dir }).length, 0, 'an injected-key node never appears in list-live');
 });
 
+// ---------------------------------------------------------------------------
+// C1 (Major): ensureStoreDir must VALIDATE before it MUTATES. The old code ran
+// mkdirSync + chmodSync(dir, 0o700) BEFORE the lstat symlink check, so a symlinked store
+// dir had its TARGET chmod'd (chmod follows symlinks) before the refusal. The fix reorders
+// chmod to AFTER the symlink/non-dir/foreign checks. NON-VACUOUS: snapshot the symlink TARGET's
+// mode before the refused mint + assert it is UNCHANGED after. RED against the unfixed
+// (chmod-before-lstat) code: the target mode would move 0o755 -> 0o700.
+// ---------------------------------------------------------------------------
+
+test('C1: a symlinked store dir is REFUSED and its TARGET mode is UNCHANGED (validate-before-chmod)', () => {
+  const base = tmp();
+  const target = path.join(base, 'real-target-dir');
+  fs.mkdirSync(target, { mode: 0o755 });
+  fs.chmodSync(target, 0o755);                                   // pin a NON-0o700 mode so a stray chmod is visible
+  const beforeMode = fs.statSync(target).mode & 0o777;
+  assert.notStrictEqual(beforeMode, 0o700, 'precondition: the target is not already 0o700');
+  const link = path.join(base, 'store-link');
+  fs.symlinkSync(target, link);                                  // the store dir is a SYMLINK to the real dir
+  const { r, alerted } = captureAlert(() => store.mintWorldAnchoredNode(block(), { dir: link }));
+  assert.strictEqual(r.ok, false, 'a symlinked store dir is refused');
+  assert.strictEqual(r.reason, 'store-dir', 'the refuse reason is store-dir');
+  assert.ok(alerted, 'the store-dir refuse is OBSERVABLE');
+  const afterMode = fs.statSync(target).mode & 0o777;
+  assert.strictEqual(afterMode, beforeMode, 'the symlink TARGET mode is UNCHANGED (chmod never followed the symlink)');
+});
+
+// ---------------------------------------------------------------------------
+// C3 (Major) + F2: the oversize guard was RACEABLE - st.size checked, then an UNBOUNDED
+// readFileSync(fd,'utf8') re-read, so a same-uid writer could grow the file between the fstat and
+// the read and bypass MAX_RECORD_BYTES. readBoundedText(fd, cap) reads at most cap+1 bytes through
+// the fd and returns the bounded TEXT, or null ONLY for the oversize case, INDEPENDENT of st.size.
+// The tests call the helper DIRECTLY on a >cap fd (bypassing the st.size pre-check that would
+// otherwise SHADOW the bounded read), so the red-test fails against an unbounded readFileSync, NOT
+// only the retained st.size check. Plus a boundary test at EXACTLY cap (text) and cap+1 (null). F2:
+// the caller does JSON.parse, so a literal-'null' body is rejected as not-an-object, never oversize.
+// ---------------------------------------------------------------------------
+
+test('C3: readBoundedText returns null for a >cap fd INDEPENDENT of st.size (bypasses the st.size pre-check)', () => {
+  const cap = store.MAX_RECORD_BYTES;
+  const dir = tmp();
+  const big = path.join(dir, 'oversize.bin');
+  const payload = `{"x":"${'y'.repeat(cap + 100)}"}`;
+  fs.writeFileSync(big, payload);
+  assert.ok(payload.length > cap, 'precondition: the planted body exceeds the cap');
+  const fd = fs.openSync(big, fs.constants.O_RDONLY);
+  try {
+    assert.strictEqual(store.readBoundedText(fd, cap), null, 'a body that exceeds the cap returns null (oversize, not st.size)');
+  } finally { fs.closeSync(fd); }
+});
+
+test('C3: readBoundedText boundary - EXACTLY cap returns text, EXACTLY cap+1 returns null', () => {
+  const cap = store.MAX_RECORD_BYTES;
+  const dir = tmp();
+  const fillExact = cap - '{"x":""}'.length;
+  const exactBody = `{"x":"${'z'.repeat(fillExact)}"}`;
+  assert.strictEqual(Buffer.byteLength(exactBody), cap, 'the exact body is precisely cap bytes');
+  const fExact = path.join(dir, 'exact.bin');
+  fs.writeFileSync(fExact, exactBody);
+  const fdE = fs.openSync(fExact, fs.constants.O_RDONLY);
+  try {
+    const text = store.readBoundedText(fdE, cap);
+    assert.strictEqual(typeof text, 'string', 'a body of EXACTLY cap bytes returns the bounded text');
+    assert.strictEqual(JSON.parse(text).x, 'z'.repeat(fillExact), 'the caller parses the exact-cap text');
+  } finally { fs.closeSync(fdE); }
+  const plusBuf = `${exactBody.slice(0, exactBody.length - 2)}z"}`;
+  assert.strictEqual(Buffer.byteLength(plusBuf), cap + 1, 'the over body is precisely cap+1 bytes');
+  const fPlus = path.join(dir, 'plus.bin');
+  fs.writeFileSync(fPlus, plusBuf);
+  const fdP = fs.openSync(fPlus, fs.constants.O_RDONLY);
+  try {
+    assert.strictEqual(store.readBoundedText(fdP, cap), null, 'a body of EXACTLY cap+1 bytes returns null');
+  } finally { fs.closeSync(fdP); }
+});
+
+test('C3/F2: a literal-null node body (within cap) is rejected, NOT mislabeled oversize-race', () => {
+  const dir = tmp();
+  const id = 'b'.repeat(64);
+  // the JSON literal `null` is within cap and parses to JS null. With readBoundedText the caller parses
+  // it and the not-an-object guard rejects it - never an oversize-race (the F2 null-conflation close).
+  fs.writeFileSync(path.join(dir, `${id}.json`), 'null');
+  const { r, lastReason } = captureAlert(() => store.readLiveNode(id, { dir }));
+  assert.strictEqual(r, null, 'a literal-null body is rejected on read');
+  assert.ok(/not-an-object/.test(lastReason || ''), 'the rejection is OBSERVABLE as not-an-object (the invalid-body signal, CodeRabbit)');
+  assert.ok(!/oversize-race/.test(lastReason || ''), 'a within-cap literal-null is never mislabeled oversize-race');
+});
+
 console.log(`live-recall-store.test.js: ${passed} passed`);

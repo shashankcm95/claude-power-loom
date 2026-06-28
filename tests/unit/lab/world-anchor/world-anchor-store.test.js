@@ -22,6 +22,7 @@ const path = require('path');
 const REPO = path.join(__dirname, '..', '..', '..', '..');
 const {
   recordAttestation, recordConfirmation, resolveAnchorForPr, readAnchor, listAnchors, deriveAnchorId,
+  readBoundedText, MAX_RECORD_BYTES,
 } = require(path.join(REPO, 'packages', 'lab', 'world-anchor', 'world-anchor-store.js'));
 
 let passed = 0;
@@ -439,6 +440,148 @@ test('confirmation idempotency (5): an IDENTICAL re-confirmation stays ok (dedup
   const r2 = recordConfirmation(w.anchor_id, c, { dir });
   assert.strictEqual(r2.ok, true);
   assert.strictEqual(r2.deduped, true, 'an identical re-confirm is idempotent-ok');
+});
+
+// --------------------------------------------------------------------------
+// C1 (Major): ensureStoreDir must VALIDATE before it MUTATES. The old code ran
+// mkdirSync + chmodSync(dir, 0o700) BEFORE the lstat symlink check, so a symlinked store
+// dir had its TARGET chmod'd (chmod follows symlinks) before the refusal. The fix reorders
+// chmod to AFTER the symlink/non-dir/foreign checks. NON-VACUOUS: snapshot the symlink TARGET's
+// mode before the refused write + assert it is UNCHANGED after. RED against the unfixed
+// (chmod-before-lstat) code: the target mode would move 0o755 -> 0o700.
+// --------------------------------------------------------------------------
+
+test('C1: a symlinked store dir is REFUSED, EMITS, and its TARGET mode is UNCHANGED (validate-before-chmod + fail-closed-observable)', () => {
+  const base = tmp();
+  const target = path.join(base, 'real-target-dir');
+  fs.mkdirSync(target, { mode: 0o755 });
+  fs.chmodSync(target, 0o755);                                   // pin a NON-0o700 mode so a stray chmod is visible
+  const beforeMode = fs.statSync(target).mode & 0o777;
+  assert.notStrictEqual(beforeMode, 0o700, 'precondition: the target is not already 0o700');
+  const link = path.join(base, 'store-link');
+  fs.symlinkSync(target, link);                                  // the store dir is a SYMLINK to the real dir
+  // F1 (HIGH, fail-closed-must-be-observable): the store-dir refusal must EMIT (the siblings do; this
+  // store used to refuse SILENTLY). RED against the no-emit code: alerts would be empty.
+  let w;
+  const alerts = captureAlerts(() => { w = recordAttestation(att(), { dir: link }); });
+  assert.strictEqual(w.ok, false, 'a symlinked store dir is refused');
+  assert.strictEqual(w.reason, 'store-dir', 'the refuse reason is store-dir');
+  assert.ok(alerts.some((al) => al.reason === 'world-anchor-store-dir'), 'the store-dir refusal is OBSERVABLE (F1, NON-VACUOUS)');
+  const afterMode = fs.statSync(target).mode & 0o777;
+  assert.strictEqual(afterMode, beforeMode, 'the symlink TARGET mode is UNCHANGED (chmod never followed the symlink)');
+});
+
+test('C1/F1: recordConfirmation also EMITS on a store-dir refusal (parity with recordAttestation)', () => {
+  // first write a real attestation in a real dir so the anchor exists, then point recordConfirmation at
+  // a symlinked dir to drive the store-dir refusal. The emit must fire on the confirmation path too.
+  const real = tmp();
+  const w = recordAttestation(att(), { dir: real });
+  const base = tmp();
+  const target = path.join(base, 'real-target-dir');
+  fs.mkdirSync(target, { mode: 0o755 });
+  const link = path.join(base, 'store-link');
+  fs.symlinkSync(target, link);
+  let c;
+  const alerts = captureAlerts(() => {
+    c = recordConfirmation(w.anchor_id, { outcome: 'merged', confirmed_at: 'z' }, { dir: link });
+  });
+  assert.strictEqual(c.ok, false, 'a symlinked store dir is refused on the confirmation path');
+  assert.strictEqual(c.reason, 'store-dir');
+  assert.ok(alerts.some((al) => al.reason === 'world-anchor-store-dir'), 'the confirmation store-dir refusal is OBSERVABLE (F1)');
+});
+
+// --------------------------------------------------------------------------
+// C3 (Major) + F2: the oversize guard was RACEABLE - st.size checked, then an UNBOUNDED
+// readFileSync(fd,'utf8') re-read at BOTH read sites (readAnchorRaw + readConfirmationRaw), so a
+// same-uid writer could grow the file between the fstat and the read and bypass MAX_RECORD_BYTES.
+// readBoundedText(fd, cap) reads at most cap+1 bytes through the fd and returns the bounded TEXT,
+// or null ONLY for the oversize case, INDEPENDENT of st.size. The tests call the helper DIRECTLY
+// on a >cap fd (bypassing the st.size pre-check that would otherwise SHADOW the bounded read), so
+// the red-test fails against an unbounded readFileSync, NOT only the retained st.size check. Plus a
+// boundary test at EXACTLY cap (text) and cap+1 (null). F2: the caller does the JSON.parse, so a
+// literal-'null' body is rejected as not-an-object, never mislabeled oversize-race.
+// --------------------------------------------------------------------------
+
+test('C3: readBoundedText returns null for a >cap fd INDEPENDENT of st.size (bypasses the st.size pre-check)', () => {
+  const cap = MAX_RECORD_BYTES;
+  const dir = tmp();
+  const big = path.join(dir, 'oversize.bin');
+  const payload = `{"x":"${'y'.repeat(cap + 100)}"}`;
+  fs.writeFileSync(big, payload);
+  assert.ok(payload.length > cap, 'precondition: the planted body exceeds the cap');
+  const fd = fs.openSync(big, fs.constants.O_RDONLY);
+  try {
+    assert.strictEqual(readBoundedText(fd, cap), null, 'a body that exceeds the cap returns null (oversize, not st.size)');
+  } finally { fs.closeSync(fd); }
+});
+
+test('C3: readBoundedText boundary - EXACTLY cap returns text, EXACTLY cap+1 returns null', () => {
+  const cap = MAX_RECORD_BYTES;
+  const dir = tmp();
+  const fillExact = cap - '{"x":""}'.length;
+  const exactBody = `{"x":"${'z'.repeat(fillExact)}"}`;
+  assert.strictEqual(Buffer.byteLength(exactBody), cap, 'the exact body is precisely cap bytes');
+  const fExact = path.join(dir, 'exact.bin');
+  fs.writeFileSync(fExact, exactBody);
+  const fdE = fs.openSync(fExact, fs.constants.O_RDONLY);
+  try {
+    const text = readBoundedText(fdE, cap);
+    assert.strictEqual(typeof text, 'string', 'a body of EXACTLY cap bytes returns the bounded text');
+    assert.strictEqual(JSON.parse(text).x, 'z'.repeat(fillExact), 'the caller parses the exact-cap text');
+  } finally { fs.closeSync(fdE); }
+  const plusBuf = `${exactBody.slice(0, exactBody.length - 2)}z"}`;
+  assert.strictEqual(Buffer.byteLength(plusBuf), cap + 1, 'the over body is precisely cap+1 bytes');
+  const fPlus = path.join(dir, 'plus.bin');
+  fs.writeFileSync(fPlus, plusBuf);
+  const fdP = fs.openSync(fPlus, fs.constants.O_RDONLY);
+  try {
+    assert.strictEqual(readBoundedText(fdP, cap), null, 'a body of EXACTLY cap+1 bytes returns null');
+  } finally { fs.closeSync(fdP); }
+});
+
+test('C3/F2: a literal-null attestation body (within cap) is rejected (not mislabeled oversize)', () => {
+  const dir = tmp();
+  const w = recordAttestation(att(), { dir });
+  assert.strictEqual(w.ok, true, 'the seed attestation lands (so a later null read is the body rejection, not a missing seed)');
+  // overwrite the attestation file with the JSON literal `null` (within cap; parses to JS null). With
+  // readBoundedText the caller parses it and the not-an-object guard rejects it - never an oversize-race.
+  fs.writeFileSync(path.join(dir, `${w.anchor_id}.json`), 'null');
+  const alerts = captureAlerts(() => {
+    assert.strictEqual(readAnchor(w.anchor_id, { dir }), null, 'a literal-null body is rejected on read');
+  });
+  assert.ok(alerts.some((al) => al.kind === 'not-an-object'), 'the rejection is OBSERVABLE as not-an-object (the invalid-body signal, CodeRabbit)');
+  assert.ok(!alerts.some((al) => al.kind === 'oversize-race'), 'a within-cap literal-null is never mislabeled oversize-race');
+});
+
+// the SECOND C3 site: the confirmation sidecar read path. (a) the st.size fast path emits
+// confirmation-oversize; (b) the bounded-read RACE path has its OWN label confirmation-oversize-race
+// (F3b), driven DIRECTLY via readBoundedText on a >cap fd (F3a, mirroring the readAnchor direct test).
+test('C3: an oversize CONFIRMATION sidecar is rejected via the st.size fast path (confirmation-oversize)', () => {
+  const dir = tmp();
+  const w = recordAttestation(att(), { dir });
+  const cf = path.join(dir, `${w.anchor_id}.confirmation.json`);
+  fs.writeFileSync(cf, 'x'.repeat(MAX_RECORD_BYTES + 6 * 1024));  // a multi-GB plant, past the st.size cap
+  const alerts = captureAlerts(() => {
+    assert.strictEqual(readAnchor(w.anchor_id, { dir }).confirmation, null, 'an oversize confirmation sidecar is refused, surfaced as no-confirmation');
+  });
+  assert.ok(
+    alerts.some((al) => al.reason === 'world-anchor-verify-mismatch' && al.kind === 'confirmation-oversize'),
+    'the confirmation-oversize alert fires (NON-VACUOUS)',
+  );
+});
+
+test('C3/F3a: readBoundedText also guards the CONFIRMATION read site - a >cap fd returns null (direct, bypasses st.size)', () => {
+  const cap = MAX_RECORD_BYTES;
+  const dir = tmp();
+  // the same per-store helper backs both read sites; drive it DIRECTLY on a >cap confirmation-shaped fd.
+  const cf = path.join(dir, 'conf.bin');
+  const payload = `{"anchor_id":"${'a'.repeat(64)}","outcome":"merged","x":"${'y'.repeat(cap)}"}`;
+  fs.writeFileSync(cf, payload);
+  assert.ok(Buffer.byteLength(payload) > cap, 'precondition: the planted confirmation exceeds the cap');
+  const fd = fs.openSync(cf, fs.constants.O_RDONLY);
+  try {
+    assert.strictEqual(readBoundedText(fd, cap), null, 'the confirmation read site is bounded by the same helper (null past cap)');
+  } finally { fs.closeSync(fd); }
 });
 
 console.log(`world-anchor-store.test.js: ${passed} passed`);

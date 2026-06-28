@@ -115,13 +115,19 @@ function deriveWorldAnchorEdgeId(rec) {
   ]));
 }
 
-/** Throws unless `dir` exists, is a real (non-symlink) directory owned by selfUid. mkdir + harden first. */
+/**
+ * Throws unless `dir` exists, is a real (non-symlink) directory owned by selfUid. VALIDATE BEFORE
+ * MUTATE: mkdir is best-effort (its `mode` applies only on create + does NOT follow an existing
+ * symlink's target), but `chmod` FOLLOWS a symlink, so it runs ONLY AFTER the lstat symlink/non-dir/
+ * foreign checks pass - never chmod a symlink target before rejecting it.
+ */
 function ensureStoreDir(dir, selfUid) {
-  try { fs.mkdirSync(dir, { recursive: true, mode: 0o700 }); fs.chmodSync(dir, 0o700); } catch { /* best-effort create */ }
+  try { fs.mkdirSync(dir, { recursive: true, mode: 0o700 }); } catch { /* best-effort; lstat below fail-closes if absent */ }
   const st = fs.lstatSync(dir);                                       // throws (fail-closed) if absent
   if (st.isSymbolicLink()) throw new Error('world-anchor-edge: store dir is a symlink (refused)');
   if (!st.isDirectory()) throw new Error('world-anchor-edge: store dir is not a directory');
   if (isForeign(st, selfUid)) throw new Error('world-anchor-edge: store dir is foreign-owned (refused)');
+  fs.chmodSync(dir, 0o700);                                           // only AFTER validation - never chmod a symlink target
 }
 
 /**
@@ -145,14 +151,16 @@ function buildBody(rec, sig) {
 
 /**
  * Two bodies equal? edge_id is the identity seal AND the body has no free-prose field, but a signed
- * twin differs from an unsigned one (the sig is OUTSIDE the basis) - so compare the FULL on-disk shape.
+ * twin differs from an unsigned one (the sig is OUTSIDE the basis) - so compare the on-disk shape
+ * minus recorded_at. recorded_at is OUTSIDE the identity basis (deriveWorldAnchorEdgeId never folds
+ * it in), so a re-record of the same (from,to,type[,sig]) at a DIFFERENT time DEDUPS (first-write-wins)
+ * rather than colliding - excluding it from the equality is what makes the dedup idempotent.
  */
 function bodiesEqual(a, b) {
   return a.edge_id === b.edge_id
     && a.from_node_id === b.from_node_id
     && a.to_delta_ref === b.to_delta_ref
     && a.edge_type === b.edge_type
-    && a.recorded_at === b.recorded_at
     && a.sig_alg === b.sig_alg
     && a.edge_sig === b.edge_sig;
 }
@@ -219,9 +227,26 @@ function writeWorldAnchorEdge(rec, opts = {}) {
   return { ok: true, deduped: false, edge_id };
 }
 
+// Bounded positional read: read at most cap+1 bytes through the fd (the loop handles short reads), so a
+// same-uid writer that grows the file AFTER the fstat size-check cannot make us read an unbounded amount
+// (the #439/TOCTOU close). cap+1 and Buffer.alloc(cap+1) are LOAD-BEARING - never Buffer.alloc(cap) (the
+// cap+1-n read would overflow it). Returns the bounded UTF-8 TEXT (a string), or null ONLY for the
+// oversize case, so the caller's `text === null` test is an UNAMBIGUOUS oversize signal. The JSON.parse
+// stays in the caller (inside its outer try) - a malformed body throws there, and a literal-'null' body
+// parses to JS null and flows to the caller's not-an-object guard (never mislabeled oversize). A per-store
+// helper, NOT cross-store-shared (the deliberate-duplication header: each read path is audited independently).
+function readBoundedText(fd, cap) {
+  const buf = Buffer.alloc(cap + 1);
+  let n = 0;
+  let r = 0;
+  do { r = fs.readSync(fd, buf, n, cap + 1 - n, n); n += r; } while (r > 0 && n <= cap);
+  if (n > cap) return null;                    // grew past the cap after fstat -> reject
+  return buf.toString('utf8', 0, n);
+}
+
 /**
  * The ENUMERATED verify-on-read predicate (D4 a-i). Open no-follow, fstat the SAME fd, reject
- * non-regular / foreign / oversize (each OBSERVABLE) BEFORE readFileSync, parse, exact-set closed-
+ * non-regular / foreign / oversize (each OBSERVABLE) BEFORE the bounded read, parse, exact-set closed-
  * shape, STRICT endpoint HEX64, closed edge_type, valid recorded_at, edge_id == filename == derived
  * basis, a present sig SHAPE-checked (no crypto). Returns the verified body or null. Templated on
  * live-recall-store's readNodeRaw, NOT recall-edge-store's bare readFileSync (#439).
@@ -236,7 +261,13 @@ function readEdgeRaw(edge_id, dir, selfUid) {
     if (!st.isFile()) { alert('verify-mismatch', { edge_id, kind: 'non-regular-file' }); return null; }   // (b)
     if (isForeign(st, selfUid)) { alert('verify-mismatch', { edge_id, kind: 'foreign-owned' }); return null; } // (b)
     if (st.size > MAX_EDGE_BYTES) { alert('verify-mismatch', { edge_id, kind: 'oversize', size: st.size }); return null; } // (b)
-    const parsed = JSON.parse(fs.readFileSync(fd, 'utf8'));                                           // (c)
+    // (c) BOUNDED read (race-proof): st.size above is a fast early reject, but a same-uid writer can grow
+    // the file between the fstat and the read. readBoundedText caps the read at MAX_EDGE_BYTES+1 and returns
+    // null ONLY if the content grew past the cap after the fstat - an observable oversize-race, never an
+    // unbounded read. The JSON.parse is here (inside the outer try) so a malformed body throws to the catch.
+    const text = readBoundedText(fd, MAX_EDGE_BYTES);
+    if (text === null) { alert('verify-mismatch', { edge_id, kind: 'oversize-race' }); return null; }
+    const parsed = JSON.parse(text);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) { alert('verify-mismatch', { edge_id, kind: 'not-an-object' }); return null; }
     // (c) closed-shape exact-set: the key-set must be EXACTLY the unsigned OR the signed shape.
     const keys = Object.keys(parsed).sort();
@@ -376,4 +407,8 @@ module.exports = {
   WORLD_ANCHOR_SOURCE,
   WORLD_ANCHOR_EDGE_TYPE,
   DEFAULT_DIR,
+  // Exported for the C3 bounded-read unit test (drive the helper DIRECTLY on a >cap fd, bypassing the
+  // st.size pre-check that would otherwise shadow it). MAX_EDGE_BYTES is the cap the read path enforces.
+  readBoundedText,
+  MAX_EDGE_BYTES,
 };
