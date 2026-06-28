@@ -166,7 +166,7 @@ function mintWorldAnchorEdge(node_id, diffHash, opts = {}) {
  * attestation's content_hash-SEALED lesson_signature; the world-evidence merge_sha comes from the
  * gh-verified --merge-sha. Every non-mint reason is observable (the live store emits on a refuse; a
  * missing SHA or no-floor-lesson is a returned reason a caller surfaces, M1).
- * @returns {{minted: boolean, node_id?: string, reason?: string, edge_minted?: boolean,
+ * @returns {{minted: boolean, node_id?: string, deduped?: boolean, reason?: string, edge_minted?: boolean,
  *   edge_id?: string, edge_deduped?: boolean, edge_signed?: boolean, edge_reason?: string}}
  */
 // PRIVATE (not exported): the ONLY legitimate caller is runRecordMerge, which gates on the EXACT
