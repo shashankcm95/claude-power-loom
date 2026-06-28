@@ -339,9 +339,13 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/lab/persona-experiment/_spike/dogfood-run.js` - 3.1-W3b DOGFOOD (_spike) -- the Rule-2a-corollary REAL-PATH proof for the run+measure layer.
 - `packages/lab/persona-experiment/earned-grounding-run.js` - 3.1-W4c -- the earned-grounding RUN driver.
 - `packages/lab/persona-experiment/grounding-slice.js` - 3.1-W3a -- the grounding-slice builder (arm C's "earned instincts").
+- `packages/lab/persona-experiment/issue-classifier.js` - item 4 (D1, D2, D5) - a PURE, DETERMINISTIC, TOTAL issue->persona classifier.
 - `packages/lab/persona-experiment/live-draft-run.js` - ③.2.2c — the semantic-only DRAFT loop on REAL repos.
+- `packages/lab/persona-experiment/persona-brief-map.js` - item 4 (D3) - the SINGLE SOURCE OF TRUTH that pairs a BARE agentType (the Agent-tool
+- `packages/lab/persona-experiment/persona-prompt-materializer.js` - item 4 (D4, D6, D8) - the persona prompt MATERIALIZER.
 - `packages/lab/persona-experiment/_spike/real-solve-spike.js` - 3.1-W4b SPIKE (_spike, OUTSIDE tests/unit/**) -- the Rule-2a-corollary REAL-PATH proof for the
 - `packages/lab/persona-experiment/real-solve.js` - 3.1-W4b -- the REAL `claude -p` solve+grade driver: the injectable async `solveFn` the arm-loop
+- `packages/lab/persona-experiment/_lib/render-fenced-bounded-block.js` - item 4 (D4 / fold D-2) - the PURE fenced-bounded-block primitive, extracted from
 
 ### `lab/reputation/`
 

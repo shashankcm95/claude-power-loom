@@ -20,6 +20,22 @@ const { gradeLiveIssueSemantic } = require('../causal-edge/live-grade');
 const { makeBlindSemanticJudge } = require('../causal-edge/calibration-issue-run');
 const { makeFrictionLabeler, buildActorPrompt, resolveClaude } = require('../causal-edge/trajectory-friction-run');
 const { verifyToollessRuntime } = require('../_lib/claude-headless');
+const { classifyIssue } = require('./issue-classifier');
+const { materialize: materializePersona } = require('./persona-prompt-materializer');
+
+// item 4 (D5) - the SHADOW flag that gates the PROMPT change ONLY (default OFF keeps the prompt
+// byte-identical). The classify FIELDS ride on the outcome + artifact UNCONDITIONALLY (shadow
+// record), independent of this flag.
+//
+// M-1 (security.md asymmetric-flag rule): enabling the privileged path (injecting actor-prompt
+// context) needs a STRICT explicit-truthy allowlist. A typo ('ture') or any garbage token fails
+// CLOSED to the bare prompt - NOT a lenient "anything-not-falsey" parse that would let a typo
+// silently enable injection.
+const PERSONA_MATERIALIZE_TRUTHY = Object.freeze(['1', 'true', 'yes', 'on']);
+function personaMaterializeEnabled() {
+  const v = String(process.env.LOOM_PERSONA_MATERIALIZE || '').trim().toLowerCase();
+  return PERSONA_MATERIALIZE_TRUTHY.includes(v);
+}
 
 // --------------------------------------------------------------------------
 // Pure transforms (fold #2 / fold #5)
@@ -75,18 +91,28 @@ async function preflightEnv({ dockerBin, image, deps = {} } = {}) {
 // The ONLY read of the actor's tree is captureActorDiff (git), preserving the only-git-capture
 // invariant (M1). All side-effecting primitives are injectable seams for unit tests.
 async function solveLiveIssueContained({
-  record, apiKey, model, timeout, ledgerPath, runId, maxBudgetUsd, dockerBin, image, deps = {},
+  record, apiKey, model, timeout, ledgerPath, runId, maxBudgetUsd, dockerBin, image, persona = null, deps = {},
 } = {}) {
   const prepareCloneFn = deps.prepareCloneFn || prepareClone;
   const runActorFn = deps.runActorFn || runActorInContainer;
   const captureFn = deps.captureFn || captureActorDiff;
   const recordCostFn = deps.recordCostFn || recordCost;
   const safeDiscardFn = deps.safeDiscardFn || safeDiscard;
+  const materializeFn = deps.materializeFn || materializePersona;
   let clone = null;
   try {
     clone = await prepareCloneFn({ repo: record.repo, base_sha: record.base_sha });
+    // item 4 (D5) - SHADOW persona-prompt injection. ONLY when the flag is on AND a persona was
+    // classified does the materialized block ride into the prompt; a null/falsy materialize
+    // result FALLS THROUGH to the bare prompt (no throw). Flag-off -> byte-identical bare prompt.
+    let extraContext = null;
+    if (persona && personaMaterializeEnabled()) {
+      const m = materializeFn(persona);
+      extraContext = m && m.block ? m.block : null;
+    }
+    const prompt = extraContext ? buildActorPrompt(record, extraContext) : buildActorPrompt(record);
     const result = await runActorFn({
-      workDir: clone.workDir, prompt: buildActorPrompt(record), apiKey, model, maxBudgetUsd, timeout, dockerBin, image,
+      workDir: clone.workDir, prompt, apiKey, model, maxBudgetUsd, timeout, dockerBin, image,
     });
     const costUsd = result && Number.isFinite(result.costUsd) ? result.costUsd : null;
     if (costUsd != null && costUsd >= 0) {
@@ -133,32 +159,59 @@ function finalizeReport(report, artifactsDir) {
 // Per-record: solve -> symlink-reject -> grade -> emitPR dry-run -> artifact. All stages fail-soft.
 async function solveGradeDraftOne(ctx) {
   const { record, env, artifactsDir, solveFn, gradeFn, emitFn, semanticFn, frictionFn, now } = ctx;
+
+  // item 4 (D5) - classify ALWAYS (it is total). The classifyFn dep defaults to classifyIssue;
+  // a dep that throws is degraded to the total fail shape so the wire NEVER aborts the record.
+  const classifyFn = (ctx.deps && ctx.deps.classifyFn) || classifyIssue;
+  let classification;
+  try { classification = classifyFn(record); }
+  catch { classification = { persona: null, classify_signal: 'classify-threw', matched: null }; }
+  const classifyFields = {
+    persona: classification && classification.persona != null ? classification.persona : null,
+    classify_signal: classification && classification.classify_signal ? classification.classify_signal : 'classify-threw',
+    matched: classification && classification.matched != null ? classification.matched : null,
+  };
+
   let ref;
   try { ref = parseRecordRef(record); }
-  catch (e) { return recordOutcome(record, { stage: 'parse', ok: false, reason: (e && e.message) || 'bad-record' }); }
+  catch (e) { return recordOutcome(record, { stage: 'parse', ok: false, reason: (e && e.message) || 'bad-record', ...classifyFields }); }
 
-  const solveRes = await solveFn({
-    record, apiKey: env.apiKey, model: ctx.model, timeout: ctx.timeout, ledgerPath: ctx.ledgerPath,
-    runId: ctx.runId, maxBudgetUsd: ctx.maxBudgetUsd, dockerBin: ctx.dockerBin, image: ctx.image, deps: ctx.deps,
-  });
+  // item 4 (CodeRabbit Major): a throw from solveFn must NOT escape to the loop-catch (which would
+  // stamp classify-threw and DROP a persona that already classified). Catch here, preserve classifyFields.
+  let solveRes;
+  try {
+    solveRes = await solveFn({
+      record, apiKey: env.apiKey, model: ctx.model, timeout: ctx.timeout, ledgerPath: ctx.ledgerPath,
+      runId: ctx.runId, maxBudgetUsd: ctx.maxBudgetUsd, dockerBin: ctx.dockerBin, image: ctx.image,
+      persona: classifyFields.persona, deps: ctx.deps,
+    });
+  } catch (e) {
+    return recordOutcome(record, { stage: 'solve', ok: false, reason: 'solve-threw:' + ((e && e.message) || 'error'), ...classifyFields });
+  }
   if (!solveRes || solveRes.ok !== true) {
-    return recordOutcome(record, { stage: 'solve', ok: false, reason: (solveRes && solveRes.reason) || 'solve-failed', cost_usd: solveRes && solveRes.costUsd });
+    return recordOutcome(record, { stage: 'solve', ok: false, reason: (solveRes && solveRes.reason) || 'solve-failed', cost_usd: solveRes && solveRes.costUsd, ...classifyFields });
   }
   // fold #5 — a symlink-entry candidate never reaches the DRAFT.
   if (hasSymlinkEntry(solveRes.candidate)) {
-    return recordOutcome(record, { stage: 'draft', ok: false, reason: 'symlink-entry-rejected', cost_usd: solveRes.costUsd });
+    return recordOutcome(record, { stage: 'draft', ok: false, reason: 'symlink-entry-rejected', cost_usd: solveRes.costUsd, ...classifyFields });
   }
   let verdict = null;
   try { verdict = await gradeFn({ record, candidate: solveRes.candidate, semanticFn, frictionFn }); }
   catch (e) { verdict = { error: 'grade-threw:' + ((e && e.message) || 'error') }; }
 
   // fold #4 — emitPR dry-run is NOT guaranteed ok:true (lock / empty / .github -> ok:false). Fail-soft.
-  const emitRes = await emitFn({ repo: ref.slug, issueRef: ref.issueRef, diff: solveRes.candidate }, {});
+  // item 4 (CodeRabbit Major): an emitFn throw must also preserve classifyFields, not escape to the loop-catch.
+  let emitRes;
+  try {
+    emitRes = await emitFn({ repo: ref.slug, issueRef: ref.issueRef, diff: solveRes.candidate }, {});
+  } catch (e) {
+    return recordOutcome(record, { stage: 'draft', ok: false, reason: 'emit-threw:' + ((e && e.message) || 'error'), verdict, cost_usd: solveRes.costUsd, ...classifyFields });
+  }
   if (!emitRes || emitRes.ok !== true) {
-    return recordOutcome(record, { stage: 'draft', ok: false, reason: 'emit:' + ((emitRes && emitRes.reason) || 'unknown'), verdict, cost_usd: solveRes.costUsd });
+    return recordOutcome(record, { stage: 'draft', ok: false, reason: 'emit:' + ((emitRes && emitRes.reason) || 'unknown'), verdict, cost_usd: solveRes.costUsd, ...classifyFields });
   }
   if (emitRes.emitted !== false) { // defense-in-depth: a dry-run MUST never emit
-    return recordOutcome(record, { stage: 'draft', ok: false, reason: 'UNEXPECTED-EMISSION', cost_usd: solveRes.costUsd });
+    return recordOutcome(record, { stage: 'draft', ok: false, reason: 'UNEXPECTED-EMISSION', verdict, cost_usd: solveRes.costUsd, ...classifyFields });
   }
   // writeArtifact is the one post-gate step that touches the filesystem; an fs error (ENOSPC, perms)
   // must stay per-record fail-soft (VALIDATE HIGH), not abort the loop.
@@ -167,11 +220,12 @@ async function solveGradeDraftOne(ctx) {
     artifact = writeArtifact(artifactsDir, {
       record_id: record.id, slug: ref.slug, issue_ref: ref.issueRef, verdict,
       draft: emitRes.draft, cost_usd: solveRes.costUsd, redacted: solveRes.redacted, generated_at: now != null ? now : null,
+      ...classifyFields,
     });
   } catch (e) {
-    return recordOutcome(record, { stage: 'draft', ok: false, reason: 'artifact-write-failed:' + ((e && e.message) || 'error'), verdict, cost_usd: solveRes.costUsd });
+    return recordOutcome(record, { stage: 'draft', ok: false, reason: 'artifact-write-failed:' + ((e && e.message) || 'error'), verdict, cost_usd: solveRes.costUsd, ...classifyFields });
   }
-  return recordOutcome(record, { stage: 'draft', ok: true, reason: 'draft-written', verdict, cost_usd: solveRes.costUsd, artifact });
+  return recordOutcome(record, { stage: 'draft', ok: true, reason: 'draft-written', verdict, cost_usd: solveRes.costUsd, artifact, ...classifyFields });
 }
 
 // --------------------------------------------------------------------------
@@ -224,7 +278,13 @@ async function runLiveDraftLoop({
         model, timeout, ledgerPath, runId, maxBudgetUsd: capUsd, dockerBin, image, deps, now,
       });
     } catch (e) {
-      outcome = recordOutcome(recs[i], { stage: 'loop', ok: false, reason: 'record-threw:' + ((e && e.message) || 'error') });
+      // F4 - the loop-level catch ALSO stamps the classify fields so the "classify fields on
+      // every outcome" invariant (D5/D7) is unconditional. We never reached solveGradeDraftOne's
+      // own classify (or it is the thing that threw), so the fields are the total fail shape.
+      outcome = recordOutcome(recs[i], {
+        stage: 'loop', ok: false, reason: 'record-threw:' + ((e && e.message) || 'error'),
+        persona: null, classify_signal: 'classify-threw', matched: null,
+      });
     }
     report.outcomes.push(outcome);
   }
