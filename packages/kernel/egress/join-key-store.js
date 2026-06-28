@@ -142,6 +142,23 @@ function ensureStoreDir(dir, selfUid) {
 }
 
 /**
+ * READ-ONLY store-dir validator (the symmetric counterpart of ensureStoreDir, which is WRITE-side). A read of
+ * an ABSENT store is NORMAL (a not-yet-created store) -> 'absent' WITHOUT a mutation and WITHOUT an alert (the
+ * caller maps it to the empty result). A SYMLINK or FOREIGN-UID read root is an attack-shaped redirect of every
+ * verified read/enumeration -> the caller alerts + returns empty. NEVER mkdir/chmod (a read must not create or
+ * mutate the store). Returns a reason token: 'absent' | 'symlink' | 'foreign' | 'not-a-dir', or null when the dir
+ * is a real self-owned directory safe to read.
+ */
+function validateReadDir(dir, selfUid) {
+  let st;
+  try { st = fs.lstatSync(dir); } catch { return 'absent'; }   // ENOENT (or any stat failure) -> treat as absent, no alert
+  if (st.isSymbolicLink()) return 'symlink';
+  if (!st.isDirectory()) return 'not-a-dir';
+  if (isForeign(st, selfUid)) return 'foreign';
+  return null;
+}
+
+/**
  * Build the canonical stored body (fixed shape) + the derived id. A present built_by recorded-claim is
  * carried through OUTSIDE the id basis (additive). Immutable: a fresh object, never a mutation of the
  * caller's input.
@@ -318,6 +335,13 @@ function loadJoinKey(id, opts = {}) {
   const selfUid = opts.selfUid === undefined ? currentUid() : opts.selfUid;
   let dir;
   try { dir = storeDir(opts); } catch { return null; }
+  // Validate the read root BEFORE the read (a symlinked/foreign dir redirects every verified read). Absent is
+  // a normal not-yet-created store (silent null); a symlink/foreign/non-dir root is observable then null.
+  const dirReason = validateReadDir(dir, selfUid);
+  if (dirReason) {
+    if (dirReason !== 'absent') alert('read-dir', { reason: dirReason });
+    return null;
+  }
   const body = readJoinKeyRaw(id, dir, selfUid);
   return body ? Object.freeze({ ...body }) : null;
 }
@@ -329,8 +353,17 @@ function loadJoinKey(id, opts = {}) {
  */
 function listJoinKeys(opts = {}) {
   const selfUid = opts.selfUid === undefined ? currentUid() : opts.selfUid;
-  let dir; let entries;
-  try { dir = storeDir(opts); entries = fs.readdirSync(dir); } catch { return []; }
+  let dir;
+  try { dir = storeDir(opts); } catch { return []; }
+  // Validate the read root BEFORE the readdir (a symlinked/foreign dir redirects the enumeration). Absent is
+  // a normal not-yet-created store (silent []); a symlink/foreign/non-dir root is observable then [].
+  const dirReason = validateReadDir(dir, selfUid);
+  if (dirReason) {
+    if (dirReason !== 'absent') alert('read-dir', { reason: dirReason });
+    return [];
+  }
+  let entries;
+  try { entries = fs.readdirSync(dir); } catch { return []; }
   const out = [];
   for (const name of entries) {
     if (!name.endsWith(JOIN_KEY_SUFFIX)) continue;

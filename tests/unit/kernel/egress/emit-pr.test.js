@@ -702,11 +702,15 @@ test('item1: additive-failure isolation — a THROWING writeJoinKey path (e.g. a
       // {ok:false} (store-dir) — the emit must NOT revert, and the write site emits its own alert via the
       // store's observable refuse. (The write-failed alert is store-internal; the emission still succeeds.)
       const badDir = path.join(dir, 'a-file'); fs.writeFileSync(badDir, 'x');
-      const { value: r } = captureAlerts(() => E.emitPR(goodData(), Object.assign({}, opts, {
+      const { value: r, alerts } = captureAlerts(() => E.emitPR(goodData(), Object.assign({}, opts, {
         custodyJoinKeyDir: badDir,
         armedEmitFn: () => fakePr(),
       })));
       assert.strictEqual(r.ok, true); assert.strictEqual(r.emitted, true, 'the join-key failure NEVER reverts the emission');
+      // #1: a NON-throwing writeJoinKey refusal ({ok:false}) must surface the write-site signal — without
+      // this assertion the test would pass even if the alert never fired (the fail-silent gap). The store
+      // ALSO self-emits its own store-dir alert (defense-in-depth); both are acceptable.
+      assert.ok(/egress-join-key-write-failed/.test(alerts), 'the non-throwing write refusal is observable at the write site');
     });
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

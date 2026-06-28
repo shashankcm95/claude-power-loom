@@ -284,3 +284,23 @@ Firsthand verification (verify-by-execution, Rule 2a-corollary): `join-key-store
 4, `emit-pr` 51, `gh-emit` 57 — all green; full egress suite 18/18; **full kernel suite 107 suites,
 0 failures**; eslint + markdownlint clean; release-surface clean. Honesty note: the builder reported
 "+10" emitPR item-1 tests; the firsthand-verified total is `emit-pr.test.js` = 51 passed (was 46).
+
+## CodeRabbit fold (async-bot gate, 2026-06-28 — the #439 SCAR pattern)
+
+The retriggered CodeRabbit review (the earlier pass was rate-limited) posted **5 findings, all
+premise-probed REAL** — the async-bot complemented the 3-lens board (which PASSED), catching two
+security Majors it missed:
+
+| # | sev | finding | fix |
+|---|---|---|---|
+| 1 | Major (fail-silent) | `writeJoinKey`'s collision/write-failed `{ok:false}` paths skip the alert; the emit-pr write-site only caught throws | write-site captures `jk` + emits `egress-join-key-write-failed` on `jk.ok===false` |
+| 2 | Major (security) | `loadJoinKey`/`listJoinKeys` read from `opts.dir` with no symlink/foreign check (write path's `ensureStoreDir` validates; read path didn't) | new `validateReadDir` (lstat; `absent`→silent, `symlink`/`foreign`/`not-a-dir`→alert) at the top of both readers |
+| 3 | Minor | the non-throwing-failure test discarded `alerts` | assert the `egress-join-key-write-failed` alert |
+| 4 | Major (security) | the SHADOW dam grepped literal call-tokens → an aliased import (`{loadJoinKey: read}`) bypassed it | import-graph-aware dam: parse each `require('…join-key-store')` destructure, gate the SOURCE binding names under any alias |
+| 5 | Minor | the fast-fail null test didn't assert "no fs touch" | spy `openSync`/`readSync`/`fstatSync`/`readdirSync` → assert zero record-fs calls |
+
+The **sibling `world-anchor-edge-store`** has the identical #2 read-dir gap — tracked separately (out
+of this PR's scope; a `spawn_task` chip). Post-fold firsthand: `join-key-store` **29**, `join-key-shadow`
+**6**, `emit-pr` 51, `gh-emit` 57; full kernel **107** green; eslint + signpost clean. Rule-2a live
+probe of the BUILT #2 fix: a symlinked read-root → null/`[]` + 2 observable `read-dir` alerts; an absent
+store → silent null/`[]`.

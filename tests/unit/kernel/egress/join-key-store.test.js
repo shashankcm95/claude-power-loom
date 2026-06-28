@@ -316,11 +316,87 @@ test('loadJoinKey: an absent id returns null and does NOT emit (benign)', () => 
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('loadJoinKey: a non-hex id is rejected without touching the fs', () => {
+test('loadJoinKey: a non-hex id is rejected WITHOUT opening/reading the record file (fast-fail-before-record-fs)', () => {
+  const dir = scratch('loom-jk-');
+  // Spy the RECORD-read fs methods. A malformed id must short-circuit BEFORE any record open/read/stat. (The
+  // dir-level lstatSync read-root validation legitimately runs first — that is the #2 security pre-check, NOT a
+  // record touch — so it is excluded from the zero-call assertion.) Without this spy the test would still pass
+  // if loadJoinKey regressed to openSync/readSync the path before the id check.
+  const RECORD_FS = ['openSync', 'readSync', 'fstatSync', 'readdirSync'];
+  const orig = {};
+  const calls = [];
+  for (const m of RECORD_FS) { orig[m] = fs[m]; fs[m] = (...a) => { calls.push(m); return orig[m].apply(fs, a); }; }
+  try {
+    assert.strictEqual(S.loadJoinKey('not-hex', { dir, selfUid: SELF }), null);
+    assert.strictEqual(S.loadJoinKey(123, { dir, selfUid: SELF }), null);
+    assert.deepStrictEqual(calls, [], `the malformed-id fast-fail touched the record fs: ${calls.join(', ')}`);
+  } finally {
+    for (const m of RECORD_FS) fs[m] = orig[m];
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// === #2: validate the read root (symlink/foreign/absent) BEFORE the read/enumeration ===
+
+test('loadJoinKey: a SYMLINK store dir is refused on READ (a record behind the link is NOT served) + observable', () => {
   const dir = scratch('loom-jk-');
   try {
-    assert.strictEqual(S.loadJoinKey('not-hex', { dir }), null);
-    assert.strictEqual(S.loadJoinKey(123, { dir }), null);
+    if (WIN) { skipped += 1; return; }
+    // a REAL dir with a valid record, then a symlink AT the dir level. The link WOULD resolve to a readable
+    // record absent the guard -> proves the read-root validator is non-vacuous (the redirect is refused).
+    const real = path.join(dir, 'real'); fs.mkdirSync(real);
+    const { id } = S.writeJoinKey(rec(), { dir: real, selfUid: SELF });
+    const link = path.join(dir, 'link'); fs.symlinkSync(real, link);
+    const alerts = captureAlerts(() => {
+      assert.strictEqual(S.loadJoinKey(id, { dir: link, selfUid: SELF }), null, 'a symlinked read root is refused');
+    });
+    assert.ok(/egress-join-key-read-dir/.test(alerts), 'a symlinked read root is observable');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('listJoinKeys: a SYMLINK store dir is refused on READ -> [] + observable', () => {
+  const dir = scratch('loom-jk-');
+  try {
+    if (WIN) { skipped += 1; return; }
+    const real = path.join(dir, 'real'); fs.mkdirSync(real);
+    S.writeJoinKey(rec(), { dir: real, selfUid: SELF });
+    const link = path.join(dir, 'link'); fs.symlinkSync(real, link);
+    let out;
+    const alerts = captureAlerts(() => { out = S.listJoinKeys({ dir: link, selfUid: SELF }); });
+    assert.deepStrictEqual(out, [], 'a symlinked read root enumerates nothing');
+    assert.ok(/egress-join-key-read-dir/.test(alerts), 'a symlinked enumeration root is observable');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('loadJoinKey / listJoinKeys: a FOREIGN-uid store dir is refused on READ + observable', () => {
+  const dir = scratch('loom-jk-');
+  try {
+    if (WIN) { skipped += 1; return; }
+    const { id } = S.writeJoinKey(rec(), { dir, selfUid: SELF });
+    // pretend the read root is owned by another uid: validateReadDir lstats the dir and sees a foreign owner.
+    const aLoad = captureAlerts(() => {
+      assert.strictEqual(S.loadJoinKey(id, { dir, selfUid: SELF + 1 }), null, 'a foreign read root is refused (load)');
+    });
+    assert.ok(/egress-join-key-read-dir/.test(aLoad), 'a foreign load root is observable');
+    let out;
+    const aList = captureAlerts(() => { out = S.listJoinKeys({ dir, selfUid: SELF + 1 }); });
+    assert.deepStrictEqual(out, [], 'a foreign read root enumerates nothing');
+    assert.ok(/egress-join-key-read-dir/.test(aList), 'a foreign enumeration root is observable');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('loadJoinKey / listJoinKeys: an ABSENT store dir returns empty SILENTLY (a not-yet-created store is normal, no alert, no mkdir)', () => {
+  const dir = scratch('loom-jk-');
+  try {
+    const missing = path.join(dir, 'never-created');
+    let body; let out;
+    const aLoad = captureAlerts(() => { body = S.loadJoinKey(HEX64, { dir: missing, selfUid: SELF }); });
+    assert.strictEqual(body, null, 'absent load -> null');
+    assert.ok(!/egress-join-key/.test(aLoad), 'an absent read root is benign (not alerted)');
+    const aList = captureAlerts(() => { out = S.listJoinKeys({ dir: missing, selfUid: SELF }); });
+    assert.deepStrictEqual(out, [], 'absent list -> []');
+    assert.ok(!/egress-join-key/.test(aList), 'an absent enumeration root is benign (not alerted)');
+    assert.strictEqual(fs.existsSync(missing), false, 'a READ must NEVER create the store dir');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 

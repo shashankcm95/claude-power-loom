@@ -474,7 +474,11 @@ function emitPR(data, opts = {}) {
         if (typeof opts.custodyJoinKeyDir === 'string' && pr && !pr.deduped) {
           try {
             const { built_by } = assertRecordedClaim(opts.joinKeyMeta);   // throws on a policy-shaped/oversized key
-            writeJoinKey({
+            // writeJoinKey NEVER throws: a collision / write-failed / validation refusal RETURNS {ok:false,reason}
+            // (with its OWN store-internal alert). The catch below only catches the assertRecordedClaim THROW, so
+            // surface the non-throwing refusal here too — a fail-silent {ok:false} would otherwise skip the
+            // write-site signal (the double-emit on store self-alerting paths is acceptable defense-in-depth).
+            const jk = writeJoinKey({
               repo: draft.repo,
               issueRef: draft.issueRef,
               pr_number: pr.number,
@@ -484,6 +488,9 @@ function emitPR(data, opts = {}) {
               ...(built_by ? { built_by } : {}),
               emitted_at: new Date(now).toISOString(),
             }, { dir: opts.custodyJoinKeyDir, selfUid: opts.selfUid });
+            if (jk && jk.ok === false) {
+              emitEgressAlert('egress-join-key-write-failed', { pr_url: pr.pr_url, reason: jk.reason });
+            }
           } catch (e) {
             emitEgressAlert('egress-join-key-write-failed', { pr_url: pr && pr.pr_url, reason: (e && e.message) || 'error' });
           }
