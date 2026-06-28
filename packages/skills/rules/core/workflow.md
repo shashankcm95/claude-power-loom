@@ -120,6 +120,8 @@ When a plan contains a **claim about current substrate state** — "file X exist
 
 **Status-decay sibling**: a present-tense status / calibration / causal claim in any LIVING doc (ROADMAP / RFC / MEMORY / plan / code-comment) decays like a stale line-number — re-probe it against the repo before trusting or citing it, and refresh via a dated accretion rather than trusting the frozen word (a doc froze "X is unbuilt" → the thing shipped hours later → the status word was never refreshed; a "sums to 1.00" comment that was actually 1.15).
 
+**Recon-completeness sibling** (`drift:recon-depth` graduated 2026-06-28): the probes above verify a STATED claim — but the inverse failure is missing a claim you never made. Before BUILDING a feature or asserting a gap/item is ABSENT (or DONE), grep the actual tree for an existing implementation — a recon pass, even a multi-reviewer one, can collectively MISS an existing implementation/gate (8 reviewers missed an existing shellcheck CI gate; a roadmap/MEMORY "item DONE" whose kernel half was never built, #447). The absence of a claim is not evidence of absence — search before you build or assert-absent.
+
 **Skip the probe** for: FUTURE-state claims ("PR 3 will introduce K9"); claims already backed by a same-session probe logged in the plan; pure-design claims with no runtime referent ("the simplest factoring is X").
 
 **Gate**: `/verify-plan` architect spawn (Check #9) FLAGs un-probed runtime claims; NEEDS-REVISION if any FAIL.
