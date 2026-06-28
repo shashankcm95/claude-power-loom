@@ -30,6 +30,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const store = require('./world-anchor-store');
 const liveStore = require('./live-recall-store');
+const { writeWorldAnchorEdge, loadWorldAnchorEdge, WORLD_ANCHOR_EDGE_TYPE } = require('./world-anchor-edge-store');
 const { buildWorldAnchorLesson, LESSON_2137 } = require('./lesson');
 const { emitEgressAlert } = require('../../kernel/egress/alert');
 
@@ -85,7 +86,7 @@ function parsePrUrl(url) {
  * caller-supplied lesson field -- hacker H2); a closed/stale/un-attested outcome mints NOTHING and the
  * non-mint is observable (the live store's refuse paths emit; a no-floor-lesson logs a reason).
  * @param {{pr: string, outcome: string, mergeSha?: string}} args
- * @param {{dir?: string, liveDir?: string, now?: string}} [opts]
+ * @param {{dir?: string, liveDir?: string, edgeDir?: string, edgeSigner?: (id: string) => string|null|undefined, now?: string}} [opts]
  * @returns {{ok: boolean, anchor_id?: string, reason?: string, minted?: boolean, live_node_id?: string}}
  */
 function runRecordMerge(args, opts = {}) {
@@ -104,8 +105,59 @@ function runRecordMerge(args, opts = {}) {
   const base = { ok: true, anchor_id: resolved.anchor_id, outcome: args.outcome };
   // The MINT gate: EXACT-string 'merged' only (not a subset/includes); closed/stale never mint.
   if (args.outcome !== 'merged') return base;
-  const mint = mintFromAttestation(resolved.anchor_id, args.mergeSha, { dir: opts.dir, liveDir: opts.liveDir });
-  return { ...base, minted: mint.minted, minted_deduped: !!mint.deduped, live_node_id: mint.node_id, mint_reason: mint.reason };
+  // Thread `now: confirmed_at` (the STABLE per-anchor timestamp computed above) so the additive edge's
+  // recorded_at is deterministic across a re-merge (a fresh Date() would COLLIDE-refuse the edge dedup,
+  // since recorded_at is in bodiesEqual but NOT the edge_id basis). edgeSigner is UNDEFINED in
+  // production -> the edge is UNSIGNED (SHADOW); PR-A2's off-host vehicle supplies it with no edit here.
+  const mint = mintFromAttestation(resolved.anchor_id, args.mergeSha, {
+    dir: opts.dir,
+    liveDir: opts.liveDir,
+    edgeDir: opts.edgeDir,
+    edgeSigner: opts.edgeSigner,
+    now: confirmed_at,
+  });
+  return {
+    ...base,
+    minted: mint.minted,
+    minted_deduped: !!mint.deduped,
+    live_node_id: mint.node_id,
+    mint_reason: mint.reason,
+    edge_minted: mint.edge_minted,
+    edge_id: mint.edge_id,
+    edge_deduped: mint.edge_deduped,
+    edge_signed: mint.edge_signed,
+    edge_reason: mint.edge_reason,
+  };
+}
+
+/**
+ * Mint ONE world-anchored-by EDGE binding the minted node to the merged diff (ladder item 5, PR-A.2).
+ * A SMALL TOTAL helper so the additive-failure isolation lives in one named, testable place: it NEVER
+ * throws (the store is total) and always returns the edge_* shape. UNSIGNED by default (production
+ * passes no edgeSigner -> the store's signer is undefined -> a SHADOW, integrity-only edge that gates
+ * nothing - no production consumer admits the world-anchor source).
+ * @param {string} node_id  the minted node's id (the edge's from_node_id)
+ * @param {string} diffHash  the VERIFIED att.diff_hash (attestation-sealed HEX64) - the to_delta_ref
+ * @param {{edgeDir?: string, edgeSigner?: (id: string) => string|null|undefined, now?: string}} opts
+ * @returns {{edge_minted: boolean, edge_id?: string, edge_deduped?: boolean, edge_signed: boolean, edge_reason?: string}}
+ */
+function mintWorldAnchorEdge(node_id, diffHash, opts = {}) {
+  // recorded_at = the STABLE per-anchor confirmation timestamp (opts.now), so a re-merge DEDUPS
+  // (recorded_at is in bodiesEqual but NOT the edge_id basis -> a fresh Date() would COLLIDE-refuse).
+  const recorded_at = typeof opts.now === 'string' && opts.now.length > 0 ? opts.now : new Date().toISOString();
+  // to_delta_ref = the VERIFIED att.diff_hash (attestation-sealed HEX64), NEVER mergeSha (an untyped
+  // CLI arg). The store re-validates to_delta_ref is HEX64 (-> {ok:false,reason:'bad-to-delta-ref'});
+  // att.diff_hash is sealed-HEX64 so that store refuse is defense-in-depth, surfaced as edge_reason.
+  const e = writeWorldAnchorEdge(
+    { from_node_id: node_id, to_delta_ref: diffHash, edge_type: WORLD_ANCHOR_EDGE_TYPE[0], recorded_at },
+    { dir: opts.edgeDir, signer: opts.edgeSigner },   // signer UNDEFINED in production -> UNSIGNED
+  );
+  if (!e.ok) return { edge_minted: false, edge_signed: false, edge_reason: e.reason };
+  // edge_signed = the PERSISTED on-disk truth, NOT `typeof signer` (VALIDATE hacker H1: a supplied-but-
+  // failing signer degrades to UNSIGNED in the store, so deriving from the input would LIE). Re-read the
+  // verified edge: production (no signer) is always false; a failed/garbage signer is also false.
+  const persisted = loadWorldAnchorEdge(e.edge_id, { dir: opts.edgeDir });
+  return { edge_minted: true, edge_id: e.edge_id, edge_deduped: !!e.deduped, edge_signed: !!(persisted && persisted.sig_alg) };
 }
 
 /**
@@ -114,7 +166,8 @@ function runRecordMerge(args, opts = {}) {
  * attestation's content_hash-SEALED lesson_signature; the world-evidence merge_sha comes from the
  * gh-verified --merge-sha. Every non-mint reason is observable (the live store emits on a refuse; a
  * missing SHA or no-floor-lesson is a returned reason a caller surfaces, M1).
- * @returns {{minted: boolean, node_id?: string, reason?: string}}
+ * @returns {{minted: boolean, node_id?: string, deduped?: boolean, reason?: string, edge_minted?: boolean,
+ *   edge_id?: string, edge_deduped?: boolean, edge_signed?: boolean, edge_reason?: string}}
  */
 // PRIVATE (not exported): the ONLY legitimate caller is runRecordMerge, which gates on the EXACT
 // 'merged' outcome + a recorded confirmation. Exposing this would let a caller mint a live node
@@ -152,10 +205,16 @@ function mintFromAttestation(anchor_id, mergeSha, opts = {}) {
     lesson_body: lesson.lesson_body,
   }, { dir: opts.liveDir });
   if (!m.ok) return { minted: false, reason: m.reason };             // the live store already emitted an observable alert
-  // Propagate `deduped` so a re-mint (same content-address) is not reported as a NEW world-anchor
-  // event: minted:true + deduped:true means "the node exists", minted:true + deduped:false is a
-  // genuine first write. A log/automation consumer must be able to tell them apart.
-  return { minted: true, node_id: m.node_id, deduped: !!m.deduped };
+  // NODE-RESULT-FIRST + additive edge (D2): the node mint is the load-bearing result. Propagate
+  // `deduped` so a re-mint (same content-address) is not reported as a NEW world-anchor event:
+  // minted:true + deduped:true means "the node exists", minted:true + deduped:false is a genuine
+  // first write. A log/automation consumer must be able to tell them apart.
+  const nodeResult = { minted: true, node_id: m.node_id, deduped: !!m.deduped };
+  // The edge is ADDITIVE - it NEVER reverts nodeResult. mintWorldAnchorEdge is total (it cannot throw),
+  // and a FRESH spread (never a mutation) keeps the node-result byte-identical on an edge failure.
+  // att.diff_hash is read from the in-scope VERIFIED + content_hash-sealed `att` (no re-read, no TOCTOU).
+  const edge = mintWorldAnchorEdge(m.node_id, att.diff_hash, opts);
+  return { ...nodeResult, ...edge };
 }
 
 /**

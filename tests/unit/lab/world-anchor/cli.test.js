@@ -307,4 +307,47 @@ test('mintFromAttestation is NOT exported (confirmation-mint-only gate cannot be
   assert.strictEqual(typeof cli.runRecordMerge, 'function', 'the gated entry point is the public surface');
 });
 
+// --------------------------------------------------------------------------
+// Item 5, PR-A.2: the merged path additively mints a world-anchored-by EDGE (UNSIGNED, SHADOW). The
+// dedicated wire suite (item5-merge-edge-wire.test.js) exercises the edge binding + composition; here
+// we assert ONLY that the cli merged-path return now SURFACES the edge_* fields the wire produces.
+// --------------------------------------------------------------------------
+
+test('record-merge --outcome merged surfaces the edge_* fields (UNSIGNED edge minted alongside the node)', () => {
+  const dir = tmp();
+  const live = liveDir(dir);
+  const edges = path.join(dir, 'edges');
+  attest(dir);
+  const r = cli.runRecordMerge(
+    { pr: 'https://github.com/octo/widget/pull/77', outcome: 'merged', mergeSha: 'd91785ea' },
+    { dir, liveDir: live, edgeDir: edges, now: '2026-06-26T00:00:00.000Z' },
+  );
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.minted, true, 'the node still mints (the edge is additive)');
+  assert.strictEqual(r.edge_minted, true, 'the merged path now mints an edge');
+  assert.strictEqual(r.edge_signed, false, 'production supplies no signer -> the edge is UNSIGNED (SHADOW)');
+  assert.ok(/^[0-9a-f]{64}$/.test(r.edge_id), 'a 64-hex edge id is surfaced');
+});
+
+test('a NON-merged outcome surfaces NO edge_* fields (closed/stale mint nothing)', () => {
+  const dir = tmp();
+  const live = liveDir(dir);
+  const edges = path.join(dir, 'edges');
+  attest(dir);
+  const r = cli.runRecordMerge(
+    { pr: 'https://github.com/octo/widget/pull/77', outcome: 'closed' },
+    { dir, liveDir: live, edgeDir: edges, now: '2026-06-26T00:00:00.000Z' },
+  );
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.edge_minted, undefined, 'a closed outcome mints no edge (no edge_minted field)');
+});
+
+test('cli.js source references NEITHER resolveSigner NOR LOOM_EDGE_SIGNING_KEY (production-unsigned guarantee, hacker H2)', () => {
+  // The production wire NEVER self-signs into the authenticated lane: it must not resolve a signer from
+  // the env. A structural source assert is the strongest non-runtime proof the env-key path is absent.
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', '..', '..', 'packages', 'lab', 'world-anchor', 'cli.js'), 'utf8');
+  assert.strictEqual(src.includes('resolveSigner'), false, 'cli.js never calls resolveSigner (no env-fallback signer)');
+  assert.strictEqual(src.includes('LOOM_EDGE_SIGNING_KEY'), false, 'cli.js never references the env signing key');
+});
+
 console.log(`cli.test.js: ${passed} passed`);
