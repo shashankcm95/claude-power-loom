@@ -9,8 +9,21 @@
 # The actual policy (CLAUDE.md line 15): ADRs and RFCs are immutable/canonical; PLANS
 # are the LIVING per-wave design record. The three path_instructions below make that
 # boundary explicit to the reviewer.
+#
+# The reviews.auto_review block below is the SECOND purpose: rate-limit conservation. Each
+# incremental review (one per push) counts against the per-developer review cap; our workflow
+# pushes several commits per PR (build, plan-accretion, signpost regen, folds), so we pause
+# incremental re-reviews early AND open dev PRs as DRAFT (un-draft when the diff is final = one
+# review on the complete state, not one per push). See docs/coderabbit-options.md "rate-limit
+# conservation". Defaults: auto_incremental_review true, auto_pause_after_reviewed_commits 5.
 language: en-US
 reviews:
+  auto_review:
+    auto_pause_after_reviewed_commits: 2   # was default 5 — pause incremental re-reviews sooner
+    ignore_title_keywords:
+      - "WIP"
+      - "DO NOT MERGE"
+    # drafts stays false (the default): open dev PRs as DRAFT, un-draft when final.
   path_instructions:
     - path: "packages/specs/plans/**"
       instructions: >-

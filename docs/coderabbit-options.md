@@ -18,6 +18,26 @@ and the **IDE extension**.
 - Inspect the **resolved** config live: comment `@coderabbitai configuration` on any PR.
 - Add a config to the repo from the resolved settings: `@coderabbitai generate configuration`.
 
+### Rate-limit conservation (`reviews.auto_review`)
+
+The per-developer PR-review rate limit is real (we hit "1 review/hr" on a Pro account after a burst of PRs).
+**Each incremental review counts** against it — and `auto_incremental_review` (default `true`) fires one **per
+push**. Our workflow pushes several commits per PR (build, plan-accretion, signpost regen, folds), so an
+un-tuned PR can burn ~5 reviews before merge. The knobs ([auto-review docs](https://docs.coderabbit.ai/configuration/auto-review)):
+
+| Key | Default | What we set | Why |
+|---|---|---|---|
+| `auto_pause_after_reviewed_commits` | `5` | **`2`** | pauses incremental re-reviews after 2 reviewed commits; `0` = never pause (burns fastest) |
+| `ignore_title_keywords` | — | `["WIP", "DO NOT MERGE"]` | a WIP-titled PR is skipped entirely |
+| `drafts` | `false` | keep `false` | draft PRs are NOT auto-reviewed (the lever the workflow below exploits) |
+| `auto_incremental_review` | `true` | keep `true` | so the first push after un-draft still gets one auto-review before the pause |
+
+**The workflow lever (biggest win):** open dev PRs **`--draft`**, push all build/fold/signpost/plan-accretion
+commits while draft (**zero** reviews), then mark *ready-for-review* once CI is green + the diff is final → **one**
+review on the complete state. After the pause (or after a substantive late fold), trigger a re-review **manually**
+with `@coderabbitai review` — never let a signpost-regen or a plan-accretion push spend a review. Use
+`@coderabbitai pause` / `resume` and `@coderabbitai rate limit` to manage a hot branch by hand.
+
 ## 2a. Local / pre-PR — the CLI (the earliest secondary opinion)
 
 One-time: install per `https://www.coderabbit.ai/cli`, then `coderabbit auth login`. Check with
