@@ -341,4 +341,55 @@ test('C3/F2: a literal-null node body (within cap) is rejected, NOT mislabeled o
   assert.ok(!/oversize-race/.test(lastReason || ''), 'a within-cap literal-null is never mislabeled oversize-race');
 });
 
+// ---------------------------------------------------------------------------
+// Read-root store-dir guard (validate the read dir BEFORE the read/enumeration). The file-level
+// O_NOFOLLOW + fstat foreign-uid reject guards a symlinked/foreign FILE, but a symlinked/foreign
+// PARENT dir is undetected (O_NOFOLLOW covers only the final component; readdirSync follows a
+// symlinked dir). NON-VACUOUS: each test plants a redirect that WOULD serve a real node absent the
+// guard, then proves the guard refuses it + emits the observable read-dir signal.
+// ---------------------------------------------------------------------------
+
+test('readLiveNode / listLiveNodes: a SYMLINK read root is refused + observable', () => {
+  const SELF = typeof process.getuid === 'function' ? process.getuid() : null;
+  if (SELF === null) return;                              // no symlink/uid semantics (Windows)
+  const dir = tmp();
+  const real = path.join(dir, 'real'); fs.mkdirSync(real);
+  const m = store.mintWorldAnchoredNode(block(), { dir: real });   // a valid node behind the link
+  assert.strictEqual(m.ok, true);
+  const link = path.join(dir, 'link'); fs.symlinkSync(real, link);
+  const load = captureAlert(() => store.readLiveNode(m.node_id, { dir: link }));
+  assert.strictEqual(load.r, null, 'a symlinked read root is refused (read)');
+  assert.ok(load.alerted && /live-recall-read-dir/.test(load.lastReason || ''), 'symlinked read root is observable');
+  const list = captureAlert(() => store.listLiveNodes({ dir: link }));
+  assert.deepStrictEqual(list.r, [], 'a symlinked read root enumerates nothing');
+  assert.ok(list.alerted && /live-recall-read-dir/.test(list.lastReason || ''), 'symlinked enumeration root is observable');
+});
+
+test('readLiveNode / listLiveNodes: a FOREIGN-uid read root is refused + observable', () => {
+  const SELF = typeof process.getuid === 'function' ? process.getuid() : null;
+  if (SELF === null) return;
+  const dir = tmp();
+  const m = store.mintWorldAnchoredNode(block(), { dir, selfUid: SELF });
+  assert.strictEqual(m.ok, true);
+  // inject a mismatched selfUid: validateReadDir lstats the dir, sees a foreign owner, refuses.
+  const load = captureAlert(() => store.readLiveNode(m.node_id, { dir, selfUid: SELF + 1 }));
+  assert.strictEqual(load.r, null, 'a foreign read root is refused (read)');
+  assert.ok(load.alerted && /live-recall-read-dir/.test(load.lastReason || ''), 'foreign read root is observable');
+  const list = captureAlert(() => store.listLiveNodes({ dir, selfUid: SELF + 1 }));
+  assert.deepStrictEqual(list.r, [], 'a foreign read root enumerates nothing');
+  assert.ok(list.alerted && /live-recall-read-dir/.test(list.lastReason || ''), 'foreign enumeration root is observable');
+});
+
+test('readLiveNode / listLiveNodes: an ABSENT read root -> empty SILENTLY, no mkdir', () => {
+  const dir = tmp();
+  const missing = path.join(dir, 'never-created');
+  const load = captureAlert(() => store.readLiveNode('a'.repeat(64), { dir: missing }));
+  assert.strictEqual(load.r, null, 'absent read -> null');
+  assert.ok(!load.alerted, 'an absent read root is benign (not alerted)');
+  const list = captureAlert(() => store.listLiveNodes({ dir: missing }));
+  assert.deepStrictEqual(list.r, [], 'absent list -> []');
+  assert.ok(!list.alerted, 'an absent enumeration root is benign (not alerted)');
+  assert.strictEqual(fs.existsSync(missing), false, 'a READ must NEVER create the store dir');
+});
+
 console.log(`live-recall-store.test.js: ${passed} passed`);

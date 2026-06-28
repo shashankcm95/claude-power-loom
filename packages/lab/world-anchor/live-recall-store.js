@@ -146,6 +146,26 @@ function ensureStoreDir(dir, selfUid) {
   fs.chmodSync(dir, 0o700);                                           // only AFTER validation - never chmod a symlink target
 }
 
+/**
+ * READ-ONLY store-dir validator (the symmetric counterpart of ensureStoreDir, which is WRITE-side).
+ * The file-level O_NOFOLLOW + fstat foreign-uid reject in readNodeRaw guards a symlinked/foreign
+ * FILE, but O_NOFOLLOW only covers the FINAL component and readdirSync follows a symlinked dir - a
+ * symlinked / foreign-uid PARENT dir is undetected, redirecting every verified read/enumeration. A
+ * read of an ABSENT store is NORMAL (a not-yet-created store) -> 'absent' WITHOUT a mutation and
+ * WITHOUT an alert (the caller maps it to the empty result). A SYMLINK / FOREIGN-UID / non-dir read
+ * root is an attack-shaped redirect -> the caller alerts + returns empty. NEVER mkdir/chmod (a read
+ * must not create or mutate the store). Returns a reason token: 'absent' | 'symlink' | 'foreign' |
+ * 'not-a-dir', or null when the dir is a real self-owned directory safe to read.
+ */
+function validateReadDir(dir, selfUid) {
+  let st;
+  try { st = fs.lstatSync(dir); } catch { return 'absent'; }   // ENOENT (or any stat failure) -> treat as absent, no alert
+  if (st.isSymbolicLink()) return 'symlink';
+  if (!st.isDirectory()) return 'not-a-dir';
+  if (isForeign(st, selfUid)) return 'foreign';
+  return null;
+}
+
 // Two bodies equal? content_hash is the order-independent full-record digest (a single field
 // comparison subsumes the field-by-field check - any divergent field changes content_hash).
 function bodiesEqual(a, b) { return a.node_id === b.node_id && a.content_hash === b.content_hash; }
@@ -284,6 +304,15 @@ function readLiveNode(node_id, opts = {}) {
   const selfUid = opts.selfUid === undefined ? currentUid() : opts.selfUid;
   let dir;
   try { dir = storeDir(opts); } catch { return null; }
+  // Validate the read root BEFORE the read (a symlinked/foreign dir redirects every verified read).
+  // Absent is a normal not-yet-created store (silent null); a symlink/foreign/non-dir root is
+  // observable then null. dir_reason (NOT reason) carries the classification - emitEgressAlert forces
+  // the positional reason token last, which would clobber a `reason` detail key.
+  const dirReason = validateReadDir(dir, selfUid);
+  if (dirReason) {
+    if (dirReason !== 'absent') alert('read-dir', { dir_reason: dirReason });
+    return null;
+  }
   const body = readNodeRaw(node_id, dir, selfUid);
   return body ? deepFreeze({ ...body }) : null;
 }
@@ -295,8 +324,18 @@ function readLiveNode(node_id, opts = {}) {
  */
 function listLiveNodes(opts = {}) {
   const selfUid = opts.selfUid === undefined ? currentUid() : opts.selfUid;
-  let dir; let entries;
-  try { dir = storeDir(opts); entries = fs.readdirSync(dir); } catch { return []; }
+  let dir;
+  try { dir = storeDir(opts); } catch { return []; }
+  // Validate the read root BEFORE the readdir (a symlinked/foreign dir redirects the enumeration -
+  // readdirSync follows a symlinked dir). Absent is a normal not-yet-created store (silent []); a
+  // symlink/foreign/non-dir root is observable then [].
+  const dirReason = validateReadDir(dir, selfUid);
+  if (dirReason) {
+    if (dirReason !== 'absent') alert('read-dir', { dir_reason: dirReason });
+    return [];
+  }
+  let entries;
+  try { entries = fs.readdirSync(dir); } catch { return []; }
   const out = [];
   for (const name of entries) {
     if (!name.endsWith(NODE_SUFFIX)) continue;

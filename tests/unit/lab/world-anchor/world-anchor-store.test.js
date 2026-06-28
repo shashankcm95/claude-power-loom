@@ -584,4 +584,58 @@ test('C3/F3a: readBoundedText also guards the CONFIRMATION read site - a >cap fd
   } finally { fs.closeSync(fd); }
 });
 
+// --------------------------------------------------------------------------
+// Read-root store-dir guard (validate the read dir BEFORE the read/enumeration). The file-level
+// O_NOFOLLOW + fstat foreign-uid reject guards a symlinked/foreign FILE, but a symlinked/foreign
+// PARENT dir is undetected (O_NOFOLLOW covers only the final component; readdirSync follows a
+// symlinked dir). resolveAnchorForPr joins on listAnchors, so the list guard also protects the join.
+// NON-VACUOUS: each test plants a redirect that WOULD serve a real attestation absent the guard.
+// --------------------------------------------------------------------------
+
+test('readAnchor / listAnchors: a SYMLINK read root is refused + observable', () => {
+  const SELF = typeof process.getuid === 'function' ? process.getuid() : null;
+  if (SELF === null) return;                              // no symlink/uid semantics (Windows)
+  const dir = tmp();
+  const real = path.join(dir, 'real'); fs.mkdirSync(real);
+  const w = recordAttestation(att(), { dir: real });     // a valid attestation behind the link
+  assert.strictEqual(w.ok, true);
+  const link = path.join(dir, 'link'); fs.symlinkSync(real, link);
+  let body; let out;
+  const aRead = captureAlerts(() => { body = readAnchor(w.anchor_id, { dir: link }); });
+  assert.strictEqual(body, null, 'a symlinked read root is refused (readAnchor)');
+  assert.ok(aRead.some((al) => al.reason === 'world-anchor-read-dir' && al.dir_reason === 'symlink'), 'symlinked read root is observable');
+  const aList = captureAlerts(() => { out = listAnchors({ dir: link }); });
+  assert.deepStrictEqual(out, [], 'a symlinked read root enumerates nothing');
+  assert.ok(aList.some((al) => al.reason === 'world-anchor-read-dir' && al.dir_reason === 'symlink'), 'symlinked enumeration root is observable');
+});
+
+test('readAnchor / listAnchors: a FOREIGN-uid read root is refused + observable', () => {
+  const SELF = typeof process.getuid === 'function' ? process.getuid() : null;
+  if (SELF === null) return;
+  const dir = tmp();
+  const w = recordAttestation(att(), { dir, selfUid: SELF });
+  assert.strictEqual(w.ok, true);
+  // inject a mismatched selfUid: validateReadDir lstats the dir, sees a foreign owner, refuses.
+  let body; let out;
+  const aRead = captureAlerts(() => { body = readAnchor(w.anchor_id, { dir, selfUid: SELF + 1 }); });
+  assert.strictEqual(body, null, 'a foreign read root is refused (readAnchor)');
+  assert.ok(aRead.some((al) => al.reason === 'world-anchor-read-dir' && al.dir_reason === 'foreign'), 'foreign read root is observable');
+  const aList = captureAlerts(() => { out = listAnchors({ dir, selfUid: SELF + 1 }); });
+  assert.deepStrictEqual(out, [], 'a foreign read root enumerates nothing');
+  assert.ok(aList.some((al) => al.reason === 'world-anchor-read-dir' && al.dir_reason === 'foreign'), 'foreign enumeration root is observable');
+});
+
+test('readAnchor / listAnchors: an ABSENT read root -> empty SILENTLY, no mkdir', () => {
+  const dir = tmp();
+  const missing = path.join(dir, 'never-created');
+  let body; let out;
+  const aRead = captureAlerts(() => { body = readAnchor('a'.repeat(64), { dir: missing }); });
+  assert.strictEqual(body, null, 'absent read -> null');
+  assert.strictEqual(aRead.length, 0, 'an absent read root is benign (not alerted)');
+  const aList = captureAlerts(() => { out = listAnchors({ dir: missing }); });
+  assert.deepStrictEqual(out, [], 'absent list -> []');
+  assert.strictEqual(aList.length, 0, 'an absent enumeration root is benign (not alerted)');
+  assert.strictEqual(fs.existsSync(missing), false, 'a READ must NEVER create the store dir');
+});
+
 console.log(`world-anchor-store.test.js: ${passed} passed`);
