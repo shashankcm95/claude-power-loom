@@ -462,6 +462,123 @@ test('WORLD_ANCHOR_EDGE_TYPE is a frozen one-way-door set', () => {
   assert.strictEqual(store.WORLD_ANCHOR_SOURCE, 'world-anchor', 'the source token is the world-anchor literal');
 });
 
+// ---------------------------------------------------------------------------
+// C1 (Major): ensureStoreDir must VALIDATE before it MUTATES. The old code ran
+// mkdirSync + chmodSync(dir, 0o700) BEFORE the lstat symlink check, so a symlinked
+// store dir had its TARGET chmod'd (chmod follows symlinks) before the refusal. The
+// fix reorders chmod to AFTER the symlink/non-dir/foreign checks. NON-VACUOUS: snapshot
+// the symlink TARGET's mode before the refused write + assert it is UNCHANGED after.
+// RED against the unfixed (chmod-before-lstat) code: the target mode would move 0o755 -> 0o700.
+// ---------------------------------------------------------------------------
+
+test('C1: a symlinked store dir is REFUSED and its TARGET mode is UNCHANGED (validate-before-chmod)', () => {
+  const base = tmp();
+  const target = path.join(base, 'real-target-dir');
+  fs.mkdirSync(target, { mode: 0o755 });
+  fs.chmodSync(target, 0o755);                                   // pin a NON-0o700 mode so a stray chmod is visible
+  const beforeMode = fs.statSync(target).mode & 0o777;
+  assert.notStrictEqual(beforeMode, 0o700, 'precondition: the target is not already 0o700 (so a stray chmod would show)');
+  const link = path.join(base, 'store-link');
+  fs.symlinkSync(target, link);                                  // the store dir is a SYMLINK to the real dir
+  const { r, alerted } = captureAlert(() => store.writeWorldAnchorEdge(rec(), { dir: link }));
+  assert.strictEqual(r.ok, false, 'a symlinked store dir is refused');
+  assert.strictEqual(r.reason, 'store-dir', 'the refuse reason is store-dir');
+  assert.ok(alerted, 'the store-dir refuse is OBSERVABLE');
+  const afterMode = fs.statSync(target).mode & 0o777;
+  assert.strictEqual(afterMode, beforeMode, 'the symlink TARGET mode is UNCHANGED (chmod never followed the symlink)');
+});
+
+// ---------------------------------------------------------------------------
+// C2 (Major): recorded_at is OUTSIDE the edge identity basis (the header + deriveWorldAnchorEdgeId
+// say so), so a re-record of the SAME (from,to,type) with a DIFFERENT recorded_at must DEDUP, not
+// collide. The old bodiesEqual compared recorded_at, turning a benign re-record into a collision.
+// NON-VACUOUS RED against the unfixed code: w2.reason would be 'collision', w2.deduped undefined.
+// ---------------------------------------------------------------------------
+
+test('C2: a re-record at a DIFFERENT recorded_at dedups (first-write-wins), never a collision', () => {
+  const dir = tmp();
+  const w1 = store.writeWorldAnchorEdge(rec({ recorded_at: '2026-06-27T00:00:00.000Z' }), { dir });
+  assert.strictEqual(w1.ok, true);
+  const { r: w2, alerted } = captureAlert(() => store.writeWorldAnchorEdge(rec({ recorded_at: '2030-01-01T00:00:00.000Z' }), { dir }));
+  assert.strictEqual(w2.ok, true, 'a re-record at a different recorded_at is ok (idempotent, not a collision)');
+  assert.strictEqual(w2.deduped, true, 'it DEDUPS (recorded_at is outside the identity basis)');
+  assert.strictEqual(w2.reason, undefined, 'no collision reason');
+  assert.strictEqual(alerted, false, 'a benign dedup emits no collision alert');
+  assert.strictEqual(w1.edge_id, w2.edge_id, 'same content-address');
+  // first-write-wins: the STORED recorded_at stays the FIRST value.
+  const back = store.loadWorldAnchorEdge(w1.edge_id, { dir });
+  assert.strictEqual(back.recorded_at, '2026-06-27T00:00:00.000Z', 'the first recorded_at is preserved (first-write-wins)');
+  assert.strictEqual(fs.readdirSync(dir).filter((n) => n.endsWith('.json')).length, 1, 'no duplicate file');
+});
+
+// ---------------------------------------------------------------------------
+// C3 (Major): the oversize guard was RACEABLE - st.size checked, then an UNBOUNDED
+// readFileSync(fd,'utf8') re-read, so a same-uid writer could grow the file between the
+// two and bypass MAX_EDGE_BYTES. readBoundedText(fd, cap) reads at most cap+1 bytes through
+// the fd and returns the bounded TEXT, or null ONLY for the oversize case, INDEPENDENT of
+// st.size. The tests call the helper DIRECTLY on a >cap fd (bypassing the st.size pre-check
+// that would otherwise SHADOW the bounded read), so the red-test fails against an unbounded
+// readFileSync, NOT only the retained st.size check. Plus a boundary test at EXACTLY cap
+// (accept) and cap+1 (reject). F2 fold: the helper returns TEXT (the caller does JSON.parse),
+// so a literal-'null' body is NOT mislabeled oversize - it parses to JS null and is rejected
+// by the read path's not-an-object guard.
+// ---------------------------------------------------------------------------
+
+test('C3: readBoundedText returns null for a >cap fd INDEPENDENT of st.size (bypasses the st.size pre-check)', () => {
+  const cap = store.MAX_EDGE_BYTES;
+  const dir = tmp();
+  const big = path.join(dir, 'oversize.bin');
+  // a body that is LONGER than the cap; the helper must reject it (null) on the read alone.
+  const payload = `{"x":"${'y'.repeat(cap + 100)}"}`;
+  fs.writeFileSync(big, payload);
+  assert.ok(payload.length > cap, 'precondition: the planted body exceeds the cap');
+  const fd = fs.openSync(big, fs.constants.O_RDONLY);
+  try {
+    assert.strictEqual(store.readBoundedText(fd, cap), null, 'a body that exceeds the cap returns null (oversize, not st.size)');
+  } finally { fs.closeSync(fd); }
+});
+
+test('C3: readBoundedText boundary - EXACTLY cap returns text, EXACTLY cap+1 returns null', () => {
+  const cap = store.MAX_EDGE_BYTES;
+  const dir = tmp();
+  // a body whose total byte length is EXACTLY cap.
+  const fillExact = cap - '{"x":""}'.length;
+  const exactBody = `{"x":"${'z'.repeat(fillExact)}"}`;
+  assert.strictEqual(Buffer.byteLength(exactBody), cap, 'the exact body is precisely cap bytes');
+  const fExact = path.join(dir, 'exact.bin');
+  fs.writeFileSync(fExact, exactBody);
+  const fdE = fs.openSync(fExact, fs.constants.O_RDONLY);
+  try {
+    const text = store.readBoundedText(fdE, cap);
+    assert.strictEqual(typeof text, 'string', 'a body of EXACTLY cap bytes returns the bounded text');
+    assert.strictEqual(text, exactBody, 'the exact-cap text is returned verbatim');
+    assert.strictEqual(JSON.parse(text).x, 'z'.repeat(fillExact), 'the caller parses the exact-cap text');
+  } finally { fs.closeSync(fdE); }
+  // cap+1: one byte over -> null.
+  const plusBuf = `${exactBody.slice(0, exactBody.length - 2)}z"}`;
+  assert.strictEqual(Buffer.byteLength(plusBuf), cap + 1, 'the over body is precisely cap+1 bytes');
+  const fPlus = path.join(dir, 'plus.bin');
+  fs.writeFileSync(fPlus, plusBuf);
+  const fdP = fs.openSync(fPlus, fs.constants.O_RDONLY);
+  try {
+    assert.strictEqual(store.readBoundedText(fdP, cap), null, 'a body of EXACTLY cap+1 bytes returns null');
+  } finally { fs.closeSync(fdP); }
+});
+
+test('C3/F2: a literal-null body (within cap) is rejected as not-an-object, NOT mislabeled oversize-race', () => {
+  const dir = tmp();
+  // the JSON literal `null` is a within-cap body that JSON.parse()s to JS null. Under the OLD helper
+  // (which returned JSON.parse() and used `=== null` for the oversize signal) this would have been
+  // mislabeled oversize-race. With readBoundedText, the caller parses it and the not-an-object guard catches it.
+  const id = '2'.repeat(64);
+  fs.writeFileSync(path.join(dir, `${id}.json`), 'null');
+  const { r, alerted, lastReason } = captureAlert(() => store.loadWorldAnchorEdge(id, { dir }));
+  assert.strictEqual(r, null, 'a literal-null body is rejected on read');
+  assert.ok(alerted, 'the reject is OBSERVABLE');
+  assert.ok(/not-an-object/.test(lastReason || ''), 'the reject reason is not-an-object (NOT oversize-race)');
+  assert.ok(!/oversize-race/.test(lastReason || ''), 'a within-cap literal-null is never mislabeled oversize-race');
+});
+
 void crypto;
 
 console.log(`world-anchor-edge-store.test.js: ${passed} passed`);
