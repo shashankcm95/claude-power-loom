@@ -107,6 +107,27 @@ function ensureStoreDir(dir, selfUid) {
   fs.chmodSync(dir, 0o700);                                           // only AFTER validation - never chmod a symlink target
 }
 
+/**
+ * READ-ONLY store-dir validator (the symmetric counterpart of ensureStoreDir, which is WRITE-side).
+ * The file-level O_NOFOLLOW + fstat foreign-uid reject in readAnchorRaw/readConfirmationRaw guards a
+ * symlinked/foreign FILE, but O_NOFOLLOW only covers the FINAL component and readdirSync follows a
+ * symlinked dir - a symlinked / foreign-uid PARENT dir is undetected, redirecting every verified
+ * read/enumeration (and the confirmation sidecar join). A read of an ABSENT store is NORMAL (a
+ * not-yet-created store) -> 'absent' WITHOUT a mutation and WITHOUT an alert (the caller maps it to
+ * the empty result). A SYMLINK / FOREIGN-UID / non-dir read root is an attack-shaped redirect -> the
+ * caller alerts + returns empty. NEVER mkdir/chmod (a read must not create or mutate the store).
+ * Returns a reason token: 'absent' | 'symlink' | 'foreign' | 'not-a-dir', or null when the dir is a
+ * real self-owned directory safe to read.
+ */
+function validateReadDir(dir, selfUid) {
+  let st;
+  try { st = fs.lstatSync(dir); } catch { return 'absent'; }   // ENOENT (or any stat failure) -> treat as absent, no alert
+  if (st.isSymbolicLink()) return 'symlink';
+  if (!st.isDirectory()) return 'not-a-dir';
+  if (isForeign(st, selfUid)) return 'foreign';
+  return null;
+}
+
 // --------------------------------------------------------------------------
 // Boundary validation  -  a malformed attestation never reaches the content-address.
 // --------------------------------------------------------------------------
@@ -408,6 +429,15 @@ function readAnchor(anchor_id, opts = {}) {
   const selfUid = opts.selfUid === undefined ? currentUid() : opts.selfUid;
   let dir;
   try { dir = storeDir(opts); } catch { return null; }
+  // Validate the read root BEFORE the read (a symlinked/foreign dir redirects the attestation read AND
+  // its confirmation-sidecar join). Absent is a normal not-yet-created store (silent null); a
+  // symlink/foreign/non-dir root is observable then null. dir_reason (NOT reason) carries the
+  // classification - emitEgressAlert forces the positional reason token last, clobbering a `reason` key.
+  const dirReason = validateReadDir(dir, selfUid);
+  if (dirReason) {
+    if (dirReason !== 'absent') emitEgressAlert('world-anchor-read-dir', { dir_reason: dirReason });
+    return null;
+  }
   const body = readAnchorRaw(anchor_id, dir, selfUid);
   if (!body) return null;
   const confirmation = readConfirmationRaw(anchor_id, dir, selfUid);
@@ -421,8 +451,19 @@ function readAnchor(anchor_id, opts = {}) {
  */
 function listAnchors(opts = {}) {
   const selfUid = opts.selfUid === undefined ? currentUid() : opts.selfUid;
-  let dir; let entries;
-  try { dir = storeDir(opts); entries = fs.readdirSync(dir); } catch { return []; }
+  let dir;
+  try { dir = storeDir(opts); } catch { return []; }
+  // Validate the read root BEFORE the readdir (a symlinked/foreign dir redirects the enumeration -
+  // readdirSync follows a symlinked dir). resolveAnchorForPr joins on this list, so the guard also
+  // protects the PR->anchor join. Absent is a normal not-yet-created store (silent []); a
+  // symlink/foreign/non-dir root is observable then [].
+  const dirReason = validateReadDir(dir, selfUid);
+  if (dirReason) {
+    if (dirReason !== 'absent') emitEgressAlert('world-anchor-read-dir', { dir_reason: dirReason });
+    return [];
+  }
+  let entries;
+  try { entries = fs.readdirSync(dir); } catch { return []; }
   const out = [];
   for (const name of entries) {
     if (!name.endsWith(ATT_SUFFIX) || name.endsWith(CONF_SUFFIX)) continue; // attestations only
