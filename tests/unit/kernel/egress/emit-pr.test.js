@@ -422,7 +422,13 @@ test('EC1b.2a sole-chokepoint LINT: no PRODUCTION module outside emit-pr.js spaw
   // module MUST carry an `assertReadOnlyGhArgs` gate (it refuses any non-`-X GET` before spawning), and is
   // STILL barred from git-push + token reads. (The AUTHORITATIVE token-custody control, EC1b.2b, is
   // unaffected — the puller never touches process.env GH_TOKEN/GITHUB_TOKEN.)
-  const READONLY_GH_ALLOW = [path.join('packages', 'lab', 'issue-corpus', 'live-puller.js')];
+  // gap-map item 2, PR-2: gh-verify.js (the merge observer's gh-verifier) spawns `gh api -X GET` for a
+  // READ-ONLY merge check using ambient read auth — same class as live-puller.js. It carries the same
+  // POSITIVE assertReadOnlyGhArgs GET-gate, emits nothing, and never reads the egress token or git-pushes.
+  const READONLY_GH_ALLOW = [
+    path.join('packages', 'lab', 'issue-corpus', 'live-puller.js'),
+    path.join('packages', 'lab', 'world-anchor', 'gh-verify.js'),
+  ];
   // ③.2.5c: gh-emit.js is emit-pr's DEDICATED write-egress DELEGATE — armedEmit (lazily) calls ghEmit ONLY after
   // the full gate (live + token + killswitch-off + signed approval). It is NOT an independent egress path: it
   // receives the sanitized env (with GH_TOKEN already injected by buildEmitEnv) as a PARAMETER, so it is exempt
@@ -433,6 +439,12 @@ test('EC1b.2a sole-chokepoint LINT: no PRODUCTION module outside emit-pr.js spaw
   // exemption even if the runtime invocation were removed. The lab suite additionally proves defaultGhRunner
   // INVOKES it (live-puller.test.js h3 — a write arg throws before any spawn).
   const GET_GATE = /assertReadOnlyGhArgs\s*\(\s*args\s*\)\s*;/;
+  // VALIDATE-hacker M-1: the GET-gate is a POSITIVE check (the gate MUST be present), so it must match the
+  // RUNTIME CALL, never a commented-out token. Strip block + line comments before testing GET_GATE, else a
+  // `// assertReadOnlyGhArgs(args);` line would satisfy the gate after the real call was removed. We strip
+  // comments ONLY (not string literals): a naive string-strip over-consumes JS regex literals and regressed
+  // live-puller.js's real gate; the string-literal-satisfies case is contrived and not worth a fragile regex.
+  const stripComments = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
   // regression (CodeRabbit #388): the token pattern must catch BOTH the dot AND the bracket read.
   assert.ok(TOKEN_READ.test('const t = process.env.GH_TOKEN;'), 'token-CAP catches dot-notation');
   assert.ok(TOKEN_READ.test("const t = process.env['GITHUB_TOKEN'];"), 'token-CAP catches bracket-notation');
@@ -448,7 +460,7 @@ test('EC1b.2a sole-chokepoint LINT: no PRODUCTION module outside emit-pr.js spaw
       const src = fs.readFileSync(abs, 'utf8');
       if (READONLY_GH_ALLOW.includes(rel)) {
         // exempt from GH_SPAWN ONLY with the positive GET-gate; still barred from git-push + token reads.
-        if (!GET_GATE.test(src)) offenders.push(`${rel} (missing assertReadOnlyGhArgs GET-gate)`);
+        if (!GET_GATE.test(stripComments(src))) offenders.push(`${rel} (missing assertReadOnlyGhArgs GET-gate)`);
         if (GIT_PUSH.test(src) || TOKEN_READ.test(src)) offenders.push(rel);
         continue;
       }

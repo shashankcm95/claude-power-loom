@@ -62,6 +62,15 @@ const LIVE_IMPORT_RE = /(?:require\(\s*|import\s+(?:[^;'"]*\sfrom\s+)?|import\(\
 // admitted by NO consumer; this test is the structural backing of that no-consumer guarantee.
 const EDGE_IMPORT_RE = /(?:require\(\s*|import\s+(?:[^;'"]*\sfrom\s+)?|import\(\s*)['"][^'"]*world-anchor-edge-store(?:\.js)?['"]/;
 
+// A FOURTH matcher for the merge-outcome store (gap-map item 2, PR-2). The matchers above are
+// basename-specific (the substrings differ from merge-outcome-store), so the new store needs its own.
+// Same four require/import forms; the distinctive basename is `merge-outcome-store`. The SHADOW invariant
+// is identical: no module OUTSIDE packages/lab/world-anchor/ may import the merge-outcome store until the
+// authenticated minter + a LIVE_SOURCES flip land (#273). Item 3 will need a SYMMETRIC relaxation when it
+// consumes loadMergeOutcome - this is the "zero external importers" shape (reviewer MEDIUM-3), NOT a
+// temporal "zero consumers in PR-2" claim.
+const MERGE_OUTCOME_IMPORT_RE = /(?:require\(\s*|import\s+(?:[^;'"]*\sfrom\s+)?|import\(\s*)['"][^'"]*merge-outcome-store(?:\.js)?['"]/;
+
 test('SHADOW import-graph matcher catches the .js-extension + ESM + dynamic-import forms (not just bare require)', () => {
   const samples = [
     "require('../world-anchor/world-anchor-store.js')",
@@ -168,6 +177,49 @@ test('SHADOW header invariant: world-anchor-edge-store.js carries the SHADOW / L
   assert.ok(/SHADOW/.test(src), 'the edge store names its SHADOW status');
   assert.ok(/LIVE_SOURCES/.test(src), 'the header references the LIVE_SOURCES / authenticated-minter prerequisite (#273)');
   assert.ok(/#273/.test(src), 'the header carries the #273 integrity-not-provenance residual');
+});
+
+test('SHADOW import-graph matcher (merge-outcome store) catches the .js + ESM + dynamic-import forms; no false-positive', () => {
+  const samples = [
+    "require('../world-anchor/merge-outcome-store.js')",
+    "require('./merge-outcome-store')",
+    "import { loadMergeOutcome } from '../world-anchor/merge-outcome-store.js'",
+    "import outcomeStore from './merge-outcome-store'",
+    "const m = import('../world-anchor/merge-outcome-store.js')",
+  ];
+  for (const s of samples) assert.ok(MERGE_OUTCOME_IMPORT_RE.test(s), `the merge-outcome-store matcher must catch: ${s}`);
+  // non-vacuous: it must NOT match the sibling world-anchor-store, nor an adjacent name
+  assert.ok(!MERGE_OUTCOME_IMPORT_RE.test("require('./world-anchor-store')"), 'distinct from the world-anchor-store matcher');
+  assert.ok(!MERGE_OUTCOME_IMPORT_RE.test("require('./merge-outcome-cli')"), 'no false-positive on an adjacent module name');
+});
+
+test('SHADOW import-graph: NO module outside packages/lab/world-anchor/ imports merge-outcome-store', () => {
+  const offenders = [];
+  for (const file of walkJs(PACKAGES)) {
+    if (file.startsWith(WORLD_ANCHOR_DIR + path.sep)) continue;       // the module + its own siblings may import it
+    const src = fs.readFileSync(file, 'utf8');
+    if (MERGE_OUTCOME_IMPORT_RE.test(src)) offenders.push(path.relative(REPO, file));
+  }
+  assert.deepStrictEqual(offenders, [], `merge-outcome-store must stay SHADOW  -  these modules import it: ${offenders.join(', ')}`);
+});
+
+test('SHADOW header invariant: merge-outcome-store.js carries the SHADOW / LIVE_SOURCES / #273 header', () => {
+  const src = fs.readFileSync(path.join(WORLD_ANCHOR_DIR, 'merge-outcome-store.js'), 'utf8');
+  assert.ok(/SHADOW/.test(src), 'the merge-outcome store names its SHADOW status');
+  assert.ok(/LIVE_SOURCES/.test(src), 'the header references the LIVE_SOURCES / authenticated-minter prerequisite (#273)');
+  assert.ok(/#273/.test(src), 'the header carries the #273 integrity-not-provenance residual');
+});
+
+test('SHADOW header invariant: gh-verify.js carries the SHADOW status', () => {
+  const src = fs.readFileSync(path.join(WORLD_ANCHOR_DIR, 'gh-verify.js'), 'utf8');
+  assert.ok(/SHADOW/.test(src), 'the gh verifier names its SHADOW status');
+});
+
+test('SHADOW header invariant: merge-observer.js names its SHADOW status + the sole-reader + no-mint posture', () => {
+  const src = fs.readFileSync(path.join(WORLD_ANCHOR_DIR, 'merge-observer.js'), 'utf8');
+  assert.ok(/SHADOW/.test(src), 'the observer names its SHADOW status');
+  assert.ok(/LIVE_SOURCES/.test(src), 'the header references LIVE_SOURCES (it flips none)');
+  assert.ok(/SOLE/.test(src) || /sole/.test(src), 'the header names it the SOLE kernel join-key reader');
 });
 
 console.log(`shadow-import-graph.test.js: ${passed} passed`);
