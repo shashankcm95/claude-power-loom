@@ -321,6 +321,21 @@ test('digest/sha sanitize: a non-hex problem_statement_digest => the prompt cont
   assert.ok(clean.includes('deadbeefcafe') && clean.includes('a'.repeat(64)), 'a legitimate hex digest/sha rides through unchanged');
 });
 
+// ---- CodeRabbit Major: the nonce rides OUTSIDE the fence, so a bad nonce must fail CLOSED (throw) ----
+test('nonce validation: an undefined / empty / short / non-hex nonce => THROWS (the nonce never rides a malformed/guessable marker)', () => {
+  // the nonce is interpolated into the trusted LOOM_UNTRUSTED_<nonce>_BEGIN/_END markers; a direct caller passing
+  // a bad nonce would yield a malformed or guessable fence (break-out risk). THROW is fail-closed - the impure
+  // leg's 16-hex crypto nonce always passes, and deriveLiveLesson try/catches deriveFn (-> benign null).
+  for (const bad of [undefined, '', 'short', 'deadbeef', 'XYZ_not_hex_abcdef', 'g'.repeat(16), 123, null]) {
+    assert.throws(() => buildLiveDerivePrompt(legInput(), { nonce: bad }), /invalid live-lesson nonce/,
+      `a bad nonce (${JSON.stringify(bad)}) must throw`);
+  }
+  // the no-opts form (nonce undefined) also throws (the default { } -> nonce undefined)
+  assert.throws(() => buildLiveDerivePrompt(legInput()), /invalid live-lesson nonce/, 'the no-opts call throws (nonce undefined)');
+  // a valid 16-hex nonce (the impure-leg shape) does NOT throw
+  assert.doesNotThrow(() => buildLiveDerivePrompt(legInput(), { nonce: 'a'.repeat(16) }), 'a valid 16-hex nonce passes');
+});
+
 (async () => {
   for (const t of _tests) {
     try { await t.fn(); passed += 1; }

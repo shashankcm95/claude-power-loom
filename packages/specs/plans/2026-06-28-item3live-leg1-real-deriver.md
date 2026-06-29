@@ -110,7 +110,9 @@ Mirrors `_spike/lesson-capture-rerun.js`'s `makeLessonDeriver`. Exports
   **guarded by `!judgesInjected`** so the test path never builds/spawns a real leg (architect HIGH — the
   existing `loopDeps()` injects judges but not `lessonLegFn`; keep the preflight skip keyed on `judgesInjected`
   UNCHANGED):
-  `const lessonLegFn = deps.lessonLegFn || (!judgesInjected ? makeLiveLessonDeriver({}) : null);`
+  `const lessonLegFn = Object.prototype.hasOwnProperty.call(deps, 'lessonLegFn') ? deps.lessonLegFn : (!judgesInjected ? makeLiveLessonDeriver({}) : null);`
+  (a PRESENCE check, NOT `||`, so an explicit `deps.lessonLegFn` including `null` = "no leg" always wins - the
+  null-preserving contract, VALIDATE fold 4.)
   Then thread it: pass `deps: { ...deps, lessonLegFn }` into `solveGradeDraftOne` (line ~362-365). Built once
   (`resolveClaude()` at build time), shared across records. **No `realClaudeInjected` / preflight change** —
   because the real leg exists only when `!judgesInjected`, which is exactly when the preflight already runs.

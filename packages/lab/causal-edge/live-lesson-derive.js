@@ -119,6 +119,14 @@ const FENCE_TOKEN_RE = /loom_untrusted_/gi;                          // case-ins
 const HEX_RE = /^[0-9a-f]{0,128}$/i;
 function safeHex(v) { const s = String(v == null ? '' : v); return HEX_RE.test(s) ? s : 'INVALID'; }
 
+// The nonce rides OUTSIDE the untrusted fence (into the LOOM_UNTRUSTED_<nonce>_BEGIN/_END markers), so unlike
+// the hex/axis sanitizers it must be a STRICT hex of fence-grade length - a missing/short/arbitrary nonce from a
+// DIRECT caller would yield a malformed or guessable marker (a break-out risk). THROW (fail-closed) rather than
+// sentinel-collapse: the impure leg always supplies crypto.randomBytes(8).toString('hex') (16 hex chars, always
+// passes), and deriveLiveLesson wraps deriveFn in try/catch (-> benign null), so a direct caller gets a clear error.
+const NONCE_RE = /^[0-9a-f]{16,128}$/i;
+function requireSafeNonce(v) { const s = typeof v === 'string' ? v : ''; if (!NONCE_RE.test(s)) throw new Error('invalid live-lesson nonce'); return s; }
+
 // diagnosticNeedle(legInput) - the SAME bounded, FENCE-STRIPPED text the prompt fences, joined for the
 // echo-rail scan. The LOOM_UNTRUSTED_ strip is baked IN HERE (single definition) so the rail's scan and the
 // prompt's fenced text are byte-identical (scan + prompt can never diverge - VALIDATE MED fold). Exported so
@@ -140,6 +148,7 @@ function diagnosticNeedle(legInput) {
  * @returns {string} the prompt (rides on STDIN; never argv)
  */
 function buildLiveDerivePrompt(legInput, { nonce } = {}) {
+  const safeNonce = requireSafeNonce(nonce);                          // fail-closed: a missing/short/non-hex nonce can never ride the trusted fence markers
   const li = legInput || {};
   const f = li.friction || {};
   // SANITIZE the three friction axes BEFORE interpolation (an off-enum/non-string axis -> INVALID, never the
@@ -148,8 +157,8 @@ function buildLiveDerivePrompt(legInput, { nonce } = {}) {
   const fp = safeEnumKey(f.friction_phase, FRICTION_PHASE);
   const dl = safeEnumKey(f.detection_leg, DETECTION_LEG);
   const safeNeedle = diagnosticNeedle(li);                            // already fence-stripped (single definition - the rail scans the SAME text)
-  const begin = `${FENCE_TOKEN}${nonce}_BEGIN`;
-  const end = `${FENCE_TOKEN}${nonce}_END`;
+  const begin = `${FENCE_TOKEN}${safeNonce}_BEGIN`;
+  const end = `${FENCE_TOKEN}${safeNonce}_END`;
   return 'You map the LESSON behind a code-fix attempt onto a FROZEN taxonomy, then write a short principle. '
     + 'Reply STRICT JSON ONLY: '
     + '{"trigger_class": one of ' + JSON.stringify(TRIGGER_CLASS) + ', '
