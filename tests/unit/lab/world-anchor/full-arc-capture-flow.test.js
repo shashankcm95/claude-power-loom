@@ -27,6 +27,7 @@
 'use strict';
 
 const assert = require('assert');
+const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -112,12 +113,19 @@ function attestArgs(dir, over = {}) {
   };
 }
 
+// OQ-3 W3 — the broker-sig provenance bundle (RFC §5.4): the join-key seals/records it; the merge-observer
+// + the direct recordMergeOutcome carry it forward. A 64-byte canonical-base64 broker_sig passes the SHAPE gate.
+const W3_BROKER_SIG = crypto.randomBytes(64).toString('base64');
+function validBundle(over = {}) {
+  return { lesson_commitment: 'e'.repeat(64), approvedAt: 1735430400000, nonce: 'nonce-abc', key_id: 'v0', broker_sig: W3_BROKER_SIG, ...over };
+}
+
 // Write a kernel join-key for the PR into the kernel DEFAULT_DIR (the production reader path observe-merge
 // uses; it accepts no join-key dir override). Mirrors merge-observer.test.js's seedJoinKey verbatim.
 function seedJoinKey(over = {}) {
   const rec = {
     repo: REPO_SLUG, issueRef: ISSUE_REF, pr_number: PR_NUMBER, pr_url: PR_URL,
-    approval_hash: APPROVAL, base_sha: BASE_SHA, emitted_at: '2026-06-28T00:00:00.000Z', ...over,
+    approval_hash: APPROVAL, base_sha: BASE_SHA, emitted_at: '2026-06-28T00:00:00.000Z', ...validBundle(), ...over,
   };
   const w = jkStore.writeJoinKey(rec, { dir: JK_DIR, selfUid: SELF === null ? undefined : SELF });
   assert.strictEqual(w.ok, true, `seedJoinKey must succeed (got ${w.reason})`);
@@ -232,11 +240,13 @@ test('FULL ARC (direct mint): captured node -> attest -> recordMergeOutcome -> m
     ));
     assert.strictEqual(prod.ok, true, `the producer attests (got ${prod.reason})`);
 
-    // a gh-verified merge-outcome record (the mint's sole input; written via the REAL store).
+    // a gh-verified merge-outcome record (the mint's sole input; written via the REAL store). OQ-3 W3 — the
+    // record carries the broker-sig provenance bundle (RFC §5.4); the mint reads only record.approval_hash etc.
     const jkid = 'd'.repeat(64);
     const w = outcomeStore.recordMergeOutcome({
       join_key_id: jkid, repo: REPO_SLUG, pr_number: PR_NUMBER, pr_url: PR_URL,
       approval_hash: APPROVAL, outcome: 'merged', merge_commit_sha: MERGE_SHA, observed_at: '2026-06-28T12:00:00.000Z',
+      ...validBundle(),
     }, { dir: outcomeDir(dir) });
     assert.strictEqual(w.ok, true, 'the merge-outcome record lands');
 

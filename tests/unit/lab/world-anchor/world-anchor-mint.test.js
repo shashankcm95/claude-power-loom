@@ -16,6 +16,7 @@
 'use strict';
 
 const assert = require('assert');
+const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -96,6 +97,13 @@ function attest(dir, over = {}) {
   return w.anchor_id;
 }
 
+// OQ-3 W3 — the broker-sig provenance bundle the merge-outcome carries forward for PR-A2 (RFC §5.4). A
+// 64-byte canonical-base64 broker_sig passes the store SHAPE gate (the mint reads only record.approval_hash etc.).
+const W3_BROKER_SIG = crypto.randomBytes(64).toString('base64');
+function validBundle(over = {}) {
+  return { lesson_commitment: 'e'.repeat(64), approvedAt: 1735430400000, nonce: 'nonce-abc', key_id: 'v0', broker_sig: W3_BROKER_SIG, ...over };
+}
+
 // Write a gh-verified merge-outcome RECORD into the outcome store. The join_key_id is a content-addressed
 // HEX64 (the merge-outcome store treats it as OPAQUE = the filename; only join_key_id===filename + the
 // content_hash seal are verified). Returns the join_key_id.
@@ -107,6 +115,7 @@ function recordOutcome(dir, over = {}) {
     outcome: 'merged',
     merge_commit_sha: MERGE_SHA,
     observed_at: OBSERVED_AT,
+    ...validBundle(),
     ...over,
   };
   const w = outcomeStore.recordMergeOutcome(rec, { dir });

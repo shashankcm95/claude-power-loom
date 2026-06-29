@@ -480,6 +480,12 @@ function emitPR(data, opts = {}) {
           // — a plain reason token, no payload. The outer `reason: 'awaiting-approval'` value is unchanged (consumers key on it).
           return { ok: true, emitted: false, disposition, draft, approvalHash, reason: 'awaiting-approval', approvalReason: appr.reason };
         }
+        // OQ-3 W3 (RFC §5.4) — capture the broker-sig provenance bundle from the VERIFIED approval body so the
+        // join-key SEALS lesson_commitment + RECORDS {approvedAt, nonce, key_id, broker_sig}. readVerifiedApproval
+        // returns the body { hash, emission, approvedAt, nonce, sig, key_id, lesson_commitment } (approval-store.js).
+        // A missing body -> undefined fields -> writeJoinKey's validateRecord rejects -> the existing observable,
+        // non-reverting jk.ok===false branch below; this NEVER throws the emission (the additive-write contract).
+        const { approvedAt, nonce, key_id: apprKeyId, sig: brokerSig } = appr.body || {};
         // emit-then-record (③.2.4 I2 — fold the reservation-before-throw): armedEmit FIRST (throws this wave);
         // ONLY on success RESERVE the cap + ledger and CONSUME the one-shot approval. A throw -> the outer
         // catch -> fail-closed, with cap + ledger + approval all UNCHANGED (proven via an injected armedEmitFn).
@@ -508,6 +514,14 @@ function emitPR(data, opts = {}) {
               pr_url: pr.pr_url,
               approval_hash: approvalHash,
               base_sha: pr.base_sha,
+              // OQ-3 W3 — the SEALED lesson_commitment (the shape-gated data value) + the RECORDED broker-sig
+              // bundle copied from the verified approval body (RFC §5.4). computeEmissionHash / the draft / the
+              // emission Forward-Contract / consumeApproval are UNTOUCHED.
+              lesson_commitment: lessonCommitment,
+              approvedAt,
+              nonce,
+              key_id: apprKeyId,
+              broker_sig: brokerSig,
               ...(built_by ? { built_by } : {}),
               emitted_at: new Date(now).toISOString(),
             }, { dir: opts.custodyJoinKeyDir, selfUid: opts.selfUid });

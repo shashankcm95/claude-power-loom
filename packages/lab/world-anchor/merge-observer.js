@@ -20,7 +20,11 @@
 //   5. optional expectedMergeSha cross-check (the operator's paste): require === merge_commit_sha, refuse
 //      on mismatch (observable - catches a stale/wrong paste).
 //   6. recordMergeOutcome({join_key_id, repo, pr_number, pr_url, approval_hash, outcome:'merged',
-//      merge_commit_sha, observed_at}) - the SEALED approval_hash rides into the record so item 3 trusts it.
+//      merge_commit_sha, observed_at, + the OQ-3 W3 broker-sig bundle}) - the SEALED approval_hash rides
+//      into the record so item 3 trusts it, AND the broker-sig provenance bundle {lesson_commitment,
+//      approvedAt, nonce, key_id, broker_sig} rides forward VERBATIM from the join-key for PR-A2 to
+//      crypto-verify at world-anchor mint (RFC §5.4). The bundle is COPIED from the verified jk, never
+//      re-derived - the join-key is the SEALED chain-resident source.
 //
 // This OBSERVER is the ONE module the kernel join-key dam (join-key-shadow.test.js) admits as a reader
 // (by its FULL relative path). It mints NO node/edge, flips NO LIVE_SOURCES, calls NO signer. The record
@@ -108,6 +112,14 @@ async function runMergeObserve(args, opts = {}) {
     outcome,
     merge_commit_sha: verify.merge_commit_sha,      // gh-reported-at-observe-time; NOT verified === approval_hash
     observed_at,
+    // OQ-3 W3 (RFC §5.4) — the broker-sig provenance bundle, copied VERBATIM from the verified join-key so
+    // PR-A2 can crypto-verify broker_sig over approvalSigBasis({hash:approval_hash, approvedAt, nonce,
+    // key_id, lesson_commitment}) at world-anchor mint. The merge-outcome content_hash re-seals these five.
+    lesson_commitment: jk.lesson_commitment,
+    approvedAt: jk.approvedAt,
+    nonce: jk.nonce,
+    key_id: jk.key_id,
+    broker_sig: jk.broker_sig,
   }, { dir: opts.dir });
   if (!rec.ok) { alert('record-failed', { join_key_id: id, reason_detail: rec.reason }); return { ok: false, reason: rec.reason }; }
 

@@ -70,6 +70,12 @@ function attest(dir, over = {}) {
   return { anchor_id: w.anchor_id, diff_hash: att.diff_hash };
 }
 
+// OQ-3 W3 — the broker-sig provenance bundle the merge-outcome carries forward for PR-A2 (RFC §5.4).
+const W3_BROKER_SIG = crypto.randomBytes(64).toString('base64');
+function validBundle(over = {}) {
+  return { lesson_commitment: 'e'.repeat(64), approvedAt: 1735430400000, nonce: 'nonce-abc', key_id: 'v0', broker_sig: W3_BROKER_SIG, ...over };
+}
+
 // Write a gh-verified merge-outcome RECORD into the outcome store. Returns the join_key_id.
 function recordOutcome(dir, over = {}) {
   const rec = {
@@ -77,6 +83,7 @@ function recordOutcome(dir, over = {}) {
     repo: REPO_NAME, pr_number: PR_NUMBER, pr_url: PR_URL,
     approval_hash: APPROVAL_HASH, outcome: 'merged',
     merge_commit_sha: MERGE_SHA40, observed_at: NOW,
+    ...validBundle(),
     ...over,
   };
   const w = outcomeStore.recordMergeOutcome(rec, { dir });

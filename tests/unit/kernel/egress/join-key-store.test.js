@@ -10,6 +10,7 @@
 // then the clean case passes.
 
 const assert = require('assert');
+const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -27,8 +28,24 @@ const WIN = SELF === null;
 const HEX64 = 'a'.repeat(64);
 const HEX40 = 'b'.repeat(40);
 const PR_URL = 'https://github.com/owner/repo/pull/7';
+const LESSON_COMMITMENT = 'e'.repeat(64);
+// A well-SHAPED broker_sig fixture: a 64-byte canonical-base64 string passes the store's SHAPE gate (the
+// store shape-validates, never crypto-verifies; the real-sig round-trip lives in the cross-store test below).
+const BROKER_SIG = crypto.randomBytes(64).toString('base64');
 
-// A valid kernel-authoritative join-key record (the trust core + an optional recorded-claim built_by).
+// OQ-3 W3 — the broker-sig provenance bundle the seal RECORDS alongside the join-key (RFC §5.4). One
+// definition of the canonical valid shape so the fixture update is DRY (a single source for the 5 fields).
+function validBundle(over) {
+  return Object.assign({
+    lesson_commitment: LESSON_COMMITMENT,
+    approvedAt: 1735430400000,
+    nonce: 'nonce-abc',
+    key_id: 'v0',
+    broker_sig: BROKER_SIG,
+  }, over || {});
+}
+
+// A valid kernel-authoritative join-key record (the trust core + the OQ-3 bundle + an optional built_by).
 function rec(over) {
   return Object.assign({
     repo: 'owner/repo',
@@ -38,7 +55,7 @@ function rec(over) {
     approval_hash: HEX64,
     base_sha: HEX40,
     emitted_at: '2026-06-28T00:00:00.000Z',
-  }, over || {});
+  }, validBundle(), over || {});
 }
 
 // Capture stderr egress-alerts for the duration of `fn`; returns the joined alert text.
@@ -162,6 +179,20 @@ test('writeJoinKey: a non-HEX40 base_sha is rejected before write (the gh-emit b
       assert.strictEqual(r.reason, 'bad-base-sha');
     }
     assert.strictEqual(S.writeJoinKey(rec(), { dir, selfUid: SELF }).ok, true, 'a HEX40 base_sha writes');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('writeJoinKey: a non-ISO-8601-UTC emitted_at is rejected (the W3-salvage regression guard — bad-emitted-at)', () => {
+  const dir = scratch('loom-jk-');
+  try {
+    // VALIDATE board HIGH: the W3 hunk must NOT drop the emitted_at guard (it orphans ISO_8601_UTC -> eslint
+    // no-unused-vars CI fail, AND lets a garbage emitted_at persist). This is the non-vacuous proof it stays.
+    for (const bad of ['NOT-AN-ISO-DATE', '2026', '2026-06-29T00:00:00', '2026-13-01T00:00:00.000Z', 42, undefined]) {
+      const r = S.writeJoinKey(rec({ emitted_at: bad }), { dir, selfUid: SELF });
+      assert.strictEqual(r.ok, false, `emitted_at=${JSON.stringify(bad)} rejected`);
+      assert.strictEqual(r.reason, 'bad-emitted-at');
+    }
+    assert.strictEqual(S.writeJoinKey(rec(), { dir, selfUid: SELF }).ok, true, 'a valid ISO-8601-UTC emitted_at writes');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -458,6 +489,154 @@ test('resolveJoinKeyForPr: a tampered record on disk is verify-on-read SKIPPED -
     captureAlerts(() => {
       assert.strictEqual(S.resolveJoinKeyForPr({ repo: 'evil/repo', pr_number: 7, pr_url: PR_URL }, { dir, selfUid: SELF }).ok, false, 'the tampered row is not admitted');
     });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// === OQ-3 W3: the lesson_commitment SEAL + the broker-sig provenance bundle (RFC §5.4) ===
+
+test('OQ-3 SEAL: lesson_commitment is in the id basis (two records differing ONLY in it -> DIFFERENT ids)', () => {
+  const a = S.deriveJoinKeyId(rec());
+  const b = S.deriveJoinKeyId(rec({ lesson_commitment: 'f'.repeat(64) }));
+  assert.notStrictEqual(a, b, 'a swapped lesson_commitment re-derives a different id (SEALED)');
+  // the no-lesson sentinel '' is its own basis (distinct from a 64-hex commitment).
+  const empty = S.deriveJoinKeyId(rec({ lesson_commitment: '' }));
+  assert.notStrictEqual(a, empty, "lesson_commitment:'' is a distinct basis from a 64-hex commitment");
+  // the broker-sig bundle (approvedAt/nonce/key_id/broker_sig) is RECORDED-not-sealed -> NOT in the id basis.
+  assert.strictEqual(a, S.deriveJoinKeyId(rec({ approvedAt: 999, nonce: 'other', key_id: 'v9', broker_sig: crypto.randomBytes(64).toString('base64') })), 'the bundle is outside the id basis (recorded, self-protecting via broker_sig)');
+});
+
+test('OQ-3 SEAL: an in-place edit of a persisted lesson_commitment is rejected on read (id-derive)', () => {
+  const dir = scratch('loom-jk-');
+  try {
+    const { id } = S.writeJoinKey(rec(), { dir, selfUid: SELF });
+    const file = path.join(dir, id + '.json');
+    const body = JSON.parse(fs.readFileSync(file, 'utf8'));
+    fs.writeFileSync(file, JSON.stringify(Object.assign({}, body, { lesson_commitment: 'f'.repeat(64) })));
+    const alerts = captureAlerts(() => {
+      assert.strictEqual(S.loadJoinKey(id, { dir }), null, 'a swapped lesson_commitment re-derives a mismatching id -> rejected');
+    });
+    assert.ok(/"kind":"id-derive"/.test(alerts), 'the id-derive reject is observable');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('OQ-3 closed-shape: a body MISSING any new field is rejected (unexpected-shape)', () => {
+  const dir = scratch('loom-jk-');
+  try {
+    const { id } = S.writeJoinKey(rec(), { dir, selfUid: SELF });
+    const file = path.join(dir, id + '.json');
+    // Snapshot the ORIGINAL valid body once: each iteration drops exactly ONE field from a fresh copy, so the
+    // reject isolates THAT field (CodeRabbit — reading the on-disk file each iteration accumulates prior deletions).
+    const original = JSON.parse(fs.readFileSync(file, 'utf8'));
+    for (const drop of ['lesson_commitment', 'approvedAt', 'nonce', 'key_id', 'broker_sig']) {
+      const body = Object.assign({}, original);
+      delete body[drop];
+      fs.writeFileSync(file, JSON.stringify(body));
+      const alerts = captureAlerts(() => {
+        assert.strictEqual(S.loadJoinKey(id, { dir }), null, `missing ${drop} -> rejected`);
+      });
+      assert.ok(/"kind":"unexpected-shape"/.test(alerts), `missing ${drop} -> unexpected-shape (observable)`);
+    }
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('OQ-3 closed-shape: an EXTRA field is rejected (unexpected-shape)', () => {
+  const dir = scratch('loom-jk-');
+  try {
+    const { id } = S.writeJoinKey(rec(), { dir, selfUid: SELF });
+    const file = path.join(dir, id + '.json');
+    const body = JSON.parse(fs.readFileSync(file, 'utf8'));
+    fs.writeFileSync(file, JSON.stringify(Object.assign({}, body, { extra: 'x' })));
+    const alerts = captureAlerts(() => {
+      assert.strictEqual(S.loadJoinKey(id, { dir }), null, 'an extra key is rejected');
+    });
+    assert.ok(/"kind":"unexpected-shape"/.test(alerts), 'an extra field -> unexpected-shape');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('OQ-3 validateRecord: a bad lesson_commitment (UPPERCASE / 65-hex / non-string) -> bad-lesson-commitment', () => {
+  const dir = scratch('loom-jk-');
+  try {
+    for (const bad of ['E'.repeat(64), 'e'.repeat(65), 'e'.repeat(63), 123, null]) {
+      const r = S.writeJoinKey(rec({ lesson_commitment: bad }), { dir, selfUid: SELF });
+      assert.strictEqual(r.ok, false, `lesson_commitment=${String(bad)} rejected`);
+      assert.strictEqual(r.reason, 'bad-lesson-commitment');
+    }
+    // the '' no-lesson sentinel + a lowercase 64-hex are BOTH valid.
+    assert.strictEqual(S.writeJoinKey(rec({ lesson_commitment: '' }), { dir, selfUid: SELF }).ok, true, "lesson_commitment:'' writes");
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('OQ-3 validateRecord: a bad broker_sig (non-64-byte / non-canonical-base64 / non-string) -> bad-broker-sig', () => {
+  const dir = scratch('loom-jk-');
+  try {
+    const non64 = crypto.randomBytes(32).toString('base64');         // canonical base64 but only 32 bytes
+    const nonCanonical = `${BROKER_SIG.slice(0, BROKER_SIG.length - 2)} =`;   // whitespace-injected -> non-canonical
+    for (const bad of [non64, nonCanonical, '', 123, null]) {
+      const r = S.writeJoinKey(rec({ broker_sig: bad }), { dir, selfUid: SELF });
+      assert.strictEqual(r.ok, false, `broker_sig=${String(bad).slice(0, 12)} rejected`);
+      assert.strictEqual(r.reason, 'bad-broker-sig');
+    }
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('OQ-3 validateRecord: bad nonce / key_id / approvedAt -> their exact reasons', () => {
+  const dir = scratch('loom-jk-');
+  try {
+    assert.strictEqual(S.writeJoinKey(rec({ nonce: '' }), { dir, selfUid: SELF }).reason, 'bad-nonce');
+    assert.strictEqual(S.writeJoinKey(rec({ nonce: '   ' }), { dir, selfUid: SELF }).reason, 'bad-nonce');
+    assert.strictEqual(S.writeJoinKey(rec({ nonce: 123 }), { dir, selfUid: SELF }).reason, 'bad-nonce');
+    assert.strictEqual(S.writeJoinKey(rec({ key_id: '' }), { dir, selfUid: SELF }).reason, 'bad-key-id');
+    assert.strictEqual(S.writeJoinKey(rec({ key_id: 123 }), { dir, selfUid: SELF }).reason, 'bad-key-id');
+    assert.strictEqual(S.writeJoinKey(rec({ approvedAt: 'x' }), { dir, selfUid: SELF }).reason, 'bad-approved-at');
+    assert.strictEqual(S.writeJoinKey(rec({ approvedAt: NaN }), { dir, selfUid: SELF }).reason, 'bad-approved-at');
+    assert.strictEqual(S.writeJoinKey(rec({ approvedAt: Infinity }), { dir, selfUid: SELF }).reason, 'bad-approved-at');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('OQ-3 bodiesEqual: a divergent broker_sig / nonce / approvedAt / key_id for one id -> COLLISION', () => {
+  const dir = scratch('loom-jk-');
+  try {
+    S.writeJoinKey(rec(), { dir, selfUid: SELF });
+    // these fields are OUTSIDE the id basis, so a divergent value yields the SAME id -> a collision (not a
+    // second identity). The id-basis fields are unchanged so deriveJoinKeyId(rec) is identical.
+    for (const over of [
+      { broker_sig: crypto.randomBytes(64).toString('base64') },
+      { nonce: 'different-nonce' },
+      { approvedAt: 1735430400001 },
+      { key_id: 'v1' },
+    ]) {
+      const r = S.writeJoinKey(rec(over), { dir, selfUid: SELF });
+      assert.strictEqual(r.ok, false, `divergent ${Object.keys(over)[0]} -> collision`);
+      assert.strictEqual(r.reason, 'collision');
+    }
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('OQ-3 no-lesson round-trip: a lesson_commitment:"" record writes + loads back', () => {
+  const dir = scratch('loom-jk-');
+  try {
+    const r = S.writeJoinKey(rec({ lesson_commitment: '' }), { dir, selfUid: SELF });
+    assert.strictEqual(r.ok, true);
+    const body = S.loadJoinKey(r.id, { dir });
+    assert.ok(body, 'a no-lesson record round-trips');
+    assert.strictEqual(body.lesson_commitment, '', 'the no-lesson sentinel survives');
+    assert.strictEqual(body.broker_sig, BROKER_SIG, 'the bundle survives the round-trip');
+    assert.strictEqual(body.key_id, 'v0');
+    assert.strictEqual(body.nonce, 'nonce-abc');
+    assert.strictEqual(body.approvedAt, 1735430400000);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('OQ-3 read-path immutability: loadJoinKey returns a FROZEN, fresh-per-call object', () => {
+  const dir = scratch('loom-jk-');
+  try {
+    const { id } = S.writeJoinKey(rec(), { dir, selfUid: SELF });
+    const a = S.loadJoinKey(id, { dir });
+    const b = S.loadJoinKey(id, { dir });
+    assert.ok(Object.isFrozen(a), 'the returned body is frozen');
+    assert.throws(() => { a.lesson_commitment = 'x'; }, TypeError, 'mutating a frozen field throws');
+    assert.notStrictEqual(a, b, 'a fresh object per call (no shared reference)');
+    assert.deepStrictEqual(a, b, 'the two reads are value-equal');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 

@@ -14,6 +14,7 @@
 'use strict';
 
 const assert = require('assert');
+const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -26,6 +27,9 @@ const REPO = path.join(__dirname, '..', '..', '..', '..');
 const jkStore = require(path.join(REPO, 'packages', 'kernel', 'egress', 'join-key-store.js'));
 const { runMergeObserve } = require(path.join(REPO, 'packages', 'lab', 'world-anchor', 'merge-observer.js'));
 const { loadMergeOutcome } = require(path.join(REPO, 'packages', 'lab', 'world-anchor', 'merge-outcome-store.js'));
+// OQ-3 W3 cross-store provenance round-trip (the PR-A2 verify path, proven now) — RFC §5.4/§5.5.
+const { approvalSigBasis } = require(path.join(REPO, 'packages', 'kernel', 'egress', 'approval.js'));
+const { generateEdgeKeypair, signRecordId, verifyRecordSig } = require(path.join(REPO, 'packages', 'kernel', '_lib', 'edge-attestation.js'));
 
 const SELF = typeof process.getuid === 'function' ? process.getuid() : null;
 const JK_DIR = jkStore.DEFAULT_DIR;       // the egress-join-keys default, under LAB_BASE
@@ -39,6 +43,12 @@ const REPO_NAME = 'octo/widget';
 const PR_URL = 'https://github.com/octo/widget/pull/77';
 const APPROVAL = 'd'.repeat(64);
 const SHA40 = 'b'.repeat(40);
+const LESSON_COMMITMENT = 'e'.repeat(64);
+// OQ-3 W3 — the broker-sig provenance bundle the join-key seals/records + the observer propagates (RFC §5.4).
+const BROKER_SIG = crypto.randomBytes(64).toString('base64');
+function validBundle(over = {}) {
+  return { lesson_commitment: LESSON_COMMITMENT, approvedAt: 1735430400000, nonce: 'nonce-abc', key_id: 'v0', broker_sig: BROKER_SIG, ...over };
+}
 
 // Write a kernel join-key for PR #77 into the DEFAULT join-key store. Returns its id.
 function seedJoinKey(over = {}) {
@@ -50,6 +60,7 @@ function seedJoinKey(over = {}) {
     approval_hash: APPROVAL,
     base_sha: 'f'.repeat(40),
     emitted_at: '2026-06-28T00:00:00.000Z',
+    ...validBundle(),
     ...over,
   };
   const w = jkStore.writeJoinKey(rec, { dir: JK_DIR, selfUid: SELF === null ? undefined : SELF });
@@ -100,6 +111,15 @@ test('happy path: a seeded join-key + gh merged:true -> records a merge-outcome 
   assert.strictEqual(rec.approval_hash, APPROVAL, 'the SEALED approval_hash is in the record (item-3 trust basis)');
   assert.strictEqual(rec.merge_commit_sha, SHA40);
   assert.strictEqual(rec.repo, REPO_NAME);
+  // OQ-3 W3 — the broker-sig provenance bundle survives the join-key -> merge-outcome hop BYTE-IDENTICALLY
+  // (copied verbatim from jk by the observer; the bundle is the PR-A2 verify source). RFC §5.4.
+  const jk = jkStore.loadJoinKey(id, { dir: JK_DIR, selfUid: SELF === null ? undefined : SELF });
+  assert.ok(jk, 'the join-key is readable');
+  for (const fld of ['lesson_commitment', 'approvedAt', 'nonce', 'key_id', 'broker_sig']) {
+    assert.strictEqual(rec[fld], jk[fld], `the merge-outcome ${fld} === the join-key ${fld} (verbatim hop)`);
+  }
+  assert.strictEqual(rec.lesson_commitment, LESSON_COMMITMENT, 'the lesson_commitment rode in');
+  assert.strictEqual(rec.broker_sig, BROKER_SIG, 'the broker_sig rode in');
 });
 
 test('happy path is IDEMPOTENT: a re-observe with a fresh timestamp dedups (recorded once)', async () => {
@@ -245,6 +265,78 @@ test('the observer mints NO node/edge: only a merge-outcome file is written (SHA
 function listOutcomeFiles(dir) {
   try { return fs.readdirSync(dir).filter((n) => n.endsWith('.json')); } catch { return []; }
 }
+
+// === OQ-3 W3 — THE cross-store provenance round-trip (the load-bearing PR-A2 verify path) RFC §5.4/§5.5 ===
+
+test('OQ-3 W3 cross-store round-trip: a REAL broker_sig minted into the join-key verifies from the merge-outcome (the PR-A2 path)', async () => {
+  clearJoinKeys();
+  // 1. mint a REAL approval bundle: an ed25519 keypair, the W2 freshness basis, a real signRecordId sig.
+  const kp = generateEdgeKeypair();
+  const lessonCommitment = 'c'.repeat(64);
+  const approvedAt = 1735430400000;
+  const nonce = 'real-nonce-xyz';
+  const keyId = 'v0';
+  const basis = approvalSigBasis({ hash: APPROVAL, approvedAt, nonce, key_id: keyId, lesson_commitment: lessonCommitment });
+  const realSig = signRecordId(basis, { privateKeyPem: kp.privateKeyPem });
+  assert.ok(realSig && Buffer.from(realSig, 'base64').length === 64, 'a real 64-byte ed25519 broker_sig');
+
+  // 2. write the join-key carrying the REAL bundle (the kernel-sealed chain source).
+  const id = seedJoinKey({ lesson_commitment: lessonCommitment, approvedAt, nonce, key_id: keyId, broker_sig: realSig });
+
+  // 3. observe-merge -> the merge-outcome carries the bundle copied VERBATIM from the join-key.
+  const dir = tmp();
+  const r = await runMergeObserve({ pr: PR_URL }, { ghRunner: runnerMerged(), dir, now: '2026-06-28T12:00:00.000Z' });
+  assert.strictEqual(r.ok, true, 'the observe records the merge-outcome');
+  const rec = loadMergeOutcome(id, { dir });
+  assert.ok(rec, 'the merge-outcome loads');
+
+  // 4. THE PR-A2 verify: re-derive approvalSigBasis from the merge-outcome's OWN recorded fields and verify
+  //    broker_sig against the real verify key. This proves W3 delivers a cross-uid-VERIFIABLE binding.
+  const rederivedBasis = approvalSigBasis({ hash: rec.approval_hash, approvedAt: rec.approvedAt, nonce: rec.nonce, key_id: rec.key_id, lesson_commitment: rec.lesson_commitment });
+  assert.strictEqual(verifyRecordSig(rederivedBasis, rec.broker_sig, { publicKeyPem: kp.publicKeyPem, allowEnvFallback: false }), true, 'the recorded broker_sig verifies over the re-derived basis (PR-A2 path)');
+
+  // 5. tamper a bundle field in the merge-outcome -> content-hash reject on read (integrity).
+  const f = path.join(dir, `${id}.json`);
+  const body = JSON.parse(fs.readFileSync(f, 'utf8'));
+  body.lesson_commitment = 'f'.repeat(64);                 // a different valid 64-hex; content_hash now stale
+  fs.writeFileSync(f, JSON.stringify(body));
+  assert.strictEqual(loadMergeOutcome(id, { dir }), null, 'a tampered bundle field is rejected on read (content-hash)');
+
+  // 6. tamper lesson_commitment in the JOIN-KEY -> id-derive reject (the SEAL).
+  const jkFile = path.join(JK_DIR, `${id}.json`);
+  const jkBody = JSON.parse(fs.readFileSync(jkFile, 'utf8'));
+  jkBody.lesson_commitment = 'f'.repeat(64);              // re-derives a mismatching id
+  fs.writeFileSync(jkFile, JSON.stringify(jkBody));
+  assert.strictEqual(jkStore.loadJoinKey(id, { dir: JK_DIR, selfUid: SELF === null ? undefined : SELF }), null, 'a tampered join-key lesson_commitment is rejected (id-derive SEAL)');
+});
+
+test('OQ-3 W3 F7 (integrity-at-rest boundary): a 64-byte-but-NON-verifying broker_sig is ACCEPTED at rest but REJECTED by the round-trip verify', async () => {
+  clearJoinKeys();
+  // a well-SHAPED but BOGUS sig (random 64 bytes, NOT signed over the basis). The store SHAPE-validates, so it
+  // ACCEPTS it (documents that W3 does NOT crypto-verify at rest); PR-A2's verifyRecordSig REJECTS it (proves the
+  // F2 boundary: integrity-at-rest, provenance-at-PR-A2).
+  const kp = generateEdgeKeypair();
+  const lessonCommitment = 'c'.repeat(64);
+  const approvedAt = 1735430400000;
+  const nonce = 'real-nonce-xyz';
+  const keyId = 'v0';
+  const bogusSig = crypto.randomBytes(64).toString('base64');   // 64-byte canonical-base64 but NOT a real sig
+
+  // the store ACCEPTS the bogus-but-well-shaped sig at write + read.
+  const id = seedJoinKey({ lesson_commitment: lessonCommitment, approvedAt, nonce, key_id: keyId, broker_sig: bogusSig });
+  const jk = jkStore.loadJoinKey(id, { dir: JK_DIR, selfUid: SELF === null ? undefined : SELF });
+  assert.ok(jk, 'the store ACCEPTS a 64-byte-but-bogus broker_sig at rest (shape passes; NOT crypto-verified)');
+  assert.strictEqual(jk.broker_sig, bogusSig, 'the bogus sig round-trips (integrity-at-rest)');
+
+  const dir = tmp();
+  await runMergeObserve({ pr: PR_URL }, { ghRunner: runnerMerged(), dir, now: '2026-06-28T12:00:00.000Z' });
+  const rec = loadMergeOutcome(id, { dir });
+  assert.ok(rec, 'the merge-outcome also ACCEPTS the bogus-but-well-shaped sig (integrity-at-rest)');
+
+  // the PR-A2 verify REJECTS it -> proves the store does NOT prove provenance; PR-A2 catches what the store does not.
+  const basis = approvalSigBasis({ hash: rec.approval_hash, approvedAt: rec.approvedAt, nonce: rec.nonce, key_id: rec.key_id, lesson_commitment: rec.lesson_commitment });
+  assert.strictEqual(verifyRecordSig(basis, rec.broker_sig, { publicKeyPem: kp.publicKeyPem, allowEnvFallback: false }), false, 'the round-trip verify REJECTS a non-verifying broker_sig (the F2 boundary: PR-A2 catches it)');
+});
 
 (async () => {
   for (const t of tests) { await t.fn(); passed += 1; }

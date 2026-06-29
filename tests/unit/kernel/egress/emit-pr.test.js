@@ -864,6 +864,78 @@ test('item1: custodyJoinKeyDir / joinKeyMeta are on the data deny-list (an actor
   }
 });
 
+// === OQ-3 W3 — the join-key SEALS lesson_commitment + RECORDS the broker-sig bundle from appr.body (RFC §5.4) ===
+
+test('OQ-3 W3: the armed round-trip writes a join-key carrying lesson_commitment + the bundle copied from appr.body', () => {
+  const dir = scratch('loom-custody-');
+  const jkDir = scratch('loom-jk-');
+  const X = 'a1'.repeat(32);   // a 64-hex lesson_commitment
+  try {
+    withKillswitchEnvCleared(() => {
+      const opts = armedCustody(dir);
+      mintApprovalWithLesson(opts, X);                                    // a genuinely signed approval binding X
+      const r = E.emitPR(goodData({ lesson_commitment: X }), Object.assign({}, opts, {
+        custodyJoinKeyDir: jkDir,
+        armedEmitFn: () => fakePr(),
+      }));
+      assert.strictEqual(r.emitted, true, `emitted on the matching commitment (got ${r.reason}/${r.approvalReason})`);
+      assert.strictEqual(jkFilesIn(jkDir).length, 1, 'exactly one join-key file');
+      const res = JK.resolveJoinKeyForPr({ repo: 'owner/repo', pr_number: 7, pr_url: 'https://github.com/owner/repo/pull/7' }, { dir: jkDir, selfUid: SELF_UID });
+      assert.strictEqual(res.ok, true, 'the join-key joins on the gh PR identity (lesson_commitment in the id basis is transparent to the join)');
+      const body = JK.loadJoinKey(res.id, { dir: jkDir, selfUid: SELF_UID });
+      assert.ok(body, 'the join-key loads (verify-on-read with the SEALED lesson_commitment + the recorded bundle)');
+      // the SEALED commitment === the data value the human/broker approved
+      assert.strictEqual(body.lesson_commitment, X, 'the join-key SEALS the approved lesson_commitment');
+      // the bundle is copied from appr.body (the verified approval): key_id default 'v0', nonce 'n-test', approvedAt=now
+      assert.strictEqual(body.key_id, 'v0', 'key_id copied from appr.body (recordApproval default)');
+      assert.strictEqual(body.nonce, 'n-test', 'nonce copied from appr.body');
+      assert.strictEqual(body.approvedAt, opts.now, 'approvedAt copied from appr.body (= the mint-time now)');
+      assert.ok(typeof body.broker_sig === 'string' && body.broker_sig.length > 0, 'broker_sig copied from appr.body.sig');
+      // the broker_sig is a canonical-base64 64-byte ed25519 sig (the signRecordId output shape).
+      assert.strictEqual(Buffer.from(body.broker_sig, 'base64').length, 64, 'broker_sig is a 64-byte ed25519 sig');
+    });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(jkDir, { recursive: true, force: true }); }
+});
+
+test('OQ-3 W3 no-lesson emit: an approval bound to "" + no data lesson_commitment writes a join-key with lesson_commitment:""', () => {
+  const dir = scratch('loom-custody-');
+  const jkDir = scratch('loom-jk-');
+  try {
+    withKillswitchEnvCleared(() => {
+      const opts = armedCustody(dir);
+      mintApprovalFor(opts);                                              // signs lesson_commitment:'' (no-lesson default)
+      const r = E.emitPR(goodData(), Object.assign({}, opts, { custodyJoinKeyDir: jkDir, armedEmitFn: () => fakePr() }));
+      assert.strictEqual(r.emitted, true, 'a no-lesson emit succeeds');
+      const res = JK.resolveJoinKeyForPr({ repo: 'owner/repo', pr_number: 7, pr_url: 'https://github.com/owner/repo/pull/7' }, { dir: jkDir, selfUid: SELF_UID });
+      const body = JK.loadJoinKey(res.id, { dir: jkDir, selfUid: SELF_UID });
+      assert.strictEqual(body.lesson_commitment, '', 'the no-lesson sentinel is sealed into the join-key');
+      assert.ok(typeof body.broker_sig === 'string' && body.broker_sig.length > 0, 'the bundle still rides (broker_sig present)');
+    });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(jkDir, { recursive: true, force: true }); }
+});
+
+test('OQ-3 W3 fold F4: a join-key bundle with key_id:undefined => writeJoinKey bad-key-id => observable, non-reverting', () => {
+  // recordApproval defaults keyId='v0', so in the LIVE emit path appr.body.key_id is always a non-empty string
+  // (the body-hash + sig gates already reject a tampered approval). F4 is the DEFENSE-IN-DEPTH store gate: if a
+  // malformed bundle (key_id missing) ever reaches writeJoinKey, it fail-closes with bad-key-id - and at the emit
+  // call site that surfaces via the existing observable, NON-REVERTING jk.ok===false branch (never throws the
+  // emission). We prove the store gate directly (the non-vacuous F4 proof; the emit path cannot produce it).
+  const jkDir = scratch('loom-jk-');
+  try {
+    const realSig = signRecordId('a'.repeat(64), { privateKeyPem: KP.privateKeyPem });   // a real canonical 64-byte ed25519 sig
+    const bundleNoKeyId = {
+      repo: 'owner/repo', issueRef: 42, pr_number: 7, pr_url: 'https://github.com/owner/repo/pull/7',
+      approval_hash: 'a'.repeat(64), base_sha: 'b'.repeat(40), emitted_at: '2026-06-28T00:00:00.000Z',
+      lesson_commitment: '', approvedAt: 1000, nonce: 'n-test', key_id: undefined, broker_sig: realSig,
+    };
+    const { value: jk, alerts } = captureAlerts(() => JK.writeJoinKey(bundleNoKeyId, { dir: jkDir, selfUid: SELF_UID }));
+    assert.strictEqual(jk.ok, false, 'a missing key_id is rejected');
+    assert.strictEqual(jk.reason, 'bad-key-id', 'fold F4: a bundle with key_id:undefined fail-closes with bad-key-id');
+    assert.ok(/bad-key-id/.test(alerts), 'the bad-key-id refuse is observable');
+    assert.strictEqual(jkFilesIn(jkDir).length, 0, 'nothing is written on the malformed bundle');
+  } finally { fs.rmSync(jkDir, { recursive: true, force: true }); }
+});
+
 (async () => {
   for (const { name, fn } of tests) {
     try { await fn(); process.stdout.write(`  PASS ${name}\n`); passed += 1; }

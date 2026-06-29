@@ -19,6 +19,7 @@
 'use strict';
 
 const assert = require('assert');
+const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -56,6 +57,12 @@ const CPS2 = 'b'.repeat(64);                 // a second patch sha
 const APPROVAL = 'd'.repeat(64);             // a HEX64 approval_hash
 const BASE_SHA = 'f853934b61000ff076cea60c206db225e3ed89f0';  // HEX40
 const MERGE_SHA = 'c0ffee'.repeat(6) + 'cafe';                // HEX40 gh merge_commit_sha
+// OQ-3 W3 — the broker-sig provenance bundle the merge-outcome carries forward for PR-A2 (RFC §5.4). A
+// 64-byte canonical-base64 broker_sig passes the store SHAPE gate; the mint reads only record.approval_hash etc.
+const W3_BROKER_SIG = crypto.randomBytes(64).toString('base64');
+function w3Bundle(over = {}) {
+  return { lesson_commitment: 'e'.repeat(64), approvedAt: 1735430400000, nonce: 'nonce-abc', key_id: 'v0', broker_sig: W3_BROKER_SIG, ...over };
+}
 // Two distinct canonical taxonomy signatures (the captured floor uses these coarse-bucket keys).
 const SIG_A = 'lesson:boundary-contract|unguarded-edge-case|handle-edge-explicitly';
 const SIG_B = 'lesson:data-parse|silent-coercion|fail-closed';
@@ -335,6 +342,7 @@ test('pr-url byte-identity: a trailing-slash --pr-url produces an attestation th
     outcomeStore.recordMergeOutcome({
       join_key_id: jkid, repo: REPO_SLUG, pr_number: PR_NUMBER, pr_url: PR_URL,
       approval_hash: APPROVAL, outcome: 'merged', merge_commit_sha: MERGE_SHA, observed_at: '2026-06-28T12:00:00.000Z',
+      ...w3Bundle(),
     }, { dir: outcomeDir(dir) });
     const { r: m } = captureAlerts(() => mint.mintFromMergeOutcome(
       { join_key_id: jkid },
@@ -364,6 +372,7 @@ test('JOIN-PROBE: captured node -> runAttestFromCapture -> mintFromMergeOutcome 
   const w = outcomeStore.recordMergeOutcome({
     join_key_id: jkid, repo: REPO_SLUG, pr_number: PR_NUMBER, pr_url: PR_URL,
     approval_hash: APPROVAL, outcome: 'merged', merge_commit_sha: MERGE_SHA, observed_at: '2026-06-28T12:00:00.000Z',
+    ...w3Bundle(),
   }, { dir: outcomeDir(dir) });
   assert.strictEqual(w.ok, true, 'the merge-outcome record lands');
   // 4. drive the mint - Branch B must resolve EXACTLY the captured lesson
@@ -397,6 +406,7 @@ test('deny-not-substitute: a competing captured node planted AFTER attesting -> 
   outcomeStore.recordMergeOutcome({
     join_key_id: jkid, repo: REPO_SLUG, pr_number: PR_NUMBER, pr_url: PR_URL,
     approval_hash: APPROVAL, outcome: 'merged', merge_commit_sha: MERGE_SHA, observed_at: '2026-06-28T12:00:00.000Z',
+    ...w3Bundle(),
   }, { dir: outcomeDir(dir) });
   const { r: m, alerts } = captureAlerts(() => mint.mintFromMergeOutcome(
     { join_key_id: jkid },
@@ -426,6 +436,7 @@ test('repoSlug parity: a captured node stored as a .git URL joins a bare-slug at
   outcomeStore.recordMergeOutcome({
     join_key_id: jkid, repo: REPO_SLUG, pr_number: PR_NUMBER, pr_url: PR_URL,
     approval_hash: APPROVAL, outcome: 'merged', merge_commit_sha: MERGE_SHA, observed_at: '2026-06-28T12:00:00.000Z',
+    ...w3Bundle(),
   }, { dir: outcomeDir(dir) });
   const m = mint.mintFromMergeOutcome(
     { join_key_id: jkid },
