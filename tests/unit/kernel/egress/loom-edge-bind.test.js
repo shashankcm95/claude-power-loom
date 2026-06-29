@@ -155,6 +155,18 @@ test('a non-hex claimedBasis -> deny claimed-basis-not-hex64 (the FIRST gate, be
   assertDeny(B.authorizeRequest({ claimedBasis: 5, presentedCtxRaw: JSON.stringify(ctxFor()) }), 'claimed-basis-not-hex64');
 });
 
+// ---- TOTAL / fail-closed: a null / non-object / array opts must DENY, never THROW (CodeRabbit Major) ----
+test('a null / non-object / array opts -> deny claimed-basis-not-hex64, never throws (TOTAL contract)', () => {
+  // the `= {}` default only catches undefined; authorizeRequest(null) would throw on opts.claimedBasis
+  // without the normalize. A fail-closed gate must DENY a bad call, not crash.
+  assert.doesNotThrow(() => B.authorizeRequest(null));
+  assertDeny(B.authorizeRequest(null), 'claimed-basis-not-hex64');
+  assertDeny(B.authorizeRequest(undefined), 'claimed-basis-not-hex64');
+  assertDeny(B.authorizeRequest('not-an-opts'), 'claimed-basis-not-hex64');
+  assertDeny(B.authorizeRequest(42), 'claimed-basis-not-hex64');
+  assertDeny(B.authorizeRequest([{ claimedBasis: 'a'.repeat(64) }]), 'claimed-basis-not-hex64'); // array normalized to {}
+});
+
 // ---- validateCtxShape exported + directly exercised ---------------------------------------------
 test('validateCtxShape is exported and gates shape/type directly (ok on honest, fails on extra/missing/type)', () => {
   assert.strictEqual(typeof B.validateCtxShape, 'function');

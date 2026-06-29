@@ -90,10 +90,14 @@ function validateCtxShape(ctx) {
  *              an uncomputable basis, or a recompute mismatch (incl. a forged endpoint).
  */
 function authorizeRequest(opts = {}) {
-  const claimedBasis = opts.claimedBasis;
+  // TOTAL / fail-closed (CodeRabbit Major): the `= {}` default only catches `undefined`, so
+  // authorizeRequest(null) would throw on opts.claimedBasis. Normalize a null / non-object / array opts to
+  // {} so a bad call DENIES (claimed-basis-not-hex64), never throws - a fail-closed gate must not crash.
+  const o = opts && typeof opts === 'object' && !Array.isArray(opts) ? opts : {};
+  const claimedBasis = o.claimedBasis;
   if (!isHex64(claimedBasis)) return deny('claimed-basis-not-hex64');   // FIRST gate, before touching ctx
 
-  const raw = opts.presentedCtxRaw;
+  const raw = o.presentedCtxRaw;
   if (typeof raw !== 'string' || raw.length === 0) return deny('no-ctx-presented');
 
   let ctx;
