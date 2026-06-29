@@ -152,7 +152,9 @@ function assertSafeRepoRef(repo, { hostAllowlist = DEFAULT_REPO_HOST_ALLOWLIST }
 // commitment is rejected so a casing variant cannot slip a cross-boundary mismatch); throw on anything else. PURE.
 const LESSON_COMMITMENT_RE = /^[a-f0-9]{64}$/;
 function assertSafeLessonCommitment(v) {
-  if (v === undefined || v === null) return '';
+  if (v === undefined) return '';                 // ABSENT/undefined is the only no-lesson coercion; an explicit
+  // null (a malformed value from actor-influenced data) falls through to the throw — fail-closed, never silently
+  // laundered into a no-lesson request (CodeRabbit Major — reject explicit null instead of treating it as no lesson).
   if (typeof v !== 'string' || !(v === '' || LESSON_COMMITMENT_RE.test(v))) {
     throw new Error(`emitPR: lesson_commitment must be a lowercase 64-hex digest or '' (got ${JSON.stringify(v)})`);
   }

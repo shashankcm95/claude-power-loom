@@ -30,6 +30,13 @@ const { verifyRecordSig } = require('../_lib/edge-attestation');   // ③.2.5a �
 
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000;     // 24h — an approval that outlives the day's intent is stale.
 
+// OQ-3 — the lesson_commitment contract: '' (no lesson) or a LOWERCASE 64-hex digest. verifyApproval enforces this
+// SHAPE (not just typeof string) on BOTH the request and the body so a direct verifier caller cannot match on an
+// arbitrary string and slip past the store / emit-gate / broker-bind shape gates (CodeRabbit Major — the verify
+// chokepoint must fail-closed on a malformed commitment, the same contract the other four gates enforce, fold F4).
+const LESSON_COMMITMENT_RE = /^[a-f0-9]{64}$/;
+function isSafeLessonCommitment(v) { return v === '' || (typeof v === 'string' && LESSON_COMMITMENT_RE.test(v)); }
+
 /** Canonical (repo, issue) normalization — the SAME form the etiquette ledger uses (no bypass-by-casing/.git). */
 function normalizeRepo(repo) {
   const [owner = '', name = ''] = String(repo == null ? '' : repo).split('/');
@@ -113,7 +120,7 @@ function verifyApproval({ fileBytes, requestedHash, now, ttlMs = DEFAULT_TTL_MS,
   if (typeof now !== 'number' || !Number.isFinite(now)) return { ok: false, reason: 'no-clock' };
   // OQ-3 — coerce ONLY the request (undefined -> ''); a non-string request fail-closes BEFORE any body read.
   const reqLC = requestedLessonCommitment === undefined ? '' : requestedLessonCommitment;
-  if (typeof reqLC !== 'string') return { ok: false, reason: 'no-requested-lesson-commitment' };
+  if (!isSafeLessonCommitment(reqLC)) return { ok: false, reason: 'no-requested-lesson-commitment' };
   // the trust anchor is a custody-pinned key; absent => fail-closed BEFORE any verify (the env fallback in
   // loadPublicKey can NEVER be reached for this gate — H1). Provenance roots in custody, never ambient.
   if (typeof verifyKeyPem !== 'string' || verifyKeyPem.length === 0) return { ok: false, reason: 'no-verify-key' };
@@ -124,7 +131,7 @@ function verifyApproval({ fileBytes, requestedHash, now, ttlMs = DEFAULT_TTL_MS,
   // OQ-3 — the lesson binding (fold F1: immediately after the hash gate, before the body-hash re-derive + sig).
   // The BODY is NOT coerced: a legacy/absent field is its own DISTINCT fail-closed reason (a missing commitment is
   // never silently '' — that would launder a pre-OQ-3 approval into a no-lesson match).
-  if (typeof body.lesson_commitment !== 'string') return { ok: false, reason: 'no-body-lesson-commitment' };
+  if (!isSafeLessonCommitment(body.lesson_commitment)) return { ok: false, reason: 'no-body-lesson-commitment' };
   if (body.lesson_commitment !== reqLC) return { ok: false, reason: 'lesson-commitment-mismatch' };
   if (typeof body.nonce !== 'string' || body.nonce.trim().length === 0) return { ok: false, reason: 'no-nonce' };
   if (typeof body.approvedAt !== 'number' || !Number.isFinite(body.approvedAt)) return { ok: false, reason: 'no-approvedAt' };

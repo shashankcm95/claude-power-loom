@@ -165,3 +165,13 @@ The full 3-lens board (architect SHIP; hacker + honesty NEEDS-REVISION) firsthan
 - **(arming)** the mint-boundary sig verify is `--verify-key`-gated (optional); a value-swap signer without it writes a *dead* artifact that fails closed at the read gate (`sig-invalid`) — not exploitable (read gate authoritative), a *pre-existing* `approval-store` property. When the loop is ARMED (gap-map item 8), make `--verify-key` effectively mandatory so a value-swap is caught at mint, not wedging a hash's wx slot.
 - **(migration)** pre-W2 standing `.approved` files become unreadable (`no-body-lesson-commitment`) and must be re-minted — security-correct (refuses to launder a pre-OQ-3 approval into a no-lesson match), moot under SHADOW (no standing corpus; 24h TTL). Note it in the PR body.
 - **(optional, deferred)** add one test that parses the confirm token out of the actual `reviewText` output to close the render→confirm→mint loop in a single flow (the property is already covered by two independent halves).
+
+## CodeRabbit fold (post-PR, 3 Major folded — async-bot complements the board, the SCAR continues)
+
+CodeRabbit posted 3 Major (Security) + 1 nitpick; each premise-probed firsthand, all 3 VALID and folded (the nitpick — a plan-grep wording note on an already-executed step — skipped):
+
+- **F-CR1 (`approval.js`)** — `verifyApproval` only `typeof`-checked `reqLC`/`body.lesson_commitment`, not the `''`|64-hex SHAPE the other 4 gates enforce; a direct verifier caller (it is exported; W3/PR-A2 consume it) could match on an arbitrary string. **Fix:** an `isSafeLessonCommitment` shape helper applied to both — verifyApproval is now the 5th consistent shape-gate. Tests: arbitrary-string request → `no-requested-lesson-commitment`; arbitrary-string body → `no-body-lesson-commitment`.
+- **F-CR2 (`approve-cli.js`)** — the lesson fields are rendered verbatim on `/dev/tty` AND hashed into the signed commitment, so a `\r`/ANSI-ESC/`\n` could change what the operator SEES without changing the committed bytes (breaks sign-what-you-see). **Fix:** reject all control chars (`< 0x20` + DEL) in `lesson_signature`/`lesson_body` via `charCodeAt` (NOT a control-regex — ADR-0006; mirrors `isEgressDeniedPath`). Tests: ANSI-ESC / CR / newline-fake-line-injection each rejected.
+- **F-CR3 (`emit-pr.js`)** — `assertSafeLessonCommitment` coerced explicit `null`→`''` (silently laundering a malformed actor value into no-lesson). **Fix:** only `undefined` coerces to `''`; `null` falls through to the throw (fail-closed). Test updated: `null` → throws.
+
+Re-gates after the fold: full kernel suite **0 failures** (approval 28, approve-cli 17, emit-pr 55); zero non-ASCII / literal-control-byte / `eslint-disable`. Commit `<fold>` on the PR branch.

@@ -552,8 +552,8 @@ test('OQ-3: lesson_commitment is NOT a disposition key (it is emission-adjacent 
 });
 
 test('OQ-3: assertSafeLessonCommitment — absent -> ""; 64-hex accepted; non-hex/65-hex/UPPERCASE shape-rejected', () => {
-  assert.strictEqual(E.assertSafeLessonCommitment(undefined), '', 'absent coerces to ""');
-  assert.strictEqual(E.assertSafeLessonCommitment(null), '', 'null coerces to ""');
+  assert.strictEqual(E.assertSafeLessonCommitment(undefined), '', 'absent/undefined is the only no-lesson coercion');
+  assert.throws(() => E.assertSafeLessonCommitment(null), /lesson_commitment/, 'explicit null is rejected (a malformed actor value, not laundered to "")');
   assert.strictEqual(E.assertSafeLessonCommitment(''), '', 'explicit "" stays ""');
   assert.strictEqual(E.assertSafeLessonCommitment('a'.repeat(64)), 'a'.repeat(64), '64-hex accepted');
   for (const bad of ['not-hex', 'a'.repeat(63), 'a'.repeat(65), 'A'.repeat(64), 5, {}]) {

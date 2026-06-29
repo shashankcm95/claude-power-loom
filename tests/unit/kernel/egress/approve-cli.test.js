@@ -200,6 +200,14 @@ test('OQ-3: validateDraft accepts a draft WITH lesson fields and rejects oversiz
   assert.throws(() => C.validateDraft(draft({ lesson_body: LESSON_BODY })), /lesson_signature/, 'a lone lesson_body is rejected');
 });
 
+test('OQ-3 (CR-Major): a control char in a lesson field is rejected (sign-what-you-see — render must match committed bytes)', () => {
+  // An ANSI ESC / \r / \n in a lesson field would change what the operator SEES on /dev/tty (reviewText) without
+  // changing the committed bytes hashed into the signed commitment — breaking the sign-what-you-see boundary.
+  assert.throws(() => C.validateDraft(draft({ lesson_signature: LESSON_SIG, lesson_body: 'safe\u001b[2Kmalicious' })), /control/, 'an ANSI ESC in the body is rejected');
+  assert.throws(() => C.validateDraft(draft({ lesson_signature: 'sig\rwith-cr', lesson_body: LESSON_BODY })), /control/, 'a CR in the signature is rejected');
+  assert.throws(() => C.validateDraft(draft({ lesson_signature: LESSON_SIG, lesson_body: 'line1\nfake hash: 0000' })), /control/, 'a newline (fake-line injection) in the body is rejected');
+});
+
 test('OQ-3 (injected deps): a draft WITH lesson fields -> minted body.lesson_commitment === computeLessonCommitment(...)', () => {
   if (WIN) { skipped += 1; return; }
   const dir = scratch();

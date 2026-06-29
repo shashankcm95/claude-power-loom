@@ -232,6 +232,19 @@ test('verifyApproval [OQ-3]: a legacy/absent body.lesson_commitment -> no-body-l
   assert.strictEqual(A.verifyApproval({ fileBytes: legacy, requestedHash: h, now: 2000, ttlMs: 10000, verifyKeyPem: VKEY }).reason, 'no-body-lesson-commitment');
 });
 
+test('verifyApproval [OQ-3/CR-Major]: an arbitrary (non-shape) string commitment fail-closes at the SHAPE gate, not just typeof', () => {
+  const d = draft(); const h = A.computeEmissionHash(d);
+  // CodeRabbit Major: verifyApproval is the verify chokepoint + is exported, so it must enforce the same ''|64-hex
+  // SHAPE the store / emit-gate / broker-bind gates use — not merely typeof string — else a direct caller matches on
+  // an arbitrary string. (a) an arbitrary-string REQUEST -> no-requested-lesson-commitment (before any body read).
+  const okBody = JSON.stringify(approvalBody({ lesson_commitment: '' }));
+  assert.strictEqual(A.verifyApproval({ fileBytes: okBody, requestedHash: h, now: 2000, ttlMs: 10000, verifyKeyPem: VKEY, requestedLessonCommitment: 'not-a-hex' }).reason, 'no-requested-lesson-commitment');
+  // (b) a VALID-shape request but an arbitrary-string BODY commitment -> no-body-lesson-commitment (shape-checked
+  // before the equality + sig). approvalBody signs over the arbitrary basis; the shape gate rejects it first.
+  const badBody = JSON.stringify(approvalBody({ lesson_commitment: 'not-a-hex' }));
+  assert.strictEqual(A.verifyApproval({ fileBytes: badBody, requestedHash: h, now: 2000, ttlMs: 10000, verifyKeyPem: VKEY, requestedLessonCommitment: '' }).reason, 'no-body-lesson-commitment');
+});
+
 test('verifyApproval [OQ-3]: a non-string requestedLessonCommitment -> no-requested-lesson-commitment', () => {
   const h = A.computeEmissionHash(draft());
   const body = JSON.stringify(approvalBody({ lesson_commitment: '' }));

@@ -44,6 +44,16 @@ const MAX_CONFIRM_LINE = 256;
 const MAX_LESSON_SIGNATURE = 256;
 const MAX_LESSON_BODY = 8192;
 
+// OQ-3 (CodeRabbit Major — sign-what-you-see) — the lesson fields are rendered VERBATIM on /dev/tty (reviewText)
+// AND hashed into the broker-signed commitment, so a control char (\r, ANSI ESC, backspace, or a \n that injects a
+// fake "hash:" line) could change what the operator SEES without changing the committed bytes — breaking the
+// sign-what-you-see boundary. Reject ALL control chars (< 0x20, incl. \n/\t since reviewText renders each field on
+// ONE line) + DEL (0x7f), via charCodeAt — NO control-regex (ADR-0006 / eslint no-control-regex; mirrors emit-pr's
+// isEgressDeniedPath control-char check).
+function hasControlChar(s) {
+  return Array.prototype.some.call(s, (c) => { const cc = c.charCodeAt(0); return cc < 0x20 || cc === 0x7f; });
+}
+
 // =============================== PURE helpers (no I/O) ===============================
 
 /**
@@ -68,6 +78,10 @@ function validateDraft(data) {
     }
     if (typeof data.lesson_body !== 'string' || data.lesson_body.length === 0 || data.lesson_body.length > MAX_LESSON_BODY) {
       throw new Error(`approve-cli: lesson_body must be a non-empty string <= ${MAX_LESSON_BODY} chars`);
+    }
+    // sign-what-you-see: a control char would let the rendered /dev/tty view diverge from the committed bytes.
+    if (hasControlChar(data.lesson_signature) || hasControlChar(data.lesson_body)) {
+      throw new Error('approve-cli: lesson_signature / lesson_body must not contain control characters (sign-what-you-see)');
     }
   }
   return data;
