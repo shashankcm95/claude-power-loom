@@ -312,7 +312,7 @@ function readOutcomeRaw(join_key_id, dir, selfUid) {
 /**
  * Persist a gh-verified merge-outcome. Verify-on-write (full field validation) + dedup-collision-aware.
  * NEVER throws. Every refuse path is OBSERVABLE.
- * @param {{join_key_id, repo, pr_number, pr_url, approval_hash, outcome, merge_commit_sha, observed_at}} rec
+ * @param {{join_key_id, repo, pr_number, pr_url, approval_hash, outcome, merge_commit_sha, observed_at, lesson_commitment, approvedAt, nonce, key_id, broker_sig}} rec
  * @param {{dir?: string, selfUid?: number|null}} [opts]
  * @returns {{ok: boolean, join_key_id?: string, deduped?: boolean, reason?: string}}
  */

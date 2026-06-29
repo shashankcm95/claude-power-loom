@@ -252,6 +252,7 @@ function validateRecord(rec) {
   if (typeof rec.pr_url !== 'string' || !GH_PR_URL.test(rec.pr_url)) return 'bad-pr-url';
   if (!isHex64(rec.approval_hash)) return 'bad-approval-hash';
   if (!isHex40(rec.base_sha)) return 'bad-base-sha';
+  if (typeof rec.emitted_at !== 'string' || !ISO_8601_UTC.test(rec.emitted_at) || !Number.isFinite(Date.parse(rec.emitted_at))) return 'bad-emitted-at';
   // OQ-3 W3 (RFC §5.4) — the SEALED lesson_commitment + the RECORDED broker-sig bundle. lesson_commitment:
   // the no-lesson sentinel '' OR a lowercase 64-hex digest. approvedAt: Number.isFinite ONLY (fold F3 -
   // deliberately LOOSER than verifyApproval's TTL/freshness gate; the merge is observed LATER, possibly
@@ -275,7 +276,7 @@ function validateRecord(rec) {
  * dedup-collision-aware. NEVER throws (the additive-write contract: a join-key failure must never revert
  * the emission - the caller treats a thrown/false result as observable-but-non-fatal). Every refuse path
  * is OBSERVABLE.
- * @param {{repo, issueRef, pr_number, pr_url, approval_hash, base_sha, emitted_at, built_by?}} rec
+ * @param {{repo, issueRef, pr_number, pr_url, approval_hash, base_sha, emitted_at, lesson_commitment, approvedAt, nonce, key_id, broker_sig, built_by?}} rec
  * @param {{dir?: string, selfUid?: number|null}} [opts]
  * @returns {{ok: boolean, id?: string, deduped?: boolean, reason?: string}}
  */

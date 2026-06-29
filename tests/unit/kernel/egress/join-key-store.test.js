@@ -182,6 +182,20 @@ test('writeJoinKey: a non-HEX40 base_sha is rejected before write (the gh-emit b
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+test('writeJoinKey: a non-ISO-8601-UTC emitted_at is rejected (the W3-salvage regression guard — bad-emitted-at)', () => {
+  const dir = scratch('loom-jk-');
+  try {
+    // VALIDATE board HIGH: the W3 hunk must NOT drop the emitted_at guard (it orphans ISO_8601_UTC -> eslint
+    // no-unused-vars CI fail, AND lets a garbage emitted_at persist). This is the non-vacuous proof it stays.
+    for (const bad of ['NOT-AN-ISO-DATE', '2026', '2026-06-29T00:00:00', '2026-13-01T00:00:00.000Z', 42, undefined]) {
+      const r = S.writeJoinKey(rec({ emitted_at: bad }), { dir, selfUid: SELF });
+      assert.strictEqual(r.ok, false, `emitted_at=${JSON.stringify(bad)} rejected`);
+      assert.strictEqual(r.reason, 'bad-emitted-at');
+    }
+    assert.strictEqual(S.writeJoinKey(rec(), { dir, selfUid: SELF }).ok, true, 'a valid ISO-8601-UTC emitted_at writes');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('writeJoinKey: a pr_url that does not match the gh PR-URL regex is rejected', () => {
   const dir = scratch('loom-jk-');
   try {
