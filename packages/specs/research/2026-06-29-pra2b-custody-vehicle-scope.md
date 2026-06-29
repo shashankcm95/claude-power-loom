@@ -34,7 +34,7 @@ All §8 open questions are now RESOLVED (see §8 for the per-item rationale). Th
 PR-A2b stands up an **off-host / cross-uid ed25519 signer** whose private key the same-uid lab/host process **cannot `read()`**, injected through the frozen `opts.edgeSigner` seam, so that:
 
 - the minted `world-anchored-by` edge carries a valid ed25519 signature over its derived `edge_id`, and
-- the consumer `authenticatedWorldAnchorIds(edges, { verifyKey, allowEnvFallback:false })` **admits** it under a custody-pinned verify key the host did not author.
+- the consumer `authenticatedWorldAnchorIds(edges, { verifyKey })` **admits** it under a custody-pinned verify key the host did not author (the consumer passes `allowEnvFallback:false` down to `verifyEdgeSig` internally — it is not a caller-supplied opt).
 
 **Scope boundary (confirm in §8)**: PR-A2b is the **EDGE-signer vehicle** (the item-5 PR-A2 deferral). RFC §5.5 step 3 ("mint the world-anchor *weight* signed with the cross-uid key") is the **weight-gate RFC's Phase 3-4, NOT PR-A2b** — the two RFCs overlap on the label "PR-A2". PR-A2b delivers the signed *edge*; the *weight* mint is downstream.
 
