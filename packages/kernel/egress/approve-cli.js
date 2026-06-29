@@ -32,11 +32,17 @@ const { scrubEmitDiff } = require('./scrub');
 const { computeEmissionHash, emissionAxiom } = require('./approval');
 const { assertCustodyApprovalsDir, recordApproval } = require('./approval-store');
 const { assertDataIsPolicyFree, assertSafeRepoRef, assertSafeIssueRef, assertEgressSafeDiff } = require('./emit-pr');
+const { computeLessonCommitment } = require('../_lib/lesson-commitment');   // OQ-3 — the single-source lesson commitment
 const { crossUidLoomBrokerSigner } = require('./loom-broker-launch');
 
 const CONFIRM_TOKEN_LEN = 8;        // sign-what-you-see handshake length (NOT a secret — see the security model)
 const MAX_DRAFT_FILE_BYTES = 8 * 1024 * 1024;
 const MAX_CONFIRM_LINE = 256;
+// OQ-3 (RFC §5.3, fold F5) — per-field caps on the optional lesson the draft carries (a bounded taxonomy axis +
+// distinguishing prose). The lesson RIDES the approval (its commitment binds into the broker-signed basis); it is
+// NEVER emitted in the PR. Caps are per-field so an oversize body cannot DoS the render / the basis.
+const MAX_LESSON_SIGNATURE = 256;
+const MAX_LESSON_BODY = 8192;
 
 // =============================== PURE helpers (no I/O) ===============================
 
@@ -51,6 +57,19 @@ function validateDraft(data) {
   assertSafeRepoRef(data.repo);                 // default host allowlist — the same default emitPR uses
   assertSafeIssueRef(data.issueRef);
   assertEgressSafeDiff(data.diff);              // the RAW diff (rejects .github/.git*/CI, traversal, oversize)
+  // OQ-3 (fold F5) — the OPTIONAL lesson the approval rides. When EITHER field is present BOTH must be present,
+  // non-empty strings, within the per-field caps (a lone field would compute no commitment; the human must see the
+  // full pair). Placed AFTER the emission-axiom validators (readability). A no-lesson draft (neither field) is fine.
+  const hasSig = data.lesson_signature !== undefined;
+  const hasBody = data.lesson_body !== undefined;
+  if (hasSig || hasBody) {
+    if (typeof data.lesson_signature !== 'string' || data.lesson_signature.length === 0 || data.lesson_signature.length > MAX_LESSON_SIGNATURE) {
+      throw new Error(`approve-cli: lesson_signature must be a non-empty string <= ${MAX_LESSON_SIGNATURE} chars`);
+    }
+    if (typeof data.lesson_body !== 'string' || data.lesson_body.length === 0 || data.lesson_body.length > MAX_LESSON_BODY) {
+      throw new Error(`approve-cli: lesson_body must be a non-empty string <= ${MAX_LESSON_BODY} chars`);
+    }
+  }
   return data;
 }
 
@@ -75,10 +94,17 @@ function checkConfirmation(typed, hash) {
   return typed === hash.slice(0, CONFIRM_TOKEN_LEN);
 }
 
-/** The review the human reads (the scrubbed diff + the full hash) + the confirm instruction. */
-function reviewText(scrubbed, hash) {
+/**
+ * The review the human reads (the scrubbed diff + the full hash) + the confirm instruction. OQ-3 (OQ3-3): when a
+ * lesson rides the approval, render its signature + body too (the human signs-what-they-see — they can reject a
+ * hazardous lesson). The lesson is NOT emitted in the PR; it rides the broker-signed approval as a commitment.
+ * @param {object} scrubbed { repo, issueRef, diff }
+ * @param {string} hash
+ * @param {{lesson_signature?: string, lesson_body?: string}} [lesson]
+ */
+function reviewText(scrubbed, hash, lesson) {
   const ax = emissionAxiom(scrubbed);           // the EXACT hashed preimage (repo/issueRef normalized, diff verbatim)
-  return [
+  const lines = [
     '=== Power Loom :: review this emission before approving (SHADOW — gates nothing live yet) ===',
     'repo:      ' + ax.repo,
     'issueRef:  ' + ax.issueRef,
@@ -86,8 +112,16 @@ function reviewText(scrubbed, hash) {
     '--- scrubbed diff (EXACTLY what would be emitted) ---',
     ax.diff,
     '--- end diff ---',
-    'To APPROVE, type the first ' + CONFIRM_TOKEN_LEN + ' hex chars of the hash above (anything else aborts):',
-  ].join('\n');
+  ];
+  const l = lesson || {};
+  if (typeof l.lesson_signature === 'string' && l.lesson_signature.length > 0 && typeof l.lesson_body === 'string' && l.lesson_body.length > 0) {
+    lines.push('--- lesson (rides this approval; NOT emitted in the PR) ---');
+    lines.push('signature: ' + l.lesson_signature);
+    lines.push('body:      ' + l.lesson_body);
+    lines.push('--- end lesson ---');
+  }
+  lines.push('To APPROVE, type the first ' + CONFIRM_TOKEN_LEN + ' hex chars of the hash above (anything else aborts):');
+  return lines.join('\n');
 }
 
 // =============================== impure I/O ===============================
@@ -188,9 +222,17 @@ function runApprove(opts = {}, deps = {}) {
   const data = readDraftFile(opts.draftPath);
   validateDraft(data);
 
-  // 2. ONE frozen scrubbed object -> render + hash + recordApproval all see the identical bytes.
+  // 2. ONE frozen scrubbed object -> render + hash + recordApproval all see the identical bytes. The lesson (if any)
+  //    rides separately: freezeScrubbed stays {repo, issueRef, diff} (the EMITTED set); the commitment binds the
+  //    lesson into the broker-signed approval basis but is NEVER part of the emission.
   const scrubbed = freezeScrubbed(data);
   const hash = computeEmissionHash(scrubbed);
+  // OQ-3 (RFC §5.3) — derive the commitment from the SAME lesson body that will be RENDERED (sign-what-you-see).
+  // validateDraft has already proven both-or-neither + the caps, so the helper's strict throw is unreachable for a
+  // valid pair; '' (the no-lesson sentinel) when neither field is present.
+  const lesson = (typeof data.lesson_signature === 'string' && typeof data.lesson_body === 'string')
+    ? { lesson_signature: data.lesson_signature, lesson_body: data.lesson_body } : null;
+  const lesson_commitment = lesson ? computeLessonCommitment(lesson) : '';
 
   // 3. fail-fast UX dir check (the ATOMIC guard is recordApproval's own re-assert + wx).
   assertCustodyApprovalsDir(opts.approvalsDir, selfUid);
@@ -198,15 +240,15 @@ function runApprove(opts = {}, deps = {}) {
   // 4. the operator custody verify-key (optional; read fail-closed).
   const verifyKeyPem = readVerifyKeySafe(opts.verifyKeyPath, selfUid);
 
-  // 5. render sign-what-you-see + read the confirm from /dev/tty (fail-closed on no-tty).
-  const confirm = readConfirm(reviewText(scrubbed, hash));
+  // 5. render sign-what-you-see (incl. the lesson, OQ3-3) + read the confirm from /dev/tty (fail-closed on no-tty).
+  const confirm = readConfirm(reviewText(scrubbed, hash, lesson || {}));
   if (!confirm.ok) return { ok: false, reason: confirm.reason }; // no-tty / not-a-tty -> no mint
   if (!checkConfirmation(confirm.line, hash)) return { ok: false, reason: 'not-confirmed' };
 
-  // 6. mint: a fresh nonce + the cross-uid broker signFn.
+  // 6. mint: a fresh nonce + the cross-uid broker signFn. The commitment binds into the EXTENDED broker-signed basis.
   const signFn = makeSigner({ brokerUser: opts.brokerUser, wrapperPath: opts.wrapperPath, sudoPath: opts.sudoPath });
   recordApproval(opts.approvalsDir, scrubbed, {
-    now: now(), nonce: randomNonce(), signFn, keyId: opts.keyId || 'v0', verifyKeyPem, selfUid,
+    now: now(), nonce: randomNonce(), signFn, keyId: opts.keyId || 'v0', verifyKeyPem, selfUid, lesson_commitment,
   });
   return { ok: true, hash };
 }

@@ -23,8 +23,9 @@ const { computeEmissionHash, approvalSigBasis } = require('./approval');
 const HEX64 = /^[0-9a-f]{64}$/;
 function isHex64(v) { return typeof v === 'string' && HEX64.test(v); }
 
-// the exact top-level ctx shape recordApproval threads to signFn: { emission, approvedAt, nonce, key_id }.
-const CTX_KEYS = ['emission', 'approvedAt', 'nonce', 'key_id'];
+// the exact top-level ctx shape recordApproval threads to signFn: { emission, approvedAt, nonce, key_id,
+// lesson_commitment } (OQ-3 grew the exact-set to 5; a 4-key ctx now fails the shape check fail-closed).
+const CTX_KEYS = ['emission', 'approvedAt', 'nonce', 'key_id', 'lesson_commitment'];
 
 function isPlainObject(v) {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -51,6 +52,10 @@ function validateCtxShape(ctx) {
   if (!Number.isFinite(ctx.approvedAt)) return { ok: false, reason: 'approvedAt-not-finite-number' };
   if (typeof ctx.nonce !== 'string' || ctx.nonce.length === 0) return { ok: false, reason: 'nonce-not-nonempty-string' };
   if (typeof ctx.key_id !== 'string' || ctx.key_id.length === 0) return { ok: false, reason: 'key_id-not-nonempty-string' };
+  // OQ-3 — lesson_commitment is a 64-hex (lowercase) digest or '' (no lesson). Type-check FIRST (a non-string flips
+  // the recompute basis), then the lowercase-64-hex-or-empty shape. A non-conforming value never reaches the signer.
+  if (typeof ctx.lesson_commitment !== 'string') return { ok: false, reason: 'lesson_commitment-not-hex64-or-empty' };
+  if (!(ctx.lesson_commitment === '' || HEX64.test(ctx.lesson_commitment))) return { ok: false, reason: 'lesson_commitment-not-hex64-or-empty' };
   // emission MUST be a plain non-array object: computeEmissionHash([...]) / a scalar returns a VALID hex (probed),
   // so this is load-bearing — an array/scalar emission must never reach the signer.
   if (!isPlainObject(ctx.emission)) return { ok: false, reason: 'emission-not-an-object' };
@@ -93,6 +98,7 @@ function authorizeRequest(opts = {}) {
       approvedAt: ctx.approvedAt,
       nonce: ctx.nonce,
       key_id: ctx.key_id,
+      lesson_commitment: ctx.lesson_commitment,   // OQ-3 — fold the binding into the recompute basis
     });
   } catch { return deny('basis-uncomputable'); }
 

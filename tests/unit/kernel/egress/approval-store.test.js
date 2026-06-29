@@ -47,7 +47,7 @@ test('assertCustodyApprovalsDir: a clean uid-owned dir passes; absent/non-dir/sy
 
 // === recordApproval + readVerifiedApproval round-trip ===
 
-test('recordApproval -> readVerifiedApproval round-trips ok; body carries hash/emission/approvedAt/nonce', () => {
+test('recordApproval -> readVerifiedApproval round-trips ok; body carries hash/emission/approvedAt/nonce/lesson_commitment', () => {
   const dir = scratch('loom-appr-');
   try {
     const { hash, path: file } = S.recordApproval(dir, draft(), { now: 1000, nonce: 'n-xyz', selfUid: SELF, signFn: SIGN });
@@ -57,8 +57,10 @@ test('recordApproval -> readVerifiedApproval round-trips ok; body carries hash/e
     assert.deepStrictEqual(body.emission, A.emissionAxiom(draft()));
     assert.ok(typeof body.sig === 'string' && body.sig.length > 0, 'the minted approval carries a sig');
     assert.strictEqual(body.key_id, 'v0');
+    assert.strictEqual(body.lesson_commitment, '', 'OQ-3: a no-lesson mint persists the "" sentinel (the field is ALWAYS present)');
     const r = S.readVerifiedApproval(dir, HASH, { now: 2000, ttlMs: 10000, selfUid: SELF, verifyKeyPem: VKEY });
     assert.strictEqual(r.ok, true, r.reason);
+    assert.ok(r.body && r.body.lesson_commitment === '', 'readVerifiedApproval returns the verified body carrying the sentinel');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -205,6 +207,68 @@ test('readVerifiedApproval [honesty-H2]: an absent / wrong verifyKeyPem fails cl
     assert.strictEqual(S.readVerifiedApproval(dir, HASH, { now: 2000, ttlMs: 10000, selfUid: SELF, verifyKeyPem: wrong }).reason, 'sig-invalid');
     // the right pin -> ok
     assert.strictEqual(S.readVerifiedApproval(dir, HASH, { now: 2000, ttlMs: 10000, selfUid: SELF, verifyKeyPem: VKEY }).ok, true);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// === OQ-3 W2 — the lesson_commitment binding through the store (mint-boundary sign/verify over the extended basis) ===
+
+const LC = 'a1b2c3d4'.repeat(8);   // a 64-hex lesson commitment
+
+test('recordApproval [OQ-3]: a lesson_commitment is persisted + signed over the EXTENDED basis; readVerifiedApproval matches', () => {
+  const dir = scratch('loom-appr-');
+  try {
+    // verifyKeyPem passed at mint -> the mint-boundary verifyRecordSig re-derives the EXTENDED basis (incl. the
+    // lesson_commitment). If recordApproval signed the OLD 4-field basis, this boundary check would throw.
+    const { hash, path: file } = S.recordApproval(dir, draft(), { now: 1000, nonce: 'n-lc', selfUid: SELF, signFn: SIGN, lesson_commitment: LC, verifyKeyPem: VKEY });
+    const body = JSON.parse(fs.readFileSync(file, 'utf8'));
+    assert.strictEqual(body.lesson_commitment, LC, 'the persisted body carries the commitment');
+    // a matching request -> ok; the returned body carries the commitment.
+    const ok = S.readVerifiedApproval(dir, hash, { now: 2000, ttlMs: 10000, selfUid: SELF, verifyKeyPem: VKEY, requestedLessonCommitment: LC });
+    assert.strictEqual(ok.ok, true, ok.reason);
+    assert.strictEqual(ok.body.lesson_commitment, LC, 'the verified body carries the commitment (the §5.4 bundle source)');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('readVerifiedApproval [OQ-3]: a SWAPPED requestedLessonCommitment -> lesson-commitment-mismatch (fail-closed)', () => {
+  const dir = scratch('loom-appr-');
+  try {
+    S.recordApproval(dir, draft(), { now: 1000, nonce: 'n-lc', selfUid: SELF, signFn: SIGN, lesson_commitment: LC });
+    const r = S.readVerifiedApproval(dir, HASH, { now: 2000, ttlMs: 10000, selfUid: SELF, verifyKeyPem: VKEY, requestedLessonCommitment: 'f'.repeat(64) });
+    assert.strictEqual(r.ok, false);
+    assert.strictEqual(r.reason, 'lesson-commitment-mismatch', 'asking for a DIFFERENT commitment than the body binds fail-closes');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('recordApproval [OQ-3]: a no-lesson ("") mint round-trips; a missing requestedLessonCommitment coerces to "" and matches', () => {
+  const dir = scratch('loom-appr-');
+  try {
+    // no lesson_commitment opt -> coerced to '' at the writer.
+    const { hash } = S.recordApproval(dir, draft(), { now: 1000, nonce: 'n', selfUid: SELF, signFn: SIGN });
+    const r = S.readVerifiedApproval(dir, hash, { now: 2000, ttlMs: 10000, selfUid: SELF, verifyKeyPem: VKEY });   // no requestedLessonCommitment
+    assert.strictEqual(r.ok, true, r.reason);
+    assert.strictEqual(r.body.lesson_commitment, '', 'the "" sentinel round-trips with an absent request');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('recordApproval [OQ-3]: a non-"" non-64-hex lesson_commitment is shape-rejected at the writer (no file)', () => {
+  const dir = scratch('loom-appr-');
+  try {
+    for (const bad of ['not-hex', LC.slice(0, 63), LC + 'a', LC.toUpperCase()]) {
+      assert.throws(() => S.recordApproval(dir, draft(), { now: 1000, nonce: 'n', selfUid: SELF, signFn: SIGN, lesson_commitment: bad }), /lesson_commitment/, `bad commitment ${JSON.stringify(bad)} rejected`);
+    }
+    assert.strictEqual(fs.existsSync(path.join(dir, HASH + '.approved')), false, 'no approval minted for a malformed commitment');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('readVerifiedApproval [OQ-3]: a fresh body object is returned per call (no shared mutable ref)', () => {
+  const dir = scratch('loom-appr-');
+  try {
+    S.recordApproval(dir, draft(), { now: 1000, nonce: 'n', selfUid: SELF, signFn: SIGN, lesson_commitment: LC });
+    const a = S.readVerifiedApproval(dir, HASH, { now: 2000, ttlMs: 10000, selfUid: SELF, verifyKeyPem: VKEY, requestedLessonCommitment: LC });
+    const b = S.readVerifiedApproval(dir, HASH, { now: 2000, ttlMs: 10000, selfUid: SELF, verifyKeyPem: VKEY, requestedLessonCommitment: LC });
+    assert.ok(a.ok && b.ok);
+    assert.notStrictEqual(a.body, b.body, 'each read parses a fresh body object from disk (no shared mutable ref)');
+    assert.deepStrictEqual(a.body, b.body, 'but they are value-equal');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 

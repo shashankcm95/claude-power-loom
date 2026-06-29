@@ -542,6 +542,62 @@ test('EC1bB.3/4 emitPR: a poisoned data policy key (cap/window/ledger/now) is fa
   }
 });
 
+// === OQ-3 W2 — the lesson_commitment shape gate + the NON-VACUOUS approval round-trip (fold F3/F4) ===
+
+test('OQ-3: lesson_commitment is NOT a disposition key (it is emission-adjacent data, passes assertDataIsPolicyFree)', () => {
+  assert.ok(!E.DISPOSITION_KEYS.includes('lesson_commitment'), 'lesson_commitment must NOT be in DISPOSITION_KEYS');
+  // a 64-hex commitment in data is ACCEPTED (does not trip the policy-key reject) on the dry-run path.
+  const r = E.emitPR(goodData({ lesson_commitment: 'a'.repeat(64) }));
+  assert.strictEqual(r.ok, true, r.reason);
+});
+
+test('OQ-3: assertSafeLessonCommitment — absent -> ""; 64-hex accepted; non-hex/65-hex/UPPERCASE shape-rejected', () => {
+  assert.strictEqual(E.assertSafeLessonCommitment(undefined), '', 'absent coerces to ""');
+  assert.strictEqual(E.assertSafeLessonCommitment(null), '', 'null coerces to ""');
+  assert.strictEqual(E.assertSafeLessonCommitment(''), '', 'explicit "" stays ""');
+  assert.strictEqual(E.assertSafeLessonCommitment('a'.repeat(64)), 'a'.repeat(64), '64-hex accepted');
+  for (const bad of ['not-hex', 'a'.repeat(63), 'a'.repeat(65), 'A'.repeat(64), 5, {}]) {
+    assert.throws(() => E.assertSafeLessonCommitment(bad), /lesson_commitment/, `${JSON.stringify(bad)} rejected`);
+  }
+});
+
+test('OQ-3: a non-hex lesson_commitment in data is shape-rejected end-to-end (fail-closed)', () => {
+  const r = E.emitPR(goodData({ lesson_commitment: 'A'.repeat(64) }));   // UPPERCASE -> rejected
+  assert.strictEqual(r.ok, false);
+  assert.ok(/lesson_commitment/.test(r.reason), `the UPPERCASE commitment is rejected (got ${r.reason})`);
+});
+
+// A SIGNED approval minted with a specific lesson_commitment (mirrors mintApprovalFor; the gate pins KP.publicKeyPem).
+function mintApprovalWithLesson(opts, lessonCommitment) {
+  return S.recordApproval(opts.custodyApprovalsDir, { repo: 'owner/repo', issueRef: 42, diff: GOOD_DIFF },
+    { now: opts.now, nonce: 'n-test', selfUid: SELF_UID, signFn: SIGN, lesson_commitment: lessonCommitment });
+}
+
+test('OQ-3 NON-VACUOUS: a REAL approval bound to commitment X + data.lesson_commitment=X => emitted:true; =Y => awaiting-approval + approvalReason surfaced', () => {
+  const dir = scratch('loom-custody-');
+  const X = 'a1'.repeat(32);   // a 64-hex commitment
+  const Y = 'b2'.repeat(32);
+  try {
+    withKillswitchEnvCleared(() => {
+      const opts = armedCustody(dir);
+      mintApprovalWithLesson(opts, X);                                    // a genuinely signed approval binding X
+      // (a) the MATCHING commitment + an injected succeeding seam => a real emit.
+      let seen = null;
+      const okR = E.emitPR(goodData({ lesson_commitment: X }), Object.assign({}, opts, { armedEmitFn: (a) => { seen = a; return { pr_url: 'https://example/pr/1', number: 1, base_sha: 'abc' }; } }));
+      assert.strictEqual(okR.emitted, true, 'matching commitment => emitted (got ' + okR.reason + '/' + okR.approvalReason + ')');
+      assert.ok(seen, 'the armed seam was reached');
+      // (b) the SAME approval but a SWAPPED data commitment => the gate refuses (no emit) + surfaces the mismatch.
+      mintApprovalWithLesson(opts, X);                                    // re-mint (the prior was one-shot consumed)
+      let seamCalls = 0;
+      const noR = E.emitPR(goodData({ lesson_commitment: Y }), Object.assign({}, opts, { armedEmitFn: () => { seamCalls += 1; return { pr_url: 'x', number: 2 }; } }));
+      assert.strictEqual(noR.emitted, false, 'a swapped commitment does NOT emit');
+      assert.strictEqual(noR.reason, 'awaiting-approval', 'the outer reason is unchanged');
+      assert.strictEqual(noR.approvalReason, 'lesson-commitment-mismatch', 'fold F3: the underlying mismatch is surfaced for debugging');
+      assert.strictEqual(seamCalls, 0, 'the seam was NEVER reached on a swapped commitment (fail-closed before emit)');
+    });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 // === ③.2.4 — the per-emission approval gate riders (H5 normalize-once + H7 deny-list completeness) ===
 
 test('③.2.4 H7 + ③.2.5a: the full approval + signing vocabulary is in the data deny-list (actor cannot inject approval/custody/verify-key keys)', () => {

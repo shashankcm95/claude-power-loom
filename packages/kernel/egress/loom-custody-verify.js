@@ -151,8 +151,10 @@ function gatherCustodyFacts(opts = {}) {
   let sign = { signed: false, sigVerifies: false };
   try {
     const emission = { repo: 'loom-broker/custody-probe', issueRef: 1, diff: 'custody-probe' };
-    const ctx = { emission, approvedAt: 1, nonce: crypto.randomBytes(16).toString('hex'), key_id: 'custody-probe' };
-    const basis = approvalSigBasis({ hash: computeEmissionHash(emission), approvedAt: ctx.approvedAt, nonce: ctx.nonce, key_id: ctx.key_id });
+    // OQ-3 (fold F6): the probe ctx + basis carry lesson_commitment:'' — the no-lesson sentinel shared with every
+    // real no-lesson emission, so the probe basis matches what recordApproval signs for a no-lesson approval.
+    const ctx = { emission, approvedAt: 1, nonce: crypto.randomBytes(16).toString('hex'), key_id: 'custody-probe', lesson_commitment: '' };
+    const basis = approvalSigBasis({ hash: computeEmissionHash(emission), approvedAt: ctx.approvedAt, nonce: ctx.nonce, key_id: ctx.key_id, lesson_commitment: ctx.lesson_commitment });
     const sig = typeof signer === 'function' ? signer(basis, ctx) : null;
     if (sig) {
       sign.signed = true;

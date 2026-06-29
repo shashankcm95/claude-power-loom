@@ -17,9 +17,11 @@ const tests = [];
 function test(name, fn) { tests.push({ name, fn }); }
 
 const EM = { repo: 'owner/repo', issueRef: 42, diff: 'diff --git a/x b/x\n@@ -1 +1 @@\n-a\n+b\n' };
-function ctxFor(over) { return Object.assign({ emission: EM, approvedAt: 1000, nonce: 'n-1', key_id: 'v0' }, over || {}); }
+// OQ-3 W2: the ctx is now 5-key (lesson_commitment threaded by recordApproval into the signFn ctx). Default '' (the
+// no-lesson sentinel) so the existing freshness/tamper cases stay valid additively.
+function ctxFor(over) { return Object.assign({ emission: EM, approvedAt: 1000, nonce: 'n-1', key_id: 'v0', lesson_commitment: '' }, over || {}); }
 function basisFor(ctx) {
-  return A.approvalSigBasis({ hash: A.computeEmissionHash(ctx.emission), approvedAt: ctx.approvedAt, nonce: ctx.nonce, key_id: ctx.key_id });
+  return A.approvalSigBasis({ hash: A.computeEmissionHash(ctx.emission), approvedAt: ctx.approvedAt, nonce: ctx.nonce, key_id: ctx.key_id, lesson_commitment: ctx.lesson_commitment });
 }
 function call(ctx, claimedBasis) {
   return B.authorizeRequest({ claimedBasis: claimedBasis !== undefined ? claimedBasis : basisFor(ctx), presentedCtxRaw: JSON.stringify(ctx) });
@@ -80,6 +82,40 @@ test('non-JSON / empty / whitespace / non-hex-basis -> deny with the right reaso
   assert.strictEqual(B.authorizeRequest({ claimedBasis: basisFor(ctxFor()), presentedCtxRaw: '' }).reason, 'no-ctx-presented');
   assert.strictEqual(B.authorizeRequest({ claimedBasis: basisFor(ctxFor()), presentedCtxRaw: '   ' }).reason, 'ctx-unparseable'); // whitespace-only -> fail-closed
   assert.strictEqual(B.authorizeRequest({ claimedBasis: 'not-hex', presentedCtxRaw: JSON.stringify(ctxFor()) }).reason, 'claimed-basis-not-hex64');
+});
+
+// === OQ-3 W2 — the lesson_commitment is in the 5-key ctx + the recompute basis ===
+
+test('OQ-3: a 5-key ctx with a VALID 64-hex commitment -> allow (the commitment is folded into the recompute basis)', () => {
+  const ctx = ctxFor({ lesson_commitment: 'a'.repeat(64) });
+  const r = call(ctx);
+  assert.strictEqual(r.decision, 'allow');
+  assert.strictEqual(r.basisToSign, basisFor(ctx), 'the signed basis binds the commitment');
+});
+
+test('OQ-3: a commitment SWAP against the old basis -> deny basis-mismatch (the binding is in the basis)', () => {
+  const oldBasis = basisFor(ctxFor({ lesson_commitment: 'a'.repeat(64) }));
+  const swapped = ctxFor({ lesson_commitment: 'b'.repeat(64) });
+  const r = call(swapped, oldBasis);
+  assert.strictEqual(r.decision, 'deny');
+  assert.strictEqual(r.reason, 'basis-mismatch');
+  assert.strictEqual(r.basisToSign, null);
+});
+
+test('OQ-3: a non-hex / UPPERCASE / non-string commitment -> deny lesson_commitment-not-hex64-or-empty (shape-gate)', () => {
+  const goodBasis = basisFor(ctxFor());
+  const mk = (over) => B.authorizeRequest({ claimedBasis: goodBasis, presentedCtxRaw: JSON.stringify(ctxFor(over)) });
+  assert.strictEqual(mk({ lesson_commitment: 'not-hex' }).reason, 'lesson_commitment-not-hex64-or-empty');
+  assert.strictEqual(mk({ lesson_commitment: 'A'.repeat(64) }).reason, 'lesson_commitment-not-hex64-or-empty', 'UPPERCASE 64-hex is rejected (lowercase-only)');
+  assert.strictEqual(mk({ lesson_commitment: 'a'.repeat(63) }).reason, 'lesson_commitment-not-hex64-or-empty', '63-hex rejected');
+  assert.strictEqual(mk({ lesson_commitment: 5 }).reason, 'lesson_commitment-not-hex64-or-empty', 'non-string rejected');
+});
+
+test('OQ-3: a 4-key ctx (lesson_commitment MISSING) -> deny ctx-shape-mismatch (the exact-set grew to 5)', () => {
+  const noLc = ctxFor(); delete noLc.lesson_commitment;
+  const r = B.authorizeRequest({ claimedBasis: basisFor(ctxFor()), presentedCtxRaw: JSON.stringify(noLc) });
+  assert.strictEqual(r.decision, 'deny');
+  assert.strictEqual(r.reason, 'ctx-shape-mismatch', 'a missing lesson_commitment fails the exact-set key check');
 });
 
 (async () => {

@@ -34,6 +34,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/kernel/_lib/k9-promote-deltas.js` - K9 — promote-deltas cherry-pick orchestration (v3.0-alpha, PR 3).
 - `packages/kernel/_lib/kernel-algorithms-audit.js` - kernel-algorithms-audit.js — the A4-binding gate (v3.2 K11; ENFORCING since Wave 3).
 - `packages/kernel/_lib/layer-boundary-lint.js` - K12 — Layer-boundary ADVISORY lint (v3.0-alpha, Phase-1-alpha PR 5 — final sub-PR).
+- `packages/kernel/_lib/lesson-commitment.js` - OQ-3 kernel-seal arc - the SINGLE-SOURCE lesson-commitment primitive (moved kernel-ward in W2, fold F2).
 - `packages/kernel/_lib/library-catalog.js` - packages/kernel/_lib/library-catalog.js — Catalog read/write with lock-protected RMW.
 - `packages/kernel/_lib/library-paths.js` - packages/kernel/_lib/library-paths.js — Library/Section/Stack/Catalog/Volume path primitives.
 - `packages/kernel/_lib/library-reconcile.js` - library-reconcile.js — single source of truth for catalog-entry construction
@@ -256,7 +257,6 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/lab/causal-edge/item-source.js` - v-next MV-W3a — deriveItemSource: map a lesson node to its trust-weight SOURCE by membership in the C-W1
 - `packages/lab/causal-edge/_spike/lesson-capture-rerun.js` - v3.11 W1 — the capture re-run SPIKE: the IMPURE real-claude derive leg + a manual
 - `packages/lab/causal-edge/lesson-capture.js` - v3.11 W1 — the CAPTURE RE-RUN orchestration (the re-plumb).
-- `packages/lab/causal-edge/lesson-commitment.js` - OQ-3 kernel-seal arc, W1 - the SINGLE-SOURCE lesson-commitment helper.
 - `packages/lab/causal-edge/lesson-confirm.js` - v3.11 W2 — the CONFIRMATION GATE + the lane split + the confirm pass.
 - `packages/lab/causal-edge/lesson-consolidate.js` - v3.11 W1 — the consolidation pass (DEF-3): roll lesson nodes up by lesson_signature
 - `packages/lab/causal-edge/lesson-derive.js` - v3.11 W1 — the lesson DERIVATION leg.
