@@ -21,12 +21,42 @@
 // rebind target.
 //
 // SHADOW / WEIGHT-INERT: the edge stays UNSIGNED in production (no edgeSigner vehicle - that is the
-// deferred PR-A2). LIVE_SOURCES stays Object.freeze([]); no production consumer admits the world-anchor
+// deferred PR-A2b). LIVE_SOURCES stays Object.freeze([]); no production consumer admits the world-anchor
 // source. This mint NARROWS the #273 surface (trust moves from an unauthenticated lab field onto the
 // kernel-authoritative gh-verified join-key) but does NOT close it: the edge is unsigned (same-uid
 // co-forge of the merge-outcome record + attestation is still possible). The provenance close is the
-// deferred cross-uid signer (PR-A2) + the LIVE_SOURCES flip (PR-B). Merged code only narrows; only a
+// deferred cross-uid signer (PR-A2b) + the LIVE_SOURCES flip (PR-B). Merged code only narrows; only a
 // DEPLOYED cross-uid signer the host cannot read() + accumulated world-anchored merges HARDEN (OQ-NS-6).
+//
+// PR-A2a (RFC S5.5 steps 1+2) - the INBOUND authentication. The W3 merge-outcome record carries a
+// broker-sig provenance bundle {lesson_commitment, approvedAt, nonce, key_id, broker_sig}, SHAPE-validated
+// at rest but NOT crypto-verified by any store (the stores hold no verify key, by design). This mint is the
+// FIRST + ONLY crypto-verifier of that persisted broker_sig, and it strengthens the lesson join from
+// signature-only to BODY-binding. The two steps (engaged when opts.verifyKeyPem is supplied):
+//   - STEP 1 (broker_sig verify): reconstruct approvalSigBasis({hash: record.approval_hash, approvedAt,
+//     nonce, key_id, lesson_commitment}) and verifyRecordSig against the CUSTODY-pinned verifyKeyPem with
+//     allowEnvFallback:false (a same-uid host must NOT point the verifier at its own ambient key - the H1
+//     close). A false verify -> refuse broker-sig-invalid; a throw in either primitive -> refuse
+//     auth-verify-error. Runs BEFORE the node mint (refuse-before-write).
+//   - STEP 2 (commitment re-derive): computeLessonCommitment({lesson_signature, lesson_body}) over the
+//     RESOLVED floor lesson must === record.lesson_commitment. The mint's own join is by lesson_signature
+//     ALONE, so the commitment (which binds the BODY) is strictly stronger and catches a lesson_body reword
+//     under a kept signature. A mismatch -> refuse lesson-commitment-mismatch; a throw -> auth-verify-error.
+// ENGAGEMENT-ON-PRESENCE (SHADOW-safe, NOT fail-open): no consumer reads the mint for a weight, the edge is
+// UNSIGNED, LIVE_SOURCES is frozen, so an un-authenticated mint produces an edge no live consumer admits. The
+// fail-closed boundary correctly lives at the CONSUMER (PR-B, which MUST flip this to refuse-on-absent when a
+// consumer goes live - a NAMED PR-B residual). ENGAGEMENT is by PRESENCE, asymmetric (security.md): an ABSENT
+// verifyKeyPem (property missing / undefined / null) = un-armed -> un-authenticated SHADOW; a PRESENT-but-invalid
+// one ('' / non-string) = intent-to-authenticate-misconfigured -> ENGAGE + fail closed (never a silent skip).
+// When NO verifyKeyPem is supplied (today's un-armed production
+// path), the mint proceeds un-authenticated SHADOW BUT emits world-anchor-mint-unauthenticated on EVERY
+// auto-mint - the skip is never silent (security.md). That observable-skip token is DISTINCT from the refuse
+// family (live-recall-mint-refused), so a triager reading the stream never mistakes an un-armed mint for a
+// failure. OQ3-5 (the static grandfather, lesson_commitment==='') is ADMITTED-and-OBSERVED
+// (world-anchor-mint-uncommitted-lesson): step 1 still verifies the broker_sig over the '' basis (proving a
+// legitimate no-lesson approval bound this merge), step 2 is skipped (no committed body to bind). The final
+// commitment-required-vs-human-vetted policy is OQ3-5, deferred to the PR-B HARDEN gate; PR-A2a's choice is
+// named-provisional, never silent.
 //
 // THE att-vs-record CROSS-CHECK IS DEFENSE-IN-DEPTH ONLY, NOT PROVENANCE (hacker H1): both sides of a
 // same-uid co-forge are set equal by construction (the forger writes both the merge-outcome record and
@@ -85,6 +115,13 @@ const { buildWorldAnchorLesson, LESSON_2137 } = require('./lesson');
 const { listLivePendingLessons } = require('../causal-edge/live-pending-store');
 const { lessonClusterKey, TRIGGER_CLASS, GOTCHA_CLASS, CORRECTIVE_CLASS } = require('../causal-edge/lesson-signature');
 const { emitEgressAlert } = require('../../kernel/egress/alert');
+// PR-A2a (RFC S5.5 steps 1+2) - the mint-side INBOUND authentication primitives (lab -> kernel, all legal;
+// NOT join-key-store - the dam stays at {emit-pr.js, merge-observer.js}). approvalSigBasis reconstructs the
+// broker-signed basis; verifyRecordSig crypto-verifies it custody-pinned (allowEnvFallback:false);
+// computeLessonCommitment re-derives the body commitment so the join binds the body, not just the signature.
+const { approvalSigBasis } = require('../../kernel/egress/approval');
+const { verifyRecordSig } = require('../../kernel/_lib/edge-attestation');
+const { computeLessonCommitment } = require('../../kernel/_lib/lesson-commitment');
 
 // The orchestrator-authored STATIC GRANDFATHER floor (relocated here from cli.js): a STATIC list of
 // ISSUE-BOUND seed blocks. PR-2 makes each seed issue-bound (repo + issue_ref) so the captured floor and
@@ -234,19 +271,30 @@ function collectCapturedCandidates(att, pendingDir) {
  *
  * @param {{join_key_id: string}} args  the merge-outcome record key (a content-addressed HEX64).
  * @param {{anchorDir?: string, outcomeDir?: string, liveDir?: string, edgeDir?: string, pendingDir?: string,
- *   edgeSigner?: (id: string) => string|null|undefined, buildLesson?: (seed: object) => object}} [opts]
+ *   edgeSigner?: (id: string) => string|null|undefined, buildLesson?: (seed: object) => object,
+ *   verifyKeyPem?: string}} [opts]
  *   SYMMETRIC per-store opt keys (hacker M1: a wrong key must not silently fall through to a REAL store):
  *   anchorDir = the world-anchor (attestation) store dir; outcomeDir = the merge-outcome store dir;
  *   liveDir = the live-recall node store dir; edgeDir = the world-anchored-by edge store dir; pendingDir =
  *   the captured live_pending store dir (PR-2 captured floor); edgeSigner = the off-host signer (UNDEFINED
  *   in production -> UNSIGNED); buildLesson = the static-seed builder (a TEST seam for Branch A's M2
- *   totality path; defaults to buildWorldAnchorLesson). A null/non-object opts is normalized to {} (TOTAL
- *   contract); production passes none (every store defaults to its real dir).
+ *   totality path; defaults to buildWorldAnchorLesson). verifyKeyPem = the PR-A2a custody verify key (the
+ *   ENGAGEMENT signal: present -> broker_sig verify + commitment re-derive, fail-closed; absent -> the
+ *   un-authenticated SHADOW path that emits world-anchor-mint-unauthenticated). It is NOT a dir key (read by
+ *   name, never iterated), so it sits OUTSIDE the FOLD-B all-or-nothing dirKeys guard + the `'dir' in o`
+ *   reject. A null/non-object opts is normalized to {} (TOTAL contract); production passes none (every store
+ *   defaults to its real dir; no verify key -> un-authenticated SHADOW).
  * @returns {{minted: boolean, node_id?: string, deduped?: boolean, mint_reason?: string,
- *   edge_minted?: boolean, edge_id?: string, edge_deduped?: boolean, edge_signed?: boolean, edge_reason?: string}}
+ *   edge_minted?: boolean, edge_id?: string, edge_deduped?: boolean, edge_signed?: boolean, edge_reason?: string,
+ *   auth_observed?: boolean, commitment_verified?: boolean}}
  *   `edge_signed:false` is the PRODUCTION invariant (no signer). A consumer MUST read
  *   `edge_minted:true, edge_signed:false` as RECORDED-not-TRUSTED (an integrity-only, UNSIGNED,
  *   weight-inert edge), NEVER a weight source. `minted`/`edge_minted` are RECORD events, not trust events.
+ *   PR-A2a adds `auth_observed` + `commitment_verified` on the minted path - BOTH are RECORD events, not
+ *   trust events (mirroring `edge_signed`): a same-uid caller controls this in-process return; downstream
+ *   trust comes ONLY from the SIGNED edge (authenticatedWorldAnchorIds, PR-A2b). `auth_observed` /
+ *   `commitment_verified` are meaningful only in conjunction with `edge_signed:true`, which PR-A2a NEVER
+ *   produces. NEITHER flag enters any node/edge SCHEMA (return-shape only).
  */
 function mintFromMergeOutcome(args, opts = {}) {
   // TOTALITY (hacker L1): normalize a bad opts (null / non-object / array) to {} so opts.* reads cannot
@@ -325,6 +373,51 @@ function mintFromMergeOutcome(args, opts = {}) {
     // intentional fall-through: bind record.approval_hash regardless (the kernel-sealed field).
   }
 
+  // 4a. PR-A2a STEP 1 (RFC S5.5 step 1) - the INBOUND broker_sig verify. Engages on opts.verifyKeyPem
+  //     presence (mirroring the edgeSigner / authenticatedWorldAnchorIds precedent). Runs BEFORE lesson
+  //     resolution (needs only the record bundle) + BEFORE the node mint (refuse-before-write). When
+  //     engaged, MANDATORY + fail-closed: reconstruct the basis the broker signed and crypto-verify it
+  //     against the CUSTODY-pinned key (allowEnvFallback:false - a same-uid host must not point the
+  //     verifier at its own ambient LOOM_EDGE_VERIFY_KEY, the H1 close). approvalSigBasis THROWS on a
+  //     non-string lesson_commitment + verifyRecordSig is fail-soft (never throws), but BOTH are wrapped in
+  //     ONE try/catch -> a throw becomes a fail-closed auth-verify-error, never a crash (TOTAL). Each refuse
+  //     EMITS before returning (security.md: never a silent {ok:false}). When NOT engaged, the un-armed
+  //     SHADOW path emits an observable-skip (distinct token from the refuse family) and continues.
+  //     ENGAGE on PRESENCE, fail CLOSED on present-but-invalid (CodeRabbit Major + security.md asymmetric-
+  //     parse): ABSENT (property missing / undefined / null) = the un-armed path -> un-authenticated SHADOW
+  //     skip; PRESENT-but-invalid ('' / non-string / malformed PEM) = intent-to-authenticate-misconfigured
+  //     -> ENGAGE and fail closed (verifyRecordSig returns false on an empty/unloadable key -> broker-sig-
+  //     invalid; a non-string throws -> the try/catch yields auth-verify-error). A present-but-empty custody
+  //     key must NOT silently degrade to the unauthenticated path (the PR-B arming footgun, closed here).
+  const authEngaged = Object.prototype.hasOwnProperty.call(o, 'verifyKeyPem')
+    && o.verifyKeyPem !== undefined
+    && o.verifyKeyPem !== null;
+  const verifyKeyPem = authEngaged ? o.verifyKeyPem : null;
+  if (authEngaged) {
+    let sigOk;
+    try {
+      const basis = approvalSigBasis({
+        hash: record.approval_hash,
+        approvedAt: record.approvedAt,
+        nonce: record.nonce,
+        key_id: record.key_id,
+        lesson_commitment: record.lesson_commitment,
+      });
+      sigOk = verifyRecordSig(basis, record.broker_sig, { publicKeyPem: verifyKeyPem, allowEnvFallback: false });
+    } catch (err) {
+      mintRefuseAlert({ join_key_id, anchor_id: resolved.anchor_id, mint_reason: 'auth-verify-error', detail: (err && err.message) || 'error' });
+      return { minted: false, mint_reason: 'auth-verify-error' };
+    }
+    if (!sigOk) {
+      mintRefuseAlert({ join_key_id, anchor_id: resolved.anchor_id, mint_reason: 'broker-sig-invalid' });
+      return { minted: false, mint_reason: 'broker-sig-invalid' };
+    }
+  } else {
+    // un-armed SHADOW (today's production): proceed un-authenticated but NEVER silently - the skip is an
+    // observable event, distinct from the live-recall-mint-refused refuse family so a triager can filter.
+    emitEgressAlert('world-anchor-mint-unauthenticated', { join_key_id });
+  }
+
   // 5. TWO-BRANCH lesson resolution (PR-2 CRITICAL-1) on the VERIFIED attestation's content_hash-SEALED
   //    lesson_signature (never a caller field - hacker H2). Branch A (static grandfather, built INSIDE the
   //    totality guard - FOLD A no-build-at-require) + Branch B (captured live_pending, consumed verbatim;
@@ -365,6 +458,37 @@ function mintFromMergeOutcome(args, opts = {}) {
   // consumer needs it yet - VALIDATE L-2). Only {lesson_signature, lesson_body} cross to the store.
   const lesson = candidates[0];
 
+  // 5a. PR-A2a STEP 2 (RFC S5.5 step 2) - the commitment RE-DERIVE (the BODY binding). Only when engaged +
+  //     after lesson resolution (it needs the resolved body) + BEFORE the node mint (refuse-before-write).
+  //     The mint's own join is by lesson_signature ALONE, so re-deriving computeLessonCommitment over the
+  //     RESOLVED floor lesson's {signature, body} and asserting it === record.lesson_commitment binds the
+  //     BODY - strictly stronger; it catches a lesson_body reword under a kept signature (F5: the floor
+  //     body is seated verbatim into the node, live-recall-store.js buildBody, so this is byte-equivalent to
+  //     the RFC's "verified node body" re-derive and strictly stronger - it refuses without persisting).
+  //     OQ3-5: a '' record.lesson_commitment is the static grandfather (no committed lesson); the re-derive
+  //     is SKIPPED (computeLessonCommitment would THROW on the body-vs-'' mismatch anyway) + an observable
+  //     uncommitted-lesson emit, ADMITTING the grandfather on its step-1 broker-sig provenance.
+  //     commitment_verified stays false on the '' skip (the body was NOT bound). A throw -> auth-verify-error.
+  let commitmentVerified = false;
+  if (authEngaged) {
+    if (record.lesson_commitment === '') {
+      emitEgressAlert('world-anchor-mint-uncommitted-lesson', { join_key_id });
+    } else {
+      let rederived;
+      try {
+        rederived = computeLessonCommitment({ lesson_signature: lesson.lesson_signature, lesson_body: lesson.lesson_body });
+      } catch (err) {
+        mintRefuseAlert({ join_key_id, anchor_id: resolved.anchor_id, mint_reason: 'auth-verify-error', detail: (err && err.message) || 'error' });
+        return { minted: false, mint_reason: 'auth-verify-error' };
+      }
+      if (rederived !== record.lesson_commitment) {
+        mintRefuseAlert({ join_key_id, anchor_id: resolved.anchor_id, mint_reason: 'lesson-commitment-mismatch' });
+        return { minted: false, mint_reason: 'lesson-commitment-mismatch' };
+      }
+      commitmentVerified = true;
+    }
+  }
+
   // 6. node: the gh-verified record.merge_commit_sha is world-EVIDENCE (live-recall-store.js:24), NEVER a
   //    pasted arg. The lesson identity is re-derived from the floor block (== att.lesson_signature).
   const m = mintWorldAnchoredNode({
@@ -385,7 +509,13 @@ function mintFromMergeOutcome(args, opts = {}) {
     edgeSigner: o.edgeSigner,
     now: record.observed_at,
   });
-  return { ...nodeResult, ...edge };
+  // PR-A2a (F1) - thread the TWO RECORD-event flags (NOT trust events; see the return JSDoc + the
+  // edge_signed RECORD-not-trust framing above). auth_observed === authEngaged: reaching this point with
+  // authEngaged true means step 1's broker_sig verify PASSED (a false verify / a throw already returned a
+  // fail-closed refuse), so authEngaged here IS "broker_sig verified". commitment_verified is true ONLY
+  // when step 2 actually RAN and MATCHED (false on the '' grandfather skip + when not engaged) - this is
+  // what stops a downstream reader treating a '' record as body-bound. NEITHER enters the node/edge schema.
+  return { ...nodeResult, ...edge, auth_observed: authEngaged, commitment_verified: commitmentVerified };
 }
 
 /**
