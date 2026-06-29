@@ -180,6 +180,85 @@ test('runApprove refuses a foreign-uid approvals dir before any prompt', () => {
   } finally { fs.rmSync(t.dir, { recursive: true, force: true }); }
 });
 
+// === OQ-3 W2 — the lesson rides the approval (sign-what-you-see derives the commitment from the SAME body rendered) ===
+
+const { computeLessonCommitment } = require(path.join(REPO, 'packages', 'kernel', '_lib', 'lesson-commitment.js'));
+const LESSON_SIG = 'lesson:boundary-contract|unguarded-edge-case|fail-closed';
+const LESSON_BODY = 'Raise on the empty edge rather than yield a degenerate value.';
+
+test('OQ-3: lesson_signature / lesson_body are NOT disposition keys (they ride the approval, not the emission)', () => {
+  const SET = new Set([...require(path.join(REPO, 'packages', 'kernel', 'egress', 'emit-pr.js')).DISPOSITION_KEYS].map((k) => k.toLowerCase()));
+  assert.ok(!SET.has('lesson_signature') && !SET.has('lesson_body'), 'the lesson fields are not policy keys');
+});
+
+test('OQ-3: validateDraft accepts a draft WITH lesson fields and rejects oversize (per-field caps)', () => {
+  assert.doesNotThrow(() => C.validateDraft(draft({ lesson_signature: LESSON_SIG, lesson_body: LESSON_BODY })), 'a draft with valid lesson fields passes');
+  assert.throws(() => C.validateDraft(draft({ lesson_signature: 'x'.repeat(257), lesson_body: LESSON_BODY })), /lesson_signature/, 'an oversize signature (>256) is rejected');
+  assert.throws(() => C.validateDraft(draft({ lesson_signature: LESSON_SIG, lesson_body: 'y'.repeat(8193) })), /lesson_body/, 'an oversize body (>8192) is rejected');
+  // a lone field (only one of the pair) -> not both non-empty strings -> rejected (sign-what-you-see needs both).
+  assert.throws(() => C.validateDraft(draft({ lesson_signature: LESSON_SIG })), /lesson_body/, 'a lone lesson_signature is rejected');
+  assert.throws(() => C.validateDraft(draft({ lesson_body: LESSON_BODY })), /lesson_signature/, 'a lone lesson_body is rejected');
+});
+
+test('OQ-3 (CR-Major): a control char in a lesson field is rejected (sign-what-you-see — render must match committed bytes)', () => {
+  // An ANSI ESC / \r / \n in a lesson field would change what the operator SEES on /dev/tty (reviewText) without
+  // changing the committed bytes hashed into the signed commitment — breaking the sign-what-you-see boundary.
+  assert.throws(() => C.validateDraft(draft({ lesson_signature: LESSON_SIG, lesson_body: 'safe\u001b[2Kmalicious' })), /control/, 'an ANSI ESC in the body is rejected');
+  assert.throws(() => C.validateDraft(draft({ lesson_signature: 'sig\rwith-cr', lesson_body: LESSON_BODY })), /control/, 'a CR in the signature is rejected');
+  assert.throws(() => C.validateDraft(draft({ lesson_signature: LESSON_SIG, lesson_body: 'line1\nfake hash: 0000' })), /control/, 'a newline (fake-line injection) in the body is rejected');
+});
+
+test('OQ-3 (injected deps): a draft WITH lesson fields -> minted body.lesson_commitment === computeLessonCommitment(...)', () => {
+  if (WIN) { skipped += 1; return; }
+  const dir = scratch();
+  try {
+    const approvalsDir = path.join(dir, 'approvals'); fs.mkdirSync(approvalsDir, { mode: 0o700 });
+    const draftPath = path.join(dir, 'draft.json');
+    fs.writeFileSync(draftPath, JSON.stringify(draft({ lesson_signature: LESSON_SIG, lesson_body: LESSON_BODY })));
+    const kp = generateEdgeKeypair();
+    const SIGN = (basis, ctx) => signRecordId(basis, { privateKeyPem: kp.privateKeyPem }, ctx);
+    const hash = A.computeEmissionHash(C.freezeScrubbed(draft()));
+    const expectedLc = computeLessonCommitment({ lesson_signature: LESSON_SIG, lesson_body: LESSON_BODY });
+    const res = C.runApprove(
+      { draftPath, approvalsDir, brokerUser: 'lb', wrapperPath: '/opt/w', keyId: 'v0' },
+      { readConfirm: () => ({ ok: true, line: hash.slice(0, 8) }), makeSigner: () => SIGN, now: () => 1000, randomNonce: () => 'n1', selfUid: SELF },
+    );
+    assert.strictEqual(res.ok, true, res.reason);
+    const file = path.join(approvalsDir, hash + '.approved');
+    const body = JSON.parse(fs.readFileSync(file, 'utf8'));
+    assert.strictEqual(body.lesson_commitment, expectedLc, 'the minted approval binds the commitment over the lesson fields');
+    // and the approval verifies with that commitment threaded in (the extended basis was signed)
+    const rv = S.readVerifiedApproval(approvalsDir, hash, { now: 2000, ttlMs: 1e9, selfUid: SELF, verifyKeyPem: kp.publicKeyPem, requestedLessonCommitment: expectedLc });
+    assert.strictEqual(rv.ok, true, 'the minted approval verifies over the extended (lesson-bound) basis');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('OQ-3: a no-lesson draft -> body.lesson_commitment === "" (the sentinel)', () => {
+  if (WIN) { skipped += 1; return; }
+  const t = mintSetup();
+  try {
+    const res = C.runApprove(
+      { draftPath: t.draftPath, approvalsDir: t.approvalsDir, brokerUser: 'lb', wrapperPath: '/opt/w', verifyKeyPath: t.vkey, keyId: 'v0' },
+      { readConfirm: () => ({ ok: true, line: t.hash.slice(0, 8) }), makeSigner: () => t.SIGN, now: () => 1000, randomNonce: () => 'n1', selfUid: SELF },
+    );
+    assert.strictEqual(res.ok, true, res.reason);
+    const body = JSON.parse(fs.readFileSync(path.join(t.approvalsDir, t.hash + '.approved'), 'utf8'));
+    assert.strictEqual(body.lesson_commitment, '', 'a no-lesson draft mints the "" sentinel');
+  } finally { fs.rmSync(t.dir, { recursive: true, force: true }); }
+});
+
+test('OQ-3: reviewText renders the lesson body + signature when present (the human signs what they see)', () => {
+  const scrubbed = C.freezeScrubbed(draft());
+  const hash = A.computeEmissionHash(scrubbed);
+  const withLesson = C.reviewText(scrubbed, hash, { lesson_signature: LESSON_SIG, lesson_body: LESSON_BODY });
+  assert.ok(withLesson.includes(LESSON_BODY), 'the lesson body is rendered');
+  assert.ok(withLesson.includes(LESSON_SIG), 'the lesson signature is rendered');
+  assert.ok(/NOT emitted in the PR/i.test(withLesson), 'the render notes the lesson rides the approval, not the PR');
+  // a no-lesson render does NOT add the lesson header.
+  const noLesson = C.reviewText(scrubbed, hash);
+  assert.ok(!/lesson \(rides this approval/i.test(noLesson), 'a no-lesson render omits the lesson header');
+});
+
 // === subprocess: the actor-pipe defense (Rule 2a) ===
 
 test('the REAL CLI in a DETACHED session: piping the token to STDIN does NOT mint (NAIVE-pipe defense-in-depth)', () => {

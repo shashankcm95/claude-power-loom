@@ -67,11 +67,13 @@ const VKEY = KP.publicKeyPem;
 function sign(hash, body, priv) { return signRecordId(hash, { privateKeyPem: priv || KP.privateKeyPem }, body); }
 
 // A well-formed SIGNED approval body. `over` can replace fields; `signWith` picks the signing key. ③.2.5a — the
-// sig is over the FRESHNESS-BOUND basis (hash+approvedAt+nonce+key_id), not the bare hash. F3: only auto-sign when
-// the caller did NOT pass an explicit `sig` (so approvalBody({ sig: '' }) yields a sig-less body, no workaround).
+// sig is over the FRESHNESS-BOUND basis (hash+approvedAt+nonce+key_id + OQ-3 lesson_commitment), not the bare hash.
+// F3: only auto-sign when the caller did NOT pass an explicit `sig` (so approvalBody({ sig: '' }) yields a sig-less
+// body, no workaround). OQ-3 W2: lesson_commitment defaults to '' (the no-lesson sentinel) so EVERY existing test
+// signs + verifies the EXTENDED basis additively (a '' commitment is what a real no-lesson emission carries).
 function approvalBody(over, signWith) {
   const d = draft();
-  const base = { hash: A.computeEmissionHash(d), emission: A.emissionAxiom(d), approvedAt: 1000, nonce: 'n-abc', key_id: 'v0' };
+  const base = { hash: A.computeEmissionHash(d), emission: A.emissionAxiom(d), approvedAt: 1000, nonce: 'n-abc', key_id: 'v0', lesson_commitment: '' };
   const merged = Object.assign(base, over || {});
   if (!Object.prototype.hasOwnProperty.call(over || {}, 'sig')) merged.sig = sign(A.approvalSigBasis(merged), merged, signWith);
   return merged;
@@ -85,7 +87,9 @@ test('verifyApproval: a well-formed SIGNED approval for the requested hash + pin
 
 test('verifyApproval: an UNSIGNED (③.2.4-shape) approval -> sig-missing (fail-closed)', () => {
   const d = draft(); const h = A.computeEmissionHash(d);
-  const unsigned = JSON.stringify({ hash: h, emission: A.emissionAxiom(d), approvedAt: 1000, nonce: 'n' }); // no sig
+  // OQ-3 W2: carry lesson_commitment:'' so the lesson gate (which fires BEFORE the sig check) passes and the
+  // ASSERTED defect (a missing sig) is the one this test isolates.
+  const unsigned = JSON.stringify({ hash: h, emission: A.emissionAxiom(d), approvedAt: 1000, nonce: 'n', lesson_commitment: '' }); // no sig
   assert.strictEqual(A.verifyApproval({ fileBytes: unsigned, requestedHash: h, now: 2000, ttlMs: 10000, verifyKeyPem: VKEY }).reason, 'sig-missing');
 });
 
@@ -93,8 +97,9 @@ test('verifyApproval: a sig from the WRONG key -> sig-invalid; a sig over a DIFF
   const h = A.computeEmissionHash(draft());
   // wrong-key: body signed by ATTACKER, verified against the pinned VKEY
   assert.strictEqual(A.verifyApproval({ fileBytes: JSON.stringify(approvalBody({}, ATTACKER.privateKeyPem)), requestedHash: h, now: 2000, ttlMs: 10000, verifyKeyPem: VKEY }).reason, 'sig-invalid');
-  // tampered: a body whose sig is over the right hash but emission re-derives elsewhere -> body-hash-mismatch (before sig)
-  const forged = JSON.stringify({ hash: h, emission: A.emissionAxiom(draft({ diff: SCRUBBED + 'T' })), approvedAt: 1000, nonce: 'n', sig: sign(h, A.emissionAxiom(draft())) });
+  // tampered: a body whose sig is over the right hash but emission re-derives elsewhere -> body-hash-mismatch (before sig).
+  // OQ-3 W2: carry lesson_commitment:'' so the lesson gate (which fires earlier) passes and the body-hash defect is isolated.
+  const forged = JSON.stringify({ hash: h, emission: A.emissionAxiom(draft({ diff: SCRUBBED + 'T' })), approvedAt: 1000, nonce: 'n', lesson_commitment: '', sig: sign(h, A.emissionAxiom(draft())) });
   assert.strictEqual(A.verifyApproval({ fileBytes: forged, requestedHash: h, now: 2000, ttlMs: 10000, verifyKeyPem: VKEY }).reason, 'body-hash-mismatch');
 });
 
@@ -131,7 +136,8 @@ test('verifyApproval [H1]: a signed approval is NOT replayable past TTL by editi
 
 test('verifyApproval: a body whose emission re-derives to a DIFFERENT hash than its claimed hash -> false (#273)', () => {
   const d = draft(); const h = A.computeEmissionHash(d);
-  const forged = JSON.stringify({ hash: h, emission: A.emissionAxiom(draft({ diff: SCRUBBED + 'TAMPERED' })), approvedAt: 1000, nonce: 'n', sig: sign(h, A.emissionAxiom(d)) });
+  // OQ-3 W2: lesson_commitment:'' present so the lesson gate passes and the #273 body-hash defect is the asserted one.
+  const forged = JSON.stringify({ hash: h, emission: A.emissionAxiom(draft({ diff: SCRUBBED + 'TAMPERED' })), approvedAt: 1000, nonce: 'n', lesson_commitment: '', sig: sign(h, A.emissionAxiom(d)) });
   assert.strictEqual(A.verifyApproval({ fileBytes: forged, requestedHash: h, now: 2000, ttlMs: 10000, verifyKeyPem: VKEY }).reason, 'body-hash-mismatch');
 });
 
@@ -158,6 +164,93 @@ test('verifyApproval: unparseable / non-object / missing fields -> false (fail-c
   assert.strictEqual(A.verifyApproval({ fileBytes: '[]', requestedHash: h, now: 2000, verifyKeyPem: VKEY }).reason, 'not-an-object');
   assert.strictEqual(A.verifyApproval({ fileBytes: '{}', requestedHash: h, now: 2000, verifyKeyPem: VKEY }).reason, 'hash-mismatch');
   assert.strictEqual(A.verifyApproval({ fileBytes: JSON.stringify(approvalBody()), requestedHash: '', now: 2000, verifyKeyPem: VKEY }).reason, 'no-requested-hash');
+});
+
+// === OQ-3 W2 — approvalSigBasis lesson_commitment coercion + the undefined footgun ===
+
+test('approvalSigBasis [OQ-3]: an undefined lesson_commitment === the explicit empty-string basis (the canonical-hash footgun)', () => {
+  const base = { hash: 'a'.repeat(64), approvedAt: 1000, nonce: 'n', key_id: 'v0' };
+  const undef = A.approvalSigBasis(Object.assign({}, base, { lesson_commitment: undefined }));
+  const empty = A.approvalSigBasis(Object.assign({}, base, { lesson_commitment: '' }));
+  const absent = A.approvalSigBasis(base);   // key absent
+  assert.strictEqual(undef, empty, 'undefined lesson_commitment coerces to the SAME basis as explicit "" (never the literal `undefined` token)');
+  assert.strictEqual(absent, empty, 'an absent lesson_commitment coerces to the SAME basis as explicit ""');
+});
+
+test('approvalSigBasis [OQ-3]: a 64-hex lesson_commitment changes the basis vs ""', () => {
+  const base = { hash: 'a'.repeat(64), approvedAt: 1000, nonce: 'n', key_id: 'v0' };
+  const withLc = A.approvalSigBasis(Object.assign({}, base, { lesson_commitment: 'b'.repeat(64) }));
+  const empty = A.approvalSigBasis(Object.assign({}, base, { lesson_commitment: '' }));
+  assert.notStrictEqual(withLc, empty, 'a real commitment binds a DIFFERENT basis than the no-lesson sentinel');
+});
+
+test('approvalSigBasis [OQ-3]: a non-string lesson_commitment THROWS (never silently hashed)', () => {
+  const base = { hash: 'a'.repeat(64), approvedAt: 1000, nonce: 'n', key_id: 'v0' };
+  assert.throws(() => A.approvalSigBasis(Object.assign({}, base, { lesson_commitment: 5 })), /must be a string/);
+  assert.throws(() => A.approvalSigBasis(Object.assign({}, base, { lesson_commitment: null })), /must be a string/);
+  assert.throws(() => A.approvalSigBasis(Object.assign({}, base, { lesson_commitment: {} })), /must be a string/);
+});
+
+// === OQ-3 W2 — verifyApproval lesson-commitment gate ===
+
+test('verifyApproval [OQ-3]: a matching lesson_commitment -> ok AND returns the verified body (W3 consumer)', () => {
+  const h = A.computeEmissionHash(draft());
+  const LC = 'c'.repeat(64);
+  const body = approvalBody({ lesson_commitment: LC });
+  const r = A.verifyApproval({ fileBytes: JSON.stringify(body), requestedHash: h, now: 2000, ttlMs: 10000, verifyKeyPem: VKEY, requestedLessonCommitment: LC });
+  assert.strictEqual(r.ok, true, r.reason);
+  assert.ok(r.body && r.body.lesson_commitment === LC, 'the verified body is returned with the commitment (the §5.4 provenance-bundle source)');
+});
+
+test('verifyApproval [OQ-3]: a no-lesson approval ("") with a "" request -> ok (additive-safe legacy path)', () => {
+  const h = A.computeEmissionHash(draft());
+  const r = A.verifyApproval({ fileBytes: JSON.stringify(approvalBody()), requestedHash: h, now: 2000, ttlMs: 10000, verifyKeyPem: VKEY });
+  assert.strictEqual(r.ok, true, r.reason);
+  assert.ok(r.body && r.body.lesson_commitment === '', 'the no-lesson sentinel round-trips');
+});
+
+test('verifyApproval [OQ-3]: a SWAPPED commitment (request != body) -> lesson-commitment-mismatch (fail-closed, observable)', () => {
+  const h = A.computeEmissionHash(draft());
+  const body = approvalBody({ lesson_commitment: 'c'.repeat(64) });        // genuinely signed over commitment C
+  const r = A.verifyApproval({ fileBytes: JSON.stringify(body), requestedHash: h, now: 2000, ttlMs: 10000, verifyKeyPem: VKEY, requestedLessonCommitment: 'd'.repeat(64) });
+  assert.strictEqual(r.reason, 'lesson-commitment-mismatch', 'a request for a DIFFERENT commitment than the body carries fail-closes');
+});
+
+test('verifyApproval [OQ-3]: an EDITED body.lesson_commitment under the OLD sig -> sig-invalid (the swap is signed-over)', () => {
+  const h = A.computeEmissionHash(draft());
+  const signed = approvalBody({ lesson_commitment: 'c'.repeat(64) });      // signed over commitment C
+  const edited = Object.assign({}, signed, { lesson_commitment: 'd'.repeat(64) }); // attacker swaps the field, keeps the old sig
+  // the request matches the EDITED body so the equality gate passes, but the sig is over C -> the basis re-derive flips -> sig-invalid.
+  const r = A.verifyApproval({ fileBytes: JSON.stringify(edited), requestedHash: h, now: 2000, ttlMs: 10000, verifyKeyPem: VKEY, requestedLessonCommitment: 'd'.repeat(64) });
+  assert.strictEqual(r.reason, 'sig-invalid', 'editing the body commitment under the old sig fails the freshness-bound sig (the binding is signed-over)');
+});
+
+test('verifyApproval [OQ-3]: a legacy/absent body.lesson_commitment -> no-body-lesson-commitment (distinct reason; body NOT coerced)', () => {
+  const d = draft(); const h = A.computeEmissionHash(d);
+  // a ③.2.4-shape body that predates the field entirely (no lesson_commitment key) — fail-closed with a DISTINCT reason.
+  const legacy = JSON.stringify({ hash: h, emission: A.emissionAxiom(d), approvedAt: 1000, nonce: 'n', key_id: 'v0', sig: 'irrelevant' });
+  assert.strictEqual(A.verifyApproval({ fileBytes: legacy, requestedHash: h, now: 2000, ttlMs: 10000, verifyKeyPem: VKEY }).reason, 'no-body-lesson-commitment');
+});
+
+test('verifyApproval [OQ-3/CR-Major]: an arbitrary (non-shape) string commitment fail-closes at the SHAPE gate, not just typeof', () => {
+  const d = draft(); const h = A.computeEmissionHash(d);
+  // CodeRabbit Major: verifyApproval is the verify chokepoint + is exported, so it must enforce the same ''|64-hex
+  // SHAPE the store / emit-gate / broker-bind gates use — not merely typeof string — else a direct caller matches on
+  // an arbitrary string. (a) an arbitrary-string REQUEST -> no-requested-lesson-commitment (before any body read).
+  const okBody = JSON.stringify(approvalBody({ lesson_commitment: '' }));
+  assert.strictEqual(A.verifyApproval({ fileBytes: okBody, requestedHash: h, now: 2000, ttlMs: 10000, verifyKeyPem: VKEY, requestedLessonCommitment: 'not-a-hex' }).reason, 'no-requested-lesson-commitment');
+  // (b) a VALID-shape request but an arbitrary-string BODY commitment -> no-body-lesson-commitment (shape-checked
+  // before the equality + sig). approvalBody signs over the arbitrary basis; the shape gate rejects it first.
+  const badBody = JSON.stringify(approvalBody({ lesson_commitment: 'not-a-hex' }));
+  assert.strictEqual(A.verifyApproval({ fileBytes: badBody, requestedHash: h, now: 2000, ttlMs: 10000, verifyKeyPem: VKEY, requestedLessonCommitment: '' }).reason, 'no-body-lesson-commitment');
+});
+
+test('verifyApproval [OQ-3]: a non-string requestedLessonCommitment -> no-requested-lesson-commitment', () => {
+  const h = A.computeEmissionHash(draft());
+  const body = JSON.stringify(approvalBody({ lesson_commitment: '' }));
+  for (const bad of [5, null, {}, []]) {
+    assert.strictEqual(A.verifyApproval({ fileBytes: body, requestedHash: h, now: 2000, ttlMs: 10000, verifyKeyPem: VKEY, requestedLessonCommitment: bad }).reason, 'no-requested-lesson-commitment', `non-string request ${JSON.stringify(bad)} fail-closes`);
+  }
 });
 
 (async () => {

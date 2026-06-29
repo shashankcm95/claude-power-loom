@@ -145,6 +145,22 @@ function assertSafeRepoRef(repo, { hostAllowlist = DEFAULT_REPO_HOST_ALLOWLIST }
   }
 }
 
+// OQ-3 (RFC §5.3) — the lesson_commitment shape gate. The actor-influenceable `data` may carry a lesson_commitment
+// (the captured-lesson digest the human/broker approved alongside the diff). It is emission-ADJACENT data (like the
+// diff), NOT a disposition key, so it passes assertDataIsPolicyFree and is threaded into the approval gate. Coerce
+// absent/undefined -> '' (the no-lesson sentinel); accept ONLY '' or a LOWERCASE 64-hex (fold F4 — an UPPERCASE
+// commitment is rejected so a casing variant cannot slip a cross-boundary mismatch); throw on anything else. PURE.
+const LESSON_COMMITMENT_RE = /^[a-f0-9]{64}$/;
+function assertSafeLessonCommitment(v) {
+  if (v === undefined) return '';                 // ABSENT/undefined is the only no-lesson coercion; an explicit
+  // null (a malformed value from actor-influenced data) falls through to the throw — fail-closed, never silently
+  // laundered into a no-lesson request (CodeRabbit Major — reject explicit null instead of treating it as no lesson).
+  if (typeof v !== 'string' || !(v === '' || LESSON_COMMITMENT_RE.test(v))) {
+    throw new Error(`emitPR: lesson_commitment must be a lowercase 64-hex digest or '' (got ${JSON.stringify(v)})`);
+  }
+  return v;
+}
+
 /** Throws unless `issueRef` is a positive SAFE integer (a github issue number) or `#N` form (③.2.3 H2). */
 function assertSafeIssueRef(issueRef) {
   const n = typeof issueRef === 'number' ? issueRef : String(issueRef == null ? '' : issueRef).replace(/^#/, '');
@@ -406,6 +422,9 @@ function emitPR(data, opts = {}) {
     assertSafeRepoRef(data.repo, { hostAllowlist: opts.hostAllowlist });
     assertSafeIssueRef(data.issueRef);
     assertEgressSafeDiff(data.diff);   // validates the RAW paths (throws on .github/.git*/CI); the draft derives paths from the SCRUBBED diff (PR-B)
+    // OQ-3 (RFC §5.3) — the captured-lesson commitment the human/broker approved alongside the diff. Shape-gated
+    // (lowercase 64-hex or '' for no-lesson) before it is threaded into the approval gate as requestedLessonCommitment.
+    const lessonCommitment = assertSafeLessonCommitment(data.lesson_commitment);
 
     // 2. serialize: a lock-unavailable acquisition REFUSES the emit (fail-closed), never age-reap-admit.
     const lockPath = typeof opts.lockPath === 'string' ? opts.lockPath : DEFAULT_LOCK_PATH;
@@ -452,10 +471,14 @@ function emitPR(data, opts = {}) {
       if (disposition.mode === 'live' && token && !killswitchOn) {
         // the verify key is resolved from CUSTODY (a file), under the lock — same provenance as the token (H1/H2).
         const verifyKeyPem = resolveVerifyKey({ custodyVerifyKeyPath: opts.custodyVerifyKeyPath });
-        const appr = readVerifiedApproval(opts.custodyApprovalsDir, approvalHash, { now, ttlMs: opts.ttlMs, selfUid: opts.selfUid, verifyKeyPem });
+        // OQ-3 — thread the data lesson_commitment so the gate refuses a post-approval lesson swap (a commitment the
+        // human/broker did not approve fail-closes with appr.reason === 'lesson-commitment-mismatch').
+        const appr = readVerifiedApproval(opts.custodyApprovalsDir, approvalHash, { now, ttlMs: opts.ttlMs, selfUid: opts.selfUid, verifyKeyPem, requestedLessonCommitment: lessonCommitment });
         if (!appr.ok) {
-          // the EXPECTED pending state (NOT an error): the human has not approved THIS exact content yet.
-          return { ok: true, emitted: false, disposition, draft, approvalHash, reason: 'awaiting-approval' };
+          // the EXPECTED pending state (NOT an error): the human has not approved THIS exact content yet. OQ-3 (fold
+          // F3): surface the underlying gate reason (e.g. lesson-commitment-mismatch) so the emit layer is debuggable
+          // — a plain reason token, no payload. The outer `reason: 'awaiting-approval'` value is unchanged (consumers key on it).
+          return { ok: true, emitted: false, disposition, draft, approvalHash, reason: 'awaiting-approval', approvalReason: appr.reason };
         }
         // emit-then-record (③.2.4 I2 — fold the reservation-before-throw): armedEmit FIRST (throws this wave);
         // ONLY on success RESERVE the cap + ledger and CONSUME the one-shot approval. A throw -> the outer
@@ -511,7 +534,7 @@ function emitPR(data, opts = {}) {
 module.exports = {
   emitPR,
   buildEmitEnv, assertIsolatedGhConfigDir, armedEmit,
-  assertDataIsPolicyFree, assertRecordedClaim, assertSafeRepoRef, assertSafeIssueRef, assertEgressSafeDiff,
+  assertDataIsPolicyFree, assertRecordedClaim, assertSafeRepoRef, assertSafeIssueRef, assertEgressSafeDiff, assertSafeLessonCommitment,
   isKillswitchOn, isEmitArmed, resolveToken, resolveDisposition, resolveVerifyKey, parseDiffPaths, isEgressDeniedPath,
   DISPOSITION_KEYS, DEFAULT_REPO_HOST_ALLOWLIST, ENV_ALLOWLIST,
 };

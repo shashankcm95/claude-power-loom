@@ -30,6 +30,13 @@ const { verifyRecordSig } = require('../_lib/edge-attestation');   // ③.2.5a �
 
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000;     // 24h — an approval that outlives the day's intent is stale.
 
+// OQ-3 — the lesson_commitment contract: '' (no lesson) or a LOWERCASE 64-hex digest. verifyApproval enforces this
+// SHAPE (not just typeof string) on BOTH the request and the body so a direct verifier caller cannot match on an
+// arbitrary string and slip past the store / emit-gate / broker-bind shape gates (CodeRabbit Major — the verify
+// chokepoint must fail-closed on a malformed commitment, the same contract the other four gates enforce, fold F4).
+const LESSON_COMMITMENT_RE = /^[a-f0-9]{64}$/;
+function isSafeLessonCommitment(v) { return v === '' || (typeof v === 'string' && LESSON_COMMITMENT_RE.test(v)); }
+
 /** Canonical (repo, issue) normalization — the SAME form the etiquette ledger uses (no bypass-by-casing/.git). */
 function normalizeRepo(repo) {
   const [owner = '', name = ''] = String(repo == null ? '' : repo).split('/');
@@ -68,11 +75,20 @@ function computeEmissionHash(draft) {
  * `nonce`, without invalidating the sig (only the key-holder can mint a fresh-`approvedAt` approval). The emission
  * `hash` binds WHAT is emitted; the basis binds WHAT + WHEN (`approvedAt`) + the one-shot `nonce` + `key_id`.
  * key_id is bound (authenticated) here but is NOT used to SELECT the verify key — the custody pin selects (F2/H5).
- * @param {{ hash: string, approvedAt: number, nonce: string, key_id?: string }} o
+ *
+ * OQ-3 — the 5th field `lesson_commitment` (RFC §5.3) binds WHICH captured lesson rode this approval (a 64-hex
+ * computeLessonCommitment digest, or '' for a no-lesson emission). ALWAYS-A-STRING (RFC §5.1, the canonical-hash
+ * footgun): canonicalJsonSerialize emits the LITERAL token `undefined` for an undefined-valued key, so undefined,
+ * '', and key-absent would be THREE distinct bases — the broker would sign a different string than the human
+ * approved. So an undefined / absent value is COERCED to '' here, and a non-string value THROWS (never silently
+ * hashed). The lesson is NOT emitted in the PR (computeEmissionHash is untouched, §4); only this basis grows.
+ * @param {{ hash: string, approvedAt: number, nonce: string, key_id?: string, lesson_commitment?: string }} o
  * @returns {string} 64-hex
  */
-function approvalSigBasis({ hash, approvedAt, nonce, key_id }) {
-  return crypto.createHash('sha256').update(canonicalJsonSerialize({ hash, approvedAt, nonce, key_id }), 'utf8').digest('hex');
+function approvalSigBasis({ hash, approvedAt, nonce, key_id, lesson_commitment }) {
+  const lc = lesson_commitment === undefined ? '' : lesson_commitment;
+  if (typeof lc !== 'string') throw new Error('approvalSigBasis: lesson_commitment must be a string (64-hex or empty)');
+  return crypto.createHash('sha256').update(canonicalJsonSerialize({ hash, approvedAt, nonce, key_id, lesson_commitment: lc }), 'utf8').digest('hex');
 }
 
 /**
@@ -88,12 +104,23 @@ function approvalSigBasis({ hash, approvedAt, nonce, key_id }) {
  * the key; a body `key_id` is ADVISORY and NEVER selects it (F2/H5). Absent pin / missing / invalid / wrong-key
  * sig => fail-closed. (INTEGRITY-only until the cross-uid broker holds the key — PR-2 — but the verify-half is here.)
  *
- * @param {{ fileBytes: string|Buffer, requestedHash: string, now: number, ttlMs?: number, verifyKeyPem: string }} o
- * @returns {{ ok: boolean, reason?: string }}
+ * OQ-3 (RFC §5.3) — the lesson binding: `requestedLessonCommitment` (the emit-time data value, 64-hex or '') must
+ * EQUAL `body.lesson_commitment` (mirroring the body.hash === requestedHash gate), and the commitment is folded
+ * into the re-derived sig basis so an in-place body edit flips the sig (sig-invalid). The check fires immediately
+ * after the hash-match gate, BEFORE the body-hash re-derive + the sig verify (fold F1). The REQUEST is coerced
+ * (undefined -> '', non-string -> fail-closed); the BODY is NOT coerced (a legacy/absent field is a DISTINCT
+ * fail-closed reason, never silently treated as ''). On success the VERIFIED body is returned (the §5.4
+ * provenance-bundle source for emit-pr / W3).
+ *
+ * @param {{ fileBytes: string|Buffer, requestedHash: string, now: number, ttlMs?: number, verifyKeyPem: string, requestedLessonCommitment?: string }} o
+ * @returns {{ ok: boolean, reason?: string, body?: object }}
  */
-function verifyApproval({ fileBytes, requestedHash, now, ttlMs = DEFAULT_TTL_MS, verifyKeyPem } = {}) {
+function verifyApproval({ fileBytes, requestedHash, now, ttlMs = DEFAULT_TTL_MS, verifyKeyPem, requestedLessonCommitment } = {}) {
   if (typeof requestedHash !== 'string' || requestedHash.length === 0) return { ok: false, reason: 'no-requested-hash' };
   if (typeof now !== 'number' || !Number.isFinite(now)) return { ok: false, reason: 'no-clock' };
+  // OQ-3 — coerce ONLY the request (undefined -> ''); a non-string request fail-closes BEFORE any body read.
+  const reqLC = requestedLessonCommitment === undefined ? '' : requestedLessonCommitment;
+  if (!isSafeLessonCommitment(reqLC)) return { ok: false, reason: 'no-requested-lesson-commitment' };
   // the trust anchor is a custody-pinned key; absent => fail-closed BEFORE any verify (the env fallback in
   // loadPublicKey can NEVER be reached for this gate — H1). Provenance roots in custody, never ambient.
   if (typeof verifyKeyPem !== 'string' || verifyKeyPem.length === 0) return { ok: false, reason: 'no-verify-key' };
@@ -101,6 +128,11 @@ function verifyApproval({ fileBytes, requestedHash, now, ttlMs = DEFAULT_TTL_MS,
   try { body = JSON.parse(String(fileBytes)); } catch { return { ok: false, reason: 'unparseable' }; }
   if (!body || typeof body !== 'object' || Array.isArray(body)) return { ok: false, reason: 'not-an-object' };
   if (typeof body.hash !== 'string' || body.hash !== requestedHash) return { ok: false, reason: 'hash-mismatch' };
+  // OQ-3 — the lesson binding (fold F1: immediately after the hash gate, before the body-hash re-derive + sig).
+  // The BODY is NOT coerced: a legacy/absent field is its own DISTINCT fail-closed reason (a missing commitment is
+  // never silently '' — that would launder a pre-OQ-3 approval into a no-lesson match).
+  if (!isSafeLessonCommitment(body.lesson_commitment)) return { ok: false, reason: 'no-body-lesson-commitment' };
+  if (body.lesson_commitment !== reqLC) return { ok: false, reason: 'lesson-commitment-mismatch' };
   if (typeof body.nonce !== 'string' || body.nonce.trim().length === 0) return { ok: false, reason: 'no-nonce' };
   if (typeof body.approvedAt !== 'number' || !Number.isFinite(body.approvedAt)) return { ok: false, reason: 'no-approvedAt' };
   if (now - body.approvedAt > ttlMs || now < body.approvedAt) return { ok: false, reason: 'stale-or-future' };
@@ -108,16 +140,17 @@ function verifyApproval({ fileBytes, requestedHash, now, ttlMs = DEFAULT_TTL_MS,
   let rederived;
   try { rederived = computeEmissionHash(body.emission); } catch { return { ok: false, reason: 'emission-unhashable' }; }
   if (rederived !== body.hash) return { ok: false, reason: 'body-hash-mismatch' };
-  // ③.2.5a — the broker SIGNATURE over the FRESHNESS-BOUND basis (hash + approvedAt + nonce + key_id), against the
-  // CUSTODY pin (no env fallback). Binding the basis (not the bare hash) defeats the TTL-bump / nonce-swap replay
-  // (VALIDATE-hacker H1): editing approvedAt/nonce/key_id flips the basis -> sig-invalid, so only the key-holder
-  // can issue a fresh-TTL approval. Missing/invalid/wrong-key => fail-closed. The pin selects the key; key_id never does.
+  // ③.2.5a — the broker SIGNATURE over the FRESHNESS-BOUND basis (hash + approvedAt + nonce + key_id + OQ-3
+  // lesson_commitment), against the CUSTODY pin (no env fallback). Binding the basis (not the bare hash) defeats
+  // the TTL-bump / nonce-swap / lesson-swap replay (VALIDATE-hacker H1): editing approvedAt/nonce/key_id/
+  // lesson_commitment flips the basis -> sig-invalid, so only the key-holder can issue a fresh approval binding a
+  // given lesson. Missing/invalid/wrong-key => fail-closed. The pin selects the key; key_id never does.
   if (typeof body.sig !== 'string' || body.sig.length === 0) return { ok: false, reason: 'sig-missing' };
-  const basis = approvalSigBasis({ hash: body.hash, approvedAt: body.approvedAt, nonce: body.nonce, key_id: body.key_id });
+  const basis = approvalSigBasis({ hash: body.hash, approvedAt: body.approvedAt, nonce: body.nonce, key_id: body.key_id, lesson_commitment: body.lesson_commitment });
   if (!verifyRecordSig(basis, body.sig, { publicKeyPem: verifyKeyPem, allowEnvFallback: false })) {
     return { ok: false, reason: 'sig-invalid' };
   }
-  return { ok: true };
+  return { ok: true, body };
 }
 
 module.exports = { emissionAxiom, computeEmissionHash, approvalSigBasis, verifyApproval, normalizeRepo, DEFAULT_TTL_MS };

@@ -497,7 +497,7 @@ test('capture: a non-eligible-by-real-default path (default eligible/derive deps
 // fields ride onto ALL post-capture termini (the minted-but-unobserved fix). It is an EMIT-threading value
 // ONLY: lesson_commitment is NOT a key of any outcome/artifact.
 
-const { computeLessonCommitment } = require(path.join(REPO, 'packages', 'lab', 'causal-edge', 'lesson-commitment.js'));
+const { computeLessonCommitment } = require(path.join(REPO, 'packages', 'kernel', '_lib', 'lesson-commitment.js'));
 const liveStore = require(path.join(REPO, 'packages', 'lab', 'causal-edge', 'live-pending-store.js'));
 
 test('OQ3: captureLiveLesson returns lesson_commitment:"" on each fail-soft branch', async () => {

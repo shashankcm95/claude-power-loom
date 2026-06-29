@@ -1,15 +1,14 @@
 #!/usr/bin/env node
 
-// tests/unit/lab/causal-edge/lesson-commitment.test.js
+// tests/unit/kernel/_lib/lesson-commitment.test.js
 //
-// OQ-3 kernel-seal arc, W1 - the SINGLE-SOURCE lesson-commitment helper. computeLessonCommitment
-// content-addresses a captured lesson over EXACTLY {lesson_signature, lesson_body} via the kernel's
-// canonicalJsonSerialize, so the future seal (W2/W3/PR-A2 + the gate) all key off ONE digest basis.
+// OQ-3 kernel-seal arc - the SINGLE-SOURCE lesson-commitment primitive (moved kernel-ward in W2, fold F2).
+// computeLessonCommitment content-addresses a captured lesson over EXACTLY {lesson_signature, lesson_body} via the
+// kernel's canonicalJsonSerialize, so the seal (W2/W3/PR-A2 + the gate) all key off ONE digest basis.
 //
-// Behavioral SPEC, written FIRST (TDD). PURE; CI-safe (no fs, no I/O, no claude). The async-collector
-// harness mirrors every sibling causal-edge suite (e.g. lesson-derive.test.js) - the kernel runner
-// (`xargs -0 -n1 node`) executes each file as a plain script, so node:assert + a self-counting harness
-// is the in-repo convention (no causal-edge test uses node:test).
+// Behavioral SPEC. PURE; CI-safe (no fs, no I/O, no claude). The async-collector harness mirrors the kernel-suite
+// convention (the kernel runner `xargs -0 -n1 node` executes each file as a plain script; node:assert + a
+// self-counting harness is the in-repo convention).
 
 'use strict';
 
@@ -18,7 +17,7 @@ const crypto = require('crypto');
 const path = require('path');
 
 const REPO = path.join(__dirname, '..', '..', '..', '..');
-const { computeLessonCommitment } = require(path.join(REPO, 'packages', 'lab', 'causal-edge', 'lesson-commitment.js'));
+const { computeLessonCommitment } = require(path.join(REPO, 'packages', 'kernel', '_lib', 'lesson-commitment.js'));
 const { canonicalJsonSerialize } = require(path.join(REPO, 'packages', 'kernel', '_lib', 'canonical-json.js'));
 
 let passed = 0; let failed = 0;
@@ -101,7 +100,8 @@ test('the digest equals sha256 over the canonical {lesson_signature, lesson_body
 
 // ---- a frozen known-vector (catches a future canonical-json byte drift) ------
 // Computed once and hardcoded: if canonicalJsonSerialize ever changes its bytes, this fails LOUDLY
-// (the same INV-22/M1 forward-coupling guard the canonical-json module warns about).
+// (the same INV-22/M1 forward-coupling guard the canonical-json module warns about). Carried verbatim
+// across the kernel-ward move (fold F2) so the seal's digest basis is provably unchanged.
 test('known-vector: a fixed {lesson_signature, lesson_body} pair hashes to the frozen 64-hex', () => {
   const KNOWN = '9553275e3e16e84a850d3a8b9b323e9554d2e8fa95740739e983d7c33e3f77d4';
   const got = computeLessonCommitment({ lesson_signature: SIG, lesson_body: BODY });
