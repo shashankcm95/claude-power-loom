@@ -50,7 +50,8 @@ const liveStore = require('./live-recall-store');
 const { buildWorldAnchorLesson, LESSON_2137 } = require('./lesson');
 const { parsePrUrl } = require('./parse-pr-url');
 const { runMergeObserve } = require('./merge-observer');
-const { mintFromMergeOutcome } = require('./world-anchor-mint');
+const { mintFromMergeOutcome, resolveCapturedSignatureForAttest } = require('./world-anchor-mint');
+const { emitEgressAlert } = require('../../kernel/egress/alert');
 
 // The #2137 constants (the spec-kitty PR this wave confirms). diff_hash is NOT here  -  it is
 // re-derived from the diff bytes at backfill time.
@@ -149,6 +150,119 @@ function backfill2137(opts = {}) {
 }
 
 // --------------------------------------------------------------------------
+// attest-from-capture (item-3-live Half B) - the EMIT-side producer. Source att.lesson_signature from a
+// captured live_pending lesson (via the mint module's admitted lane reader) + write the attestation, so
+// the #455 captured-floor branch fires from a LEGIT producer. SHADOW / weight-inert / production-inert
+// (the real deriver leg + LIVE_SOURCES both still block production - this builds the emit-side MECHANISM).
+// --------------------------------------------------------------------------
+
+const HEX40 = /^[0-9a-f]{40}$/;
+const HEX64 = /^[0-9a-f]{64}$/;
+// Emit-arg bounds (mirror join-key-store.js isBoundedPlainString + world-anchor-store.js MAX). Every emit
+// arg is RECORDED-not-TRUSTED (the kernel record.approval_hash is the sole binding source); we validate
+// SHAPE at the producer boundary so a malformed arg is a CLEAN observable refuse, not the confusing
+// downstream bad-attestation. No gate on the att-vs-record cross-check (that stays ADVISORY in the mint).
+const MAX_BUILT_BY = 128;
+const MAX_BRANCH = 255;
+
+/**
+ * A bounded plain string with no control chars (the built_by/branch DoS + injection bound). Rejects the
+ * FULL control set: C0 (<0x20), DEL (0x7f), AND the C1 band (0x80-0x9f) - a terminal/log-injection escape
+ * (CSI etc.) hides in C1, which a bare `<0x20` check (the join-key-store/emit-pr canonical) lets through
+ * (VALIDATE hacker MEDIUM). charCodeAt form, never a control-regex (ADR-0006). NOTE: the kernel canonical
+ * sites (join-key-store.js, emit-pr.js - a LIVE network sink) share the looser `<0x20` band; tightening
+ * them is a NAMED kernel-layer forward-contract (out of this lab PR's scope).
+ */
+function isBoundedPlainString(v, max) {
+  if (typeof v !== 'string' || v.length < 1 || v.length > max) return false;
+  return !Array.prototype.some.call(v, (c) => { const n = c.charCodeAt(0); return n < 0x20 || (n >= 0x7f && n <= 0x9f); });
+}
+
+/** Emit a namespaced, observable attest-refuse alert (the classifier rides the NON-`reason` afc_reason key). */
+function attestRefuseAlert(reason, detail) {
+  emitEgressAlert('attest-from-capture-refused', Object.assign({}, detail || {}, { afc_reason: reason }));
+}
+
+/**
+ * The attest-from-capture flow as a pure-ish module function (dir-injectable for tests). Source the
+ * lesson_signature from a captured live_pending lesson + write a world-anchor attestation. TOTAL: every
+ * refuse returns {ok:false, reason} + an observable emit; never throws. The lesson lookup goes through
+ * world-anchor-mint.js (resolveCapturedSignatureForAttest) - cli.js NEVER reads live-pending-store
+ * directly (the dam stays at one reader).
+ *
+ * @param {object} args  the parsed argv flags: --pr-url (REQUIRED, byte-identical to the emitted PR URL),
+ *   --issue-ref, --candidate-patch-sha (REQUIRED), --diff <path> (diff_hash is re-derived from the bytes;
+ *   NEVER a --diff-hash arg), --approval-hash (HEX64), --base-sha (HEX40/HEX64), --branch, --built-by,
+ *   --emitted-at.
+ * @param {{anchorDir?: string, pendingDir?: string}} [opts]  anchorDir = the world-anchor store dir;
+ *   pendingDir = the captured live_pending store dir. A TEST seam; production passes none (real defaults).
+ * @returns {{ok: boolean, anchor_id?: string, pr_url?: string, lesson_signature?: string, reason?: string}}
+ */
+// Validate + parse the attest-from-capture scalar args at the producer boundary (extracted so
+// runAttestFromCapture stays under the 50-line ceiling - VALIDATE code-reviewer HIGH). Every emit arg is
+// RECORDED-not-TRUSTED, so a malformed one is a CLEAN observable refuse HERE, not the confusing downstream
+// bad-attestation. Returns {ok:true, parsed, issueRef, candidatePatchSha, diff_hash} or {ok:false, reason}
+// (each refuse already emitted via attestRefuseAlert).
+function validateAttestArgs(a) {
+  // 1. parse --pr-url -> {repo (slug), pr_number, pr_url}. A non-PR / malformed URL is a clean boundary refuse.
+  let parsed;
+  try { parsed = parsePrUrl(a['pr-url']); }
+  catch (err) { attestRefuseAlert('bad-pr-url', { detail: (err && err.message) || 'error' }); return { ok: false, reason: 'bad-pr-url' }; }
+  // 2. --issue-ref -> a positive safe integer (the captured-lane + attestation join key).
+  const issueRef = Number(a['issue-ref']);
+  if (!Number.isSafeInteger(issueRef) || issueRef <= 0) { attestRefuseAlert('bad-issue-ref', {}); return { ok: false, reason: 'bad-issue-ref' }; }
+  // 3. --candidate-patch-sha is REQUIRED (a multi-solve issue must never silently pick the wrong lesson).
+  const candidatePatchSha = a['candidate-patch-sha'];
+  if (typeof candidatePatchSha !== 'string') { attestRefuseAlert('missing-candidate-patch-sha', {}); return { ok: false, reason: 'missing-candidate-patch-sha' }; }
+  if (!HEX64.test(candidatePatchSha)) { attestRefuseAlert('bad-candidate-patch-sha', {}); return { ok: false, reason: 'bad-candidate-patch-sha' }; }
+  // 4. emit-arg SHAPE validation (RECORDED-not-TRUSTED; clean refuse, not bad-attestation).
+  if (typeof a['approval-hash'] !== 'string' || !HEX64.test(a['approval-hash'])) { attestRefuseAlert('bad-approval-hash', {}); return { ok: false, reason: 'bad-approval-hash' }; }
+  if (typeof a['base-sha'] !== 'string' || !(HEX40.test(a['base-sha']) || HEX64.test(a['base-sha']))) { attestRefuseAlert('bad-base-sha', {}); return { ok: false, reason: 'bad-base-sha' }; }
+  if (!isBoundedPlainString(a['built-by'], MAX_BUILT_BY)) { attestRefuseAlert('bad-built-by', {}); return { ok: false, reason: 'bad-built-by' }; }
+  if (!isBoundedPlainString(a.branch, MAX_BRANCH)) { attestRefuseAlert('bad-branch', {}); return { ok: false, reason: 'bad-branch' }; }
+  if (typeof a['emitted-at'] !== 'string' || a['emitted-at'].length < 1) { attestRefuseAlert('bad-emitted-at', {}); return { ok: false, reason: 'bad-emitted-at' }; }
+  // 5. re-derive diff_hash from the --diff bytes (like backfill2137); NEVER accept a --diff-hash arg.
+  if (typeof a.diff !== 'string') { attestRefuseAlert('missing-diff', {}); return { ok: false, reason: 'missing-diff' }; }
+  let diff_hash;
+  try { diff_hash = crypto.createHash('sha256').update(fs.readFileSync(a.diff)).digest('hex'); }
+  catch (err) { attestRefuseAlert('diff-unreadable', { detail: (err && err.code) || 'error' }); return { ok: false, reason: 'diff-unreadable' }; }
+  return { ok: true, parsed, issueRef, candidatePatchSha, diff_hash };
+}
+
+function runAttestFromCapture(args, opts = {}) {
+  const a = args && typeof args === 'object' && !Array.isArray(args) ? args : {};
+  const o = opts && typeof opts === 'object' && !Array.isArray(opts) ? opts : {};
+  const v = validateAttestArgs(a);
+  if (!v.ok) return { ok: false, reason: v.reason };
+
+  // source the lesson_signature from the captured lane (the ONE reader is world-anchor-mint.js). The helper
+  // does the two fail-closed exact-set checks (no-captured-lesson / ambiguous-captured-patch /
+  // ambiguous-captured-lesson) so producer-success <=> the mint's CARDINALITY precondition is met - the
+  // taxonomy gate is the mint's SEPARATE authority (an off-taxonomy sig then mints OR refuses off-taxonomy-lesson).
+  // It already emits. NOTE (DEDUP-not-AUTHZ): exactly-one is a correctness/dedup property, not authorization;
+  // a same-uid co-forge of node+attestation still mints with no refuse - tolerable ONLY weight-inert (PR-A2 closes it).
+  const sig = resolveCapturedSignatureForAttest(
+    { repoSlug: v.parsed.repo, issueRef: v.issueRef, candidatePatchSha: v.candidatePatchSha }, { pendingDir: o.pendingDir },
+  );
+  if (!sig.ok) return { ok: false, reason: sig.reason };
+
+  // build + record the attestation. The repo is stored as a SLUG (so the mint's resolveAnchorForPr + the
+  // merge-outcome join match). A fresh object (immutability). recordAttestation re-validates the full shape.
+  const attestation = {
+    repo: v.parsed.repo, issueRef: v.issueRef, pr_url: v.parsed.pr_url, pr_number: v.parsed.pr_number,
+    branch: a.branch, base_sha: a['base-sha'], diff_hash: v.diff_hash,
+    lesson_signature: sig.lesson_signature,
+    built_by: a['built-by'], approval_hash: a['approval-hash'], emitted_at: a['emitted-at'],
+  };
+  const w = store.recordAttestation(attestation, { dir: o.anchorDir });
+  if (!w.ok) { attestRefuseAlert('record-failed', { reason_detail: w.reason, detail: w.detail }); return { ok: false, reason: w.reason, detail: w.detail }; }
+  // SURFACE the stored att.pr_url (eyeball-match vs the kernel join-key - resolveAnchorForPr joins on the
+  // EXACT pr_url) + the SHADOW/production-inert markers so an operator is never misled that a LIVE
+  // world-anchor was produced (it is not - leg-1 deriver null + LIVE_SOURCES=[] both still block production).
+  return { ok: true, anchor_id: w.anchor_id, pr_url: v.parsed.pr_url, lesson_signature: sig.lesson_signature, deduped: !!w.deduped, shadow: true, production_inert: true };
+}
+
+// --------------------------------------------------------------------------
 // argv dispatch
 // --------------------------------------------------------------------------
 
@@ -170,7 +284,11 @@ function parseArgs(argv) {
 // ~/.claude/lab-state. The correct isolation root is LOOM_LAB_STATE_DIR (every store derives its own
 // subdir from it natively). The opts seam below is for TESTS only - and it is ALL-OR-NOTHING (the minter's
 // incomplete-dir-wiring guard enforces it).
-const USAGE = 'Usage: cli.js <observe-merge --pr <url> [--merge-sha <sha>] (gh-verified; the SOLE mint path; isolate via LOOM_LAB_STATE_DIR) | record-merge --pr <url> --outcome merged|closed|stale [--merge-sha <sha>] [--dir <store>] (confirmation-only; mints nothing) | list-live [--live-dir <dir>] | backfill-2137 [--diff <path>] [--dir <store>] [--allow-placeholder]>\n';
+// attest-from-capture --pr-url MUST be BYTE-IDENTICAL to the emitted PR URL (the kernel join-key seals the
+// gh html_url; the mint's resolveAnchorForPr joins on the EXACT pr_url, so a trailing-slash / case variant
+// never joins). diff_hash is RE-DERIVED from --diff bytes; there is NO --diff-hash arg. --candidate-patch-sha
+// is REQUIRED (a multi-solve issue must never silently pick the wrong captured lesson).
+const USAGE = 'Usage: cli.js <observe-merge --pr <url> [--merge-sha <sha>] (gh-verified; the SOLE mint path; isolate via LOOM_LAB_STATE_DIR) | record-merge --pr <url> --outcome merged|closed|stale [--merge-sha <sha>] [--dir <store>] (confirmation-only; mints nothing) | list-live [--live-dir <dir>] | backfill-2137 [--diff <path>] [--dir <store>] [--allow-placeholder] | attest-from-capture --pr-url <url> --issue-ref <n> --candidate-patch-sha <hex64> --diff <path> --approval-hash <hex64> --base-sha <hex40|hex64> --branch <b> --built-by <who> --emitted-at <iso> (--pr-url MUST be byte-identical to the emitted PR URL; diff_hash re-derived from --diff; SHADOW/production-inert)>\n';
 
 function emit(obj) { process.stdout.write(`${JSON.stringify(obj, null, 2)}\n`); }
 
@@ -259,6 +377,13 @@ function main(argv) {
     emit(r);
     return r.ok ? 0 : 1;
   }
+  if (sub === 'attest-from-capture') {
+    // Half B: source att.lesson_signature from a captured live_pending lesson + write the attestation.
+    // Production passes no opts (real default stores); isolate tests via the anchorDir/pendingDir seam.
+    const r = runAttestFromCapture(args);
+    emit(r);
+    return r.ok ? 0 : 1;
+  }
   process.stderr.write(USAGE);
   return 1;
 }
@@ -275,4 +400,4 @@ if (require.main === module) {
 // The mint logic lives in world-anchor-mint.js (the SOLE mint path is observe-merge). cli.js exports the
 // gated entry points; mainObserveMerge is exported so a test can drive the gh-verified auto-mint arm with
 // an injected gh runner + store dirs (production passes no opts).
-module.exports = { parsePrUrl, runRecordMerge, mainObserveMerge, listLive, backfill2137, main, SPEC_KITTY_2137, PLACEHOLDER_DIFF_HASH };
+module.exports = { parsePrUrl, runRecordMerge, mainObserveMerge, listLive, backfill2137, runAttestFromCapture, main, SPEC_KITTY_2137, PLACEHOLDER_DIFF_HASH };
