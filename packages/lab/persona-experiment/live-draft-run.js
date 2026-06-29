@@ -184,7 +184,16 @@ async function captureLiveLesson({ record, candidate, verdict, ref, eligibleFn, 
   // helper is also called directly in tests + may be reused), so a future caller can never reach the deriver
   // with an empty candidate. The `no-candidate` enum is therefore live-unreachable but contract-meaningful.
   if (typeof candidate !== 'string' || !candidate.trim()) return { lesson_captured: false, lesson_reason: 'no-candidate' };
-  if (!eligibleFn(verdict)) return { lesson_captured: false, lesson_reason: 'ineligible' };
+  // eligibleFn is an injectable seam; a future/injected eligibility check that THROWS must NOT escape (the
+  // "captureLiveLesson NEVER throws" contract - an escape would convert a written draft into a loop failure).
+  // A thrown eligibility is fail-closed to ineligible (no capture) + observable.
+  let eligible = false;
+  try { eligible = typeof eligibleFn === 'function' && eligibleFn(verdict) === true; }
+  catch (e) {
+    emitEgressAlert('live-pending-capture-eligible-threw', { detail: (e && e.message) || 'error' });
+    return { lesson_captured: false, lesson_reason: 'ineligible' };
+  }
+  if (!eligible) return { lesson_captured: false, lesson_reason: 'ineligible' };
 
   const scrubbedCandidate = scrubLabSecrets(candidate);
   const candidate_patch_sha = sidecarSha(scrubbedCandidate);

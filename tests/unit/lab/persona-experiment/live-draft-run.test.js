@@ -302,7 +302,11 @@ test('capture: the deriveFn NEVER receives the raw problem_statement (digest onl
   assert.ok(seen, 'the deriveFn was called');
   assert.ok(typeof seen.problem_statement_digest === 'string' && seen.problem_statement_digest.length > 0, 'a problem_statement_digest is passed');
   assert.ok(!JSON.stringify(seen).includes('fix the null crash'), 'the RAW problem statement never reaches the deriveFn');
-  assert.ok(typeof seen.candidate_patch_sha === 'string' && seen.candidate_patch_sha.length === 64, 'a candidate_patch_sha is passed (not the raw candidate)');
+  // FOLD 4: assert the HEX FORMAT (a 64-hex content-address, not just length) AND that the RAW candidate diff
+  // bytes are absent anywhere in the leg input (only the sha crosses, never the patch bytes).
+  assert.ok(/^[0-9a-f]{64}$/.test(seen.candidate_patch_sha || ''), 'candidate_patch_sha is a 64-hex content-address');
+  const flat = JSON.stringify(seen);
+  assert.ok(!flat.includes('diff --git') && !flat.includes('src/foo.js') && !flat.includes('@@ -1 +1 @@'), 'the RAW candidate diff bytes are NOT present in the leg input');
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -316,6 +320,37 @@ test('capture: an INELIGIBLE solve writes NO lesson; outcome lesson_captured:fal
   assert.strictEqual(o.lesson_reason, 'ineligible');
   assert.strictEqual(writes.length, 0, 'no lesson written for an ineligible solve');
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('capture: a THROWING eligibleFn stays FAIL-SOFT - draft still writes; lesson_reason:ineligible + emit, NEVER throws (FOLD 2)', async () => {
+  const dir = mkArtifacts();
+  // a future/injected eligibility check that throws must NOT escape captureLiveLesson (the NEVER-throws
+  // contract) - it is fail-closed to ineligible (no capture) + observable, the draft still writes.
+  let alertText = '';
+  const origW = process.stderr.write;
+  process.stderr.write = (c) => { const s = String(c); if (s.includes('LOOM-EGRESS-ALERT')) alertText += s; return true; };
+  let report;
+  try {
+    const { deps, writes } = captureDeps({ lessonEligibleFn: () => { throw new Error('eligible boom'); } });
+    report = await runLiveDraftLoop({ records: [REC], artifactsDir: dir, deps });
+    assert.strictEqual(writes.length, 0, 'a throwing eligibility writes no lesson');
+  } finally { process.stderr.write = origW; }
+  const o = report.outcomes[0];
+  assert.strictEqual(o.ok, true, 'a throwing eligibleFn never aborts the record (draft still written)');
+  assert.strictEqual(o.reason, 'draft-written');
+  assert.ok(fs.existsSync(o.artifact), 'the draft artifact still exists');
+  assert.strictEqual(o.lesson_captured, false);
+  assert.strictEqual(o.lesson_reason, 'ineligible');
+  assert.ok(/live-pending-capture-eligible-threw/.test(alertText), 'the eligible-threw path emits its distinguishing egress token');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('capture: captureLiveLesson NEVER throws on a throwing eligibleFn (direct unit, contract guard)', async () => {
+  // direct unit on the helper export: a throwing eligibleFn returns the ineligible shape, never propagates.
+  const { captureLiveLesson } = M;
+  let r;
+  await assert.doesNotReject(async () => { r = await captureLiveLesson({ record: REC, candidate: BENIGN_DIFF, verdict: {}, ref: { issueRef: 42 }, eligibleFn: () => { throw new Error('boom'); }, deriveFn: async () => null, writeFn: () => ({ ok: true }) }); });
+  assert.deepStrictEqual(r, { lesson_captured: false, lesson_reason: 'ineligible' }, 'a throwing eligibleFn yields the ineligible shape (no throw)');
 });
 
 test('capture: an OFF-FLOOR deriver (returns null) writes NO lesson; lesson_reason:off-floor (no egress alert)', async () => {
@@ -375,14 +410,23 @@ test('capture: a REFUSING store stays FAIL-SOFT - the draft still writes; lesson
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test('capture: a THROWING store writer stays FAIL-SOFT - the draft still writes; lesson_reason:store-refused', async () => {
+test('capture: a THROWING store writer stays FAIL-SOFT - the draft still writes; lesson_reason:store-refused + emit', async () => {
   const dir = mkArtifacts();
-  const { deps } = captureDeps({ lessonWriteFn: () => { throw new Error('write boom'); } });
-  const report = await runLiveDraftLoop({ records: [REC], artifactsDir: dir, deps });
+  // FOLD 5: capture the egress alert (the suite's existing capture pattern) and assert the
+  // security-shaped store-THREW path emits its distinguishing token, not just the fail-soft outcome.
+  let alertText = '';
+  const origW = process.stderr.write;
+  process.stderr.write = (c) => { const s = String(c); if (s.includes('LOOM-EGRESS-ALERT')) alertText += s; return true; };
+  let report;
+  try {
+    const { deps } = captureDeps({ lessonWriteFn: () => { throw new Error('write boom'); } });
+    report = await runLiveDraftLoop({ records: [REC], artifactsDir: dir, deps });
+  } finally { process.stderr.write = origW; }
   const o = report.outcomes[0];
   assert.strictEqual(o.ok, true, 'a throwing writer never aborts the record');
   assert.strictEqual(o.lesson_captured, false);
   assert.strictEqual(o.lesson_reason, 'store-refused');
+  assert.ok(/live-pending-capture-store-threw/.test(alertText), 'the store-threw path emits its distinguishing egress token');
   fs.rmSync(dir, { recursive: true, force: true });
 });
 

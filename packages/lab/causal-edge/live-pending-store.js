@@ -167,7 +167,13 @@ function ensureStoreDir(dir, selfUid) {
  */
 function validateReadDir(dir, selfUid) {
   let st;
-  try { st = fs.lstatSync(dir); } catch { return 'absent'; }   // ENOENT (or any stat failure) -> treat as absent, no alert
+  // Only ENOENT/ENOTDIR is a benign not-yet-created store (silent 'absent'); EACCES/EPERM/a race/etc. are
+  // REAL errors that must surface as an observable dir_reason, never be swallowed as 'absent' (fail-silent
+  // would hide a permission/race fault as a silent null/[] read). Mirrors merge-outcome-store's validateReadDir.
+  try { st = fs.lstatSync(dir); } catch (err) {
+    if (err && (err.code === 'ENOENT' || err.code === 'ENOTDIR')) return 'absent';
+    return (err && err.code) || 'stat-error';
+  }
   if (st.isSymbolicLink()) return 'symlink';
   if (!st.isDirectory()) return 'not-a-dir';
   if (isForeign(st, selfUid)) return 'foreign';

@@ -95,14 +95,38 @@ test('SHADOW import-graph: the admitted writer ACTUALLY imports the store (the a
   assert.ok(IMPORT_RE.test(src), 'the writer (live-draft-run.js) imports live-pending-store (allowlist is real)');
 });
 
-test('SHADOW import-graph: ZERO readers of the lane in PR-1 (no readLivePendingLesson / listLivePendingLessons caller)', () => {
+// The full-path of the store's OWN definer (where readLivePendingLesson / listLivePendingLessons are
+// DEFINED + exported). It is the ONLY file exempt from the reader-CALLER scan; every other file -
+// including causal-edge SIBLINGS - must have ZERO reader calls. (The #451 C2 hole: a blanket
+// causal-edge skip makes a same-dir sibling reader invisible. The reader scan must NOT skip the dir.)
+const STORE_DEFINER_FULLPATH = path.join(CAUSAL_EDGE_DIR, 'live-pending-store.js');
+
+test('SHADOW import-graph: ZERO reader-CALLERS of the lane in PR-1 (scan covers causal-edge SIBLINGS too, #451 C2)', () => {
   const offenders = [];
   for (const file of walkJs(PACKAGES)) {
-    if (file.startsWith(CAUSAL_EDGE_DIR + path.sep)) continue;   // the module defines them (not a production caller)
+    if (file === STORE_DEFINER_FULLPATH) continue;   // ONLY the definer is exempt (it defines the readers, not calls them)
     const src = fs.readFileSync(file, 'utf8');
     if (READER_CALL_RE.test(src)) offenders.push(path.relative(REPO, file));
   }
-  assert.deepStrictEqual(offenders, [], `PR-1 adds NO reader of the live-pending lane - these call a reader: ${offenders.join(', ')}`);
+  assert.deepStrictEqual(offenders, [], `PR-1 adds NO reader of the live-pending lane (siblings included) - these call a reader: ${offenders.join(', ')}`);
+});
+
+test('SHADOW reader-scan is NON-VACUOUS: a planted SIBLING reader (in causal-edge/) is DETECTED', () => {
+  // Prove the scan actually covers causal-edge siblings (the #451 C2 fix). Plant a throwaway sibling that
+  // calls a reader, confirm the scan flags it, then remove it. Without the fix (a blanket causal-edge skip)
+  // this would pass vacuously - the planted reader would be invisible.
+  const planted = path.join(CAUSAL_EDGE_DIR, '_dam-nonvacuity-probe.js');
+  fs.writeFileSync(planted, "'use strict';\nconst { readLivePendingLesson } = require('./live-pending-store');\nmodule.exports = () => readLivePendingLesson('x');\n");
+  try {
+    let detected = false;
+    for (const file of walkJs(PACKAGES)) {
+      if (file === STORE_DEFINER_FULLPATH) continue;
+      if (READER_CALL_RE.test(fs.readFileSync(file, 'utf8'))) detected = true;
+    }
+    assert.strictEqual(detected, true, 'a planted SIBLING reader in causal-edge/ MUST be detected (scan covers siblings)');
+  } finally {
+    fs.rmSync(planted, { force: true });
+  }
 });
 
 test('SHADOW header invariant: live-pending-store.js carries the SHADOW / LIVE_SOURCES / #273 header', () => {

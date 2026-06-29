@@ -314,6 +314,29 @@ test('TOCTOU: a planted divergent file at the target node_id is an observable co
   assert.ok(alerted, 'the collision is OBSERVABLE');
 });
 
+// ---- FOLD 1: a non-ENOENT/ENOTDIR read-dir error SURFACES (never swallowed as silent absent) ----
+test('read-dir guard: a non-ENOENT/ENOTDIR lstat error is OBSERVABLE, not swallowed as silent absent (fail-silent close)', () => {
+  const SELF = typeof process.getuid === 'function' ? process.getuid() : null;
+  if (SELF === null) return;                                   // no posix perms (Windows)
+  if (SELF === 0) return;                                      // root bypasses EACCES; the assertion would be vacuous
+  const base = tmp();
+  const denied = path.join(base, 'denied');
+  fs.mkdirSync(denied, { mode: 0o700 });
+  const storeRoot = path.join(denied, 'store');                // lstat of storeRoot will EACCES once denied is 0000
+  fs.mkdirSync(storeRoot, { mode: 0o700 });
+  fs.chmodSync(denied, 0o000);                                 // remove traverse on the parent -> lstat(storeRoot) = EACCES
+  try {
+    const load = captureAlert(() => store.readLivePendingLesson('a'.repeat(64), { dir: storeRoot }));
+    assert.strictEqual(load.r, null, 'an EACCES read root returns null');
+    assert.ok(load.alerted, 'a non-ENOENT lstat error is OBSERVABLE (NOT swallowed as silent absent)');
+    const list = captureAlert(() => store.listLivePendingLessons({ dir: storeRoot }));
+    assert.deepStrictEqual(list.r, [], 'an EACCES enumeration root returns []');
+    assert.ok(list.alerted, 'a non-ENOENT lstat error on enumerate is OBSERVABLE');
+  } finally {
+    fs.chmodSync(denied, 0o700);                               // restore so the tmp dir is cleanable
+  }
+});
+
 // ---- TOTAL list ---------------------------------------------------------------
 test('listLivePendingLessons is TOTAL: a corrupt + a co-forged file are SKIPPED, the good ones still return', () => {
   const dir = tmp();
