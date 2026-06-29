@@ -256,6 +256,35 @@ test('emit-arg: a malformed --pr-url refuses bad-pr-url at the boundary', () => 
   assert.strictEqual(r.reason, 'bad-pr-url');
 });
 
+test('emit-arg: a non-canonical --issue-ref (bare flag / exponent) refuses bad-issue-ref (no Number() coercion)', () => {
+  // CodeRabbit Major: Number(true)===1 + Number('1e3')===1000 both pass isSafeInteger -> wrong join key.
+  // A bare --issue-ref flag parses to `true`; require a canonical decimal string FIRST. Non-vacuous (RED pre-fold).
+  const dir = tmp();
+  capture(dir);
+  const bare = captureAlerts(() => cli.runAttestFromCapture(baseArgs(dir, { 'issue-ref': true }), baseOpts(dir))).r;
+  assert.strictEqual(bare.ok, false);
+  assert.strictEqual(bare.reason, 'bad-issue-ref', 'a bare --issue-ref flag does NOT coerce to issue 1');
+  const expo = captureAlerts(() => cli.runAttestFromCapture(baseArgs(dir, { 'issue-ref': '1e3' }), baseOpts(dir))).r;
+  assert.strictEqual(expo.ok, false);
+  assert.strictEqual(expo.reason, 'bad-issue-ref', 'exponent notation is rejected (canonical decimal only)');
+});
+
+test('emit-arg: a malformed --emitted-at refuses bad-emitted-at (canonical ISO-UTC required)', () => {
+  const dir = tmp();
+  capture(dir);
+  const { r } = captureAlerts(() => cli.runAttestFromCapture(baseArgs(dir, { 'emitted-at': 'not-a-date' }), baseOpts(dir)));
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(r.reason, 'bad-emitted-at', 'a non-ISO --emitted-at is refused (the usage advertises <iso>)');
+});
+
+test('emit-arg: a supplied --diff-hash refuses unsupported-diff-hash (fail-loud; diff_hash is re-derived)', () => {
+  const dir = tmp();
+  capture(dir);
+  const { r } = captureAlerts(() => cli.runAttestFromCapture(baseArgs(dir, { 'diff-hash': 'a'.repeat(64) }), baseOpts(dir)));
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(r.reason, 'unsupported-diff-hash', 'a stale --diff-hash fails LOUD, never silently ignored');
+});
+
 // ===========================================================================
 // HAPPY: a captured node -> a recorded attestation whose lesson_signature is the CAPTURED one.
 // ===========================================================================

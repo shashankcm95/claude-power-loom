@@ -158,6 +158,11 @@ function backfill2137(opts = {}) {
 
 const HEX40 = /^[0-9a-f]{40}$/;
 const HEX64 = /^[0-9a-f]{64}$/;
+// Canonical UTC ISO-8601 (the usage advertises <iso>). The fractional is BOUNDED to 1-9 digits (the
+// merge-outcome-store hardening: a bare \.\d+ accepts a 9000-digit fractional that bloats the body); paired
+// with Date.parse-finite so an in-range FORMAT but invalid CALENDAR date (month 13) is still rejected.
+const ISO_8601_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/;
+function isIsoUtc(v) { return typeof v === 'string' && ISO_8601_UTC.test(v) && Number.isFinite(Date.parse(v)); }
 // Emit-arg bounds (mirror join-key-store.js isBoundedPlainString + world-anchor-store.js MAX). Every emit
 // arg is RECORDED-not-TRUSTED (the kernel record.approval_hash is the sole binding source); we validate
 // SHAPE at the producer boundary so a malformed arg is a CLEAN observable refuse, not the confusing
@@ -208,9 +213,13 @@ function validateAttestArgs(a) {
   let parsed;
   try { parsed = parsePrUrl(a['pr-url']); }
   catch (err) { attestRefuseAlert('bad-pr-url', { detail: (err && err.message) || 'error' }); return { ok: false, reason: 'bad-pr-url' }; }
-  // 2. --issue-ref -> a positive safe integer (the captured-lane + attestation join key).
-  const issueRef = Number(a['issue-ref']);
-  if (!Number.isSafeInteger(issueRef) || issueRef <= 0) { attestRefuseAlert('bad-issue-ref', {}); return { ok: false, reason: 'bad-issue-ref' }; }
+  // 2. --issue-ref -> a positive safe integer (the captured-lane + attestation join key). Require a
+  //    CANONICAL DECIMAL string BEFORE Number() (CodeRabbit Major): a bare flag parses to `true` ->
+  //    Number(true)===1, and '1e3'->1000 - both would pass isSafeInteger + record against the WRONG join key.
+  const issueRefRaw = a['issue-ref'];
+  if (typeof issueRefRaw !== 'string' || !/^[1-9][0-9]*$/.test(issueRefRaw)) { attestRefuseAlert('bad-issue-ref', {}); return { ok: false, reason: 'bad-issue-ref' }; }
+  const issueRef = Number(issueRefRaw);
+  if (!Number.isSafeInteger(issueRef)) { attestRefuseAlert('bad-issue-ref', {}); return { ok: false, reason: 'bad-issue-ref' }; }
   // 3. --candidate-patch-sha is REQUIRED (a multi-solve issue must never silently pick the wrong lesson).
   const candidatePatchSha = a['candidate-patch-sha'];
   if (typeof candidatePatchSha !== 'string') { attestRefuseAlert('missing-candidate-patch-sha', {}); return { ok: false, reason: 'missing-candidate-patch-sha' }; }
@@ -220,8 +229,10 @@ function validateAttestArgs(a) {
   if (typeof a['base-sha'] !== 'string' || !(HEX40.test(a['base-sha']) || HEX64.test(a['base-sha']))) { attestRefuseAlert('bad-base-sha', {}); return { ok: false, reason: 'bad-base-sha' }; }
   if (!isBoundedPlainString(a['built-by'], MAX_BUILT_BY)) { attestRefuseAlert('bad-built-by', {}); return { ok: false, reason: 'bad-built-by' }; }
   if (!isBoundedPlainString(a.branch, MAX_BRANCH)) { attestRefuseAlert('bad-branch', {}); return { ok: false, reason: 'bad-branch' }; }
-  if (typeof a['emitted-at'] !== 'string' || a['emitted-at'].length < 1) { attestRefuseAlert('bad-emitted-at', {}); return { ok: false, reason: 'bad-emitted-at' }; }
-  // 5. re-derive diff_hash from the --diff bytes (like backfill2137); NEVER accept a --diff-hash arg.
+  if (!isIsoUtc(a['emitted-at'])) { attestRefuseAlert('bad-emitted-at', {}); return { ok: false, reason: 'bad-emitted-at' }; }
+  // 5. re-derive diff_hash from the --diff bytes (like backfill2137); NEVER accept a --diff-hash arg. A
+  //    SUPPLIED --diff-hash is refused (not silently ignored) so a stale caller fails LOUD (CodeRabbit Minor).
+  if (Object.prototype.hasOwnProperty.call(a, 'diff-hash')) { attestRefuseAlert('unsupported-diff-hash', {}); return { ok: false, reason: 'unsupported-diff-hash' }; }
   if (typeof a.diff !== 'string') { attestRefuseAlert('missing-diff', {}); return { ok: false, reason: 'missing-diff' }; }
   let diff_hash;
   try { diff_hash = crypto.createHash('sha256').update(fs.readFileSync(a.diff)).digest('hex'); }
