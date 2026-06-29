@@ -388,9 +388,78 @@ function mintFromMergeOutcome(args, opts = {}) {
   return { ...nodeResult, ...edge };
 }
 
-// INFORMATION HIDING (code-reviewer LOW-1): export ONLY the gated entry point. mintWorldAnchorEdge stays
-// PRIVATE - exporting it would let a future caller bind an UNCHECKED to_delta_ref, bypassing the
-// verify-on-read merge-outcome record that is the whole trust basis (the rebind PR-3 makes). The lesson
-// FLOOR (ORCHESTRATOR_LESSONS) also stays private (the mint never reads a caller-supplied lesson). Tests
-// drive mintFromMergeOutcome (the structural/header asserts read the source via fs, not the exports).
-module.exports = { mintFromMergeOutcome };
+/**
+ * Half B (item-3-live) - the EMIT-side producer's captured-lesson lookup. Given the attestation's
+ * pre-normalized (repoSlug, issueRef, candidatePatchSha), select EXACTLY the captured live_pending lesson
+ * the emit-side attestation should carry, such that the #455 mint's Branch B (collectCapturedCandidates,
+ * which re-joins on (repoSlug, issue_ref, lesson_signature) ONLY) will resolve exactly-one. It lives HERE,
+ * in the existing admitted lane reader, so the producer's lookup and the mint's Branch-B join CANNOT
+ * diverge (same module, same repoSlug + listLivePendingLessons) - and cli.js never reads the lane directly
+ * (the dam stays at one reader). It is a READ-ONLY lookup returning a coarse-bucket signature string; it
+ * exposes no trust-bypass (the mint's binding stays gated by its own exact-set re-resolution). The
+ * exact-set checks below are DEDUP/correctness, NOT authorization (cf. the file-header #273 dimension-3
+ * note): a same-uid co-forge of one captured node + one attestation still yields exactly-one -> a clean
+ * (attacker-body) mint with NO refuse - tolerable ONLY because weight-inert; PR-A2's authenticated minter is the close.
+ *
+ * TWO fail-closed exact-set checks (compute-the-set, require-exactly-one - NEVER .find()/[0]/first-wins,
+ * mirroring collectCapturedCandidates + resolveAnchorForPr):
+ *   1. Filter the lane to (repoSlug, issue_ref, candidate_patch_sha); require EXACTLY ONE (0 ->
+ *      no-captured-lesson; >1 -> ambiguous-captured-patch [two lesson axes from one patch]). This yields
+ *      ONE lesson_signature.
+ *   2. Verify (repoSlug, issue_ref, that lesson_signature) is EXACTLY ONE in the lane (the mint's
+ *      Branch-B precondition - so producer-success <=> the mint's CARDINALITY precondition is met; the
+ *      taxonomy gate is the mint's SEPARATE authority - an off-taxonomy sig then mints OR refuses
+ *      off-taxonomy-lesson). Else ambiguous-captured-lesson (the mint would refuse anyway; attesting it
+ *      is meaningless).
+ *
+ * TOTAL: listLivePendingLessons is total (never throws); this returns {ok, lesson_signature} | {ok:false,
+ * reason} and never throws. Every refuse is OBSERVABLE (the classifier rides the NON-`reason` mint_reason
+ * key, mirroring mintRefuseAlert).
+ *
+ * @param {{repoSlug: string, issueRef: number, candidatePatchSha: string}} q  the attestation's join keys
+ *   (repoSlug already normalized by the caller via the same repoSlug used here).
+ * @param {{pendingDir?: string}} [opts]  pendingDir = the captured live_pending store dir (a TEST seam;
+ *   production passes none -> the real default). A null/non-object opts normalizes to {}.
+ * @returns {{ok: true, lesson_signature: string} | {ok: false, reason: string}}
+ */
+function resolveCapturedSignatureForAttest(q, opts = {}) {
+  const o = opts && typeof opts === 'object' && !Array.isArray(opts) ? opts : {};
+  const query = q && typeof q === 'object' && !Array.isArray(q) ? q : {};
+  const wantSlug = repoSlug(query.repoSlug);
+  const wantIssue = query.issueRef;
+  const wantCps = query.candidatePatchSha;
+  const lane = listLivePendingLessons({ dir: o.pendingDir });
+
+  // Check 1: EXACTLY ONE captured node for (repoSlug, issue_ref, candidate_patch_sha).
+  const byPatch = lane.filter((rec) => repoSlug(rec.repo) === wantSlug
+    && rec.issue_ref === wantIssue
+    && rec.candidate_patch_sha === wantCps);
+  if (byPatch.length === 0) {
+    mintRefuseAlert({ mint_reason: 'no-captured-lesson', repo_slug: wantSlug, issue_ref: wantIssue });
+    return { ok: false, reason: 'no-captured-lesson' };
+  }
+  if (byPatch.length > 1) {
+    mintRefuseAlert({ mint_reason: 'ambiguous-captured-patch', repo_slug: wantSlug, issue_ref: wantIssue, matches: byPatch.length });
+    return { ok: false, reason: 'ambiguous-captured-patch' };
+  }
+  const lesson_signature = byPatch[0].lesson_signature;
+
+  // Check 2: the mint's Branch-B precondition - EXACTLY ONE node for (repoSlug, issue_ref, lesson_signature).
+  const bySignature = lane.filter((rec) => repoSlug(rec.repo) === wantSlug
+    && rec.issue_ref === wantIssue
+    && rec.lesson_signature === lesson_signature);
+  if (bySignature.length !== 1) {
+    mintRefuseAlert({ mint_reason: 'ambiguous-captured-lesson', repo_slug: wantSlug, issue_ref: wantIssue, matches: bySignature.length });
+    return { ok: false, reason: 'ambiguous-captured-lesson' };
+  }
+  return { ok: true, lesson_signature };
+}
+
+// INFORMATION HIDING (code-reviewer LOW-1): export the gated entry point + the Half B read-only lookup.
+// mintWorldAnchorEdge stays PRIVATE - exporting it would let a future caller bind an UNCHECKED to_delta_ref,
+// bypassing the verify-on-read merge-outcome record that is the whole trust basis (the rebind PR-3 makes).
+// The lesson FLOOR (ORCHESTRATOR_LESSON_SEEDS) also stays private (the mint never reads a caller-supplied
+// lesson). resolveCapturedSignatureForAttest IS exported (Half B's producer needs it) but is read-only -
+// it returns a coarse-bucket signature string, exposing no trust-bypass (the mint re-resolves exactly-one
+// independently). Tests drive mintFromMergeOutcome (the structural/header asserts read the source via fs).
+module.exports = { mintFromMergeOutcome, resolveCapturedSignatureForAttest };

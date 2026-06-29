@@ -323,6 +323,41 @@ test('cli.js source references NEITHER resolveSigner NOR LOOM_EDGE_SIGNING_KEY (
   assert.strictEqual(src.includes('LOOM_EDGE_SIGNING_KEY'), false, 'cli.js never references the env signing key');
 });
 
+// --------------------------------------------------------------------------
+// Half B (item-3-live): the attest-from-capture subcommand. cli.js exposes runAttestFromCapture as a
+// dir-injectable module fn (the full behavioral spec lives in attest-from-capture.test.js); here we
+// exercise the DISPATCH + the USAGE doc + the dam-discipline (cli.js does NOT import live-pending-store).
+// --------------------------------------------------------------------------
+
+test('runAttestFromCapture is the new public surface (dispatched by the attest-from-capture subcommand)', () => {
+  assert.strictEqual(typeof cli.runAttestFromCapture, 'function', 'runAttestFromCapture is exported');
+});
+
+test('USAGE documents attest-from-capture + the --pr-url byte-identity requirement', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', '..', '..', 'packages', 'lab', 'world-anchor', 'cli.js'), 'utf8');
+  assert.ok(/attest-from-capture/.test(src), 'cli.js names the attest-from-capture subcommand');
+  // the usage string documents that --pr-url must be byte-identical to the emitted PR URL
+  assert.ok(/byte-identical/i.test(src), 'the usage/docs require a byte-identical --pr-url');
+});
+
+test('cli.js does NOT import live-pending-store directly (the dam stays at one reader: world-anchor-mint.js)', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', '..', '..', 'packages', 'lab', 'world-anchor', 'cli.js'), 'utf8');
+  const IMPORT_RE = /(?:require\(\s*|import\s+(?:[^;'"]*\sfrom\s+)?|import\(\s*)['"][^'"]*live-pending-store(?:\.js)?['"]/;
+  assert.strictEqual(IMPORT_RE.test(src), false, 'cli.js never imports live-pending-store (the lookup goes through world-anchor-mint.js)');
+  // and it never calls the lane readers directly
+  assert.strictEqual(/\b(?:readLivePendingLesson|listLivePendingLessons)\s*\(/.test(src), false, 'cli.js never calls a lane reader directly');
+});
+
+test('attest-from-capture dispatch: an unknown subcommand still prints usage + exits 1 (unchanged)', () => {
+  const orig = process.stderr.write;
+  let usage = '';
+  process.stderr.write = (chunk) => { usage += String(chunk); return true; };
+  let code;
+  try { code = cli.main(['definitely-not-a-subcommand']); } finally { process.stderr.write = orig; }
+  assert.strictEqual(code, 1, 'an unknown subcommand exits 1');
+  assert.ok(/attest-from-capture/.test(usage), 'usage lists attest-from-capture');
+});
+
 (async () => {
   for (const { name, fn } of tests) {
     try { await fn(); passed += 1; }
