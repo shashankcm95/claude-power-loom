@@ -30,6 +30,7 @@ const { materialize: materializePersona } = require('./persona-prompt-materializ
 const { isLiveLessonEligible, deriveLiveLesson } = require('../causal-edge/live-lesson-derive');
 const { makeLiveLessonDeriver } = require('../causal-edge/live-lesson-derive-run');   // item-3-live leg 1 - the real claude -p deriveFn producer
 const { mintLivePendingLesson } = require('../causal-edge/live-pending-store');
+const { computeLessonCommitment } = require('../causal-edge/lesson-commitment');   // OQ-3 W1 - the single-source lesson commitment
 const { sidecarSha } = require('../attribution/candidate-sidecar');
 const { scrubLabSecrets } = require('../_lib/scrub-lab-secrets');
 const { emitEgressAlert } = require('../../kernel/egress/alert');
@@ -167,9 +168,15 @@ function finalizeReport(report, artifactsDir) {
 }
 
 // --------------------------------------------------------------------------
-// item-3-live PR-1 - the draft-time live-solve lesson CAPTURE (D3). FAIL-SOFT + OUTCOME-PURE: returns ONLY
-// the two additive observable fields {lesson_captured, lesson_reason}; it NEVER throws and NEVER mutates
-// the record/outcome. A derive/write/throw is one observable field, never a record abort.
+// item-3-live PR-1 - the draft-time live-solve lesson CAPTURE (D3). FAIL-SOFT + OUTCOME-PURE: returns the
+// additive observable fields {lesson_captured, lesson_reason} PLUS (OQ-3 W1) an always-a-string
+// lesson_commitment; it NEVER throws and NEVER mutates the record/outcome. A derive/write/throw is one
+// observable field, never a record abort.
+//
+// OQ-3 W1 - lesson_commitment is the content-address over the SAME {lesson_signature, lesson_body} that
+// were persisted (the byte-identical round-trip with the store's buildBody). It is '' on EVERY fail-soft
+// branch (no lesson minted, so no commitment) and a 64-hex on the captured branch. It is an EMIT-threading
+// value only - the caller threads it into the egress data + does NOT put it on any outcome/artifact.
 //
 // The deriver inputs are computed HERE (they are not computed anywhere else): candidate_patch_sha =
 // sidecarSha(SCRUBBED candidate) (matching lesson-capture.js's convention so the PR-2 join agrees on
@@ -184,7 +191,7 @@ async function captureLiveLesson({ record, candidate, verdict, ref, eligibleFn, 
   // + a too-large one, so this branch is unreachable from solveGradeDraftOne. KEPT as defense-in-depth (the
   // helper is also called directly in tests + may be reused), so a future caller can never reach the deriver
   // with an empty candidate. The `no-candidate` enum is therefore live-unreachable but contract-meaningful.
-  if (typeof candidate !== 'string' || !candidate.trim()) return { lesson_captured: false, lesson_reason: 'no-candidate' };
+  if (typeof candidate !== 'string' || !candidate.trim()) return { lesson_captured: false, lesson_reason: 'no-candidate', lesson_commitment: '' };
   // eligibleFn is an injectable seam; a future/injected eligibility check that THROWS must NOT escape (the
   // "captureLiveLesson NEVER throws" contract - an escape would convert a written draft into a loop failure).
   // A thrown eligibility is fail-closed to ineligible (no capture) + observable.
@@ -192,9 +199,9 @@ async function captureLiveLesson({ record, candidate, verdict, ref, eligibleFn, 
   try { eligible = typeof eligibleFn === 'function' && eligibleFn(verdict) === true; }
   catch (e) {
     emitEgressAlert('live-pending-capture-eligible-threw', { detail: (e && e.message) || 'error' });
-    return { lesson_captured: false, lesson_reason: 'ineligible' };
+    return { lesson_captured: false, lesson_reason: 'ineligible', lesson_commitment: '' };
   }
-  if (!eligible) return { lesson_captured: false, lesson_reason: 'ineligible' };
+  if (!eligible) return { lesson_captured: false, lesson_reason: 'ineligible', lesson_commitment: '' };
 
   const scrubbedCandidate = scrubLabSecrets(candidate);
   const candidate_patch_sha = sidecarSha(scrubbedCandidate);
@@ -204,9 +211,9 @@ async function captureLiveLesson({ record, candidate, verdict, ref, eligibleFn, 
   try { lesson = await deriveFn({ verdict, candidate_patch_sha, problem_statement_digest }); }
   catch (e) {
     emitEgressAlert('live-pending-capture-derive-threw', { detail: (e && e.message) || 'error' });
-    return { lesson_captured: false, lesson_reason: 'derive-threw' };
+    return { lesson_captured: false, lesson_reason: 'derive-threw', lesson_commitment: '' };
   }
-  if (!lesson) return { lesson_captured: false, lesson_reason: 'off-floor' };  // benign coverage-narrowing (no alert)
+  if (!lesson) return { lesson_captured: false, lesson_reason: 'off-floor', lesson_commitment: '' };  // benign coverage-narrowing (no alert)
 
   let res;
   try {
@@ -216,13 +223,26 @@ async function captureLiveLesson({ record, candidate, verdict, ref, eligibleFn, 
     });
   } catch (e) {
     emitEgressAlert('live-pending-capture-store-threw', { detail: (e && e.message) || 'error' });
-    return { lesson_captured: false, lesson_reason: 'store-refused' };
+    return { lesson_captured: false, lesson_reason: 'store-refused', lesson_commitment: '' };
   }
   if (!res || res.ok !== true) {
     emitEgressAlert('live-pending-capture-store-refused', { store_reason: (res && res.reason) || 'unknown' });
-    return { lesson_captured: false, lesson_reason: 'store-refused' };
+    return { lesson_captured: false, lesson_reason: 'store-refused', lesson_commitment: '' };
   }
-  return { lesson_captured: true, lesson_reason: 'captured' };
+  // OQ-3 W1 - the node was written; compute the commitment over the SAME lesson fields that were passed to
+  // writeFn (byte-identical round-trip with what the store persists via buildBody). Wrapped in try/catch to
+  // preserve the "captureLiveLesson NEVER throws" contract: computeLessonCommitment throws only on a bad
+  // (empty/undefined) field, which the store-validated lesson cannot have, so this is practically-impossible
+  // - but a future deriver change must never convert a written draft into a loop failure. lesson_captured
+  // STAYS true (the node IS written); only the commitment falls back to '' on the impossible throw.
+  let lesson_commitment;
+  try {
+    lesson_commitment = computeLessonCommitment({ lesson_signature: lesson.lesson_signature, lesson_body: lesson.lesson_body });
+  } catch (e) {
+    emitEgressAlert('live-pending-capture-commitment-threw', { detail: (e && e.message) || 'error' });
+    return { lesson_captured: true, lesson_reason: 'captured', lesson_commitment: '' };
+  }
+  return { lesson_captured: true, lesson_reason: 'captured', lesson_commitment };
 }
 
 // --------------------------------------------------------------------------
@@ -281,19 +301,34 @@ async function solveGradeDraftOne(ctx) {
   try { verdict = await gradeFn({ record, candidate: solveRes.candidate, semanticFn, frictionFn }); }
   catch (e) { verdict = { error: 'grade-threw:' + ((e && e.message) || 'error') }; }
 
+  // OQ-3 W1 - the lesson CAPTURE runs right after the verdict + BEFORE emitFn (the capture-before-emit
+  // reorder), so the seal can be threaded into the egress data AND a minted lesson is OBSERVED even when
+  // the emit/artifact then fails (the minted-but-unobserved fix). FAIL-SOFT: captureLiveLesson never throws
+  // and never blocks the emit - on any capture failure the emit proceeds with lesson_commitment ''. The
+  // lesson_commitment is an EMIT-threading value only (NOT a key of any outcome/artifact); only the two
+  // observable fields (captureFields) ride onto the post-capture termini.
+  const capture = await captureLiveLesson({
+    record, candidate: solveRes.candidate, verdict, ref, eligibleFn: lessonEligibleFn, deriveFn: lessonDeriveFn, writeFn: lessonWriteFn,
+  });
+  const { lesson_commitment: capCommit, lesson_captured, lesson_reason } = capture;
+  const captureFields = { lesson_captured, lesson_reason };
+
   // fold #4 — emitPR dry-run is NOT guaranteed ok:true (lock / empty / .github -> ok:false). Fail-soft.
   // item 4 (CodeRabbit Major): an emitFn throw must also preserve classifyFields, not escape to the loop-catch.
+  // OQ-3 W1: the captured lesson_commitment threads into the egress data (emitPR ignores an unknown field in
+  // SHADOW; the seal is consumed by a later wave). The post-capture termini all carry ...captureFields so a
+  // minted lesson is never unobserved when a downstream step fails.
   let emitRes;
   try {
-    emitRes = await emitFn({ repo: ref.slug, issueRef: ref.issueRef, diff: solveRes.candidate }, {});
+    emitRes = await emitFn({ repo: ref.slug, issueRef: ref.issueRef, diff: solveRes.candidate, lesson_commitment: capCommit }, {});
   } catch (e) {
-    return recordOutcome(record, { stage: 'draft', ok: false, reason: 'emit-threw:' + ((e && e.message) || 'error'), verdict, cost_usd: solveRes.costUsd, ...classifyFields });
+    return recordOutcome(record, { stage: 'draft', ok: false, reason: 'emit-threw:' + ((e && e.message) || 'error'), verdict, cost_usd: solveRes.costUsd, ...classifyFields, ...captureFields });
   }
   if (!emitRes || emitRes.ok !== true) {
-    return recordOutcome(record, { stage: 'draft', ok: false, reason: 'emit:' + ((emitRes && emitRes.reason) || 'unknown'), verdict, cost_usd: solveRes.costUsd, ...classifyFields });
+    return recordOutcome(record, { stage: 'draft', ok: false, reason: 'emit:' + ((emitRes && emitRes.reason) || 'unknown'), verdict, cost_usd: solveRes.costUsd, ...classifyFields, ...captureFields });
   }
   if (emitRes.emitted !== false) { // defense-in-depth: a dry-run MUST never emit
-    return recordOutcome(record, { stage: 'draft', ok: false, reason: 'UNEXPECTED-EMISSION', verdict, cost_usd: solveRes.costUsd, ...classifyFields });
+    return recordOutcome(record, { stage: 'draft', ok: false, reason: 'UNEXPECTED-EMISSION', verdict, cost_usd: solveRes.costUsd, ...classifyFields, ...captureFields });
   }
   // writeArtifact is the one post-gate step that touches the filesystem; an fs error (ENOSPC, perms)
   // must stay per-record fail-soft (VALIDATE HIGH), not abort the loop.
@@ -305,15 +340,9 @@ async function solveGradeDraftOne(ctx) {
       ...classifyFields,
     });
   } catch (e) {
-    return recordOutcome(record, { stage: 'draft', ok: false, reason: 'artifact-write-failed:' + ((e && e.message) || 'error'), verdict, cost_usd: solveRes.costUsd, ...classifyFields });
+    return recordOutcome(record, { stage: 'draft', ok: false, reason: 'artifact-write-failed:' + ((e && e.message) || 'error'), verdict, cost_usd: solveRes.costUsd, ...classifyFields, ...captureFields });
   }
-  // item-3-live PR-1 - the lesson CAPTURE runs AFTER the draft artifact (so a capture failure never blocks
-  // the draft). FAIL-SOFT: captureLiveLesson never throws; the two additive fields ride onto the SUCCESS
-  // outcome. The draft terminus (stage/ok/reason/verdict/artifact) is byte-compatible (additive-only).
-  const capture = await captureLiveLesson({
-    record, candidate: solveRes.candidate, verdict, ref, eligibleFn: lessonEligibleFn, deriveFn: lessonDeriveFn, writeFn: lessonWriteFn,
-  });
-  return recordOutcome(record, { stage: 'draft', ok: true, reason: 'draft-written', verdict, cost_usd: solveRes.costUsd, artifact, ...classifyFields, ...capture });
+  return recordOutcome(record, { stage: 'draft', ok: true, reason: 'draft-written', verdict, cost_usd: solveRes.costUsd, artifact, ...classifyFields, ...captureFields });
 }
 
 // --------------------------------------------------------------------------

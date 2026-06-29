@@ -382,7 +382,7 @@ test('capture: captureLiveLesson NEVER throws on a throwing eligibleFn (direct u
   const { captureLiveLesson } = M;
   let r;
   await assert.doesNotReject(async () => { r = await captureLiveLesson({ record: REC, candidate: BENIGN_DIFF, verdict: {}, ref: { issueRef: 42 }, eligibleFn: () => { throw new Error('boom'); }, deriveFn: async () => null, writeFn: () => ({ ok: true }) }); });
-  assert.deepStrictEqual(r, { lesson_captured: false, lesson_reason: 'ineligible' }, 'a throwing eligibleFn yields the ineligible shape (no throw)');
+  assert.deepStrictEqual(r, { lesson_captured: false, lesson_reason: 'ineligible', lesson_commitment: '' }, 'a throwing eligibleFn yields the ineligible shape with an empty commitment (no throw)');
 });
 
 test('capture: an OFF-FLOOR deriver (returns null) writes NO lesson; lesson_reason:off-floor (no egress alert)', async () => {
@@ -487,6 +487,174 @@ test('capture: a non-eligible-by-real-default path (default eligible/derive deps
   assert.strictEqual(o.ok, true, 'a normal draft run is unaffected by the capture branch');
   assert.strictEqual(o.lesson_captured, false, 'a friction-null verdict is ineligible');
   assert.strictEqual(o.lesson_reason, 'ineligible');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// === OQ-3 kernel-seal arc, W1 — the always-a-string lesson_commitment + the capture-before-emit reorder ===
+// captureLiveLesson returns lesson_commitment on EVERY branch (fail-soft '' / captured 64-hex). The
+// commitment is byte-identical to the helper over the STORED node's fields (the round-trip). The reorder
+// runs capture BEFORE emitFn so the commitment threads into the emit data, and the capture's observable
+// fields ride onto ALL post-capture termini (the minted-but-unobserved fix). It is an EMIT-threading value
+// ONLY: lesson_commitment is NOT a key of any outcome/artifact.
+
+const { computeLessonCommitment } = require(path.join(REPO, 'packages', 'lab', 'causal-edge', 'lesson-commitment.js'));
+const liveStore = require(path.join(REPO, 'packages', 'lab', 'causal-edge', 'live-pending-store.js'));
+
+test('OQ3: captureLiveLesson returns lesson_commitment:"" on each fail-soft branch', async () => {
+  const { captureLiveLesson } = M;
+  // no-candidate
+  const noCand = await captureLiveLesson({ record: REC, candidate: '   ', verdict: {}, ref: { issueRef: 42 }, eligibleFn: () => true, deriveFn: async () => null, writeFn: () => ({ ok: true }) });
+  assert.deepStrictEqual(noCand, { lesson_captured: false, lesson_reason: 'no-candidate', lesson_commitment: '' });
+  // ineligible (eligibleFn returns false)
+  const ineligible = await captureLiveLesson({ record: REC, candidate: BENIGN_DIFF, verdict: {}, ref: { issueRef: 42 }, eligibleFn: () => false, deriveFn: async () => null, writeFn: () => ({ ok: true }) });
+  assert.deepStrictEqual(ineligible, { lesson_captured: false, lesson_reason: 'ineligible', lesson_commitment: '' });
+  // off-floor (deriveFn returns null)
+  const offFloor = await captureLiveLesson({ record: REC, candidate: BENIGN_DIFF, verdict: {}, ref: { issueRef: 42 }, eligibleFn: () => true, deriveFn: async () => null, writeFn: () => ({ ok: true }) });
+  assert.deepStrictEqual(offFloor, { lesson_captured: false, lesson_reason: 'off-floor', lesson_commitment: '' });
+  // derive-threw
+  const deriveThrew = await captureLiveLesson({ record: REC, candidate: BENIGN_DIFF, verdict: {}, ref: { issueRef: 42 }, eligibleFn: () => true, deriveFn: async () => { throw new Error('boom'); }, writeFn: () => ({ ok: true }) });
+  assert.deepStrictEqual(deriveThrew, { lesson_captured: false, lesson_reason: 'derive-threw', lesson_commitment: '' });
+  // store-refused (writeFn returns ok:false)
+  const refused = await captureLiveLesson({ record: REC, candidate: BENIGN_DIFF, verdict: {}, ref: { issueRef: 42 }, eligibleFn: () => true, deriveFn: async () => ({ lesson_signature: 'lesson:x', lesson_body: 'b' }), writeFn: () => ({ ok: false, reason: 'collision' }) });
+  assert.deepStrictEqual(refused, { lesson_captured: false, lesson_reason: 'store-refused', lesson_commitment: '' });
+  // store-threw (writeFn throws)
+  const storeThrew = await captureLiveLesson({ record: REC, candidate: BENIGN_DIFF, verdict: {}, ref: { issueRef: 42 }, eligibleFn: () => true, deriveFn: async () => ({ lesson_signature: 'lesson:x', lesson_body: 'b' }), writeFn: () => { throw new Error('write boom'); } });
+  assert.deepStrictEqual(storeThrew, { lesson_captured: false, lesson_reason: 'store-refused', lesson_commitment: '' });
+});
+
+test('OQ3: captureLiveLesson returns a 64-hex lesson_commitment on the CAPTURED branch', async () => {
+  const { captureLiveLesson } = M;
+  const lesson = { lesson_signature: 'lesson:boundary-contract|unguarded-edge-case|fail-closed', lesson_body: 'captured body' };
+  const r = await captureLiveLesson({ record: REC, candidate: BENIGN_DIFF, verdict: {}, ref: { issueRef: 42 }, eligibleFn: () => true, deriveFn: async () => lesson, writeFn: () => ({ ok: true, node_id: 'n'.repeat(64) }) });
+  assert.strictEqual(r.lesson_captured, true);
+  assert.strictEqual(r.lesson_reason, 'captured');
+  assert.ok(/^[0-9a-f]{64}$/.test(r.lesson_commitment), 'the captured branch returns a 64-hex commitment');
+  // it commits the SAME signature+body the writer received
+  assert.strictEqual(r.lesson_commitment, computeLessonCommitment(lesson), 'the commitment is over the derived lesson fields');
+});
+
+test('OQ3: byte-identical round-trip - the capture commitment === the helper over the STORED node fields', async () => {
+  const { captureLiveLesson } = M;
+  const storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'loom-oq3-store-'));
+  try {
+    const lesson = { lesson_signature: 'lesson:boundary-contract|unguarded-edge-case|fail-closed', lesson_body: 'a captured live-solve lesson hypothesis' };
+    // a writeFn that mints into the TMPDIR store (passing the dir opt) AND a default selfUid.
+    const writeFn = (block) => liveStore.mintLivePendingLesson(block, { dir: storeDir });
+    const r = await captureLiveLesson({
+      record: REC, candidate: BENIGN_DIFF, verdict: {}, ref: { issueRef: 42 },
+      eligibleFn: () => true, deriveFn: async () => lesson, writeFn,
+    });
+    assert.strictEqual(r.lesson_captured, true, 'the node was minted');
+    assert.ok(/^[0-9a-f]{64}$/.test(r.lesson_commitment));
+    // read the STORED node back and recompute the commitment over its persisted fields
+    const stored = liveStore.listLivePendingLessons({ dir: storeDir });
+    assert.strictEqual(stored.length, 1, 'exactly one node minted');
+    const node = stored[0];
+    const fromStored = computeLessonCommitment({ lesson_signature: node.lesson_signature, lesson_body: node.lesson_body });
+    assert.strictEqual(fromStored, r.lesson_commitment, 'the commitment matches the STORED node (byte-identical round-trip)');
+    // and readLivePendingLesson by node_id agrees too
+    const byId = liveStore.readLivePendingLesson(node.node_id, { dir: storeDir });
+    assert.strictEqual(computeLessonCommitment({ lesson_signature: byId.lesson_signature, lesson_body: byId.lesson_body }), r.lesson_commitment);
+  } finally { fs.rmSync(storeDir, { recursive: true, force: true }); }
+});
+
+// ---- the reorder: capture runs BEFORE emitFn; the commitment threads into emit data ----------
+test('OQ3 reorder: an injected emitFn sees data.lesson_commitment = the captured 64-hex', async () => {
+  const dir = mkArtifacts();
+  let seenData = null;
+  const { deps } = captureDeps({ emitFn: async (data) => { seenData = data; return { ok: true, emitted: false, draft: { repo: data.repo, issueRef: data.issueRef } }; } });
+  await runLiveDraftLoop({ records: [REC], artifactsDir: dir, deps });
+  assert.ok(seenData, 'the emitFn was called');
+  assert.ok(/^[0-9a-f]{64}$/.test(seenData.lesson_commitment || ''), 'emit data carries the captured 64-hex commitment');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('OQ3 reorder: an INELIGIBLE solve threads lesson_commitment:"" into the emit data', async () => {
+  const dir = mkArtifacts();
+  let seenData = null;
+  const { deps } = captureDeps({ lessonEligibleFn: () => false, emitFn: async (data) => { seenData = data; return { ok: true, emitted: false, draft: {} }; } });
+  await runLiveDraftLoop({ records: [REC], artifactsDir: dir, deps });
+  assert.ok(seenData, 'the emitFn was called');
+  assert.strictEqual(seenData.lesson_commitment, '', 'an ineligible capture threads an empty commitment, never undefined');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('OQ3 reorder: a capture FAILURE does NOT block the emit (emit still runs with commitment:"")', async () => {
+  const dir = mkArtifacts();
+  let emitCalled = false;
+  let seenData = null;
+  const { deps } = captureDeps({ lessonDeriveFn: async () => { throw new Error('derive boom'); }, emitFn: async (data) => { emitCalled = true; seenData = data; return { ok: true, emitted: false, draft: {} }; } });
+  const report = await runLiveDraftLoop({ records: [REC], artifactsDir: dir, deps });
+  assert.strictEqual(emitCalled, true, 'the emit still runs despite a capture failure');
+  assert.strictEqual(seenData.lesson_commitment, '', 'a failed capture threads an empty commitment');
+  const o = report.outcomes[0];
+  assert.strictEqual(o.ok, true, 'the draft still writes');
+  assert.strictEqual(o.lesson_reason, 'derive-threw', 'the capture-failure reason rides onto the outcome');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// ---- the minted-but-unobserved fix: capture fields ride onto post-capture FAILURE termini ----
+test('OQ3 minted-but-observed: an ELIGIBLE solve + a FAILING emitFn still carries lesson_captured + the node exists', async () => {
+  const dir = mkArtifacts();
+  const storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'loom-oq3-mbo-'));
+  try {
+    const lesson = { lesson_signature: 'lesson:boundary-contract|unguarded-edge-case|fail-closed', lesson_body: 'observed-on-emit-failure' };
+    const { deps } = captureDeps({
+      lessonDeriveFn: async () => lesson,
+      lessonWriteFn: (block) => liveStore.mintLivePendingLesson(block, { dir: storeDir }),
+      // an emit that fails AFTER capture: the capture fields must still ride onto the emit:reason terminus.
+      emitFn: async () => ({ ok: false, reason: 'lock-held' }),
+    });
+    const report = await runLiveDraftLoop({ records: [REC], artifactsDir: dir, deps });
+    const o = report.outcomes[0];
+    assert.strictEqual(o.ok, false, 'the emit failed so the outcome is not ok');
+    assert.match(o.reason, /^emit:/, 'the emit-reason terminus');
+    assert.strictEqual(o.lesson_captured, true, 'the minted lesson is STILL observed on the failure outcome');
+    assert.strictEqual(o.lesson_reason, 'captured', 'lesson_reason rides onto the failure terminus');
+    // the node really exists (capture ran before emit, so a minted-but-unobserved lesson cannot happen)
+    assert.strictEqual(liveStore.listLivePendingLessons({ dir: storeDir }).length, 1, 'the live_pending node was minted before the emit failed');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(storeDir, { recursive: true, force: true }); }
+});
+
+test('OQ3 minted-but-observed: an emit-THREW terminus also carries the capture fields', async () => {
+  const dir = mkArtifacts();
+  const { deps } = captureDeps({ emitFn: async () => { throw new Error('emit exploded'); } });
+  const report = await runLiveDraftLoop({ records: [REC], artifactsDir: dir, deps });
+  const o = report.outcomes[0];
+  assert.match(o.reason, /^emit-threw:/, 'the emit-threw terminus');
+  assert.strictEqual(o.lesson_captured, true, 'capture fields ride onto the emit-threw terminus');
+  assert.strictEqual(o.lesson_reason, 'captured');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('OQ3 minted-but-observed: an artifact-write-failed terminus also carries the capture fields', async () => {
+  // force writeArtifact to throw (artifactsDir under a regular file => ENOTDIR), AFTER an eligible capture.
+  const tmpFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'loom-oq3-aw-')), 'afile');
+  fs.writeFileSync(tmpFile, 'x');
+  const badDir = path.join(tmpFile, 'cannot-mkdir-under-a-file');
+  const { deps } = captureDeps();
+  const report = await runLiveDraftLoop({ records: [REC], artifactsDir: badDir, deps });
+  const o = report.outcomes[0];
+  assert.match(o.reason, /^artifact-write-failed:/, 'the artifact-write-failed terminus');
+  assert.strictEqual(o.lesson_captured, true, 'capture fields ride onto the artifact-write-failed terminus');
+  assert.strictEqual(o.lesson_reason, 'captured');
+});
+
+// ---- lesson_commitment is an emit-threading value ONLY, never an outcome/artifact key ---------
+test('OQ3: lesson_commitment is NOT a key of the SUCCESS-terminus outcome (emit-threading value only)', async () => {
+  const dir = mkArtifacts();
+  const { deps } = captureDeps();
+  const report = await runLiveDraftLoop({ records: [REC], artifactsDir: dir, runId: 'r1', now: 1, deps });
+  const o = report.outcomes[0];
+  assert.strictEqual(o.ok, true);
+  assert.strictEqual(o.lesson_captured, true, 'the lesson was captured');
+  // EXACT-KEY assertion: lesson_commitment must NOT appear on the outcome
+  assert.ok(!Object.prototype.hasOwnProperty.call(o, 'lesson_commitment'), 'lesson_commitment is NOT an outcome key');
+  // nor on the persisted artifact
+  const art = JSON.parse(fs.readFileSync(o.artifact, 'utf8'));
+  assert.ok(!Object.prototype.hasOwnProperty.call(art, 'lesson_commitment'), 'lesson_commitment is NOT an artifact key');
+  // the additive observable fields are still present
+  assert.strictEqual(o.lesson_reason, 'captured');
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
