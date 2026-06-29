@@ -45,7 +45,10 @@
 // ENGAGEMENT-ON-PRESENCE (SHADOW-safe, NOT fail-open): no consumer reads the mint for a weight, the edge is
 // UNSIGNED, LIVE_SOURCES is frozen, so an un-authenticated mint produces an edge no live consumer admits. The
 // fail-closed boundary correctly lives at the CONSUMER (PR-B, which MUST flip this to refuse-on-absent when a
-// consumer goes live - a NAMED PR-B residual). When NO verifyKeyPem is supplied (today's un-armed production
+// consumer goes live - a NAMED PR-B residual). ENGAGEMENT is by PRESENCE, asymmetric (security.md): an ABSENT
+// verifyKeyPem (property missing / undefined / null) = un-armed -> un-authenticated SHADOW; a PRESENT-but-invalid
+// one ('' / non-string) = intent-to-authenticate-misconfigured -> ENGAGE + fail closed (never a silent skip).
+// When NO verifyKeyPem is supplied (today's un-armed production
 // path), the mint proceeds un-authenticated SHADOW BUT emits world-anchor-mint-unauthenticated on EVERY
 // auto-mint - the skip is never silent (security.md). That observable-skip token is DISTINCT from the refuse
 // family (live-recall-mint-refused), so a triager reading the stream never mistakes an un-armed mint for a
@@ -380,8 +383,16 @@ function mintFromMergeOutcome(args, opts = {}) {
   //     ONE try/catch -> a throw becomes a fail-closed auth-verify-error, never a crash (TOTAL). Each refuse
   //     EMITS before returning (security.md: never a silent {ok:false}). When NOT engaged, the un-armed
   //     SHADOW path emits an observable-skip (distinct token from the refuse family) and continues.
-  const verifyKeyPem = typeof o.verifyKeyPem === 'string' && o.verifyKeyPem.length > 0 ? o.verifyKeyPem : null;
-  const authEngaged = verifyKeyPem !== null;
+  //     ENGAGE on PRESENCE, fail CLOSED on present-but-invalid (CodeRabbit Major + security.md asymmetric-
+  //     parse): ABSENT (property missing / undefined / null) = the un-armed path -> un-authenticated SHADOW
+  //     skip; PRESENT-but-invalid ('' / non-string / malformed PEM) = intent-to-authenticate-misconfigured
+  //     -> ENGAGE and fail closed (verifyRecordSig returns false on an empty/unloadable key -> broker-sig-
+  //     invalid; a non-string throws -> the try/catch yields auth-verify-error). A present-but-empty custody
+  //     key must NOT silently degrade to the unauthenticated path (the PR-B arming footgun, closed here).
+  const authEngaged = Object.prototype.hasOwnProperty.call(o, 'verifyKeyPem')
+    && o.verifyKeyPem !== undefined
+    && o.verifyKeyPem !== null;
+  const verifyKeyPem = authEngaged ? o.verifyKeyPem : null;
   if (authEngaged) {
     let sigOk;
     try {

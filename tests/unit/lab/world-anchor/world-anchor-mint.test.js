@@ -742,6 +742,24 @@ test('H1 (allowEnvFallback:false): an ambient LOOM_EDGE_VERIFY_KEY does NOT veri
   assert.strictEqual(liveStore.listLiveNodes({ dir: liveDir(dir) }).length, 0, 'no node minted (the env key never selected)');
 });
 
+// CodeRabbit Major + security.md asymmetric-parse: a PRESENT-but-empty verifyKeyPem must ENGAGE and fail
+// CLOSED, NOT silently degrade to the un-authenticated SHADOW skip (the PR-B arming footgun). Absent stays
+// skip (the un-authenticated test above proves that); present-but-'' is the misconfigured-custody-key case.
+test('asymmetric-parse: a present-but-empty verifyKeyPem ENGAGES + fails closed (broker-sig-invalid), it does NOT skip', () => {
+  const dir = tmp();
+  attest(dir);
+  const jkid = recordOutcome(outcomeDir(dir), signedBundle());   // a real signed bundle
+  const cap = captureAlerts(() => mintFromMergeOutcome(
+    { join_key_id: jkid },
+    { ...fullDirs(dir), verifyKeyPem: '' },                       // PRESENT but empty -> engaged, misconfigured
+  ));
+  assert.strictEqual(cap.r.minted, false, 'a present-but-empty key engages and fails closed (NOT a skip)');
+  assert.strictEqual(cap.r.mint_reason, 'broker-sig-invalid', 'an empty/unloadable verify key -> broker-sig-invalid');
+  assert.ok(cap.alerts.some((a) => JSON.stringify(a).includes('broker-sig-invalid')), 'the fail-closed refuse is observable');
+  assert.ok(!cap.alerts.some((a) => JSON.stringify(a).includes('world-anchor-mint-unauthenticated')), 'it did NOT take the un-authenticated skip path');
+  assert.strictEqual(liveStore.listLiveNodes({ dir: liveDir(dir) }).length, 0, 'no node minted on the fail-closed empty-key path');
+});
+
 // --- the existing un-authenticated default path is still TOTAL: the new branches never crash the no-key mint ---
 test('TOTAL with the new branches: the default (no verifyKeyPem) mint never throws and returns the documented shape', () => {
   const dir = tmp();
