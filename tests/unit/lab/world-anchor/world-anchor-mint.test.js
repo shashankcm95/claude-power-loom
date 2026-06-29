@@ -37,9 +37,13 @@ let passed = 0;
 function test(name, fn) { fn(); passed += 1; }
 function tmp() { return fs.mkdtempSync(path.join(os.tmpdir(), 'loom-wamint-')); }
 
-const REPO_NAME = 'octo/widget';
-const PR_URL = 'https://github.com/octo/widget/pull/77';
-const PR_NUMBER = 77;
+// PR-2 issue-bound the static grandfather seed to (Priivacy-ai/spec-kitty, 2097) - the happy-path fixture
+// must join THAT tuple (the floor is no longer signature-only; it is the (repo-slug, issue_ref, sig)
+// exact-set). So these constants are the grandfather's tuple, and ISSUE_REF below matches the seed.
+const REPO_NAME = 'Priivacy-ai/spec-kitty';
+const PR_URL = 'https://github.com/Priivacy-ai/spec-kitty/pull/2137';
+const PR_NUMBER = 2137;
+const ISSUE_REF = 2097;   // the grandfather seed's issue_ref (Branch A joins on this)
 // The kernel-SEALED approval_hash (HEX64) - the EDGE's to_delta_ref binds THIS.
 const APPROVAL = 'a'.repeat(64);
 // The attestation's diff_hash (HEX64) - the LEGACY edge bound this; the new edge must NOT.
@@ -47,11 +51,16 @@ const DIFF_HASH = 'b'.repeat(64);
 // A real 40-hex gh merge_commit_sha (the node's world-evidence merge_sha; gh-verified).
 const MERGE_SHA = 'c0ffee'.repeat(6) + 'cafe';   // 40 hex chars
 const OBSERVED_AT = '2026-06-28T12:00:00.000Z';
+// The LESSON_2137 signature (the grandfather seed's built cluster key).
 const LESSON_SIG = 'lesson:boundary-contract|unguarded-edge-case|handle-edge-explicitly';
 
 function liveDir(d) { return path.join(d, 'live'); }
 function edgeDir(d) { return path.join(d, 'edges'); }
 function outcomeDir(d) { return path.join(d, 'outcomes'); }
+// PR-2: pendingDir is now part of the FOLD-B all-or-nothing dir set (the captured floor store). The
+// happy-path calls must supply ALL FIVE keys; this empty-by-default captured store leaves Branch B with
+// zero candidates, so these LESSON_2137-grandfather (Branch A) tests still resolve exactly-one.
+function pendingDir(d) { return path.join(d, 'pending'); }
 
 // Suppress + capture the egress alerts every refuse path emits (observable refuses).
 function captureAlerts(fn) {
@@ -75,7 +84,7 @@ function captureAlerts(fn) {
 // the anchor_id.
 function attest(dir, over = {}) {
   const att = {
-    repo: REPO_NAME, issueRef: 42,
+    repo: REPO_NAME, issueRef: ISSUE_REF,
     pr_url: PR_URL, pr_number: PR_NUMBER, branch: 'b',
     base_sha: 'f853934b61000ff076cea60c206db225e3ed89f0', diff_hash: DIFF_HASH,
     lesson_signature: LESSON_SIG,
@@ -115,7 +124,7 @@ test('a merged record mints the node + an UNSIGNED edge; to_delta_ref === record
   const jkid = recordOutcome(outcomeDir(dir));
   const r = mintFromMergeOutcome(
     { join_key_id: jkid },
-    { anchorDir: dir, liveDir: liveDir(dir), edgeDir: edgeDir(dir), outcomeDir: outcomeDir(dir) },
+    { anchorDir: dir, liveDir: liveDir(dir), edgeDir: edgeDir(dir), outcomeDir: outcomeDir(dir), pendingDir: pendingDir(dir) },
   );
   assert.strictEqual(r.minted, true, 'the node minted');
   assert.ok(/^[0-9a-f]{64}$/.test(r.node_id), 'a 64-hex node id');
@@ -142,7 +151,7 @@ test('mintFromMergeOutcome is TOTAL: it never throws on a happy mint and returns
   const jkid = recordOutcome(outcomeDir(dir));
   let r;
   assert.doesNotThrow(() => {
-    r = mintFromMergeOutcome({ join_key_id: jkid }, { anchorDir: dir, liveDir: liveDir(dir), edgeDir: edgeDir(dir), outcomeDir: outcomeDir(dir) });
+    r = mintFromMergeOutcome({ join_key_id: jkid }, { anchorDir: dir, liveDir: liveDir(dir), edgeDir: edgeDir(dir), outcomeDir: outcomeDir(dir), pendingDir: pendingDir(dir) });
   });
   for (const k of ['minted', 'node_id', 'deduped', 'edge_minted', 'edge_id', 'edge_deduped', 'edge_signed']) {
     assert.ok(k in r, `the return shape carries ${k}`);
@@ -198,15 +207,15 @@ test('a stray legacy `dir` key refuses unsupported-dir-key + emits (never silent
   assert.ok(alerts.some((a) => JSON.stringify(a).includes('unsupported-dir-key')), 'the unsupported-dir-key refuse is observable');
 });
 
-test('a full FOUR-dir set passes the wiring guard and mints (the all-or-nothing happy case)', () => {
+test('a full FIVE-dir set passes the wiring guard and mints (the all-or-nothing happy case)', () => {
   const dir = tmp();
   attest(dir);
   const jkid = recordOutcome(outcomeDir(dir));
   const r = mintFromMergeOutcome(
     { join_key_id: jkid },
-    { anchorDir: dir, outcomeDir: outcomeDir(dir), liveDir: liveDir(dir), edgeDir: edgeDir(dir) },
+    { anchorDir: dir, outcomeDir: outcomeDir(dir), liveDir: liveDir(dir), edgeDir: edgeDir(dir), pendingDir: pendingDir(dir) },
   );
-  assert.strictEqual(r.minted, true, 'a complete four-dir set mints');
+  assert.strictEqual(r.minted, true, 'a complete FIVE-dir set mints');
   assert.strictEqual(r.edge_minted, true, 'and the edge mints');
 });
 
@@ -223,7 +232,7 @@ test('the lesson identity derives from the VERIFIED attestation, NOT a caller-su
   // a hostile extra field on the opts object - it must be ignored entirely.
   const r = mintFromMergeOutcome(
     { join_key_id: jkid, lesson_signature: 'lesson:state-mutation|silent-coercion|fail-closed', lesson_body: 'attacker body', merge_sha: 'deadbeef' },
-    { anchorDir: dir, liveDir: liveDir(dir), edgeDir: edgeDir(dir), outcomeDir: outcomeDir(dir) },
+    { anchorDir: dir, liveDir: liveDir(dir), edgeDir: edgeDir(dir), outcomeDir: outcomeDir(dir), pendingDir: pendingDir(dir) },
   );
   assert.strictEqual(r.minted, true);
   const node = liveStore.readLiveNode(r.node_id, { dir: liveDir(dir) });
@@ -248,7 +257,7 @@ test('approval-hash divergence (att != record) EMITS but STILL mints, binding re
   assert.notStrictEqual(ATT_APPROVAL, APPROVAL, 'precondition: att and record approval_hash diverge');
   const { r, alerts } = captureAlerts(() => mintFromMergeOutcome(
     { join_key_id: jkid },
-    { anchorDir: dir, liveDir: liveDir(dir), edgeDir: edgeDir(dir), outcomeDir: outcomeDir(dir) },
+    { anchorDir: dir, liveDir: liveDir(dir), edgeDir: edgeDir(dir), outcomeDir: outcomeDir(dir), pendingDir: pendingDir(dir) },
   ));
   // a divergence is OBSERVABLE
   assert.ok(alerts.some((a) => JSON.stringify(a).includes('approval-hash-divergence')), 'the divergence emits an observable alert');
@@ -271,7 +280,7 @@ test('merge-outcome-unreadable: an absent record refuses + emits at the minter l
   // NO recordOutcome - the record does not exist
   const { r, alerts } = captureAlerts(() => mintFromMergeOutcome(
     { join_key_id: 'd'.repeat(64) },
-    { anchorDir: dir, liveDir: liveDir(dir), edgeDir: edgeDir(dir), outcomeDir: outcomeDir(dir) },
+    { anchorDir: dir, liveDir: liveDir(dir), edgeDir: edgeDir(dir), outcomeDir: outcomeDir(dir), pendingDir: pendingDir(dir) },
   ));
   assert.strictEqual(r.minted, false);
   assert.strictEqual(r.mint_reason, 'merge-outcome-unreadable');
@@ -284,7 +293,7 @@ test('no-match: a record whose PR tuple matches no attestation refuses + emits (
   const jkid = recordOutcome(outcomeDir(dir));
   const { r, alerts } = captureAlerts(() => mintFromMergeOutcome(
     { join_key_id: jkid },
-    { anchorDir: dir, liveDir: liveDir(dir), edgeDir: edgeDir(dir), outcomeDir: outcomeDir(dir) },
+    { anchorDir: dir, liveDir: liveDir(dir), edgeDir: edgeDir(dir), outcomeDir: outcomeDir(dir), pendingDir: pendingDir(dir) },
   ));
   assert.strictEqual(r.minted, false);
   assert.strictEqual(r.mint_reason, 'no-match');
@@ -300,7 +309,7 @@ test('ambiguous: >1 attestation for the PR tuple refuses + emits (fail-closed re
   const jkid = recordOutcome(outcomeDir(dir));
   const { r, alerts } = captureAlerts(() => mintFromMergeOutcome(
     { join_key_id: jkid },
-    { anchorDir: dir, liveDir: liveDir(dir), edgeDir: edgeDir(dir), outcomeDir: outcomeDir(dir) },
+    { anchorDir: dir, liveDir: liveDir(dir), edgeDir: edgeDir(dir), outcomeDir: outcomeDir(dir), pendingDir: pendingDir(dir) },
   ));
   assert.strictEqual(r.minted, false);
   assert.strictEqual(r.mint_reason, 'ambiguous');
@@ -315,7 +324,7 @@ test('no-floor-lesson: a sealed signature off the orchestrator floor refuses + e
   const jkid = recordOutcome(outcomeDir(dir));
   const { r, alerts } = captureAlerts(() => mintFromMergeOutcome(
     { join_key_id: jkid },
-    { anchorDir: dir, liveDir: liveDir(dir), edgeDir: edgeDir(dir), outcomeDir: outcomeDir(dir) },
+    { anchorDir: dir, liveDir: liveDir(dir), edgeDir: edgeDir(dir), outcomeDir: outcomeDir(dir), pendingDir: pendingDir(dir) },
   ));
   assert.strictEqual(r.minted, false);
   assert.strictEqual(r.mint_reason, 'no-floor-lesson');
@@ -333,7 +342,7 @@ test('mintFromMergeOutcome is TOTAL on a planted-unreadable record: returns a re
   let r;
   const { r: captured } = captureAlerts(() => {
     assert.doesNotThrow(() => {
-      r = mintFromMergeOutcome({ join_key_id: 'd'.repeat(64) }, { anchorDir: dir, liveDir: liveDir(dir), edgeDir: edgeDir(dir), outcomeDir: od });
+      r = mintFromMergeOutcome({ join_key_id: 'd'.repeat(64) }, { anchorDir: dir, liveDir: liveDir(dir), edgeDir: edgeDir(dir), outcomeDir: od, pendingDir: pendingDir(dir) });
     });
     return r;
   });
@@ -357,7 +366,7 @@ test('lesson-build-failed: a throwing lesson builder emits + refuses, NEVER thro
       r = mintFromMergeOutcome(
         { join_key_id: jkid },
         {
-          anchorDir: dir, liveDir: liveDir(dir), edgeDir: edgeDir(dir), outcomeDir: outcomeDir(dir),
+          anchorDir: dir, liveDir: liveDir(dir), edgeDir: edgeDir(dir), outcomeDir: outcomeDir(dir), pendingDir: pendingDir(dir),
           buildLesson: () => { throw new Error('boom'); },
         },
       );
@@ -379,7 +388,7 @@ test('additive: an edge-FAILURE leaves the node byte-identical + surfaces edge_r
   const dirA = tmp();
   attest(dirA);
   const jkidA = recordOutcome(outcomeDir(dirA));
-  const rA = mintFromMergeOutcome({ join_key_id: jkidA }, { anchorDir: dirA, liveDir: liveDir(dirA), edgeDir: edgeDir(dirA), outcomeDir: outcomeDir(dirA) });
+  const rA = mintFromMergeOutcome({ join_key_id: jkidA }, { anchorDir: dirA, liveDir: liveDir(dirA), edgeDir: edgeDir(dirA), outcomeDir: outcomeDir(dirA), pendingDir: pendingDir(dirA) });
   assert.strictEqual(rA.edge_minted, true, 'run A mints the edge');
   const nodeFieldsA = { minted: rA.minted, node_id: rA.node_id, deduped: rA.deduped, mint_reason: rA.mint_reason };
 
@@ -391,7 +400,7 @@ test('additive: an edge-FAILURE leaves the node byte-identical + surfaces edge_r
   fs.writeFileSync(badEdgeDir, 'not a directory', { mode: 0o600 });
   let rB;
   const { alerts } = captureAlerts(() => {
-    rB = mintFromMergeOutcome({ join_key_id: jkidB }, { anchorDir: dirB, liveDir: liveDir(dirB), edgeDir: badEdgeDir, outcomeDir: outcomeDir(dirB) });
+    rB = mintFromMergeOutcome({ join_key_id: jkidB }, { anchorDir: dirB, liveDir: liveDir(dirB), edgeDir: badEdgeDir, outcomeDir: outcomeDir(dirB), pendingDir: pendingDir(dirB) });
   });
   const nodeFieldsB = { minted: rB.minted, node_id: rB.node_id, deduped: rB.deduped, mint_reason: rB.mint_reason };
   assert.strictEqual(rB.minted, true, 'the node still minted despite the edge failure');
@@ -411,7 +420,7 @@ test('re-mint DEDUPS on record.observed_at (recorded_at stable across re-mint, N
   const dir = tmp();
   attest(dir);
   const jkid = recordOutcome(outcomeDir(dir));
-  const opts = { anchorDir: dir, liveDir: liveDir(dir), edgeDir: edgeDir(dir), outcomeDir: outcomeDir(dir) };
+  const opts = { anchorDir: dir, liveDir: liveDir(dir), edgeDir: edgeDir(dir), outcomeDir: outcomeDir(dir), pendingDir: pendingDir(dir) };
   const r1 = mintFromMergeOutcome({ join_key_id: jkid }, opts);
   const r2 = mintFromMergeOutcome({ join_key_id: jkid }, opts);
   assert.strictEqual(r1.minted, true);
@@ -438,7 +447,7 @@ test('a real 40-hex record.merge_commit_sha flows through mintWorldAnchoredNode 
   attest(dir);
   assert.ok(/^[0-9a-f]{40}$/.test(MERGE_SHA), 'precondition: MERGE_SHA is a real HEX40');
   const jkid = recordOutcome(outcomeDir(dir));
-  const r = mintFromMergeOutcome({ join_key_id: jkid }, { anchorDir: dir, liveDir: liveDir(dir), edgeDir: edgeDir(dir), outcomeDir: outcomeDir(dir) });
+  const r = mintFromMergeOutcome({ join_key_id: jkid }, { anchorDir: dir, liveDir: liveDir(dir), edgeDir: edgeDir(dir), outcomeDir: outcomeDir(dir), pendingDir: pendingDir(dir) });
   const node = liveStore.readLiveNode(r.node_id, { dir: liveDir(dir) });
   assert.strictEqual(node.merge_sha, MERGE_SHA, 'the HEX40 merge_commit_sha is the node merge_sha unmodified');
 });
