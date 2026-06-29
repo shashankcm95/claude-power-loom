@@ -262,6 +262,8 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/lab/causal-edge/lesson-merge-lift.js` - v-next MV-W1 — the FORK-6 `lesson_merge_lift` HARDEN-gate.
 - `packages/lab/causal-edge/lesson-signature.js` - v3.11 W1 — the FROZEN lesson signature + the lesson-key machinery.
 - `packages/lab/causal-edge/live-grade.js` - ③.2.2c — gradeLiveIssueSemantic: a SHADOW verdict for a LIVE (public-only) GitHub issue.
+- `packages/lab/causal-edge/live-lesson-derive.js` - Autonomous-SDE ladder item-3-live, PR-1 - the ORACLE-FREE live-lesson deriver.
+- `packages/lab/causal-edge/live-pending-store.js` - Autonomous-SDE ladder item-3-live, PR-1 - the `live_pending` lane store.
 - `packages/lab/causal-edge/manage-ops.js` - v3.5 Wave 3a - the Manage-Layer's first WRITE op: flag-conflict (the SECOND producer->consumer loop of
 - `packages/lab/causal-edge/projections.js` - v3.5 Wave 3a - the `conflicted` projection (D2): a PURE Lab projection over the causal-edge set.
 - `packages/lab/causal-edge/store.js` - v3.5 Wave 2 - Causal-edge store (the semantic-edge PRODUCER of the graph loop).
