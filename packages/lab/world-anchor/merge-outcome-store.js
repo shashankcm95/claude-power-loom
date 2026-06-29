@@ -43,8 +43,21 @@
 // Item-3 trust derives ONLY from the SEALED approval_hash, never from merge_commit_sha (NAMED residual:
 // post-approval drift is undetected in PR-2). See the field-level note on the body shape below.
 //
-// KERNEL imports: kernel/_lib (canonical-json, deep-freeze, safe-resolve) + kernel/egress/alert (the
-// shared observable signal) - lab -> kernel is LEGAL. No runtime/kernel STATE. PURE-ish: only fs I/O.
+// OQ-3 W3 (RFC §5.4) — the record now carries the broker-sig provenance bundle {lesson_commitment,
+// approvedAt, nonce, key_id, broker_sig}, propagated VERBATIM from the kernel join-key by the
+// merge-observer. The bundle is RECORDED + SHAPE-validated here (canonical-base64, 64-byte broker_sig),
+// NOT cryptographically verified - this store holds no verify key, by design; verifyApproval verified
+// the sig at emit and PR-A2 re-verifies it at world-anchor mint over `approvalSigBasis({hash:
+// approval_hash, approvedAt, nonce, key_id, lesson_commitment})`. The sig basis intentionally OMITS
+// pr_number/repo/pr_url - the SAME out-of-basis posture as merge_commit_sha; approval_hash is one-shot
+// (the nonce was consumed at emit) so a bundle replant gains no lesson-swap. content_hash SEALS all five
+// (computeContentHash iterates every body key), so an in-place edit of any bundle field breaks the seal.
+// Integrity-at-rest here, provenance-at-PR-A2; gated on the broker running cross-uid (OQ-NS-6: NARROWS,
+// deployment HARDENS).
+//
+// KERNEL imports: kernel/_lib (canonical-json, deep-freeze, safe-resolve, edge-attestation) +
+// kernel/egress/alert (the shared observable signal) - lab -> kernel is LEGAL. No runtime/kernel STATE.
+// PURE-ish: only fs I/O.
 
 'use strict';
 
@@ -55,6 +68,7 @@ const path = require('path');
 const { canonicalJsonSerialize } = require('../../kernel/_lib/canonical-json');
 const { deepFreeze } = require('../../kernel/_lib/deep-freeze');
 const { currentUid } = require('../../kernel/_lib/safe-resolve');
+const { isCanonicalBase64 } = require('../../kernel/_lib/edge-attestation');   // OQ-3 W3 — the broker_sig SHAPE gate
 const { emitEgressAlert } = require('../../kernel/egress/alert');
 
 const HEX64 = /^[0-9a-f]{64}$/;
@@ -85,9 +99,13 @@ const DEFAULT_DIR = path.join(LAB_STATE_BASE, 'merge-outcomes');
 
 // The EXACT stored key-set (closed-shape exact-set, NOT subset): the read path rejects any body whose
 // key-set is not EXACTLY this shape, so an injected extra key can never ride inside a verified record.
+// OQ-3 W3 appends the broker-sig provenance bundle (lesson_commitment + approvedAt / nonce / key_id /
+// broker_sig), propagated from the join-key by the merge-observer for PR-A2 (RFC §5.4).
 const OUTCOME_KEYS = Object.freeze([
   'join_key_id', 'repo', 'pr_number', 'pr_url', 'approval_hash',
-  'outcome', 'merge_commit_sha', 'observed_at', 'content_hash',
+  'outcome', 'merge_commit_sha', 'observed_at',
+  'lesson_commitment', 'approvedAt', 'nonce', 'key_id', 'broker_sig',
+  'content_hash',
 ]);
 
 function storeDir(opts) { return (opts && opts.dir) || DEFAULT_DIR; }
@@ -129,6 +147,17 @@ function validateRecord(rec) {
   if (!OUTCOMES.includes(rec.outcome)) return 'bad-outcome';
   if (typeof rec.merge_commit_sha !== 'string' || !HEX40.test(rec.merge_commit_sha)) return 'bad-merge-commit-sha';
   if (typeof rec.observed_at !== 'string' || !ISO_8601_UTC.test(rec.observed_at) || !Number.isFinite(Date.parse(rec.observed_at))) return 'bad-observed-at';
+  // OQ-3 W3 (RFC §5.4) — the broker-sig provenance bundle, propagated from the join-key (the SAME gates
+  // join-key-store.js validateRecord applies). lesson_commitment: '' (no-lesson) OR a lowercase 64-hex.
+  // approvedAt: Number.isFinite ONLY (fold F3 - LOOSER than verifyApproval's TTL; the merge is observed
+  // later, so no TTL re-applied here). nonce: a non-empty (trimmed) string. key_id: a non-empty string
+  // (fold F4 - stricter than verifyApproval; defense-in-depth). broker_sig: a canonical-base64 64-byte
+  // string (the signRecordId output shape; SHAPE-validated, NOT crypto-verified - PR-A2 verifies the sig).
+  if (!(rec.lesson_commitment === '' || isHex64(rec.lesson_commitment))) return 'bad-lesson-commitment';
+  if (!Number.isFinite(rec.approvedAt)) return 'bad-approved-at';
+  if (typeof rec.nonce !== 'string' || rec.nonce.trim().length === 0) return 'bad-nonce';
+  if (typeof rec.key_id !== 'string' || rec.key_id.length === 0) return 'bad-key-id';
+  if (typeof rec.broker_sig !== 'string' || !isCanonicalBase64(rec.broker_sig) || Buffer.from(rec.broker_sig, 'base64').length !== 64) return 'bad-broker-sig';
   return null;
 }
 
@@ -180,6 +209,13 @@ function buildBody(rec) {
     outcome: rec.outcome,
     merge_commit_sha: rec.merge_commit_sha,
     observed_at: rec.observed_at,
+    // OQ-3 W3 — the broker-sig provenance bundle, ADDED BEFORE content_hash so computeContentHash (which
+    // iterates every body key) auto-seals all five (RFC §5.4). REQUIRED + validated by validateRecord above.
+    lesson_commitment: rec.lesson_commitment,
+    approvedAt: rec.approvedAt,
+    nonce: rec.nonce,
+    key_id: rec.key_id,
+    broker_sig: rec.broker_sig,
   };
   body.content_hash = computeContentHash(body);
   return body;
@@ -191,6 +227,12 @@ function buildBody(rec) {
  * BUT it includes observed_at, so we compare the identity-relevant fields directly: a DIVERGENT outcome
  * / merge_commit_sha / approval_hash / repo / pr_number / pr_url for ONE join_key_id is an observable
  * COLLISION (a PR has one terminal outcome).
+ *
+ * OQ-3 W3 (fold F5) — the broker-sig bundle is included as DEDUP-collision detection (consistent with
+ * merge_commit_sha), NOT the tamper boundary. Tamper-evidence is content_hash (which seals all five via
+ * computeContentHash), NEVER bodiesEqual. The bundle is deterministic-per-record (one approval per
+ * emission), so a divergence here is a collision, not a legit re-record. Do NOT weaken content_hash on
+ * the belief that bodiesEqual covers it.
  */
 function bodiesEqual(a, b) {
   return a.join_key_id === b.join_key_id
@@ -199,7 +241,12 @@ function bodiesEqual(a, b) {
     && a.pr_url === b.pr_url
     && a.approval_hash === b.approval_hash
     && a.outcome === b.outcome
-    && a.merge_commit_sha === b.merge_commit_sha;
+    && a.merge_commit_sha === b.merge_commit_sha
+    && a.lesson_commitment === b.lesson_commitment
+    && a.approvedAt === b.approvedAt
+    && a.nonce === b.nonce
+    && a.key_id === b.key_id
+    && a.broker_sig === b.broker_sig;
 }
 
 /** Two sorted string arrays equal (exact-set on the already-sorted key lists). */

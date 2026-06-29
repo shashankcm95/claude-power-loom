@@ -30,7 +30,26 @@ let passed = 0;
 function test(name, fn) { fn(); passed += 1; }
 function tmp() { return fs.mkdtempSync(path.join(os.tmpdir(), 'loom-moutcome-')); }
 
-// A valid merge-outcome record. join_key_id is the identity (the filename); the rest is the body.
+const LESSON_COMMITMENT = 'e'.repeat(64);
+// A well-SHAPED broker_sig fixture: a 64-byte canonical-base64 string passes the store's SHAPE gate (the
+// store shape-validates, never crypto-verifies; the real-sig round-trip lives in the cross-store test below).
+const BROKER_SIG = crypto.randomBytes(64).toString('base64');
+
+// OQ-3 W3 — the broker-sig provenance bundle the merge-outcome carries forward for PR-A2 (RFC §5.4). One
+// definition of the canonical valid shape so the fixture update is DRY (a single source for the 5 fields).
+function validBundle(over = {}) {
+  return {
+    lesson_commitment: LESSON_COMMITMENT,
+    approvedAt: 1735430400000,
+    nonce: 'nonce-abc',
+    key_id: 'v0',
+    broker_sig: BROKER_SIG,
+    ...over,
+  };
+}
+
+// A valid merge-outcome record. join_key_id is the identity (the filename); the rest is the body, now
+// carrying the OQ-3 W3 broker-sig provenance bundle copied from the join-key by the merge-observer.
 function rec(over = {}) {
   return {
     join_key_id: 'a'.repeat(64),
@@ -41,6 +60,7 @@ function rec(over = {}) {
     outcome: 'merged',
     merge_commit_sha: 'b'.repeat(40),
     observed_at: '2026-06-28T00:00:00.000Z',
+    ...validBundle(),
     ...over,
   };
 }
@@ -139,7 +159,7 @@ test('verify-on-read: even a fully RE-SEALED foreign body (valid join_key_id fie
   // body loads) so the residual is documented + tested as such (SHADOW: it gates nothing).
   const dir = tmp();
   const id = 'f'.repeat(64);
-  const body = { join_key_id: id, repo: 'octo/widget', pr_number: 1, pr_url: 'https://github.com/octo/widget/pull/1', approval_hash: 'd'.repeat(64), outcome: 'merged', merge_commit_sha: 'b'.repeat(40), observed_at: '2026-06-28T00:00:00.000Z' };
+  const body = { join_key_id: id, repo: 'octo/widget', pr_number: 1, pr_url: 'https://github.com/octo/widget/pull/1', approval_hash: 'd'.repeat(64), outcome: 'merged', merge_commit_sha: 'b'.repeat(40), observed_at: '2026-06-28T00:00:00.000Z', ...validBundle() };
   body.content_hash = computeContentHash(body);
   fs.writeFileSync(path.join(dir, `${id}.json`), JSON.stringify(body));
   const back = loadMergeOutcome(id, { dir });
@@ -336,10 +356,134 @@ test('readBoundedText boundary: EXACTLY cap returns text, cap+1 returns null', (
 });
 
 test('content_hash seals the FULL body including join_key_id (a recipe sanity check)', () => {
-  const body = { join_key_id: 'a'.repeat(64), repo: 'octo/widget', pr_number: 1, pr_url: 'https://github.com/octo/widget/pull/1', approval_hash: 'd'.repeat(64), outcome: 'merged', merge_commit_sha: 'b'.repeat(40), observed_at: '2026-06-28T00:00:00.000Z' };
+  const body = { join_key_id: 'a'.repeat(64), repo: 'octo/widget', pr_number: 1, pr_url: 'https://github.com/octo/widget/pull/1', approval_hash: 'd'.repeat(64), outcome: 'merged', merge_commit_sha: 'b'.repeat(40), observed_at: '2026-06-28T00:00:00.000Z', ...validBundle() };
   const h1 = computeContentHash(body);
   const h2 = computeContentHash({ ...body, join_key_id: 'c'.repeat(64) });
   assert.notStrictEqual(h1, h2, 'changing join_key_id moves the content_hash (it is sealed)');
+});
+
+// === OQ-3 W3: the broker-sig provenance bundle in the merge-outcome (RFC §5.4) ===
+
+test('OQ-3 closed-shape: the new bundle fields are in OUTCOME_KEYS (a body missing any -> unexpected-shape)', () => {
+  const dir = tmp();
+  recordMergeOutcome(rec(), { dir });
+  const f = path.join(dir, `${'a'.repeat(64)}.json`);
+  for (const drop of ['lesson_commitment', 'approvedAt', 'nonce', 'key_id', 'broker_sig']) {
+    const body = JSON.parse(fs.readFileSync(f, 'utf8'));
+    delete body[drop];
+    body.content_hash = computeContentHash(body);          // re-seal so the reject is the SHAPE, not content_hash
+    fs.writeFileSync(f, JSON.stringify(body));
+    const alerts = captureAlerts(() => {
+      assert.strictEqual(loadMergeOutcome('a'.repeat(64), { dir }), null, `missing ${drop} -> rejected`);
+    });
+    assert.ok(alerts.some((al) => al.mo_reason === 'unexpected-shape'), `missing ${drop} -> unexpected-shape (observable)`);
+  }
+});
+
+test('OQ-3 closed-shape: an EXTRA bundle-shaped key (content_hash re-sealed) -> unexpected-shape', () => {
+  const dir = tmp();
+  recordMergeOutcome(rec(), { dir });
+  const f = path.join(dir, `${'a'.repeat(64)}.json`);
+  const body = JSON.parse(fs.readFileSync(f, 'utf8'));
+  body.extra = 'x';
+  body.content_hash = computeContentHash(body);
+  fs.writeFileSync(f, JSON.stringify(body));
+  const alerts = captureAlerts(() => {
+    assert.strictEqual(loadMergeOutcome('a'.repeat(64), { dir }), null, 'an extra key is refused by the closed-shape exact-set');
+  });
+  assert.ok(alerts.some((al) => al.mo_reason === 'unexpected-shape'), 'unexpected-shape is observable');
+});
+
+test('OQ-3 validateRecord: per-field bad values -> their exact reasons', () => {
+  const dir = tmp();
+  // lesson_commitment: UPPERCASE / 65-hex / non-string -> bad-lesson-commitment
+  for (const bad of ['E'.repeat(64), 'e'.repeat(65), 123, null]) {
+    assert.strictEqual(recordMergeOutcome(rec({ lesson_commitment: bad }), { dir }).reason, 'bad-lesson-commitment', `lesson_commitment=${String(bad)}`);
+  }
+  // broker_sig: non-64-byte / non-canonical-base64 / non-string -> bad-broker-sig
+  const non64 = crypto.randomBytes(32).toString('base64');
+  const nonCanonical = `${BROKER_SIG.slice(0, BROKER_SIG.length - 2)} =`;
+  for (const bad of [non64, nonCanonical, '', 123, null]) {
+    assert.strictEqual(recordMergeOutcome(rec({ broker_sig: bad }), { dir }).reason, 'bad-broker-sig', `broker_sig=${String(bad).slice(0, 12)}`);
+  }
+  // nonce / key_id / approvedAt -> their exact reasons
+  assert.strictEqual(recordMergeOutcome(rec({ nonce: '' }), { dir }).reason, 'bad-nonce');
+  assert.strictEqual(recordMergeOutcome(rec({ nonce: '   ' }), { dir }).reason, 'bad-nonce');
+  assert.strictEqual(recordMergeOutcome(rec({ key_id: '' }), { dir }).reason, 'bad-key-id');
+  assert.strictEqual(recordMergeOutcome(rec({ key_id: 123 }), { dir }).reason, 'bad-key-id');
+  assert.strictEqual(recordMergeOutcome(rec({ approvedAt: 'x' }), { dir }).reason, 'bad-approved-at');
+  assert.strictEqual(recordMergeOutcome(rec({ approvedAt: NaN }), { dir }).reason, 'bad-approved-at');
+  // the '' no-lesson sentinel is valid
+  assert.strictEqual(recordMergeOutcome(rec({ lesson_commitment: '' }), { dir }).ok, true, "lesson_commitment:'' writes");
+});
+
+test('OQ-3 content_hash SEALS the bundle: an in-place edit of a recorded bundle field -> content-hash reject', () => {
+  const dir = tmp();
+  recordMergeOutcome(rec(), { dir });
+  const f = path.join(dir, `${'a'.repeat(64)}.json`);
+  // each replacement is STILL valid per validateRecord (so the read passes validateRecord and the
+  // content_hash check is the one that fires) - a DIFFERENT-but-valid value, content_hash left stale.
+  const swap = {
+    lesson_commitment: 'f'.repeat(64),                        // a different valid 64-hex
+    broker_sig: crypto.randomBytes(64).toString('base64'),    // a different valid 64-byte canonical-base64
+    nonce: 'a-different-valid-nonce',
+    key_id: 'v9',
+    approvedAt: 1735430400001,
+  };
+  for (const fld of Object.keys(swap)) {
+    const body = JSON.parse(fs.readFileSync(f, 'utf8'));
+    body[fld] = swap[fld];
+    // leave content_hash STALE (do not re-seal) -> the content_hash check catches the tamper
+    fs.writeFileSync(f, JSON.stringify(body));
+    const alerts = captureAlerts(() => {
+      assert.strictEqual(loadMergeOutcome('a'.repeat(64), { dir }), null, `a tampered ${fld} (stale content_hash) is refused`);
+    });
+    assert.ok(alerts.some((al) => al.mo_reason === 'content-hash'), `the content-hash mismatch for ${fld} is observable`);
+    // restore the clean record for the next iteration
+    fs.rmSync(f, { force: true });
+    recordMergeOutcome(rec(), { dir });
+  }
+});
+
+test('OQ-3 bodiesEqual: a divergent broker_sig / nonce / approvedAt / key_id / lesson_commitment -> collision', () => {
+  const dir = tmp();
+  recordMergeOutcome(rec(), { dir });
+  for (const over of [
+    { broker_sig: crypto.randomBytes(64).toString('base64') },
+    { nonce: 'different-nonce' },
+    { approvedAt: 1735430400001 },
+    { key_id: 'v1' },
+    { lesson_commitment: 'f'.repeat(64) },
+  ]) {
+    let r2;
+    captureAlerts(() => { r2 = recordMergeOutcome(rec(over), { dir }); });
+    assert.strictEqual(r2.ok, false, `divergent ${Object.keys(over)[0]} -> collision`);
+    assert.strictEqual(r2.reason, 'collision');
+  }
+});
+
+test('OQ-3 no-lesson round-trip + the bundle survives read-back', () => {
+  const dir = tmp();
+  const r = recordMergeOutcome(rec({ lesson_commitment: '' }), { dir });
+  assert.strictEqual(r.ok, true);
+  const back = loadMergeOutcome('a'.repeat(64), { dir });
+  assert.ok(back, 'a no-lesson record round-trips');
+  assert.strictEqual(back.lesson_commitment, '', 'the no-lesson sentinel survives');
+  assert.strictEqual(back.broker_sig, BROKER_SIG, 'broker_sig survives');
+  assert.strictEqual(back.nonce, 'nonce-abc');
+  assert.strictEqual(back.key_id, 'v0');
+  assert.strictEqual(back.approvedAt, 1735430400000);
+});
+
+test('OQ-3 read-path immutability: loadMergeOutcome returns a DEEP-frozen, fresh-per-call object', () => {
+  const dir = tmp();
+  recordMergeOutcome(rec(), { dir });
+  const a = loadMergeOutcome('a'.repeat(64), { dir });
+  const b = loadMergeOutcome('a'.repeat(64), { dir });
+  assert.ok(Object.isFrozen(a), 'the returned body is frozen');
+  assert.throws(() => { a.broker_sig = 'x'; }, TypeError, 'mutating a frozen field throws');
+  assert.notStrictEqual(a, b, 'a fresh object per call');
+  assert.deepStrictEqual(a, b, 'the two reads are value-equal');
 });
 
 console.log(`merge-outcome-store.test.js: ${passed} passed`);

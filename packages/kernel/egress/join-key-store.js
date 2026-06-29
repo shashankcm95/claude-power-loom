@@ -38,16 +38,28 @@
 // because no production consumer admits this store (SHADOW).
 //
 // SEALED vs RECORDED (the PR-2 forward-contract - VALIDATE hacker FLAG): the content-address basis is
-// EXACTLY {repo, issueRef, pr_number, approval_hash}. ONLY these are tamper-evident on read - an in-place
-// edit re-derives a mismatching id and is REJECTED. base_sha / pr_url / built_by / emitted_at are
-// RECORDED-but-NOT-sealed metadata (out of the id basis; an in-place same-uid tamper of them is ACCEPTED
-// on read, within the documented same-uid residual above - identical posture to world-anchor-store's
-// out-of-basis pr_url/base_sha). Therefore PR-2 MUST bind its trust (to_delta_ref) to `approval_hash`
-// (the sealed field), NEVER to pr_url or base_sha. pr_url is deliberately out-of-basis so a divergent
-// pr_url for the same approved content is a COLLISION (bodiesEqual), not a second identity.
+// EXACTLY {repo, issueRef, pr_number, approval_hash, lesson_commitment}. ONLY these are tamper-evident on
+// read - an in-place edit re-derives a mismatching id and is REJECTED. base_sha / pr_url / built_by /
+// emitted_at + the OQ-3 broker-sig bundle (approvedAt / nonce / key_id / broker_sig) are RECORDED-but-NOT-
+// sealed metadata (out of the id basis; an in-place same-uid tamper of them is ACCEPTED on read, within
+// the documented same-uid residual above - identical posture to world-anchor-store's out-of-basis
+// pr_url/base_sha). Therefore PR-2 MUST bind its trust (to_delta_ref) to `approval_hash` (the sealed
+// field), NEVER to pr_url or base_sha. pr_url is deliberately out-of-basis so a divergent pr_url for the
+// same approved content is a COLLISION (bodiesEqual), not a second identity.
 //
-// KERNEL-tier: node core + kernel/_lib (canonical-json, safe-resolve) + kernel/egress/alert (the
-// shared observable signal). No lab/runtime import.
+// OQ-3 W3 (RFC §5.4) — the join-key now SEALS `lesson_commitment` into the id basis (so an in-place
+// lesson swap re-derives a mismatching id -> rejected) and RECORDS the broker-sig provenance bundle
+// {approvedAt, nonce, key_id, broker_sig}. The bundle is RECORDED + SHAPE-validated here (canonical-base64,
+// 64-byte broker_sig), NOT cryptographically verified - this store holds no verify key, by design;
+// verifyApproval already verified the sig at emit, and PR-A2 re-verifies it at world-anchor mint. PR-A2
+// crypto-verifies `broker_sig` over `approvalSigBasis({hash:approval_hash, approvedAt, nonce, key_id,
+// lesson_commitment})`. The sig basis intentionally OMITS pr_number/repo/pr_url - the SAME out-of-basis
+// posture as `merge_commit_sha`; `approval_hash` is one-shot (the nonce is consumed at emit) so a bundle
+// replant gains no lesson-swap. Integrity-at-rest here, provenance-at-PR-A2; and even then the binding is
+// unforgeable only once the broker actually runs cross-uid (OQ-NS-6: merged code NARROWS, deployment HARDENS).
+//
+// KERNEL-tier: node core + kernel/_lib (canonical-json, safe-resolve, edge-attestation) + kernel/egress/
+// alert (the shared observable signal). No lab/runtime import.
 
 const crypto = require('crypto');
 const fs = require('fs');
@@ -55,6 +67,7 @@ const os = require('os');
 const path = require('path');
 const { canonicalJsonSerialize } = require('../_lib/canonical-json');
 const { currentUid } = require('../_lib/safe-resolve');
+const { isCanonicalBase64 } = require('../_lib/edge-attestation');   // OQ-3 W3 — the broker_sig SHAPE gate (canonical-base64)
 const { emitEgressAlert } = require('./alert');
 
 const HEX64 = /^[a-f0-9]{64}$/;
@@ -84,8 +97,9 @@ const DEFAULT_DIR = path.join(LAB_STATE_BASE, 'egress-join-keys');
 // built_by. The read path rejects any body whose key-set is not exactly one of these two shapes
 // (closed-shape exact-set, NOT subset), so an injected extra key can never ride inside a verified
 // join-key (#273 exact-set). Field names verbatim to world-anchor-store.js ATT_FIELDS so PR-2's join is
-// a field-name-identical lookup, not a rename-map.
-const CORE_KEYS = Object.freeze(['repo', 'issueRef', 'pr_number', 'pr_url', 'approval_hash', 'base_sha', 'emitted_at']);
+// a field-name-identical lookup, not a rename-map. OQ-3 W3 appends the SEALED lesson_commitment + the
+// RECORDED broker-sig bundle (approvedAt / nonce / key_id / broker_sig) to the closed shape (RFC §5.4).
+const CORE_KEYS = Object.freeze(['repo', 'issueRef', 'pr_number', 'pr_url', 'approval_hash', 'base_sha', 'emitted_at', 'lesson_commitment', 'approvedAt', 'nonce', 'key_id', 'broker_sig']);
 const WITH_BUILT_BY_KEYS = Object.freeze([...CORE_KEYS, 'built_by']);
 
 /** Resolve the store dir: the opts-injected dir (test isolation / custody) or the require-time DEFAULT_DIR. */
@@ -112,13 +126,19 @@ function isBoundedPlainString(v, max) {
 
 /**
  * deriveJoinKeyId(rec) -> 64-hex sha256 over the IDENTITY basis {repo, issueRef, pr_number,
- * approval_hash}. pr_url is NOT in the basis (it is in bodiesEqual instead, so a divergent pr_url for
- * the same identity is an observable COLLISION, not a silent second record). built_by / emitted_at are
- * NOT in the basis (a re-record with new metadata dedups). NOTE: repo + issueRef are ALREADY inside
- * approval_hash (computeEmissionHash over {repo, issueRef, diff}); the minimal identity is
- * {pr_number, approval_hash}. Kept belt-and-suspenders to mirror world-anchor-store's
+ * approval_hash, lesson_commitment}. pr_url is NOT in the basis (it is in bodiesEqual instead, so a
+ * divergent pr_url for the same identity is an observable COLLISION, not a silent second record). built_by
+ * / emitted_at + the broker-sig bundle (approvedAt / nonce / key_id / broker_sig) are NOT in the basis
+ * (RECORDED-not-sealed; the bundle is self-protecting via broker_sig). NOTE: repo + issueRef are ALREADY
+ * inside approval_hash (computeEmissionHash over {repo, issueRef, diff}); the minimal identity is
+ * {pr_number, approval_hash, lesson_commitment}. Kept belt-and-suspenders to mirror world-anchor-store's
  * {repo, issueRef, diff_hash} basis shape; the redundancy is harmless (a re-emit yields the same id).
- * @param {{repo, issueRef, pr_number, approval_hash}} rec
+ *
+ * OQ-3 W3 (RFC §5.4) — `lesson_commitment` is the 5th hashed element, SEALED: an in-place tamper of the
+ * recorded lesson_commitment re-derives a mismatching id and is rejected on read. '' (no-lesson) and a
+ * 64-hex commitment are distinct bases. The empty-string coercion (`== null ? ''`) mirrors the other
+ * positional elements - a missing value never becomes the literal token `undefined` in the canonical basis.
+ * @param {{repo, issueRef, pr_number, approval_hash, lesson_commitment}} rec
  * @returns {string} 64-hex join_key id
  */
 function deriveJoinKeyId(rec) {
@@ -128,6 +148,7 @@ function deriveJoinKeyId(rec) {
     r.issueRef == null ? '' : String(r.issueRef),
     r.pr_number == null ? '' : String(r.pr_number),
     r.approval_hash == null ? '' : String(r.approval_hash),
+    r.lesson_commitment == null ? '' : String(r.lesson_commitment),
   ]));
 }
 
@@ -165,8 +186,9 @@ function validateReadDir(dir, selfUid) {
 
 /**
  * Build the canonical stored body (fixed shape) + the derived id. A present built_by recorded-claim is
- * carried through OUTSIDE the id basis (additive). Immutable: a fresh object, never a mutation of the
- * caller's input.
+ * carried through OUTSIDE the id basis (additive). The OQ-3 W3 fields (lesson_commitment + the broker-sig
+ * bundle) are always present in the body (REQUIRED, validated by validateRecord before this runs).
+ * Immutable: a fresh object, never a mutation of the caller's input.
  */
 function buildBody(rec) {
   const base = {
@@ -177,6 +199,12 @@ function buildBody(rec) {
     approval_hash: rec.approval_hash,
     base_sha: rec.base_sha,
     emitted_at: rec.emitted_at,
+    // OQ-3 W3 — the SEALED lesson_commitment + the RECORDED broker-sig provenance bundle (RFC §5.4).
+    lesson_commitment: rec.lesson_commitment,
+    approvedAt: rec.approvedAt,
+    nonce: rec.nonce,
+    key_id: rec.key_id,
+    broker_sig: rec.broker_sig,
   };
   // No mutation (the immutability discipline): build the with-built_by shape as a fresh spread.
   return (typeof rec.built_by === 'string' && rec.built_by.length > 0)
@@ -190,6 +218,13 @@ function buildBody(rec) {
  * built_by + emitted_at are recorded metadata OUTSIDE the basis, so a re-record with NEW metadata DEDUPS
  * (first-write-wins) rather than colliding - excluding them is what makes the dedup idempotent (the #446
  * C2 lesson: only identity-relevant fields gate dedup).
+ *
+ * OQ-3 W3 (fold F5) — the broker-sig bundle (approvedAt / nonce / key_id / broker_sig) is included here
+ * as DEDUP-collision detection (consistent with base_sha), NOT as the tamper boundary. Tamper-evidence
+ * is the SEAL (deriveJoinKeyId, which now includes lesson_commitment), NEVER bodiesEqual. The bundle is
+ * effectively deterministic-per-id (the nonce is consumed at emit, so a legit re-write is unreachable), so
+ * a divergence here is a collision, not a legitimate re-record. Do NOT weaken the SEAL on the belief that
+ * bodiesEqual covers it.
  */
 function bodiesEqual(a, b) {
   return a.repo === b.repo
@@ -197,7 +232,12 @@ function bodiesEqual(a, b) {
     && a.pr_number === b.pr_number
     && a.pr_url === b.pr_url
     && a.approval_hash === b.approval_hash
-    && a.base_sha === b.base_sha;
+    && a.base_sha === b.base_sha
+    && a.lesson_commitment === b.lesson_commitment
+    && a.approvedAt === b.approvedAt
+    && a.nonce === b.nonce
+    && a.key_id === b.key_id
+    && a.broker_sig === b.broker_sig;
 }
 
 /**
@@ -212,7 +252,20 @@ function validateRecord(rec) {
   if (typeof rec.pr_url !== 'string' || !GH_PR_URL.test(rec.pr_url)) return 'bad-pr-url';
   if (!isHex64(rec.approval_hash)) return 'bad-approval-hash';
   if (!isHex40(rec.base_sha)) return 'bad-base-sha';
-  if (typeof rec.emitted_at !== 'string' || !ISO_8601_UTC.test(rec.emitted_at) || !Number.isFinite(Date.parse(rec.emitted_at))) return 'bad-emitted-at';
+  // OQ-3 W3 (RFC §5.4) — the SEALED lesson_commitment + the RECORDED broker-sig bundle. lesson_commitment:
+  // the no-lesson sentinel '' OR a lowercase 64-hex digest. approvedAt: Number.isFinite ONLY (fold F3 -
+  // deliberately LOOSER than verifyApproval's TTL/freshness gate; the merge is observed LATER, possibly
+  // past ttlMs, so re-applying a TTL here would wrongly reject a legitimately-emitted-then-later-merged
+  // record - do NOT port the TTL). nonce: a non-empty (trimmed) string. key_id: a non-empty string (fold
+  // F4 - intentionally STRICTER than verifyApproval, which never validates key_id; recordApproval defaults
+  // it to 'v0', so the live path always carries a non-empty value; defense-in-depth). broker_sig: a
+  // canonical-base64 64-byte string (the signRecordId output shape; SHAPE-validated, NOT crypto-verified -
+  // this store holds no verify key, PR-A2 verifies the sig over the approval basis).
+  if (!(rec.lesson_commitment === '' || isHex64(rec.lesson_commitment))) return 'bad-lesson-commitment';
+  if (!Number.isFinite(rec.approvedAt)) return 'bad-approved-at';
+  if (typeof rec.nonce !== 'string' || rec.nonce.trim().length === 0) return 'bad-nonce';
+  if (typeof rec.key_id !== 'string' || rec.key_id.length === 0) return 'bad-key-id';
+  if (typeof rec.broker_sig !== 'string' || !isCanonicalBase64(rec.broker_sig) || Buffer.from(rec.broker_sig, 'base64').length !== 64) return 'bad-broker-sig';
   if (rec.built_by !== undefined && !isBoundedPlainString(rec.built_by, MAX_BUILT_BY)) return 'bad-built-by';
   return null;
 }

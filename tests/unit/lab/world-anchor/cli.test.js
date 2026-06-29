@@ -13,6 +13,7 @@
 'use strict';
 
 const assert = require('assert');
+const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -244,12 +245,18 @@ const GF = Object.freeze({
 });
 function pendingDir(store_dir) { return path.join(store_dir, 'pending'); }
 
+// OQ-3 W3 — the broker-sig provenance bundle the join-key seals/records + the observer propagates (RFC §5.4).
+const W3_BROKER_SIG = crypto.randomBytes(64).toString('base64');
+function w3Bundle(over = {}) {
+  return { lesson_commitment: 'e'.repeat(64), approvedAt: 1735430400000, nonce: 'nonce-abc', key_id: 'v0', broker_sig: W3_BROKER_SIG, ...over };
+}
+
 function seedJoinKey(over = {}) {
   const rec = {
     repo: 'octo/widget', issueRef: 42, pr_number: 77,
     pr_url: 'https://github.com/octo/widget/pull/77',
     approval_hash: OBSERVE_APPROVAL, base_sha: 'f'.repeat(40),
-    emitted_at: '2026-06-28T00:00:00.000Z', ...over,
+    emitted_at: '2026-06-28T00:00:00.000Z', ...w3Bundle(), ...over,
   };
   const w = jkStore.writeJoinKey(rec, { dir: jkStore.DEFAULT_DIR, selfUid: SELF_UID === null ? undefined : SELF_UID });
   assert.strictEqual(w.ok, true, `seedJoinKey must succeed (got ${w.reason})`);
