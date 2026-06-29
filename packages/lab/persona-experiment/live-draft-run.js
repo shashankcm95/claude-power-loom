@@ -16,12 +16,22 @@ const { runActorInContainer, attestActorContainment } = require('../issue-corpus
 const { prepareClone, captureActorDiff, safeDiscard } = require('../issue-corpus/_clone-lifecycle');
 const { MAX_PATCH_BYTES } = require('./real-solve');
 const { emitPR } = require('../../kernel/egress/emit-pr');
-const { gradeLiveIssueSemantic } = require('../causal-edge/live-grade');
+const { gradeLiveIssueSemantic, digest } = require('../causal-edge/live-grade');
 const { makeBlindSemanticJudge } = require('../causal-edge/calibration-issue-run');
 const { makeFrictionLabeler, buildActorPrompt, resolveClaude } = require('../causal-edge/trajectory-friction-run');
 const { verifyToollessRuntime } = require('../_lib/claude-headless');
 const { classifyIssue } = require('./issue-classifier');
 const { materialize: materializePersona } = require('./persona-prompt-materializer');
+// item-3-live PR-1 - the draft-time live-solve lesson CAPTURE branch (D3). A LIVE solve produces a lesson
+// HYPOTHESIS captured weight-INERT into the live_pending lane (NO merge wire; PR-2 connects the merge). The
+// capture is FAIL-SOFT + OUTCOME-PURE: a derive/write/throw never aborts the record (the draft still
+// writes). scrubLabSecrets + sidecarSha give the candidate_patch_sha on the SCRUBBED candidate (matching
+// lesson-capture.js's convention so the PR-2 join agrees on scrubbed-vs-raw).
+const { isLiveLessonEligible, deriveLiveLesson } = require('../causal-edge/live-lesson-derive');
+const { mintLivePendingLesson } = require('../causal-edge/live-pending-store');
+const { sidecarSha } = require('../attribution/candidate-sidecar');
+const { scrubLabSecrets } = require('../_lib/scrub-lab-secrets');
+const { emitEgressAlert } = require('../../kernel/egress/alert');
 
 // item 4 (D5) - the SHADOW flag that gates the PROMPT change ONLY (default OFF keeps the prompt
 // byte-identical). The classify FIELDS ride on the outcome + artifact UNCONDITIONALLY (shadow
@@ -156,9 +166,70 @@ function finalizeReport(report, artifactsDir) {
 }
 
 // --------------------------------------------------------------------------
+// item-3-live PR-1 - the draft-time live-solve lesson CAPTURE (D3). FAIL-SOFT + OUTCOME-PURE: returns ONLY
+// the two additive observable fields {lesson_captured, lesson_reason}; it NEVER throws and NEVER mutates
+// the record/outcome. A derive/write/throw is one observable field, never a record abort.
+//
+// The deriver inputs are computed HERE (they are not computed anywhere else): candidate_patch_sha =
+// sidecarSha(SCRUBBED candidate) (matching lesson-capture.js's convention so the PR-2 join agrees on
+// scrubbed-vs-raw), problem_statement_digest = digest(record.problem_statement) (the RAW statement NEVER
+// reaches the deriveFn). The SECURITY-shaped non-mint paths (derive-threw, store-refused) ALSO
+// emitEgressAlert on a NON-`reason` key (the positional reason is clobbered by alert.js - use lesson_reason).
+//
+// lesson_reason closed-enum: captured | ineligible | off-floor | derive-threw | store-refused | no-candidate.
+async function captureLiveLesson({ record, candidate, verdict, ref, eligibleFn, deriveFn, writeFn }) {
+  // DEFENSIVE-REDUNDANT / caller-precluded (mirrors isLiveLessonEligible's friction re-validation note): on
+  // the live path solveLiveIssueContained already rejects an empty/whitespace candidate (`!candidate.trim()`)
+  // + a too-large one, so this branch is unreachable from solveGradeDraftOne. KEPT as defense-in-depth (the
+  // helper is also called directly in tests + may be reused), so a future caller can never reach the deriver
+  // with an empty candidate. The `no-candidate` enum is therefore live-unreachable but contract-meaningful.
+  if (typeof candidate !== 'string' || !candidate.trim()) return { lesson_captured: false, lesson_reason: 'no-candidate' };
+  if (!eligibleFn(verdict)) return { lesson_captured: false, lesson_reason: 'ineligible' };
+
+  const scrubbedCandidate = scrubLabSecrets(candidate);
+  const candidate_patch_sha = sidecarSha(scrubbedCandidate);
+  const problem_statement_digest = digest(record.problem_statement);
+
+  let lesson;
+  try { lesson = await deriveFn({ verdict, candidate_patch_sha, problem_statement_digest }); }
+  catch (e) {
+    emitEgressAlert('live-pending-capture-derive-threw', { detail: (e && e.message) || 'error' });
+    return { lesson_captured: false, lesson_reason: 'derive-threw' };
+  }
+  if (!lesson) return { lesson_captured: false, lesson_reason: 'off-floor' };  // benign coverage-narrowing (no alert)
+
+  let res;
+  try {
+    res = writeFn({
+      repo: record.repo, issue_ref: ref.issueRef, candidate_patch_sha,
+      lesson_signature: lesson.lesson_signature, lesson_body: lesson.lesson_body,
+    });
+  } catch (e) {
+    emitEgressAlert('live-pending-capture-store-threw', { detail: (e && e.message) || 'error' });
+    return { lesson_captured: false, lesson_reason: 'store-refused' };
+  }
+  if (!res || res.ok !== true) {
+    emitEgressAlert('live-pending-capture-store-refused', { store_reason: (res && res.reason) || 'unknown' });
+    return { lesson_captured: false, lesson_reason: 'store-refused' };
+  }
+  return { lesson_captured: true, lesson_reason: 'captured' };
+}
+
+// --------------------------------------------------------------------------
 // Per-record: solve -> symlink-reject -> grade -> emitPR dry-run -> artifact. All stages fail-soft.
 async function solveGradeDraftOne(ctx) {
   const { record, env, artifactsDir, solveFn, gradeFn, emitFn, semanticFn, frictionFn, now } = ctx;
+  // item-3-live PR-1 capture deps (injectable; default to the real deriver/eligibility/store). A partial
+  // or absent injection still runs the REAL defaults (the capture is fail-soft so a real-default failure
+  // is one observable field, never a record abort).
+  const lessonEligibleFn = (ctx.deps && ctx.deps.lessonEligibleFn) || isLiveLessonEligible;
+  // The default deriver binds deriveLiveLesson to the (PR-1: absent) real claude -p leg via ctx.deps.
+  // lessonLegFn. With no leg configured, deriveLiveLesson(input, undefined) returns null (no leg, no
+  // lesson) - the real-leg wiring + prompt tuning is PR-2/spike scope (out of scope here).
+  const lessonLegFn = (ctx.deps && ctx.deps.lessonLegFn) || null;
+  const lessonDeriveFn = (ctx.deps && ctx.deps.lessonDeriveFn)
+    || ((input) => deriveLiveLesson(input, lessonLegFn));
+  const lessonWriteFn = (ctx.deps && ctx.deps.lessonWriteFn) || mintLivePendingLesson;
 
   // item 4 (D5) - classify ALWAYS (it is total). The classifyFn dep defaults to classifyIssue;
   // a dep that throws is degraded to the total fail shape so the wire NEVER aborts the record.
@@ -225,7 +296,13 @@ async function solveGradeDraftOne(ctx) {
   } catch (e) {
     return recordOutcome(record, { stage: 'draft', ok: false, reason: 'artifact-write-failed:' + ((e && e.message) || 'error'), verdict, cost_usd: solveRes.costUsd, ...classifyFields });
   }
-  return recordOutcome(record, { stage: 'draft', ok: true, reason: 'draft-written', verdict, cost_usd: solveRes.costUsd, artifact, ...classifyFields });
+  // item-3-live PR-1 - the lesson CAPTURE runs AFTER the draft artifact (so a capture failure never blocks
+  // the draft). FAIL-SOFT: captureLiveLesson never throws; the two additive fields ride onto the SUCCESS
+  // outcome. The draft terminus (stage/ok/reason/verdict/artifact) is byte-compatible (additive-only).
+  const capture = await captureLiveLesson({
+    record, candidate: solveRes.candidate, verdict, ref, eligibleFn: lessonEligibleFn, deriveFn: lessonDeriveFn, writeFn: lessonWriteFn,
+  });
+  return recordOutcome(record, { stage: 'draft', ok: true, reason: 'draft-written', verdict, cost_usd: solveRes.costUsd, artifact, ...classifyFields, ...capture });
 }
 
 // --------------------------------------------------------------------------
@@ -293,4 +370,5 @@ async function runLiveDraftLoop({
 
 module.exports = {
   parseRecordRef, hasSymlinkEntry, preflightEnv, solveLiveIssueContained, runLiveDraftLoop,
+  captureLiveLesson,
 };

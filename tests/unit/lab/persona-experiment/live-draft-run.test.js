@@ -257,6 +257,163 @@ test('H5: with REAL judges, a passing preflight (ok:true) proceeds PAST the gate
   assert.strictEqual(report.fatal, 'containment-unattested:docker-unavailable', 'gate passed; loop proceeded to (and failed at) the env preflight');
 });
 
+// === item-3-live PR-1 — the draft-time live-solve lesson CAPTURE branch (D3) ===
+// FAIL-SOFT + OUTCOME-PURE: a derive/write/throw NEVER aborts the record (the draft still writes); the
+// outcome gains additive observable fields lesson_captured:bool + lesson_reason:<closed-enum>. The
+// security-shaped non-mint paths (store-refused, derive-threw) ALSO emitEgressAlert on a NON-`reason` key.
+
+// A capture-deps bundle: an eligible verdict + a deriver that maps onto the frozen floor + a spy writer.
+function captureDeps(extra) {
+  const writes = [];
+  const deps = Object.assign(loopDeps({
+    solveFn: async () => ({ ok: true, candidate: BENIGN_DIFF, costUsd: 0.02, redacted: false }),
+    // an ELIGIBLE verdict: semantic_supported true + a valid friction block.
+    gradeFn: async () => ({
+      behavioral: 'UNAVAILABLE', semantic_supported: true, oracle: 'none', shadow: true,
+      friction: { friction_class: 'wrong-file', friction_phase: 'localization', detection_leg: 'semantic-lens', _diagnostic: { human_message: 'wrong module', expected: 'a', observed: 'b' } },
+    }),
+    lessonEligibleFn: () => true,
+    lessonDeriveFn: async () => ({ trigger_class: 'boundary-contract', gotcha_class: 'unguarded-edge-case', corrective_class: 'fail-closed', lesson_signature: 'lesson:boundary-contract|unguarded-edge-case|fail-closed', lesson_body: 'captured' }),
+    lessonWriteFn: (b) => { writes.push(b); return { ok: true, node_id: 'n'.repeat(64) }; },
+  }), extra);
+  return { deps, writes };
+}
+
+test('capture: an ELIGIBLE solve writes a live_pending lesson; outcome has lesson_captured:true + lesson_reason:captured', async () => {
+  const dir = mkArtifacts();
+  const { deps, writes } = captureDeps();
+  const report = await runLiveDraftLoop({ records: [REC], artifactsDir: dir, runId: 'r1', now: 1, deps });
+  const o = report.outcomes[0];
+  assert.strictEqual(o.ok, true, 'the draft still writes');
+  assert.strictEqual(o.lesson_captured, true, 'an eligible solve captures a lesson');
+  assert.strictEqual(o.lesson_reason, 'captured', 'lesson_reason is the captured enum');
+  assert.strictEqual(writes.length, 1, 'the live-pending writer was called exactly once');
+  assert.strictEqual(writes[0].candidate_patch_sha && writes[0].candidate_patch_sha.length, 64, 'the writer block carries a 64-hex candidate_patch_sha');
+  assert.strictEqual(writes[0].issue_ref, 42, 'the writer block carries the issue_ref');
+  assert.strictEqual(writes[0].lesson_signature, 'lesson:boundary-contract|unguarded-edge-case|fail-closed');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('capture: the deriveFn NEVER receives the raw problem_statement (digest only) nor the raw candidate', async () => {
+  const dir = mkArtifacts();
+  let seen = null;
+  const { deps } = captureDeps({ lessonDeriveFn: async (inp) => { seen = inp; return { trigger_class: 'boundary-contract', gotcha_class: 'unguarded-edge-case', corrective_class: 'fail-closed', lesson_signature: 'lesson:x', lesson_body: 'ok' }; } });
+  await runLiveDraftLoop({ records: [REC], artifactsDir: dir, deps });
+  assert.ok(seen, 'the deriveFn was called');
+  assert.ok(typeof seen.problem_statement_digest === 'string' && seen.problem_statement_digest.length > 0, 'a problem_statement_digest is passed');
+  assert.ok(!JSON.stringify(seen).includes('fix the null crash'), 'the RAW problem statement never reaches the deriveFn');
+  assert.ok(typeof seen.candidate_patch_sha === 'string' && seen.candidate_patch_sha.length === 64, 'a candidate_patch_sha is passed (not the raw candidate)');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('capture: an INELIGIBLE solve writes NO lesson; outcome lesson_captured:false + lesson_reason:ineligible', async () => {
+  const dir = mkArtifacts();
+  const { deps, writes } = captureDeps({ lessonEligibleFn: () => false });
+  const report = await runLiveDraftLoop({ records: [REC], artifactsDir: dir, deps });
+  const o = report.outcomes[0];
+  assert.strictEqual(o.ok, true, 'the draft still writes (ineligible is normal, not a failure)');
+  assert.strictEqual(o.lesson_captured, false);
+  assert.strictEqual(o.lesson_reason, 'ineligible');
+  assert.strictEqual(writes.length, 0, 'no lesson written for an ineligible solve');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('capture: an OFF-FLOOR deriver (returns null) writes NO lesson; lesson_reason:off-floor (no egress alert)', async () => {
+  const dir = mkArtifacts();
+  let alerted = false;
+  const origW = process.stderr.write;
+  process.stderr.write = (c) => { if (String(c).includes('LOOM-EGRESS-ALERT')) alerted = true; return true; };
+  try {
+    const { deps, writes } = captureDeps({ lessonDeriveFn: async () => null });
+    const report = await runLiveDraftLoop({ records: [REC], artifactsDir: dir, deps });
+    const o = report.outcomes[0];
+    assert.strictEqual(o.ok, true);
+    assert.strictEqual(o.lesson_captured, false);
+    assert.strictEqual(o.lesson_reason, 'off-floor');
+    assert.strictEqual(writes.length, 0, 'an off-floor derive writes nothing');
+  } finally { process.stderr.write = origW; }
+  assert.strictEqual(alerted, false, 'an off-floor (benign coverage-narrowing) outcome does NOT emit an egress alert');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('capture: a THROWING deriver stays FAIL-SOFT - the draft still writes; lesson_reason:derive-threw + emit', async () => {
+  const dir = mkArtifacts();
+  let alerted = false;
+  const origW = process.stderr.write;
+  process.stderr.write = (c) => { if (String(c).includes('LOOM-EGRESS-ALERT')) alerted = true; return true; };
+  let report;
+  try {
+    const { deps, writes } = captureDeps({ lessonDeriveFn: async () => { throw new Error('derive boom'); } });
+    report = await runLiveDraftLoop({ records: [REC], artifactsDir: dir, deps });
+    assert.strictEqual(writes.length, 0, 'a throwing derive writes no lesson');
+  } finally { process.stderr.write = origW; }
+  const o = report.outcomes[0];
+  assert.strictEqual(o.ok, true, 'the draft STILL writes (capture failure never aborts the record)');
+  assert.strictEqual(o.reason, 'draft-written', 'the record terminus is unchanged');
+  assert.ok(fs.existsSync(o.artifact), 'the draft artifact still exists');
+  assert.strictEqual(o.lesson_captured, false);
+  assert.strictEqual(o.lesson_reason, 'derive-threw');
+  assert.strictEqual(alerted, true, 'the security-shaped derive-threw path emits an egress alert');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('capture: a REFUSING store stays FAIL-SOFT - the draft still writes; lesson_reason:store-refused + emit', async () => {
+  const dir = mkArtifacts();
+  let alerted = false;
+  const origW = process.stderr.write;
+  process.stderr.write = (c) => { if (String(c).includes('LOOM-EGRESS-ALERT')) alerted = true; return true; };
+  let report;
+  try {
+    const { deps } = captureDeps({ lessonWriteFn: () => ({ ok: false, reason: 'collision' }) });
+    report = await runLiveDraftLoop({ records: [REC], artifactsDir: dir, deps });
+  } finally { process.stderr.write = origW; }
+  const o = report.outcomes[0];
+  assert.strictEqual(o.ok, true, 'the draft STILL writes');
+  assert.strictEqual(o.lesson_captured, false);
+  assert.strictEqual(o.lesson_reason, 'store-refused');
+  assert.strictEqual(alerted, true, 'the security-shaped store-refused path emits an egress alert');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('capture: a THROWING store writer stays FAIL-SOFT - the draft still writes; lesson_reason:store-refused', async () => {
+  const dir = mkArtifacts();
+  const { deps } = captureDeps({ lessonWriteFn: () => { throw new Error('write boom'); } });
+  const report = await runLiveDraftLoop({ records: [REC], artifactsDir: dir, deps });
+  const o = report.outcomes[0];
+  assert.strictEqual(o.ok, true, 'a throwing writer never aborts the record');
+  assert.strictEqual(o.lesson_captured, false);
+  assert.strictEqual(o.lesson_reason, 'store-refused');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('capture: the artifact stays ADDITIVE-only - draft/verdict/classify fields are byte-compatible, lesson fields are new', async () => {
+  const dir = mkArtifacts();
+  const { deps } = captureDeps();
+  const report = await runLiveDraftLoop({ records: [REC], artifactsDir: dir, deps });
+  const o = report.outcomes[0];
+  const art = JSON.parse(fs.readFileSync(o.artifact, 'utf8'));
+  // the pre-existing draft shape is untouched
+  assert.strictEqual(art.draft.repo, 'octocat/hello-world', 'the draft block is unchanged');
+  assert.strictEqual(art.draft.issueRef, 42);
+  assert.strictEqual(art.record_id, REC.id, 'record_id unchanged');
+  assert.strictEqual(art.verdict.behavioral, 'UNAVAILABLE', 'the verdict is unchanged');
+  assert.ok(!JSON.stringify(art).includes('token'), 'still no token in the artifact');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('capture: a non-eligible-by-real-default path (default eligible/derive deps) does NOT crash a normal draft run', async () => {
+  // when lessonEligibleFn/lessonDeriveFn/lessonWriteFn are NOT injected, the real defaults run; a friction-null
+  // verdict (the default loopDeps frictionFn) is ineligible, so a normal draft run captures nothing and is unaffected.
+  const dir = mkArtifacts();
+  const deps = loopDeps({ solveFn: async () => ({ ok: true, candidate: BENIGN_DIFF, costUsd: 0.01 }) });
+  const report = await runLiveDraftLoop({ records: [REC], artifactsDir: dir, deps });
+  const o = report.outcomes[0];
+  assert.strictEqual(o.ok, true, 'a normal draft run is unaffected by the capture branch');
+  assert.strictEqual(o.lesson_captured, false, 'a friction-null verdict is ineligible');
+  assert.strictEqual(o.lesson_reason, 'ineligible');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 (async () => {
   for (const t of _tests) {
     try { await t.fn(); passed += 1; }
