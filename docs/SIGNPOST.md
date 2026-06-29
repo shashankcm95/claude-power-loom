@@ -67,6 +67,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/kernel/_lib/transaction-record.js` - K2 envelope transaction-record helper per v6 §4.2.
 - `packages/kernel/_lib/wal-append.js` - Shared append-only JSONL-WAL append primitive.
 - `packages/kernel/_lib/weight-minter.js` - v-next Authenticated Minter — P0 (RFC 2026-06-18-authenticated-minter-provenance-close, Option B).
+- `packages/kernel/_lib/world-anchor-edge-id.js` - The ONE canonical world-anchor edge-id seal (PR-A2b W2a - relocated kernel-ward).
 
 ### `kernel/algorithms/`
 
@@ -89,6 +90,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/kernel/egress/loom-broker-launch.js` - Power Loom egress — loom-broker-launch.js  (③.2.5b)
 - `packages/kernel/egress/loom-broker-sign.js` - Power Loom egress — loom-broker-sign.js  (③.2.5b)
 - `packages/kernel/egress/loom-custody-verify.js` - Power Loom egress — loom-custody-verify.js  (③.2.5b)
+- `packages/kernel/egress/loom-edge-bind.js` - Power Loom egress - the world-anchor-edge recompute-bind WHAT gate (PR-A2b W2a).
 - `packages/kernel/egress/policy.js` - ③.2.1b PR-B — egress POLICY gates: a GLOBAL per-window emission cap, 429/abuse backpressure, and a
 - `packages/kernel/egress/scrub.js` - ③.2.1b PR-B — the egress SECRET-SCRUB entry point (coarse, defense-in-depth).
 
