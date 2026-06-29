@@ -4,6 +4,18 @@ Status: research (as-is map for v-next planning). Firsthand codebase audit (8-ag
 honesty-auditor pass; findings cross-checked against this session's live egress run (spec-kitty#2137).
 Date: 2026-06-25.
 
+> **STATUS ACCRETION (2026-06-29 — post phase-close of the capture-wire arc):** Items 1, 2, 3 + the
+> item-3-live sub-ladder are now **BUILT (SHADOW, weight-inert)** — this map's original "MISSING (grep=0)"
+> ratings for them are SUPERSEDED, not rewritten (the original analysis stands as the pre-build snapshot).
+> Built via #447 (egress join-key) -> #451 (gh-verified merge-observer) -> #452 (rebind + unify mint) ->
+> #454 (live-solve capture) -> #455 (mint-side captured floor) -> #456 (emit-side attest-from-capture
+> producer) -> #457 (leg 1, the real `claude -p` deriver; `lessonLegFn` null->real on the live-run path).
+> The whole arc stays production-INERT: `LIVE_SOURCES=Object.freeze([])`, the edge is UNSIGNED, no weight
+> reads the captured signal. **STILL GENUINELY MISSING:** item 4 (issue->persona classifier + materializer),
+> item 5's authenticated cross-uid edge signer (**PR-A2** — the real #273 close; RFC-premature per OQ-2
+> until a lab-derived weight names a real gate), item 8 (production scheduler). Phase-close sign-off:
+> `docs/ROADMAP.md` + library `toolkit/phase-close/capture-wire-close`.
+
 ## Why this exists
 
 The thesis under test (USER): *"most underlying components are built; they need to be wired together so the
