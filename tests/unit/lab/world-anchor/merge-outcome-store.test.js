@@ -368,8 +368,11 @@ test('OQ-3 closed-shape: the new bundle fields are in OUTCOME_KEYS (a body missi
   const dir = tmp();
   recordMergeOutcome(rec(), { dir });
   const f = path.join(dir, `${'a'.repeat(64)}.json`);
+  // Snapshot the ORIGINAL valid body once: each iteration drops exactly ONE field from a fresh copy so the reject
+  // isolates THAT field (CodeRabbit — re-reading the on-disk file each iteration accumulates prior deletions).
+  const original = JSON.parse(fs.readFileSync(f, 'utf8'));
   for (const drop of ['lesson_commitment', 'approvedAt', 'nonce', 'key_id', 'broker_sig']) {
-    const body = JSON.parse(fs.readFileSync(f, 'utf8'));
+    const body = Object.assign({}, original);
     delete body[drop];
     body.content_hash = computeContentHash(body);          // re-seal so the reject is the SHAPE, not content_hash
     fs.writeFileSync(f, JSON.stringify(body));

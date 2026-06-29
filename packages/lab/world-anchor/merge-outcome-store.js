@@ -90,6 +90,10 @@ const OUTCOME_SUFFIX = '.json';
 const MAX_OUTCOME_BYTES = 8192;
 const MAX_REPO_BYTES = 200;
 const MAX_PR_URL_BYTES = 2048;
+// OQ-3 W3 (CodeRabbit Major) — bound the recorded bundle's free-form strings (nonce / key_id) so recordMergeOutcome
+// can NEVER persist a body that exceeds MAX_OUTCOME_BYTES and is then unreadable via the read-cap. Same gate the
+// join-key applies before this record is propagated; defense-in-depth (the stores validate independently).
+const MAX_BUNDLE_FIELD = 256;
 // PR-2 records the 'merged' terminal outcome (the observer gates on gh merged===true). The closed-shape
 // allowlist keeps the value bounded; future outcomes extend this frozen set (append-only).
 const OUTCOMES = Object.freeze(['merged']);
@@ -155,8 +159,8 @@ function validateRecord(rec) {
   // string (the signRecordId output shape; SHAPE-validated, NOT crypto-verified - PR-A2 verifies the sig).
   if (!(rec.lesson_commitment === '' || isHex64(rec.lesson_commitment))) return 'bad-lesson-commitment';
   if (!Number.isFinite(rec.approvedAt)) return 'bad-approved-at';
-  if (typeof rec.nonce !== 'string' || rec.nonce.trim().length === 0) return 'bad-nonce';
-  if (typeof rec.key_id !== 'string' || rec.key_id.length === 0) return 'bad-key-id';
+  if (!isBoundedString(rec.nonce, MAX_BUNDLE_FIELD) || rec.nonce.trim().length === 0) return 'bad-nonce';
+  if (!isBoundedString(rec.key_id, MAX_BUNDLE_FIELD) || rec.key_id.trim().length === 0) return 'bad-key-id';
   if (typeof rec.broker_sig !== 'string' || !isCanonicalBase64(rec.broker_sig) || Buffer.from(rec.broker_sig, 'base64').length !== 64) return 'bad-broker-sig';
   return null;
 }

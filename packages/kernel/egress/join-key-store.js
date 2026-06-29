@@ -87,6 +87,10 @@ const JOIN_KEY_SUFFIX = '.json';
 // #439/#446 DoS close).
 const MAX_JOIN_KEY_BYTES = 8192;
 const MAX_BUILT_BY = 256;
+// OQ-3 W3 (CodeRabbit Major) — bound the recorded bundle's free-form strings (nonce / key_id) so a writeJoinKey
+// can NEVER persist a body that exceeds MAX_JOIN_KEY_BYTES and is then unreadable via the read-cap (write-succeeds/
+// read-fails). 256 is generous: the live nonce is a 32-char hex, key_id is 'v0' or a short broker id.
+const MAX_BUNDLE_FIELD = 256;
 
 const LAB_STATE_BASE = process.env.LOOM_LAB_STATE_DIR || path.join(os.homedir(), '.claude', 'lab-state');
 // Captured at REQUIRE, mirroring the sibling stores' DEFAULT_DIR. A custody-supplied dir (test isolation
@@ -264,8 +268,8 @@ function validateRecord(rec) {
   // this store holds no verify key, PR-A2 verifies the sig over the approval basis).
   if (!(rec.lesson_commitment === '' || isHex64(rec.lesson_commitment))) return 'bad-lesson-commitment';
   if (!Number.isFinite(rec.approvedAt)) return 'bad-approved-at';
-  if (typeof rec.nonce !== 'string' || rec.nonce.trim().length === 0) return 'bad-nonce';
-  if (typeof rec.key_id !== 'string' || rec.key_id.length === 0) return 'bad-key-id';
+  if (!isBoundedPlainString(rec.nonce, MAX_BUNDLE_FIELD) || rec.nonce.trim().length === 0) return 'bad-nonce';
+  if (!isBoundedPlainString(rec.key_id, MAX_BUNDLE_FIELD) || rec.key_id.trim().length === 0) return 'bad-key-id';
   if (typeof rec.broker_sig !== 'string' || !isCanonicalBase64(rec.broker_sig) || Buffer.from(rec.broker_sig, 'base64').length !== 64) return 'bad-broker-sig';
   if (rec.built_by !== undefined && !isBoundedPlainString(rec.built_by, MAX_BUILT_BY)) return 'bad-built-by';
   return null;

@@ -32,7 +32,7 @@ After W3 the chain **persists** a cross-uid-**verifiable** `(approval_hash, less
 - **`bodiesEqual`** (:194) — add all 5 (identity-relevant for a given consumed approval; a divergence = collision, matching `base_sha`'s treatment).
 - **`validateRecord`** (:207) — add, after `bad-base-sha` / before `built_by`:
   - `lesson_commitment`: `rec.lesson_commitment === '' || isHex64(rec.lesson_commitment)` else `bad-lesson-commitment`.
-  - `approvedAt`: `Number.isFinite(rec.approvedAt)` else `bad-approved-at` (match verifyApproval's gate exactly — no stricter, so any approval that verified can be recorded).
+  - `approvedAt`: `Number.isFinite(rec.approvedAt)` ONLY else `bad-approved-at` — deliberately **LOOSER** than `verifyApproval` (NO TTL/future-date window; see fold F3). The store records a fact already freshness-gated at emit; the merge is observed LATER, possibly past `ttlMs`, so re-applying a TTL here would wrongly reject a legitimately-emitted-then-later-merged record.
   - `nonce`: `typeof === 'string' && rec.nonce.trim().length > 0` else `bad-nonce`.
   - `key_id`: `typeof === 'string' && rec.key_id.length > 0` else `bad-key-id`.
   - `broker_sig`: `typeof === 'string' && isCanonicalBase64(rec.broker_sig) && Buffer.from(rec.broker_sig, 'base64').length === 64` else `bad-broker-sig`.
@@ -110,3 +110,11 @@ The delegated `node-backend` build wrote all edits but the host process exited b
 - **LOW (folded):** refreshed the stale `writeJoinKey` / `recordMergeOutcome` `@param` lists with the 5 new fields.
 - **LOW (accepted deviation — named test-debt):** the plan directed a single shared `validBundle()` helper; the build used per-file local helpers (`join-key-store.test.js`, `merge-outcome-store.test.js`, `merge-observer.test.js` each define one). Functionally green + each self-contained; refactoring green tests into a shared util post-crash-salvage is higher-risk-lower-value for a SHADOW wave → deferred (a later field change touches N test files; that is the debt).
 - **LOW (honesty, skipped):** an optional cross-reference between the two stores' different seal mechanisms (`content_hash` vs `id-derive`) — both already documented in-file.
+
+## CodeRabbit fold (post-PR, 3 actionable — 1 Major + 2 Minor, all premise-probed + folded)
+
+- **F-CR1 (Major, `join-key-store.js` + `merge-outcome-store.js`)** — `nonce`/`key_id` were length-unbounded, so `writeJoinKey`/`recordMergeOutcome` could persist a body exceeding the `MAX_*_BYTES` read cap → a **write-succeeds / read-fails** record (the #439/#446 class). **Fix:** bound both to `MAX_BUNDLE_FIELD = 256` (join-key via `isBoundedPlainString` — also rejects control chars; merge-outcome via `isBoundedString`) + keep the trim-non-empty check. CodeRabbit flagged only the join-key (it saw that hunk); the same gap in merge-outcome was fixed too (scan-for-similar). Probe: a 9000-char nonce → `bad-nonce`; a valid nonce → ok.
+- **F-CR2 (Minor, plan §1)** — the plan said `approvedAt` should "match verifyApproval exactly" while fold F3 says LOOSER (an internal contradiction; I added F3 but left the §1 line). **Fix:** §1 now states `Number.isFinite` ONLY, deliberately LOOSER (no TTL), consistent with F3.
+- **F-CR3 (Minor, `join-key-store.test.js` + `merge-outcome-store.test.js`)** — the closed-shape missing-field loop re-read the on-disk file each iteration, accumulating prior deletions → it did not isolate each field (vacuous per-field). **Fix:** snapshot the original valid body once; each iteration drops exactly one field from a fresh copy. Both stores' tests fixed (scan-for-similar).
+
+Re-gates: eslint clean on all changed files; full kernel + lab-world-anchor suites green; zero non-ASCII / control-byte / `eslint-disable`. Commit `<cr-fold>` on the PR branch.

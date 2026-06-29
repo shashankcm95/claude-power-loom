@@ -524,8 +524,11 @@ test('OQ-3 closed-shape: a body MISSING any new field is rejected (unexpected-sh
   try {
     const { id } = S.writeJoinKey(rec(), { dir, selfUid: SELF });
     const file = path.join(dir, id + '.json');
+    // Snapshot the ORIGINAL valid body once: each iteration drops exactly ONE field from a fresh copy, so the
+    // reject isolates THAT field (CodeRabbit — reading the on-disk file each iteration accumulates prior deletions).
+    const original = JSON.parse(fs.readFileSync(file, 'utf8'));
     for (const drop of ['lesson_commitment', 'approvedAt', 'nonce', 'key_id', 'broker_sig']) {
-      const body = JSON.parse(fs.readFileSync(file, 'utf8'));
+      const body = Object.assign({}, original);
       delete body[drop];
       fs.writeFileSync(file, JSON.stringify(body));
       const alerts = captureAlerts(() => {
