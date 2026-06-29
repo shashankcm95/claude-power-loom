@@ -205,7 +205,7 @@ test('mintFromMergeOutcome is TOTAL: it never throws on a happy mint and returns
   assert.doesNotThrow(() => {
     r = mintFromMergeOutcome({ join_key_id: jkid }, { anchorDir: dir, liveDir: liveDir(dir), edgeDir: edgeDir(dir), outcomeDir: outcomeDir(dir), pendingDir: pendingDir(dir) });
   });
-  for (const k of ['minted', 'node_id', 'deduped', 'edge_minted', 'edge_id', 'edge_deduped', 'edge_signed']) {
+  for (const k of ['minted', 'node_id', 'deduped', 'edge_minted', 'edge_id', 'edge_deduped', 'edge_signed', 'auth_observed', 'commitment_verified']) {
     assert.ok(k in r, `the return shape carries ${k}`);
   }
 });
@@ -677,6 +677,41 @@ test('auth-verify-error (F3): a throwing approvalSigBasis -> refuse auth-verify-
   assert.strictEqual(r.mint_reason, 'auth-verify-error', 'the refuse reason is auth-verify-error');
   assert.ok(alerts.some((a) => JSON.stringify(a).includes('auth-verify-error')), 'the auth-verify-error refuse is observable (emit BEFORE return, never silent)');
   assert.strictEqual(liveStore.listLiveNodes({ dir: liveDir(dir) }).length, 0, 'no node minted on an auth-verify-error');
+});
+
+// VALIDATE honesty fold: the step-2 catch (a throwing computeLessonCommitment) was code-present-but-untested
+// while the step-1 catch was proven. This mirrors the step-1 pattern on the OTHER primitive so the dual-catch
+// claim ("a throw in EITHER primitive -> auth-verify-error") is non-vacuous on both halves.
+test('auth-verify-error (step-2 catch): a throwing computeLessonCommitment -> refuse auth-verify-error + emit, NEVER throws (TOTAL)', () => {
+  const dir = tmp();
+  attest(dir);
+  // A REAL signed bundle so step 1 (approvalSigBasis + verifyRecordSig, UN-patched) PASSES and control
+  // reaches step 2's computeLessonCommitment - the only call we patch to throw.
+  const jkid = recordOutcome(outcomeDir(dir), signedBundle());
+  const LESSON_COMMITMENT_FILE = path.join(REPO, 'packages', 'kernel', '_lib', 'lesson-commitment.js');
+  const lcMod = require(LESSON_COMMITMENT_FILE);
+  const origLc = lcMod.computeLessonCommitment;
+  let r;
+  let alerts;
+  try {
+    lcMod.computeLessonCommitment = () => { throw new Error('boom-commitment'); };
+    delete require.cache[require.resolve(MINT_FILE)];
+    const freshMint = require(MINT_FILE).mintFromMergeOutcome;   // re-destructures the throwing computeLessonCommitment
+    const cap = captureAlerts(() => {
+      assert.doesNotThrow(() => {
+        r = freshMint({ join_key_id: jkid }, { ...fullDirs(dir), verifyKeyPem: VERIFY_KEY_PEM });
+      });
+    });
+    alerts = cap.alerts;
+  } finally {
+    lcMod.computeLessonCommitment = origLc;
+    delete require.cache[require.resolve(MINT_FILE)];
+    require(MINT_FILE);   // restore the canonical (un-patched) mint instance to the cache
+  }
+  assert.strictEqual(r.minted, false, 'a throwing step-2 primitive refuses (TOTAL - never crashes)');
+  assert.strictEqual(r.mint_reason, 'auth-verify-error', 'the step-2 refuse reason is auth-verify-error');
+  assert.ok(alerts.some((a) => JSON.stringify(a).includes('auth-verify-error')), 'the step-2 auth-verify-error refuse is observable (emit BEFORE return, never silent)');
+  assert.strictEqual(liveStore.listLiveNodes({ dir: liveDir(dir) }).length, 0, 'no node minted on a step-2 auth-verify-error');
 });
 
 // --- allowEnvFallback:false (H1 regression): the ambient LOOM_EDGE_VERIFY_KEY must NEVER select the verify key ---
