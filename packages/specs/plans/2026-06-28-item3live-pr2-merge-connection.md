@@ -1,7 +1,7 @@
 ---
 lifecycle: persistent
 plan: item-3-live PR-2 — the merge connection (world-anchor a captured live_pending lesson)
-status: VERIFY-pending
+status: VALIDATE-complete — PR #455 open, awaiting USER merge
 date: 2026-06-28
 ---
 
@@ -34,7 +34,7 @@ remains the hard close.
 | #452 header NAMES this rung's residual | `world-anchor-mint.js:36-39` → "the node's lesson basis (`att.lesson_signature`) is a same-uid substitution lever once item-4's runtime floor lands" |
 | The attestation is the only bridge carrying BOTH issue + PR keys | `world-anchor-store.js:71-74` ATT_FIELDS = `[repo, issueRef, pr_url, pr_number, branch, base_sha, diff_hash, lesson_signature, built_by, approval_hash, emitted_at]` |
 | The merge-outcome record has NO `issue_ref` | `merge-outcome-store.js:88-91` OUTCOME_KEYS = `[join_key_id, repo, pr_number, pr_url, approval_hash, outcome, merge_commit_sha, observed_at, content_hash]` |
-| `lesson_signature` is a coarse 24-value bucket | `lesson-signature.js:62-68` `lessonClusterKey` = `lesson:<trigger>|<gotcha>|<corrective>`; enums are 4×3×2 |
+| `lesson_signature` is a coarse 24-value bucket | `lesson-signature.js:62-68` `lessonClusterKey` = `lesson:` prefix over trigger/gotcha/corrective (pipe-joined); enums are 4×3×2 |
 | Both lesson producers emit the SAME cluster key | `lesson.js:47` and `live-lesson-derive.js:126` both `lessonClusterKey({trigger,gotcha,corrective})` |
 | The captured lane carries the join keys | `live-pending-store.js:67` BASIS = `[provenance, repo, issue_ref, candidate_patch_sha, lesson_signature]` |
 | `listLivePendingLessons` is TOTAL (load-bearing for a floor) | `live-pending-store.js:331-358` — skips corrupt/forged, never throws, deep-freezes each |
@@ -296,4 +296,28 @@ proves DIFF-ACCEPTANCE, never LESSON-CORRECTNESS (`lesson.js:57-62`).
 
 `feat(lab/world-anchor): build the mint-side half of the captured-lesson merge wire (SHADOW, widens #273, Half B deferred)`
 
-Status: **VERIFY complete → awaiting USER go for BUILD.**
+Status: **VERIFY complete → BUILD complete → VALIDATE complete → PR #455 open, awaiting USER merge.**
+
+## VALIDATE result (3-lens board on the BUILT diff, 2026-06-28)
+
+Rule-2a board on the built worktree diff. **code-reviewer SHIP-WITH-FOLDS** (0 CRIT/0 HIGH);
+**hacker SHIP** (21 live probes, the only "bypass" is the named weight-inert widening §4
+accepts; weight-inertness confirmed-held 3 ways: no `source` on the node, `admitWeightForRanking`
+returns 0, zero trusting readers); **honesty grade A** (every load-bearing claim ACCURATE).
+
+Folds applied to the built diff:
+- **`.git`-suffix in `repoSlug`** (code-reviewer M-1 + hacker L-1): strip a trailing `.git` so a
+  clone-URL captured repo and a bare-slug attestation join. Fail-safe today (the producer emits no
+  `.git`); folded so a future Half-B producer format never silently splits the lane. Proven by a
+  non-vacuous test (RED on the unfixed `repoSlug`).
+- **`origin`-field clarifying comment** (code-reviewer L-2): the candidate `origin` is a structural
+  trust-discriminator, deliberately NOT propagated to the node schema.
+- **two-legged inertness** (honesty fold): the PR body states production-inertness rests on BOTH the
+  empty captured floor (`lessonLegFn=null`) AND the static-signature attestation; Half B removes only
+  the second leg.
+
+Gates: kernel **107/0**, `install.sh --hooks --test` **129/0**, captured-floor (13) + dam (10) +
+world-anchor-mint (19) + cli (16) + item5 (6) green; signpost + release-surface clean.
+
+CodeRabbit (PR #455): **1 actionable** (Minor) — this front-matter/status sync; folded here. CI all
+green.
