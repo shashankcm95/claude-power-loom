@@ -8,12 +8,15 @@
 // world-anchor/) because its inputs (lesson-signature, friction, live-grade) all originate there and
 // persona-experiment -> causal-edge is the import direction the capture site already uses.
 //
-// Unlike the world-anchor stores (which use the BLANKET "zero external importers" matcher), this lane
-// has ONE legitimate external importer in PR-1: the WRITER, persona-experiment/live-draft-run.js. So
-// the dam is a FULL-PATH WRITER-ALLOWLIST (the #451 "EXACTLY-ONE-named-reader full-path ===" pattern):
-//   - the ONLY external module admitted is persona-experiment/live-draft-run.js (the writer);
-//   - ZERO READERS: no module calls readLivePendingLesson / listLivePendingLessons in PR-1 (PR-2 adds
-//     the world-anchor mint's floor-builder as the one allowlisted reader - the symmetric relaxation).
+// This lane has TWO legitimate external modules in PR-2: the WRITER, persona-experiment/live-draft-run.js
+// (PR-1), and the one READER, world-anchor/world-anchor-mint.js (PR-2's floor-builder - it calls
+// listLivePendingLessons to read the captured floor). So the dam is a FULL-PATH ALLOWLIST (the #451
+// "EXACTLY-ONE-named-reader full-path ===" pattern), exact-set on BOTH dimensions:
+//   - the ONLY external IMPORTERS admitted are the writer (live-draft-run.js) and the reader
+//     (world-anchor-mint.js); any THIRD external importer is flagged.
+//   - the ONLY reader-CALLER admitted (beyond the store definer) is world-anchor-mint.js; any THIRD
+//     reader-caller is flagged. world-anchor-mint.js is NOT a causal-edge sibling, so it is exempted by
+//     FULL-PATH === (never a blanket dir skip - the #451 C2 sibling-reader hole).
 // Plus: the issue-corpus/corpus.js provenance enum must NOT contain `live_pending` (M4), and
 // `live_pending` must never be a `source` token the weight gate admits (weight-inertness).
 //
@@ -31,6 +34,10 @@ const CAUSAL_EDGE_DIR = path.join(PACKAGES, 'lab', 'causal-edge');
 // The single full-path external module admitted as the WRITER (PR-1). A full-path === allowlist, NOT a
 // basename / blanket matcher (so a same-named file in another dir cannot masquerade as the writer).
 const WRITER_FULLPATH = path.join(PACKAGES, 'lab', 'persona-experiment', 'live-draft-run.js');
+// The single full-path external module admitted as the READER (PR-2): the world-anchor mint's
+// floor-builder. It calls listLivePendingLessons. A full-path === allowlist (the LOW-1 exact-set
+// relaxation), NOT a basename / blanket dir skip (so a same-named file elsewhere cannot masquerade as it).
+const READER_FULLPATH = path.join(PACKAGES, 'lab', 'world-anchor', 'world-anchor-mint.js');
 
 // Async-collector harness (matches every sibling causal-edge suite, e.g. weight-source-gate.test.js): a
 // failure reports a count + names the failing test, never throws out at the first assertion.
@@ -59,8 +66,9 @@ function walkJs(dir) {
 // four-form matcher the world-anchor shadow test uses; the distinctive basename is `live-pending-store`.
 const IMPORT_RE = /(?:require\(\s*|import\s+(?:[^;'"]*\sfrom\s+)?|import\(\s*)['"][^'"]*live-pending-store(?:\.js)?['"]/;
 
-// Does this file CALL a reader of the lane (readLivePendingLesson / listLivePendingLessons)? PR-1 admits
-// ZERO production readers. The mint writer is exempt by name (it calls mintLivePendingLesson, NOT a reader).
+// Does this file CALL a reader of the lane (readLivePendingLesson / listLivePendingLessons)? PR-2 admits
+// EXACTLY ONE production reader (world-anchor-mint.js's floor-builder). The mint writer is exempt by name
+// (it calls mintLivePendingLesson, NOT a reader).
 const READER_CALL_RE = /\b(?:readLivePendingLesson|listLivePendingLessons)\s*\(/;
 
 test('SHADOW matcher catches the .js + ESM + dynamic-import forms; no false-positive on an adjacent name', () => {
@@ -77,15 +85,16 @@ test('SHADOW matcher catches the .js + ESM + dynamic-import forms; no false-posi
   assert.ok(!IMPORT_RE.test("require('./live-pending-cli')"), 'no false-positive on an adjacent module name');
 });
 
-test('SHADOW import-graph: the ONLY external importer of live-pending-store is the WRITER (full-path allowlist)', () => {
+test('SHADOW import-graph: the ONLY external importers of live-pending-store are the WRITER + the READER (full-path allowlist)', () => {
   const offenders = [];
   for (const file of walkJs(PACKAGES)) {
     if (file.startsWith(CAUSAL_EDGE_DIR + path.sep)) continue;   // the module + its own siblings may import it
     if (file === WRITER_FULLPATH) continue;                      // the ONE admitted external writer (full-path ===)
+    if (file === READER_FULLPATH) continue;                      // the ONE admitted external reader, PR-2 (full-path ===)
     const src = fs.readFileSync(file, 'utf8');
     if (IMPORT_RE.test(src)) offenders.push(path.relative(REPO, file));
   }
-  assert.deepStrictEqual(offenders, [], `only persona-experiment/live-draft-run.js may import live-pending-store - these also do: ${offenders.join(', ')}`);
+  assert.deepStrictEqual(offenders, [], `only live-draft-run.js (writer) + world-anchor-mint.js (reader) may import live-pending-store - these also do: ${offenders.join(', ')}`);
 });
 
 test('SHADOW import-graph: the admitted writer ACTUALLY imports the store (the allowlist is non-vacuous)', () => {
@@ -95,20 +104,37 @@ test('SHADOW import-graph: the admitted writer ACTUALLY imports the store (the a
   assert.ok(IMPORT_RE.test(src), 'the writer (live-draft-run.js) imports live-pending-store (allowlist is real)');
 });
 
+test('SHADOW import-graph: the admitted reader ACTUALLY imports the store (the PR-2 allowlist is non-vacuous)', () => {
+  // Mirror the writer non-vacuity probe: prove the reader exemption exempts a REAL importer, not a
+  // hypothetical one - otherwise the PR-2 relaxation passes vacuously and would not notice if the
+  // world-anchor mint's floor-builder wire were dropped.
+  const src = fs.readFileSync(READER_FULLPATH, 'utf8');
+  assert.ok(IMPORT_RE.test(src), 'the reader (world-anchor-mint.js) imports live-pending-store (the PR-2 allowlist is real)');
+});
+
 // The full-path of the store's OWN definer (where readLivePendingLesson / listLivePendingLessons are
 // DEFINED + exported). It is the ONLY file exempt from the reader-CALLER scan; every other file -
 // including causal-edge SIBLINGS - must have ZERO reader calls. (The #451 C2 hole: a blanket
 // causal-edge skip makes a same-dir sibling reader invisible. The reader scan must NOT skip the dir.)
 const STORE_DEFINER_FULLPATH = path.join(CAUSAL_EDGE_DIR, 'live-pending-store.js');
 
-test('SHADOW import-graph: ZERO reader-CALLERS of the lane in PR-1 (scan covers causal-edge SIBLINGS too, #451 C2)', () => {
+test('SHADOW import-graph: EXACTLY ONE reader-CALLER of the lane in PR-2 (scan covers causal-edge SIBLINGS too, #451 C2)', () => {
   const offenders = [];
   for (const file of walkJs(PACKAGES)) {
-    if (file === STORE_DEFINER_FULLPATH) continue;   // ONLY the definer is exempt (it defines the readers, not calls them)
+    if (file === STORE_DEFINER_FULLPATH) continue;   // the definer is exempt (it defines the readers, not calls them)
+    if (file === READER_FULLPATH) continue;          // the ONE admitted reader-caller, PR-2 (full-path ===)
     const src = fs.readFileSync(file, 'utf8');
     if (READER_CALL_RE.test(src)) offenders.push(path.relative(REPO, file));
   }
-  assert.deepStrictEqual(offenders, [], `PR-1 adds NO reader of the live-pending lane (siblings included) - these call a reader: ${offenders.join(', ')}`);
+  assert.deepStrictEqual(offenders, [], `PR-2 admits ONLY world-anchor-mint.js as a reader (siblings included) - these also call a reader: ${offenders.join(', ')}`);
+});
+
+test('SHADOW reader allowlist is NON-VACUOUS: world-anchor-mint.js ACTUALLY calls listLivePendingLessons', () => {
+  // Mirror the writer non-vacuity probe (and the planted-sibling probe below): prove the reader
+  // exemption exempts a file that REALLY reads the lane, not a hypothetical one - otherwise the PR-2
+  // reader relaxation passes vacuously and would not notice if the floor-builder's reader call were dropped.
+  const src = fs.readFileSync(READER_FULLPATH, 'utf8');
+  assert.ok(READER_CALL_RE.test(src), 'world-anchor-mint.js calls a reader (listLivePendingLessons) - the reader allowlist is real');
 });
 
 test('SHADOW reader-scan is NON-VACUOUS: a planted SIBLING reader (in causal-edge/) is DETECTED', () => {
@@ -118,12 +144,16 @@ test('SHADOW reader-scan is NON-VACUOUS: a planted SIBLING reader (in causal-edg
   const planted = path.join(CAUSAL_EDGE_DIR, '_dam-nonvacuity-probe.js');
   fs.writeFileSync(planted, "'use strict';\nconst { readLivePendingLesson } = require('./live-pending-store');\nmodule.exports = () => readLivePendingLesson('x');\n");
   try {
-    let detected = false;
+    // Detection must be attributable to the PLANTED sibling, not the admitted reader (world-anchor-mint.js
+    // is a real caller now, so a blanket "any reader detected" check would pass vacuously). Exempt the
+    // definer AND the admitted reader, then assert the planted causal-edge sibling is the offender found.
+    let detectedPlanted = false;
     for (const file of walkJs(PACKAGES)) {
       if (file === STORE_DEFINER_FULLPATH) continue;
-      if (READER_CALL_RE.test(fs.readFileSync(file, 'utf8'))) detected = true;
+      if (file === READER_FULLPATH) continue;
+      if (READER_CALL_RE.test(fs.readFileSync(file, 'utf8')) && file === planted) detectedPlanted = true;
     }
-    assert.strictEqual(detected, true, 'a planted SIBLING reader in causal-edge/ MUST be detected (scan covers siblings)');
+    assert.strictEqual(detectedPlanted, true, 'a planted SIBLING reader in causal-edge/ MUST be detected (scan covers siblings)');
   } finally {
     fs.rmSync(planted, { force: true });
   }

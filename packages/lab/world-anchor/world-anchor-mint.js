@@ -33,10 +33,31 @@
 // the attestation via the same exported derivations). The cross-check catches an HONEST stale attestation
 // / an uncoordinated divergence, NOT a coordinated plant. It SURFACES the disagreement (emit) and STILL
 // mints, binding the KERNEL `record.approval_hash` regardless - a divergence must NOT block a legit mint
-// (a fatal refuse would be BOTH over-strict AND a same-uid denial lever). NAMED residual (hacker H1a):
-// the node's lesson basis (`att.lesson_signature`) is a same-uid substitution lever once item-4's runtime
-// floor lands; today the floor is one entry so the blast radius is one lesson - when the floor grows, the
-// lesson basis needs the same authenticated-minter treatment as the edge.
+// (a fatal refuse would be BOTH over-strict AND a same-uid denial lever).
+//
+// PR-2 (Half A, the captured-lesson MINT-SIDE wire) - WIDENS #273 in a NAMED, bounded way. The lesson
+// floor is now TWO explicit branches that converge only at the final {lesson_signature, lesson_body}:
+//   - Branch A (static grandfather): the issue-bound LESSON_2137 seed, built INSIDE the totality guard.
+//   - Branch B (captured): a content-verified live_pending node (listLivePendingLessons), consumed
+//     VERBATIM - the store content-address-verified it on read; the captured body has NO enum axes on
+//     disk so buildWorldAnchorLesson is impossible on it (the node body comes from the verified record,
+//     NEVER from the open-writable att). The two stay DISTINCT (KISS / security-over-DRY) - different
+//     shapes + trust origins (human-vetted vs same-uid-forgeable).
+// The join is an EXACT-SET (repo-slug, issue_ref, lesson_signature); the matched signature must round-trip
+// the frozen 24-key taxonomy (off-taxonomy-lesson refuse); the floor resolves to EXACTLY ONE candidate or
+// refuses (no-floor-lesson / ambiguous-floor-lesson). The #273 WIDENING (3 dimensions, all tolerable ONLY
+// because weight-INERT + zero trusting readers): (1) the floor grows 1 -> N (the lever the header above
+// named, landing here); (2) the body trust class flips human-vetted-constant -> untrusted model prose
+// (live-lesson-derive output, carrying that module's named vacuous-leak residual); (3) the exact-one join
+// is DEDUP/correctness, NOT authorization - for any uncontested (repo, issue, sig) a same-uid attacker
+// co-forges one captured node + one attestation -> exactly-one match -> the mint world-anchors the
+// attacker body with NO refuse. The protection that ACTUALLY holds = weight-inertness (LIVE_SOURCES=
+// Object.freeze([])) + zero trusting readers; the authenticated edge minter (signed/kernel-writer edges,
+// PR-A2 / item 5) is the missing AuthN + the prerequisite before ANY live_pending node gates a weight or
+// the LIVE_SOURCES flip. Half B (the emit-time attestation-from-capture sourcing) is a DEFERRED named
+// seam: production attestations still carry the static signature, so the captured branch is built +
+// proven but PRODUCTION-INERT today (exactly #454's deriveFn=null posture). A world-anchored merge proves
+// DIFF-ACCEPTANCE, never LESSON-CORRECTNESS (lesson.js:57-62 - the maintainer corrected LESSON_2137).
 //
 // The minter MUST NOT read the kernel join-key store - it reads the merge-outcome record's already-sealed
 // `approval_hash`. The kernel join-key dam (join-key-shadow.test.js REQUIRE_ALLOWLIST = {emit-pr.js,
@@ -48,9 +69,11 @@
 // emit. The cli auto-mint arm treats a mint throw/failure as observable-but-non-fatal (the recorded
 // outcome's exit code stands).
 //
-// Imports: the sibling lab stores (a sibling importer is allowed by the world-anchor/ dam) +
-// kernel/egress/alert (the shared observable signal; lab -> kernel is LEGAL). NO kernel join-key store.
-// NO runtime/kernel STATE. PURE-ish: only the stores' fs I/O + crypto.
+// Imports: the sibling lab stores (a sibling importer is allowed by the world-anchor/ dam) + the
+// causal-edge live-pending store (PR-2 captured floor - the ONE admitted reader by the live-pending dam's
+// full-path allowlist) + causal-edge lesson-signature (the frozen taxonomy, for the off-taxonomy gate) +
+// kernel/egress/alert (the shared observable signal; lab -> kernel + lab -> lab are LEGAL). NO kernel
+// join-key store. NO runtime/kernel STATE. PURE-ish: only the stores' fs I/O + crypto.
 
 'use strict';
 
@@ -59,22 +82,69 @@ const { loadMergeOutcome } = require('./merge-outcome-store');
 const { mintWorldAnchoredNode } = require('./live-recall-store');
 const { writeWorldAnchorEdge, loadWorldAnchorEdge, WORLD_ANCHOR_EDGE_TYPE } = require('./world-anchor-edge-store');
 const { buildWorldAnchorLesson, LESSON_2137 } = require('./lesson');
+const { listLivePendingLessons } = require('../causal-edge/live-pending-store');
+const { lessonClusterKey, TRIGGER_CLASS, GOTCHA_CLASS, CORRECTIVE_CLASS } = require('../causal-edge/lesson-signature');
 const { emitEgressAlert } = require('../../kernel/egress/alert');
 
-// The orchestrator-authored lesson FLOOR (relocated here from cli.js): a STATIC list of seed blocks. The
-// mint NEVER reads a caller-supplied body (hacker H2); it builds each seed INSIDE the guarded mint path
-// and matches the built lesson_signature against the VERIFIED attestation's content_hash-SEALED one. For
-// the MVP this is LESSON_2137 only; item 4's classifier extends this list (append-only, mirroring the
-// frozen taxonomy floor). An attestation whose sealed signature matches no built seed mints nothing
-// (refuse `no-floor-lesson` + emit).
+// The orchestrator-authored STATIC GRANDFATHER floor (relocated here from cli.js): a STATIC list of
+// ISSUE-BOUND seed blocks. PR-2 makes each seed issue-bound (repo + issue_ref) so the captured floor and
+// the grandfather seed share ONE exact-set join key (repo-slug, issue_ref, lesson_signature). The mint
+// NEVER reads a caller-supplied body (hacker H2); it builds each seed INSIDE the guarded mint path and
+// matches the built lesson_signature against the VERIFIED attestation's content_hash-SEALED one. spec-kitty
+// predates the capture lane; this issue-bound seed keeps its mint working (the grandfather). item 4's
+// classifier extends this list (append-only, mirroring the frozen taxonomy floor).
 //
 // CodeRabbit Major (FOLD A): this is a STATIC SEED LIST, NOT a derived-key map. The prior shape
 // (`{ [buildWorldAnchorLesson(SEED).lesson_signature]: SEED }`) called the builder at MODULE-LOAD - a
 // seed/builder regression would throw at REQUIRE, BEFORE the guarded `lesson-build-failed` path,
 // breaking the documented TOTAL/non-fatal contract observe-merge relies on (and it is exactly wrong for
 // item 4, when the floor becomes a runtime classifier map). All building now happens inside the mint's
-// try/catch, so a regression surfaces `lesson-build-failed`/`no-floor-lesson`, never a load-time crash.
-const ORCHESTRATOR_LESSON_SEEDS = Object.freeze([LESSON_2137]);
+// try/catch (collectStaticCandidates below), so a regression surfaces `lesson-build-failed`/
+// `no-floor-lesson`, never a load-time crash.
+const ORCHESTRATOR_LESSON_SEEDS = Object.freeze([
+  Object.freeze({ repo: 'Priivacy-ai/spec-kitty', issue_ref: 2097, seed: LESSON_2137 }),
+]);
+
+// The frozen 24-key taxonomy set (TRIGGER x GOTCHA x CORRECTIVE), derived ONCE at module load over the
+// frozen enums (PURE - no fs/build, so it does NOT break the FOLD-A no-build-at-require invariant). A
+// matched lesson_signature MUST be one of these (MED-1): validateBlock on the captured lane only
+// length-bounds the signature (<=512), so a co-forged node can carry a non-canonical key
+// (lesson:INVALID|...); resolving it would seat an off-taxonomy node in the recall graph (breaking the
+// freeze invariant). A non-canonical MATCH -> refuse off-taxonomy-lesson + emit.
+const CANONICAL_LESSON_SIGNATURES = (() => {
+  const set = new Set();
+  for (const trigger_class of TRIGGER_CLASS) {
+    for (const gotcha_class of GOTCHA_CLASS) {
+      for (const corrective_class of CORRECTIVE_CLASS) {
+        set.add(lessonClusterKey({ trigger_class, gotcha_class, corrective_class }));
+      }
+    }
+  }
+  return set;
+})();
+
+/** Is `sig` one of the 24 canonical lessonClusterKey keys (the frozen taxonomy)? (MED-1) */
+function isCanonicalLessonSignature(sig) { return CANONICAL_LESSON_SIGNATURES.has(sig); }
+
+// The owner/repo slug from EITHER a `https://github.com/owner/repo` URL OR a bare `owner/repo` slug;
+// null for anything else. The JOIN-BUG fix: the attestation `repo` is a SLUG (validateAttestation only
+// length-bounds it; resolveAnchorForPr forces it === the merge record's slug), but the captured lane
+// enforces a URL (GH_REPO_RE -> https://github.com/owner/repo). So `captured.repo === att.repo` is broken
+// by construction. Normalize BOTH sides to the slug before comparing. A non-matching shape -> null (which
+// can never equal another slug, so a malformed repo never joins).
+const GH_URL_SLUG_RE = /^https:\/\/github\.com\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)$/;
+const BARE_SLUG_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+function repoSlug(s) {
+  if (typeof s !== 'string') return null;
+  const m = GH_URL_SLUG_RE.exec(s);
+  const raw = m ? m[1] : (BARE_SLUG_RE.test(s) ? s : null);
+  if (raw === null) return null;
+  // Strip a trailing `.git` (a clone-URL suffix GH_REPO_RE/GH_URL_SLUG_RE both admit via `.` in the
+  // char class). The canonical GH slug has no `.git`, so normalizing it lets a `.git`-form captured repo
+  // and a bare-slug attestation join (VALIDATE M-1/L-1: fail-safe today since the producer emits no
+  // `.git`, folded so a future Half-B producer format never silently splits the lane). One strip, like git.
+  return raw.replace(/\.git$/, '');
+}
 
 /**
  * Emit a namespaced, observable mint-refuse alert. The distinguishing classifier rides `mint_reason` (a
@@ -115,6 +185,47 @@ function mintWorldAnchorEdge(node_id, approvalHash, opts = {}) {
 }
 
 /**
+ * BRANCH A (static grandfather): collect the candidate lesson(s) from the issue-bound STATIC seed floor.
+ * For each seed where the slug + issue_ref + built signature all join the attestation, the candidate body
+ * is the BUILT seed lesson (the FOLD-A no-build-at-require invariant stays: buildLesson runs INSIDE the
+ * caller's try/catch, never at module load). A built lesson is human-vetted (LESSON_2137 was
+ * maintainer-corrected); its trust origin is DISTINCT from a captured lesson (the §4 trust distinction).
+ * @returns {{lesson_signature: string, lesson_body: string, origin: 'static'}[]}
+ */
+function collectStaticCandidates(att, buildLesson) {
+  const out = [];
+  const attSlug = repoSlug(att.repo);
+  for (const seed of ORCHESTRATOR_LESSON_SEEDS) {
+    if (repoSlug(seed.repo) !== attSlug || seed.issue_ref !== att.issueRef) continue;
+    const built = buildLesson(seed.seed);
+    if (built && built.lesson_signature === att.lesson_signature) {
+      out.push({ lesson_signature: built.lesson_signature, lesson_body: built.lesson_body, origin: 'static' });
+    }
+  }
+  return out;
+}
+
+/**
+ * BRANCH B (captured): collect the candidate lesson(s) from the content-verified live_pending floor. A
+ * captured record is consumed VERBATIM - the store already content-address-verified it on read, and the
+ * captured body carries NO enum axes on disk (live-pending buildBody persists only lesson_signature +
+ * lesson_body), so buildWorldAnchorLesson is impossible on it; the verified store body IS the lesson. The
+ * join is the exact-set (repo-slug, issue_ref, lesson_signature) - listLivePendingLessons is TOTAL (never
+ * throws). The node body comes from the content-verified record, NEVER from the open-writable att.
+ * @returns {{lesson_signature: string, lesson_body: string, origin: 'captured'}[]}
+ */
+function collectCapturedCandidates(att, pendingDir) {
+  const out = [];
+  const attSlug = repoSlug(att.repo);
+  for (const rec of listLivePendingLessons({ dir: pendingDir })) {
+    if (repoSlug(rec.repo) === attSlug && rec.issue_ref === att.issueRef && rec.lesson_signature === att.lesson_signature) {
+      out.push({ lesson_signature: rec.lesson_signature, lesson_body: rec.lesson_body, origin: 'captured' });
+    }
+  }
+  return out;
+}
+
+/**
  * Mint a world_anchored lesson NODE + the approval_hash-anchored EDGE from the gh-verified merge-outcome
  * RECORD (#451). The SOLE mint path as of PR-3 (the legacy pasted-sha record-merge mint is removed). It
  * takes ONLY the record's join_key_id; there is NO caller surface for the lesson body / merge_sha /
@@ -122,14 +233,15 @@ function mintWorldAnchorEdge(node_id, approvalHash, opts = {}) {
  * hacker H2). TOTAL: never throws; every refuse is a returned `{minted:false, mint_reason}` + an emit.
  *
  * @param {{join_key_id: string}} args  the merge-outcome record key (a content-addressed HEX64).
- * @param {{anchorDir?: string, outcomeDir?: string, liveDir?: string, edgeDir?: string,
+ * @param {{anchorDir?: string, outcomeDir?: string, liveDir?: string, edgeDir?: string, pendingDir?: string,
  *   edgeSigner?: (id: string) => string|null|undefined, buildLesson?: (seed: object) => object}} [opts]
  *   SYMMETRIC per-store opt keys (hacker M1: a wrong key must not silently fall through to a REAL store):
  *   anchorDir = the world-anchor (attestation) store dir; outcomeDir = the merge-outcome store dir;
- *   liveDir = the live-recall node store dir; edgeDir = the world-anchored-by edge store dir; edgeSigner
- *   = the off-host signer (UNDEFINED in production -> UNSIGNED); buildLesson = the lesson builder (a TEST
- *   seam for the M2 totality path; defaults to buildWorldAnchorLesson). A null/non-object opts is
- *   normalized to {} (TOTAL contract); production passes none (every store defaults to its real dir).
+ *   liveDir = the live-recall node store dir; edgeDir = the world-anchored-by edge store dir; pendingDir =
+ *   the captured live_pending store dir (PR-2 captured floor); edgeSigner = the off-host signer (UNDEFINED
+ *   in production -> UNSIGNED); buildLesson = the static-seed builder (a TEST seam for Branch A's M2
+ *   totality path; defaults to buildWorldAnchorLesson). A null/non-object opts is normalized to {} (TOTAL
+ *   contract); production passes none (every store defaults to its real dir).
  * @returns {{minted: boolean, node_id?: string, deduped?: boolean, mint_reason?: string,
  *   edge_minted?: boolean, edge_id?: string, edge_deduped?: boolean, edge_signed?: boolean, edge_reason?: string}}
  *   `edge_signed:false` is the PRODUCTION invariant (no signer). A consumer MUST read
@@ -144,19 +256,20 @@ function mintFromMergeOutcome(args, opts = {}) {
   const join_key_id = args && typeof args === 'object' && !Array.isArray(args) ? args.join_key_id : undefined;
   const buildLesson = typeof o.buildLesson === 'function' ? o.buildLesson : buildWorldAnchorLesson;
 
-  // FOLD B (CodeRabbit Major): isolation is ALL-OR-NOTHING. The minter reads + writes FOUR stores
-  // (anchorDir/outcomeDir/liveDir/edgeDir); a PARTIAL set silently lets the un-wired stores fall back to
-  // the REAL ~/.claude/lab-state, so a run that LOOKS isolated cross-writes real state. Enforce: the
-  // supported per-store dir keys must be supplied either 0 (production - all real, fully consistent) or 4
-  // (fully isolated). A stray legacy `dir` key (the pre-FOLD-2 attestation key) is rejected outright -
-  // silently ignoring it would let a "dir"-passing caller think it isolated the attestation store. Both
-  // are TOTAL refuses (emit + return; never throw). The correct ISOLATION ROOT for the CLI is
-  // LOOM_LAB_STATE_DIR (each store derives its own subdir natively); these opt keys are the TEST seam.
+  // FOLD B (CodeRabbit Major): isolation is ALL-OR-NOTHING. The minter reads + writes FIVE stores
+  // (anchorDir/outcomeDir/liveDir/edgeDir + pendingDir for the PR-2 captured floor); a PARTIAL set
+  // silently lets the un-wired stores fall back to the REAL ~/.claude/lab-state, so a run that LOOKS
+  // isolated cross-writes real state. Enforce: the supported per-store dir keys must be supplied either 0
+  // (production - all real, fully consistent) or 5 (fully isolated). A stray legacy `dir` key (the
+  // pre-FOLD-2 attestation key) is rejected outright - silently ignoring it would let a "dir"-passing
+  // caller think it isolated the attestation store. Both are TOTAL refuses (emit + return; never throw).
+  // The correct ISOLATION ROOT for the CLI is LOOM_LAB_STATE_DIR (each store derives its own subdir
+  // natively); these opt keys are the TEST seam.
   if ('dir' in o) {
     mintRefuseAlert({ join_key_id, mint_reason: 'unsupported-dir-key' });
     return { minted: false, mint_reason: 'unsupported-dir-key' };
   }
-  const dirKeys = ['anchorDir', 'outcomeDir', 'liveDir', 'edgeDir'];
+  const dirKeys = ['anchorDir', 'outcomeDir', 'liveDir', 'edgeDir', 'pendingDir'];
   const supplied = dirKeys.filter((k) => o[k] !== undefined);
   if (supplied.length !== 0 && supplied.length !== dirKeys.length) {
     mintRefuseAlert({ join_key_id, mint_reason: 'incomplete-dir-wiring', supplied });
@@ -212,26 +325,45 @@ function mintFromMergeOutcome(args, opts = {}) {
     // intentional fall-through: bind record.approval_hash regardless (the kernel-sealed field).
   }
 
-  // 5. lesson lookup by the VERIFIED attestation's content_hash-SEALED lesson_signature (never a caller
-  //    field - hacker H2). BUILD each STATIC floor seed INSIDE the totality guard (FOLD A: no build at
-  //    require-time) and match the built signature against the sealed one. TOTALITY (VERIFY M2): a build
-  //    throw -> emit lesson-build-failed + refuse, NEVER throw (the floor is frozen-validated today, but
-  //    item 4 loads seeds at runtime; a throw here would crash the cli auto-mint arm). No match across
-  //    all seeds -> no-floor-lesson + refuse. The reasons are unchanged.
-  let lesson = null;
+  // 5. TWO-BRANCH lesson resolution (PR-2 CRITICAL-1) on the VERIFIED attestation's content_hash-SEALED
+  //    lesson_signature (never a caller field - hacker H2). Branch A (static grandfather, built INSIDE the
+  //    totality guard - FOLD A no-build-at-require) + Branch B (captured live_pending, consumed verbatim;
+  //    a captured body has NO enum axes on disk so it cannot be rebuilt) converge ONLY at the final
+  //    {lesson_signature, lesson_body}. The two are kept DISTINCT (KISS / security-over-DRY) - different
+  //    shapes + trust origins (human-vetted vs same-uid-forgeable); a premature merge erases the trust
+  //    distinction §4 depends on. TOTALITY (VERIFY M2): a Branch-A build throw -> lesson-build-failed +
+  //    refuse, NEVER throw (item 4 loads seeds at runtime; a throw would crash the cli auto-mint arm).
+  let candidates;
   try {
-    for (const seed of ORCHESTRATOR_LESSON_SEEDS) {
-      const built = buildLesson(seed);
-      if (built && built.lesson_signature === att.lesson_signature) { lesson = built; break; }
-    }
+    candidates = [
+      ...collectStaticCandidates(att, buildLesson),
+      ...collectCapturedCandidates(att, o.pendingDir),
+    ];
   } catch (err) {
     mintRefuseAlert({ join_key_id, anchor_id: resolved.anchor_id, mint_reason: 'lesson-build-failed', detail: (err && err.message) || 'error' });
     return { minted: false, mint_reason: 'lesson-build-failed' };
   }
-  if (!lesson) {
+  // EXACT-SET resolution (mirrors resolveAnchorForPr; never a subset/.includes). 0 -> no-floor-lesson;
+  // the matched signature must round-trip the frozen 24-key taxonomy (MED-1: validateBlock only
+  // length-bounds a captured signature) else off-taxonomy-lesson; >1 -> ambiguous-floor-lesson
+  // (fail-closed: protects the grandfather from silent substitution - a planted competing tuple DENIES a
+  // weight-inert shadow mint, never SUBSTITUTES the body). Each refuse is OBSERVABLE.
+  if (candidates.length === 0) {
     mintRefuseAlert({ join_key_id, anchor_id: resolved.anchor_id, mint_reason: 'no-floor-lesson', lesson_signature: att.lesson_signature });
     return { minted: false, mint_reason: 'no-floor-lesson' };
   }
+  if (!isCanonicalLessonSignature(att.lesson_signature)) {
+    mintRefuseAlert({ join_key_id, anchor_id: resolved.anchor_id, mint_reason: 'off-taxonomy-lesson', lesson_signature: att.lesson_signature });
+    return { minted: false, mint_reason: 'off-taxonomy-lesson' };
+  }
+  if (candidates.length > 1) {
+    mintRefuseAlert({ join_key_id, anchor_id: resolved.anchor_id, mint_reason: 'ambiguous-floor-lesson', lesson_signature: att.lesson_signature, matches: candidates.length });
+    return { minted: false, mint_reason: 'ambiguous-floor-lesson' };
+  }
+  // `lesson.origin` ('static' | 'captured') is a STRUCTURAL trust-discriminator on the candidate (the §4
+  // human-vetted-vs-captured distinction); it is DELIBERATELY not propagated to the node schema (no
+  // consumer needs it yet - VALIDATE L-2). Only {lesson_signature, lesson_body} cross to the store.
+  const lesson = candidates[0];
 
   // 6. node: the gh-verified record.merge_commit_sha is world-EVIDENCE (live-recall-store.js:24), NEVER a
   //    pasted arg. The lesson identity is re-derived from the floor block (== att.lesson_signature).

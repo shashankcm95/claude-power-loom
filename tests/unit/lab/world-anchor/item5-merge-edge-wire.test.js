@@ -39,9 +39,13 @@ let passed = 0;
 function test(name, fn) { fn(); passed += 1; }
 function tmp() { return fs.mkdtempSync(path.join(os.tmpdir(), 'loom-item3-wire-')); }
 
-const REPO_NAME = 'octo/widget';
-const PR_URL = 'https://github.com/octo/widget/pull/77';
-const PR_NUMBER = 77;
+// PR-2 issue-bound the static grandfather floor to (Priivacy-ai/spec-kitty, 2097). The mint happy paths
+// must join THAT tuple (Branch A); the captured floor (pendingDir) stays empty here, so LESSON_SIG (the
+// LESSON_2137 grandfather seed) resolves exactly-one.
+const REPO_NAME = 'Priivacy-ai/spec-kitty';
+const PR_URL = 'https://github.com/Priivacy-ai/spec-kitty/pull/2137';
+const PR_NUMBER = 2137;
+const ISSUE_REF = 2097;   // the grandfather seed's issue_ref (Branch A joins on this)
 const LESSON_SIG = 'lesson:boundary-contract|unguarded-edge-case|handle-edge-explicitly';
 // The KERNEL-SEALED approval_hash (HEX64) the edge binds (the rebind target). DIFFERENT from the
 // attestation's diff_hash so a wire that bound to_delta_ref to att.diff_hash would FORGE the binding.
@@ -54,7 +58,7 @@ const NOW = '2026-06-28T12:00:00.000Z';
 // matches the record so the cross-check is clean. Returns { anchor_id, diff_hash }.
 function attest(dir, over = {}) {
   const att = {
-    repo: REPO_NAME, issueRef: 42,
+    repo: REPO_NAME, issueRef: ISSUE_REF,
     pr_url: PR_URL, pr_number: PR_NUMBER, branch: 'b',
     base_sha: 'f853934b61000ff076cea60c206db225e3ed89f0', diff_hash: FIXTURE_DIFF_HASH,
     lesson_signature: LESSON_SIG,
@@ -83,6 +87,9 @@ function recordOutcome(dir, over = {}) {
 function liveDir(d) { return path.join(d, 'live'); }
 function edgeDir(d) { return path.join(d, 'edges'); }
 function outcomeDir(d) { return path.join(d, 'outcomes'); }
+// PR-2: pendingDir is part of the FOLD-B all-or-nothing dir set (the captured floor store). Empty by
+// default here, so Branch B contributes zero candidates and the grandfather (Branch A) resolves alone.
+function pendingDir(d) { return path.join(d, 'pending'); }
 
 // ---------------------------------------------------------------------------
 // Happy: a merged record mints the node AND an UNSIGNED world-anchored-by edge bound to approval_hash.
@@ -92,7 +99,7 @@ test('a merged record mints the node AND an UNSIGNED world-anchored-by edge', ()
   const dir = tmp();
   attest(dir);
   const jkid = recordOutcome(outcomeDir(dir));
-  const r = mintFromMergeOutcome({ join_key_id: jkid }, { anchorDir: dir, liveDir: liveDir(dir), edgeDir: edgeDir(dir), outcomeDir: outcomeDir(dir) });
+  const r = mintFromMergeOutcome({ join_key_id: jkid }, { anchorDir: dir, liveDir: liveDir(dir), edgeDir: edgeDir(dir), outcomeDir: outcomeDir(dir), pendingDir: pendingDir(dir) });
   assert.strictEqual(r.minted, true, 'the node minted');
   assert.ok(/^[0-9a-f]{64}$/.test(r.node_id), 'a 64-hex live node id');
   assert.strictEqual(r.edge_minted, true, 'the edge minted');
@@ -115,7 +122,7 @@ test('to_delta_ref binds the SEALED record.approval_hash, NEVER att.diff_hash (t
   const { diff_hash } = attest(dir);
   const jkid = recordOutcome(outcomeDir(dir));
   assert.notStrictEqual(APPROVAL_HASH, diff_hash, 'precondition: approval_hash differs from att.diff_hash');
-  const r = mintFromMergeOutcome({ join_key_id: jkid }, { anchorDir: dir, liveDir: liveDir(dir), edgeDir: edgeDir(dir), outcomeDir: outcomeDir(dir) });
+  const r = mintFromMergeOutcome({ join_key_id: jkid }, { anchorDir: dir, liveDir: liveDir(dir), edgeDir: edgeDir(dir), outcomeDir: outcomeDir(dir), pendingDir: pendingDir(dir) });
   const edge = edgeStore.loadWorldAnchorEdge(r.edge_id, { dir: edgeDir(dir) });
   assert.strictEqual(edge.to_delta_ref, APPROVAL_HASH, 'the edge binds the kernel-sealed record.approval_hash');
   assert.notStrictEqual(edge.to_delta_ref, diff_hash, 'the edge NEVER binds att.diff_hash (the old anchor)');
@@ -130,7 +137,7 @@ test('re-mint (same record) DEDUPS the edge - proves recorded_at = record.observ
   const dir = tmp();
   attest(dir);
   const jkid = recordOutcome(outcomeDir(dir));
-  const opts = { anchorDir: dir, liveDir: liveDir(dir), edgeDir: edgeDir(dir), outcomeDir: outcomeDir(dir) };
+  const opts = { anchorDir: dir, liveDir: liveDir(dir), edgeDir: edgeDir(dir), outcomeDir: outcomeDir(dir), pendingDir: pendingDir(dir) };
   const r1 = mintFromMergeOutcome({ join_key_id: jkid }, opts);
   const r2 = mintFromMergeOutcome({ join_key_id: jkid }, opts);
   assert.strictEqual(r1.edge_minted, true, 'first mint mints the edge');
@@ -158,7 +165,7 @@ test('LOOM_EDGE_SIGNING_KEY set, production mint (no edgeSigner) still mints an 
   let r;
   try {
     // the PRODUCTION mint: NO edgeSigner injected -> the store's signer is undefined -> UNSIGNED.
-    r = mintFromMergeOutcome({ join_key_id: jkid }, { anchorDir: dir, liveDir: liveDir(dir), edgeDir: edgeDir(dir), outcomeDir: outcomeDir(dir) });
+    r = mintFromMergeOutcome({ join_key_id: jkid }, { anchorDir: dir, liveDir: liveDir(dir), edgeDir: edgeDir(dir), outcomeDir: outcomeDir(dir), pendingDir: pendingDir(dir) });
   } finally {
     if (prev === undefined) delete process.env.LOOM_EDGE_SIGNING_KEY;
     else process.env.LOOM_EDGE_SIGNING_KEY = prev;
@@ -184,7 +191,7 @@ test('edge_signed is PERSISTED truth: a supplied-but-FAILING signer -> UNSIGNED 
   try {
     r = mintFromMergeOutcome(
       { join_key_id: jkid },
-      { anchorDir: dir, liveDir: liveDir(dir), edgeDir: edgeDir(dir), outcomeDir: outcomeDir(dir), edgeSigner: () => 'not-a-canonical-sig' },
+      { anchorDir: dir, liveDir: liveDir(dir), edgeDir: edgeDir(dir), outcomeDir: outcomeDir(dir), pendingDir: pendingDir(dir), edgeSigner: () => 'not-a-canonical-sig' },
     );
   } finally { process.stderr.write = origErr; }
   assert.strictEqual(r.edge_minted, true, 'the edge still persists (a sign-failure degrades to unsigned, no data loss)');
@@ -225,7 +232,7 @@ test('W3d-lite composition (rehomed): signed edge -> world-anchor -> positive we
     // ---- POSITIVE arm: inject the ephemeral edgeSigner -> a SIGNED edge ----
     const rSigned = mintFromMergeOutcome(
       { join_key_id: jkid },
-      { anchorDir: dir, liveDir: liveDir(dir), edgeDir: edgeDir(dir), outcomeDir: outcomeDir(dir), edgeSigner },
+      { anchorDir: dir, liveDir: liveDir(dir), edgeDir: edgeDir(dir), outcomeDir: outcomeDir(dir), pendingDir: pendingDir(dir), edgeSigner },
     );
     assert.strictEqual(rSigned.edge_minted, true);
     assert.strictEqual(rSigned.edge_signed, true, 'an injected edgeSigner produces a SIGNED edge');
@@ -247,7 +254,7 @@ test('W3d-lite composition (rehomed): signed edge -> world-anchor -> positive we
       const jkid2 = recordOutcome(outcomeDir(dir2));
       const rUnsigned = mintFromMergeOutcome(
         { join_key_id: jkid2 },
-        { anchorDir: dir2, liveDir: liveDir(dir2), edgeDir: edgeDir(dir2), outcomeDir: outcomeDir(dir2) },   // NO edgeSigner
+        { anchorDir: dir2, liveDir: liveDir(dir2), edgeDir: edgeDir(dir2), outcomeDir: outcomeDir(dir2), pendingDir: pendingDir(dir2) },   // NO edgeSigner
       );
       const unsignedEdges = edgeStore.listWorldAnchorEdges({ dir: edgeDir(dir2) });
       const srcProd = edgeStore.deriveWorldAnchorSource({ node_id: rUnsigned.node_id }, unsignedEdges, {});   // no verifyKey

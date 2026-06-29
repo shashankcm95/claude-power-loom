@@ -164,11 +164,12 @@ function parseArgs(argv) {
   return args;
 }
 
-// FOLD B: observe-merge carries NO --dir flag. It reads + writes FOUR stores (merge-outcome + the mint's
-// attestation/node/edge); one --dir cannot sanely serve all four (they collide on <hex64>.json names in
-// one dir), and a partial wiring silently cross-writes REAL ~/.claude/lab-state. The correct isolation
-// root is LOOM_LAB_STATE_DIR (every store derives its own subdir from it natively). The opts seam below
-// is for TESTS only - and it is ALL-OR-NOTHING (the minter's incomplete-dir-wiring guard enforces it).
+// FOLD B: observe-merge carries NO --dir flag. It reads + writes FIVE stores (merge-outcome + the mint's
+// attestation/node/edge + the PR-2 captured-floor live_pending store); one --dir cannot sanely serve all
+// five (they collide on <hex64>.json names in one dir), and a partial wiring silently cross-writes REAL
+// ~/.claude/lab-state. The correct isolation root is LOOM_LAB_STATE_DIR (every store derives its own
+// subdir from it natively). The opts seam below is for TESTS only - and it is ALL-OR-NOTHING (the minter's
+// incomplete-dir-wiring guard enforces it).
 const USAGE = 'Usage: cli.js <observe-merge --pr <url> [--merge-sha <sha>] (gh-verified; the SOLE mint path; isolate via LOOM_LAB_STATE_DIR) | record-merge --pr <url> --outcome merged|closed|stale [--merge-sha <sha>] [--dir <store>] (confirmation-only; mints nothing) | list-live [--live-dir <dir>] | backfill-2137 [--diff <path>] [--dir <store>] [--allow-placeholder]>\n';
 
 function emit(obj) { process.stdout.write(`${JSON.stringify(obj, null, 2)}\n`); }
@@ -181,12 +182,13 @@ function emit(obj) { process.stdout.write(`${JSON.stringify(obj, null, 2)}\n`); 
 //
 // opts is a TEST seam (an injected gh runner + an ALL-OR-NOTHING isolated store set) so tests never shell
 // real gh + never cross-write real state. PRODUCTION passes no opts: runMergeObserve gets no dir + the
-// minter gets none (supplied-count 0 -> all real, fully consistent). A test supplies the COHERENT FOUR:
-// outcomeDir (shared by the observer's record store AND the minter), anchorDir, liveDir, edgeDir - all
-// four or none (the minter's incomplete-dir-wiring guard fail-closes a partial set).
+// minter gets none (supplied-count 0 -> all real, fully consistent). A test supplies the COHERENT FIVE:
+// outcomeDir (shared by the observer's record store AND the minter), anchorDir, liveDir, edgeDir,
+// pendingDir (the PR-2 captured floor) - all five or none (the minter's incomplete-dir-wiring guard
+// fail-closes a partial set).
 // @param {object} args  the parsed argv flags (NO --dir; isolate via LOOM_LAB_STATE_DIR)
 // @param {{ghRunner?: Function, outcomeDir?: string, anchorDir?: string, liveDir?: string, edgeDir?: string,
-//   edgeSigner?: Function, now?: string}} [opts]  the TEST isolation seam; UNDEFINED in production.
+//   pendingDir?: string, edgeSigner?: Function, now?: string}} [opts]  the TEST isolation seam; UNDEFINED in production.
 async function mainObserveMerge(args, opts = {}) {
   // A bare `--merge-sha` (no value) parses to `true` (CodeRabbit Minor): fail-CLOSED on the operator
   // mistake rather than silently dropping the cross-check (which omitting --merge-sha legitimately does).
@@ -217,6 +219,7 @@ async function mainObserveMerge(args, opts = {}) {
           anchorDir: opts.anchorDir,   // the world-anchor attestation store dir (production: default)
           liveDir: opts.liveDir,
           edgeDir: opts.edgeDir,
+          pendingDir: opts.pendingDir, // PR-2 captured-lesson floor store (production: undefined -> default)
           edgeSigner: opts.edgeSigner,
         },
       );

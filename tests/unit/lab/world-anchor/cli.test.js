@@ -234,6 +234,15 @@ test('mintFromAttestation is NO LONGER exported (the legacy mint helper is remov
 const SELF_UID = typeof process.getuid === 'function' ? process.getuid() : null;
 const OBSERVE_SHA40 = 'b'.repeat(40);
 const OBSERVE_APPROVAL = 'd'.repeat(64);
+// PR-2 issue-bound the static grandfather floor to (Priivacy-ai/spec-kitty, 2097). The auto-mint happy
+// path must join THAT tuple (Branch A); the captured floor (pendingDir) stays empty here, so the
+// LESSON_2137 grandfather seed resolves exactly-one. The grandfather tuple, shared by the attestation +
+// the join-key + the observe `pr` arg.
+const GF = Object.freeze({
+  repo: 'Priivacy-ai/spec-kitty', issueRef: 2097, pr_number: 2137,
+  pr_url: 'https://github.com/Priivacy-ai/spec-kitty/pull/2137',
+});
+function pendingDir(store_dir) { return path.join(store_dir, 'pending'); }
 
 function seedJoinKey(over = {}) {
   const rec = {
@@ -253,20 +262,21 @@ const runnerMerged = () => async () => ({ stdout: JSON.stringify({ merged: true,
 
 test('observe-merge on a merged record AUTO-MINTS the node + the edge (the SOLE mint path, PR-3)', async () => {
   clearJoinKeys();
-  // the attestation the minter resolves (same tuple as the join-key)
+  // the attestation the minter resolves (same GRANDFATHER tuple as the join-key; Branch A resolves it)
   const dir = tmp();
-  attest(dir, { approval_hash: OBSERVE_APPROVAL });
-  seedJoinKey();
+  attest(dir, { ...GF, approval_hash: OBSERVE_APPROVAL });
+  seedJoinKey(GF);
   const liveD = liveDir(dir);
   const edgeD = path.join(dir, 'edges');
   const outcomeD = path.join(dir, 'outcomes');
-  // inject the gh runner + the COHERENT FOUR-dir isolation set (FOLD B: all-or-nothing; the minter
+  const pendingD = pendingDir(dir);   // PR-2: part of the all-or-nothing FIVE-dir set (empty -> Branch B 0)
+  // inject the gh runner + the COHERENT FIVE-dir isolation set (FOLD B: all-or-nothing; the minter
   // fail-closes a partial set). outcomeDir is shared by the observer's record store + the minter; the
   // attestation store IS the tmp root (attest(dir) wrote there). We drive the dedicated arm function
   // with the injected runner (main() reads argv + has no --dir flag now).
   const r = await cli.mainObserveMerge(
-    { pr: 'https://github.com/octo/widget/pull/77' },
-    { ghRunner: runnerMerged(), outcomeDir: outcomeD, anchorDir: dir, liveDir: liveD, edgeDir: edgeD, now: '2026-06-28T12:00:00.000Z' },
+    { pr: GF.pr_url },
+    { ghRunner: runnerMerged(), outcomeDir: outcomeD, anchorDir: dir, liveDir: liveD, edgeDir: edgeD, pendingDir: pendingD, now: '2026-06-28T12:00:00.000Z' },
   );
   assert.strictEqual(r.code, 0, 'observe-merge exits 0');
   assert.strictEqual(r.payload.ok, true, 'the record succeeded');
@@ -286,16 +296,17 @@ test('observe-merge on a merged record AUTO-MINTS the node + the edge (the SOLE 
 test('observe-merge auto-mint is NON-FATAL: a mint failure leaves the record success exit code (additive)', async () => {
   clearJoinKeys();
   const dir = tmp();
-  attest(dir, { approval_hash: OBSERVE_APPROVAL });
-  seedJoinKey();
+  attest(dir, { ...GF, approval_hash: OBSERVE_APPROVAL });
+  seedJoinKey(GF);
   const liveD = liveDir(dir);
   const outcomeD = path.join(dir, 'outcomes');
+  const pendingD = pendingDir(dir);   // PR-2: part of the all-or-nothing FIVE-dir set (empty -> Branch B 0)
   // edgeDir is a regular FILE -> the edge mint fails; the node still mints; the record success stands.
   const badEdgeDir = path.join(dir, 'edge-as-file');
   fs.writeFileSync(badEdgeDir, 'not a dir', { mode: 0o600 });
   const r = await cli.mainObserveMerge(
-    { pr: 'https://github.com/octo/widget/pull/77' },
-    { ghRunner: runnerMerged(), outcomeDir: outcomeD, anchorDir: dir, liveDir: liveD, edgeDir: badEdgeDir, now: '2026-06-28T12:00:00.000Z' },
+    { pr: GF.pr_url },
+    { ghRunner: runnerMerged(), outcomeDir: outcomeD, anchorDir: dir, liveDir: liveD, edgeDir: badEdgeDir, pendingDir: pendingD, now: '2026-06-28T12:00:00.000Z' },
   );
   assert.strictEqual(r.code, 0, 'the record success exit code stands despite the edge-mint failure');
   assert.strictEqual(r.payload.ok, true, 'the recorded outcome is untouched');
