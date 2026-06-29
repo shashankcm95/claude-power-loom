@@ -1,10 +1,17 @@
 'use strict';
 
-// tests/unit/lab/causal-edge/judge-labeler-armed-guard.test.js — #430 PR-1: the armed-window guard on the FOUR
-// host-side judge/labeler/deriver `claude -p` chokepoints (the #412 follow-on for the non-actor host spawns).
-// Each refuses to spawn while a live emit is ARMED — a prompt-injected judge reaching a shell as uid-501 could
-// `sudo -n -u loom-broker` and mint an approval. NON-VACUOUS: a mocked-armed source drives the RED refusal AND a
-// spawnFn spy proves NO spawn fires; the not-armed path proves the spawn still runs (byte-identity preserved).
+// tests/unit/lab/causal-edge/judge-labeler-armed-guard.test.js - #430 PR-1: the armed-window guard on the FIVE
+// host-side judge/labeler/deriver `claude -p` chokepoints (the #412 follow-on for the non-actor host spawns;
+// the 5th is the item-3-live live-lesson deriver leg). Each refuses to spawn while a live emit is ARMED - a
+// prompt-injected judge reaching a shell as uid-501 could `sudo -n -u loom-broker` and mint an approval.
+// NON-VACUOUS: a mocked-armed source drives the RED refusal AND a spawnFn spy proves NO spawn fires; the
+// not-armed path proves the spawn still runs (byte-identity preserved).
+
+// HERMETIC: a DEPLOYED box may carry /etc/loom/actor-anthropic.key (the cross-uid deployed-marker), which makes
+// defaultJudgeLauncher REFUSE `deployed-unconfigured` before any spawn, so the NOT-armed cases (which assert the
+// spawn RUNS) would false-fail. Point the marker at a nonexistent path so the direct-launch path is exercised
+// regardless of the host (a clean CI box has no such marker; this only neutralizes a deployed dev box).
+process.env.LOOM_ACTOR_KEY_MARKER = '/nonexistent/loom/marker.key';
 
 const assert = require('assert');
 const fs = require('fs');
@@ -16,6 +23,7 @@ const friction = require(path.join(CE, 'trajectory-friction-run.js'));
 const calibIssue = require(path.join(CE, 'calibration-issue-run.js'));
 const calibRun = require(path.join(CE, 'calibration-run.js'));
 const lesson = require(path.join(CE, '_spike', 'lesson-capture-rerun.js'));
+const liveLessonRun = require(path.join(CE, 'live-lesson-derive-run.js'));   // item-3-live leg 1 - the 5th chokepoint
 
 let passed = 0; let failed = 0;
 const tests = [];
@@ -25,6 +33,13 @@ function captureStderr(fn) {
   process.stderr.write = (chunk) => { lines.push(String(chunk)); return true; };
   let ret; try { ret = fn(); } finally { process.stderr.write = orig; }
   return { ret, err: lines.join('') };
+}
+// async-aware variant (the live-lesson deriver leg returns a Promise) - AWAIT the fn before restoring stderr
+// so a deferred emit is captured and we never capture-a-promise (fold 8 stderr hygiene).
+async function captureStderrAsync(fn) {
+  const orig = process.stderr.write; const lines = [];
+  process.stderr.write = (chunk) => { lines.push(String(chunk)); return true; };
+  try { const ret = await fn(); return { ret, err: lines.join('') }; } finally { process.stderr.write = orig; }
 }
 function spySpawn(stdout) {
   const calls = [];
@@ -81,12 +96,45 @@ test('rung2-judge (claudePJudge): NOT armed => the spawn runs + parses the verdi
   assert.strictEqual(r.supported, true, 'the verdict parses on a clean run');
 });
 
-test('all four chokepoints share the SAME guard reason (the polarity lives in one leaf)', () => {
+test('all five chokepoints share the SAME guard reason (the polarity lives in one leaf)', async () => {
   const reasons = new Set();
   for (const { call } of ONCE) { const { ret } = captureStderr(() => call({ isEmitArmedFn: ARMED, spawnFn: spySpawn() })); reasons.add(ret.reason); }
   const judge = calibRun.makeClaudePJudge({ bin: '/stub/claude', promptSpec: 's', isEmitArmedFn: ARMED, spawnFn: spySpawn() });
   reasons.add(captureStderr(() => judge(EDGE)).ret.fallback_reason);
-  assert.deepStrictEqual([...reasons], [GUARD_REASON], 'one shared guard reason across all four');
+  // the 5th chokepoint maps {ok:false}->null so it cannot join the reason-Set via a return value; assert it via
+  // the EMITTED alert instead (it routes through the SAME assertHostClaudeAllowed leaf -> the same guard token).
+  const leg = liveLessonRun.makeLiveLessonDeriver({ bin: '/stub/claude', isEmitArmedFn: ARMED, spawnFn: spySpawn() });
+  const { err } = await captureStderrAsync(() => leg(LIVE_LEG_INPUT));
+  assert.ok(err.includes(GUARD_REASON), 'the 5th chokepoint emits the shared guard reason (it returns null, so assert via the emitted alert)');
+  assert.deepStrictEqual([...reasons], [GUARD_REASON], 'one shared guard reason across all five');
+});
+
+// --- item-3-live leg 1: the 5th chokepoint (makeLiveLessonDeriver) routes through the SAME armed guard ---
+// The new live-lesson deriver leg ingests attacker-influenced public-issue text and spawns a host-side
+// `claude -p` - it MUST refuse while a live emit is ARMED (the #430 mint-vector). makeLiveLessonDeriver
+// delegates to calibration-issue-run's claudeOnce (the host-guarded single-home); we drive the armed state
+// via the documented TEST-ONLY isEmitArmedFn seam and the spawnFn spy proves NO spawn while armed.
+const LIVE_LEG_INPUT = Object.freeze({
+  problem_statement_digest: '0123456789abcdef', candidate_patch_sha: 'a'.repeat(64), semantic_supported: true,
+  friction: { friction_class: 'wrong-file', friction_phase: 'localization', detection_leg: 'semantic-lens', _diagnostic: { human_message: 'attacker text', expected: null, observed: null } },
+});
+
+test('live-lesson-deriver leg (5th chokepoint): ARMED => null + NO spawn (routes through assertHostClaudeAllowed)', async () => {
+  const spy = spySpawn('{"trigger_class":"boundary-contract","gotcha_class":"unguarded-edge-case","corrective_class":"fail-closed","lesson_body":"x"}\n');
+  const leg = liveLessonRun.makeLiveLessonDeriver({ bin: '/stub/claude', isEmitArmedFn: ARMED, spawnFn: spy });
+  const { ret: r, err } = await captureStderrAsync(() => leg(LIVE_LEG_INPUT));
+  assert.strictEqual(r, null, 'the leg refuses (null) while armed - fail-closed to the deriveLiveLesson benign null');
+  assert.strictEqual(spy.calls.length, 0, 'live-lesson-deriver: NO spawn while armed (non-vacuity)');
+  assert.ok(err.includes(GUARD_REASON), 'the 5th chokepoint emits the shared guard reason');
+});
+
+test('live-lesson-deriver leg (5th chokepoint): NOT armed => the spawn runs (byte-identity preserved)', async () => {
+  const spy = spySpawn('{"trigger_class":"boundary-contract","gotcha_class":"unguarded-edge-case","corrective_class":"fail-closed","lesson_body":"guard the edge"}\n');
+  const leg = liveLessonRun.makeLiveLessonDeriver({ bin: '/stub/claude', isEmitArmedFn: NOT_ARMED, spawnFn: spy });
+  const r = await leg(LIVE_LEG_INPUT);
+  assert.strictEqual(spy.calls.length, 1, 'live-lesson-deriver: spawn runs when not armed');
+  assert.ok(spy.calls[0].args.includes('--strict-mcp-config'), 'the tool-less recipe rode (non-overridable pin)');
+  assert.ok(r && r.trigger_class === 'boundary-contract', 'a clean verdict maps onto the floor');
 });
 
 test('CI invariant: every host-side `claude -p` spawn in packages/lab is GUARDED (host-claude-guard) or explicitly allowlisted', () => {

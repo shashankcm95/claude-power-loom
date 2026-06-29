@@ -257,6 +257,38 @@ test('H5: with REAL judges, a passing preflight (ok:true) proceeds PAST the gate
   assert.strictEqual(report.fatal, 'containment-unattested:docker-unavailable', 'gate passed; loop proceeded to (and failed at) the env preflight');
 });
 
+// === item-3-live leg 1 - the real live-lesson deriver flips ON only on the !judgesInjected path ===
+test('leg1: judges INJECTED + no lessonLegFn => NO real leg built, NO claude spawn, preflight SKIPPED (the test path is inert)', async () => {
+  // The wiring builds the real leg ONLY when `!judgesInjected` (the real-run path). loopDeps() injects BOTH
+  // judges, so judgesInjected===true: the real makeLiveLessonDeriver() must never be constructed/spawned, and
+  // the H5 preflight stays skipped. This pins the architect HIGH (do not regress H5 by building a real leg in
+  // the test path). A real spawn would error out (no claude bin / it would NOT be silent) - the run completing
+  // cleanly with the (null-friction) capture proves no real leg fired.
+  let verifyCalled = false;
+  const dir = mkArtifacts();
+  const report = await runLiveDraftLoop({
+    records: [REC], artifactsDir: dir, runId: 'leg1-inert', now: 1,
+    deps: loopDeps({
+      verifyToollessFn: () => { verifyCalled = true; return { ok: true, tools: [] }; },
+      solveFn: async () => ({ ok: true, candidate: BENIGN_DIFF, costUsd: 0.01, redacted: false }),
+    }),
+  });
+  assert.strictEqual(verifyCalled, false, 'preflight is SKIPPED (judges injected => the real-leg path is never taken)');
+  assert.strictEqual(report.fatal, null, 'the loop ran to completion with no real claude spawn');
+  const o = report.outcomes[0];
+  assert.strictEqual(o.ok, true, 'the draft still writes on the inert test path');
+  // null-friction grade => ineligible => no lesson; crucially NO real leg was built/spawned to get here.
+  assert.strictEqual(o.lesson_captured, false, 'no lesson captured (null friction => ineligible; the real leg never ran)');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('leg1: the wiring imports makeLiveLessonDeriver from the -run module (the real deriveFn producer)', () => {
+  assert.ok(/makeLiveLessonDeriver/.test(MODULE_SRC), 'live-draft-run.js references makeLiveLessonDeriver');
+  assert.ok(/require\(['"]\.\.\/causal-edge\/live-lesson-derive-run['"]\)/.test(MODULE_SRC), 'imports it from ../causal-edge/live-lesson-derive-run');
+  // and the leg is guarded on !judgesInjected (the real leg never builds on the injected test path).
+  assert.ok(/!judgesInjected/.test(MODULE_SRC) && /lessonLegFn/.test(MODULE_SRC), 'the leg is gated on !judgesInjected and threaded as lessonLegFn');
+});
+
 // === item-3-live PR-1 — the draft-time live-solve lesson CAPTURE branch (D3) ===
 // FAIL-SOFT + OUTCOME-PURE: a derive/write/throw NEVER aborts the record (the draft still writes); the
 // outcome gains additive observable fields lesson_captured:bool + lesson_reason:<closed-enum>. The
