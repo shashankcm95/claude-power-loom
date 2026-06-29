@@ -25,7 +25,12 @@ function isHex64(v) { return typeof v === 'string' && HEX64.test(v); }
 
 // the exact top-level ctx shape recordApproval threads to signFn: { emission, approvedAt, nonce, key_id,
 // lesson_commitment } (OQ-3 grew the exact-set to 5; a 4-key ctx now fails the shape check fail-closed).
-const CTX_KEYS = ['emission', 'approvedAt', 'nonce', 'key_id', 'lesson_commitment'];
+// FROZEN: CTX_KEYS is the exported fail-closed authorization-shape policy validateCtxShape reads (length + every
+// hasOwnProperty). A bare exported array is MUTABLE — an in-process consumer could `CTX_KEYS.push('x')` to widen
+// the accepted key set so a forged 6-key ctx slips the gate. Object.freeze removes that runtime policy-widening
+// vector (no behavior change; the validator reads the frozen array identically). Mirrors the same freeze applied
+// to the sibling edge-bind module's exported ctx-key policy (same exported-mutable-array class).
+const CTX_KEYS = Object.freeze(['emission', 'approvedAt', 'nonce', 'key_id', 'lesson_commitment']);
 
 function isPlainObject(v) {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -73,10 +78,16 @@ function validateCtxShape(ctx) {
  *              an uncomputable emission, or a recompute mismatch (incl. a forged `hash` field).
  */
 function authorizeRequest(opts = {}) {
-  const claimedBasis = opts.claimedBasis;
+  // fail-closed completeness: the `= {}` default only catches `undefined`, so authorizeRequest(null) (or an array /
+  // non-object) would THROW on the property reads below instead of denying — a fail-closed authorization gate must
+  // DENY a bad call, never crash. Normalize any non-plain-object to {} so it denies claimed-basis-not-hex64.
+  // Mirrors loom-edge-bind.js (PR-A2b W2a) + world-anchor-mint.js. (Unreachable from loom-broker-sign.js today,
+  // which constructs the opts — defense-in-depth / TOTAL-contract completeness, not a live bug.)
+  const o = opts && typeof opts === 'object' && !Array.isArray(opts) ? opts : {};
+  const claimedBasis = o.claimedBasis;
   if (!isHex64(claimedBasis)) return deny('claimed-basis-not-hex64');
 
-  const raw = opts.presentedCtxRaw;
+  const raw = o.presentedCtxRaw;
   if (typeof raw !== 'string' || raw.length === 0) return deny('no-ctx-presented');
 
   let ctx;

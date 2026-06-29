@@ -118,6 +118,35 @@ test('OQ-3: a 4-key ctx (lesson_commitment MISSING) -> deny ctx-shape-mismatch (
   assert.strictEqual(r.reason, 'ctx-shape-mismatch', 'a missing lesson_commitment fails the exact-set key check');
 });
 
+// === fail-closed completeness: a null / non-object / array opts DENIES, never throws ===
+
+test('a null / non-object / array opts -> deny claimed-basis-not-hex64 (fail-closed, never throws)', () => {
+  // NON-VACUOUS: the `opts = {}` default only catches `undefined`, so opts=null (or an array / scalar) would throw
+  // a TypeError on the property reads (probed) without the normalize. A fail-closed gate must DENY a bad call, not
+  // crash. Prove doesNotThrow AND that the decision is a clean fail-closed deny.
+  for (const bad of [null, 0, 'str', [], [1, 2], true]) {
+    assert.doesNotThrow(() => B.authorizeRequest(bad), `authorizeRequest(${JSON.stringify(bad)}) must not throw`);
+    const r = B.authorizeRequest(bad);
+    assert.strictEqual(r.decision, 'deny', `${JSON.stringify(bad)} -> deny`);
+    assert.strictEqual(r.reason, 'claimed-basis-not-hex64', `${JSON.stringify(bad)} -> claimed-basis-not-hex64`);
+    assert.strictEqual(r.basisToSign, null, `${JSON.stringify(bad)} -> no signable basis`);
+  }
+  // the no-arg call (opts=undefined, the `= {}` default path) also denies cleanly
+  assert.strictEqual(B.authorizeRequest().reason, 'claimed-basis-not-hex64');
+});
+
+// === the exported CTX_KEYS authorization-shape policy is FROZEN (no runtime policy-widening) ===
+
+test('CTX_KEYS is frozen — a consumer cannot push to widen the accepted key set (length stays 5)', () => {
+  // NON-VACUOUS: this file is strict-mode, so a push to a frozen array THROWS (it does not silently no-op). The
+  // attack this blocks: CTX_KEYS.push('x') would let a forged 6-key ctx pass validateCtxShape's length + every-
+  // hasOwnProperty gate. Prove the freeze, prove the push fails RED, and prove the length is unchanged.
+  assert.strictEqual(Object.isFrozen(B.CTX_KEYS), true, 'the exported authorization-shape policy must be frozen');
+  assert.strictEqual(B.CTX_KEYS.length, 5);
+  assert.throws(() => { B.CTX_KEYS.push('x'); }, TypeError, 'pushing to the frozen array must throw in strict mode');
+  assert.strictEqual(B.CTX_KEYS.length, 5, 'the key set is unchanged after the rejected push');
+});
+
 (async () => {
   for (const { name, fn } of tests) {
     try { await fn(); process.stdout.write(`  PASS ${name}\n`); passed += 1; }
