@@ -33,6 +33,13 @@ const store = require(path.join(REPO, 'packages', 'lab', 'world-anchor', 'world-
 const outcomeStore = require(path.join(REPO, 'packages', 'lab', 'world-anchor', 'merge-outcome-store.js'));
 const liveStore = require(path.join(REPO, 'packages', 'lab', 'world-anchor', 'live-recall-store.js'));
 const edgeStore = require(path.join(REPO, 'packages', 'lab', 'world-anchor', 'world-anchor-edge-store.js'));
+// PR-A2a (RFC S5.5 steps 1+2) - the mint-side authentication. The kernel primitives the mint verifies
+// the persisted broker_sig + re-derives the commitment against (lab -> kernel, all legal). The test
+// signs a REAL broker_sig with a generated keypair so the authenticated happy path verifies live.
+const att = require(path.join(REPO, 'packages', 'kernel', '_lib', 'edge-attestation.js'));
+const { approvalSigBasis } = require(path.join(REPO, 'packages', 'kernel', 'egress', 'approval.js'));
+const { computeLessonCommitment } = require(path.join(REPO, 'packages', 'kernel', '_lib', 'lesson-commitment.js'));
+const { buildWorldAnchorLesson, LESSON_2137 } = require(path.join(REPO, 'packages', 'lab', 'world-anchor', 'lesson.js'));
 
 let passed = 0;
 function test(name, fn) { fn(); passed += 1; }
@@ -121,6 +128,42 @@ function recordOutcome(dir, over = {}) {
   const w = outcomeStore.recordMergeOutcome(rec, { dir });
   assert.strictEqual(w.ok, true, `fixture merge-outcome lands (got ${w.reason})`);
   return w.join_key_id;
+}
+
+// ---------------------------------------------------------------------------
+// PR-A2a authentication fixtures (RFC S5.5 steps 1+2). A real ed25519 keypair signs the broker_sig over
+// the EXACT approvalSigBasis the mint reconstructs, so the authenticated happy path verifies LIVE.
+// ---------------------------------------------------------------------------
+
+// One keypair for the whole suite: publicKeyPem is the custody verify key threaded as opts.verifyKeyPem;
+// privateKeyPem signs the broker_sig basis (the broker's half).
+const { publicKeyPem: VERIFY_KEY_PEM, privateKeyPem: BROKER_KEY_PEM } = att.generateEdgeKeypair();
+
+// The grandfather lesson the mint's Branch A resolves: buildWorldAnchorLesson(LESSON_2137) yields the
+// SCRUBBED body (lesson.js:45 scrubs internally), the identical {lesson_signature, lesson_body} the mint
+// seats into the node. So the body-binding commitment MUST be computed over THIS built body (F4) - never
+// an arbitrary 'e'.repeat(64) (validBundle's deliberately non-verifying default).
+const BUILT_LESSON = buildWorldAnchorLesson(LESSON_2137);
+const BUILT_COMMITMENT = computeLessonCommitment({
+  lesson_signature: BUILT_LESSON.lesson_signature,
+  lesson_body: BUILT_LESSON.lesson_body,
+});
+assert.strictEqual(BUILT_LESSON.lesson_signature, LESSON_SIG, 'precondition: the built grandfather signature is LESSON_SIG');
+
+// Build a broker-signed merge-outcome bundle: sign the EXACT approvalSigBasis the mint reconstructs from
+// the record ({hash: approval_hash, approvedAt, nonce, key_id, lesson_commitment}). The basis param maps
+// record.approval_hash -> `hash`. The signer is signRecordId (the basis is a 64-hex content-address).
+// `commitment` defaults to the built-lesson commitment (the happy path); pass '' for the OQ3-5 grandfather.
+function signedBundle(over = {}) {
+  const lesson_commitment = over.lesson_commitment === undefined ? BUILT_COMMITMENT : over.lesson_commitment;
+  const approval_hash = over.approval_hash || APPROVAL;
+  const approvedAt = over.approvedAt === undefined ? 1735430400000 : over.approvedAt;
+  const nonce = over.nonce === undefined ? 'nonce-abc' : over.nonce;
+  const key_id = over.key_id === undefined ? 'v0' : over.key_id;
+  const basis = approvalSigBasis({ hash: approval_hash, approvedAt, nonce, key_id, lesson_commitment });
+  const broker_sig = att.signRecordId(basis, { privateKeyPem: BROKER_KEY_PEM });
+  assert.ok(typeof broker_sig === 'string' && broker_sig.length > 0, 'fixture broker_sig signs');
+  return { lesson_commitment, approvedAt, nonce, key_id, broker_sig };
 }
 
 // ---------------------------------------------------------------------------
@@ -485,6 +528,195 @@ test('SHADOW header invariant: world-anchor-mint.js names SHADOW + #273 + LIVE_S
   assert.ok(/#273/.test(src), 'the header carries the #273 integrity-not-provenance residual');
   assert.ok(/LIVE_SOURCES/.test(src), 'the header references the LIVE_SOURCES / authenticated-minter prerequisite');
   assert.ok(/defense-in-depth/i.test(src), 'the cross-check is framed as defense-in-depth, not provenance');
+});
+
+// ===========================================================================
+// PR-A2a (RFC S5.5 steps 1+2) - mint-side broker_sig verify + commitment re-derive (SHADOW, weight-inert).
+// Authentication engages on opts.verifyKeyPem presence; fail-closed when engaged, observable when skipped.
+// ===========================================================================
+
+function fullDirs(dir) {
+  return { anchorDir: dir, liveDir: liveDir(dir), edgeDir: edgeDir(dir), outcomeDir: outcomeDir(dir), pendingDir: pendingDir(dir) };
+}
+
+// --- authenticated happy path: real keypair + real broker_sig + the built-lesson commitment ---
+test('AUTHENTICATED happy path: a verified broker_sig + matching commitment mints; auth_observed:true, commitment_verified:true, edge still UNSIGNED', () => {
+  const dir = tmp();
+  attest(dir);
+  // override BOTH lesson_commitment AND broker_sig (F4: validBundle defaults are non-verifying by design)
+  const jkid = recordOutcome(outcomeDir(dir), signedBundle());
+  const { r, alerts } = captureAlerts(() => mintFromMergeOutcome(
+    { join_key_id: jkid },
+    { ...fullDirs(dir), verifyKeyPem: VERIFY_KEY_PEM },
+  ));
+  assert.strictEqual(r.minted, true, 'the authenticated mint succeeds');
+  assert.strictEqual(r.auth_observed, true, 'auth_observed:true - the broker_sig verified');
+  assert.strictEqual(r.commitment_verified, true, 'commitment_verified:true - the body re-derive matched');
+  assert.strictEqual(r.edge_signed, false, 'the edge stays UNSIGNED (PR-A2a does not sign the outbound edge)');
+  assert.strictEqual(r.edge_minted, true, 'the edge minted');
+  assert.ok(/^[0-9a-f]{64}$/.test(r.node_id), 'a 64-hex node id');
+  // engaged + verified -> NO unauthenticated/refuse emit fires on the happy path
+  assert.ok(!alerts.some((a) => JSON.stringify(a).includes('world-anchor-mint-unauthenticated')), 'no unauthenticated emit on the authenticated path');
+  assert.ok(!alerts.some((a) => JSON.stringify(a).includes('live-recall-mint-refused')), 'no refuse emit on the authenticated happy path');
+  // F1: neither flag enters the persisted node OR edge schema (return-shape only)
+  const node = liveStore.readLiveNode(r.node_id, { dir: liveDir(dir) });
+  assert.ok(node, 'the node is readable');
+  assert.ok(!('auth_observed' in node), 'the persisted node carries NO auth_observed key (return-shape only)');
+  assert.ok(!('commitment_verified' in node), 'the persisted node carries NO commitment_verified key');
+  const edge = edgeStore.loadWorldAnchorEdge(r.edge_id, { dir: edgeDir(dir) });
+  assert.ok(edge, 'the edge is readable');
+  assert.ok(!('auth_observed' in edge), 'the persisted edge carries NO auth_observed key');
+  assert.ok(!('commitment_verified' in edge), 'the persisted edge carries NO commitment_verified key');
+});
+
+// --- broker-sig-invalid (NON-VACUOUS): a shape-valid-but-wrong sig fail-closes + emits + writes NOTHING ---
+test('broker-sig-invalid (NON-VACUOUS): a wrong broker_sig + verifyKeyPem refuses, emits, mints NO node/edge', () => {
+  const dir = tmp();
+  attest(dir);
+  // the default validBundle broker_sig is crypto.randomBytes(64) (shape-valid base64, NEVER a valid sig);
+  // lesson_commitment defaults to 'e'.repeat(64). With a verify key engaged, step 1 must refuse.
+  const jkid = recordOutcome(outcomeDir(dir));   // validBundle defaults -> non-verifying broker_sig
+  const { r, alerts } = captureAlerts(() => mintFromMergeOutcome(
+    { join_key_id: jkid },
+    { ...fullDirs(dir), verifyKeyPem: VERIFY_KEY_PEM },
+  ));
+  assert.strictEqual(r.minted, false, 'a wrong broker_sig refuses');
+  assert.strictEqual(r.mint_reason, 'broker-sig-invalid', 'the refuse reason is broker-sig-invalid');
+  assert.ok(alerts.some((a) => JSON.stringify(a).includes('broker-sig-invalid')), 'the broker-sig-invalid refuse is observable');
+  // non-vacuous: the refuse runs BEFORE the node mint -> nothing written
+  assert.strictEqual(liveStore.listLiveNodes({ dir: liveDir(dir) }).length, 0, 'no node minted on a broker-sig-invalid refuse');
+  assert.strictEqual(edgeStore.listWorldAnchorEdges({ dir: edgeDir(dir) }).length, 0, 'no edge minted on a broker-sig-invalid refuse');
+});
+
+// --- lesson-commitment-mismatch (NON-VACUOUS): step 1 passes (sig over C) but step 2 (body -> C' != C) refuses ---
+test('lesson-commitment-mismatch (NON-VACUOUS): a real sig over a commitment that is NOT the built body refuses at step 2', () => {
+  const dir = tmp();
+  attest(dir);
+  // a 64-hex commitment that is NOT the built-lesson commitment; the broker_sig is REAL over that C, so
+  // step 1 verifies, but step 2's re-derive (the built body -> C' != C) refuses.
+  const WRONG_C = 'f'.repeat(64);
+  assert.notStrictEqual(WRONG_C, BUILT_COMMITMENT, 'precondition: WRONG_C != the built-lesson commitment');
+  const jkid = recordOutcome(outcomeDir(dir), signedBundle({ lesson_commitment: WRONG_C }));
+  const { r, alerts } = captureAlerts(() => mintFromMergeOutcome(
+    { join_key_id: jkid },
+    { ...fullDirs(dir), verifyKeyPem: VERIFY_KEY_PEM },
+  ));
+  assert.strictEqual(r.minted, false, 'a commitment mismatch refuses');
+  assert.strictEqual(r.mint_reason, 'lesson-commitment-mismatch', 'the refuse reason is lesson-commitment-mismatch');
+  assert.ok(alerts.some((a) => JSON.stringify(a).includes('lesson-commitment-mismatch')), 'the mismatch refuse is observable');
+  // non-vacuous: step 2 runs AFTER lesson resolution but BEFORE the node mint -> no node written
+  assert.strictEqual(liveStore.listLiveNodes({ dir: liveDir(dir) }).length, 0, 'no node minted on a commitment mismatch');
+});
+
+// --- un-authenticated SHADOW (no key): mints UNSIGNED, both flags false, the observable skip emit fires ---
+test('un-authenticated SHADOW (no verifyKeyPem): mints UNSIGNED, auth_observed:false, commitment_verified:false, emits world-anchor-mint-unauthenticated (F2 non-vacuous)', () => {
+  const dir = tmp();
+  attest(dir);
+  const jkid = recordOutcome(outcomeDir(dir));   // no signed bundle needed; auth not engaged
+  const { r, alerts } = captureAlerts(() => mintFromMergeOutcome(
+    { join_key_id: jkid },
+    fullDirs(dir),   // NO verifyKeyPem -> un-authenticated SHADOW
+  ));
+  assert.strictEqual(r.minted, true, 'the un-authenticated mint still succeeds (SHADOW-safe)');
+  assert.strictEqual(r.auth_observed, false, 'auth_observed:false - not engaged');
+  assert.strictEqual(r.commitment_verified, false, 'commitment_verified:false - not engaged');
+  assert.strictEqual(r.edge_signed, false, 'the edge is UNSIGNED');
+  // F2: the observable-skip emit fires on EVERY un-armed mint (a NON-VACUOUS asserted invariant)
+  assert.ok(alerts.some((a) => JSON.stringify(a).includes('world-anchor-mint-unauthenticated')), 'the un-authenticated skip is observable');
+});
+
+// --- OQ3-5 no-commitment grandfather: sig over the '' basis verifies, step 2 skipped, admitted-and-observed ---
+test('OQ3-5 no-commitment grandfather: record.lesson_commitment="" + a real "" -basis sig -> mints, auth_observed:true, commitment_verified:false, emits world-anchor-mint-uncommitted-lesson', () => {
+  const dir = tmp();
+  attest(dir);
+  // a broker_sig over the '' -commitment basis (a legitimate no-lesson approval). Step 1 verifies; step 2
+  // is SKIPPED (there is no committed body to bind); commitment_verified stays false.
+  const jkid = recordOutcome(outcomeDir(dir), signedBundle({ lesson_commitment: '' }));
+  const { r, alerts } = captureAlerts(() => mintFromMergeOutcome(
+    { join_key_id: jkid },
+    { ...fullDirs(dir), verifyKeyPem: VERIFY_KEY_PEM },
+  ));
+  assert.strictEqual(r.minted, true, 'the grandfather is admitted on its broker-sig provenance');
+  assert.strictEqual(r.auth_observed, true, 'auth_observed:true - the broker_sig verified over the "" basis');
+  assert.strictEqual(r.commitment_verified, false, 'commitment_verified:false - the body was NOT bound (no committed lesson)');
+  assert.ok(alerts.some((a) => JSON.stringify(a).includes('world-anchor-mint-uncommitted-lesson')), 'the uncommitted-lesson skip is observable');
+  // and NO mismatch refuse fired (the skip is admit, not refuse)
+  assert.ok(!alerts.some((a) => JSON.stringify(a).includes('lesson-commitment-mismatch')), 'no commitment-mismatch refuse on the "" grandfather (it is skipped, not compared)');
+});
+
+// --- auth-verify-error (F3 non-vacuous): a throwing primitive -> a fail-closed refuse + emit, never a crash ---
+test('auth-verify-error (F3): a throwing approvalSigBasis -> refuse auth-verify-error + emit, NEVER throws (TOTAL)', () => {
+  const dir = tmp();
+  attest(dir);
+  const jkid = recordOutcome(outcomeDir(dir), signedBundle());
+  // The mint DESTRUCTURES approvalSigBasis at load, so a post-load monkeypatch of the kernel export is not
+  // observed by the already-bound reference. To exercise step 1's catch we patch the kernel module's export
+  // to THROW, then re-require a FRESH mint instance (clearing both from the require cache) so it
+  // re-destructures the throwing function. Restore both afterward (NEVER leak the patch to other tests).
+  const APPROVAL_FILE = path.join(REPO, 'packages', 'kernel', 'egress', 'approval.js');
+  const approvalMod = require(APPROVAL_FILE);
+  const origBasis = approvalMod.approvalSigBasis;
+  let r;
+  let alerts;
+  try {
+    approvalMod.approvalSigBasis = () => { throw new Error('boom-basis'); };
+    delete require.cache[require.resolve(MINT_FILE)];
+    const freshMint = require(MINT_FILE).mintFromMergeOutcome;   // re-destructures the throwing approvalSigBasis
+    const cap = captureAlerts(() => {
+      assert.doesNotThrow(() => {
+        r = freshMint({ join_key_id: jkid }, { ...fullDirs(dir), verifyKeyPem: VERIFY_KEY_PEM });
+      });
+    });
+    alerts = cap.alerts;
+  } finally {
+    approvalMod.approvalSigBasis = origBasis;
+    delete require.cache[require.resolve(MINT_FILE)];
+    require(MINT_FILE);   // restore the canonical (un-patched) mint instance to the cache
+  }
+  assert.strictEqual(r.minted, false, 'a throwing primitive refuses (TOTAL - never crashes)');
+  assert.strictEqual(r.mint_reason, 'auth-verify-error', 'the refuse reason is auth-verify-error');
+  assert.ok(alerts.some((a) => JSON.stringify(a).includes('auth-verify-error')), 'the auth-verify-error refuse is observable (emit BEFORE return, never silent)');
+  assert.strictEqual(liveStore.listLiveNodes({ dir: liveDir(dir) }).length, 0, 'no node minted on an auth-verify-error');
+});
+
+// --- allowEnvFallback:false (H1 regression): the ambient LOOM_EDGE_VERIFY_KEY must NEVER select the verify key ---
+test('H1 (allowEnvFallback:false): an ambient LOOM_EDGE_VERIFY_KEY does NOT verify the sig; engaged-with-wrong-key -> broker-sig-invalid', () => {
+  const dir = tmp();
+  attest(dir);
+  // sign the bundle with the suite broker key, but engage the mint with a DIFFERENT verify key while the
+  // ambient env holds the MATCHING public key. allowEnvFallback:false must forbid the env from rescuing it.
+  const jkid = recordOutcome(outcomeDir(dir), signedBundle());
+  const other = att.generateEdgeKeypair();
+  const prevEnv = process.env.LOOM_EDGE_VERIFY_KEY;
+  process.env.LOOM_EDGE_VERIFY_KEY = VERIFY_KEY_PEM;   // the env holds the key that WOULD verify the sig
+  let r;
+  let alerts;
+  try {
+    const cap = captureAlerts(() => mintFromMergeOutcome(
+      { join_key_id: jkid },
+      { ...fullDirs(dir), verifyKeyPem: other.publicKeyPem },   // engaged with the WRONG key
+    ));
+    r = cap.r;
+    alerts = cap.alerts;
+  } finally {
+    if (prevEnv === undefined) delete process.env.LOOM_EDGE_VERIFY_KEY; else process.env.LOOM_EDGE_VERIFY_KEY = prevEnv;
+  }
+  assert.strictEqual(r.minted, false, 'the env key must NOT rescue a wrong injected verify key');
+  assert.strictEqual(r.mint_reason, 'broker-sig-invalid', 'engaged with the wrong key -> broker-sig-invalid (env fallback forbidden)');
+  assert.ok(alerts.some((a) => JSON.stringify(a).includes('broker-sig-invalid')), 'the H1-blocked refuse is observable');
+  assert.strictEqual(liveStore.listLiveNodes({ dir: liveDir(dir) }).length, 0, 'no node minted (the env key never selected)');
+});
+
+// --- the existing un-authenticated default path is still TOTAL: the new branches never crash the no-key mint ---
+test('TOTAL with the new branches: the default (no verifyKeyPem) mint never throws and returns the documented shape', () => {
+  const dir = tmp();
+  attest(dir);
+  const jkid = recordOutcome(outcomeDir(dir));
+  let r;
+  assert.doesNotThrow(() => { r = mintFromMergeOutcome({ join_key_id: jkid }, fullDirs(dir)); });
+  for (const k of ['minted', 'node_id', 'deduped', 'edge_minted', 'edge_id', 'edge_signed', 'auth_observed', 'commitment_verified']) {
+    assert.ok(k in r, `the return shape carries ${k}`);
+  }
 });
 
 console.log(`world-anchor-mint.test.js: ${passed} passed`);
