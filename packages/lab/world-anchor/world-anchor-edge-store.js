@@ -38,21 +38,23 @@
 // DEPLOYED cross-uid vehicle + accumulated world-anchored merges + the operator's out-of-band uid
 // attestation HARDEN (OQ-NS-6: merged code NARROWS; deployment + the world-anchored signal HARDENS).
 //
-// Imports: kernel/_lib (canonical-json, deep-freeze, safe-resolve) + kernel/_lib/edge-attestation
-// (the ed25519 SHAPE + verify primitive) + kernel/egress/alert (the shared observable signal).
-// lab -> kernel is the LEGAL direction. NO runtime/kernel STATE. PURE-ish: only fs I/O + crypto.
+// Imports: kernel/_lib (deep-freeze, safe-resolve, world-anchor-edge-id) + kernel/_lib/edge-attestation
+// (the ed25519 SHAPE + verify primitive) + kernel/egress/alert (the shared observable signal). lab -> kernel
+// is the LEGAL direction. NO runtime/kernel STATE. PURE-ish: only fs I/O (the edge-id sha256 + canonical-json
+// now live in kernel/_lib/world-anchor-edge-id, the single source this store imports + re-exports).
 
 'use strict';
 
-const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { canonicalJsonSerialize } = require('../../kernel/_lib/canonical-json');
 const { deepFreeze } = require('../../kernel/_lib/deep-freeze');
 const { currentUid } = require('../../kernel/_lib/safe-resolve');
 const { emitEgressAlert } = require('../../kernel/egress/alert');
 const { isCanonicalBase64, verifyEdgeSig, SIG_ALG } = require('../../kernel/_lib/edge-attestation');
+// PR-A2b W2a: the edge-id seal moved to kernel/_lib (the SINGLE SOURCE) so this store (writer/verifier) AND
+// the kernel egress bind (recompute) import ONE recipe - byte-parity by construction, no drift. Re-exported below.
+const { deriveWorldAnchorEdgeId } = require('../../kernel/_lib/world-anchor-edge-id');
 
 // The source token a world-anchored-by edge earns. Deliberately NOT 'signed-lane' (the confirmed-by
 // lane's marker, item-source.js:35) and NOT 'mock'. PR-B adds THIS token to LIVE_SOURCES as a NEW
@@ -86,8 +88,6 @@ const SIGNED_KEYS = Object.freeze([...UNSIGNED_KEYS, 'sig_alg', 'edge_sig']);
 function storeDir(opts) { return (opts && opts.dir) || DEFAULT_DIR; }
 /** True when `st`'s owner uid differs from `selfUid` (a foreign-owned file; skipped when selfUid is null). */
 function isForeign(st, selfUid) { return selfUid !== null && st.uid !== selfUid; }
-/** 64-hex sha256 of a string. */
-function sha256hex(s) { return crypto.createHash('sha256').update(s).digest('hex'); }
 /** Emit a namespaced, observable egress alert for a refuse/anomaly path (fail-closed must be observable). */
 function alert(reason, detail) { emitEgressAlert(`world-anchor-edge-${reason}`, detail || {}); }
 
@@ -97,23 +97,10 @@ function alert(reason, detail) { emitEgressAlert(`world-anchor-edge-${reason}`, 
  */
 function isHex64(v) { return typeof v === 'string' && HEX64.test(v); }
 
-/**
- * deriveWorldAnchorEdgeId(rec) -> 64-hex sha256 over the IDENTITY basis (from + to + type). recorded_at
- * is NOT in the basis (a different-time re-record dedups to the same file); sig_alg / edge_sig are NOT
- * in the basis (a signed edge shares its unsigned twin's id - the recall-edge-store rationale). A
- * flipped endpoint / type perturbs the id (tamper-evident: the edge has no free-prose field, so the
- * derived id IS the seal - no separate content_hash needed).
- * @param {{from_node_id, to_delta_ref, edge_type}} rec
- * @returns {string} 64-hex edge_id
- */
-function deriveWorldAnchorEdgeId(rec) {
-  const r = rec || {};
-  return sha256hex(canonicalJsonSerialize([
-    r.from_node_id == null ? '' : String(r.from_node_id),
-    r.to_delta_ref == null ? '' : String(r.to_delta_ref),
-    r.edge_type == null ? '' : String(r.edge_type),
-  ]));
-}
+// deriveWorldAnchorEdgeId is imported from kernel/_lib/world-anchor-edge-id (PR-A2b W2a, the single source)
+// and re-exported below. The recipe (from + to + type, null->'' coercion, recorded_at / sig OUTSIDE the basis)
+// moved kernel-ward UNCHANGED so this store and the kernel egress bind cannot drift; the store still uses it
+// for verify-on-write/read + dedup exactly as before.
 
 /**
  * Throws unless `dir` exists, is a real (non-symlink) directory owned by selfUid. VALIDATE BEFORE
@@ -460,6 +447,9 @@ function deriveWorldAnchorSource(node, worldAnchorEdges, opts) {
 }
 
 module.exports = {
+  // Re-exported from kernel/_lib/world-anchor-edge-id (the canonical single source, PR-A2b W2a). This stays
+  // the store's public API + every existing test imports it FROM HERE - external consumers keep importing it
+  // from this store; do NOT drop the re-export.
   deriveWorldAnchorEdgeId,
   writeWorldAnchorEdge,
   loadWorldAnchorEdge,
