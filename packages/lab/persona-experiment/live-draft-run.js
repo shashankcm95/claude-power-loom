@@ -28,6 +28,7 @@ const { materialize: materializePersona } = require('./persona-prompt-materializ
 // writes). scrubLabSecrets + sidecarSha give the candidate_patch_sha on the SCRUBBED candidate (matching
 // lesson-capture.js's convention so the PR-2 join agrees on scrubbed-vs-raw).
 const { isLiveLessonEligible, deriveLiveLesson } = require('../causal-edge/live-lesson-derive');
+const { makeLiveLessonDeriver } = require('../causal-edge/live-lesson-derive-run');   // item-3-live leg 1 - the real claude -p deriveFn producer
 const { mintLivePendingLesson } = require('../causal-edge/live-pending-store');
 const { sidecarSha } = require('../attribution/candidate-sidecar');
 const { scrubLabSecrets } = require('../_lib/scrub-lab-secrets');
@@ -232,9 +233,10 @@ async function solveGradeDraftOne(ctx) {
   // or absent injection still runs the REAL defaults (the capture is fail-soft so a real-default failure
   // is one observable field, never a record abort).
   const lessonEligibleFn = (ctx.deps && ctx.deps.lessonEligibleFn) || isLiveLessonEligible;
-  // The default deriver binds deriveLiveLesson to the (PR-1: absent) real claude -p leg via ctx.deps.
-  // lessonLegFn. With no leg configured, deriveLiveLesson(input, undefined) returns null (no leg, no
-  // lesson) - the real-leg wiring + prompt tuning is PR-2/spike scope (out of scope here).
+  // The default deriver binds deriveLiveLesson to the real claude -p leg via ctx.deps.lessonLegFn. item-3-live
+  // leg 1 wires that leg as the default ON THE REAL-RUN PATH ONLY (runLiveDraftLoop builds it guarded on
+  // !judgesInjected, so the test/DI path stays inert): with a leg configured, deriveLiveLesson(input, leg)
+  // spawns the tool-less, host-guarded leg; with none (the injected test path) it returns null (no leg, no lesson).
   const lessonLegFn = (ctx.deps && ctx.deps.lessonLegFn) || null;
   const lessonDeriveFn = (ctx.deps && ctx.deps.lessonDeriveFn)
     || ((input) => deriveLiveLesson(input, lessonLegFn));
@@ -347,6 +349,17 @@ async function runLiveDraftLoop({
     }
   }
 
+  // item-3-live leg 1 - flip the real live-lesson deriver leg ON, REAL-RUN PATH ONLY. Built ONCE here
+  // (resolveClaude() at build time, shared across records) and ONLY when !judgesInjected - the test/DI path
+  // (both judges mocked) never constructs/spawns a real leg, so the H5 preflight skip (keyed on judgesInjected,
+  // UNCHANGED) and the injected test path stay inert. The leg is a 5th host-side claude -p chokepoint
+  // (armed-guard + tool-less pin live inside makeLiveLessonDeriver). PRESENCE check (NOT `||`): an explicit
+  // deps.lessonLegFn (including `null` = "no leg") ALWAYS wins; a `||` would silently override an explicit null
+  // with the real default (VALIDATE MED fold).
+  const lessonLegFn = Object.prototype.hasOwnProperty.call(deps, 'lessonLegFn')
+    ? deps.lessonLegFn                                              // explicit deps.lessonLegFn (incl. null = "no leg") always wins
+    : (!judgesInjected ? makeLiveLessonDeriver({}) : null);         // real default ONLY on the live path
+
   let env;
   try { env = await preflightEnv({ dockerBin, image, deps }); }
   catch (e) { report.fatal = 'preflight-threw:' + ((e && e.message) || 'error'); return finalizeReport(report, artifactsDir); }
@@ -361,7 +374,11 @@ async function runLiveDraftLoop({
     try {
       outcome = await solveGradeDraftOne({
         record: recs[i], env, artifactsDir, solveFn, gradeFn, emitFn, semanticFn, frictionFn,
-        model, timeout, ledgerPath, runId, maxBudgetUsd: capUsd, dockerBin, image, deps, now,
+        model, timeout, ledgerPath, runId, maxBudgetUsd: capUsd, dockerBin, image,
+        // item-3-live leg 1 - thread the resolved leg via the deps spread. lessonLegFn was resolved above by a
+        // hasOwnProperty presence check, so it already equals an explicit deps.lessonLegFn (incl. null) when the
+        // caller set one, else the live-path default; overwriting deps.lessonLegFn here is identity-preserving.
+        deps: { ...deps, lessonLegFn }, now,
       });
     } catch (e) {
       // F4 - the loop-level catch ALSO stamps the classify fields so the "classify fields on
