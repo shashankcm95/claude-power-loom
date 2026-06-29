@@ -192,8 +192,18 @@ function bodiesEqual(a, b) {
  * verifies. A signer that yields a non-canonical / mis-shaped sig is OBSERVABLE (a distinct emit) and
  * the edge persists UNSIGNED (no data loss - an integrity-only edge is still valid). Every refuse path
  * is OBSERVABLE.
+ *
+ * PR-A2b W1: the signer now ALSO receives the RECOMPUTE BODY (the 2nd arg) - the EXACT identity basis
+ * deriveWorldAnchorEdgeId hashes ({from_node_id, to_delta_ref, edge_type}), a FRESH FROZEN object built
+ * from `rec` (never a reference to it). A future W2 cross-uid broker recomputes
+ * deriveWorldAnchorEdgeId(edgeBody) === edge_id BEFORE signing, closing the sign-arbitrary-64-hex oracle.
+ * The store still NEVER inspects/trusts that body (buildBody builds from `rec`). HONESTY GUARD (#273):
+ * this delivers the body only; it changes NO trust property in production (signer:undefined, so edgeBody
+ * is never even constructed) - a W2 broker's recompute-and-refuse closes the sign-arbitrary-64-hex oracle
+ * but does NOT make from_node_id authoritative; that needs the PR-B weight-minter's full-tuple commitment.
  * @param {{from_node_id, to_delta_ref, edge_type, recorded_at}} rec
- * @param {{dir?: string, selfUid?: number|null, signer?: (id: string) => string|null|undefined}} [opts]
+ * @param {{dir?: string, selfUid?: number|null,
+ *   signer?: (id: string, edgeBody: {from_node_id, to_delta_ref, edge_type}) => string|null|undefined}} [opts]
  *   any non-canonical-string signer output (null/undefined/number/throw) is treated as a sign failure
  * @returns {{ok: boolean, edge_id?: string, deduped?: boolean, reason?: string}}
  */
@@ -211,8 +221,21 @@ function writeWorldAnchorEdge(rec, opts = {}) {
   // future PR-A2 vehicle failure is observable, not a silent degrade to integrity-only).
   let sig = null;
   if (typeof opts.signer === 'function') {
+    // PR-A2b W1: hand the signer the RECOMPUTE BODY (arg2) alongside the edge_id (arg1). edgeBody is the
+    // EXACT identity basis deriveWorldAnchorEdgeId hashes ({from, to, type}) - NOT recorded_at / edge_id /
+    // sig - so a future Wave-2 cross-uid broker can recompute deriveWorldAnchorEdgeId(edgeBody) === edge_id
+    // BEFORE signing (the sign-arbitrary-64-hex oracle close). A FRESH FROZEN object, never a reference to
+    // or mutation of `rec` (the immutability discipline): an untrusted signer cannot reach back into the
+    // caller's input or the body the store persists. The store still NEVER inspects/trusts this body -
+    // buildBody below builds from `rec`, not edgeBody. SHADOW: production passes signer:undefined so this
+    // body is never even constructed; it changes NO trust property in production (W2's recompute does).
+    const edgeBody = Object.freeze({
+      from_node_id: rec.from_node_id,
+      to_delta_ref: rec.to_delta_ref,
+      edge_type: rec.edge_type,
+    });
     let out = null;
-    try { out = opts.signer(edge_id); } catch { out = null; }
+    try { out = opts.signer(edge_id, edgeBody); } catch { out = null; }
     if (typeof out === 'string' && isCanonicalBase64(out)) sig = out;
     else alert('sign-failed', { edge_id });
   }

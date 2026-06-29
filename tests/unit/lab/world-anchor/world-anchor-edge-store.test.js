@@ -112,6 +112,98 @@ test('a signed edge shares its unsigned twin edge_id (sig is OUTSIDE the basis)'
   assert.ok(isCanonicalBase64(back.edge_sig), 'the signed edge persists a canonical-base64 sig');
 });
 
+// ---------------------------------------------------------------------------
+// PR-A2b W1: the signer is invoked with (edge_id, edgeBody) - the recompute body a future
+// cross-uid broker will hash via deriveWorldAnchorEdgeId(edgeBody) === edge_id BEFORE signing.
+// This wave DELIVERS the body only (changes NO trust property: production passes signer:undefined
+// so edgeBody is never even constructed). Three guarantees:
+//   A (the contract): arg1 === edge_id; arg2 deep-equals the EXACT 3-key identity basis
+//      { from_node_id, to_delta_ref, edge_type } (the deriveWorldAnchorEdgeId basis, NOT recorded_at /
+//      edge_id / sig); deriveWorldAnchorEdgeId(arg2) === arg1 (the body reproduces the id - the W2
+//      recompute precondition).
+//   B (backward-compat, NON-VACUOUS): a ONE-ARG signer (ignoring arg2) still produces a persisted,
+//      crypto-verifiable signed edge - the widen does not break the existing one-arg contract.
+//   C (immutability): arg2 is a FRESH frozen object - a signer mutating it changes NEITHER the
+//      on-disk body NOR the caller's input rec.
+// ---------------------------------------------------------------------------
+
+test('A: the signer receives (edge_id, edgeBody) where edgeBody is the EXACT 3-key identity basis that re-derives the id', () => {
+  const dir = tmp();
+  const { privateKeyPem } = generateEdgeKeypair();
+  const seen = { args: null };
+  // a spy signer: capture (arg1, arg2), return a VALID sig over the id (the existing helper).
+  const spy = (id, body) => { seen.args = [id, body]; return signEdgeId(id, { privateKeyPem }); };
+  const input = rec();
+  const w = store.writeWorldAnchorEdge(input, { dir, signer: spy });
+  assert.strictEqual(w.ok, true, 'the spy-signed edge writes');
+  assert.ok(seen.args, 'the signer was invoked');
+  const [arg1, arg2] = seen.args;
+  // arg1 is the derived edge_id
+  assert.strictEqual(arg1, w.edge_id, 'arg1 is the edge_id');
+  assert.strictEqual(arg1, store.deriveWorldAnchorEdgeId(input), 'arg1 is the derived id over the input basis');
+  // arg2 is the EXACT 3-key identity basis (deep equality + the precise key-set, F3)
+  assert.deepStrictEqual(arg2, {
+    from_node_id: input.from_node_id,
+    to_delta_ref: input.to_delta_ref,
+    edge_type: input.edge_type,
+  }, 'arg2 deep-equals the { from_node_id, to_delta_ref, edge_type } basis');
+  assert.deepStrictEqual(Object.keys(arg2).sort(), ['edge_type', 'from_node_id', 'to_delta_ref'], 'arg2 carries EXACTLY the 3 basis keys (F3 exact-set)');
+  // the W2 recompute precondition: the body reproduces the id
+  assert.strictEqual(store.deriveWorldAnchorEdgeId(arg2), arg1, 'deriveWorldAnchorEdgeId(edgeBody) === edge_id (the W2 recompute-and-refuse precondition)');
+  // recorded_at / edge_id / sig are ABSENT from the recompute body (NOT in the identity basis)
+  assert.strictEqual('recorded_at' in arg2, false, 'recorded_at is NOT in the recompute body (outside the identity basis)');
+  assert.strictEqual('edge_id' in arg2, false, 'edge_id is NOT in the recompute body');
+  assert.strictEqual('sig' in arg2, false, 'sig is NOT in the recompute body');
+  assert.strictEqual('edge_sig' in arg2, false, 'edge_sig is NOT in the recompute body');
+});
+
+test('B: a ONE-ARG signer (ignoring arg2) still produces a persisted, crypto-verifiable signed edge (backward-compat, non-vacuous)', () => {
+  const dir = tmp();
+  const { privateKeyPem, publicKeyPem } = generateEdgeKeypair();
+  // a ONE-ARG signer: it never reads arg2, exactly the pre-widen call shape.
+  const oneArg = (id) => signEdgeId(id, { privateKeyPem });
+  const fromId = 'a'.repeat(64);
+  const w = store.writeWorldAnchorEdge(rec({ from_node_id: fromId }), { dir, signer: oneArg });
+  assert.strictEqual(w.ok, true, 'the one-arg-signed edge writes');
+  const back = store.loadWorldAnchorEdge(w.edge_id, { dir });
+  assert.ok(back, 'the signed edge loads back');
+  assert.strictEqual(back.sig_alg, SIG_ALG, 'the one-arg signer still persists sig_alg (widen did not break it)');
+  assert.ok(isCanonicalBase64(back.edge_sig), 'the persisted sig is canonical base64');
+  // NON-VACUOUS: the persisted sig actually CRYPTO-VERIFIES (the authenticated lane admits it).
+  const ids = store.authenticatedWorldAnchorIds([back], { verifyKey: publicKeyPem });
+  assert.strictEqual(ids.has(fromId), true, 'the one-arg-signed edge is crypto-verifiable + admitted (non-vacuous)');
+});
+
+test('C: edgeBody (arg2) is FROZEN - a mutating signer changes NEITHER the on-disk body NOR the caller input rec', () => {
+  const dir = tmp();
+  const { privateKeyPem } = generateEdgeKeypair();
+  const input = rec();
+  const snapshot = { ...input };                                  // a pre-call copy of the caller input
+  let wasFrozen = null;
+  let seenBody = null;
+  // a signer that TRIES to mutate arg2 two ways (overwrite a basis key + add an extra key), then signs.
+  const mutating = (id, body) => {
+    seenBody = body;
+    wasFrozen = Object.isFrozen(body);
+    try { body.from_node_id = 'x'; } catch { /* frozen: the assignment throws in strict mode (expected) */ }
+    try { body.extra = 1; } catch { /* frozen: refused */ }
+    return signEdgeId(id, { privateKeyPem });
+  };
+  const w = store.writeWorldAnchorEdge(input, { dir, signer: mutating });
+  assert.strictEqual(w.ok, true, 'the edge writes despite the signer mutation attempt');
+  assert.strictEqual(wasFrozen, true, 'edgeBody (arg2) is frozen (Object.isFrozen === true)');
+  // edgeBody is a FRESH object, not the caller input frozen in place (CodeRabbit fold: prove freshness,
+  // not just frozen-ness — else the store could freeze rec in place + pass it and this test still pass).
+  assert.notStrictEqual(seenBody, input, 'edgeBody is a fresh object, not the caller input');
+  assert.strictEqual(Object.isFrozen(input), false, 'the caller input is not frozen as a side effect');
+  // the caller input rec is UNCHANGED (the store built a fresh body, never a reference to rec)
+  assert.deepStrictEqual(input, snapshot, 'the caller input rec is unchanged by the signer mutation');
+  // the persisted on-disk body carries the GENUINE from_node_id (not the attempted 'x') + no 'extra' key.
+  const back = store.loadWorldAnchorEdge(w.edge_id, { dir });
+  assert.strictEqual(back.from_node_id, snapshot.from_node_id, 'the persisted from_node_id is the genuine value (mutation had no effect)');
+  assert.strictEqual('extra' in back, false, 'no injected extra key reaches disk');
+});
+
 test('mint dedups idempotently: an identical re-write is ok+deduped, never a second file', () => {
   const dir = tmp();
   const w1 = store.writeWorldAnchorEdge(rec(), { dir });
