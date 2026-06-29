@@ -675,6 +675,52 @@ The apex of the North-Star: an EXTERNAL maintainer merging a PR an autonomous SD
 
 **Status: ARMED + first egress proven (own-repo).** The network path works end-to-end — an own-repo egress dogfood emitted a real gated DRAFT PR with a byte-faithful post-image (the dogfood PR has since been closed). Two BLOCKERs stand before a real EXTERNAL PR: the cross-uid `loom-broker` is built but **not deployed** (so the approval is integrity-only and the human-gate is not yet a real authorization boundary), and `gh-emit` reconstructs **new-file adds only** (a real modify-diff is not yet emittable). These plus the runtime-residual measurements are tracked in the **beta-readiness checklist** ([`packages/specs/plans/2026-06-23-beta-readiness-checklist.md`](../packages/specs/plans/2026-06-23-beta-readiness-checklist.md), issues #404–#410) — no real external PR until every BLOCKER closes. Per OQ-NS-6 only an external maintainer-merge HARDENS trust.
 
+## Phase-close sign-off (autonomous-SDE capture wire, 2026-06-29)
+
+The autonomous-SDE **capture-return wire** (gap-map items 1-3 + the item-3-live sub-ladder) reached
+**mechanism-complete in SHADOW**. Phase-internal arc within ③.2 (no version bump — all lab/weight-inert;
+the release surface correctly holds at v3.11).
+
+**Arc:** #447 (egress join-key) -> #451 (gh-verified merge-observer) -> #452 (rebind + unify mint)
+-> #454 (live-solve capture) -> #455 (mint-side captured floor) -> #456 (emit-side attest-from-capture
+producer) -> #457 (leg 1, the real `claude -p` deriver; `lessonLegFn` null->real on the live-run path).
+
+**3-lens verdict: CLOSEABLE** (PM/honesty + Principal-SDE + Architect — all CLOSEABLE).
+
+| Exit criterion | Verdict |
+|---|---|
+| EC1 — capture->emit->merge->world-anchor mechanism complete + deriver LIVE | MET |
+| EC2 — arc stays SHADOW + weight-inert (`LIVE_SOURCES=Object.freeze([])`; no captured signal reaches an action-gating weight) | MET (hard-probed: `buildRankingWeights`/`admitWeightForRanking` have ZERO production callers) |
+| EC3 — #273 honestly OPEN across all 7 PRs; same-uid co-forge survives; PR-A2 the close | MET (every store header names the residual; exact-sets self-labeled DEDUP-not-AUTHZ) |
+
+**Closing inputs:** 3a release-surface PASS (all surfaces at v3.11; shadow-lab, no bump). 3b docs brought
+current (gap-map status-accretion banner; `packages/lab/README.md` refreshed to an index; this note). 3c
+test-tier: added an in-process full-arc integration test (capture -> observe -> mint with real stores +
+injected gh + mock deriveFn); the true external e2e (real `claude -p` deriver + real GitHub merge) is a
+NAMED residual (external boundary, not faked).
+
+**Carry-forward (gates the next rung / named forward-contracts — NOT this arc):**
+
+- **PR-A2 is RFC-premature (OQ-2)** — the edge-minting seam is clean + ready (`mintWorldAnchorEdge` is the
+  sole edge writer, injectable `edgeSigner`), but no lab-derived weight gates a live action yet, so a signed
+  edge would protect a signal nobody reads. **Sequence: RFC the first real weight-gate (which weight, which
+  action, what the edge authenticates) -> then PR-A2 as its in-arc prerequisite, before the `LIVE_SOURCES`
+  flip (PR-B).**
+- **Kernel control-char band** — tighten the C0-only (`<0x20`) band in `kernel/egress/join-key-store.js` +
+  `emit-pr.js` (a live network sink) to DEL+C1, matching the #456 lab copy. Kernel wave; before any free-text
+  field widens on the live egress path.
+- **Two repo-join disciplines** (repoSlug-normalized captured lane vs raw-exact attestation/merge-outcome) —
+  fails safe today; fold `repoSlug` into `resolveAnchorForPr` + the merge-outcome write boundary (one
+  normalizer at every store boundary) before a non-slug producer lands.
+- **`lesson.origin`** ('static'|'captured') is computed but not propagated to the node schema (VALIDATE L-2)
+  — evaluate before the `LIVE_SOURCES` flip.
+- **Orphan grandfather** (`ca648110` / `record-merge`) — document the explicit lifecycle decision
+  (permanently unanchored vs a backfill path).
+- **Header naming** — unify the deferred-close name to "PR-A2" across the store headers on next touch.
+
+The gate earned its keep: it caught the stale gap-map (a MEDIUM cross-arc doc-drift no per-PR review could
+see) + gave a decisive PR-A2 forward-contract read.
+
 ---
 
 ## ⬜ Deferred / field-survey debt (v3.5+)
