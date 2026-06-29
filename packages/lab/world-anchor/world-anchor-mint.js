@@ -198,7 +198,9 @@ function mintRefuseAlert(detail) { emitEgressAlert('live-recall-mint-refused', d
  * integrity-only edge that gates nothing - no production consumer admits the world-anchor source).
  * @param {string} node_id  the minted node's id (the edge's from_node_id)
  * @param {string} approvalHash  the VERIFIED kernel-SEALED record.approval_hash (HEX64) - the to_delta_ref
- * @param {{edgeDir?: string, edgeSigner?: (id: string) => string|null|undefined, now?: string}} opts
+ * @param {{edgeDir?: string,
+ *   edgeSigner?: (id: string, edgeBody: {from_node_id, to_delta_ref, edge_type}) => string|null|undefined,
+ *   now?: string}} opts
  * @returns {{edge_minted: boolean, edge_id?: string, edge_deduped?: boolean, edge_signed: boolean, edge_reason?: string}}
  */
 function mintWorldAnchorEdge(node_id, approvalHash, opts = {}) {
@@ -271,8 +273,8 @@ function collectCapturedCandidates(att, pendingDir) {
  *
  * @param {{join_key_id: string}} args  the merge-outcome record key (a content-addressed HEX64).
  * @param {{anchorDir?: string, outcomeDir?: string, liveDir?: string, edgeDir?: string, pendingDir?: string,
- *   edgeSigner?: (id: string) => string|null|undefined, buildLesson?: (seed: object) => object,
- *   verifyKeyPem?: string}} [opts]
+ *   edgeSigner?: (id: string, edgeBody: {from_node_id, to_delta_ref, edge_type}) => string|null|undefined,
+ *   buildLesson?: (seed: object) => object, verifyKeyPem?: string}} [opts]
  *   SYMMETRIC per-store opt keys (hacker M1: a wrong key must not silently fall through to a REAL store):
  *   anchorDir = the world-anchor (attestation) store dir; outcomeDir = the merge-outcome store dir;
  *   liveDir = the live-recall node store dir; edgeDir = the world-anchored-by edge store dir; pendingDir =
