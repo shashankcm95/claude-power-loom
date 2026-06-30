@@ -119,14 +119,19 @@ function assessActorCustody(facts = {}) {
   else if (!lp.exitZero) fail('C3-liveness', 'the cross-uid wrapper ran but `claude --version` exited non-zero — the staged claude/node is not runnable as the actor uid (check the staging + the exec chain)');
   else pass('C3-liveness', 'the cross-uid wrapper ran `claude --version` as the actor uid and exited 0 — the cross-uid exec path + a reachable claude binary exist behind the actor uid (API-key USE is proven by the operator dogfood, not here)');
 
-  // C2.5 — wrapper integrity (root-owned, not group/world-writable, not host-owned). Same as the broker's.
+  // C2.5 — wrapper integrity (root-owned, not group/world-writable, not host-owned). Mirrors the broker / edge C2.5
+  // fold: an unobservable owner / non-root owner is a FAIL too — the pass branch must prove the documented root:wheel
+  // wrapper contract; accepting ANY non-host owner is a fail-OPEN gap in a security verifier. (Unstatable already
+  // FAILs here — that half predates the fold.)
   if (facts.wrapper) {
     const w = facts.wrapper;
     if (!w.ok) fail('C2.5-wrapper', 'sudo wrapper was supplied but is not statable (' + (w.errno || 'unknown') + ') — the wrapper path is wrong/absent/broken; wrapper integrity cannot be established (FAIL, not advisory: --wrapper WAS supplied)');
     else if (!w.isFile) fail('C2.5-wrapper', 'the sudo wrapper is not a regular file (symlink/dir) — hijackable');
     else if (w.worldOrGroupWritable) fail('C2.5-wrapper', 'the sudo wrapper is group/world-writable — the host can run code as the actor uid (privesc)');
-    else if (Number.isInteger(w.ownerUid) && Number.isInteger(facts.runningUid) && w.ownerUid === facts.runningUid) fail('C2.5-wrapper', 'the sudo wrapper is OWNED by the host uid (' + w.ownerUid + ') — its owner can chmod/edit it and have sudo run attacker code as the actor uid (privesc). Own it root:wheel.');
-    else pass('C2.5-wrapper', 'sudo wrapper is a regular, non-group/world-writable file not owned by the host uid');
+    else if (!Number.isInteger(w.ownerUid)) fail('C2.5-wrapper', 'the sudo wrapper owner uid is unavailable — cannot establish wrapper integrity');
+    else if (Number.isInteger(facts.runningUid) && w.ownerUid === facts.runningUid) fail('C2.5-wrapper', 'the sudo wrapper is OWNED by the host uid (' + w.ownerUid + ') — its owner can chmod/edit it and have sudo run attacker code as the actor uid (privesc). Own it root:wheel.');
+    else if (w.ownerUid !== 0) fail('C2.5-wrapper', 'the sudo wrapper is not root-owned (' + w.ownerUid + ') — own it root:wheel to establish wrapper integrity');
+    else pass('C2.5-wrapper', 'sudo wrapper is a regular, root-owned, non-group/world-writable file not owned by the host uid');
   } else {
     note('C2.5-wrapper', 'wrapper integrity NOT checked — pass --wrapper to enable');
   }

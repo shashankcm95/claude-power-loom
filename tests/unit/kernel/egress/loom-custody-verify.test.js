@@ -98,6 +98,43 @@ test('HOST-OWNED 0755 wrapper -> C2.5 FAIL (host can chmod/edit it -> privesc; C
   assert.strictEqual(statusOf(r, 'C2.5-wrapper'), 'FAIL');
 });
 
+// C2.5 fail-OPEN fold (mirror of the loom-edge-custody-verify.js fix): an unstatable wrapper / unobservable owner /
+// non-root owner must FAIL the verdict, not ride a green one. NON-VACUITY: each asserts hostObservableChecksPassed
+// FLIPS to false (the pre-fold broker rode these to a green verdict — !w.ok was a NOTE, any non-host owner PASSed).
+test('C2.5: an unstatable wrapper (--wrapper supplied) -> FAIL (was a fail-OPEN NOTE before the fold)', () => {
+  const r = V.assessCustody(facts({ wrapper: { ok: false, errno: 'ENOENT' } }));
+  assert.strictEqual(statusOf(r, 'C2.5-wrapper'), 'FAIL');
+  assert.strictEqual(r.hostObservableChecksPassed, false, 'an unstatable wrapper can no longer ride a green verdict');
+});
+
+test('C2.5: a wrapper whose owner uid is unavailable -> FAIL (cannot establish integrity)', () => {
+  // a forged/partial fact with no ownerUid: the root-owner branch below cannot run, so fail-closed here.
+  const r = V.assessCustody(facts({ wrapper: { ok: true, isFile: true, worldOrGroupWritable: false } }));
+  assert.strictEqual(statusOf(r, 'C2.5-wrapper'), 'FAIL');
+  assert.strictEqual(r.hostObservableChecksPassed, false);
+});
+
+test('C2.5: a NON-ROOT-owned wrapper (owner != host AND != root) -> FAIL (was a fail-OPEN PASS before the fold)', () => {
+  // owner 600 differs from the host uid (501) AND is not root (0). The pre-fold pass branch accepted ANY non-host
+  // owner, so this rode a green verdict; the root-owner requirement now FAILs it.
+  const r = V.assessCustody(facts({ wrapper: { ok: true, isFile: true, worldOrGroupWritable: false, ownerUid: 600 } }));
+  assert.strictEqual(statusOf(r, 'C2.5-wrapper'), 'FAIL');
+  assert.strictEqual(r.hostObservableChecksPassed, false);
+});
+
+test('C2.5: a genuinely root-owned wrapper still PASSES (the gate is non-vacuous, not always-FAIL)', () => {
+  const r = V.assessCustody(facts({ wrapper: { ok: true, isFile: true, worldOrGroupWritable: false, ownerUid: 0 } }));
+  assert.strictEqual(statusOf(r, 'C2.5-wrapper'), 'PASS');
+});
+
+test('C2.5: root-owned wrapper + null runningUid -> C2.5 PASS but net verdict FAIL (the host-owned Number.isInteger guard skips cleanly; C0 poisons the verdict)', () => {
+  // covers the `Number.isInteger(facts.runningUid)` guard in the host-owned branch: a null getuid must not crash or
+  // mislabel — C2.5 itself PASSes on the root-owned wrapper, while C0 (null getuid) already drives the verdict false.
+  const r = V.assessCustody(facts({ runningUid: null, wrapper: { ok: true, isFile: true, worldOrGroupWritable: false, ownerUid: 0 } }));
+  assert.strictEqual(statusOf(r, 'C2.5-wrapper'), 'PASS', 'the host-owned uid comparison is guarded by Number.isInteger(runningUid)');
+  assert.strictEqual(r.hostObservableChecksPassed, false, 'C0 (null getuid) already poisoned the overall verdict');
+});
+
 test('the report invariant: hostObservableChecksPassed=true => requiresOutOfBandUidConfirmation=true (exit never greener)', () => {
   const r = V.assessCustody(CROSS_UID);
   assert.ok(!r.hostObservableChecksPassed || r.requiresOutOfBandUidConfirmation, 'a clean host-check ALWAYS demands the out-of-band attestation');

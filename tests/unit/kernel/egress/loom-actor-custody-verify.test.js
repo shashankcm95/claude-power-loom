@@ -114,6 +114,34 @@ test('C2.5: a non-regular-file wrapper (symlink/dir) -> FAIL', () => {
   assert.strictEqual(statusOf(V.assessActorCustody(facts({ wrapper: { ok: true, isFile: false, worldOrGroupWritable: false, ownerUid: 0 } })), 'C2.5-wrapper'), 'FAIL');
 });
 
+// C2.5 fail-OPEN fold (mirror of the loom-edge-custody-verify.js fix): the actor already FAILed on unstatable, but the
+// pass branch still accepted ANY non-host owner. NON-VACUITY: each new FAIL flips hostObservableChecksPassed to false.
+test('C2.5: a wrapper whose owner uid is unavailable -> FAIL (cannot establish integrity)', () => {
+  const r = V.assessActorCustody(facts({ wrapper: { ok: true, isFile: true, worldOrGroupWritable: false } }));
+  assert.strictEqual(statusOf(r, 'C2.5-wrapper'), 'FAIL');
+  assert.strictEqual(r.hostObservableChecksPassed, false);
+});
+
+test('C2.5: a NON-ROOT-owned wrapper (owner != host AND != root) -> FAIL (was a fail-OPEN PASS before the fold)', () => {
+  // owner 600 differs from the host uid (501) AND is not root (0): the pre-fold pass branch accepted any non-host owner.
+  const r = V.assessActorCustody(facts({ wrapper: { ok: true, isFile: true, worldOrGroupWritable: false, ownerUid: 600 } }));
+  assert.strictEqual(statusOf(r, 'C2.5-wrapper'), 'FAIL');
+  assert.strictEqual(r.hostObservableChecksPassed, false);
+});
+
+test('C2.5: a genuinely root-owned wrapper still PASSES (the gate is non-vacuous, not always-FAIL)', () => {
+  const r = V.assessActorCustody(facts({ wrapper: { ok: true, isFile: true, worldOrGroupWritable: false, ownerUid: 0 } }));
+  assert.strictEqual(statusOf(r, 'C2.5-wrapper'), 'PASS');
+});
+
+test('C2.5: root-owned wrapper + null runningUid -> C2.5 PASS but net verdict FAIL (the host-owned Number.isInteger guard skips cleanly; C0 poisons the verdict)', () => {
+  // covers the `Number.isInteger(facts.runningUid)` guard in the host-owned branch: a null getuid must not crash or
+  // mislabel — C2.5 itself PASSes on the root-owned wrapper, while C0 (null getuid) already drives the verdict false.
+  const r = V.assessActorCustody(facts({ runningUid: null, wrapper: { ok: true, isFile: true, worldOrGroupWritable: false, ownerUid: 0 } }));
+  assert.strictEqual(statusOf(r, 'C2.5-wrapper'), 'PASS', 'the host-owned uid comparison is guarded by Number.isInteger(runningUid)');
+  assert.strictEqual(r.hostObservableChecksPassed, false, 'C0 (null getuid) already poisoned the overall verdict');
+});
+
 test('C0: a non-integer runningUid (NaN) -> FAIL (fail-closed; never a denial-leg false-pass)', () => {
   assert.strictEqual(statusOf(V.assessActorCustody(facts({ runningUid: NaN })), 'C0-root'), 'FAIL');
   assert.strictEqual(V.assessActorCustody(facts({ runningUid: NaN })).hostObservableChecksPassed, false);
