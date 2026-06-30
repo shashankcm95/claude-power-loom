@@ -55,6 +55,9 @@ function run(basis, ctxStr, env) {
     const stdout = execFileSync(NODE, [WRAPPER, basis], { input: ctxStr, env, timeout: 8000, stdio: ['pipe', 'pipe', 'pipe'] });
     return { ok: true, code: 0, stdout: stdout.toString('utf8'), stderr: '' };
   } catch (e) {
+    // A timeout (the wrapper HUNG) must NOT be swallowed as an expected denial (CodeRabbit): a denial exits non-zero
+    // FAST, never via the 8s kill, so re-throw a timeout to FAIL the test loudly instead of passing it as { ok:false }.
+    if (e.code === 'ETIMEDOUT' || e.killed === true) throw new Error('execFileSync TIMED OUT — the wrapper hung, not a denial: ' + (e.message || ''));
     return { ok: false, code: e.status, stdout: (e.stdout || Buffer.alloc(0)).toString('utf8'), stderr: (e.stderr || Buffer.alloc(0)).toString('utf8') };
   }
 }

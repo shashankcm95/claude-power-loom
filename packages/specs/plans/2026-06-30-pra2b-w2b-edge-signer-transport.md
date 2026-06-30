@@ -380,3 +380,18 @@ follow-up (the "extend the fix to siblings" discipline) — NOT folded into this
 diff scoped + avoid touching the deployed broker/actor chain.
 
 Re-verified after the fold: all 3 suites green, eslint clean, signpost up-to-date, full kernel suite green.
+
+**Post-PR CodeRabbit bot (on #466) — 2 actionable, both folded (premise-probed; the bot's findings differ from
+the pre-PR CLI's — async-bot non-determinism + the post-fold diff):**
+
+- **[Major, Security] C2.5 fail-CLOSED** (`loom-edge-custody-verify.js`) — an unstatable wrapper recorded a
+  NOTE and the pass branch accepted any non-host owner, so `hostObservableChecksPassed` could go true without
+  proving the documented `root:root` wrapper contract (a fail-OPEN gap). Folded: `!w.ok` → FAIL; an
+  unobservable owner uid → FAIL; a non-root owner (`ownerUid !== 0`) → FAIL; the pass requires root ownership.
+  (The actor twin already FAILs on unstatable; the edge tightens further to require root — added to the
+  sibling-debt task.) Added a non-vacuity test exercising all three new FAIL branches + the still-PASS root case.
+- **[minor, test] `run()` swallowed `execFileSync` timeouts** (`loom-edge-sign.test.js`) — an ETIMEDOUT became
+  `{ok:false}`, so a hang would pass as an expected denial. Folded: re-throw on `ETIMEDOUT`/`killed` so a hang
+  FAILs the test loudly (a denial exits fast, never via the 8s kill).
+
+Re-verified: 32→33 tests (custody-verify 15→16) green, eslint clean, dogfood 12/12, full kernel suite 113/0.

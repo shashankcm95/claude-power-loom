@@ -86,6 +86,20 @@ test('world/group-writable wrapper -> C2.5 FAIL (privesc); HOST-OWNED wrapper ->
   assert.strictEqual(statusOf(V.assessEdgeCustody(facts({ wrapper: { ok: true, isFile: true, worldOrGroupWritable: false, ownerUid: 501 } })), 'C2.5-wrapper'), 'FAIL');
 });
 
+test('C2.5 fail-CLOSED (CodeRabbit): --wrapper supplied but unstatable / non-root owner / unavailable owner -> FAIL', () => {
+  // --wrapper WAS supplied (facts.wrapper is non-null), so each must FAIL, not NOTE/PASS — else hostObservableChecksPassed
+  // goes true without proving the root:root wrapper contract (the fail-OPEN gap CodeRabbit caught). Prove each fires.
+  const unstatable = V.assessEdgeCustody(facts({ wrapper: { ok: false, errno: 'ENOENT' } }));
+  assert.strictEqual(statusOf(unstatable, 'C2.5-wrapper'), 'FAIL', 'unstatable wrapper FAILS (was a NOTE)');
+  assert.strictEqual(unstatable.hostObservableChecksPassed, false);
+  const nonRoot = V.assessEdgeCustody(facts({ wrapper: { ok: true, isFile: true, worldOrGroupWritable: false, ownerUid: 700 } }));
+  assert.strictEqual(statusOf(nonRoot, 'C2.5-wrapper'), 'FAIL', 'a non-root, non-host owner FAILS (was a PASS)');
+  const ownerUnknown = V.assessEdgeCustody(facts({ wrapper: { ok: true, isFile: true, worldOrGroupWritable: false, ownerUid: undefined } }));
+  assert.strictEqual(statusOf(ownerUnknown, 'C2.5-wrapper'), 'FAIL', 'unobservable owner uid FAILS');
+  // and the PASS branch still passes for a genuinely root-owned wrapper (no over-tightening)
+  assert.strictEqual(statusOf(V.assessEdgeCustody(CROSS_UID), 'C2.5-wrapper'), 'PASS', 'root-owned wrapper still PASSES');
+});
+
 test('the report invariant: hostObservableChecksPassed=true => requiresOutOfBandUidConfirmation=true', () => {
   const r = V.assessEdgeCustody(CROSS_UID);
   assert.ok(!r.hostObservableChecksPassed || r.requiresOutOfBandUidConfirmation, 'a clean host-check ALWAYS demands the out-of-band attestation');
