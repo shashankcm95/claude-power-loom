@@ -34,7 +34,7 @@ const DENIAL_ERRNOS = new Set(['EACCES', 'EPERM']);
  *   hostRead:{ok:true}|{ok:false,errno:string},
  *   runningUid:number|null,
  *   sign:{signed:boolean,sigVerifies:boolean},
- *   wrapper:null|{ok:true,isFile:boolean,worldOrGroupWritable:boolean}|{ok:false,errno:string}
+ *   wrapper:null|{ok:true,isFile:boolean,worldOrGroupWritable:boolean,ownerUid:number}|{ok:false,errno:string}
  * }} facts
  * @returns {{hostObservableChecksPassed:boolean, requiresOutOfBandUidConfirmation:boolean, checks:object[], residuals:string[]}}
  */
@@ -47,10 +47,12 @@ function assessCustody(facts = {}) {
   const pass = (id, detail) => checks.push({ id, status: 'PASS', detail });
   const note = (id, detail) => checks.push({ id, status: 'NOTE', detail });
 
-  // C0 — root / uid-model guard (POSIX perms use the EFFECTIVE uid; isRoot folds getuid||geteuid===0). A null
-  // runningUid (no getuid — non-POSIX) fails CLOSED: the owner-uid disambiguator below cannot run.
+  // C0 — root / uid-model guard (POSIX perms use the EFFECTIVE uid; isRoot folds getuid||geteuid===0). A null or
+  // non-integer runningUid (no getuid — non-POSIX — or a forged NaN fact) fails CLOSED: the owner-uid disambiguator
+  // below cannot run. The !Number.isInteger guard matches the actor + edge twins (a NaN runningUid would otherwise
+  // C0-PASS, then C2's `ownerUid === NaN` is always false -> the denial leg would false-PASS).
   if (facts.isRoot) fail('C0-root', 'running as root (real or effective uid 0) — root bypasses file permissions; uid separation is unobservable from here');
-  else if (facts.runningUid === null || facts.runningUid === undefined) fail('C0-root', 'uid model unavailable on this platform (getuid undefined) — cross-uid custody cannot be verified here');
+  else if (facts.runningUid === null || facts.runningUid === undefined || !Number.isInteger(facts.runningUid)) fail('C0-root', 'uid model unavailable / invalid on this platform (getuid undefined or a non-integer like NaN) — cross-uid custody cannot be verified here');
   else pass('C0-root', 'not running as root (uid ' + facts.runningUid + ')');
 
   // C1 — non-vacuity, best-effort via lstat (NEVER a read — survives the real cross-uid case where the host cannot
@@ -128,6 +130,11 @@ function gatherCustodyFacts(opts = {}) {
   const ruid = typeof process.getuid === 'function' ? process.getuid() : null;
   const euid = typeof process.geteuid === 'function' ? process.geteuid() : null;
   const isRoot = ruid === 0 || euid === 0;
+  // POSIX file permissions are evaluated against the EFFECTIVE uid (the open() that drives C2-denied uses euid), so
+  // the C2 owner-disambiguation must compare the key owner to euid, not the real uid (CodeRabbit: a setuid/seteuid
+  // launch with euid != ruid would misclassify mode-lockdown vs real cross-uid separation). Fall back to ruid when
+  // geteuid is unavailable (non-POSIX -> null -> C0 fails closed). assessCustody's own comment already says euid.
+  const runningUid = Number.isInteger(euid) ? euid : ruid;
 
   // C1 — lstat (path-level metadata, read-permitted on a present-but-unreadable file in a traversable dir).
   let keyStat;
@@ -171,7 +178,7 @@ function gatherCustodyFacts(opts = {}) {
     } catch (e) { wrapper = { ok: false, errno: (e && e.code) || 'EUNKNOWN' }; }
   }
 
-  return { isRoot, keyStat, hostRead, runningUid: ruid, sign, wrapper };
+  return { isRoot, keyStat, hostRead, runningUid, sign, wrapper };
 }
 
 /** gather -> assess. */

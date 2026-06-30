@@ -60,6 +60,13 @@ test('root -> C0 FAIL; null getuid -> C0 FAIL', () => {
   assert.strictEqual(statusOf(V.assessCustody(facts({ runningUid: null })), 'C0-root'), 'FAIL');
 });
 
+test('C0: a non-integer runningUid (NaN) -> FAIL (fail-closed; never a denial-leg false-pass) [parity with actor/edge twins]', () => {
+  // a forged NaN fact would C0-PASS without the !Number.isInteger guard, then C2's `ownerUid === NaN` is always
+  // false -> the denial leg would false-PASS. Guard at loom-custody-verify.js:53 closes it (hacker M1).
+  assert.strictEqual(statusOf(V.assessCustody(facts({ runningUid: NaN })), 'C0-root'), 'FAIL');
+  assert.strictEqual(V.assessCustody(facts({ runningUid: NaN })).hostObservableChecksPassed, false);
+});
+
 test('no sig -> C3 FAIL; sig that does not verify -> C3 FAIL', () => {
   assert.strictEqual(statusOf(V.assessCustody(facts({ sign: { signed: false, sigVerifies: false } })), 'C3-liveness'), 'FAIL');
   assert.strictEqual(statusOf(V.assessCustody(facts({ sign: { signed: true, sigVerifies: false } })), 'C3-liveness'), 'FAIL');
