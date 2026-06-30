@@ -116,7 +116,7 @@ assert_root_locked() {
   if "$bad"; then
     # fatal whenever we run as root: --apply (root-required) OR a `sudo` dry-run (root, no --apply). A root process
     # must not continue past the privesc gate. Only a NON-root dry-run may continue (the preview is the point).
-    if "$APPLY" || [ "$(id -u)" -eq 0 ]; then
+    if "$APPLY" || [ "$RUNNING_UID" -eq 0 ]; then
       echo "REFUSE: $target is not root-locked; a non-root/writable ancestor lets the operator uid swap what the actor execs (privesc) — and running as root must not slip past this gate. Provide a root-owned target out-of-band." >&2
       exit 1
     fi
@@ -127,7 +127,20 @@ assert_root_locked() {
 # ---- preflight -------------------------------------------------------------
 say "preflight"
 [ "$(uname -s)" = "Darwin" ] || { echo "macOS-only (the Linux path is docs/deployment/loom-actor.md)" >&2; exit 1; }
-if "$APPLY" && [ "$(id -u)" -ne 0 ]; then echo "--apply requires root: 'sudo bash $0 ... --apply'" >&2; exit 1; fi
+# Resolve the running uid ONCE, fail-closed. `command id -u` dodges a shell-function/alias shadow of `id`; the
+# numeric-validation closes a fail-OPEN — a non-numeric / empty uid would make a later `[ "<uid>" -eq 0 ]` ERROR
+# (rc 2, treated as false) and SILENTLY skip the root gate. An UNVERIFIABLE uid is fatal: we can neither confirm we
+# are root (so the privesc refuse must fire) nor that we are not (so --apply must demand it). Both gates read this
+# validated value, never a fresh `$(id -u)`.
+RUNNING_UID="$(command id -u 2>/dev/null || true)"
+case "$RUNNING_UID" in
+  ''|*[!0-9]*) echo "REFUSE: cannot determine the running uid via 'id -u' (got '${RUNNING_UID}') — refusing, fail closed (an unverifiable uid could be root)." >&2; exit 1 ;;
+esac
+# a real uid is a uint32 (<= 10 digits); a longer all-digit string is NOT a uid and would overflow the gate
+# arithmetic below (`[ -eq ]` is 64-bit) — re-opening the very fail-open the validation closes. Reject by LENGTH
+# (string-measured, never arithmetic on the oversized value).
+[ "${#RUNNING_UID}" -le 10 ] || { echo "REFUSE: running uid '${RUNNING_UID}' is implausibly long for a uid — refusing, fail closed." >&2; exit 1; }
+if "$APPLY" && [ "$RUNNING_UID" -ne 0 ]; then echo "--apply requires root: 'sudo bash $0 ... --apply'" >&2; exit 1; fi
 # M2 — never allowlist uid 0: demand sudo (SUDO_UID = the real operator) OR explicit --host-uid, AND reject a resolved 0.
 if "$APPLY" && [ -z "${SUDO_UID:-}" ] && ! "$HOST_UID_EXPLICIT"; then
   echo "--apply must run via 'sudo' (so SUDO_UID is the real operator uid) or pass --host-uid <uid>" >&2; exit 1
