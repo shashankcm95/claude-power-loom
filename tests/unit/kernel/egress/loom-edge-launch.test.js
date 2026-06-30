@@ -118,9 +118,14 @@ test('the produced signer returns null on a NON-HEX basis (loomBrokerSigner inpu
   const dir = scratch();
   try {
     const sudo = writeStubSudo(dir);
-    const wrapper = writeStubWrapper(dir);
+    // a marker-writing wrapper: if the input gate were bypassed and the child DID spawn, the marker
+    // would exist. The null return alone is not enough — a regression that still spawns then returns
+    // null would pass the assertion below; the marker absence is what proves "never spawns".
+    const marker = path.join(dir, 'spawned.marker');
+    const wrapper = writeStubWrapper(dir, 'require("fs").writeFileSync(' + JSON.stringify(marker) + ', "spawned");process.stdout.write(Buffer.alloc(64, 7).toString("base64") + "\\n");\n');
     const signer = L.crossUidLoomEdgeSigner({ edgeUser: 'loom-edge-signer', wrapperPath: wrapper, sudoPath: sudo });
     assert.strictEqual(signer('not-a-basis', { from_node_id: 'x' }), null);
+    assert.ok(!fs.existsSync(marker), 'an invalid basis must be rejected by the input gate BEFORE spawning the wrapper');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
