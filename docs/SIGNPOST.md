@@ -91,6 +91,9 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/kernel/egress/loom-broker-sign.js` - Power Loom egress — loom-broker-sign.js  (③.2.5b)
 - `packages/kernel/egress/loom-custody-verify.js` - Power Loom egress — loom-custody-verify.js  (③.2.5b)
 - `packages/kernel/egress/loom-edge-bind.js` - Power Loom egress - the world-anchor-edge recompute-bind WHAT gate (PR-A2b W2a).
+- `packages/kernel/egress/loom-edge-custody-verify.js` - Power Loom egress — loom-edge-custody-verify.js  (PR-A2b W2b)
+- `packages/kernel/egress/loom-edge-launch.js` - Power Loom egress — loom-edge-launch.js  (PR-A2b W2b)
+- `packages/kernel/egress/loom-edge-sign.js` - Power Loom egress — loom-edge-sign.js  (PR-A2b W2b)
 - `packages/kernel/egress/policy.js` - ③.2.1b PR-B — egress POLICY gates: a GLOBAL per-window emission cap, 429/abuse backpressure, and a
 - `packages/kernel/egress/scrub.js` - ③.2.1b PR-B — the egress SECRET-SCRUB entry point (coarse, defense-in-depth).
 
