@@ -85,7 +85,9 @@ assert_abs_safe() {
 }
 
 # refuse if $1 (symlinks resolved) or ANY ancestor up to / is non-root-owned OR group/world-writable — the C1/C2
-# privesc gate. Under --apply this is a HARD refuse; in dry-run it WARNS + continues so the preview still renders.
+# privesc gate. HARD refuse whenever we run as ROOT (under --apply OR a `sudo` dry-run): the very next step may exec
+# this path AS ROOT (e.g. the NODE_BIN --version probe), so a non-root-locked target is root code-exec. Only a
+# NON-root dry-run WARNS + continues (it cannot exec anything as root; the preview is the point).
 assert_root_locked() {
   local target="$1" why="$2" p owner sp gw ow bad=false
   p="$(resolve "$target")"
@@ -99,11 +101,13 @@ assert_root_locked() {
     p="$(dirname "$p")"
   done
   if "$bad"; then
-    if "$APPLY"; then
-      echo "REFUSE (--apply): $target is not root-locked; a non-root/writable ancestor lets the actor swap what the edge-signer execs (privesc). Use a root-owned node (e.g. the nodejs.org .pkg -> /usr/local/bin/node) / a root-owned stage path." >&2
+    # fatal whenever we run as root: --apply (root-required) OR a `sudo` dry-run (root, no --apply). A root process
+    # is about to exec this path; a non-root-locked target = root code-exec. Only a NON-root dry-run may continue.
+    if "$APPLY" || [ "$(id -u)" -eq 0 ]; then
+      echo "REFUSE: $target is not root-locked; a non-root/writable ancestor lets the actor swap what the edge-signer execs (privesc) — and running as root would exec it AS ROOT. Use a root-owned node (e.g. the nodejs.org .pkg -> /usr/local/bin/node) / a root-owned stage path." >&2
       exit 1
     fi
-    note "WOULD-REFUSE under --apply (dry-run continues for preview): $target is not root-locked."
+    note "WOULD-REFUSE under --apply / as root (non-root dry-run continues for preview): $target is not root-locked."
   fi
 }
 
@@ -183,8 +187,14 @@ elif [ -f "${KEY_DIR}/edge.key" ]; then
     echo "REFUSE: ${KEY_DIR}/edge.key exists but is owned by '${kowner}' (expected ${EDGE_USER}) — delete it and re-run to rotate" >&2; exit 1
   elif [ "${kmode}" != "-rw-------" ]; then
     echo "REFUSE: ${KEY_DIR}/edge.key exists with unsafe mode '${kmode}' (expected -rw------- / 0600) — a group/world-readable signing key defeats cross-uid custody; fix (chmod 0600) or delete and re-run" >&2; exit 1
+  elif [ ! -f "${KEY_DIR}/edge-verify.pem" ]; then
+    # the keypair must stay CONSISTENT: step 6's verify (--verify-key) reads the PUBLIC half. A present private key
+    # with a missing public half is a half-present keypair — fail closed here rather than skip-regenerate and let
+    # step 6 fail confusingly. (A present-but-STALE edge-verify.pem from a different pair is caught downstream: the
+    # step 6 C3 sig-verify FAILs against the wrong public key.)
+    echo "REFUSE: ${KEY_DIR}/edge.key exists but its public ${KEY_DIR}/edge-verify.pem is MISSING — step 6's --verify-key needs it. Restore edge-verify.pem, or delete edge.key and re-run to regenerate the PAIR." >&2; exit 1
   else
-    note "${KEY_DIR}/edge.key already exists (owner ${kowner}, 0600) — NOT regenerating (delete it first to rotate)"
+    note "${KEY_DIR}/edge.key already exists (owner ${kowner}, 0600) + edge-verify.pem present — NOT regenerating (delete BOTH to rotate)"
   fi
 elif "$APPLY"; then
   TMPK="$(mktemp -d /tmp/loom-keygen.XXXXXX)"
