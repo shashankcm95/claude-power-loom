@@ -202,7 +202,8 @@ test('D3(c) NEGATIVE: a non-consistent basis (random, not the recompute) makes t
 
 test('D4: loom-edge-custody-verify does NOT import ./approval (would re-vacuate C3 with the broker basis)', () => {
   const src = fs.readFileSync(path.join(REPO, 'packages', 'kernel', 'egress', 'loom-edge-custody-verify.js'), 'utf8');
-  assert.ok(!/require\(\s*['"]\.\/approval['"]\s*\)/.test(src), 'must NOT require ./approval');
+  // match a bare or .js-suffixed specifier — require('./approval') AND require('./approval.js')
+  assert.ok(!/require\(\s*['"]\.\/approval(?:\.js)?['"]\s*\)/.test(src), 'must NOT require ./approval');
 });
 
 test('D8: C3 must not print the probe (basis, sig) — gatherEdgeCustodyFacts returns only the boolean verdict', () => {

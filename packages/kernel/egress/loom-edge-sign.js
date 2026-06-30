@@ -82,7 +82,7 @@ async function main() {
   // host's execFileSync `input:` write always completes (else an early refuse EPIPEs the host). The 16 KiB cap is
   // the ONLY volume bound on edge_type and MUST run BEFORE the WHAT gate (mirrors loom-broker-sign.js:62).
   const rd = await readStdinBounded({ maxBytes: MAX_EDGE_BYTES, deadlineMs: READ_DEADLINE_MS });
-  if (!rd.ok) fail('ctx channel: ' + rd.reason); // too-large / timeout / read-error -> refuse, fail closed
+  if (!rd.ok) return fail('ctx channel: ' + rd.reason); // too-large / timeout / read-error -> refuse, fail closed
   const presentedCtxRaw = rd.data;
 
   // (0) caller-auth gate (WHO) — keyed on SUDO_UID (sudo-injected REAL uid under env_reset,!setenv). SUDO_USER is
@@ -132,7 +132,7 @@ async function main() {
 
   // (2) sign the RECOMPUTED basis via the SAME alg-pinned ed25519 leaf the host uses (output re-gated by the leaf).
   const sig = signEdgeId(basisToSign, { privateKeyPem: pem });
-  if (!sig) fail('sign failed (no / non-ed25519 key, or bad output)');
+  if (!sig) return fail('sign failed (no / non-ed25519 key, or bad output)');
 
   process.stdout.write(sig + '\n'); // ONLY the sig — nothing else
 }
