@@ -218,6 +218,11 @@ function gatherActorCustodyFacts(opts = {}) {
   const ruid = typeof process.getuid === 'function' ? process.getuid() : null;
   const euid = typeof process.geteuid === 'function' ? process.geteuid() : null;
   const isRoot = ruid === 0 || euid === 0;
+  // POSIX file permissions are evaluated against the EFFECTIVE uid (the open() that drives C2-denied uses euid), so
+  // the C2 owner-disambiguation must compare the key owner to euid, not the real uid (CodeRabbit: a setuid/seteuid
+  // launch with euid != ruid would misclassify mode-lockdown vs real cross-uid separation). Fall back to ruid when
+  // geteuid is unavailable (non-POSIX -> null -> C0 fails closed). assessActorCustody's own comment already says euid.
+  const runningUid = Number.isInteger(euid) ? euid : ruid;
 
   // C1 — lstat (path-level metadata, read-permitted on a present-but-unreadable file in a traversable dir).
   let keyStat;
@@ -272,7 +277,7 @@ function gatherActorCustodyFacts(opts = {}) {
     if (typeof nodeBin === 'string' && nodeBin.length) execTargets.push(gatherExecTarget('node', nodeBin));
   }
 
-  return { isRoot, runningUid: ruid, keyStat, hostRead, liveProbe, judgeProbe, wrapper, execTargets };
+  return { isRoot, runningUid, keyStat, hostRead, liveProbe, judgeProbe, wrapper, execTargets };
 }
 
 /** gather -> assess. */

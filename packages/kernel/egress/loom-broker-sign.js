@@ -33,7 +33,7 @@ const READ_DEADLINE_MS = 2000;       // wall-clock time bound (slow-loris) — a
 function readStdinBounded({ maxBytes, deadlineMs }) {
   return new Promise((resolve) => {
     const inp = process.stdin;
-    const chunks = []; let len = 0; let settled = false;
+    const chunks = []; let len = 0; let settled = false; let tooLarge = false;
     const finish = (val) => {
       if (settled) return; settled = true;
       clearTimeout(timer);
@@ -41,8 +41,16 @@ function readStdinBounded({ maxBytes, deadlineMs }) {
       try { inp.pause(); } catch { /* */ }
       resolve(val);
     };
-    const onData = (c) => { len += c.length; if (len > maxBytes) { chunks.length = 0; return finish({ ok: false, reason: 'too-large' }); } chunks.push(c); };
-    const onEnd = () => finish({ ok: true, data: Buffer.concat(chunks).toString('utf8') });
+    // On too-large, MARK + keep DISCARDING (do not finish/pause mid-stream): a streaming caller that is still writing
+    // would EPIPE/short-write if we stopped reading early — the same "always complete the drain" reason main() drains
+    // FIRST. Memory stays bounded (chunks cleared, nothing accumulates past the cap); the deadline still bounds TIME.
+    const onData = (c) => {
+      len += c.length;
+      if (tooLarge) return;
+      if (len > maxBytes) { chunks.length = 0; tooLarge = true; return; }
+      chunks.push(c);
+    };
+    const onEnd = () => finish(tooLarge ? { ok: false, reason: 'too-large' } : { ok: true, data: Buffer.concat(chunks).toString('utf8') });
     const onErr = () => finish({ ok: false, reason: 'read-error' });
     const timer = setTimeout(() => finish({ ok: false, reason: 'read-timeout' }), deadlineMs);
     inp.on('data', onData); inp.on('end', onEnd); inp.on('error', onErr);

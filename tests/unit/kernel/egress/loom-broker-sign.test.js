@@ -142,14 +142,20 @@ test('FIFO key (O_NONBLOCK) refuses WITHOUT hanging', () => {
   } finally { if (made) { /* fifo removed with dir */ } fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('oversized stdin (> MAX_CTX_BYTES) refuses', () => {
+test('oversized stdin (> MAX_CTX_BYTES) refuses (size-cap is the SOLE refusal reason)', () => {
   if (WIN) { skipped += 1; return; }
   const dir = scratch();
   try {
     const { keyFile } = mkKey(dir);
-    const huge = '{"emission":{"repo":"o/r","issueRef":1,"diff":"' + 'a'.repeat(1100000) + '"},"approvedAt":1,"nonce":"n","key_id":"v0"}';
-    const r = run('a'.repeat(64), huge, runEnv({ LOOM_BROKER_KEY_FILE: keyFile }));
+    // a >1 MiB ctx (the emission diff padded past MAX_CTX_BYTES). Use the MATCHING derived basis (not a junk 'a'*64)
+    // so the ONLY possible refusal reason is the size cap: were the drain to regress (read the full body), this body
+    // would recompute-bind-MATCH and SIGN (ok:true) -> the test would FAIL, catching it (mirrors edge-sign D5(i)).
+    const ctx = ctxFor({ emission: { repo: 'owner/repo', issueRef: 42, diff: 'a'.repeat(1100000) } });
+    const r = run(basisFor(ctx), JSON.stringify(ctx), runEnv({ LOOM_BROKER_KEY_FILE: keyFile }));
     assert.strictEqual(r.ok, false); assert.strictEqual(r.stdout.trim(), '');
+    // assert the refusal is specifically the SIZE CAP, not a downstream gate — makes "sole refusal reason" true by
+    // assertion, not only by the matching-basis construction (the WHAT gate would MATCH this body if it ever drained).
+    assert.match(r.stderr, /too-large/, 'refused at the size cap (ctx channel: too-large), not the recompute-bind/auth gate');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
