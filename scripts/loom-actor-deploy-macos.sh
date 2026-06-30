@@ -97,13 +97,16 @@ assert_username() {
 }
 
 # refuse if $1 (symlinks resolved) or ANY ancestor up to / is non-root-owned OR group/world-writable — the privesc
-# gate. HARD refuse under --apply; WARN-continue in dry-run so the preview still renders.
+# gate. HARD refuse whenever we run as ROOT (under --apply OR a `sudo` dry-run), not just --apply: a root process must
+# never slip past this gate (parity with the broker/edge helpers, where the next step execs the probed path AS ROOT;
+# this helper has no such in-flow exec today, so it is defense-in-depth). Only a NON-root dry-run WARNS + continues so
+# the preview still renders (it cannot exec anything as root).
 assert_root_locked() {
   local target="$1" why="$2" p owner sp gw ow bad=false
   p="$(resolve "$target")"
   while : ; do
     owner="$(stat -f '%u' "$p" 2>/dev/null)" || break
-    sp="$(stat -f '%Sp' "$p" 2>/dev/null)" || break
+    sp="$(stat -f '%Sp' "$p" 2>/dev/null)"
     gw="${sp:5:1}"; ow="${sp:8:1}"
     if [ "$owner" != "0" ]; then echo "  UNSAFE: $p is owned by uid $owner (not root) — ${why}" >&2; bad=true; fi
     if [ "$gw" = "w" ] || [ "$ow" = "w" ]; then echo "  UNSAFE: $p is group/world-writable ($sp) — ${why}" >&2; bad=true; fi
@@ -111,11 +114,13 @@ assert_root_locked() {
     p="$(dirname "$p")"
   done
   if "$bad"; then
-    if "$APPLY"; then
-      echo "REFUSE (--apply): $target is not root-locked; a non-root/writable ancestor lets the operator uid swap what the actor execs (privesc). Provide a root-owned target out-of-band." >&2
+    # fatal whenever we run as root: --apply (root-required) OR a `sudo` dry-run (root, no --apply). A root process
+    # must not continue past the privesc gate. Only a NON-root dry-run may continue (the preview is the point).
+    if "$APPLY" || [ "$(id -u)" -eq 0 ]; then
+      echo "REFUSE: $target is not root-locked; a non-root/writable ancestor lets the operator uid swap what the actor execs (privesc) — and running as root must not slip past this gate. Provide a root-owned target out-of-band." >&2
       exit 1
     fi
-    note "WOULD-REFUSE under --apply (dry-run continues for preview): $target is not root-locked."
+    note "WOULD-REFUSE under --apply / as root (non-root dry-run continues for preview): $target is not root-locked."
   fi
 }
 
