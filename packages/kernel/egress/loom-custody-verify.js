@@ -76,7 +76,10 @@ function assessCustody(facts = {}) {
   } else if (hr.errno && DENIAL_ERRNOS.has(hr.errno)) {
     // The denial leg requires a POSITIVELY-PROVEN different owner. Owner-unknown is NOT a pass: the host cannot
     // distinguish a genuinely cross-uid key from its OWN locked-dir key, so it proves nothing — fail-closed.
-    if (ks.ok && typeof ks.ownerUid === 'number' && typeof facts.runningUid === 'number') {
+    // Number.isInteger (NOT typeof === 'number', which is true for NaN): a forged non-integer owner/uid must
+    // not slip the guard and false-PASS the denial leg (cross-verifier NaN-hardening, byte-identical across the
+    // broker/actor/edge twins).
+    if (ks.ok && Number.isInteger(ks.ownerUid) && Number.isInteger(facts.runningUid)) {
       if (ks.ownerUid === facts.runningUid) {
         fail('C2-denied', 'host read denied (' + hr.errno + ') BUT the key is owned by the running uid (' + ks.ownerUid + ') — EACCES is from file MODE, not uid separation. NOT cross-uid custody.');
       } else {
@@ -103,7 +106,7 @@ function assessCustody(facts = {}) {
     if (!w.ok) note('C2.5-wrapper', 'sudo wrapper not statable (' + (w.errno || 'unknown') + ') — check the wrapperPath');
     else if (!w.isFile) fail('C2.5-wrapper', 'the sudo wrapper is not a regular file (symlink/dir) — hijackable');
     else if (w.worldOrGroupWritable) fail('C2.5-wrapper', 'the sudo wrapper is group/world-writable — the host can run code as the broker uid (privesc)');
-    else if (typeof w.ownerUid === 'number' && typeof facts.runningUid === 'number' && w.ownerUid === facts.runningUid) fail('C2.5-wrapper', 'the sudo wrapper is OWNED by the host uid (' + w.ownerUid + ') — its owner can chmod/edit it and have sudo run attacker code as the broker uid (privesc). Own it root:root (CodeRabbit Major).');
+    else if (Number.isInteger(w.ownerUid) && Number.isInteger(facts.runningUid) && w.ownerUid === facts.runningUid) fail('C2.5-wrapper', 'the sudo wrapper is OWNED by the host uid (' + w.ownerUid + ') — its owner can chmod/edit it and have sudo run attacker code as the broker uid (privesc). Own it root:root (CodeRabbit Major).');
     else pass('C2.5-wrapper', 'sudo wrapper is a regular, non-group/world-writable file not owned by the host uid');
   } else {
     note('C2.5-wrapper', 'wrapper integrity NOT checked — pass wrapperPath to enable');

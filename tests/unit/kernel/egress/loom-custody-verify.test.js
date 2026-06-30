@@ -67,6 +67,22 @@ test('C0: a non-integer runningUid (NaN) -> FAIL (fail-closed; never a denial-le
   assert.strictEqual(V.assessCustody(facts({ runningUid: NaN })).hostObservableChecksPassed, false);
 });
 
+test('C2 forged-NaN: a non-integer key owner / runningUid never launders a denial-leg PASS (typeof->Number.isInteger)', () => {
+  // typeof NaN === 'number' is TRUE, so the old `typeof === 'number'` guard admits a forged NaN; the subsequent
+  // `ownerUid === runningUid` is then always false -> the C2 denial leg false-PASSes "owned by a DIFFERENT uid".
+  // keyStat.ownerUid: NaN is the worst axis — C0 does NOT catch it (runningUid is valid) so the WHOLE verdict
+  // goes green pre-fix. Number.isInteger closes both: the owner is treated as unreadable -> C2 FAIL.
+  const rKey = V.assessCustody(facts({ keyStat: { ok: true, isFile: true, size: 100, ownerUid: NaN } }));
+  assert.strictEqual(statusOf(rKey, 'C2-denied'), 'FAIL', 'a forged NaN key owner must FAIL C2, not PASS a false denial leg');
+  assert.strictEqual(rKey.hostObservableChecksPassed, false, 'a forged NaN key owner must not produce a green verdict');
+  assert.strictEqual(rKey.requiresOutOfBandUidConfirmation, false, 'no false denial leg on a NaN owner');
+  // runningUid: NaN — C0 already fails the verdict, but the C2 per-check line must also not falsely PASS.
+  const rRunning = V.assessCustody(facts({ runningUid: NaN }));
+  assert.strictEqual(statusOf(rRunning, 'C2-denied'), 'FAIL', 'a forged NaN runningUid must not launder a C2 denial-leg PASS');
+  assert.strictEqual(rRunning.hostObservableChecksPassed, false, 'a forged NaN runningUid must not produce a green verdict');
+  assert.strictEqual(rRunning.requiresOutOfBandUidConfirmation, false, 'no false denial leg on a NaN running uid');
+});
+
 test('no sig -> C3 FAIL; sig that does not verify -> C3 FAIL', () => {
   assert.strictEqual(statusOf(V.assessCustody(facts({ sign: { signed: false, sigVerifies: false } })), 'C3-liveness'), 'FAIL');
   assert.strictEqual(statusOf(V.assessCustody(facts({ sign: { signed: true, sigVerifies: false } })), 'C3-liveness'), 'FAIL');
