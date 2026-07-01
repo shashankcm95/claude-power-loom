@@ -221,8 +221,17 @@ function gatherExecTarget(label, p) {
 }
 
 /** Gather the observed facts from real I/O (impure). */
+// #436: the cross-uid probes (C3/C5) run from a NEUTRAL, world-traversable cwd. If they inherited the
+// operator's cwd (e.g. a repo checkout under a 0700 home dir uid 611 cannot traverse), the wrapper's /bin/sh
+// fails at startup with `getcwd: cannot access parent directories` (EACCES) -> ran:false -> C3/C5 FAIL
+// MISLEADINGLY (the message points at staging/the exec chain, not the real cause). A custody property must not
+// depend on WHERE the operator ran the verify from; `/` is always traversable. (Surfaced in the first operator
+// dogfood: verify failed from ~/Documents/claude-toolkit, passed cleanly from /tmp.)
+const NEUTRAL_PROBE_CWD = '/';
+
 function gatherActorCustodyFacts(opts = {}) {
-  const { keyFile, actorUser, wrapperPath, sudoPath, claudeBin, nodeBin } = opts;
+  // spawnFn is a TEST-ONLY seam (defaults to the real spawnSync); no production caller threads it.
+  const { keyFile, actorUser, wrapperPath, sudoPath, claudeBin, nodeBin, spawnFn = spawnSync } = opts;
   const ruid = typeof process.getuid === 'function' ? process.getuid() : null;
   const euid = typeof process.geteuid === 'function' ? process.geteuid() : null;
   const isRoot = ruid === 0 || euid === 0;
@@ -252,7 +261,7 @@ function gatherActorCustodyFacts(opts = {}) {
   let liveProbe = { ran: false, exitZero: false };
   try {
     const { command, args } = crossUidActorVersionProbeArgs({ actorUser, wrapperPath, sudoPath });
-    const r = spawnSync(command, args, { encoding: 'utf8', timeout: PROBE_TIMEOUT_MS });
+    const r = spawnFn(command, args, { cwd: NEUTRAL_PROBE_CWD, encoding: 'utf8', timeout: PROBE_TIMEOUT_MS });
     liveProbe = { ran: !r.error, exitZero: r.status === 0 };
   } catch { /* fail-closed — ran stays false */ }
 
@@ -262,7 +271,7 @@ function gatherActorCustodyFacts(opts = {}) {
   let judgeProbe = { ran: false, exitZero: false, toolsResult: { ok: false, reason: 'not-run' } };
   try {
     const { command, args } = crossUidJudgeProbeArgs({ actorUser, wrapperPath, sudoPath });
-    const r = spawnSync(command, args, { input: 'hi', encoding: 'utf8', timeout: JUDGE_PROBE_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 });
+    const r = spawnFn(command, args, { cwd: NEUTRAL_PROBE_CWD, input: 'hi', encoding: 'utf8', timeout: JUDGE_PROBE_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 });
     const ran = !r.error;
     const exitZero = r.status === 0;
     judgeProbe = { ran, exitZero, toolsResult: (ran && exitZero) ? assessInitTools(r.stdout) : { ok: false, reason: ran ? 'nonzero-exit' : 'spawn-error' } };
