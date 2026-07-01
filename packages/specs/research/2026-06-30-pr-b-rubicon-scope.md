@@ -73,13 +73,15 @@ for routing), STRICT `normalizeBool` for the ARM (a typo -> not-armed = fail-clo
 Ordering is dependency-forced. B1-B4 are mechanism inert by construction; B5 ships dark (live only under a deployed
 custody key + armed flag).
 
-- **B1 — mint signer-routing resolver (kernel/egress).** New `loom-edge-resolver.js`, the edge analog of
-  `defaultJudgeLauncher` / `resolveJudgeLaunch` (`host-claude-guard.js:122-159`). Reads `LOOM_EDGE_REQUIRE_UID_SEP`
-  via the asymmetric pair (STRICT arm / LENIENT deployed-signal), returns `{mode, signer}`; on `cross-uid`
-  constructs `crossUidLoomEdgeSigner` (`loom-edge-launch.js:48`); fail-CLOSES + EMITS on a throwing/unknown
-  launcher. SHADOW: flag unset everywhere -> `mode:'direct'`, `signer:undefined` -> byte-identical to today.
-  ~120-160 LoC. (Decision Q-DEP below: where the shared asymmetric-parse predicates canonically live, since
-  `host-claude-guard.js` is `lab/_lib` but the resolver is kernel-side and kernel must not import lab.)
+- **B1 — mint signer-routing resolver (lab).** New `edge-signer-resolve.js` (Q-DEP RESOLVED lab-side at B1 — see
+  the B1 plan `plans/2026-06-30-pr-b-b1-edge-signer-resolver.md`), the edge analog of `defaultJudgeLauncher` /
+  `resolveJudgeLaunch` (`host-claude-guard.js:122-159`). Reads `LOOM_EDGE_REQUIRE_UID_SEP` via the asymmetric pair
+  (STRICT arm / LENIENT misconfig-detect), returns `{mode, signer}`; on `cross-uid` constructs
+  `crossUidLoomEdgeSigner` (`loom-edge-launch.js:48`); fail-SAFE to unsigned + EMITS on a throwing/unknown launcher
+  (the edge's direct path is benign-unsigned, unlike the judge's privileged direct path). SHADOW: flag unset
+  everywhere -> `mode:'direct'`, `signer:undefined` -> output-identical to today. ~120-160 LoC. (Q-DEP RESOLVED
+  lab-side: the caller `cli.js` is already `lab`, so the resolver reuses the canonical asymmetric-parse pair rather
+  than a DRY-violating kernel-side fork.) Built in PR #474.
 - **B2 — wire the resolver into the mint + the full-tuple weight-minter (lab).** THE #273 close, the gating
   precondition (hacker HIGH: this is the close, not a co-equal wave). Thread B1 into `cli.js` (`:352`); build the
   value-committing weight-minter that VERIFIES `broker_sig` over `approvalSigBasis(...)` (`allowEnvFallback:false`,
@@ -156,9 +158,9 @@ accumulated real merges through a deployed gate harden trust, and no code closes
 - **Q-SEQ (sequencing vs the arming wave).** Confirm B1-B5 merge SHADOW ahead of the live-loop arming wave
   (item 8), or sequence item 8 first? Recommendation: B1-B5 ahead (mechanism is fixture-exercisable; the deploy-gate
   keeps production inert).
-- **Q-DEP (low-stakes, ratifiable at B1).** Where the shared asymmetric-parse predicates (`normalizeBool` /
-  `isDeployFlagSet`) canonically live, since the kernel resolver must not import `lab/_lib`. Likely: relocate the
-  pair to a kernel `_lib`, or duplicate the tiny predicates kernel-side.
+- **Q-DEP (RESOLVED at B1).** Where the shared asymmetric-parse predicates (`normalizeBool` / `isDeployFlagSet`)
+  canonically live. RESOLVED = **lab-side** `edge-signer-resolve.js` reusing the canonical pair (the caller
+  `cli.js` is already `lab`; a kernel-side resolver would force a DRY-violating predicate fork). See the B1 plan.
 - **Q-FRESH (low-stakes, ratifiable at B4/B5).** The freshness/replay window for the gated weight (RFC 2026-06-18
   Erratum P2 + M-1): a signed mint verifies forever, so the consumer flip must enforce a freshness window or a
   policy re-run. Window value TBD at the wave.
