@@ -15,6 +15,10 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 
+// #430 host-deploy-state isolation (shared helper): neutralize the host `claude -p` deploy guard so these tests
+// reach their DIRECT dev-spawn path on any host (incl. a deployed box with /etc/loom/actor-anthropic.key present).
+require('../_lib/isolate-host-deploy-state').isolateHostDeployState();
+
 const REPO = path.join(__dirname, '..', '..', '..', '..');
 const { TOOLLESS_CLAUDE_ARGS, toollessArgs, verifyToollessRuntime } = require(path.join(REPO, 'packages', 'lab', '_lib', 'claude-headless.js'));
 const { makeBlindSemanticJudge } = require(path.join(REPO, 'packages', 'lab', 'causal-edge', 'calibration-issue-run.js'));

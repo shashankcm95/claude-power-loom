@@ -13,6 +13,11 @@ const assert = require('assert');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
+// #430 host-deploy-state isolation (shared helper): neutralize the host `claude -p` deploy guard so makeClaudePJudge
+// reaches its DIRECT dev-spawn path on any host (the bin:null test must reach 'judge-unavailable', not a host-state
+// refusal). Inherited by the dry-CLI spawnSync child too (it inherits process.env).
+require('../_lib/isolate-host-deploy-state').isolateHostDeployState();
+
 const REPO = path.join(__dirname, '..', '..', '..', '..');
 const { parseVerdict, renderPrompt, makeClaudePJudge } = require(path.join(REPO, 'packages', 'lab', 'causal-edge', 'calibration-run.js'));
 const CLI = path.join(REPO, 'packages', 'lab', 'causal-edge', 'calibration-cli.js');
