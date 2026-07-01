@@ -20,21 +20,33 @@
 // an array, an object-with-toString all fail closed. (Do NOT copy the maintainer-login normalization at
 // lesson-merge-lift.js:95 — trim/lowercase is identity-DEDUP, never AUTHORIZATION.)
 //
-// PURE: no I/O. Layer (K12, by PATH): packages/lab/, so `lab`; imports a sibling lab module only.
+// PURE compute + ONE module-load STRICT arming read (isWorldAnchorArmed); no runtime I/O. Layer (K12, by
+// PATH): packages/lab/, so `lab`; imports sibling lab modules only.
 
 'use strict';
 
 const { lessonTrustWeight } = require('./lesson-merge-lift');
+const { isWorldAnchorArmed } = require('../_lib/world-anchor-arming');
 
-// MV-W2: EMPTY, and GENUINELY immutable — a frozen ARRAY, NOT a frozen Set. `Object.freeze(new Set())` is
-// FAKE immutability (VALIDATE CRIT/HIGH, reproduced): a frozen Set's `.add()`/`.delete()`/`.clear()` still
-// mutate it, so an exported singleton that is the prod-default fallback would let ANY in-process importer
-// `.add()` a source and launder a mock HARDEN into a real ranking flip. `Object.freeze([])` truly locks the
-// array (push / index-set throw in strict mode), so the production default cannot be poisoned at runtime.
-// The live lesson source (the C-W1 signed-lane token) is added in MV-W3 by SHIPPING A NEW frozen literal in
-// source (a reviewed code change), NEVER by mutating a runtime singleton. 'verdict-attestation' is the
-// reputation PERSONA track's marker — deliberately NOT a lesson-lane live source.
-const LIVE_SOURCES = Object.freeze([]);
+// GENUINELY immutable — a frozen ARRAY, NOT a frozen Set. `Object.freeze(new Set())` is FAKE immutability
+// (VALIDATE CRIT/HIGH, reproduced): a frozen Set's `.add()`/`.delete()`/`.clear()` still mutate it, so an
+// exported singleton that is the prod-default fallback would let ANY in-process importer `.add()` a source
+// and launder a mock HARDEN into a real ranking flip. `Object.freeze([...])` truly locks the array (push /
+// index-set throw in strict mode), so the default cannot be poisoned at runtime. isLiveSource closes over
+// this module-internal `const`, so reassigning the EXPORTED `LIVE_SOURCES` property does NOT poison the gate
+// (VERIFY-hacker M3). 'verdict-attestation' is the reputation PERSONA track's marker — NOT a lesson-lane source.
+//
+// PR-B B5 (the Rubicon): the world-anchored live lesson source is the reviewed frozen literal 'world-anchor'
+// (= world-anchor-edge-store.js:62 WORLD_ANCHOR_SOURCE; a test pins byte-parity WITHOUT a cross-dir import),
+// admitted ONLY when the STRICT arming flag is set (isWorldAnchorArmed — the SINGLE arming source, read ONCE
+// at module load; the live-set is frozen either way). Unset / a typo -> frozen [] -> dark (STRICT fail-closed
+// for ARM). The flip is a module CONSTANT, never an opts injection (the B3 no-injection-seam CRITICAL); the
+// arming read is the ONE deliberate concession to this module's otherwise-pure compute, made visibly here.
+// The LOAD-BEARING gate is the recall driver's custody-key crypto verify (admit-world-anchor-node.js); this
+// flip is defense-in-depth belt. On a deployed box (custody keys present) the un-armed flag is what keeps it
+// dark; on CI/clean-dev the absent keys ALSO keep it dark — two independent gates.
+const WORLD_ANCHOR_SOURCE = 'world-anchor';   // reviewed literal; canonical def world-anchor-edge-store.js:62 (test parity-pinned)
+const LIVE_SOURCES = Object.freeze(isWorldAnchorArmed() ? [WORLD_ANCHOR_SOURCE] : []);
 
 // EXACT membership, no coercion. A caller-OWNED injected allow-set (test discipline) takes precedence —
 // a Set or an array, whichever the caller passes; the caller owns its own object. Otherwise the frozen

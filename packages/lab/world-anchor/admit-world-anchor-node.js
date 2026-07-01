@@ -13,10 +13,11 @@
 // (world-anchor-mint.js:474-520) computes commitment_verified as a TRANSIENT record-event that never
 // enters the node schema, so admission genuinely must re-verify; that is exactly what this does.
 //
-// SHADOW / WEIGHT-INERT: this tag gates NOTHING. LIVE_SOURCES stays Object.freeze([]); NO production
-// consumer calls admitWorldAnchorNode (the shadow-import-graph dam asserts zero callers of THIS name AND
-// authenticatedWorldAnchorEdges). Wiring the tag into a live recall driver + the LIVE_SOURCES flip is
-// PR-B3 (the Rubicon). Until then this is the mechanism, unit-proven, reachable but trusted by nothing.
+// SHADOW / WEIGHT-INERT: this tag gates NOTHING until armed. LIVE_SOURCES is Object.freeze([]) UNLESS the B5
+// arming flag is set (weight-source-gate.js); on an un-armed box no production consumer admits
+// WORLD_ANCHOR_SOURCE. Wiring the tag into a live recall driver was PR-B3; the LIVE_SOURCES flip + the
+// custody-key arming is PR-B5 (the Rubicon). Until an operator arms it, this is the mechanism, unit-proven,
+// reachable but trusted by nothing.
 //
 // #273 RESIDUAL - B2 admission is INTEGRITY + key-possession, NOT PROVENANCE (the SAME framing
 // world-anchor-mint.js:33-39 / world-anchor-edge-store.js:31-39 / merge-outcome-store.js:33-39 carry).
