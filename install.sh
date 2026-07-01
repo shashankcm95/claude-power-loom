@@ -35,6 +35,8 @@ usage() {
   echo "Ghost heartbeat (advisory drift detection -- opt-in, default-off):"
   echo "  --schedule-heartbeat     Schedule the drain runner (launchd on macOS / cron on Linux, every 4h)"
   echo "  --unschedule-heartbeat   Remove the scheduled drain runner"
+  echo "  --schedule-liveloop      Schedule the SHADOW live-loop runner (EMIT-OFF, every 6h; the deliberate opt-in)"
+  echo "  --unschedule-liveloop    Remove the scheduled live-loop runner"
   echo ""
   echo "Options:"
   echo "  --diff       Preview changes without installing (dry run)"
@@ -336,6 +338,8 @@ install_hooks() {
   echo "  To run it on a schedule (launchd on macOS / cron on Linux, every 4h):"
   echo "    bash install.sh --schedule-heartbeat      # enable (opt-in)"
   echo "    bash install.sh --unschedule-heartbeat    # disable"
+  echo "    bash install.sh --schedule-liveloop       # enable the SHADOW live-loop dogfood (EMIT-OFF; see live-loop-go-live.md)"
+  echo "    bash install.sh --unschedule-liveloop     # disable"
   echo "  Pause without unscheduling: touch ~/.claude/checkpoints/ghost-heartbeat.disabled"
 }
 
@@ -436,6 +440,58 @@ unschedule_heartbeat() {
   fi
 }
 
+# A-W3 -- schedule / unschedule the SHADOW live-loop runner via the node module (mirror the heartbeat wiring).
+# EMIT-OFF: a scheduled fire drafts only (no PR). Installing IS the deliberate opt-in (bakes LOOM_LIVE_LOOP_ENABLED=1).
+schedule_liveloop() {
+  # The live-loop lives in the LAB tier (experiment substrate), which install.sh does NOT mirror to $CLAUDE_DIR
+  # (unlike the kernel heartbeat). Operate it from the REPO checkout ($SCRIPT_DIR = install.sh's own dir); the
+  # plist bakes the repo's absolute runner path, which persists while the checkout exists (VALIDATE code-rev MED).
+  local mod="$SCRIPT_DIR/packages/lab/live-loop/live-loop-schedule.js"
+  local runner="$SCRIPT_DIR/packages/lab/live-loop/live-loop-run.js"
+  if [ ! -f "$runner" ] || [ ! -f "$mod" ]; then
+    echo "  NOTE: live-loop sources not found under $SCRIPT_DIR/packages/lab/live-loop/ -- run --schedule-liveloop from the repo checkout."
+    return 0
+  fi
+  local sched; sched=$([ "$(uname -s)" = "Darwin" ] && echo "launchd" || echo "cron")
+  if $DRY_RUN; then
+    echo "[DRY RUN] live-loop schedule ($sched) -- previewing the generated task (no mutation):"
+    node "$mod" install --dry-run 2>&1 || true
+    return 0
+  fi
+  echo "Scheduling the SHADOW live-loop runner ($sched, every 6h, EMIT-OFF)..."
+  local out; out=$(node "$mod" install 2>&1 || true)
+  printf '%s\n' "$out"
+  if printf '%s' "$out" | grep -q '"ok":true'; then
+    echo "  -> Pause anytime: touch ~/.claude/checkpoints/live-loop.disabled  (resume: rm that file)"
+    if printf '%s' "$out" | grep -q '"claudePathBaked":false'; then
+      echo "  NOTE: could not vet/bake an absolute 'claude' path -- under the minimal PATH a scheduled fire may"
+      echo "        resolve no claude and run inert. Re-run --schedule-liveloop from a shell where"
+      echo "        'command -v claude' resolves to a real, non-world-writable binary."
+    fi
+    echo "  NOTE: this schedule is EMIT-OFF (draft-only). See packages/lab/live-loop/live-loop-go-live.md."
+  else
+    echo "  NOTE: schedule request did not complete (see the result above); nothing was scheduled."
+  fi
+}
+
+unschedule_liveloop() {
+  local mod="$SCRIPT_DIR/packages/lab/live-loop/live-loop-schedule.js"
+  if [ ! -f "$mod" ]; then
+    echo "  NOTE: live-loop schedule module not found under $SCRIPT_DIR -- run from the repo checkout."
+    return 0
+  fi
+  if $DRY_RUN; then
+    echo "[DRY RUN] live-loop unschedule -- would remove the scheduled task (no mutation)."
+    return 0
+  fi
+  echo "Unscheduling the SHADOW live-loop runner..."
+  local out; out=$(node "$mod" uninstall 2>&1 || true)
+  printf '%s\n' "$out"
+  if ! printf '%s' "$out" | grep -q '"ok":true'; then
+    echo "  NOTE: unschedule request did not complete (see the result above)."
+  fi
+}
+
 run_smoke_tests() {
   echo ""
   echo "Running hook smoke tests..."
@@ -508,6 +564,8 @@ INSTALL_COMMANDS=false
 INSTALL_SKILLS=false
 SCHEDULE_HEARTBEAT=false
 UNSCHEDULE_HEARTBEAT=false
+SCHEDULE_LIVELOOP=false
+UNSCHEDULE_LIVELOOP=false
 RUN_TESTS=false
 
 for arg in "$@"; do
@@ -526,6 +584,8 @@ for arg in "$@"; do
     --skills)   INSTALL_SKILLS=true ;;
     --schedule-heartbeat)   SCHEDULE_HEARTBEAT=true ;;
     --unschedule-heartbeat) UNSCHEDULE_HEARTBEAT=true ;;
+    --schedule-liveloop)    SCHEDULE_LIVELOOP=true ;;
+    --unschedule-liveloop)  UNSCHEDULE_LIVELOOP=true ;;
     --diff)     DRY_RUN=true ;;
     --backup)   BACKUP=true ;;
     --test)     RUN_TESTS=true ;;
@@ -560,6 +620,8 @@ $INSTALL_SKILLS  && install_skills
 # schedule_heartbeat needs the just-installed runner present -- VERIFY code-rev HIGH #6).
 $SCHEDULE_HEARTBEAT   && schedule_heartbeat
 $UNSCHEDULE_HEARTBEAT && unschedule_heartbeat
+$SCHEDULE_LIVELOOP    && schedule_liveloop
+$UNSCHEDULE_LIVELOOP  && unschedule_liveloop
 
 if $RUN_TESTS && ! $DRY_RUN; then
   if ! $INSTALL_HOOKS; then

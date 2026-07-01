@@ -321,6 +321,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 ### `lab/live-loop/`
 
 - `packages/lab/live-loop/live-loop-run.js` - A-W2 - the SHADOW live-loop scheduler runner.
+- `packages/lab/live-loop/live-loop-schedule.js` - A-W3 - the OS-scheduler OFFER for the SHADOW live-loop runner.
 
 ### `lab/manage-proposal/`
 
