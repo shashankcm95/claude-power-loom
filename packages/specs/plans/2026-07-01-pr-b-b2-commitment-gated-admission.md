@@ -9,7 +9,10 @@ tracks: autonomous-SDE lifecycle gap-map item 5 (first-HARDEN-gate); RFC weight-
 
 ## Goal (one wave, SHADOW, no dam opens)
 
-Add a NEW in-dir pure function `admitWorldAnchorNode(node, opts)` to `packages/lab/world-anchor/`
+Add a NEW in-dir **fail-closed SHADOW admission function** `admitWorldAnchorNode(node, opts)` to
+`packages/lab/world-anchor/` (it READS the attestation + merge-outcome stores and EMITS alerts on every
+refuse — side-effecting, NOT pure; the header's honest framing is "PURE-ish: the only I/O is two
+opts-dir-injected store reads")
 that decides whether a persisted `world_anchored` node's `'world-anchor'` source token is
 **commitment-verified (trustworthy)** — by RE-verifying, at admission time, PR-A2a's STEP 1
 (broker_sig) + STEP 2 (lesson-commitment binding) against the SEALED merge-outcome bundle.
