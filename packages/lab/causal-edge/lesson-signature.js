@@ -67,6 +67,34 @@ function lessonClusterKey(block) {
     + safeEnumKey(b.corrective_class, CORRECTIVE_CLASS);
 }
 
+// --------------------------------------------------------------------------
+// The symmetric VALIDATOR/PARSER of lessonClusterKey (the recall lane's laundering guard, PR-B B3).
+// A world-anchored recall retriever must NEVER trust a node's raw <=512-char on-disk lesson_signature as
+// a ranking key (an attacker picks it to target a spawn-context - VERIFY-hacker HIGH). This re-validates
+// a signature against the frozen taxonomy by DIRECT enum MEMBERSHIP, returning the parsed axes or null.
+//
+// NOT a round-trip (`lessonClusterKey(parsed) === sig`): safeEnumKey collapses off-enum -> the literal
+// 'INVALID' AND is idempotent on 'INVALID', so a round-trip is a FIXPOINT that admits any `lesson:INVALID|
+// ...` cell - 60 cells, not the 24 canonical (VERIFY-hacker HIGH). Direct membership admits EXACTLY the
+// 4x3x2 = 24 floor cells. The split takes NO limit argument: `'a|b|c|d'.split('|', 3)` silently TRUNCATES
+// to `['a','b','c']`, so a 4-part poison signature must be caught by length===3, never truncated in
+// (VERIFY-reviewer HIGH).
+// --------------------------------------------------------------------------
+
+function parseLessonClusterKey(sig) {
+  if (typeof sig !== 'string' || !sig.startsWith(LESSON_PREFIX)) return null;
+  const parts = sig.slice(LESSON_PREFIX.length).split('|');       // NO limit - a 4-part poison must not truncate to 3
+  if (parts.length !== 3) return null;
+  const [trigger_class, gotcha_class, corrective_class] = parts;
+  if (!TRIGGER_CLASS.includes(trigger_class)) return null;        // DIRECT membership, never a safeEnumKey round-trip
+  if (!GOTCHA_CLASS.includes(gotcha_class)) return null;          // (the 'INVALID' sentinel is a round-trip fixpoint)
+  if (!CORRECTIVE_CLASS.includes(corrective_class)) return null;
+  return { trigger_class, gotcha_class, corrective_class };
+}
+
+// True iff `sig` is a strictly-canonical lesson cluster key (exactly one of the 24 frozen floor cells).
+function isCanonicalLessonSignature(sig) { return parseLessonClusterKey(sig) !== null; }
+
 // A run-time / test assertion that the namespace separators stay reserved across BOTH
 // key spaces (protecting the colon symmetrically is stronger than asserting the prefix
 // on the lesson side alone). Throws on the first offender. Pure; cheap; call it in the
@@ -138,5 +166,6 @@ function groupByKey(blocks, keyFn) {
 
 module.exports = {
   TRIGGER_CLASS, GOTCHA_CLASS, CORRECTIVE_CLASS, LESSON_PREFIX, LESSON_BODY_MAX,
-  lessonClusterKey, assertEnumDelimiterSafe, lessonLeaks, groupByKey,
+  lessonClusterKey, parseLessonClusterKey, isCanonicalLessonSignature,
+  assertEnumDelimiterSafe, lessonLeaks, groupByKey,
 };

@@ -18,7 +18,8 @@ const REPO = path.join(__dirname, '..', '..', '..', '..');
 const LS = require(path.join(REPO, 'packages', 'lab', 'causal-edge', 'lesson-signature.js'));
 const {
   TRIGGER_CLASS, GOTCHA_CLASS, CORRECTIVE_CLASS, LESSON_PREFIX,
-  lessonClusterKey, assertEnumDelimiterSafe, lessonLeaks, groupByKey,
+  lessonClusterKey, parseLessonClusterKey, isCanonicalLessonSignature,
+  assertEnumDelimiterSafe, lessonLeaks, groupByKey,
 } = LS;
 const TF = require(path.join(REPO, 'packages', 'lab', 'causal-edge', 'trajectory-friction.js'));
 const { frictionClusterKey, FRICTION_CLASS, FRICTION_PHASE, DETECTION_LEG } = TF;
@@ -149,6 +150,41 @@ test('groupByKey uses a null-proto map (a __proto__ key can not pollute)', () =>
   const { groups } = groupByKey([{ x: 1 }], () => '__proto__');
   assert.ok(Object.prototype.hasOwnProperty.call(groups, '__proto__'));
   assert.strictEqual(groups.__proto__.count, 1);
+});
+
+// --------------------------------------------------------------------------
+// parseLessonClusterKey / isCanonicalLessonSignature — the symmetric VALIDATOR (PR-B B3 laundering guard).
+// DIRECT enum membership, not a safeEnumKey round-trip (the 'INVALID' sentinel is a round-trip FIXPOINT).
+// --------------------------------------------------------------------------
+
+test('parseLessonClusterKey round-trips EVERY one of the 24 canonical cells (builder<->validator symmetry)', () => {
+  let n = 0;
+  for (const t of TRIGGER_CLASS) for (const g of GOTCHA_CLASS) for (const c of CORRECTIVE_CLASS) {
+    const sig = lessonClusterKey({ trigger_class: t, gotcha_class: g, corrective_class: c });
+    const parsed = parseLessonClusterKey(sig);
+    assert.deepStrictEqual(parsed, { trigger_class: t, gotcha_class: g, corrective_class: c }, sig);
+    assert.strictEqual(isCanonicalLessonSignature(sig), true);
+    n += 1;
+  }
+  assert.strictEqual(n, 24, 'exactly the 4x3x2 floor');
+});
+
+test('parseLessonClusterKey REJECTS the INVALID-sentinel fixpoint (never a round-trip false-accept)', () => {
+  for (const sig of ['lesson:INVALID|INVALID|INVALID', 'lesson:INVALID|unguarded-edge-case|fail-closed', 'lesson:boundary-contract|INVALID|fail-closed', 'lesson:boundary-contract|unguarded-edge-case|INVALID']) {
+    assert.strictEqual(parseLessonClusterKey(sig), null, sig);
+    assert.strictEqual(isCanonicalLessonSignature(sig), false, sig);
+  }
+});
+
+test('parseLessonClusterKey REJECTS malformed shapes (4-part truncation trap, 2-part, missing prefix, empty, non-string)', () => {
+  for (const sig of [
+    'lesson:boundary-contract|unguarded-edge-case|fail-closed|EXTRA',   // split(NO limit) + length===3 catches it
+    'lesson:boundary-contract|unguarded-edge-case',                     // 2-part
+    'boundary-contract|unguarded-edge-case|fail-closed',                // missing prefix
+    'lesson:', '', 'lesson:||', null, undefined, 42, {},
+  ]) {
+    assert.strictEqual(parseLessonClusterKey(sig), null, JSON.stringify(sig));
+  }
 });
 
 (async () => {

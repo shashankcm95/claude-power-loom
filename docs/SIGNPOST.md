@@ -281,6 +281,8 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/lab/causal-edge/walker.js` - v3.5 Wave 2 - the OQ-27 read-side walker (the CONSUMER of the graph loop).
 - `packages/lab/causal-edge/weight-source-gate.js` - v-next MV-W2 — the OQ-NS-6 source-admission FIREWALL for the lesson trust-weight wire.
 - `packages/lab/causal-edge/wilson.js` - v-next MV-W1 — the Wilson score interval (95%, NO continuity correction).
+- `packages/lab/causal-edge/world-anchored-recall-cli.js` - PR-B B3 CLI - the subprocess entry a future spawn-context builder (B4) invokes via invokeNodeJson
+- `packages/lab/causal-edge/world-anchored-recall.js` - Autonomous-SDE ladder item 5, PR-B B3 - the NET-NEW world-anchored recall RETRIEVER (SHADOW).
 
 ### `lab/circuit-breaker/`
 
