@@ -222,6 +222,23 @@ test('C5: omitted judgeProbe -> NOTE (programmatic flexibility; the CLI always g
   assert.strictEqual(statusOf(V.assessActorCustody(facts({ judgeProbe: null })), 'C5-judgeless'), 'NOTE');
 });
 
+// ---- #436 — the cross-uid probes (C3/C5) spawn from a NEUTRAL cwd so the operator's cwd cannot fail them ----
+test('#436: gatherActorCustodyFacts spawns BOTH cross-uid probes (C3/C5) with cwd:/ (a 0700-home cwd cannot getcwd-EACCES them)', () => {
+  const calls = [];
+  // TEST-ONLY spawnFn seam: record each probe's spawn opts, return a benign exit-0 result.
+  const spawnFn = (command, args, o) => { calls.push({ command, args, opts: o }); return { status: 0, stdout: '', error: null }; };
+  V.gatherActorCustodyFacts({
+    keyFile: '/nonexistent/actor-anthropic.key', actorUser: 'loom-actor',
+    wrapperPath: '/usr/local/bin/loom-actor-run', sudoPath: '/usr/bin/sudo',
+    claudeBin: 'claude', nodeBin: 'node', spawnFn,
+  });
+  assert.strictEqual(calls.length, 2, 'exactly the C3 version-probe + the C5 judge-probe spawn through the seam');
+  for (const c of calls) {
+    assert.ok(c.opts && typeof c.opts === 'object', 'the probe passes a spawn-opts object');
+    assert.strictEqual(c.opts.cwd, '/', 'every cross-uid probe MUST spawn from the neutral / cwd (the #436 fix; absent -> getcwd-EACCES from a 0700 home)');
+  }
+});
+
 (async () => {
   for (const { name, fn } of tests) {
     try { await fn(); process.stdout.write(`  PASS ${name}\n`); passed += 1; }
