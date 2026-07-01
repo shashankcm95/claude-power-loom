@@ -121,10 +121,16 @@ test('COHERENT states do NOT emit world-anchor-arm-incoherent (non-vacuity: the 
   });
 });
 
-test('DISTINCT tokens (Q5-B): a typo admission arm emits -misconfigured, NOT -incoherent', () => {
+test('DISTINCT tokens (Q5-B) + typo suppresses -incoherent (CodeRabbit F2): a typo admission arm emits ONLY -misconfigured, even with signing armed', () => {
   withAdmit('ture', () => {
-    const err = captureStderr(() => resolveArmedCustodyKeys({ signingArmed: false }));
-    assert.ok(/world-anchor-arm-misconfigured/.test(err), 'typo -> misconfigured token');
+    const errDark = captureStderr(() => resolveArmedCustodyKeys({ signingArmed: false }));
+    assert.ok(/world-anchor-arm-misconfigured/.test(errDark), 'typo -> misconfigured token');
+    assert.ok(!/world-anchor-arm-incoherent/.test(errDark), 'typo alone: no -incoherent');
+    // typo admission + signing armed: the TYPO is the real cause -> ONLY -misconfigured, never a misleading
+    // -incoherent(cause=signing-armed-without-admission), which would misreport a parse failure as a coherence XOR.
+    const errArmed = captureStderr(() => resolveArmedCustodyKeys({ signingArmed: true }));
+    assert.ok(/world-anchor-arm-misconfigured/.test(errArmed), 'typo+signing -> misconfigured token');
+    assert.ok(!/world-anchor-arm-incoherent/.test(errArmed), 'typo+signing does NOT emit -incoherent (F2)');
   });
 });
 

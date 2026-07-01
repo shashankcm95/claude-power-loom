@@ -231,7 +231,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 ### `lab/_lib/`
 
 - `packages/lab/_lib/claude-headless.js` - The TOOL-LESS `claude -p` recipe — firsthand re-verified on claude 2.1.177 by the ③.2.2c dogfood
-- `packages/lab/_lib/custody-arming.js` - A-W1 (Part A) - the ARMING POLICY for the world-anchor custody keys: which PINNED /etc/loom paths, gated on
+- `packages/lab/_lib/custody-arming.js` - A-W1 (Part A) - the shared ARMING POLICY for the world-anchor custody keys: the both-or-neither coherence gate
 - `packages/lab/_lib/custody-verify-key.js` - PR-B B5 (the Rubicon) - the custody-pinned verify-key READER (SHADOW).
 - `packages/lab/_lib/enum-key.js` - v3.11 W1 — the shared closed-set key primitive.
 - `packages/lab/_lib/host-claude-guard.js` - #430 — the SINGLE fail-closed armed-decision for every HOST-SIDE `claude -p` chokepoint (the resolution actor +

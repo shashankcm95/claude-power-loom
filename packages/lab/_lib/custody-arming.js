@@ -2,8 +2,8 @@
 
 // @loom-layer: lab
 //
-// A-W1 (Part A) - the ARMING POLICY for the world-anchor custody keys: which PINNED /etc/loom paths, gated on
-// the both-or-neither arm coherence. Extracted from world-anchored-recall-cli.js now that A-W1 adds a SECOND
+// A-W1 (Part A) - the shared ARMING POLICY for the world-anchor custody keys: the both-or-neither coherence gate
+// over which PINNED /etc/loom paths resolve. Extracted from world-anchored-recall-cli.js now that A-W1 adds a SECOND
 // consumer (the observe-merge verify-at-mint arm) - single-source the pinned paths + the arming-gated resolution
 // so the two consumers cannot split-brain (mirrors world-anchor-arming.js's "one flag, one parse, one truth").
 //
@@ -40,9 +40,14 @@ const BROKER_VERIFY_KEY_PATH = '/etc/loom/verify.pem';
 //     clobber a `reason` detail key (alert.js:19-23).
 //   - world-anchor-arm-misconfigured : a TYPO on the admission arm flag (a parse failure, not a flag-disagreement).
 function armingDecision(signingArmed) {
+  const misconfigured = isWorldAnchorArmMisconfigured();
   const coh = armingCoherence(signingArmed);
-  if (!coh.coherent) emitEgressAlert('world-anchor-arm-incoherent', { cause: coh.reason });
-  if (isWorldAnchorArmMisconfigured()) emitEgressAlert('world-anchor-arm-misconfigured', {});
+  // A TYPO on the admission flag is the REAL cause: suppress the -incoherent signal in that case (CodeRabbit F2)
+  // so a mistyped LOOM_WORLD_ANCHOR_ARM (which strict-parses dark) does not ALSO misreport as
+  // 'signing-armed-without-admission' when signing is armed. A typo emits ONLY -misconfigured - the two signals
+  // stay DISTINCT (Q5-B): -misconfigured = a single-flag PARSE failure, -incoherent = two VALID flags disagreeing.
+  if (!misconfigured && !coh.coherent) emitEgressAlert('world-anchor-arm-incoherent', { cause: coh.reason });
+  if (misconfigured) emitEgressAlert('world-anchor-arm-misconfigured', {});
   return coh;
 }
 

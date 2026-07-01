@@ -49,13 +49,13 @@ engaged) -> the unauthenticated-skip path, **byte-identical to today**.
 only in `world-anchored-recall-cli.js:30-31,60-69`. Extract them to a shared `_lib` helper so the mint arm and
 the recall CLI share ONE definition:
 
-- NEW `packages/lab/_lib/custody-arming.js` — owns `EDGE_VERIFY_KEY_PATH`, `BROKER_VERIFY_KEY_PATH`, and:
-  - `resolveArmedCustodyKeys()` -> `{}` un-armed, else `{selfUid, edgeVerifyKey, brokerVerifyKey}` (the current
-    `resolveArmingOpts` body, moved verbatim).
-  - `resolveArmedBrokerVerifyKey()` -> `null` un-armed, else the broker key (for the mint arm).
-- `world-anchored-recall-cli.js resolveArmingOpts()` -> delegates to `resolveArmedCustodyKeys()` (behaviour
-  unchanged; re-exports the paths for its existing skip-guard).
-- `world-anchor/cli.js mainObserveMerge` -> `verifyKeyPem: opts.verifyKeyPem !== undefined ? opts.verifyKeyPem : resolveArmedBrokerVerifyKey()`.
+- NEW `packages/lab/_lib/custody-arming.js` — owns `EDGE_VERIFY_KEY_PATH`, `BROKER_VERIFY_KEY_PATH`, and (both
+  coherence-gated; `signingArmed` INJECTED by the caller per Q2-A so lab/_lib never imports back into world-anchor/):
+  - `resolveArmedCustodyKeys({ signingArmed })` -> `{}` un-armed/incoherent, else `{selfUid, edgeVerifyKey, brokerVerifyKey}`.
+  - `resolveArmedBrokerVerifyKey({ signingArmed })` -> `null` un-armed/incoherent, else the broker key (for the mint arm).
+- `world-anchored-recall-cli.js resolveArmingOpts()` -> `resolveArmedCustodyKeys({ signingArmed: isEdgeUidSepArmed() })`
+  (behaviour-preserved; re-exports the paths for its existing skip-guard).
+- `world-anchor/cli.js mainObserveMerge` -> `verifyKeyPem: opts.verifyKeyPem !== undefined ? opts.verifyKeyPem : resolveArmedBrokerVerifyKey({ signingArmed: isEdgeUidSepArmed() })`.
 
 ### Change 2 — the both-or-neither arm preflight
 

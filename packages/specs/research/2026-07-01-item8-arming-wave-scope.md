@@ -96,11 +96,14 @@ to the Part B risk calculus. (This claim is the primary target of the adversaria
 
 Every step is BUILT; each is currently gated off. For a real merge to influence a spawned prompt:
 
-1. Edge signer armed: `LOOM_EDGE_USER` + `LOOM_EDGE_WRAPPER` + `LOOM_EDGE_REQUIRE_UID_SEP` on a box with the
-   deployed cross-uid signer (uid 612 per `admit-world-anchor-node.js:33`) holding the edge key.
+1. Edge signer armed: `LOOM_EDGE_USER` + `LOOM_EDGE_WRAPPER` + `LOOM_EDGE_REQUIRE_UID_SEP` on a box where the
+   cross-uid signer is DEPLOYED (uid 612 is the intended custody holder per `admit-world-anchor-node.js:33`;
+   whether a box is actually deployed+attested is B-block-2, still open) holding the edge key.
 2. Custody keys deployed + attested: `/etc/loom/edge-verify.pem` + `/etc/loom/verify.pem` (provenance is a
    live-box fact, not a repo read).
-3. Admission armed: `LOOM_WORLD_ANCHOR_ARM` -> resolves keys + flips `LIVE_SOURCES`.
+3. Admission armed: `LOOM_WORLD_ANCHOR_ARM` flips `LIVE_SOURCES` (D1, admission-flag-alone); the custody keys
+   resolve (D2) ONLY when ALSO signing-coherent (the A-W1 both-or-neither preflight). D1-armed-alone is inert
+   (no signed edge -> `mock` -> weight 0).
 4. A producer invokes `observe-merge` on real merged PRs (the Part A scheduler, or manual).
 5. (Architect decision) whether the auto-mint arm threads `verifyKeyPem` so the PRODUCER refuses-on-absent,
    vs keeping the fail-closed boundary solely at the consumer (`world-anchor-mint.js:394-421` runs inbound auth

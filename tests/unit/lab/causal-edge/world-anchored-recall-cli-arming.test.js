@@ -134,6 +134,7 @@ test('a typo admission arm token emits world-anchor-arm-misconfigured on STDERR 
   assert.strictEqual(status, 0);
   assert.deepStrictEqual(result.instincts, [], 'a typo does NOT arm - dark');
   assert.ok(/world-anchor-arm-misconfigured/.test(stderr), 'the observable misconfig emit fired on stderr');
+  assert.ok(!/world-anchor-arm-incoherent/.test(stderr), 'a typo admission does NOT ALSO emit -incoherent (F2: typo is the cause, not a coherence XOR)');
 });
 
 test('H2: env LOOM_EDGE_VERIFY_KEY set has NO effect on the coherently-armed output (reader reads only the pinned path)', () => {
