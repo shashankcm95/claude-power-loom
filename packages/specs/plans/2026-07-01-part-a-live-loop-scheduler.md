@@ -430,8 +430,14 @@ live re-probe of the built code, not just a green unit suite). Plus CodeRabbit p
 
 ### Gates (post-fold)
 
-15/15 live-loop suite (stable), full lab + kernel suites green, eslint clean, signpost regenerated + `--check`
-clean, markdownlint clean (one MD004 wrapped-`+` trap fixed). CodeRabbit pre-PR pending on the secret-free tree.
+16/16 live-loop suite (stable), full lab + kernel suites green, eslint clean, signpost regenerated + `--check`
+clean, markdownlint clean (one MD004 wrapped-`+` trap fixed).
+
+**CodeRabbit (PR #483, after a spending-cap cooldown — SCAR #16/#18):** 1 Trivial nitpick, FOLDED — enforce the
+corpus cap LOCALLY (`records.slice(0, limit)` before drafting), so a regressed/injected puller that ignores
+`limit` cannot make a "bounded" fire draft an unbounded corpus (validate-at-boundary; the code-reviewer flagged
+boundedness-is-emergent as LOW, CodeRabbit proposed the enforcement — the async bot COMPLEMENTS the lens tier
+again). Pinned by a non-vacuous clamp test (a 10-record puller with `limit=3` -> exactly 3 drafted).
 
 ## Deferred to Part B (NOT this plan)
 

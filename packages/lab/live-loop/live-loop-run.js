@@ -92,7 +92,10 @@ async function runLiveLoop({
     let records = [];
     try {
       const pull = await pullFn({ limit });
-      records = (pull && Array.isArray(pull.records)) ? pull.records : [];
+      // enforce the corpus cap LOCALLY (CodeRabbit nitpick / validate-at-boundary): pullFn is PASSED `limit`,
+      // but a regressed pullLiveCorpus or an injected puller that ignores it must not make this "bounded" fire
+      // draft an unbounded corpus. Slice to `limit` before drafting - the runner does not trust the puller.
+      records = (pull && Array.isArray(pull.records)) ? pull.records.slice(0, limit) : [];
     } catch (e) { fatal = 'pull:' + ((e && e.message) || 'error'); }
     pulled = records.length;
 

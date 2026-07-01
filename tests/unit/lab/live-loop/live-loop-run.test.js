@@ -217,6 +217,15 @@ const oneRecordPull = () => async () => ({ records: [FIXTURE_RECORD], stats: {} 
     assert.ok(seenLimits[0] >= 1 && seenLimits[0] <= 100, 'the default limit is bounded [1,100]');
     assert.strictEqual(seenLimits[1], 7, 'a provided limit is forwarded');
   });
+  await test('bounded corpus: the runner CLAMPS records to limit before drafting (a puller that over-returns is capped)', async () => {
+    const w = ws(); let draftedCount = null;
+    const overPull = async () => ({ records: Array.from({ length: 10 }, (_, i) => ({ ...FIXTURE_RECORD, id: `octo-repo-issue-${i + 1}` })), stats: {} });
+    const spyDraft = async ({ records }) => { draftedCount = records.length; return { runId: 'x', total: records.length, outcomes: [], fatal: null }; };
+    await withEnv({ LOOM_LIVE_LOOP_ENABLED: '1' }, async () => {
+      await runLiveLoop({ ...w, limit: 3, deps: { pullFn: overPull, draftFn: spyDraft } });
+    });
+    assert.strictEqual(draftedCount, 3, 'a puller returning 10 records is clamped to limit=3 before drafting (not trusted)');
+  });
 
   // === 9. run-state written atomically after a run ===
   await test('run-state: writes {version, pulled, drafted, lastRunAt} atomically after a run', async () => {
