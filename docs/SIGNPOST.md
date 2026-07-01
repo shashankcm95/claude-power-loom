@@ -24,6 +24,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/kernel/_lib/integrate-merge.js` - PR-P3a — DORMANT integration merge primitives for the P3c ordered integrator.
 - `packages/kernel/_lib/integration-record.js` - PR-P3c-c — the NON-GENESIS chained-record builder for the ordered integrator.
 - `packages/kernel/_lib/invoke-git.js` - Shared no-shell git invoker for kernel callers (v3.0-alpha).
+- `packages/kernel/_lib/join-key-id.js` - The SINGLE-SOURCE join-key content-address primitive (moved kernel-ward for PR-B B2, mirroring the
 - `packages/kernel/_lib/jsonl-read.js` - Shared BOUNDED JSONL reader.
 - `packages/kernel/_lib/k14-snapshot.js` - K14 — filesystem snapshot + content-hash leaf (v3.0-alpha, PR-4a).
 - `packages/kernel/_lib/k14-symlink-guard.js` - K14 — symlink / TOCTOU guard (v3.0-alpha, PR-4a).
@@ -384,6 +385,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 
 ### `lab/world-anchor/`
 
+- `packages/lab/world-anchor/admit-world-anchor-node.js` - Autonomous-SDE ladder item 5, PR-B B2 - the COMMITMENT-GATED world-anchor ADMISSION TAG (SHADOW).
 - `packages/lab/world-anchor/cli.js` - Wave 1, autonomous-SDE ingress.
 - `packages/lab/world-anchor/edge-signer-resolve.js` - PR-B B1 - the edge signer-routing resolver (SHADOW).
 - `packages/lab/world-anchor/gh-verify.js` - Autonomous-SDE ladder gap-map item 2, PR-2 - the gh merge-outcome verifier (SHADOW, read-only GET).

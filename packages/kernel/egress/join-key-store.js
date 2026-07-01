@@ -61,11 +61,13 @@
 // KERNEL-tier: node core + kernel/_lib (canonical-json, safe-resolve, edge-attestation) + kernel/egress/
 // alert (the shared observable signal). No lab/runtime import.
 
-const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { canonicalJsonSerialize } = require('../_lib/canonical-json');
+// deriveJoinKeyId moved to the SINGLE-SOURCE kernel _lib primitive (PR-B B2) so a lab re-deriver
+// (admit-world-anchor-node.js) keys off ONE digest basis WITHOUT requiring this store (the require-allowlist
+// dam stays intact). Re-exported below so every existing `require('...join-key-store').deriveJoinKeyId` works.
+const { deriveJoinKeyId } = require('../_lib/join-key-id');
 const { currentUid } = require('../_lib/safe-resolve');
 const { isCanonicalBase64 } = require('../_lib/edge-attestation');   // OQ-3 W3 — the broker_sig SHAPE gate (canonical-base64)
 const { emitEgressAlert } = require('./alert');
@@ -110,8 +112,6 @@ const WITH_BUILT_BY_KEYS = Object.freeze([...CORE_KEYS, 'built_by']);
 function storeDir(opts) { return (opts && opts.dir) || DEFAULT_DIR; }
 /** True when `st`'s owner uid differs from `selfUid` (a foreign-owned file; skipped when selfUid is null). */
 function isForeign(st, selfUid) { return selfUid !== null && st.uid !== selfUid; }
-/** 64-hex sha256 of a string. */
-function sha256hex(s) { return crypto.createHash('sha256').update(s).digest('hex'); }
 /** Emit a namespaced, observable egress alert for a refuse/anomaly path (fail-closed must be observable). */
 function alert(reason, detail) { emitEgressAlert(`egress-join-key-${reason}`, detail || {}); }
 
@@ -128,33 +128,11 @@ function isBoundedPlainString(v, max) {
   return !Array.prototype.some.call(v, (c) => c.charCodeAt(0) < 0x20);
 }
 
-/**
- * deriveJoinKeyId(rec) -> 64-hex sha256 over the IDENTITY basis {repo, issueRef, pr_number,
- * approval_hash, lesson_commitment}. pr_url is NOT in the basis (it is in bodiesEqual instead, so a
- * divergent pr_url for the same identity is an observable COLLISION, not a silent second record). built_by
- * / emitted_at + the broker-sig bundle (approvedAt / nonce / key_id / broker_sig) are NOT in the basis
- * (RECORDED-not-sealed; the bundle is self-protecting via broker_sig). NOTE: repo + issueRef are ALREADY
- * inside approval_hash (computeEmissionHash over {repo, issueRef, diff}); the minimal identity is
- * {pr_number, approval_hash, lesson_commitment}. Kept belt-and-suspenders to mirror world-anchor-store's
- * {repo, issueRef, diff_hash} basis shape; the redundancy is harmless (a re-emit yields the same id).
- *
- * OQ-3 W3 (RFC §5.4) — `lesson_commitment` is the 5th hashed element, SEALED: an in-place tamper of the
- * recorded lesson_commitment re-derives a mismatching id and is rejected on read. '' (no-lesson) and a
- * 64-hex commitment are distinct bases. The empty-string coercion (`== null ? ''`) mirrors the other
- * positional elements - a missing value never becomes the literal token `undefined` in the canonical basis.
- * @param {{repo, issueRef, pr_number, approval_hash, lesson_commitment}} rec
- * @returns {string} 64-hex join_key id
- */
-function deriveJoinKeyId(rec) {
-  const r = rec || {};
-  return sha256hex(canonicalJsonSerialize([
-    r.repo == null ? '' : String(r.repo),
-    r.issueRef == null ? '' : String(r.issueRef),
-    r.pr_number == null ? '' : String(r.pr_number),
-    r.approval_hash == null ? '' : String(r.approval_hash),
-    r.lesson_commitment == null ? '' : String(r.lesson_commitment),
-  ]));
-}
+// deriveJoinKeyId is the SINGLE-SOURCE kernel _lib primitive (imported above, re-exported below). The
+// content-address basis {repo, issueRef, pr_number, approval_hash, lesson_commitment} + the seal rationale
+// live in kernel/_lib/join-key-id.js; pr_url is deliberately OUT of the basis (it rides in bodiesEqual, so a
+// divergent pr_url for one identity is an observable COLLISION), and lesson_commitment (OQ-3 W3) is the
+// SEALED 5th element (an in-place tamper re-derives a mismatching id -> rejected on read).
 
 /**
  * Throws unless `dir` exists, is a real (non-symlink) directory owned by selfUid. VALIDATE BEFORE

@@ -154,14 +154,17 @@ test('SHADOW import-graph: NO module outside packages/lab/world-anchor/ imports 
   assert.deepStrictEqual(offenders, [], `world-anchor-edge-store must stay SHADOW  -  these modules import it: ${offenders.join(', ')}`);
 });
 
-// The no-consumer guarantee made STRUCTURAL: authenticatedWorldAnchorIds / deriveWorldAnchorSource
-// (the reader + the source deriver) have ZERO production callers. Only the composition TEST (PR-A.2)
-// reads them. Absent this assertion the SHADOW guarantee is unbacked prose. We grep packages/ for a
-// CALL of either function (excluding the test tree + any _spike scratch), counting only the
-// world-anchor module itself (where they are defined, not called) as legal.
-const READER_CALL_RE = /\b(?:authenticatedWorldAnchorIds|deriveWorldAnchorSource)\s*\(/;
+// The no-consumer guarantee made STRUCTURAL: the world-anchor readers/derivers/admission tag have ZERO
+// production callers. Only the composition + unit TESTS read them. Absent this assertion the SHADOW
+// guarantee is unbacked prose. We grep packages/ for a CALL of any of them (excluding the test tree + any
+// _spike scratch), counting only the world-anchor module itself (where they are defined, not called) as
+// legal. PR-B B2 EXTENDS the set with authenticatedWorldAnchorEdges (the new edge form B2 consumes) AND
+// admitWorldAnchorNode (the wave's whole point) - without them the dam would ship VACUOUS for the new
+// surface (the guarantee unbacked for the admission tag). The LIVE_SOURCES flip + the first real caller is
+// PR-B3; until then a production call of ANY of these is an offender.
+const READER_CALL_RE = /\b(?:authenticatedWorldAnchorIds|authenticatedWorldAnchorEdges|deriveWorldAnchorSource|admitWorldAnchorNode)\s*\(/;
 
-test('SHADOW: authenticatedWorldAnchorIds / deriveWorldAnchorSource have ZERO production callers', () => {
+test('SHADOW: world-anchor readers / deriver / admission-tag have ZERO production callers', () => {
   const offenders = [];
   for (const file of walkJs(PACKAGES)) {
     if (file.startsWith(WORLD_ANCHOR_DIR + path.sep)) continue;       // the module defines them (not a production caller)
@@ -169,7 +172,7 @@ test('SHADOW: authenticatedWorldAnchorIds / deriveWorldAnchorSource have ZERO pr
     const src = fs.readFileSync(file, 'utf8');
     if (READER_CALL_RE.test(src)) offenders.push(path.relative(REPO, file));
   }
-  assert.deepStrictEqual(offenders, [], `the world-anchor reader/deriver must have NO production caller  -  these call it: ${offenders.join(', ')}`);
+  assert.deepStrictEqual(offenders, [], `the world-anchor reader/deriver/admission-tag must have NO production caller  -  these call it: ${offenders.join(', ')}`);
 });
 
 test('SHADOW header invariant: world-anchor-edge-store.js carries the SHADOW / LIVE_SOURCES / #273 header', () => {
