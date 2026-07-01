@@ -403,10 +403,27 @@ function listWorldAnchorEdges(opts = {}) {
  * @param {{verifyKey?: string}} [opts]  the ed25519 PUBLIC key, opts-injected
  * @returns {Set<string>}
  */
-function authenticatedWorldAnchorIds(edges, opts = {}) {
-  const set = new Set();
+/**
+ * authenticatedWorldAnchorEdges(edges, { verifyKey }) -> object[]. The AUTHENTICATED lane, EDGE form:
+ * the verified edges (NOT just their from_node_ids). PR-B B2 needs the edge itself (its `to_delta_ref`
+ * = the node's approval_hash) to derive the commitment-gated join, which authenticatedWorldAnchorIds
+ * discards. This is the SINGLE edge-auth predicate; authenticatedWorldAnchorIds delegates to it (the
+ * SAME predicate, shared not duplicated - the deliberate-duplication header is about DIFFERING predicates
+ * across STORES; within one store, sharing the identical predicate is correct DRY). Every guard below is
+ * VERBATIM the prior authenticatedWorldAnchorIds body; the ONLY change is the return type (edge[] vs Set).
+ * FAIL-CLOSED: a missing/empty verifyKey -> [] (never accept-all). NO from_node_id dedup (an array with
+ * two valid edges to one node is correct; a Set-based caller re-imposes uniqueness).
+ *
+ * RESIDUAL (#273): a valid sig proves key-possession-matching-the-verifier (INTEGRITY), NOT provenance.
+ *
+ * @param {Array} edges  world-anchored-by edges to test
+ * @param {{verifyKey?: string}} [opts]  the ed25519 PUBLIC key, opts-injected
+ * @returns {object[]}
+ */
+function authenticatedWorldAnchorEdges(edges, opts = {}) {
+  const out = [];
   const vk = opts && opts.verifyKey;
-  if (typeof vk !== 'string' || vk.length === 0) return set;             // fail-closed: no key -> empty
+  if (typeof vk !== 'string' || vk.length === 0) return out;             // fail-closed: no key -> empty
   for (const e of (Array.isArray(edges) ? edges : [])) {
     if (!e || typeof e !== 'object' || Array.isArray(e)) continue;
     if (!WORLD_ANCHOR_EDGE_TYPE.includes(e.edge_type)) continue;
@@ -416,9 +433,14 @@ function authenticatedWorldAnchorIds(edges, opts = {}) {
     if (!isHex64(e.from_node_id) || !isHex64(e.to_delta_ref) || !isHex64(e.edge_id)) continue;
     if (e.sig_alg !== SIG_ALG || typeof e.edge_sig !== 'string') continue;
     if (deriveWorldAnchorEdgeId(e) !== e.edge_id) continue;              // REPLAY defense: re-derive first
-    if (verifyEdgeSig(e.edge_id, e.edge_sig, { publicKeyPem: vk, allowEnvFallback: false })) set.add(e.from_node_id);
+    if (verifyEdgeSig(e.edge_id, e.edge_sig, { publicKeyPem: vk, allowEnvFallback: false })) out.push(e);
   }
-  return set;
+  return out;
+}
+
+function authenticatedWorldAnchorIds(edges, opts = {}) {
+  // Delegate to the single edge-auth predicate; the Set imposes the from_node_id dedup this fn's callers rely on.
+  return new Set(authenticatedWorldAnchorEdges(edges, opts).map((e) => e.from_node_id));
 }
 
 /**
@@ -454,6 +476,7 @@ module.exports = {
   writeWorldAnchorEdge,
   loadWorldAnchorEdge,
   listWorldAnchorEdges,
+  authenticatedWorldAnchorEdges,
   authenticatedWorldAnchorIds,
   deriveWorldAnchorSource,
   WORLD_ANCHOR_SOURCE,
