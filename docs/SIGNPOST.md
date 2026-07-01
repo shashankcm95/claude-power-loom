@@ -318,6 +318,10 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/lab/issue-corpus/_spike/corpus-build/stage-from-pr.js` - v3.11 bootcamp Phase 1 — the per-issue STAGER.
 - `packages/lab/issue-corpus/_spike/corpus-build/verify-record.js` - v3.11 bootcamp Phase 1 — the per-issue CORPUS GATE.
 
+### `lab/live-loop/`
+
+- `packages/lab/live-loop/live-loop-run.js` - A-W2 - the SHADOW live-loop scheduler runner.
+
 ### `lab/manage-proposal/`
 
 - `packages/lab/manage-proposal/cli.js` - v3.5 Wave 3b.1 - the manage-proposal CLI - the dogfood vehicle + the human-DISPOSITION surface for the
