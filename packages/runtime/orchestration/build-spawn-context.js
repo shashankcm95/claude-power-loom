@@ -62,6 +62,15 @@ const TOOLKIT_ROOT = findToolkitRoot();
 const DETECTOR_PATH = path.join(TOOLKIT_ROOT, 'packages', 'runtime', 'orchestration', 'architecture-relevance-detector.js');
 const ADR_PATH = path.join(TOOLKIT_ROOT, 'packages', 'runtime', 'orchestration', 'adr.js');
 const KB_RESOLVER_PATH = path.join(TOOLKIT_ROOT, 'packages', 'runtime', 'orchestration', 'kb-resolver.js');
+// PR-B B4: B3's world-anchored recall retriever (lab). Invoked as a SUBPROCESS (invokeNodeJson) so
+// runtime->lab stays ZERO imports. HARDCODED like the 3 siblings above - an env-overridable script path
+// fed to `node <path>` is the RCE seam safe-exec.js was built to close (VERIFY-hacker: keep it a constant).
+const RECALL_PATH = path.join(TOOLKIT_ROOT, 'packages', 'lab', 'causal-edge', 'world-anchored-recall-cli.js');
+// A bounded integer CONSTANT (never caller-threaded) so the render cannot be dialed to a large enumeration
+// once B5 arms LIVE_SOURCES (VERIFY-architect). A lesson is 1-2 sentences; 5 instincts is generous enrichment.
+const EARNED_LIMIT = 5;
+// Render-time hard clamp on a model-controlled lesson_body line (independent of the store's 4096 bound).
+const MAX_EARNED_LINE = 240;
 
 // ============================================================================
 // PRIMITIVE INVOCATION HELPERS
@@ -89,6 +98,18 @@ function invokeKbResolver(kbId, tier) {
     : tier === 'quick-ref' ? 'cat-quick-ref'
     : 'cat';
   return invokeNodeText(KB_RESOLVER_PATH, [subcommand, kbId], { timeout: 3000 });
+}
+
+/**
+ * PR-B B4: fetch the world-anchored EARNED INSTINCTS from B3's recall CLI (subprocess; runtime->lab stays
+ * zero imports). Fail-OPEN: null on any B3 error/timeout -> []. SHADOW: B3 resolves no keys + LIVE_SOURCES
+ * frozen-empty -> instincts:[] on every box (measured ~40ms). NO trigger_class - the task->trigger classifier
+ * is the INSTINCT GAP (gap-map item 4), deferred; B3 ranks by weight without it. Bounded CONSTANT limit.
+ * @returns {object[]} B3 ranked items (empty in SHADOW)
+ */
+function fetchEarnedInstincts() {
+  const result = invokeJson(RECALL_PATH, ['--limit', String(EARNED_LIMIT)]);
+  return Array.isArray(result && result.instincts) ? result.instincts : [];   // fail-open + non-array guard
 }
 
 // ============================================================================
@@ -145,6 +166,7 @@ function buildContext({ task, files = [], tierOverride = null, cap = null }) {
     tier_used: tier,
     kb_refs_loaded: loadedRefs,
     active_adrs: Array.from(adrSet.values()),
+    earned_instincts: fetchEarnedInstincts(),   // PR-B B4: SHADOW -> [] (subprocess to B3; fail-open)
   };
 }
 
@@ -219,12 +241,60 @@ function formatText(ctx) {
     lines.push('');
   }
 
+  // PR-B B4: world-anchored earned-instincts enrichment (SHADOW -> "(none)"). formatEarnedInstincts
+  // sanitizes each model-controlled field for this prompt sink. Placed last, before the END sentinel.
+  for (const line of formatEarnedInstincts(ctx.earned_instincts)) lines.push(line);
+
   lines.push('=== END SPAWN CONTEXT ===');
   return lines.join('\n');
 }
 
 function formatJson(ctx) {
   return JSON.stringify(ctx, null, 2);
+}
+
+/**
+ * Neutralize a model-controlled string for the SINGLE-LINE markdown-bullet SINK (a spawned agent PROMPT).
+ * SINK-shaped, NOT a blocklist (kb design-pushback): replace EVERY Unicode control (Cc: the C0 + C1 bands
+ * + DEL), format (Cf: zero-width space/joiner, soft-hyphen, BOM), and line/paragraph separator (Zl/Zp:
+ * U+2028/U+2029) with a space, then collapse whitespace + trim - so a body can never forge a `## ` heading,
+ * a `---` rule, or the `=== END SPAWN CONTEXT ===` sentinel via ANY line-break codepoint. The bullet prefix
+ * (`- `) additionally traps any residual so no rendered element opens at column 0 (VERIFY+VALIDATE hacker).
+ * `\p{...}` property escapes need the `u` flag + are NOT literal control chars (no-control-regex untripped).
+ * The clamp is CODE-POINT based (Array.from) so an astral char at the boundary is never split into a lone
+ * surrogate (VALIDATE code-reviewer/hacker). ASCII "..." ellipsis (no non-ASCII in source).
+ */
+function sanitizeLine(s) {
+  const flat = String(s == null ? '' : s)
+    .replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const cps = Array.from(flat);
+  return cps.length > MAX_EARNED_LINE ? `${cps.slice(0, MAX_EARNED_LINE).join('')}...` : flat;
+}
+
+/**
+ * Render the `## Earned instincts` section from B3's ranked items. PURE + exported (the one real test
+ * consumer - the render-sanitization path the SHADOW-empty subprocess test cannot reach). Defensively keeps
+ * ONLY positively-weighted entries (belt on the export seam: a mis-wired caller handing `ranked`/a hand-built
+ * array cannot surface a weight-0 body, VERIFY-hacker LOW). Every model-controlled field is sanitizeLine'd.
+ * SHADOW: instincts is [] -> the "(none)" line.
+ * @param {object[]} instincts  B3 ranked items { node_id, lesson_signature, trigger_class, lesson_body, verdict, source, weight }
+ * @returns {string[]} section lines (paste-inline)
+ */
+function formatEarnedInstincts(instincts) {
+  try {
+    const list = (Array.isArray(instincts) ? instincts : []).filter((it) => it && Number.isFinite(it.weight) && it.weight > 0);
+    if (list.length === 0) return ['## Earned instincts: (none)', ''];
+    const lines = [`## Earned instincts (world-anchored, ${list.length})`, ''];
+    for (const it of list) {
+      lines.push(`- ${sanitizeLine(it.lesson_body)} [trigger: ${sanitizeLine(it.trigger_class)}, weight ${it.weight}]`);
+    }
+    lines.push('');
+    return lines;
+  } catch {
+    return ['## Earned instincts: (none)', ''];   // fail-open on a hostile item (export-seam defense; unreachable via the JSON wire)
+  }
 }
 
 // ============================================================================
@@ -246,49 +316,51 @@ function parseArgs(argv) {
   return args;
 }
 
-const args = parseArgs(process.argv.slice(2));
+// PR-B B4: the CLI is guarded so `require()` (the unit test) does NOT self-execute + process.exit. The
+// file was previously un-requirable (it ran the CLI at module scope). formatEarnedInstincts is exported
+// as the one real test consumer - the pure render-sanitization path the SHADOW-empty subprocess cannot reach.
+function main() {
+  const args = parseArgs(process.argv.slice(2));
 
-// Show usage if --help or no task supplied
-if (args.help || !args.task || args.task === true) {
-  console.error('Usage: build-spawn-context.js --task "<task>" [--files "f1,f2"] [--tier T] [--cap N] [--format F]');
-  console.error('  --task <text>        — task description (required)');
-  console.error('  --files "a,b,c"      — comma-separated files (for ADR matching)');
-  console.error('  --tier <T>           — override tier (summary|quick-ref|full)');
-  console.error('  --cap <N>            — max kb refs (default 5)');
-  console.error('  --format <F>         — output format: text (default; paste-inline) | json');
-  console.error('Composes architecture-relevance-detector + adr.js + kb-resolver.');
-  process.exit(args.help ? 0 : 1);
-}
-
-const opts = {
-  task: args.task,
-  files: args.files ? args.files.split(',').map((s) => s.trim()).filter(Boolean) : [],
-  tierOverride: args.tier && args.tier !== true ? args.tier : null,
-  cap: args.cap !== undefined && args.cap !== true ? parseInt(args.cap, 10) : null,
-};
-
-const format = args.format || 'text';
-if (format !== 'text' && format !== 'json') {
-  console.error(`Invalid --format: ${format}. Must be 'text' or 'json'.`);
-  process.exit(1);
-}
-
-try {
-  const ctx = buildContext(opts);
-  if (format === 'json') {
-    console.log(formatJson(ctx));
-  } else {
-    console.log(formatText(ctx));
+  // Show usage if --help or no task supplied
+  if (args.help || !args.task || args.task === true) {
+    console.error('Usage: build-spawn-context.js --task "<task>" [--files "f1,f2"] [--tier T] [--cap N] [--format F]');
+    console.error('  --task <text>        — task description (required)');
+    console.error('  --files "a,b,c"      — comma-separated files (for ADR matching)');
+    console.error('  --tier <T>           — override tier (summary|quick-ref|full)');
+    console.error('  --cap <N>            — max kb refs (default 5)');
+    console.error('  --format <F>         — output format: text (default; paste-inline) | json');
+    console.error('Composes architecture-relevance-detector + adr.js + kb-resolver.');
+    process.exit(args.help ? 0 : 1);
   }
-} catch (err) {
-  // Per ADR-0001 fail-open discipline
-  process.stderr.write(`build-spawn-context: top-level error: ${err.message}\n`);
-  process.exit(1);
+
+  const opts = {
+    task: args.task,
+    files: args.files ? args.files.split(',').map((s) => s.trim()).filter(Boolean) : [],
+    tierOverride: args.tier && args.tier !== true ? args.tier : null,
+    cap: args.cap !== undefined && args.cap !== true ? parseInt(args.cap, 10) : null,
+  };
+
+  const format = args.format || 'text';
+  if (format !== 'text' && format !== 'json') {
+    console.error(`Invalid --format: ${format}. Must be 'text' or 'json'.`);
+    process.exit(1);
+  }
+
+  try {
+    const ctx = buildContext(opts);
+    if (format === 'json') {
+      console.log(formatJson(ctx));
+    } else {
+      console.log(formatText(ctx));
+    }
+  } catch (err) {
+    // Per ADR-0001 fail-open discipline
+    process.stderr.write(`build-spawn-context: top-level error: ${err.message}\n`);
+    process.exit(1);
+  }
 }
 
-// HT.1.9: dropped speculative module.exports block (3 named exports —
-// buildContext, formatText, formatJson — verified empirically as 0-consumer
-// per HT.1.9 pre-validation; all used internally only by the CLI top-level
-// invocation block above). Per backlog Decision (b): delete genuinely
-// unused. Function definitions remain as module-scope for internal CLI use;
-// CLI surface `node build-spawn-context.js --task ...` unchanged.
+if (require.main === module) main();
+
+module.exports = { formatEarnedInstincts };
