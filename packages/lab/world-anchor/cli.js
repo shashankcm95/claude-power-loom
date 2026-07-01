@@ -52,6 +52,7 @@ const { parsePrUrl } = require('./parse-pr-url');
 const { runMergeObserve } = require('./merge-observer');
 const { mintFromMergeOutcome, resolveCapturedSignatureForAttest } = require('./world-anchor-mint');
 const { emitEgressAlert } = require('../../kernel/egress/alert');
+const { resolveEdgeSignerLaunch } = require('./edge-signer-resolve');
 
 // The #2137 constants (the spec-kitty PR this wave confirms). diff_hash is NOT here  -  it is
 // re-derived from the diff bytes at backfill time.
@@ -349,7 +350,11 @@ async function mainObserveMerge(args, opts = {}) {
           liveDir: opts.liveDir,
           edgeDir: opts.edgeDir,
           pendingDir: opts.pendingDir, // PR-2 captured-lesson floor store (production: undefined -> default)
-          edgeSigner: opts.edgeSigner,
+          // B1: route the mint's signer via the resolver. The TEST seam (opts.edgeSigner) wins when set;
+          // production leaves it undefined + the arm flag unset -> resolveEdgeSignerLaunch returns signer:undefined
+          // -> the mint writes an UNSIGNED edge (output-identical to before). Even with the cross-uid signer
+          // DEPLOYED, this routes nothing until armed (B5). B1 ROUTES; B5 ADMITS (the arm flag is NOT the trust boundary).
+          edgeSigner: opts.edgeSigner !== undefined ? opts.edgeSigner : resolveEdgeSignerLaunch().signer,
         },
       );
     } catch (err) {
