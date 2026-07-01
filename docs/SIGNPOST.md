@@ -231,9 +231,11 @@ Auto-generated map of where things live, derived from the repo structure + each 
 ### `lab/_lib/`
 
 - `packages/lab/_lib/claude-headless.js` - The TOOL-LESS `claude -p` recipe — firsthand re-verified on claude 2.1.177 by the ③.2.2c dogfood
+- `packages/lab/_lib/custody-verify-key.js` - PR-B B5 (the Rubicon) - the custody-pinned verify-key READER (SHADOW).
 - `packages/lab/_lib/enum-key.js` - v3.11 W1 — the shared closed-set key primitive.
 - `packages/lab/_lib/host-claude-guard.js` - #430 — the SINGLE fail-closed armed-decision for every HOST-SIDE `claude -p` chokepoint (the resolution actor +
 - `packages/lab/_lib/scrub-lab-secrets.js` - ③.1-W4d Item 2a — the shared lab secret-scrub helper.
+- `packages/lab/_lib/world-anchor-arming.js` - PR-B B5 (the Rubicon) - the SINGLE source of the world-anchored HARDEN arming flag (SHADOW).
 
 ### `lab/attribution/`
 
@@ -281,7 +283,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/lab/causal-edge/walker.js` - v3.5 Wave 2 - the OQ-27 read-side walker (the CONSUMER of the graph loop).
 - `packages/lab/causal-edge/weight-source-gate.js` - v-next MV-W2 — the OQ-NS-6 source-admission FIREWALL for the lesson trust-weight wire.
 - `packages/lab/causal-edge/wilson.js` - v-next MV-W1 — the Wilson score interval (95%, NO continuity correction).
-- `packages/lab/causal-edge/world-anchored-recall-cli.js` - PR-B B3 CLI - the subprocess entry a future spawn-context builder (B4) invokes via invokeNodeJson
+- `packages/lab/causal-edge/world-anchored-recall-cli.js` - PR-B B3 CLI + B5 arming - the subprocess entry a spawn-context builder (B4) invokes via invokeNodeJson
 - `packages/lab/causal-edge/world-anchored-recall.js` - Autonomous-SDE ladder item 5, PR-B B3 - the NET-NEW world-anchored recall RETRIEVER (SHADOW).
 
 ### `lab/circuit-breaker/`
