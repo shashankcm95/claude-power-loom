@@ -80,4 +80,13 @@ function resolveEdgeSignerLaunch({ edgeLauncherFn } = {}) {
   return { mode: 'direct', signer: undefined };
 }
 
-module.exports = { defaultEdgeSignerLauncher, resolveEdgeSignerLaunch };
+// isEdgeUidSepArmed() -> boolean. STRICT parse of the B1 signing-arm flag (LOOM_EDGE_REQUIRE_UID_SEP) - the
+// SAME read defaultEdgeSignerLauncher uses at :39, exposed as a predicate. The arm-coherence preflight callers
+// (the recall CLI + the observe-merge mint arm) read this and INJECT signingArmed into custody-arming's
+// resolvers, so lab/_lib never imports back into world-anchor/ (VERIFY-architect Q2-A no-cycle). This module
+// stays the SOLE reader of LOOM_EDGE_REQUIRE_UID_SEP.
+function isEdgeUidSepArmed() {
+  return normalizeBool(process.env.LOOM_EDGE_REQUIRE_UID_SEP);
+}
+
+module.exports = { defaultEdgeSignerLauncher, resolveEdgeSignerLaunch, isEdgeUidSepArmed };

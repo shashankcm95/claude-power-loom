@@ -9,7 +9,7 @@
 // PR-B B5 (the Rubicon) - the custody-key resolution (D2, the LOAD-BEARING admission gate). Reads the
 // deploy-provisioned edge+broker verify keys from the PINNED /etc/loom paths ONLY when the STRICT arming
 // flag isWorldAnchorArmed() is set (the SINGLE arming source, shared with the weight gate D1 - no split-brain).
-// UN-ARMED (unset / typo / every CI+dev box) -> passes {} -> byte-identical to the pre-B5 SHADOW behaviour ->
+// UN-ARMED or INCOHERENT (unset / typo / B5-only / every CI+dev box) -> passes {} -> byte-identical to pre-B5 SHADOW ->
 // admitWorldAnchorNode returns 'mock' -> empty. The flag gates the resolution ATTEMPT; the crypto verify
 // (B2, allowEnvFallback:false) stays load-bearing - an absent/wrong-owner/symlinked key -> null -> B2 refuses
 // no-verify-key. The pinned paths are HARD CONSTANTS (never argv/env-derived, VERIFY-hacker M1); no env key is
@@ -19,16 +19,11 @@
 'use strict';
 
 const { retrieveWorldAnchoredInstincts } = require('./world-anchored-recall');
-const { isWorldAnchorArmed, isWorldAnchorArmMisconfigured } = require('../_lib/world-anchor-arming');
-const { resolveCustodyVerifyKey } = require('../_lib/custody-verify-key');
-const { currentUid } = require('../../kernel/_lib/safe-resolve');
-const { emitEgressAlert } = require('../../kernel/egress/alert');
-
-// The custody-pinned trust anchors (HARD CONSTANTS, never argv/env-derived - VERIFY-hacker M1). The edge
-// verify key is the deployed cross-uid loom-edge-signer's PUBLIC key; the broker verify key is the approval
-// broker's (approve-cli.js:180). Absent on CI/clean-dev -> resolveCustodyVerifyKey returns null -> dark.
-const EDGE_VERIFY_KEY_PATH = '/etc/loom/edge-verify.pem';
-const BROKER_VERIFY_KEY_PATH = '/etc/loom/verify.pem';
+const { isEdgeUidSepArmed } = require('../world-anchor/edge-signer-resolve');
+// A-W1: the pinned custody paths + the arming-gated resolution moved to the shared lab/_lib/custody-arming leaf
+// (single-source now that the observe-merge verify-at-mint arm is a SECOND consumer). The paths are re-exported
+// below for the arming test's skip-guard (still HARD CONSTANTS - exporting the value gives no redirection).
+const { resolveArmedCustodyKeys, EDGE_VERIFY_KEY_PATH, BROKER_VERIFY_KEY_PATH } = require('../_lib/custody-arming');
 
 /**
  * Minimal flag parser: --trigger-class <str>, --limit <int>. Unknown flags ignored (forward-compat).
@@ -49,23 +44,14 @@ function parseArgs(argv) {
 }
 
 /**
- * Resolve the custody-pinned verify keys, but ONLY when the STRICT arming flag is set. Returns {} (no keys)
- * on every un-armed box (byte-identical to the pre-B5 SHADOW behaviour). Both keys resolve INDEPENDENTLY
- * (never short-circuit - VERIFY-reviewer MED): B2's admitWorldAnchorNode requires BOTH and AND-gates the
- * refuse, so a present-edge + absent-broker (or the reverse) still refuses cleanly via no-verify-key. A
- * missing/foreign-owned/symlinked key -> null -> B2 refuses -> dark. On a typo'd arm flag emit an observable
- * misconfig alert to STDERR (never-fail-silent; the operator intended to arm) - it does NOT arm (STRICT).
- * emitEgressAlert writes to STDERR, so the single stdout JSON B4 parses stays intact.
+ * Resolve the custody-pinned verify keys via the shared arming policy (custody-arming.js), INJECTING the B1
+ * signing-arm state so the both-or-neither coherence gate applies (A-W1). Returns {} on every box where
+ * admission is not COHERENTLY armed (un-armed / typo / incoherent B5-only) - byte-identical to the pre-A
+ * un-armed SHADOW behaviour. The coherence + misconfig emits (observable, STDERR) live in the shared leaf;
+ * emitEgressAlert writes to STDERR so the single stdout JSON B4 parses stays intact.
  */
 function resolveArmingOpts() {
-  if (isWorldAnchorArmMisconfigured()) emitEgressAlert('world-anchor-arm-misconfigured', {});
-  if (!isWorldAnchorArmed()) return {};                          // dark: un-armed -> no keys (pre-B5 behaviour)
-  const selfUid = currentUid();
-  return {
-    selfUid,
-    edgeVerifyKey: resolveCustodyVerifyKey(EDGE_VERIFY_KEY_PATH, selfUid),      // independent resolve
-    brokerVerifyKey: resolveCustodyVerifyKey(BROKER_VERIFY_KEY_PATH, selfUid),  // independent resolve
-  };
+  return resolveArmedCustodyKeys({ signingArmed: isEdgeUidSepArmed() });
 }
 
 function main(argv) {

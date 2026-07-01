@@ -48,4 +48,35 @@ function isWorldAnchorArmMisconfigured() {
   return isDeployFlagSet(process.env[WORLD_ANCHOR_ARM_ENV]) && !isWorldAnchorArmed();
 }
 
-module.exports = { WORLD_ANCHOR_ARM_ENV, isWorldAnchorArmed, isWorldAnchorArmMisconfigured };
+/**
+ * armingCoherence(signingArmed) -> { admissionArmed, coherent, reason }. The both-or-neither arm preflight
+ * (A-W1). signingArmed (LOOM_EDGE_REQUIRE_UID_SEP, B1) is an INJECTED param: the CALLER (which legally reads
+ * both flags) passes it, so this module stays the SOLE reader of only LOOM_WORLD_ANCHOR_ARM and lab/_lib never
+ * imports back into world-anchor/ (VERIFY-architect Q2-A: no _lib<->world-anchor cycle).
+ *
+ * ASYMMETRIC by WORKFLOW-ORDER (Q1-A, NOT by "B1-only edges are inert" - that is a TIME-BOUND property: a
+ * B1-armed box's accumulated signed edges become admittable the moment item 8 flips LIVE_SOURCES): admission
+ * (B5) ADMITS only when BOTH cohere; signing-only (B1-only) is the LEGITIMATE sign-then-admit staging step
+ * (admission stays dark, signing is NOT broken - a different module owns it). B5-only (admission armed while
+ * signing is dark) is NEVER a legitimate step -> fail-closed dark. Either XOR is `coherent:false` with a
+ * DISTINCT reason for the caller to emit observably (Q5-C: emit before failing dark).
+ *
+ * DI-param defensiveness: signingArmed must be a real boolean; anything else coerces to false (dark).
+ *
+ * CALLER NOTE (VALIDATE code-reviewer): `coherent:false` is NOT a general health signal - it means only "the two
+ * flags DISAGREE". B1-only is `coherent:false` yet LEGITIMATE (the sign-then-admit staging step). Gate a REFUSE
+ * on `!admissionArmed` (both XOR states are dark), and gate an EMIT on `!coherent` (both XOR states are observable);
+ * do NOT branch a refuse/alarm on `coherent` alone or you would wrongly alarm on the legit B1-only staging path.
+ */
+function armingCoherence(signingArmed) {
+  const admissionFlag = isWorldAnchorArmed();
+  const signing = signingArmed === true;
+  const admissionArmed = admissionFlag && signing;
+  const coherent = admissionFlag === signing;               // both-set or neither-set
+  let reason = null;
+  if (admissionFlag && !signing) reason = 'admission-armed-without-signing';      // B5-only: incoherent -> dark
+  else if (!admissionFlag && signing) reason = 'signing-armed-without-admission'; // B1-only: legit staging
+  return { admissionArmed, coherent, reason };
+}
+
+module.exports = { WORLD_ANCHOR_ARM_ENV, isWorldAnchorArmed, isWorldAnchorArmMisconfigured, armingCoherence };

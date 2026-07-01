@@ -45,6 +45,12 @@ const { isWorldAnchorArmed } = require('../_lib/world-anchor-arming');
 // The LOAD-BEARING gate is the recall driver's custody-key crypto verify (admit-world-anchor-node.js); this
 // flip is defense-in-depth belt. On a deployed box (custody keys present) the un-armed flag is what keeps it
 // dark; on CI/clean-dev the absent keys ALSO keep it dark — two independent gates.
+// A-W1 NOTE (VALIDATE-hacker M1): the both-or-neither arm COHERENCE (custody-arming.armingCoherence, coupling
+// LOOM_WORLD_ANCHOR_ARM + LOOM_EDGE_REQUIRE_UID_SEP) is a D2 invariant. This D1 flip DELIBERATELY arms on
+// isWorldAnchorArmed() ALONE — a B5-only box flips LIVE_SOURCES but mints NO 'world-anchor'-source node (D2 is
+// dark -> admitWorldAnchorNode -> 'mock'), so D1-armed-alone is a belt with nothing to grip (weight 0, proven
+// inert). Adding coherence here would need a SECOND module-load flag read — the split-brain this wave's
+// single-arm-source discipline avoids. D2 (the custody crypto verify) is the load-bearing coherence gate.
 const WORLD_ANCHOR_SOURCE = 'world-anchor';   // reviewed literal; canonical def world-anchor-edge-store.js:62 (test parity-pinned)
 const LIVE_SOURCES = Object.freeze(isWorldAnchorArmed() ? [WORLD_ANCHOR_SOURCE] : []);
 

@@ -322,6 +322,85 @@ test('observe-merge auto-mint is NON-FATAL: a mint failure leaves the record suc
   assert.ok(typeof r.payload.edge_reason === 'string' && r.payload.edge_reason.length > 0, 'the edge failure reason is surfaced');
 });
 
+test('verify-at-mint UN-ARMED: the mint arm resolves verifyKeyPem to null -> unauthenticated shadow skip (byte-identical: minted, edge_signed:false, NO auth-refuse)', async () => {
+  clearJoinKeys();
+  const dir = tmp();
+  attest(dir, { ...GF, approval_hash: OBSERVE_APPROVAL });
+  seedJoinKey(GF);
+  const liveD = liveDir(dir); const edgeD = path.join(dir, 'edges'); const outcomeD = path.join(dir, 'outcomes'); const pendingD = pendingDir(dir);
+  // This is the DEPLOYED box (/etc/loom keys present); a stray arm flag would flip verify-at-mint on. Force un-armed.
+  const savedA = process.env.LOOM_WORLD_ANCHOR_ARM; const savedS = process.env.LOOM_EDGE_REQUIRE_UID_SEP;
+  delete process.env.LOOM_WORLD_ANCHOR_ARM; delete process.env.LOOM_EDGE_REQUIRE_UID_SEP;
+  let r;
+  try {
+    r = await cli.mainObserveMerge(
+      { pr: GF.pr_url },
+      { ghRunner: runnerMerged(), outcomeDir: outcomeD, anchorDir: dir, liveDir: liveD, edgeDir: edgeD, pendingDir: pendingD, now: '2026-06-28T12:00:00.000Z' },
+    );
+  } finally {
+    if (savedA === undefined) delete process.env.LOOM_WORLD_ANCHOR_ARM; else process.env.LOOM_WORLD_ANCHOR_ARM = savedA;
+    if (savedS === undefined) delete process.env.LOOM_EDGE_REQUIRE_UID_SEP; else process.env.LOOM_EDGE_REQUIRE_UID_SEP = savedS;
+  }
+  assert.strictEqual(r.code, 0, 'un-armed observe-merge exits 0');
+  assert.strictEqual(r.payload.minted, true, 'un-armed still mints (the unauthenticated shadow path, unchanged)');
+  assert.strictEqual(r.payload.edge_signed, false, 'the production edge is UNSIGNED');
+  assert.ok(!/broker-sig-invalid|auth-verify-error/.test(String(r.payload.mint_reason || '')), 'NO producer auth-refuse on the un-armed path (verifyKeyPem null -> authEngaged false -> else-branch)');
+});
+
+test('verify-at-mint THREAD ENGAGES (non-vacuous): a present verifyKeyPem drives the producer auth -> a bad key fail-closes broker-sig-invalid, node NOT minted, record success additive', async () => {
+  clearJoinKeys();
+  const dir = tmp();
+  attest(dir, { ...GF, approval_hash: OBSERVE_APPROVAL });
+  seedJoinKey(GF);
+  const liveD = liveDir(dir); const edgeD = path.join(dir, 'edges'); const outcomeD = path.join(dir, 'outcomes'); const pendingD = pendingDir(dir);
+  // opts.verifyKeyPem is the TEST seam - a present-but-invalid key ENGAGES the producer auth (world-anchor-mint.js
+  // authEngaged) and must fail CLOSED, proving the wire is live (not a null-only no-op).
+  const badKey = '-----BEGIN PUBLIC KEY-----\nNOTAKEY\n-----END PUBLIC KEY-----\n';
+  const r = await cli.mainObserveMerge(
+    { pr: GF.pr_url },
+    { ghRunner: runnerMerged(), outcomeDir: outcomeD, anchorDir: dir, liveDir: liveD, edgeDir: edgeD, pendingDir: pendingD, verifyKeyPem: badKey, now: '2026-06-28T12:00:00.000Z' },
+  );
+  assert.strictEqual(r.code, 0, 'the record success exit code stands (the mint refusal is additive/non-fatal)');
+  assert.strictEqual(r.payload.recorded, true, 'the merge-outcome still recorded');
+  assert.strictEqual(r.payload.minted, false, 'the PRODUCER refused to mint an un-authenticatable outcome');
+  assert.ok(/broker-sig-invalid|auth-verify-error/.test(String(r.payload.mint_reason || '')), `a producer auth-refuse reason surfaced (got ${r.payload.mint_reason})`);
+});
+
+test('verify-at-mint CONTINUOUS armed path (VALIDATE honesty M1): both flags -> the mint arm resolves the REAL broker key through resolveArmedBrokerVerifyKey -> authEngaged (deployed: a mismatched seeded sig fail-closes; CI: keyless skip)', async () => {
+  clearJoinKeys();
+  const dir = tmp();
+  attest(dir, { ...GF, approval_hash: OBSERVE_APPROVAL });
+  seedJoinKey(GF);
+  const liveD = liveDir(dir); const edgeD = path.join(dir, 'edges'); const outcomeD = path.join(dir, 'outcomes'); const pendingD = pendingDir(dir);
+  // The full continuous path (no verifyKeyPem seam): arm BOTH flags so isEdgeUidSepArmed() -> true and
+  // resolveArmedBrokerVerifyKey resolves the REAL /etc/loom/verify.pem through the production wire at cli.js.
+  // The seeded W3_BROKER_SIG is a random sig, so on a deployed box it will NOT verify against the real key ->
+  // broker-sig-invalid (the producer refuses). Setting LOOM_EDGE_REQUIRE_UID_SEP without USER/WRAPPER leaves the
+  // edge signer 'direct'/undefined (no sudo, no /etc/loom write); authEngaged refuses BEFORE any edge mint.
+  const DEPLOYED_KEYS = fs.existsSync('/etc/loom/verify.pem');
+  const savedA = process.env.LOOM_WORLD_ANCHOR_ARM; const savedS = process.env.LOOM_EDGE_REQUIRE_UID_SEP;
+  process.env.LOOM_WORLD_ANCHOR_ARM = '1'; process.env.LOOM_EDGE_REQUIRE_UID_SEP = '1';
+  let r;
+  try {
+    r = await cli.mainObserveMerge(
+      { pr: GF.pr_url },
+      { ghRunner: runnerMerged(), outcomeDir: outcomeD, anchorDir: dir, liveDir: liveD, edgeDir: edgeD, pendingDir: pendingD, now: '2026-06-28T12:00:00.000Z' },
+    );
+  } finally {
+    if (savedA === undefined) delete process.env.LOOM_WORLD_ANCHOR_ARM; else process.env.LOOM_WORLD_ANCHOR_ARM = savedA;
+    if (savedS === undefined) delete process.env.LOOM_EDGE_REQUIRE_UID_SEP; else process.env.LOOM_EDGE_REQUIRE_UID_SEP = savedS;
+  }
+  assert.strictEqual(r.code, 0, 'the record success exit code stands (mint refusal is additive)');
+  assert.strictEqual(r.payload.recorded, true, 'the merge-outcome still recorded');
+  if (DEPLOYED_KEYS) {
+    assert.strictEqual(r.payload.minted, false, 'deployed: the REAL broker key engaged authEngaged; the mismatched seeded sig fail-closed');
+    assert.ok(/broker-sig-invalid|auth-verify-error/.test(String(r.payload.mint_reason || '')), `continuous armed path engaged + fail-closed (got ${r.payload.mint_reason})`);
+  } else {
+    assert.strictEqual(r.payload.minted, true, 'CI (keyless): armed but resolveArmedBrokerVerifyKey null -> unauthenticated skip -> mints (still SHADOW)');
+    process.stdout.write('    (/etc/loom keys absent - CI keyless-skip path)\n');
+  }
+});
+
 test('cli.js source references NEITHER resolveSigner NOR LOOM_EDGE_SIGNING_KEY (production-unsigned guarantee, hacker H2)', () => {
   // The production wire NEVER self-signs into the authenticated lane: it must not resolve a signer from
   // the env. A structural source assert is the strongest non-runtime proof the env-key path is absent.
