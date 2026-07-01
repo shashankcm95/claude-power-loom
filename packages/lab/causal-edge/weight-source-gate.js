@@ -79,6 +79,13 @@ function admitWeightForRanking(record, opts) {
  * that map. When MV-W3 wires a live driver, the live recall path MUST construct opts.weights exclusively
  * here (a single chokepoint) — never a hand-built map literal handed straight to retrieveBySignature.
  *
+ * PR-B B3 (the live world-anchored recall path, world-anchored-recall.js) uses admitWeightForRanking
+ * PER-NODE — the SAME source gate this fn calls per item — rather than the bucket-keyed buildRankingWeights.
+ * Reason: buildRankingWeights dedups LAST-WINS by lesson_signature (a 24-cell taxonomy bucket), so two
+ * distinct nodes sharing a bucket would let a non-admitted 'mock' node ride an admitted node's shared-key
+ * weight (VERIFY-reviewer HIGH). Per-node keeps each node's admission independent. Both paths route through
+ * this module's LIVE_SOURCES gate — the chokepoint guarantee is preserved either way.
+ *
  * @param {Array<{lesson_signature:string, verdict:string, source:string}>} items
  * @param {{liveSources?:(Set<string>|string[])}} [opts]
  */

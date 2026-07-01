@@ -18,6 +18,16 @@ const REPO = path.join(__dirname, '..', '..', '..', '..');
 const PACKAGES = path.join(REPO, 'packages');
 const WORLD_ANCHOR_DIR = path.join(PACKAGES, 'lab', 'world-anchor');
 
+// PR-B B3: the SINGLE named consumer permitted to import the world-anchor live/edge stores + call
+// admitWorldAnchorNode from OUTSIDE world-anchor/ (the net-new world-anchored recall retriever). The three
+// "zero external consumer" dams below relax from "zero" to "exactly this one path", staying NON-VACUOUS
+// (any OTHER importer/caller still flags). EXACT-PATH equality, never a basename/substring/prefix test
+// (VERIFY-hacker MED: `.includes('world-anchored-recall.js')` would let `world-anchored-recall-2.js` or a
+// nested same-basename file slip past). SHADOW stays STRUCTURAL: the consumer pins the frozen-empty
+// LIVE_SOURCES default (no injectable live-source set) + resolves no verify key -> empty output.
+const B3_RECALL_CONSUMER = path.join(PACKAGES, 'lab', 'causal-edge', 'world-anchored-recall.js');
+function isB3RecallConsumer(file) { return file === B3_RECALL_CONSUMER; }
+
 let passed = 0;
 function test(name, fn) { fn(); passed += 1; }
 
@@ -112,6 +122,7 @@ test('SHADOW import-graph: NO module outside packages/lab/world-anchor/ imports 
   const offenders = [];
   for (const file of walkJs(PACKAGES)) {
     if (file.startsWith(WORLD_ANCHOR_DIR + path.sep)) continue;       // the module + its own siblings may import it
+    if (isB3RecallConsumer(file)) continue;                          // PR-B B3: the single permitted external consumer
     const src = fs.readFileSync(file, 'utf8');
     if (LIVE_IMPORT_RE.test(src)) offenders.push(path.relative(REPO, file));
   }
@@ -148,6 +159,7 @@ test('SHADOW import-graph: NO module outside packages/lab/world-anchor/ imports 
   const offenders = [];
   for (const file of walkJs(PACKAGES)) {
     if (file.startsWith(WORLD_ANCHOR_DIR + path.sep)) continue;       // the module + its own siblings may import it
+    if (isB3RecallConsumer(file)) continue;                          // PR-B B3: the single permitted external consumer
     const src = fs.readFileSync(file, 'utf8');
     if (EDGE_IMPORT_RE.test(src)) offenders.push(path.relative(REPO, file));
   }
@@ -169,6 +181,7 @@ test('SHADOW: world-anchor readers / deriver / admission-tag have ZERO productio
   for (const file of walkJs(PACKAGES)) {
     if (file.startsWith(WORLD_ANCHOR_DIR + path.sep)) continue;       // the module defines them (not a production caller)
     if (file.includes(`${path.sep}_spike${path.sep}`)) continue;     // scratch spikes are not production
+    if (isB3RecallConsumer(file)) continue;                          // PR-B B3: the single permitted external caller
     const src = fs.readFileSync(file, 'utf8');
     if (READER_CALL_RE.test(src)) offenders.push(path.relative(REPO, file));
   }
@@ -223,6 +236,41 @@ test('SHADOW header invariant: merge-observer.js names its SHADOW status + the s
   assert.ok(/SHADOW/.test(src), 'the observer names its SHADOW status');
   assert.ok(/LIVE_SOURCES/.test(src), 'the header references LIVE_SOURCES (it flips none)');
   assert.ok(/SOLE/.test(src) || /sole/.test(src), 'the header names it the SOLE kernel join-key reader');
+});
+
+test('PR-B B3 dam exemption is EXACT-path (non-vacuous): the consumer is exempt, a substring-adjacent name is NOT', () => {
+  assert.ok(isB3RecallConsumer(B3_RECALL_CONSUMER), 'the exact B3 consumer path is exempt');
+  const adjacent = path.join(PACKAGES, 'lab', 'causal-edge', 'world-anchored-recall-2.js');
+  const nested = path.join(PACKAGES, 'lab', 'causal-edge', 'sub', 'world-anchored-recall.js');
+  const backup = `${B3_RECALL_CONSUMER}.bak`;
+  assert.ok(!isB3RecallConsumer(adjacent), 'a substring-adjacent name is NOT exempt (exact equality, not basename/substring)');
+  assert.ok(!isB3RecallConsumer(nested), 'a nested same-basename file is NOT exempt');
+  assert.ok(!isB3RecallConsumer(backup), 'a .bak of the exempt path is NOT exempt');
+});
+
+test('PR-B B3 exists + IS the caller the exemption assumes (the exemption is not for a phantom file)', () => {
+  assert.ok(fs.existsSync(B3_RECALL_CONSUMER), 'the exempted B3 consumer file exists');
+  const src = fs.readFileSync(B3_RECALL_CONSUMER, 'utf8');
+  // If B3 ever stops importing/calling these, the exemption would be silently dead - assert it earns it.
+  assert.ok(LIVE_IMPORT_RE.test(src), 'B3 imports live-recall-store (the exemption is live)');
+  assert.ok(EDGE_IMPORT_RE.test(src), 'B3 imports world-anchor-edge-store (the exemption is live)');
+  assert.ok(READER_CALL_RE.test(src), 'B3 calls admitWorldAnchorNode (the exemption is live)');
+});
+
+test('PR-B B3 chokepoint: world-anchored-recall.js routes weights through the source gate + has NO injectable live-source seam', () => {
+  const src = fs.readFileSync(B3_RECALL_CONSUMER, 'utf8');
+  assert.ok(/require\(\s*['"][^'"]*weight-source-gate(?:\.js)?['"]\s*\)/.test(src), 'imports the weight-source-gate chokepoint');
+  assert.ok(/admitWeightForRanking/.test(src), 'uses admitWeightForRanking (the per-node source gate)');
+  // admittedWeight MUST stay single-param (no `opts`/default) - a source-anchored check, since Function.length
+  // would still read 1 for `admittedWeight(item, opts = {})` (VALIDATE code-reviewer LOW: reopen-the-seam guard).
+  assert.ok(/function admittedWeight\(item\)\s*\{/.test(src), 'admittedWeight is single-param (no reintroduced opts injection seam)');
+  assert.ok(!/liveSources/.test(src), 'NO liveSources seam - the SHADOW gate is a hard frozen constant (VERIFY-hacker CRITICAL)');
+  assert.ok(!/retrieve-signature/.test(src), 'does NOT hand a raw weights map to the _spike retrieveBySignature');
+});
+
+test('PR-B B3 separation: world-anchored-recall.js does NOT import the backtest recall-graph-store (physical live/backtest firewall)', () => {
+  const src = fs.readFileSync(B3_RECALL_CONSUMER, 'utf8');
+  assert.ok(!/recall-graph-store/.test(src), 'the live + backtest retrievers stay physically separate (recall-graph-store.js:56 firewall)');
 });
 
 console.log(`shadow-import-graph.test.js: ${passed} passed`);
