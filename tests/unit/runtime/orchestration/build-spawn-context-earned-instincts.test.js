@@ -33,7 +33,12 @@ function test(name, fn) {
 // A throwaway empty lab-state -> the child's B3 subprocess reads an absent store -> SHADOW empty.
 function runCli(args) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loom-b4-labstate-'));
-  return spawnSync(process.execPath, [SCRIPT, ...args], { encoding: 'utf8', env: { ...process.env, LOOM_LAB_STATE_DIR: dir } });
+  try {
+    // bound the child (a hung recall subprocess must not block the test) + no dir leak (CodeRabbit nit)
+    return spawnSync(process.execPath, [SCRIPT, ...args], { encoding: 'utf8', timeout: 10000, env: { ...process.env, LOOM_LAB_STATE_DIR: dir } });
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 }
 // B3's EXACT ranked-item shape (VERIFY-architect V3) - the render contract must be pinned to it.
 function item(over) {
