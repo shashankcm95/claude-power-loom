@@ -14,13 +14,20 @@
 
 const { retrieveWorldAnchoredInstincts } = require('./world-anchored-recall');
 
-/** Minimal flag parser: --trigger-class <str>, --limit <int>. Unknown flags ignored (forward-compat). */
+/**
+ * Minimal flag parser: --trigger-class <str>, --limit <int>. Unknown flags ignored (forward-compat).
+ * trigger_class is OPTIONAL (absent -> the retriever ranks by weight, no situation filter - a valid degenerate
+ * mode; NOT a required arg). A flag's value must exist AND not itself be a `--flag` (CodeRabbit nit), so
+ * `--trigger-class --limit 5` does NOT swallow `--limit` as the trigger value; `i` only advances when a value
+ * is actually consumed, so the following flag is still parsed.
+ */
 function parseArgs(argv) {
   const out = {};
   const list = Array.isArray(argv) ? argv : [];
+  const valueAt = (i) => (typeof list[i + 1] === 'string' && !list[i + 1].startsWith('--') ? list[i + 1] : undefined);
   for (let i = 0; i < list.length; i += 1) {
-    if (list[i] === '--trigger-class') { out.trigger_class = list[i + 1]; i += 1; }
-    else if (list[i] === '--limit') { out.limit = Number(list[i + 1]); i += 1; }
+    if (list[i] === '--trigger-class') { const v = valueAt(i); if (v !== undefined) { out.trigger_class = v; i += 1; } }
+    else if (list[i] === '--limit') { const v = valueAt(i); if (v !== undefined) { out.limit = Number(v); i += 1; } }
   }
   return out;
 }

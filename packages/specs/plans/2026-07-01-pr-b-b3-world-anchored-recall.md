@@ -88,8 +88,9 @@ Flow:
    stricter than `_spike` retrieveBySignature (which surfaces trigger-matches at weight 0) — B3's OUTPUT
    itself is gated on admission, so a world_anchored lesson never reaches a spawn's context in SHADOW.
 6. Rank the survivors: `score = (triggerMatch ? 1 : 0)`, tie-break by `weight` desc then `node_id` asc
-   (deterministic). Return top-`limit` (`instincts`), the full `ranked` vector (inspectable), and
-   `shadow_empty = instincts.length === 0` (informational, NOT the security flag — the gate is step 4/5).
+   (deterministic). Return top-`limit` (`instincts`); `ranked` mirrors `instincts` (w>0 only — see the
+   RESOLVED DESIGN's F6 fold), `diagnostics` is counts-only, and `shadow_empty = instincts.length === 0`
+   (informational, NOT the security flag — the gate is step 4/5).
 7. Fail-closed + observable throughout: a bad node is skipped (never throws the retrieval); `selfUid:null`
    is honored by the stores' foreign-owned reject; the CLI resolves custody keys from a deploy-provisioned
    location (absent everywhere in B3 → empty).
@@ -126,9 +127,11 @@ Plus:
 `tests/unit/lab/causal-edge/world-anchored-recall.test.js` (new):
 - SHADOW-empty: canonical live nodes present, default opts (no keys / empty liveSources) → `instincts: []`,
   `shadow_empty: true`. **The load-bearing SHADOW proof.**
-- Source-gated output: with a TEST-injected `liveSources: ['world-anchor']` + a real ed25519 signed-edge
-  quadruple (reuse B2's `admit-world-anchor-node.test.js` fixtures: `generateEdgeKeypair`/`signEdgeId`/
-  `signRecordId` + `writeOutcome`) → the admitted node surfaces with weight 1; a non-admitted node does not.
+- Source-gated output (NO `liveSources` seam — see the RESOLVED DESIGN's F1 fold): a FULLY admitted node (real
+  ed25519 quadruple, real keys) still stays DARK under the frozen `LIVE_SOURCES` default (the SHADOW proof);
+  `classifyNode` separately proves the admission wire yields `source:'world-anchor'` WITHOUT flipping the gate.
+  Crypto primitives imported from `kernel/_lib/edge-attestation`; store fixtures built slim-local (B2's helpers
+  are un-exported — F8).
 - Laundering guard: a node with an off-floor / non-round-tripping `lesson_signature` is DROPPED even when
   otherwise admissible (never ranked, never picks a target key).
 - trigger_class ranking + deterministic tie-break (weight desc, node_id asc).

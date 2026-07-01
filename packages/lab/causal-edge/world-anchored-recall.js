@@ -138,22 +138,26 @@ function rankInstincts(entries, query, limit) {
  * @returns {{instincts: object[], ranked: object[], shadow_empty: boolean, diagnostics: object}}
  */
 function retrieveWorldAnchoredInstincts(query, opts = {}) {
-  const q = query || {};
-  const selfUid = opts.selfUid === undefined ? currentUid() : opts.selfUid;
+  const q = (query && typeof query === 'object') ? query : {};
   let nOffTaxonomy = 0;
   const survivors = [];
   let nNodes = 0;
   try {
-    const nodes = listLiveNodes({ dir: opts.liveDir, selfUid });
-    const edges = listWorldAnchorEdges({ dir: opts.edgeDir, selfUid });
+    // Normalize opts INSIDE the try (CodeRabbit Major): the `opts = {}` default fires only on `undefined`,
+    // so a caller passing `null` would throw on `opts.selfUid` BEFORE the guard - normalize here so the
+    // "never throws" enrichment contract holds for a null/non-object opts too.
+    const o = (opts && typeof opts === 'object') ? opts : {};
+    const selfUid = o.selfUid === undefined ? currentUid() : o.selfUid;
+    const nodes = listLiveNodes({ dir: o.liveDir, selfUid });
+    const edges = listWorldAnchorEdges({ dir: o.edgeDir, selfUid });
     nNodes = nodes.length;
     for (const node of nodes) {
       const item = classifyNode(node, {
         edges,
-        edgeVerifyKey: opts.edgeVerifyKey,
-        brokerVerifyKey: opts.brokerVerifyKey,
-        anchorDir: opts.anchorDir,
-        outcomeDir: opts.outcomeDir,
+        edgeVerifyKey: o.edgeVerifyKey,
+        brokerVerifyKey: o.brokerVerifyKey,
+        anchorDir: o.anchorDir,
+        outcomeDir: o.outcomeDir,
         selfUid,
       });
       if (!item) { nOffTaxonomy += 1; continue; }

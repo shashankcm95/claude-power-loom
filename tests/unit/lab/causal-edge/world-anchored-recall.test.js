@@ -265,6 +265,16 @@ test('fail-closed: empty query / no trigger_class -> empty (no match), never thr
   assert.deepStrictEqual(out.instincts, []);
 });
 
+test('fail-closed: a null / non-object opts (or query) never throws (CodeRabbit Major - opts.selfUid before the try)', () => {
+  for (const badOpts of [null, 'nope', 42, undefined]) {
+    const out = quiet(() => retrieveWorldAnchoredInstincts({ trigger_class: TRIGGER }, badOpts));
+    assert.deepStrictEqual(out.instincts, [], `opts=${JSON.stringify(badOpts)} -> empty, no throw`);
+    assert.strictEqual(out.shadow_empty, true);
+  }
+  const outBadQuery = quiet(() => retrieveWorldAnchoredInstincts('bad-query', {}));
+  assert.deepStrictEqual(outBadQuery.instincts, [], 'a non-object query -> empty, no throw');
+});
+
 // === 7. env-key non-flip (VERIFY-hacker MED#2: B3 reads NO env key) ===
 test('env-key non-flip: LOOM_EDGE_VERIFY_KEY set + full quadruple + NO keys passed -> still empty', () => {
   const d = dirs();
@@ -291,6 +301,15 @@ test('CLI: --trigger-class runs -> exit 0, the ENTIRE stdout is one parseable JS
   assert.strictEqual(out.shadow_empty, true);
   assert.deepStrictEqual(out.instincts, []);
   assert.ok(out.diagnostics && typeof out.diagnostics.n_nodes === 'number', 'diagnostics present');
+});
+
+test('CLI parseArgs: a following --flag is NOT swallowed as a value (CodeRabbit nit); trigger_class is optional', () => {
+  const { parseArgs } = require(path.join(REPO, 'packages/lab/causal-edge/world-anchored-recall-cli.js'));
+  assert.deepStrictEqual(parseArgs(['--trigger-class', 'boundary-contract', '--limit', '5']), { trigger_class: 'boundary-contract', limit: 5 });
+  // the swallow guard: --trigger-class with no value (a following flag) leaves it unset AND still parses --limit
+  assert.deepStrictEqual(parseArgs(['--trigger-class', '--limit', '5']), { limit: 5 });
+  assert.deepStrictEqual(parseArgs(['--trigger-class']), {}, 'a trailing --trigger-class with no value -> unset (optional)');
+  assert.deepStrictEqual(parseArgs([]), {}, 'no args -> empty (trigger_class optional)');
 });
 
 process.stdout.write(`\n=== world-anchored-recall: ${passed} passed, ${failed} failed ===\n`);
