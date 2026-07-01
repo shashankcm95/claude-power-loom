@@ -15,15 +15,9 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 
-// #430 host-deploy-state isolation. On a DEPLOYED box the host-side `claude -p` guard diverts these tests off
-// the DIRECT dev spawn they exercise: assertHostClaudeAllowed reads LOOM_EGRESS_KILLSWITCH_PATH (armed refusal)
-// and defaultJudgeLauncher reads /etc/loom/actor-anthropic.key plus the LOOM_*_REQUIRE_UID_SEP / LOOM_ACTOR_*
-// deploy env (cross-uid / deployed-unconfigured refusal), both at CALL time. Pin the marker to a guaranteed-absent
-// path and clear the deploy env BEFORE the requires so the launcher resolves { mode:'direct' } on any host
-// (mirror: other lab tests pin LOOM_LAB_STATE_DIR before their requires).
-process.env.LOOM_ACTOR_KEY_MARKER = path.join(os.tmpdir(), `loom-absent-actor-key-${process.pid}`);
-for (const k of ['LOOM_EGRESS_KILLSWITCH_PATH', 'LOOM_JUDGE_REQUIRE_UID_SEP',
-  'LOOM_ACTOR_REQUIRE_UID_SEP', 'LOOM_ACTOR_USER', 'LOOM_ACTOR_WRAPPER']) delete process.env[k];
+// #430 host-deploy-state isolation (shared helper): neutralize the host `claude -p` deploy guard so these tests
+// reach their DIRECT dev-spawn path on any host (incl. a deployed box with /etc/loom/actor-anthropic.key present).
+require('../_lib/isolate-host-deploy-state').isolateHostDeployState();
 
 const REPO = path.join(__dirname, '..', '..', '..', '..');
 const { TOOLLESS_CLAUDE_ARGS, toollessArgs, verifyToollessRuntime } = require(path.join(REPO, 'packages', 'lab', '_lib', 'claude-headless.js'));
