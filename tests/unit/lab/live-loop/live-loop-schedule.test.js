@@ -52,8 +52,9 @@ function spyEffects(over = {}) {
   };
   return { effects: { ...base, ...over }, calls };
 }
-const darwin = (o = {}) => ({ os: 'darwin', runnerPath: RUNNER, nodeBin: NODE, ...o });
-const linux = (o = {}) => ({ os: 'linux', runnerPath: RUNNER, nodeBin: NODE, ...o });
+const LOGDIR = path.join(TMP, 'checkpoints');   // a tmp log dir so install()'s mkdir never touches the real ~/.claude
+const darwin = (o = {}) => ({ os: 'darwin', runnerPath: RUNNER, nodeBin: NODE, logDir: LOGDIR, ...o });
+const linux = (o = {}) => ({ os: 'linux', runnerPath: RUNNER, nodeBin: NODE, logDir: LOGDIR, ...o });
 
 // === 1. buildLiveLoopPlist: run-gate, no emit flag, label, runner, interval ===
 test('plist sets LOOM_LIVE_LOOP_ENABLED=1 and NO GHOST_HEARTBEAT_EMIT (non-vacuous wrong-env guard)', () => {
@@ -123,6 +124,7 @@ test('install darwin real: writePlist + unload + load; claudePathBaked true with
   const names = calls.map((c) => c[0]);
   assert.deepStrictEqual(names, ['writePlist', 'unloadLaunchd', 'loadLaunchd'], 'write -> unload -> load');
   assert.ok(calls[0][2].includes(`<string>${TMP}:/usr/bin:/bin</string>`), 'the written plist has the VETTED PATH (dir first)');
+  assert.ok(fs.existsSync(LOGDIR), 'the log dir is ensured on a real install (CodeRabbit Major)');
 });
 test('install darwin: resolveJudgeBin returns "" (unvettable) -> claudePathBaked:false + no PATH', () => {
   const { effects, calls } = spyEffects({ resolveJudgeBin: () => '' });

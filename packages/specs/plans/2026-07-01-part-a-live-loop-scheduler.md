@@ -383,9 +383,11 @@ authority, no arming** — scheduling adds no writer to any trust-bearing store;
 
 ### `install.sh --schedule-liveloop / --unschedule-liveloop`
 
-Mirror `schedule_heartbeat()` (`install.sh:382-419`): guard runner+module present, map `$DRY_RUN` to the
-module's `--dry-run`, branch success guidance on the `"ok":true` field. OMIT the judge-bin-baked warning (no
-bake). Add the touch-file pause hint. Fail-open (never abort install.sh).
+Mirror `schedule_heartbeat()` (`install.sh:382-419`) but point at `$SCRIPT_DIR` (the repo checkout — the lab
+tier is not mirrored to `$CLAUDE_DIR`): guard runner+module present, map `$DRY_RUN` to the module's `--dry-run`,
+branch success guidance on the `"ok":true` field. Since the HIGH-1 fold ADDED the vetted-PATH bake, the dispatch
+PRINTS a `claudePathBaked:false` warning when the bake could not vet a `claude` bin (not omitted). Add the
+touch-file pause hint. Fail-open (never abort install.sh).
 
 ### Tests (`tests/unit/lab/live-loop/live-loop-schedule.test.js`)
 

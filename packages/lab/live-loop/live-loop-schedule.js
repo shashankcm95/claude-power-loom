@@ -195,6 +195,10 @@ function install(opts) {
   if (c.dryRun) return { ok: true, dryRun: true, os: c.os, artifact, claudePathBaked };
 
   try {
+    // Ensure the log dir exists on a REAL install (CodeRabbit Major): stdoutPath is baked into the task's
+    // StandardOutPath / cron `>>`, but --schedule-liveloop runs from a repo checkout where ~/.claude/checkpoints
+    // may not exist yet -> the scheduled fire could fail to write its log. (dry-run returns above, so ZERO effect.)
+    fs.mkdirSync(c.logDir, { recursive: true });
     if (c.os === 'darwin') {
       const plistPath = plistPathFor(c.launchAgentsDir, c.label);
       c.effects.writePlist(plistPath, artifact);
