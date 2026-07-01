@@ -40,7 +40,7 @@ The scope doc (`research/2026-06-30-pr-b-rubicon-scope.md` §3 B5) was written 2
 - Today: passes `{}` (no keys).
 - B5: `const armed = normalizeBool(process.env.LOOM_WORLD_ANCHOR_ARM)`. **Un-armed → pass `{}` (byte-identical to today → dark).** Armed → resolve `edgeVerifyKey` from `/etc/loom/edge-verify.pem` + `brokerVerifyKey` from `/etc/loom/verify.pem` via a NEW ownership-vetted lab reader (mirrors `readVerifyKeySafe`: O_NOFOLLOW, fstat-the-fd, owner∈{self,root}, reject group/world-writable, regular-file). A resolve failure (absent/unreadable/wrong-owner/symlink) → that key is `undefined` → `admitWorldAnchorNode` refuses `no-verify-key` → mock → dark (refuse-on-absent). **NEVER reads `process.env.LOOM_EDGE_VERIFY_KEY`** (the `edge-attestation.js:74` self-pwn surface stays absent).
 - **The flag gates the resolution ATTEMPT, never substitutes for the crypto** — even armed, an absent/invalid key refuses. STRICT flag so a typo → un-armed → dark. This is why gating resolution behind the flag does NOT reintroduce the scope §2 lenient-flag-fails-open bug (that was `isDeployFlagSet` deriving the admitted SOURCE; here the flag only decides whether to READ the pinned key, and the crypto verify is still the boundary).
-- New module `packages/lab/world-anchor/custody-verify-key.js` (`resolveCustodyVerifyKey(path, selfUid) -> string|null`, fail-closed, never throws) — unit-testable, reused for both keys.
+- New module `packages/lab/_lib/custody-verify-key.js` (`resolveCustodyVerifyKey(path, selfUid) -> string|null`, fail-closed, never throws) — a generic trust-anchor reader (placed in `_lib`, not `world-anchor/`, since it is not world-anchor-specific), unit-testable, reused for both keys.
 
 ### D3 — the load-bearing test matrix (per scope §3: "the test matrix proving the gate stays closed is the load-bearing part")
 On THIS box the key IS present, so the critical proof is **"armed-or-not, the gate stays dark when a precondition is missing"** — non-vacuous here because the keys are real:
@@ -66,7 +66,7 @@ On THIS box the key IS present, so the critical proof is **"armed-or-not, the ga
 - parity: the inline strict parse matches `normalizeBool` across the arming token space (if Q-FLIP=inline).
 - (module-load env is read via a subprocess or `delete require.cache` re-require harness.)
 
-`tests/unit/lab/world-anchor/custody-verify-key.test.js` (NEW):
+`tests/unit/lab/_lib/custody-verify-key.test.js` (NEW):
 - absent path → null; empty/non-string path → null; a symlink → null (O_NOFOLLOW); wrong-owner (synthetic fixture) → null; group/world-writable → null; a valid regular self/root-owned file → its contents. Never throws.
 
 `tests/unit/lab/causal-edge/world-anchored-recall-cli-arming.test.js` (NEW):

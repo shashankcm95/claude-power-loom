@@ -68,11 +68,19 @@ try {
   });
 
   // === ownership (synthetic: mismatch selfUid so the real owner != selfUid && != root) ===
-  test('foreign-owned (file owned by real uid, but a MISMATCHED selfUid passed) -> null', () => {
+  test('foreign-owned (a file whose owner is neither selfUid nor root) -> null', () => {
     if (SELF === null) { process.stdout.write('    (no getuid - covered by the selfUid===null case)\n'); return; }
     const p = fixture('owned.pem', 'DATA', 0o644);
-    const mismatched = SELF === 0 ? 12345 : SELF + 99999;   // a uid that is neither the file owner nor root
-    assert.strictEqual(resolveCustodyVerifyKey(p, mismatched), null, 'owner != selfUid && != root -> refuse');
+    if (SELF === 0) {
+      // Root test-runner (e.g. a Docker CI image): the fixture is root-owned, and root-owned is ALWAYS
+      // accepted (owner in {self, root}) - a mismatched selfUid alone cannot drive the reject (CodeRabbit
+      // Major). Root CAN chown, so re-own the fixture to a genuinely non-root, non-self uid to exercise it.
+      try { fs.chownSync(p, 12345, 12345); } catch { process.stdout.write('    (chown unsupported - skipped)\n'); return; }
+      assert.strictEqual(resolveCustodyVerifyKey(p, SELF), null, 'owner 12345 != selfUid(0) && != root -> refuse');
+    } else {
+      const mismatched = SELF + 99999;   // a uid that is neither the file owner (SELF) nor root
+      assert.strictEqual(resolveCustodyVerifyKey(p, mismatched), null, 'owner(SELF) != selfUid && != root -> refuse');
+    }
   });
   test('a root-owned file is accepted when selfUid != root (owner in {self, root}) - covered structurally', () => {
     // We cannot chown to root without privilege; assert the policy via the code path: a self-owned file with
