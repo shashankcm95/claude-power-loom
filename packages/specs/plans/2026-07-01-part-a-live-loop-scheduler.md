@@ -325,22 +325,114 @@ dogfood is a named residual (needs 401), NOT an A-W2 gate.
 - `Probe: ghost-heartbeat-run.js:225-228` -> emit-gate `GHOST_HEARTBEAT_EMIT!=='1'` default-off + touch-file killswitch (env inert under launchd). CONFIRMED (the mirror pattern).
 - `Probe: ghost-heartbeat runner has no cross-run mutex` (`runHeartbeat` relies on 4h > per-run budget) -> the live-loop needs its OWN lock (runs can exceed interval). CONFIRMED (design addition).
 
-## A-W3 — launchd wiring (firmed sketch, from the heartbeat precedent)
+## A-W3 — launchd wiring (DETAILED — grounded 2026-07-01)
 
-- **Use a THIN LAB MIRROR of the plist builder — NOT a verbatim `buildLaunchdPlist` reuse (hacker MEDIUM).** The
-  heartbeat's builder HARDCODES `<key>GHOST_HEARTBEAT_EMIT</key><string>1</string>` into EVERY plist
-  (`ghost-heartbeat-schedule.js:171-174`) — it is not parameterized, so it CANNOT omit the emit block. That var
-  is inert for the live-loop (the runner reads no `GHOST_HEARTBEAT_EMIT`), but shipping a plist that names the
-  wrong emit-env contract is a latent misconfig hazard. The lab mirror emits NO emit-env block. DISTINCT label
-  `com.powerloom.live-loop` (a SECOND task, independently killswitch-able — resolves the "second task vs flag"
-  open Q toward a second task). Absolute `nodeBin = process.execPath` + absolute `runnerPath` (minimal-PATH bake,
-  `ghost-heartbeat-schedule.js:317`); `RunAtLoad false`, `ProcessType Background`; `StartInterval` >= the per-run
-  budget so fires do not stack (the lock is the real overlap guard). Emit-off is at the loop's `{}` regardless of
-  any env — the plist env is not a safety surface.
-- A `live-loop-go-live.md` runbook: preconditions (the 401 fix + a GitHub token + the operator's explicit go),
-  the touch-file killswitch, install/uninstall/status. Ships DARK behind 401 (mirror the heartbeat's dark-ship).
-- A thin `install.sh --schedule-liveloop / --unschedule-liveloop` dispatch (mirror `schedule_heartbeat()`,
-  `install.sh:382-419`).
+### Design: REUSE the kernel's hardened safety helpers; MIRROR only the emit/label-coupled parts
+
+`ghost-heartbeat-schedule.js` splits cleanly into (a) generic, 3-lens-hardened launchd/cron PRIMITIVES and (b)
+heartbeat-coupled parts. A-W3 **imports** (a) — lab -> kernel, legal, DRY, reuses the security-critical logic —
+and provides live-loop versions of (b) only:
+
+- **REUSE only the MARKER-AGNOSTIC helpers (import from `../../kernel/spawn-state/ghost-heartbeat-schedule`):**
+  `assertSafeArg` (control-char/`%` reject), `xmlEscape`, `shellSingleQuote`, `assertSafeLabel` (path-traversal
+  reject), `plistPathFor`, `parseCrontabListResult`, `detectOs`, `vetJudgeBinPath`, `defaultEffects` (the mutating
+  shell: `writePlist` lstat-NO-FOLLOW-refuses-symlink, `loadLaunchd`/`unloadLaunchd`, `readCrontab`/`writeCrontab`,
+  `removePlist`/`plistExists`, `resolveJudgeBin`). **Do NOT import `stripCronBlock`/`buildCronBlock`/`status`
+  (VERIFY hacker HIGH-2):** they close over the kernel's MODULE-LEVEL `MARKER_BEGIN='# >>> power-loom-ghost-heartbeat ...'`
+  (`ghost-heartbeat-schedule.js:54-55,207,218`), so reusing them would make the live-loop cron ops strip/collide
+  with the HEARTBEAT's block. The live-loop provides its own cron build/strip with its OWN markers (below).
+- **NEW `packages/lab/live-loop/live-loop-schedule.js`** (the live-loop-specific parts):
+  - `buildLiveLoopPlist({label, nodeBin, runnerPath, intervalSec, stdoutPath, stderrPath, claudePath})` — sets
+    `<key>LOOM_LIVE_LOOP_ENABLED</key><string>1</string>` (the RUN-gate, NOT an emit flag: the runner's opt-in
+    default is OFF, and *installing the schedule IS the deliberate opt-in to RUN the emit-off dogfood* — the
+    exact analog of the heartbeat's `EMIT=1`). NO emit flag exists (emit-off is structural at the loop's `{}`).
+    **BAKE a VETTED claude PATH (VERIFY hacker HIGH-1):** the live-loop runner EXECS claude at run-time
+    (`runLiveDraftLoop` -> `resolveClaude` `trajectory-friction-run.js:69-75`), and under launchd's minimal PATH
+    `command -v claude` MISSES so it falls to the UNVETTED `~/.local/bin/claude` (`existsSync` only) — a persisted
+    reboot-surviving exec foothold if `~/.local/bin` is world-writable. So at install-time `resolveJudgeBin()`
+    (which VETS via `vetJudgeBinPath`: absolute, real file, non-world-writable dir + target) resolves the claude
+    dir; bake `<key>PATH</key><string><vetted-dir>:/usr/bin:/bin</string>` so run-time `command -v claude`
+    resolves the VETTED bin, not the fallback. Unvettable -> bake NO PATH + surface `claudePathBaked:false` (the
+    heartbeat's `judgeBinBaked:false` analog) so a silent-inert schedule is visible. Absolute `nodeBin =
+    process.execPath` + absolute `runnerPath`; `RunAtLoad false`, `ProcessType Background`.
+  - `buildLiveLoopCronBlock(...)` — the Linux analog (`LOOM_LIVE_LOOP_ENABLED=1` + a vetted `PATH=...` inline),
+    OWN markers; `stripLiveLoopCronBlock` re-implements the exact-full-line BEGIN..END span strip with the
+    LIVE-LOOP markers (same security property, own sentinels).
+  - DISTINCT label `com.powerloom.live-loop` + DISTINCT markers `# >>> power-loom-live-loop (DO NOT EDIT) >>>` /
+    `# <<< power-loom-live-loop <<<` (a SECOND, independently killswitch-able task — resolves the second-task-vs-flag Q).
+  - `install`/`uninstall`/`status` — mirror the kernel orchestrators (fail-open, dry-run = ZERO effect, effect
+    shell injected) but use the live-loop plist/label/markers + `stripLiveLoopCronBlock` + the log
+    `~/.claude/checkpoints/live-loop.log`.
+  - A CLI (`install | uninstall | status [--dry-run]`), ALWAYS exit 0 (advisory infra).
+- **`StartInterval`** default: the runner's per-fire cost is `capUsd`-bounded, and the run-lock skips an
+  overlapping fire, so the interval only sets frequency. Default a longer cadence than the heartbeat's 4h (6h)
+  since a live-loop fire (N Docker+LLM solves) is heavier; the lock is the real overlap guard regardless. NOTE
+  (VERIFY architect LOW): the lock guards the NODE runner body, NOT orphaned Docker solve subprocesses from a
+  SIGKILLed prior fire (the R12 ContainerAdapter process-GROUP-reaping residual); the 6h cadence gives ample
+  headroom, so this is a NAMED residual, not a live risk at SHADOW.
+
+### DARK-ship framing (the safety posture)
+
+A-W3 ships the schedule MODULE + the `install.sh` dispatch + the runbook, but does NOT auto-install the
+schedule. Installing is the operator's DELIBERATE act (`bash install.sh --schedule-liveloop`), gated in the
+runbook on the 401 headless-auth fix + a GitHub token + explicit operator readiness. Pre-401 a scheduled fire
+fails-soft to nothing (no auth); post-401 it runs the emit-OFF dogfood (real solve $, `capUsd`-bounded, NO
+outward action — emit stays structurally off). Off-switches: the touch-file
+`~/.claude/checkpoints/live-loop.disabled` (pause without uninstalling) or `--unschedule-liveloop`. **No new
+authority, no arming** — scheduling adds no writer to any trust-bearing store; the live crossing stays Part B.
+
+### `install.sh --schedule-liveloop / --unschedule-liveloop`
+
+Mirror `schedule_heartbeat()` (`install.sh:382-419`): guard runner+module present, map `$DRY_RUN` to the
+module's `--dry-run`, branch success guidance on the `"ok":true` field. OMIT the judge-bin-baked warning (no
+bake). Add the touch-file pause hint. Fail-open (never abort install.sh).
+
+### Tests (`tests/unit/lab/live-loop/live-loop-schedule.test.js`)
+
+The plist sets `LOOM_LIVE_LOOP_ENABLED=1` + carries NO `GHOST_HEARTBEAT_EMIT` / no emit flag; the
+`com.powerloom.live-loop` label + the live-loop markers + the absolute runner path point at `live-loop-run.js`;
+XML-wellformed plist; the vetted-PATH bake (a vetted `resolveJudgeBin` -> a `PATH` entry containing the vetted
+dir; an unvettable one -> `claudePathBaked:false` + NO PATH); the cron block is single-line-forge-safe (reuses
+the hardened quoting) with the LIVE-LOOP markers; `stripLiveLoopCronBlock` strips ONLY the live-loop span and
+leaves a heartbeat block untouched (HIGH-2 regression guard); dry-run performs ZERO effect (an injected effects
+spy asserts no write/load); install/uninstall/status via injected effects; runner-absent -> fail-open.
+**Non-vacuous:** the plist does NOT contain `GHOST_HEARTBEAT_EMIT` (wrong-env regression) AND DOES contain
+`LOOM_LIVE_LOOP_ENABLED`; a **boundary test** (VERIFY architect LOW) asserts the REUSED kernel helpers still
+reject a control-char arg + a traversal label (so a future kernel-side narrowing fails RED in the lab suite);
+and `stripLiveLoopCronBlock` on a crontab holding BOTH a heartbeat block and a live-loop block removes ONLY the
+live-loop one.
+
+## A-W3 Runtime Probes (verified 2026-07-01, file:line)
+
+- `Probe: ghost-heartbeat-schedule.js:54-55,207,218` -> `stripCronBlock`/`buildCronBlock` close over module-level `MARKER_BEGIN`/`MARKER_END` (heartbeat-named). CONFIRMED — NOT reusable for the live-loop cron (HIGH-2).
+- `Probe: trajectory-friction-run.js:69-75` -> `resolveClaude` = `command -v claude` (/bin/bash) then `existsSync(~/.local/bin/claude)` fallback with NO vet. CONFIRMED — the fallback is unvetted (HIGH-1).
+- `Probe: live-draft-run.js:374,360-361,390` -> the runner EXECs claude at RUN-time (judges/deriver/actor), so under launchd's minimal PATH the unvetted fallback is the DEFAULT resolution. CONFIRMED (HIGH-1 reachable).
+- `Probe: ghost-heartbeat-schedule.js:126-141` -> `vetJudgeBinPath` (absolute + real-file + non-world-writable dir/target) is EXPORTED + reusable for the install-time bake. CONFIRMED.
+- `Probe: live-loop-run.js:60` -> the runner gates RUN on `LOOM_LIVE_LOOP_ENABLED==='1'` — the plist's run-gate hits it exactly. CONFIRMED.
+
+## Pre-Approval Verification (A-W3 design, 2-lens VERIFY, 2026-07-01)
+
+**Verdict: BUILD-READY (folds applied above).** architect READY-WITH-FOLDS; hacker NEEDS-REVISION (2 HIGH). Both
+HIGH are design corrections (not a redesign) — folded above. Run `wf_b48a650c-64a`.
+
+- **[HIGH-1 -> FOLDED] persisted unvetted-claude foothold:** the live-loop runner execs claude at run-time; the
+  `~/.local/bin/claude` fallback is unvetted, so a persisted schedule freezes an exec foothold on a world-writable
+  `~/.local/bin`. Fold: bake a VETTED `PATH` at install-time (`resolveJudgeBin` -> `vetJudgeBinPath`), so run-time
+  `command -v` resolves the vetted bin; unvettable -> `claudePathBaked:false` + warn. This RE-ADDS the vet the
+  bake-drop had removed (architect Q3 MEDIUM is subsumed).
+- **[HIGH-2 -> FOLDED] cron marker collision:** `stripCronBlock`/`buildCronBlock`/`status` are heartbeat-marker-
+  bound; reusing them would cross-strip the heartbeat's block. Fold: the live-loop provides its OWN cron
+  build/strip with live-loop markers; reuse only the marker-agnostic helpers.
+- **[architect LOW -> FOLDED] R12 reaping residual:** the lock guards the node body, not orphaned Docker solves
+  from a SIGKILLed fire — named in the interval bullet.
+- **[architect LOW -> FOLDED] reuse-coupling:** a boundary test pins the reused kernel helpers' reject behavior so
+  a future kernel narrowing fails RED in the lab suite.
+- **[hacker LOW -> runbook]** the env killswitch is inert under launchd; the ONLY off-switches are the touch-file
+  `~/.claude/checkpoints/live-loop.disabled` + `--unschedule-liveloop` — stated in the runbook (already framed;
+  reinforced).
+
+VALIDATE (post-build) keeps the 2-lens tier (code-reviewer + hacker) with the hacker RE-PROBING the built plist
+(the vetted-PATH bake + the marker isolation are exactly the class needing a live re-probe of the BUILT artifact).
 
 ## Pre-Approval Verification (A-W2 design, 3-lens VERIFY, 2026-07-01)
 
@@ -438,6 +530,31 @@ corpus cap LOCALLY (`records.slice(0, limit)` before drafting), so a regressed/i
 `limit` cannot make a "bounded" fire draft an unbounded corpus (validate-at-boundary; the code-reviewer flagged
 boundedness-is-emergent as LOW, CodeRabbit proposed the enforcement — the async bot COMPLEMENTS the lens tier
 again). Pinned by a non-vacuous clamp test (a 10-record puller with `limit=3` -> exactly 3 drafted).
+
+## VALIDATE result (A-W3 built diff, 2-lens, 2026-07-01)
+
+**GATE: SHIP (0 blocking).** hacker SHIP (20+ live probes; both folded HIGHs re-probe SOLID); code-reviewer
+SHIP-WITH-FOLDS. Run `wf_068e63de-c13`. Both MEDIUM + the LOW folded.
+
+- **hacker SHIP** — the vet-bake genuinely VETS (rejects a world-writable on-PATH dir / symlink-target / binary /
+  relative / empty); the REAL `install --dry-run` on this box baked `~/.local/bin` (755) first, plus
+  `LOOM_LIVE_LOOP_ENABLED=1` and NO emit flag/token; the live-loop strip NEVER touches a heartbeat block
+  (bidirectional, marker-confusion clean); injection rejected pre-effect; dry-run ZERO-effect; the install.sh
+  flags default OFF.
+- **[code-reviewer MEDIUM -> FOLDED] legacy-install path:** `install.sh` mirrors only `packages/{kernel,runtime}`
+  to `$CLAUDE_DIR`, never `packages/lab`, so the dispatch pointing at `$CLAUDE_DIR/packages/lab/...` was
+  permanently "not installed". Fold: point `schedule_liveloop`/`unschedule_liveloop` at `$SCRIPT_DIR` (the repo
+  checkout, where the lab tree lives) + an honest NOTE + a runbook note (the live-loop is lab-tier, not mirrored).
+- **[hacker MEDIUM -> FOLDED] module-level re-vet:** `install()` trusted the injected `resolveJudgeBin` for the
+  vet; a direct `opts.claudeBin` (or a non-vetting effect) bypassed it. Fold: `install()` re-runs `vetJudgeBinPath`
+  on the resolved bin (idempotent for the default; the vet is now a MODULE property). Pinned by a non-vacuous
+  test (a non-existent injected `claudeBin` -> `claudePathBaked:false`).
+- **[hacker LOW -> FOLDED] label self-protect:** `buildLiveLoopPlist` now `assertSafeArg`s the label (a newline
+  is invisible to `plutil`).
+- **Not folded (named):** the install.sh success-detection greps `"ok":true` (matches the heartbeat precedent;
+  the module's stderr never emits that token) and the R12 Docker-reaping residual (named in the interval bullet).
+  The emit-off-under-a-persisted-task is CONFIRMED safe (no change) — a cross-wave `emitPR`-defaults regression
+  test is tracked, not an A-W3 change.
 
 ## Deferred to Part B (NOT this plan)
 
