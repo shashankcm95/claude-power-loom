@@ -30,8 +30,9 @@
 // binds only the KERNEL-sealed record.approval_hash - world-anchor-mint.js:365-376; B2 derives its join
 // FROM the lab-written attestation + edge). The step-2a att<->edge + step-7 outcome cross-checks make the
 // quadruple internally RIGID, but rigidity != provenance. What makes STEP 1 a REAL gate is ONLY a DEPLOYED
-// cross-uid signing key the same-uid host cannot read() (the edge signer IS deployed+attested, uid 612 -
-// #273 conds 2+3; whether the APPROVAL broker_sig is ALSO cross-uid-custodial is a SEPARATE trust anchor,
+// cross-uid signing key the same-uid host cannot read() (uid 612 is the INTENDED cross-uid custody holder;
+// whether a box IS deployed+attested is an out-of-band DEPLOYMENT fact this merged code does NOT assert -
+// #273 conds 2+3 close AT that deployment, NOT here; whether the APPROVAL broker_sig is ALSO cross-uid-custodial is a SEPARATE trust anchor,
 // hence the split brokerVerifyKey). Tolerable ONLY because SHADOW; the close is PR-B5 arming (OQ-NS-6:
 // merged code NARROWS, deployment HARDENS).
 //

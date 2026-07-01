@@ -15,7 +15,7 @@ const path = require('path');
 
 const REPO = path.join(__dirname, '..', '..', '..', '..');
 const MOD = path.join(REPO, 'packages/lab/_lib/world-anchor-arming.js');
-const { WORLD_ANCHOR_ARM_ENV, isWorldAnchorArmed, isWorldAnchorArmMisconfigured } = require(MOD);
+const { WORLD_ANCHOR_ARM_ENV, isWorldAnchorArmed, isWorldAnchorArmMisconfigured, armingCoherence } = require(MOD);
 // Parity anchor: the arm parse MUST be the blessed STRICT normalizeBool (no second hand-rolled parser -
 // VERIFY-reviewer LOW-1 / hacker M2). We assert isWorldAnchorArmed === normalizeBool over the token space.
 const { normalizeBool } = require(path.join(REPO, 'packages/lab/_lib/host-claude-guard.js'));
@@ -66,6 +66,36 @@ test('isWorldAnchorArmMisconfigured: FALSE for unset / explicit-falsey / a valid
 test('a valid-truthy arms AND is NOT misconfigured; a typo does NOT arm AND IS misconfigured (mutually exclusive on the gating branch)', () => {
   withArm('on', () => { assert.strictEqual(isWorldAnchorArmed(), true); assert.strictEqual(isWorldAnchorArmMisconfigured(), false); });
   withArm('ture', () => { assert.strictEqual(isWorldAnchorArmed(), false); assert.strictEqual(isWorldAnchorArmMisconfigured(), true); });
+});
+
+// === armingCoherence (A-W1 both-or-neither preflight; signingArmed is an INJECTED param) ===
+test('armingCoherence: BOTH armed -> { admissionArmed:true, coherent:true, reason:null }', () => {
+  withArm('on', () => assert.deepStrictEqual(armingCoherence(true), { admissionArmed: true, coherent: true, reason: null }));
+});
+
+test('armingCoherence: NEITHER armed -> { admissionArmed:false, coherent:true, reason:null }', () => {
+  withArm(undefined, () => assert.deepStrictEqual(armingCoherence(false), { admissionArmed: false, coherent: true, reason: null }));
+});
+
+test('armingCoherence: B5-only (admission on, signing false) -> dark + incoherent + admission-armed-without-signing', () => {
+  withArm('1', () => assert.deepStrictEqual(armingCoherence(false), { admissionArmed: false, coherent: false, reason: 'admission-armed-without-signing' }));
+});
+
+test('armingCoherence: B1-only (admission off, signing true) -> dark + incoherent + signing-armed-without-admission', () => {
+  withArm(undefined, () => assert.deepStrictEqual(armingCoherence(true), { admissionArmed: false, coherent: false, reason: 'signing-armed-without-admission' }));
+});
+
+test('armingCoherence: admission arms ONLY when BOTH cohere (asymmetric by workflow-order; B5-only never arms)', () => {
+  withArm('1', () => assert.strictEqual(armingCoherence(true).admissionArmed, true, 'both -> armed'));
+  withArm('1', () => assert.strictEqual(armingCoherence(false).admissionArmed, false, 'B5-only -> dark'));
+});
+
+test('armingCoherence: DI-param defensiveness - a non-boolean signingArmed coerces to false (dark), never truthy-arms', () => {
+  withArm('1', () => {
+    for (const junk of ['yes', 1, {}, [], 'true', null, undefined]) {
+      assert.strictEqual(armingCoherence(junk).admissionArmed, false, `non-true signingArmed ${JSON.stringify(junk)} -> dark`);
+    }
+  });
 });
 
 process.stdout.write(`\n=== world-anchor-arming: ${passed} passed, ${failed} failed ===\n`);

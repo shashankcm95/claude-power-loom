@@ -11,7 +11,7 @@
 
 const assert = require('assert');
 
-const { defaultEdgeSignerLauncher, resolveEdgeSignerLaunch } = require('../../../../packages/lab/world-anchor/edge-signer-resolve');
+const { defaultEdgeSignerLauncher, resolveEdgeSignerLaunch, isEdgeUidSepArmed } = require('../../../../packages/lab/world-anchor/edge-signer-resolve');
 const LAUNCH_MOD = require.resolve('../../../../packages/kernel/egress/loom-edge-launch');
 
 let passed = 0;
@@ -148,6 +148,21 @@ test('lazy-require: unarmed resolve does NOT load the kernel egress launcher', (
   withEnv({}, () => { resolveEdgeSignerLaunch(); });      // unarmed -> direct -> no lazy require
   assert.strictEqual(require.cache[LAUNCH_MOD], undefined, 'kernel egress launcher must NOT load on the unarmed path');
 });
+
+// === 7. isEdgeUidSepArmed: STRICT parse of the B1 signing-arm flag (A-W1 preflight predicate) ===
+// The recall CLI + the observe-merge mint arm read this and INJECT signingArmed into custody-arming, so the
+// coherence gate never makes lab/_lib import back into world-anchor/ (Q2-A no-cycle). Same STRICT polarity as
+// the cross-uid arm: only a valid-truthy ARMS; a typo is dark.
+for (const v of ['1', 'true', 'yes', 'on', 'TRUE', ' on ']) {
+  test(`isEdgeUidSepArmed '${v}' (valid-truthy) -> true`, () => {
+    withEnv({ LOOM_EDGE_REQUIRE_UID_SEP: v }, () => assert.strictEqual(isEdgeUidSepArmed(), true));
+  });
+}
+for (const v of [undefined, '', '0', 'false', 'no', 'off', 'ture', 'enabled', '2', 'y']) {
+  test(`isEdgeUidSepArmed ${JSON.stringify(v)} -> false (STRICT dark; a typo never arms)`, () => {
+    withEnv({ LOOM_EDGE_REQUIRE_UID_SEP: v }, () => assert.strictEqual(isEdgeUidSepArmed(), false));
+  });
+}
 
 process.stdout.write(`\n=== edge-signer-resolve: ${passed} passed, ${failed} failed ===\n`);
 process.exit(failed === 0 ? 0 : 1);

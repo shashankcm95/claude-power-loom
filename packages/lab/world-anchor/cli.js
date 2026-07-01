@@ -52,7 +52,8 @@ const { parsePrUrl } = require('./parse-pr-url');
 const { runMergeObserve } = require('./merge-observer');
 const { mintFromMergeOutcome, resolveCapturedSignatureForAttest } = require('./world-anchor-mint');
 const { emitEgressAlert } = require('../../kernel/egress/alert');
-const { resolveEdgeSignerLaunch } = require('./edge-signer-resolve');
+const { resolveEdgeSignerLaunch, isEdgeUidSepArmed } = require('./edge-signer-resolve');
+const { resolveArmedBrokerVerifyKey } = require('../_lib/custody-arming');
 
 // The #2137 constants (the spec-kitty PR this wave confirms). diff_hash is NOT here  -  it is
 // re-derived from the diff bytes at backfill time.
@@ -355,6 +356,12 @@ async function mainObserveMerge(args, opts = {}) {
           // -> the mint writes an UNSIGNED edge (output-identical to before). Even with the cross-uid signer
           // DEPLOYED, this routes nothing until armed (B5). B1 ROUTES; B5 ADMITS (the arm flag is NOT the trust boundary).
           edgeSigner: opts.edgeSigner !== undefined ? opts.edgeSigner : resolveEdgeSignerLaunch().signer,
+          // verify-at-mint (A-W1): thread the arming-gated BROKER verify key so mintFromMergeOutcome refuses an
+          // un-authenticatable merge outcome at the PRODUCER (not only at the consumer's admitWorldAnchorNode).
+          // Un-armed / incoherent -> null -> authEngaged false -> the un-authenticated SHADOW skip, byte-identical
+          // to before. B5-gated by the SAME arm as admission (both-or-neither coherence). opts.verifyKeyPem is the
+          // TEST seam (wins when set); production leaves it undefined.
+          verifyKeyPem: opts.verifyKeyPem !== undefined ? opts.verifyKeyPem : resolveArmedBrokerVerifyKey({ signingArmed: isEdgeUidSepArmed() }),
         },
       );
     } catch (err) {
