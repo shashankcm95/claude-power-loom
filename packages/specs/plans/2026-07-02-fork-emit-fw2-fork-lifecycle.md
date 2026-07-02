@@ -2,7 +2,7 @@
 lifecycle: persistent
 topic: fork-emit, F-W2, kernel-egress, fork-lifecycle, ensureFork, dormant
 plan-of: the second wave of the fork-emit path — the fork lifecycle (POST /forks + readiness)
-status: DRAFT — awaiting 3-lens VERIFY then TDD build
+status: SHIP — 3-lens VERIFY + TDD build + 3-lens VALIDATE + CodeRabbit folds complete (see the VALIDATE result section)
 ---
 
 # F-W2 — the fork lifecycle (`ensureFork`), DORMANT / byte-identical
@@ -28,7 +28,7 @@ blast-radius + SRP reasoning the architect used to defer it OUT of F-W1. F-W2b i
 ## THE LOAD-BEARING UNPROBED CLAIM (Q3 — names the F-W4 gate; NOT built-upon live this wave)
 
 The fork-side write path (F-W1's `forkApi('git/trees'|'git/commits'|'git/refs')` with `parents:[baseCommitSha]`
-+ `base_tree: baseTreeSha`, both UPSTREAM shas) relies on **fork object-sharing**: a commit created on the fork
+plus `base_tree: baseTreeSha`, both UPSTREAM shas) relies on **fork object-sharing**: a commit created on the fork
 can reference upstream-only git objects. **GitHub's official docs NEVER state this** (doc-research 2026-07-02:
 Create-a-commit/tree/ref references are silent on cross-fork object existence; "fork network" is referenced but
 never technically defined; the strongest signal — private-fork commits "migrated to a network" on a visibility
@@ -67,21 +67,25 @@ fork's synced tip. F-W2 never runs live, so it does not depend on the unprobed c
 2. **Create (202) + bounded readiness poll:** `POST /repos/${upstreamRepo}/forks` (kernel-constant envelope — no
    actor bytes; NO `name`/`organization`/`default_branch_only` params, so the fork is `${forkOwner}/${upstreamName}`
    with all branches). Then poll `GET /repos/${resolvedForkRepo}` with BOUNDED exponential backoff (injectable
-   `sleep`; default a pure-node synchronous wait; e.g. <= 10 attempts, total <= ~2 min, well under GitHub's 5-min
-   escalation). On the first 200, run the SAME fork-of-upstream verification as (1). On exhausting the budget:
-   `emitEgressAlert('fork-readiness-timeout')` + throw (fail-closed — never write to an unconfirmed fork).
+   `sleep`; default a pure-node synchronous wait). On the first 200, run the SAME fork-of-upstream verification as
+   (1). On exhausting the budget: `emitEgressAlert('fork-readiness-timeout')` + throw (fail-closed — never write to
+   an unconfirmed fork). **The exact budget is pinned in the authoritative Pre-Approval Verification fold below:
+   `FORK_READINESS_MAX_ATTEMPTS = 8` + `sleep(min(250 * 2^(attempt-1), 20000))` (no sleep after the last attempt),
+   worst-case ~31.75s.** (This supersedes any looser example in earlier prose.)
 3. Return `{ ready: true }` (or throw). PURE of any tree/commit/ref write — `ensureFork` only creates + verifies.
 
 `sleep` is injectable (opts/deps) so tests drive the 404-then-200 readiness path with ZERO real waiting; the
-default is a synchronous, timer-free wait (e.g. `Atomics.wait` on a throwaway `Int32Array`) — no busy-loop, no
-`Date.now()`.
+default is a synchronous, timer-free wait via `_lib/sleep.js`'s `sleepSync` (`Atomics.wait` on a throwaway
+`Int32Array` on the FAST path — no `Date.now()`). NOTE: when `SharedArrayBuffer`/`Atomics.wait` is unavailable
+(a hardened/sandboxed runtime), `sleepSync` intentionally FALLS BACK to a bounded busy-wait — so the "no busy-loop"
+property holds only on the fast path; the fallback is bounded + one-time-logged.
 
 ## Also in F-W2 (the deferred F-W1 items that belong with the fork lifecycle)
 
 - **Fork-branch-TIP assert (deferred from F-W1):** in the dedup 422-reconcile path, before returning a deduped PR,
   `GET /repos/${resolvedForkRepo}/git/ref/heads/${branch}` and assert `.object.sha === commit.sha` (the commit we
   just created). A pre-existing branch whose tip is NOT our commit => `emitEgressAlert('fork-branch-tip-mismatch')`
-  + fail-closed (do not launder loom's envelope onto foreign fork content). BYTE-IDENTICAL on the happy path (this
+  and fail-closed (do not launder loom's envelope onto foreign fork content). BYTE-IDENTICAL on the happy path (this
   is inside the 422 path only). Mock: the fork-ref GET returns our commit sha on the reconcile path.
 - **Owner/name length cap (hacker VALIDATE LOW, F-W1):** add a length bound in `validateForkIdentity`
   (`resolvedForkRepo.length <= 100`, owner segment `<= 39` — GitHub's login max) AND — consistently — in
@@ -113,8 +117,8 @@ length case):
 7. **Fork-not-of-upstream fails closed** — GET 200 but `.fork===false` OR `.source.full_name` != upstream =>
    `fork-not-of-upstream` alert + throw, zero writes.
 8. **expectedForkOwner mismatch** — GET 200 fork but owner != expectedForkOwner => throw.
-9. **Fork-branch-tip assert (dedup)** — 422 reconcile: fork ref tip != our commit.sha => `fork-branch-tip-mismatch`
-   + fail-closed; tip === commit.sha => dedup proceeds.
+9. **Fork-branch-tip assert (dedup)** — 422 reconcile [SUPERSEDED by the CodeRabbit Major fold — the dedup-path tip
+   assert was REMOVED; see the CodeRabbit review folds section]: the create-path tip assert remains.
 10. **Length cap** — a >100-char resolvedForkRepo / >39-char owner => fail-closed in `validateForkIdentity`; a
     >39-char upstream owner => fail-closed in `assertSafeRepoRef`. Each NON-VACUOUS (proven to fire).
 11. **Non-vacuity** — each new guard exercised on its RED path (inject the violation, watch the alert fire).
@@ -285,6 +289,26 @@ gate makes the first one physically enforced.
 4. **Fork-name-collision dead-end (architect F-3).** `bot/{name}` is a flat namespace; a prior fork of a DIFFERENT
    upstream at that name is a fail-closed permanent block. Ensure a clean fork namespace or use `POST /forks {name}`.
 5. **F-W2b (baseCommitSha -> approvalSigBasis) MUST precede F-W3's live-head arming (architect F-1).**
+6. **Dedup-path stable-identity laundering defense (CodeRabbit Major).** The dedup path no longer asserts the fork
+   branch tip === this-run's `commit.sha` (that sha is non-deterministic across re-emits — it would fail every
+   legit 422 retry). The residual laundering defense (an attacker with push to the bot's OWN fork pre-creating the
+   loom branch with foreign content) needs a STABLE content identity — e.g. verifying the existing head commit's
+   kernel-constant message matches this emit's approval-hash + base-commit. Land it in F-W3/F-W4 when fork mode goes
+   live (dormant now; low-risk — requires bot-fork compromise, the same trust boundary as the whole operation).
+
+## CodeRabbit review folds (post-PR, 2026-07-02)
+
+CodeRabbit (PR #489, CHILL profile) posted 4 actionable comments — 1 Major (code) + 3 Minor (this plan). Each
+premise-probed firsthand:
+- **Major (Functional Correctness) [FOLDED]** — the dedup-path `assertForkTip()` compared the pre-existing branch
+  tip against THIS run's fresh `commit.sha`; GitHub fills the commit timestamp so that sha is non-deterministic
+  across re-emits => a legit 422 retry would fail-closed with `fork-branch-tip-mismatch`. Confirmed valid.
+  REMOVED the dedup-path tip assert (the dedup still binds head.repo/head.ref/base identity); KEPT the
+  ref-CREATE-path assert (same-run sha, correct); re-scoped the stable-identity laundering defense to F-W4
+  (precondition 6). Tests F14/F14b rewritten (a differing-tip retry now dedups; the identity binding still holds).
+- **3 Minor (this plan) [FOLDED]** — front-matter `status: DRAFT` -> `SHIP`; the stale `<= 10 attempts / ~2 min`
+  prose reconciled to the pinned `8` + exact backoff; the `sleepSync` "no busy-loop" claim qualified with the
+  SAB-unavailable bounded-busy-wait fallback.
 
 **Gate:** 168 egress/lib tests (two-identity 41 + gh-emit 57 + emit-pr 61 + sleep 5 + lock 4) + full kernel suite
 (116 files) green; eslint clean, zero eslint-disable; signpost up-to-date. Same-owner emit byte-identical (golden

@@ -721,26 +721,31 @@ test('F13 non-404 GET re-throws immediately: a 403 idempotency GET is NOT folded
   assert.strictEqual(sleep.count, 0, 'no sleep — the error re-threw before any poll');
 });
 
-// === F-W2 TEST 14: H3 fork-tip assert (dedup 422 path) — fork ref tip != commit.sha => fork-branch-tip-mismatch ===
+// === F-W2 TEST 14: dedup 422 must NOT gate on the fork tip sha (CodeRabbit Major — commit.sha is non-deterministic) ===
 
-test('F14 H3 fork-tip (dedup 422): ref-exists on the fork + a fork ref tip != our commit.sha => fork-branch-tip-mismatch alert + fail-closed', () => {
-  // ref reserve 422s (already exists); the dedup finds a matching open PR; but the fork ref tip (H3 read) is a
-  // DIFFERENT sha than the commit we just created => must NOT launder loom's envelope onto foreign fork content.
-  const existingPulls = [{ html_url: 'x', number: 7, head: { ref: FORK_BRANCH, repo: { full_name: FORK_REPO } }, draft: true, base: { ref: 'main', repo: { full_name: GOOD_REPO } } }];
-  const gh = makeForkGh({ refExists: true, existingPulls, forkRefSha: SHA_A });   // fork tip = SHA_A != commit SHA_D
-  const { text, err } = captureAlerts(() => G.ghEmit({ draft: draftFor(GOLDEN_ADD_DIFF), approvalHash: GOLDEN_ADD_HASH, env: {}, forkRepo: FORK_REPO, expectedForkOwner: 'botacct' }, { runGh: gh }));
-  assert.ok(err && /fork-branch-tip-mismatch|tip/.test(err.message), 'threw on a fork-tip mismatch in the dedup path');
-  assert.ok(/\[LOOM-EGRESS-ALERT\].*fork-branch-tip-mismatch/.test(text), 'the fork-branch-tip-mismatch alert is OBSERVABLE');
+test('F14 dedup 422 (CodeRabbit Major regression): a legit retry whose fork tip != THIS run\'s fresh commit.sha STILL dedups (the sha is non-deterministic across re-emits)', () => {
+  // A prior emit created this fork branch with a DIFFERENT commit sha (GitHub fills the commit timestamp => the sha
+  // changes every re-emit). Gating the dedup on `existing tip === this-run's commit.sha` would fail EVERY legit
+  // retry. So the dedup proceeds regardless of the tip sha; the residual laundering defense is an F-W4 stable-
+  // identity check (dormant fork mode + requires push to the bot's own fork).
+  const existingPulls = [{ html_url: 'https://github.com/o/r/pull/7', number: 7, head: { ref: FORK_BRANCH, repo: { full_name: FORK_REPO } }, draft: true, base: { ref: 'main', repo: { full_name: GOOD_REPO } } }];
+  const gh = makeForkGh({ refExists: true, existingPulls, forkRefSha: SHA_A });   // fork tip = SHA_A (prior emit) != this run's commit SHA_D
+  const r = G.ghEmit({ draft: draftFor(GOLDEN_ADD_DIFF), approvalHash: GOLDEN_ADD_HASH, env: {}, forkRepo: FORK_REPO, expectedForkOwner: 'botacct' }, { runGh: gh });
+  assert.strictEqual(r.deduped, true, 'the legit 422 retry dedups even though the fork tip differs from this run\'s commit.sha');
+  assert.strictEqual(r.number, 7);
 });
 
-// === F-W2 TEST 14b: H3 fork-tip PASSES when the tip === commit.sha (dedup proceeds) ===
+// === F-W2 TEST 14b: dedup 422 still binds IDENTITY (a non-matching PR is not deduped) ===
 
-test('F14b H3 fork-tip passes (dedup 422): the fork ref tip === our commit.sha => the dedup proceeds normally', () => {
-  const existingPulls = [{ html_url: 'https://github.com/o/r/pull/7', number: 7, head: { ref: FORK_BRANCH, repo: { full_name: FORK_REPO } }, draft: true, base: { ref: 'main', repo: { full_name: GOOD_REPO } } }];
-  const gh = makeForkGh({ refExists: true, existingPulls, forkRefSha: SHA_D });   // fork tip === commit SHA_D
-  const r = G.ghEmit({ draft: draftFor(GOLDEN_ADD_DIFF), approvalHash: GOLDEN_ADD_HASH, env: {}, forkRepo: FORK_REPO, expectedForkOwner: 'botacct' }, { runGh: gh });
-  assert.strictEqual(r.deduped, true, 'the dedup proceeds when the fork tip matches the created commit');
-  assert.strictEqual(r.number, 7);
+test('F14b dedup 422 still binds identity: a PR whose head.repo is NOT the resolved fork is NOT deduped (fail-closed)', () => {
+  // removing the (broken) tip-sha assert did NOT weaken the identity binding: the dedup predicate still requires
+  // head.repo === the resolved fork (+ head.ref, base.repo, base.ref, draft). A PR from a different head repo fails closed.
+  const existingPulls = [{ html_url: 'x', number: 7, head: { ref: FORK_BRANCH, repo: { full_name: 'attacker/repo' } }, draft: true, base: { ref: 'main', repo: { full_name: GOOD_REPO } } }];
+  const gh = makeForkGh({ refExists: true, existingPulls, forkRefSha: SHA_D });
+  assert.throws(
+    () => G.ghEmit({ draft: draftFor(GOLDEN_ADD_DIFF), approvalHash: GOLDEN_ADD_HASH, env: {}, forkRepo: FORK_REPO, expectedForkOwner: 'botacct' }, { runGh: gh }),
+    /ref-exists-no-open-pr|no open loom/,
+  );
 });
 
 // === F-W2 TEST 15: length caps (validateForkIdentity owner<=39 / repo<=100; assertSafeRepoRef upstream owner<=39) ===

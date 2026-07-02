@@ -885,10 +885,14 @@ function ghEmit({ draft, approvalHash, env, forkRepo, expectedForkOwner } = {}, 
         && p.base.ref === base)
       : null;
     if (pr) {
-      // H3 (dedup path): before returning a deduped PR on a PRE-EXISTING fork branch, assert its tip === our
-      // commit (fork mode only). A matching open PR whose fork branch was force-pushed to foreign content must NOT
-      // be laundered back under loom's envelope.
-      assertForkTip();
+      // NOTE (CodeRabbit Major) — NO tip-sha assert on the dedup path. A prior emit created this branch with a
+      // DIFFERENT commit sha (GitHub fills the commit author/committer timestamp => the sha is non-deterministic
+      // across re-emits), so asserting `existing tip === this-run's commit.sha` here would fail EVERY legitimate
+      // 422 retry. The dedup predicate above already binds identity (head.repo === the resolved fork, head.ref ===
+      // the approval-hash-derived branch, base.repo/base.ref === upstream, draft). The residual dedup-laundering
+      // defense — a STABLE content identity (e.g. the existing head commit's kernel-constant message matching this
+      // emit's approval-hash + base-commit) — is an F-W4 arming precondition (fork mode is dormant this wave, and
+      // the laundering attack requires push to the bot's OWN fork, the same trust boundary as the whole operation).
       return { pr_url: pr.html_url, number: pr.number, branch, base_sha: baseCommitSha, deduped: true };
     }
     // VALIDATE-hacker MEDIUM (dedup laundering) — the ref EXISTS but no OPEN loom PR points at it. DO NOT auto-create
