@@ -7,6 +7,8 @@ status: SHIP — 2-lens VERIFY + inline TDD build + 3-lens VALIDATE (all SAFE-TO
 
 # F-W3 — the cross-repo PR-open (`head=forkOwner:branch`), DORMANT / byte-identical
 
+> **SUPERSEDED (2026-07-02, F-W4 M0):** this plan's `maintainer_can_modify = true` decision was reversed. Q-M1-necessity RESOLVED it to `false` (smallest surface + trust-signal integrity, grounded in GitHub docs); the live const at `gh-emit.js:84` is now `false`. See `2026-07-02-fork-emit-fw4-arming-scope.md`. Body kept as the shipped historical record.
+
 Fourth wave of the fork-emit path (F-W1 two-identity axis MERGED `ffa4e67` PR #488; F-W2 fork lifecycle MERGED
 `65142bc` PR #489; F-W2b moved-base MERGED `d44a81c` PR #490). F-W3 makes the PR-create emit a **cross-repo** pull
 (`head={forkOwner}:{branch}`, base=upstream) in fork mode, plus `maintainer_can_modify` as a fork-mode kernel
