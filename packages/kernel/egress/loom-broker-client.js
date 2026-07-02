@@ -36,16 +36,28 @@ const RESERVED_ENV = /^(NODE_OPTIONS|LOOM_BROKER_KEY_FILE|LD_|DYLD_)/i;
 
 const DEFAULT_TIMEOUT_MS = 5000;
 const DEFAULT_MAX_BYTES = 4096;
+// #436-parity (the edge twin of the actor fix in loom-actor-custody-verify.js): a cross-uid custody PROBE must run
+// from a world-traversable cwd. If the child inherits the operator's cwd (e.g. a repo checkout under a 0700 home the
+// signer uid cannot traverse), the wrapper's /bin/sh fails at startup with `getcwd: cannot access parent directories`
+// (EACCES) -> no signature -> the probe FAILS misleadingly. A custody property must not depend on WHERE the operator
+// ran from. The VALUE lives HERE (the client owns it) and callers engage it with the neutralizeCwd BOOLEAN — a
+// cross-uid sudo launcher never exposes a caller-settable path channel (VERIFY board: information-hiding). `/` is
+// always traversable and world-readable-not-writable (no plant-file abuse).
+const NEUTRAL_CWD = '/';
 // the serialized ctx the host writes to the broker's stdin — capped to match the wrapper's stdin bound so the
 // client fails FAST (no wasted serialize/spawn) on an over-large ctx the broker would refuse anyway (CodeRabbit).
 const MAX_CTX_BYTES = 1024 * 1024;
 
 /**
  * A sync signFn over a separate-process broker.
- * @param {{command?:string, args?:string[], keyFile?:string, env?:object, timeoutMs?:number, maxBytes?:number}} opts
+ * @param {{command?:string, args?:string[], keyFile?:string, env?:object, timeoutMs?:number, maxBytes?:number,
+ *          neutralizeCwd?:boolean}} opts
  *   command  — the broker executable (default: this node). args — fixed leading args (e.g. the broker script).
  *   keyFile  — convenience: sets LOOM_BROKER_KEY_FILE in the (allowlisted) child env.
  *   env      — extra caller-ALLOWLISTED child vars (explicit; process.env is never inherited).
+ *   neutralizeCwd — when strictly true, spawn the child from NEUTRAL_CWD (`/`) so a custody probe does not depend on
+ *     the operator's cwd (#436-parity). ABSENT/false -> spawnOpts carries NO cwd key -> byte-identical to today for
+ *     every existing caller (the live approval path passes none). Only the SHADOW edge custody-verify engages it.
  * @returns {(basis:string, ctx:object)=>string|null}  base64 sig, or null (fail-closed) on any error.
  */
 function loomBrokerSigner(opts = {}) {
@@ -55,6 +67,8 @@ function loomBrokerSigner(opts = {}) {
   // same for the maxBuffer bound. A 0/negative falls back to the default.
   const timeout = (Number.isInteger(opts.timeoutMs) && opts.timeoutMs > 0) ? opts.timeoutMs : DEFAULT_TIMEOUT_MS;
   const maxBuffer = (Number.isInteger(opts.maxBytes) && opts.maxBytes > 0) ? opts.maxBytes : DEFAULT_MAX_BYTES;
+  // STRICT boolean (only literal true engages) — a typo/garbage opt never silently changes the spawn cwd.
+  const neutralizeCwd = opts.neutralizeCwd === true;
   // env ALLOWLIST: build from scratch; NEVER spread process.env. opts.keyFile is the SOLE key-path channel;
   // opts.env extras are refused if they'd re-open the hole (RESERVED_ENV).
   const env = {};
@@ -74,6 +88,8 @@ function loomBrokerSigner(opts = {}) {
     const input = typeof ctx === 'string' ? ctx : JSON.stringify(ctx);
     if (input.length > MAX_CTX_BYTES) return null; // fail-fast: over the wrapper's stdin bound -> never spawn
     const spawnOpts = { timeout, maxBuffer, env, stdio: ['pipe', 'pipe', 'ignore'], input };
+    // set cwd ONLY when engaged, so an un-engaged caller's spawnOpts has NO cwd own-key (freeze byte-identity).
+    if (neutralizeCwd) spawnOpts.cwd = NEUTRAL_CWD;
     let out;
     try {
       out = execFileSync(command, [...args, basis], spawnOpts);
