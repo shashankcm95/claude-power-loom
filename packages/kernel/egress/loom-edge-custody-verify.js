@@ -263,8 +263,19 @@ function parseArgv(argv, onError) {
   return o;
 }
 
+// Extracted from main() (mirrors approve-cli.js:runApprove) so a test can inject signerFactory and assert the probe
+// engages the neutral cwd WITHOUT a real cross-uid spawn. Constructs the cross-uid signer + returns the custody report.
+// deps.signerFactory defaults to the real crossUidLoomEdgeSigner (lazy require, as main() did before).
+function runEdgeCustodyCheck(opts, deps = {}) {
+  const signerFactory = deps.signerFactory || require('./loom-edge-launch').crossUidLoomEdgeSigner;
+  // neutralizeCwd:true — a custody property must not depend on WHERE the operator ran the verify from (#436-parity,
+  // the edge twin of the actor fix). The signer's cross-uid child then signs the probe from `/` (NEUTRAL_CWD), so a
+  // 0700-home operator cwd no longer trips `getcwd: EACCES` -> a spurious C3 FAIL.
+  const signer = signerFactory({ edgeUser: opts.edgeUser, wrapperPath: opts.wrapperPath, sudoPath: opts.sudoPath, neutralizeCwd: true });
+  return verifyEdgeCustody({ keyFile: opts.keyFile, signer, verifyKeyPem: opts.verifyKeyPem, wrapperPath: opts.wrapperPath });
+}
+
 function main() {
-  const { crossUidLoomEdgeSigner } = require('./loom-edge-launch');
   const usage = 'usage: loom-edge-custody-verify --key <edge-key> --verify-key <pubkey.pem> --edge-user <user> --wrapper <abs-path> [--sudo <abs-path>] [--attested-cross-uid]\n';
   const o = parseArgv(process.argv.slice(2), (m) => { process.stderr.write('loom-edge-custody-verify: ' + m + '\n' + usage); process.exit(2); });
   if (!o.keyFile || !o.verifyKeyFile || !o.edgeUser || !o.wrapperPath) {
@@ -275,8 +286,7 @@ function main() {
   try { verifyKeyPem = fs.readFileSync(o.verifyKeyFile, 'utf8'); }
   catch (e) { process.stderr.write('loom-edge-custody-verify: cannot read verify-key: ' + (e && e.message) + '\n'); process.exit(2); }
 
-  const signer = crossUidLoomEdgeSigner({ edgeUser: o.edgeUser, wrapperPath: o.wrapperPath, sudoPath: o.sudoPath });
-  const report = verifyEdgeCustody({ keyFile: o.keyFile, signer, verifyKeyPem, wrapperPath: o.wrapperPath });
+  const report = runEdgeCustodyCheck({ keyFile: o.keyFile, verifyKeyPem, edgeUser: o.edgeUser, wrapperPath: o.wrapperPath, sudoPath: o.sudoPath });
   process.stdout.write(formatReport(report) + '\n');
 
   // the exit code is NEVER greener than the report. Exit 0 ONLY when the host-observable checks passed AND the
@@ -287,4 +297,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { assessEdgeCustody, gatherEdgeCustodyFacts, verifyEdgeCustody, formatReport };
+module.exports = { assessEdgeCustody, gatherEdgeCustodyFacts, verifyEdgeCustody, formatReport, runEdgeCustodyCheck };

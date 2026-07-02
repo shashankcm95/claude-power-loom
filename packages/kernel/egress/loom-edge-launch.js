@@ -40,7 +40,11 @@ const { loomBrokerSigner } = require('./loom-broker-client');
  * A sync signFn (edge_id, edgeBody)->base64sig|null that signs THROUGH a separate-uid edge broker via
  * `sudo -n -u <edge-user> <wrapper> <edge_id>` with the edgeBody written on the child's stdin (so the wrapper
  * recompute-binds via loom-edge-bind). Plugs into the world-anchor-edge-store opts.signer(edge_id, edgeBody) seam.
- * @param {{edgeUser:string, wrapperPath:string, sudoPath?:string, timeoutMs?:number, maxBytes?:number}} opts
+ * @param {{edgeUser:string, wrapperPath:string, sudoPath?:string, timeoutMs?:number, maxBytes?:number,
+ *          neutralizeCwd?:boolean}} opts
+ *   neutralizeCwd — forwarded verbatim to loomBrokerSigner: when true the cross-uid child signs from a neutral cwd
+ *     (`/`). Engaged ONLY by the SHADOW edge custody-verify probe (#436-parity); production/live callers pass none
+ *     (undefined) -> byte-identical.
  * @returns {(edge_id:string, edgeBody:object)=>string|null}
  * @throws {Error} if opts.keyFile or opts.env is supplied (D1 — the cross-uid key is wrapper-owned, never injected),
  *                 or via crossUidSudoArgs on a flag-injection user / a non-absolute|dotdot|control-char wrapper.
@@ -57,7 +61,8 @@ function crossUidLoomEdgeSigner(opts = {}) {
   const { command, args } = crossUidSudoArgs({ brokerUser: opts.edgeUser, wrapperPath: opts.wrapperPath, sudoPath: opts.sudoPath });
   // NO keyFile, NO env -> loomBrokerSigner builds a from-scratch child env with neither LOOM_BROKER_KEY_FILE nor any
   // caller var. The (edge_id, edgeBody) signer writes JSON.stringify(edgeBody) on stdin (the recompute preimage).
-  return loomBrokerSigner({ command, args, timeoutMs: opts.timeoutMs, maxBytes: opts.maxBytes });
+  // neutralizeCwd is a plain passthrough (undefined for every live/production caller -> no cwd on the spawn).
+  return loomBrokerSigner({ command, args, timeoutMs: opts.timeoutMs, maxBytes: opts.maxBytes, neutralizeCwd: opts.neutralizeCwd });
 }
 
 module.exports = { crossUidLoomEdgeSigner };

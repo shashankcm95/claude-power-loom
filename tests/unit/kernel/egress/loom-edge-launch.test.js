@@ -114,6 +114,38 @@ test('happy: the produced signer round-trips through a stub wrapper (canonical 6
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// #436-parity: the launcher FORWARDS neutralizeCwd through to loomBrokerSigner, so the cross-uid child signs from
+// `/`. Proven end-to-end through the REAL launch chain (stub-sudo `shift 3; exec "$@"` preserves cwd -> the wrapper
+// reports its own process.cwd()). This is the middle-hop that the actor precedent (a direct spawn) never had.
+test('#436: neutralizeCwd:true -> the cross-uid child signs from / (forwarded to loomBrokerSigner)', () => {
+  const dir = scratch();
+  try {
+    const sudo = writeStubSudo(dir);
+    const side = path.join(dir, 'wrapper-cwd.txt');
+    const wrapper = writeStubWrapper(dir, 'require("fs").writeFileSync(' + JSON.stringify(side) + ', process.cwd());process.stdout.write(Buffer.alloc(64, 7).toString("base64") + "\\n");\n');
+    const { basis, ctx } = realEdge();
+    const signer = L.crossUidLoomEdgeSigner({ edgeUser: 'loom-edge-signer', wrapperPath: wrapper, sudoPath: sudo, neutralizeCwd: true });
+    const sig = signer(basis, ctx);
+    assert.ok(typeof sig === 'string' && sig.length > 0, 'the stub still round-trips a sig with the neutral cwd');
+    assert.strictEqual(fs.readFileSync(side, 'utf8'), '/', 'the cross-uid child ran from / (neutralizeCwd threaded through the launcher)');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('no neutralizeCwd -> the cross-uid child inherits the parent cwd (default; non-vacuity pair)', () => {
+  const dir = scratch();
+  try {
+    const sudo = writeStubSudo(dir);
+    const side = path.join(dir, 'wrapper-cwd.txt');
+    const wrapper = writeStubWrapper(dir, 'require("fs").writeFileSync(' + JSON.stringify(side) + ', process.cwd());process.stdout.write(Buffer.alloc(64, 7).toString("base64") + "\\n");\n');
+    const { basis, ctx } = realEdge();
+    const signer = L.crossUidLoomEdgeSigner({ edgeUser: 'loom-edge-signer', wrapperPath: wrapper, sudoPath: sudo });
+    const sig = signer(basis, ctx);
+    assert.ok(typeof sig === 'string' && sig.length > 0, 'round-trips a sig');
+    assert.strictEqual(fs.readFileSync(side, 'utf8'), process.cwd(), 'inherited the test process cwd');
+    assert.notStrictEqual(fs.readFileSync(side, 'utf8'), '/', 'default is NOT neutralized (proves the forward test is non-vacuous)');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('the produced signer returns null on a NON-HEX basis (loomBrokerSigner input gate; never spawns)', () => {
   const dir = scratch();
   try {

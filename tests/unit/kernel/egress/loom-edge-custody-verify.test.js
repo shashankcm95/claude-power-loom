@@ -121,6 +121,24 @@ test('the report invariant: hostObservableChecksPassed=true => requiresOutOfBand
   assert.ok(!r.hostObservableChecksPassed || r.requiresOutOfBandUidConfirmation, 'a clean host-check ALWAYS demands the out-of-band attestation');
 });
 
+// #436-parity: the CLI runner constructs the cross-uid signer with neutralizeCwd:true so the C3 probe does not depend
+// on the operator's cwd (a 0700-home checkout would otherwise trip getcwd:EACCES -> a spurious C3 FAIL). Asserted via
+// the injected signerFactory, no real cross-uid spawn. Non-vacuous: drop neutralizeCwd in the impl -> received is
+// undefined -> red.
+test('#436: runEdgeCustodyCheck constructs the signer with neutralizeCwd:true (probe cwd-independent)', () => {
+  let received = null;
+  const report = V.runEdgeCustodyCheck(
+    { keyFile: '/nonexistent/edge.key', verifyKeyPem: 'pem', edgeUser: 'loom-edge-signer', wrapperPath: '/opt/loom/edge-sign.sh', sudoPath: '/usr/bin/sudo' },
+    { signerFactory: (o) => { received = o; return () => null; } },
+  );
+  assert.ok(received, 'the injected signerFactory was invoked');
+  assert.strictEqual(received.neutralizeCwd, true, 'the CLI runner engages the neutral probe cwd (#436-parity)');
+  assert.strictEqual(received.edgeUser, 'loom-edge-signer', 'forwards edgeUser to the factory');
+  assert.strictEqual(received.wrapperPath, '/opt/loom/edge-sign.sh', 'forwards wrapperPath to the factory');
+  assert.strictEqual(received.sudoPath, '/usr/bin/sudo', 'forwards sudoPath to the factory');
+  assert.ok(report && typeof report.hostObservableChecksPassed === 'boolean', 'still returns a custody report (runner is total)');
+});
+
 // === D3(c) NON-VACUITY: a REAL same-uid round-trip through the actual loom-edge-sign.js ===
 // This is the load-bearing test (the "prove it can fail" rule). A same-uid signer that runs the REAL CLI proves C3
 // PASSes with a usable key, and FAILS when the key is absent / no verify key / the basis is non-consistent.

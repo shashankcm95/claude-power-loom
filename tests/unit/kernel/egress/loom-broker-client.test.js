@@ -31,7 +31,7 @@ function fakeBrokerScript() {
     'const {signRecordId}=require(' + JSON.stringify(EA) + ');',
     'const basis=process.argv[2];',
     'let ctx="";process.stdin.on("data",d=>ctx+=d);process.stdin.on("end",()=>{',
-    '  if(process.env.LB_SIDE)fs.writeFileSync(process.env.LB_SIDE,JSON.stringify({leak:process.env.SECRET_LEAK||"undefined",benign:process.env.BENIGN||"undefined",ctxlen:ctx.length}));',
+    '  if(process.env.LB_SIDE)fs.writeFileSync(process.env.LB_SIDE,JSON.stringify({leak:process.env.SECRET_LEAK||"undefined",benign:process.env.BENIGN||"undefined",ctxlen:ctx.length,cwd:process.cwd()}));',
     '  if(process.env.LB_MODE==="exit1"){process.exit(1)}',
     '  if(process.env.LB_MODE==="flood"){process.stdout.write("x".repeat(100000));process.exit(0)}',
     '  if(process.env.LB_MODE==="garbage"){process.stdout.write("not base64 @@@\\n");process.exit(0)}',
@@ -42,13 +42,16 @@ function fakeBrokerScript() {
   ].join('\n');
 }
 
-function setup(extraEnv, mode) {
+function setup(extraEnv, mode, extraSignerOpts) {
   const dir = scratch();
   const broker = path.join(dir, 'fake-broker.js'); fs.writeFileSync(broker, fakeBrokerScript());
   const kp = generateEdgeKeypair();
   const keyFile = path.join(dir, 'key.pem'); fs.writeFileSync(keyFile, kp.privateKeyPem, { mode: 0o600 });
   const env = Object.assign({}, extraEnv); if (mode) env.LB_MODE = mode;
-  const signer = loomBrokerSigner({ command: NODE, args: [broker], keyFile, env, timeoutMs: 5000, maxBytes: 4096 });
+  const signer = loomBrokerSigner(Object.assign(
+    { command: NODE, args: [broker], keyFile, env, timeoutMs: 5000, maxBytes: 4096 },
+    extraSignerOpts || {},
+  ));
   return { dir, signer, pub: kp.publicKeyPem };
 }
 
@@ -58,6 +61,33 @@ test('happy path: returns a sig that verifies over the basis', () => {
     const sig = signer(HEX, { emission: { repo: 'o/r', issueRef: 1, diff: 'd' }, approvedAt: 1, nonce: 'n', key_id: 'v0' });
     assert.ok(sig && verifyRecordSig(HEX, sig, { publicKeyPem: pub }), 'sig verifies');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// #436-parity: neutralizeCwd spawns the cross-uid child from `/` so a custody probe does not depend on the operator's
+// cwd. Proven against the REAL execFileSync path (the child reports its own process.cwd()).
+test('neutralizeCwd:true -> the child spawns from NEUTRAL_CWD (/)', () => {
+  const side = path.join(os.tmpdir(), 'loom-bc-cwd-t-' + process.pid + '.json');
+  const { dir, signer } = setup({ LB_SIDE: side }, null, { neutralizeCwd: true });
+  try {
+    const sig = signer(HEX, { emission: { repo: 'o/r', issueRef: 1, diff: 'd' }, approvedAt: 1, nonce: 'n', key_id: 'v0' });
+    assert.ok(sig, 'still produces a sig with the neutral cwd set');
+    const seen = JSON.parse(fs.readFileSync(side, 'utf8'));
+    assert.strictEqual(seen.cwd, '/', 'the child ran from / regardless of the parent cwd');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(side, { force: true }); }
+});
+
+// byte-identity of the default: with no neutralizeCwd the spawn carries NO cwd -> the child inherits the parent cwd
+// (the live approval path passes none, so it is unchanged). This is the non-vacuity pair for the test above.
+test('no neutralizeCwd -> the child inherits the parent cwd (default unchanged)', () => {
+  const side = path.join(os.tmpdir(), 'loom-bc-cwd-f-' + process.pid + '.json');
+  const { dir, signer } = setup({ LB_SIDE: side }, null);
+  try {
+    const sig = signer(HEX, { emission: { repo: 'o/r', issueRef: 1, diff: 'd' }, approvedAt: 1, nonce: 'n', key_id: 'v0' });
+    assert.ok(sig, 'produces a sig');
+    const seen = JSON.parse(fs.readFileSync(side, 'utf8'));
+    assert.strictEqual(seen.cwd, process.cwd(), 'the child inherited the test process cwd, not /');
+    assert.notStrictEqual(seen.cwd, '/', 'default is NOT neutralized (proves the neutralize test is non-vacuous)');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(side, { force: true }); }
 });
 
 test('process.env is NEVER inherited; an allowlisted opts.env extra IS passed', () => {
