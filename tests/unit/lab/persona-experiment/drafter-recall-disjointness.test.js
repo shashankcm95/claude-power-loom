@@ -68,19 +68,29 @@ function isLaneFile(abs) {
 // literal, not a require the walk resolves). Hyphenated basenames appear only inside path literals.
 const FORBIDDEN_LITERAL_TOKENS = ['world-anchored-recall', 'weight-source-gate', 'admit-world-anchor-node', 'build-spawn-context'];
 
+// Strip block + line comments before a require scan, so a commented-out or documented require site (plausible
+// in this domain) does not false-trip the dam (CodeRabbit). Safe against false NEGATIVES: a real `require(...)`
+// can never live inside a comment, and mangling a URL's `//` inside a string cannot create or destroy a
+// `require(` token. (The stringLiterals spawn-scan is separate and does its own comment-immune handling.)
+function stripComments(src) {
+  return src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/.*$/gm, '');
+}
+
 function relativeRequires(src) {
+  const code = stripComments(src);
   const out = [];
   const re = /require\(\s*['"](\.[^'"]+)['"]\s*\)/g;
   let m;
-  while ((m = re.exec(src)) !== null) out.push(m[1]);
+  while ((m = re.exec(code)) !== null) out.push(m[1]);
   return out;
 }
 
 // A COMPUTED require: `require(` whose first non-space argument char is NOT a quote (so `require(path.join(...))`
-// and `require(x)` match; `require('./x')` and a bare multi-line `require(\n './x')` do not).
+// and `require(x)` match; `require('./x')` and a bare multi-line `require(\n './x')` do not). Comments stripped
+// first so a prose "...forget to require(...)" or a documented `require(path.join(...))` does not false-trip.
 const COMPUTED_REQUIRE_RE = /require\(\s*[^'"`)\s]/;
 function firstComputedRequire(src) {
-  for (const line of src.split('\n')) {
+  for (const line of stripComments(src).split('\n')) {
     if (COMPUTED_REQUIRE_RE.test(line)) return line.trim().slice(0, 100);
   }
   return null;
@@ -204,6 +214,10 @@ test('non-vacuity: the lane + computed-require detectors fire on real wiring, no
   // computed-require detector
   assert.ok(firstComputedRequire("const { r } = require(path.join(d, seg));"), 'computed-require detector missed require(path.join(...))');
   assert.ok(!firstComputedRequire("const { r } = require('../causal-edge/live-grade');"), 'computed-require detector false-tripped on a static require');
+  // comment-immunity (CodeRabbit): a commented-out lane require / computed require does NOT trip
+  assert.deepStrictEqual(relativeRequires("// const x = require('../causal-edge/world-anchored-recall');"), [], 'relativeRequires followed a commented-out require');
+  assert.strictEqual(firstComputedRequire('// historically we would require(path.join(dir, seg)) here'), null, 'computed-require detector tripped on a comment');
+  assert.strictEqual(firstComputedRequire('/* require(x) */ const y = 1;'), null, 'computed-require detector tripped on a block comment');
 });
 
 process.stdout.write(`\n=== drafter-recall-disjointness: ${passed} passed, ${failed} failed ===\n`);
