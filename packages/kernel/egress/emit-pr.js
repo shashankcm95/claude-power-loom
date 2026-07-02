@@ -197,6 +197,18 @@ const DISPOSITION_KEYS = Object.freeze([
   // supplied; an actor must never inject the store path OR the (recorded-but-not-trusted) metadata via data
   // (VERIFY Q6b — the #273 exact-set deny-list).
   'custodyJoinKeyDir', 'joinKeyMeta',
+  // F-W1 (M-1) — the fork/identity policy vocabulary. The bot-account fork target + the identity-derivation
+  // fields are CUSTODY values (operator-configured); an actor must never inject a fork/head/base repo via
+  // untrusted data (the #273 exact-set deny-list). The set is case-folded at :204 (casing variants collapse),
+  // but hyphen and underscore spellings are DISTINCT own-key shapes AFTER lowercasing — so every identity field
+  // is listed in ALL THREE spellings (camelCase, snake_case, kebab-case) or a variant would slip the deny-list.
+  'forkRepo', 'fork_repo', 'fork-repo', 'forkOwner', 'fork_owner', 'fork-owner',
+  'upstreamRepo', 'upstream_repo', 'upstream-repo',
+  'expectedForkOwner', 'expected_fork_owner', 'expected-fork-owner',
+  'forkName', 'fork_name', 'fork-name',
+  'headRepo', 'head_repo', 'head-repo',
+  'baseRepo', 'base_repo', 'base-repo',
+  'sourceRepo', 'source_repo', 'source-repo',
 ]);
 // CASE-FOLDED match set (+ the prototype-pollution keys) so a casing/spelling variant (Live / DRY_RUN /
 // __proto__) cannot slip the deny-list (VALIDATE-hacker).
@@ -391,12 +403,17 @@ function isEmitArmed({ killswitchPath, custodyDispositionPath } = {}) {
  * draft would be a tautology). The require of gh-emit is LAZY (inside the function) so the back-edge gh-emit ->
  * emit-pr (for parseDiffPaths/isEgressDeniedPath) is not a load-time cycle. Injectable via opts.armedEmitFn so
  * the gated emit-then-record path stays unit-provable without the network.
- * @param {{ draft: object, token: string, ghConfigDir: string, approvalHash: string }} args
+ * F-W1 — two DORMANT custody-only params thread through to ghEmit's two-identity axis: `forkRepo` (the
+ * fork write-target) + `expectedForkOwner` (the asserted fork owner). Both are `undefined` on emitPR's call
+ * below (F-W1 never populates them — same-owner, byte-identical); they enter ONLY via a direct armedEmit
+ * caller (the custody-only entry point). They are NEVER read from `draft` (draft is hash-bound; a forkRepo in
+ * it would be an unsigned co-forgeable steering field — the C2 #273 trap), so they are explicit named args.
+ * @param {{ draft: object, token: string, ghConfigDir: string, approvalHash: string, forkRepo?: string, expectedForkOwner?: string }} args
  */
-function armedEmit({ draft, token, ghConfigDir, approvalHash } = {}) {
+function armedEmit({ draft, token, ghConfigDir, approvalHash, forkRepo, expectedForkOwner } = {}) {
   const { ghEmit } = require('./gh-emit');                            // lazy — breaks the emit-pr<->gh-emit cycle
   const env = buildEmitEnv({ token, ghConfigDir });
-  return ghEmit({ draft, approvalHash, env });
+  return ghEmit({ draft, approvalHash, env, forkRepo, expectedForkOwner });
 }
 
 // --------------------------------------------------------------------------
@@ -550,5 +567,5 @@ module.exports = {
   buildEmitEnv, assertIsolatedGhConfigDir, armedEmit,
   assertDataIsPolicyFree, assertRecordedClaim, assertSafeRepoRef, assertSafeIssueRef, assertEgressSafeDiff, assertSafeLessonCommitment,
   isKillswitchOn, isEmitArmed, resolveToken, resolveDisposition, resolveVerifyKey, parseDiffPaths, isEgressDeniedPath,
-  DISPOSITION_KEYS, DEFAULT_REPO_HOST_ALLOWLIST, ENV_ALLOWLIST,
+  DISPOSITION_KEYS, DEFAULT_REPO_HOST_ALLOWLIST, ENV_ALLOWLIST, OWNER_RE,
 };
