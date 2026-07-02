@@ -132,6 +132,11 @@ function assertSafeRepoRef(repo, { hostAllowlist = DEFAULT_REPO_HOST_ALLOWLIST }
   if (!OWNER_RE.test(owner)) {
     throw new Error(`emitPR: repo owner must be a valid GitHub login (alnum + single hyphens): ${JSON.stringify(repo)}`);
   }
+  // F-W2 length cap (consistent with gh-emit's validateForkIdentity): GitHub's login (owner) max is 39 chars.
+  // A fail-FAST + observable bound; turns a fail-late (a 500-char owner 404s at the network) into a fail-fast.
+  if (owner.length > 39) {
+    throw new Error(`emitPR: repo owner exceeds GitHub's 39-char login max: ${JSON.stringify(repo)}`);
+  }
   // REPO name: alnum + `. _ -`; may lead with `.`/`_` (e.g. `.github`), but NOT be exactly `.`/`..`, lead with
   // `-` (an argv-flag-injection shape), or end with `.` (a git-ref / case-insensitive-FS foot-gun).
   // (NB a `.git` suffix is deliberately NOT rejected here — `etiquetteKey` canonicalizes it for the
@@ -393,6 +398,13 @@ function isEmitArmed({ killswitchPath, custodyDispositionPath } = {}) {
 // The live-emission SEAM — ③.2.5c: armed (delegates to the gh-REST mechanism).
 // --------------------------------------------------------------------------
 
+// F-W4 ARMING CONSTANT (hacker/honesty VERIFY H1) — the fork-object-sharing claim (Q3) is DOC-SILENT and UNPROBED
+// (can a fork commit reference an upstream-only sha?). A LIVE fork write is fail-closed-forbidden until an operator
+// records that probe result. HARD kernel constant, NEVER an arg/opt (security.md non-bypassable-guard): F-W4 flips
+// it to `true` ONLY after the live probe passes, with the evidence in that commit. `false` here => armedEmit
+// refuses any populated forkRepo. Dormant in F-W1/F-W2 (emitPR never populates forkRepo).
+const OBJECT_SHARING_PROBE_RECORDED = false;
+
 /**
  * The ONLY place the network is touched: a gh REST tree->commit->ref->pull (NEVER a git push from the candidate
  * clone). ③.2.5c flips this from a throw to a real DRAFT-PR creation, delegating to gh-emit.js, behind the
@@ -411,6 +423,18 @@ function isEmitArmed({ killswitchPath, custodyDispositionPath } = {}) {
  * @param {{ draft: object, token: string, ghConfigDir: string, approvalHash: string, forkRepo?: string, expectedForkOwner?: string }} args
  */
 function armedEmit({ draft, token, ghConfigDir, approvalHash, forkRepo, expectedForkOwner } = {}) {
+  // F-W4 ARMING GATE (hacker/honesty VERIFY H1) — a LIVE fork write depends on the UNPROBED fork-object-sharing
+  // claim (Q3: can a fork-side commit reference an upstream-only sha; DOC-SILENT — see the F-W2 plan's F-W4 arming
+  // preconditions). armedEmit is the custody-only production entry F-W4 will use to POPULATE a live forkRepo, so
+  // this is the gate: a live fork write is fail-closed-forbidden until the operator records the object-sharing
+  // probe result. OBJECT_SHARING_PROBE_RECORDED is a HARD kernel constant (non-overridable — never an arg/opt);
+  // F-W4 flips it to true ONLY after the live probe passes, with the evidence in that commit. DORMANT in F-W1/F-W2
+  // (emitPR never populates forkRepo => forkRepo is undefined here => this never fires in production yet). The
+  // ghEmit fork-mode MECHANISM is exercised only by direct-ghEmit unit tests, which bypass this production entry.
+  if (forkRepo !== undefined && !OBJECT_SHARING_PROBE_RECORDED) {
+    emitEgressAlert('object-sharing-unprobed', { forkRepo: String(forkRepo).slice(0, 80) });
+    throw new Error('armedEmit: a live fork write requires a recorded object-sharing probe (Q3) — fail-closed until F-W4 arming (OBJECT_SHARING_PROBE_RECORDED)');
+  }
   const { ghEmit } = require('./gh-emit');                            // lazy — breaks the emit-pr<->gh-emit cycle
   const env = buildEmitEnv({ token, ghConfigDir });
   return ghEmit({ draft, approvalHash, env, forkRepo, expectedForkOwner });

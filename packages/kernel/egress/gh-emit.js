@@ -58,6 +58,7 @@ const { execFileSync } = require('child_process');
 const { computeEmissionHash } = require('./approval');
 const { parseDiffPaths, isEgressDeniedPath, ENV_ALLOWLIST, OWNER_RE } = require('./emit-pr');
 const { emitEgressAlert } = require('./alert');                       // #412 — extracted shared egress alert (also used by the host-actor guard)
+const { sleepSync } = require('../_lib/sleep');                       // F-W2 — the shared synchronous-sleep primitive (DRY: same core as _lib/lock.js's _waitSleep) for the bounded fork-readiness poll
 
 const HASH64 = /^[0-9a-f]{64}$/;
 const SAFE_BRANCH = /^[A-Za-z0-9._/-]+$/;          // the API-resolved default_branch charset (rides into argv + a ref path)
@@ -65,6 +66,20 @@ const SAFE_BRANCH = /^[A-Za-z0-9._/-]+$/;          // the API-resolved default_b
 // validateEmitInputs enforces on draft.repo). A custody fork target is lowercased-normalized by construction;
 // re-asserting the shape at the gh-emit sink is defense-in-depth (the fork string rides into the write argv).
 const NORMALIZED_REPO_RE = /^[a-z0-9][a-z0-9-]*\/[a-z0-9._-]+$/;
+// F-W2 length caps (architect F-6 + code-reviewer LOW). GitHub's login (owner) max is 39 chars; a normalized
+// owner/name string is capped generously at 100. These turn a fail-LATE (a 500-char owner 404s at the network,
+// unobservable) into a fail-FAST + observable alert BEFORE F-W3 gives forkRepo a live head. Kernel constants.
+const MAX_OWNER_LEN = 39;
+const MAX_REPO_REF_LEN = 100;
+// F-W2 fork-readiness poll (architect F-5 + code-reviewer + hacker M3 — triple convergence). HARD KERNEL
+// CONSTANTS, NEVER caller-overridable opts (security.md non-bypassable-guard): only the wait MECHANISM (`sleep`)
+// is injectable, for test speed. The bounded exponential backoff: attempt 1 = an immediate GET; on a 404,
+// sleep(min(250 * 2^(attempt-1), 20000)) ms then retry; give up (fork-readiness-timeout) after
+// FORK_READINESS_MAX_ATTEMPTS WITHOUT sleeping after the last failed attempt. Worst-case wait
+// 250+500+1000+2000+4000+8000+16000 = ~31.75s (well under GitHub's 5-min fork escalation).
+const FORK_READINESS_MAX_ATTEMPTS = 8;
+const FORK_READINESS_BASE_MS = 250;
+const FORK_READINESS_MAX_MS = 20000;
 const DEFAULT_TIMEOUT_MS = 30000;
 const DEFAULT_MAX_BYTES = 8 * 1024 * 1024;         // a generous bound on any single gh response (DoS cap)
 const MAX_DIFF_BYTES = 5 * 1024 * 1024;            // self-defend the kernel module (mirrors emit-pr's upstream cap)
@@ -138,6 +153,17 @@ function runGh(args, { env, input, timeoutMs = DEFAULT_TIMEOUT_MS, maxBytes = DE
 function isAlreadyExists(err) {
   const text = `${(err && err.stderr) || ''}${(err && err.stdout) || ''}`;
   return /already exists/i.test(text);
+}
+
+/**
+ * F-W2 — a 404 "Not Found" (the fork-does-not-exist signal, mirroring isAlreadyExists). ensureFork treats a 404
+ * GET as "proceed to create"; any OTHER error (5xx / 403 / network / unparseable) RE-THROWS immediately
+ * (fail-closed — never create/keep-polling on an unknown error). Matches `HTTP 404` OR a bare `Not Found` on
+ * either stderr or stdout, so a gh-api error page on either stream is caught. Never throws.
+ */
+function isNotFound(err) {
+  const text = `${(err && err.stderr) || ''}${(err && err.stdout) || ''}`;
+  return /HTTP 404\b/.test(text) || /not found/i.test(text);
 }
 
 function ghJson(gh, args, opts) {
@@ -435,7 +461,17 @@ function validateForkIdentity({ upstreamRepo, forkRepo, expectedForkOwner } = {}
     emitEgressAlert('fork-repo-unsafe', { forkRepo: String(resolvedForkRepo).slice(0, 80) });
     throw new Error(`ghEmit: forkRepo is not a normalized owner/name (${JSON.stringify(String(resolvedForkRepo).slice(0, 80))}) — fail-closed`);
   }
+  // F-W2 length cap (architect F-6 + code-reviewer LOW): a fail-FAST + observable bound BEFORE the fork string
+  // rides into the write argv. Cite GitHub's 39-char login max for the owner; a generous 100 for the whole ref.
+  if (resolvedForkRepo.length > MAX_REPO_REF_LEN) {
+    emitEgressAlert('fork-repo-unsafe', { reason: 'ref-too-long', length: resolvedForkRepo.length });
+    throw new Error(`ghEmit: resolvedForkRepo length ${resolvedForkRepo.length} exceeds ${MAX_REPO_REF_LEN} — fail-closed`);
+  }
   const [forkOwner, forkName] = resolvedForkRepo.split('/');
+  if (forkOwner.length > MAX_OWNER_LEN) {
+    emitEgressAlert('fork-owner-unsafe', { reason: 'owner-too-long', length: forkOwner.length });
+    throw new Error(`ghEmit: forkOwner length ${forkOwner.length} exceeds GitHub's ${MAX_OWNER_LEN}-char login max — fail-closed`);
+  }
   const [, upstreamName] = String(upstreamRepo).split('/');
   // M-2 present-target precondition: a nameless upstream would let forkName === upstreamName pass vacuously.
   if (typeof upstreamName !== 'string' || upstreamName.length === 0) {
@@ -450,11 +486,125 @@ function validateForkIdentity({ upstreamRepo, forkRepo, expectedForkOwner } = {}
     emitEgressAlert('fork-identity-mismatch', { forkName, upstreamName });
     throw new Error(`ghEmit: a fork must share the repo NAME (fork ${JSON.stringify(forkName)} != upstream ${JSON.stringify(upstreamName)}) — fail-closed`);
   }
-  if (expectedForkOwner !== undefined && forkOwner !== expectedForkOwner) {
+  if (expectedForkOwner !== undefined && forkOwner !== String(expectedForkOwner).toLowerCase()) {
+    // M-1: lowercase the expected side (forkOwner is already NORMALIZED_REPO_RE-lowercase) so a canonical-cased
+    // custody value does not fail-closed every legit fork emit.
     emitEgressAlert('fork-identity-mismatch', { forkOwner, expectedForkOwner });
     throw new Error(`ghEmit: forkOwner ${JSON.stringify(forkOwner)} != expectedForkOwner ${JSON.stringify(expectedForkOwner)} — fail-closed`);
   }
   return { resolvedForkRepo, forkOwner };
+}
+
+// --------------------------------------------------------------------------
+// F-W2 — the fork lifecycle (`ensureFork`), DORMANT / byte-identical. Called by ghEmit ONLY when
+// resolvedForkRepo !== upstreamRepo (a real distinct fork). Create/verify the bot's fork of THIS upstream
+// BEFORE any fork-side write. PURE of any tree/commit/ref write (verify + create only). Each reject ALERTS
+// (observable) then throws — a SECURITY boundary (fail-closed: never write to an unconfirmed/wrong fork).
+//
+// TRUST BINDING (hacker C1): the assert "is a fork of the RIGHT upstream" is NOT sufficient — an attacker who
+// owns `attacker/{upstreamName}` (a legit fork of upstream) would pass it, and loom would write into the
+// attacker's repo. So expectedForkOwner is MANDATORY and BOTH the resolved target owner AND the API's actual
+// `.owner.login` must equal it: the write is bound to LOOM's bot identity, not merely "a fork of upstream".
+// --------------------------------------------------------------------------
+
+/**
+ * Verify an API `repos/{fork}` 200 body is a fork of `upstreamRepo` owned by `expectedForkOwner`. FAIL-CLOSED
+ * with an observable alert on ANY shape violation or mismatch (never a bare TypeError on a null `.source`).
+ * Run on BOTH the immediate-200 (fork-exists) path AND the post-poll-200 (create-then-ready) path — the SAME
+ * verification, so the two call-sites cannot silently diverge (code-reviewer post-poll-verification fold).
+ *   - M1 defensive shape: require repo.fork === true, repo.source.full_name a string, repo.owner.login a string.
+ *   - normalize(repo.source.full_name).toLowerCase() === upstreamRepo (LOWERCASE BOTH sides — upstream is
+ *     normalized-lowercase, full_name is canonical-cased; a one-sided compare false-mismatches a legit mixed-case
+ *     upstream and could false-match a case-variant squat).
+ *   - repo.owner.login.toLowerCase() === expectedForkOwner (C1 — the ACTUAL fork owner from the API is the bot).
+ * @param {object} repo  the parsed `repos/{fork}` 200 body
+ * @param {string} upstreamRepo  the normalized-lowercase upstream owner/name
+ * @param {string} expectedForkOwner  the expected bot login (custody value)
+ */
+function verifyForkRepo(repo, upstreamRepo, expectedForkOwner) {
+  if (!repo || typeof repo !== 'object'
+    || repo.fork !== true
+    || !repo.source || typeof repo.source.full_name !== 'string'
+    || !repo.owner || typeof repo.owner.login !== 'string') {
+    emitEgressAlert('fork-shape-invalid', { fork: repo && repo.fork });
+    throw new Error('ghEmit: fork-shape-invalid — the repos/{fork} body is not a well-formed fork (fork!==true / missing source.full_name / missing owner.login) — fail-closed');
+  }
+  if (String(repo.source.full_name).toLowerCase() !== upstreamRepo) {
+    emitEgressAlert('fork-not-of-upstream', { source: String(repo.source.full_name).slice(0, 80) });
+    throw new Error(`ghEmit: fork-not-of-upstream — the target's source ${JSON.stringify(String(repo.source.full_name).slice(0, 80))} is not the upstream — fail-closed`);
+  }
+  // M-1 (hacker VALIDATE): normalize BOTH sides — the API `owner.login` is canonical-cased (e.g. `LoomBot`), and
+  // a custody expectedForkOwner may be canonical-cased too, so a verbatim compare would fail EVERY legit fork emit
+  // (safe direction, but an opaque break). Lowercase both.
+  if (repo.owner.login.toLowerCase() !== String(expectedForkOwner).toLowerCase()) {
+    emitEgressAlert('fork-owner-mismatch', { owner: String(repo.owner.login).slice(0, 80) });
+    throw new Error(`ghEmit: fork-owner-mismatch — the fork's actual owner ${JSON.stringify(String(repo.owner.login).slice(0, 80))} != expectedForkOwner — fail-closed`);
+  }
+}
+
+/**
+ * Ensure the bot's fork of `upstreamRepo` exists at `resolvedForkRepo` and is verified as LOOM's fork BEFORE any
+ * fork-side write. PURE of any tree/commit/ref write. Returns { ready: true } or throws (fail-closed).
+ * NOTE (code-reviewer PRINCIPLE): ensureFork DELIBERATELY builds its own `repos/${...}` endpoint strings rather
+ * than ghEmit's `forkApi`/`upstreamApi` closures — it is exported + independently unit-tested, so it cannot close
+ * over ghEmit's locals. A documented exception to the single-hiding-point convention, not an oversight.
+ * @param {{ upstreamRepo: string, resolvedForkRepo: string, forkOwner: string, expectedForkOwner: string }} o
+ * @param {{ gh: Function, env: object, sleep?: Function }} deps  gh (mock in tests), sanitized env, injectable sleep
+ * @returns {{ ready: true }}
+ */
+function ensureFork({ upstreamRepo, resolvedForkRepo, forkOwner, expectedForkOwner } = {}, { gh, env, sleep = sleepSync } = {}) {
+  // C1 (CRITICAL) — expectedForkOwner is MANDATORY. Absent/empty => bind to nothing => an attacker's fork of
+  // upstream would pass a bare "is a fork of upstream" test. Fail-closed + observable.
+  if (typeof expectedForkOwner !== 'string' || expectedForkOwner.length === 0) {
+    emitEgressAlert('fork-owner-required', { resolvedForkRepo: String(resolvedForkRepo).slice(0, 80) });
+    throw new Error('ghEmit: fork-owner-required — ensureFork requires a non-empty expectedForkOwner (bind the write to LOOM identity) — fail-closed');
+  }
+  // C1 chain — the RESOLVED target owner must already equal the expected bot (validateForkIdentity asserts this
+  // when expectedForkOwner is passed, but ensureFork re-asserts so a direct caller cannot bypass it). M-1:
+  // lowercase the expected side (forkOwner is NORMALIZED_REPO_RE-lowercase; a canonical-cased custody value must
+  // not fail-closed every legit emit).
+  if (forkOwner !== String(expectedForkOwner).toLowerCase()) {
+    emitEgressAlert('fork-owner-mismatch', { forkOwner: String(forkOwner).slice(0, 80) });
+    throw new Error(`ghEmit: fork-owner-mismatch — resolved fork owner ${JSON.stringify(String(forkOwner).slice(0, 80))} != expectedForkOwner — fail-closed`);
+  }
+
+  // 1. Idempotency GET. A 404 => proceed to CREATE; any OTHER error => RE-THROW immediately (fail-closed, never
+  //    create/keep-polling on an unknown error). A 200 => verify it is LOOM's fork of THIS upstream.
+  let existing = null;
+  try {
+    existing = ghJson(gh, ['api', `repos/${resolvedForkRepo}`], { env });
+  } catch (err) {
+    if (!isNotFound(err)) throw err;   // 5xx/403/network/unparseable => fail-closed re-throw
+    existing = null;
+  }
+  if (existing !== null) {
+    verifyForkRepo(existing, upstreamRepo, expectedForkOwner);
+    return { ready: true };
+  }
+
+  // 2. CREATE (POST /forks — a kernel-constant envelope: NO input body, so no name/organization/
+  //    default_branch_only actor bytes) + a bounded readiness poll. `POST /forks` is 202/async: the git objects
+  //    may not be immediately available, so poll GET repos/{fork} with bounded exponential backoff.
+  gh(['api', `repos/${upstreamRepo}/forks`, '--method', 'POST'], { env });
+  for (let attempt = 1; attempt <= FORK_READINESS_MAX_ATTEMPTS; attempt += 1) {
+    let repo = null;
+    try {
+      repo = ghJson(gh, ['api', `repos/${resolvedForkRepo}`], { env });
+    } catch (err) {
+      if (!isNotFound(err)) throw err;   // a non-404 error during the poll re-throws immediately (fail-closed)
+      repo = null;
+    }
+    if (repo !== null) {
+      verifyForkRepo(repo, upstreamRepo, expectedForkOwner);   // the SAME verify as the immediate-200 path
+      return { ready: true };
+    }
+    // still 404: sleep per the backoff then retry — but NO sleep after the last failed attempt.
+    if (attempt < FORK_READINESS_MAX_ATTEMPTS) {
+      sleep(Math.min(FORK_READINESS_BASE_MS * (2 ** (attempt - 1)), FORK_READINESS_MAX_MS));
+    }
+  }
+  emitEgressAlert('fork-readiness-timeout', { resolvedForkRepo: String(resolvedForkRepo).slice(0, 80), attempts: FORK_READINESS_MAX_ATTEMPTS });
+  throw new Error(`ghEmit: fork-readiness-timeout — ${resolvedForkRepo} not ready after ${FORK_READINESS_MAX_ATTEMPTS} attempts — fail-closed (never write to an unconfirmed fork)`);
 }
 
 // --------------------------------------------------------------------------
@@ -565,6 +715,14 @@ function ghEmit({ draft, approvalHash, env, forkRepo, expectedForkOwner } = {}, 
   const { resolvedForkRepo, forkOwner } = validateForkIdentity({ upstreamRepo, forkRepo, expectedForkOwner });
   const upstreamApi = (s) => (s ? `repos/${upstreamRepo}/${s}` : `repos/${upstreamRepo}`);
   const forkApi = (s) => (s ? `repos/${resolvedForkRepo}/${s}` : `repos/${resolvedForkRepo}`);
+  const isForkMode = resolvedForkRepo !== upstreamRepo;   // F-W2 gate: EVERY new fork-mode behavior below is gated on this => byte-identical same-owner.
+
+  // 1b. F-W2 — ensure the bot's fork EXISTS and is verified as LOOM's fork BEFORE any fork-side write. Gated on
+  //     fork mode: in the same-owner default resolvedForkRepo === upstreamRepo => ensureFork is NEVER called
+  //     (zero /forks or fork-GET calls) => byte-identical. `sleep` is injectable (deps.sleep) for test speed.
+  if (isForkMode) {
+    ensureFork({ upstreamRepo, resolvedForkRepo, forkOwner, expectedForkOwner }, { gh, env, sleep: deps.sleep });
+  }
 
   // 2. resolve + VALIDATE the base (default) branch — never actor-supplied; the API value rides into argv + a ref.
   const repoMeta = ghJson(gh, ['api', upstreamApi()], { env });
@@ -654,6 +812,22 @@ function ghEmit({ draft, approvalHash, env, forkRepo, expectedForkOwner } = {}, 
     base_tree: baseTreeSha,
     tree: files.map((f) => ({ path: f.path, mode: f.mode, type: 'blob', content: f.content })),
   });
+  // H2 TOCTOU re-bind (hacker H2 — fork mode ONLY => byte-identical same-owner). The fork verified at
+  // readiness-200 in ensureFork is NAME-bound (GitHub has no CAS handle), and several upstream GETs intervene
+  // between that verify and this first fork WRITE. Re-assert fork-of-upstream IMMEDIATELY before the tree POST so
+  // a fork that was deleted+recreated-by-another-owner in the interim fails closed. RESIDUAL (stated honestly):
+  // this is still name-bound, not handle-bound — a swap in the microsecond between this GET and the POST is
+  // undetectable (no GitHub CAS primitive); this shrinks, not closes, the window.
+  if (isForkMode) {
+    let forkRebind = null;
+    try {
+      forkRebind = ghJson(gh, ['api', forkApi()], { env });
+    } catch (err) {
+      emitEgressAlert('fork-rebind-failed', { message: err && err.message });
+      throw err;
+    }
+    verifyForkRepo(forkRebind, upstreamRepo, expectedForkOwner);
+  }
   const tree = ghJson(gh, ['api', forkApi('git/trees'), '--method', 'POST', '--input', '-'], { env, input: treeBody });
   if (!tree || typeof tree.sha !== 'string') throw new Error('ghEmit: tree create returned no sha');
 
@@ -668,6 +842,24 @@ function ghEmit({ draft, approvalHash, env, forkRepo, expectedForkOwner } = {}, 
   //    the existing PR (no duplicate). The dedup GET endpoint is UPSTREAM (where the PR lives), head=forkOwner.
   const branch = `loom/issue-${issueRef}-${approvalHash.slice(0, 12)}`;
   const refBody = JSON.stringify({ ref: `refs/heads/${branch}`, sha: commit.sha });
+  // H3 fork-tip assert (hacker H3 — fork mode ONLY => byte-identical same-owner). Re-read the FORK's branch tip
+  // and require it === the commit we just created before laundering loom's envelope onto it. Name-bound (as H2).
+  // A pre-existing fork branch whose tip is NOT our commit => `fork-branch-tip-mismatch` + fail-closed.
+  const assertForkTip = () => {
+    if (!isForkMode) return;
+    let refObjFork = null;
+    try {
+      refObjFork = ghJson(gh, ['api', forkApi(`git/ref/heads/${branch}`)], { env });
+    } catch (err) {
+      emitEgressAlert('fork-branch-tip-mismatch', { reason: 'ref-read-failed', branch, message: err && err.message });
+      throw new Error(`ghEmit: fork-branch-tip-mismatch — could not read the fork branch tip for ${JSON.stringify(branch)} — fail-closed`);
+    }
+    const tipSha = refObjFork && refObjFork.object && refObjFork.object.sha;
+    if (typeof tipSha !== 'string' || tipSha !== commit.sha) {
+      emitEgressAlert('fork-branch-tip-mismatch', { branch, got: String(tipSha).slice(0, 64) });
+      throw new Error(`ghEmit: fork-branch-tip-mismatch — the fork branch ${JSON.stringify(branch)} tip is not our commit — fail-closed (never launder loom's envelope onto foreign fork content)`);
+    }
+  };
   let reserved = false;
   try {
     gh(['api', forkApi('git/refs'), '--method', 'POST', '--input', '-'], { env, input: refBody });
@@ -692,7 +884,17 @@ function ghEmit({ draft, approvalHash, env, forkRepo, expectedForkOwner } = {}, 
         && p.base.repo.full_name.toLowerCase() === upstreamRepo
         && p.base.ref === base)
       : null;
-    if (pr) return { pr_url: pr.html_url, number: pr.number, branch, base_sha: baseCommitSha, deduped: true };
+    if (pr) {
+      // NOTE (CodeRabbit Major) — NO tip-sha assert on the dedup path. A prior emit created this branch with a
+      // DIFFERENT commit sha (GitHub fills the commit author/committer timestamp => the sha is non-deterministic
+      // across re-emits), so asserting `existing tip === this-run's commit.sha` here would fail EVERY legitimate
+      // 422 retry. The dedup predicate above already binds identity (head.repo === the resolved fork, head.ref ===
+      // the approval-hash-derived branch, base.repo/base.ref === upstream, draft). The residual dedup-laundering
+      // defense — a STABLE content identity (e.g. the existing head commit's kernel-constant message matching this
+      // emit's approval-hash + base-commit) — is an F-W4 arming precondition (fork mode is dormant this wave, and
+      // the laundering attack requires push to the bot's OWN fork, the same trust boundary as the whole operation).
+      return { pr_url: pr.html_url, number: pr.number, branch, base_sha: baseCommitSha, deduped: true };
+    }
     // VALIDATE-hacker MEDIUM (dedup laundering) — the ref EXISTS but no OPEN loom PR points at it. DO NOT auto-create
     // a PR on a pre-existing branch: an actor with push access could pre-create the (publicly-computable) loom branch
     // with arbitrary content, and a silent re-PR would brand attacker content with loom's approval envelope. Fail
@@ -706,6 +908,11 @@ function ghEmit({ draft, approvalHash, env, forkRepo, expectedForkOwner } = {}, 
   //    NEVER from forkRepo). F-W1 keeps `head` the bare branch (same-owner PR); F-W3 flips it to
   //    `${forkOwner}:${branch}` once the fork exists. reserve->rollback ONLY if WE created the ref.
   try {
+    // H3 (ref-CREATE path): immediately before the PR-create, re-read the fork tip === our commit (fork mode
+    // only). WE just reserved the ref to commit.sha, but the H3 fold requires this assert on BOTH the ref-CREATE
+    // and the 422-reconcile paths so a mid-flight fork-branch force-push between the reserve and the PR-open
+    // fails closed rather than opening a PR onto foreign content.
+    assertForkTip();
     const prBodyJson = JSON.stringify({ title: prTitle(issueRef), head: branch, base, body: prBody(issueRef, approvalHash, baseCommitSha), draft: true });
     const pr = ghJson(gh, ['api', upstreamApi('pulls'), '--method', 'POST', '--input', '-'], { env, input: prBodyJson });
     // post-create backstop (C1 defense-in-depth half; F-2: NON-LOAD-BEARING in F-W1 — vacuous in same-owner,
@@ -743,4 +950,4 @@ function ghEmit({ draft, approvalHash, env, forkRepo, expectedForkOwner } = {}, 
   }
 }
 
-module.exports = { ghEmit, validateForkIdentity, runGh, parseDiffStanzas, applyHunks, splitBaseLines, isAlreadyExists, prTitle, commitMessage, prBody };
+module.exports = { ghEmit, validateForkIdentity, ensureFork, verifyForkRepo, runGh, parseDiffStanzas, applyHunks, splitBaseLines, isAlreadyExists, isNotFound, prTitle, commitMessage, prBody };

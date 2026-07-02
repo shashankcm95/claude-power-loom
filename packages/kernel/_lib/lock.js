@@ -43,53 +43,12 @@
 
 const fs = require('fs');
 const path = require('path');
-
-// H.9.10 architect FLAG-1 absorption: try/catch around SharedArrayBuffer
-// construction. If SAB unavailable (memory-constrained env, --no-shared-
-// array-buffer flag, hardened runtime), module load MUST NOT fail (would
-// break all 15 consumers including 2 hook fail-soft consumers per ADR-0001).
-// _WAIT_INT32 stays null as fallback signal; _waitSleep handles fallback path.
-let _WAIT_INT32 = null;
-try {
-  const _WAIT_SAB = new SharedArrayBuffer(4);
-  _WAIT_INT32 = new Int32Array(_WAIT_SAB);
-} catch {
-  // SAB unavailable; _waitSleep below falls back to busy-wait.
-}
-// architect FLAG-3 absorption: log unexpected Atomics.wait return-values
-// once per process for defense-in-depth observability (ADR-0001 invariant 3).
-let _UNEXPECTED_WAIT_RESULT_LOGGED = false;
-let _SAB_FALLBACK_LOGGED = false;
-
-// H.9.10: shared sleep primitive used by acquireLock wait loop. Encapsulates:
-// (a) code-reviewer HIGH-CR1 LIVE BUG absorption: NaN/zero/negative sleepMs
-//     guard (Atomics.wait(NaN) blocks forever; falls back to safeSleepMs=50);
-// (b) architect FLAG-1 happy path: Atomics.wait true-sleep on SharedArrayBuffer;
-// (c) architect FLAG-1 fallback path: busy-wait if SAB unavailable;
-// (d) architect FLAG-3 observability: log unexpected return values once.
-function _waitSleep(sleepMs) {
-  const safeSleepMs = (typeof sleepMs === 'number' && sleepMs > 0 && isFinite(sleepMs))
-    ? sleepMs : 50;
-  if (_WAIT_INT32) {
-    const result = Atomics.wait(_WAIT_INT32, 0, 0, safeSleepMs);
-    if (result !== 'timed-out' && result !== 'not-equal' && !_UNEXPECTED_WAIT_RESULT_LOGGED) {
-      _UNEXPECTED_WAIT_RESULT_LOGGED = true;
-      try {
-        process.stderr.write(`[_lib/lock] unexpected Atomics.wait result: ${result}\n`);
-      } catch { /* stderr write failed; ignore */ }
-    }
-    return;
-  }
-  // Fallback busy-wait when SAB unavailable (architect FLAG-1 absorption).
-  if (!_SAB_FALLBACK_LOGGED) {
-    _SAB_FALLBACK_LOGGED = true;
-    try {
-      process.stderr.write('[_lib/lock] SharedArrayBuffer unavailable; falling back to busy-wait\n');
-    } catch { /* stderr write failed; ignore */ }
-  }
-  const end = Date.now() + safeSleepMs;
-  while (Date.now() < end) { /* spin */ }
-}
+// H.9.10 sleep primitive — EXTRACTED to _lib/sleep.js (F-W2 DRY): the SharedArrayBuffer +
+// Atomics.wait core WITH its SAB-unavailable busy-wait fallback + the NaN/zero/negative guard
+// now live there (a SINGLE Atomics.wait implementation, imported by lock.js AND gh-emit's fork
+// readiness poll). Behavior is IDENTICAL to the former inline `_waitSleep` — the guard, the true-
+// sleep happy path, the fallback, and the once-per-process observability are all preserved.
+const { sleepSync: _waitSleep } = require('./sleep');
 
 function acquireLock(lockPath, opts) {
   // HT.2.3: lazy parent-dir creation (drift-note 75) per substrate convention.
