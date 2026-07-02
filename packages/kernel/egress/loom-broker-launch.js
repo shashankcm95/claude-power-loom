@@ -66,12 +66,17 @@ function crossUidSudoArgs(opts = {}) {
 /**
  * A sync signFn (basis, ctx)->base64sig|null that signs THROUGH a separate-uid broker via
  * `sudo -n -u <broker-user> <wrapper> <basis>`. Plugs into the recordApproval signFn seam unchanged.
- * @param {{brokerUser:string, wrapperPath:string, sudoPath?:string, timeoutMs?:number, maxBytes?:number}} opts
+ * @param {{brokerUser:string, wrapperPath:string, sudoPath?:string, timeoutMs?:number, maxBytes?:number,
+ *          neutralizeCwd?:boolean}} opts
+ *   neutralizeCwd — forwarded verbatim to loomBrokerSigner: when true the cross-uid child signs from a neutral cwd
+ *     (`/`). Engaged ONLY by the broker custody-verify probe (#436-parity); the LIVE approval path (approve-cli.js
+ *     -> makeSigner -> here) passes none (undefined) -> the client's `=== true` gate stays false -> byte-identical.
  * @returns {(basis:string, ctx:object)=>string|null}
  */
 function crossUidLoomBrokerSigner(opts = {}) {
   const { command, args } = crossUidSudoArgs(opts);
-  return loomBrokerSigner({ command, args, timeoutMs: opts.timeoutMs, maxBytes: opts.maxBytes });
+  // explicit neutralizeCwd key (never `...opts`) — an undefined value never sets the client's cwd (byte-identity).
+  return loomBrokerSigner({ command, args, timeoutMs: opts.timeoutMs, maxBytes: opts.maxBytes, neutralizeCwd: opts.neutralizeCwd });
 }
 
 module.exports = { crossUidLoomBrokerSigner, crossUidSudoArgs, USERNAME_RE };

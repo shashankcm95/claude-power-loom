@@ -140,6 +140,24 @@ test('the report invariant: hostObservableChecksPassed=true => requiresOutOfBand
   assert.ok(!r.hostObservableChecksPassed || r.requiresOutOfBandUidConfirmation, 'a clean host-check ALWAYS demands the out-of-band attestation');
 });
 
+// #436-parity (broker twin of R0/#485): the CLI runner constructs the cross-uid signer with neutralizeCwd:true so
+// the C3 probe does not depend on the operator's cwd. Asserted via the injected signerFactory, no real cross-uid
+// spawn. Asserts BOTH neutralizeCwd:true AND that sudoPath is forwarded (hacker LOW-1: dropping sudoPath would
+// silently break the operator --sudo override). Non-vacuous: drop neutralizeCwd in the impl -> received undefined -> red.
+test('#436: runCustodyCheck constructs the signer with neutralizeCwd:true AND forwards sudoPath', () => {
+  let received = null;
+  const report = V.runCustodyCheck(
+    { keyFile: '/nonexistent/broker.key', verifyKeyPem: 'pem', brokerUser: 'loom_broker', wrapperPath: '/opt/loom/broker-sign.sh', sudoPath: '/usr/bin/sudo' },
+    { signerFactory: (o) => { received = o; return () => null; } },
+  );
+  assert.ok(received, 'the injected signerFactory was invoked');
+  assert.strictEqual(received.neutralizeCwd, true, 'the CLI runner engages the neutral probe cwd (#436-parity)');
+  assert.strictEqual(received.sudoPath, '/usr/bin/sudo', 'forwards sudoPath (the operator --sudo override must survive)');
+  assert.strictEqual(received.brokerUser, 'loom_broker', 'forwards brokerUser');
+  assert.strictEqual(received.wrapperPath, '/opt/loom/broker-sign.sh', 'forwards wrapperPath');
+  assert.ok(report && typeof report.hostObservableChecksPassed === 'boolean', 'still returns a custody report (runner is total)');
+});
+
 // === OQ-3 W2 (fold F8) — the C3 live-sign probe presents a 5-field ctx carrying lesson_commitment:'' ===
 
 test('gatherCustodyFacts [OQ-3]: the injected signer receives a 5-field ctx with lesson_commitment:"" and the basis binds it', () => {
