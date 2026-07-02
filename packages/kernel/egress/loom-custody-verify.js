@@ -236,8 +236,19 @@ function parseArgv(argv, onError) {
   return o;
 }
 
+// Extracted from main() (mirrors loom-edge-custody-verify.js:runEdgeCustodyCheck / approve-cli.js:runApprove) so a
+// test can inject signerFactory and assert the probe engages the neutral cwd WITHOUT a real cross-uid spawn.
+// deps.signerFactory defaults to the real crossUidLoomBrokerSigner (lazy require, as main() did before). Takes an
+// already-read verifyKeyPem (main() keeps the readFileSync).
+function runCustodyCheck(opts, deps = {}) {
+  const signerFactory = deps.signerFactory || require('./loom-broker-launch').crossUidLoomBrokerSigner;
+  // neutralizeCwd:true — a custody property must not depend on WHERE the operator ran the verify from (#436-parity,
+  // the broker twin of the actor/edge fixes). sudoPath is forwarded verbatim so the operator's --sudo override holds.
+  const signer = signerFactory({ brokerUser: opts.brokerUser, wrapperPath: opts.wrapperPath, sudoPath: opts.sudoPath, neutralizeCwd: true });
+  return verifyCrossUidCustody({ keyFile: opts.keyFile, signer, verifyKeyPem: opts.verifyKeyPem, wrapperPath: opts.wrapperPath });
+}
+
 function main() {
-  const { crossUidLoomBrokerSigner } = require('./loom-broker-launch');
   const usage = 'usage: loom-custody-verify --key <broker-key> --verify-key <pubkey.pem> --broker-user <user> --wrapper <abs-path> [--sudo <abs-path>] [--attested-cross-uid]\n';
   const o = parseArgv(process.argv.slice(2), (m) => { process.stderr.write('loom-custody-verify: ' + m + '\n' + usage); process.exit(2); });
   if (!o.keyFile || !o.verifyKeyFile || !o.brokerUser || !o.wrapperPath) {
@@ -248,8 +259,7 @@ function main() {
   try { verifyKeyPem = fs.readFileSync(o.verifyKeyFile, 'utf8'); }
   catch (e) { process.stderr.write('loom-custody-verify: cannot read verify-key: ' + (e && e.message) + '\n'); process.exit(2); }
 
-  const signer = crossUidLoomBrokerSigner({ brokerUser: o.brokerUser, wrapperPath: o.wrapperPath, sudoPath: o.sudoPath });
-  const report = verifyCrossUidCustody({ keyFile: o.keyFile, signer, verifyKeyPem, wrapperPath: o.wrapperPath });
+  const report = runCustodyCheck({ keyFile: o.keyFile, verifyKeyPem, brokerUser: o.brokerUser, wrapperPath: o.wrapperPath, sudoPath: o.sudoPath });
   process.stdout.write(formatReport(report) + '\n');
 
   // the exit code is NEVER greener than the report. Exit 0 ONLY when the host-observable checks passed AND the
@@ -260,4 +270,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { assessCustody, gatherCustodyFacts, verifyCrossUidCustody, formatReport };
+module.exports = { assessCustody, gatherCustodyFacts, verifyCrossUidCustody, formatReport, runCustodyCheck };
