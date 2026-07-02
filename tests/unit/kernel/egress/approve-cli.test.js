@@ -259,6 +259,53 @@ test('OQ-3: reviewText renders the lesson body + signature when present (the hum
   assert.ok(!/lesson \(rides this approval/i.test(noLesson), 'a no-lesson render omits the lesson header');
 });
 
+// === F-W2b — the optional --base-sha (default ""), shape-gated at the CLI boundary ===
+
+test('F-W2b (injected deps): a supplied baseSha -> minted body.requestedBaseSha === it; verifies over the 6-field basis', () => {
+  if (WIN) { skipped += 1; return; }
+  const t = mintSetup();
+  const BASE = 'a'.repeat(40);
+  try {
+    const res = C.runApprove(
+      { draftPath: t.draftPath, approvalsDir: t.approvalsDir, brokerUser: 'lb', wrapperPath: '/opt/w', verifyKeyPath: t.vkey, keyId: 'v0', baseSha: BASE },
+      { readConfirm: () => ({ ok: true, line: t.hash.slice(0, 8) }), makeSigner: () => t.SIGN, now: () => 1000, randomNonce: () => 'n1', selfUid: SELF },
+    );
+    assert.strictEqual(res.ok, true, res.reason);
+    const body = JSON.parse(fs.readFileSync(path.join(t.approvalsDir, t.hash + '.approved'), 'utf8'));
+    assert.strictEqual(body.requestedBaseSha, BASE, 'the minted approval binds the supplied base sha');
+    const rv = S.readVerifiedApproval(t.approvalsDir, t.hash, { now: 2000, ttlMs: 1e9, selfUid: SELF, verifyKeyPem: t.pub });
+    assert.strictEqual(rv.ok, true, 'the minted approval verifies over the 6-field (base-bound) basis');
+  } finally { fs.rmSync(t.dir, { recursive: true, force: true }); }
+});
+
+test('F-W2b: an ABSENT baseSha -> body.requestedBaseSha === "" (the dormant sentinel, byte-identical)', () => {
+  if (WIN) { skipped += 1; return; }
+  const t = mintSetup();
+  try {
+    const res = C.runApprove(
+      { draftPath: t.draftPath, approvalsDir: t.approvalsDir, brokerUser: 'lb', wrapperPath: '/opt/w', verifyKeyPath: t.vkey, keyId: 'v0' },
+      { readConfirm: () => ({ ok: true, line: t.hash.slice(0, 8) }), makeSigner: () => t.SIGN, now: () => 1000, randomNonce: () => 'n1', selfUid: SELF },
+    );
+    assert.strictEqual(res.ok, true, res.reason);
+    const body = JSON.parse(fs.readFileSync(path.join(t.approvalsDir, t.hash + '.approved'), 'utf8'));
+    assert.strictEqual(body.requestedBaseSha, '', 'a no-base mint writes the "" sentinel (the dormant default)');
+  } finally { fs.rmSync(t.dir, { recursive: true, force: true }); }
+});
+
+test('F-W2b: a MALFORMED baseSha is shape-rejected at the CLI boundary (fail-fast, no prompt, no mint)', () => {
+  if (WIN) { skipped += 1; return; }
+  const t = mintSetup();
+  try {
+    for (const bad of ['not-a-sha', 'A'.repeat(40), 'a'.repeat(41)]) {
+      assert.throws(() => C.runApprove(
+        { draftPath: t.draftPath, approvalsDir: t.approvalsDir, brokerUser: 'lb', wrapperPath: '/opt/w', verifyKeyPath: t.vkey, baseSha: bad },
+        { readConfirm: () => { throw new Error('SHOULD NOT PROMPT'); }, makeSigner: () => t.SIGN, selfUid: SELF },
+      ), /base-sha|baseSha|requestedBaseSha/i, `a malformed base sha ${JSON.stringify(bad)} fails at the CLI boundary (before the prompt)`);
+    }
+    assert.strictEqual(fs.readdirSync(t.approvalsDir).length, 0, 'no approval minted for any malformed base sha');
+  } finally { fs.rmSync(t.dir, { recursive: true, force: true }); }
+});
+
 // === subprocess: the actor-pipe defense (Rule 2a) ===
 
 test('the REAL CLI in a DETACHED session: piping the token to STDIN does NOT mint (NAIVE-pipe defense-in-depth)', () => {

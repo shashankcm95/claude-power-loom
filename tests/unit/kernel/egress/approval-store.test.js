@@ -58,9 +58,11 @@ test('recordApproval -> readVerifiedApproval round-trips ok; body carries hash/e
     assert.ok(typeof body.sig === 'string' && body.sig.length > 0, 'the minted approval carries a sig');
     assert.strictEqual(body.key_id, 'v0');
     assert.strictEqual(body.lesson_commitment, '', 'OQ-3: a no-lesson mint persists the "" sentinel (the field is ALWAYS present)');
+    assert.strictEqual(body.requestedBaseSha, '', 'F-W2b: a no-base mint persists the "" sentinel (the field is ALWAYS present)');
     const r = S.readVerifiedApproval(dir, HASH, { now: 2000, ttlMs: 10000, selfUid: SELF, verifyKeyPem: VKEY });
     assert.strictEqual(r.ok, true, r.reason);
     assert.ok(r.body && r.body.lesson_commitment === '', 'readVerifiedApproval returns the verified body carrying the sentinel');
+    assert.strictEqual(r.body.requestedBaseSha, '', 'the verified body carries the F-W2b "" sentinel');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -269,6 +271,55 @@ test('readVerifiedApproval [OQ-3]: a fresh body object is returned per call (no 
     assert.ok(a.ok && b.ok);
     assert.notStrictEqual(a.body, b.body, 'each read parses a fresh body object from disk (no shared mutable ref)');
     assert.deepStrictEqual(a.body, b.body, 'but they are value-equal');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// === F-W2b — the requestedBaseSha binding through the store (mint-boundary sign/verify over the 6-field basis) ===
+
+const BASE = 'a'.repeat(40);   // a 40-hex git commit sha (SHA-1, GitHub today)
+
+test('recordApproval [F-W2b]: a requestedBaseSha is persisted + signed over the 6-field basis; readVerifiedApproval matches', () => {
+  const dir = scratch('loom-appr-');
+  try {
+    // verifyKeyPem at mint -> the mint-boundary verifyRecordSig re-derives the 6-field basis (incl. requestedBaseSha).
+    // If recordApproval signed the OLD 5-field basis, this boundary check would throw.
+    const { hash, path: file } = S.recordApproval(dir, draft(), { now: 1000, nonce: 'n-b', selfUid: SELF, signFn: SIGN, requestedBaseSha: BASE, verifyKeyPem: VKEY });
+    const body = JSON.parse(fs.readFileSync(file, 'utf8'));
+    assert.strictEqual(body.requestedBaseSha, BASE, 'the persisted body carries the base sha');
+    const ok = S.readVerifiedApproval(dir, hash, { now: 2000, ttlMs: 10000, selfUid: SELF, verifyKeyPem: VKEY });
+    assert.strictEqual(ok.ok, true, ok.reason);
+    assert.strictEqual(ok.body.requestedBaseSha, BASE, 'the verified body exposes the base sha (the emit-gate source)');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('recordApproval [F-W2b]: a no-base ("") mint round-trips (dormant default); an absent opt coerces to ""', () => {
+  const dir = scratch('loom-appr-');
+  try {
+    const { hash } = S.recordApproval(dir, draft(), { now: 1000, nonce: 'n', selfUid: SELF, signFn: SIGN });  // no opt -> ''
+    const r = S.readVerifiedApproval(dir, hash, { now: 2000, ttlMs: 10000, selfUid: SELF, verifyKeyPem: VKEY });
+    assert.strictEqual(r.ok, true, r.reason);
+    assert.strictEqual(r.body.requestedBaseSha, '', 'the "" sentinel round-trips with an absent opt (byte-identical dormant path)');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('recordApproval [F-W2b]: a malformed requestedBaseSha is shape-rejected at the writer (no file poisoned)', () => {
+  const dir = scratch('loom-appr-');
+  try {
+    for (const bad of ['not-a-sha', BASE.slice(0, 39), BASE + 'a', BASE.toUpperCase(), 'g'.repeat(40)]) {
+      assert.throws(() => S.recordApproval(dir, draft(), { now: 1000, nonce: 'n', selfUid: SELF, signFn: SIGN, requestedBaseSha: bad }), /requestedBaseSha/, `bad base sha ${JSON.stringify(bad)} rejected`);
+    }
+    assert.strictEqual(fs.existsSync(path.join(dir, HASH + '.approved')), false, 'no approval minted for a malformed base sha (never poison the wx slot)');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('recordApproval [F-W2b]: a 64-hex (SHA-256 forward-compat) base sha is accepted + round-trips', () => {
+  const dir = scratch('loom-appr-');
+  try {
+    const BASE64 = 'c'.repeat(64);
+    const { hash } = S.recordApproval(dir, draft(), { now: 1000, nonce: 'n', selfUid: SELF, signFn: SIGN, requestedBaseSha: BASE64 });
+    const r = S.readVerifiedApproval(dir, hash, { now: 2000, ttlMs: 10000, selfUid: SELF, verifyKeyPem: VKEY });
+    assert.strictEqual(r.ok, true, r.reason);
+    assert.strictEqual(r.body.requestedBaseSha, BASE64);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 

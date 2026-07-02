@@ -27,10 +27,11 @@ const SELF = typeof process.getuid === 'function' ? process.getuid() : null;
 const WIN = SELF === null;
 
 const EM = { repo: 'owner/repo', issueRef: 42, diff: 'diff --git a/x b/x\n@@ -1 +1 @@\n-a\n+b\n' };
-// OQ-3 W2: the ctx authorizeRequest validates is now 5-key (the broker-bind exact-set grew to add lesson_commitment).
-// Default '' (the no-lesson sentinel) so these end-to-end sign tests send the shape production now threads.
-function ctxFor(over) { return Object.assign({ emission: EM, approvedAt: 1000, nonce: 'n-1', key_id: 'v0', lesson_commitment: '' }, over || {}); }
-function basisFor(ctx) { return A.approvalSigBasis({ hash: A.computeEmissionHash(ctx.emission), approvedAt: ctx.approvedAt, nonce: ctx.nonce, key_id: ctx.key_id, lesson_commitment: ctx.lesson_commitment }); }
+// OQ-3 W2 + F-W2b: the ctx authorizeRequest validates is now 6-key (the broker-bind exact-set grew to add
+// lesson_commitment then requestedBaseSha). Both default '' (the no-lesson / no-base sentinels) so these end-to-end
+// sign tests send the exact shape production now threads.
+function ctxFor(over) { return Object.assign({ emission: EM, approvedAt: 1000, nonce: 'n-1', key_id: 'v0', lesson_commitment: '', requestedBaseSha: '' }, over || {}); }
+function basisFor(ctx) { return A.approvalSigBasis({ hash: A.computeEmissionHash(ctx.emission), approvedAt: ctx.approvedAt, nonce: ctx.nonce, key_id: ctx.key_id, lesson_commitment: ctx.lesson_commitment, requestedBaseSha: ctx.requestedBaseSha }); }
 
 // PEM markers we assert are NEVER echoed to stderr (the key-leak guard).
 const KEY_MARKER = 'PRIVATE KEY';

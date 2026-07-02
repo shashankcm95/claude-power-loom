@@ -620,6 +620,110 @@ test('item1: ghEmit returns base_sha on the DEDUP (422-reconcile) success path t
   assert.strictEqual(r.base_sha, 'a'.repeat(40), 'the dedup return also carries base_sha (additive on both sites)');
 });
 
+// === F-W2b — the moved-base emit gate (requestedBaseSha != live base => fail-closed + observable) ===
+
+// capture the emitEgressAlert stderr line for the observability assertion (mirrors the two-identity helper).
+function captureAlerts(fn) {
+  const orig = process.stderr.write.bind(process.stderr);
+  const lines = [];
+  process.stderr.write = (chunk, ...rest) => { lines.push(String(chunk)); return typeof rest[rest.length - 1] === 'function' ? rest[rest.length - 1]() : true; };
+  try { fn(); } catch (e) { lines._err = e; } finally { process.stderr.write = orig; }
+  return { text: lines.join(''), err: lines._err };
+}
+
+const LIVE_BASE = 'a'.repeat(40);   // the mock gh resolves git/ref/heads/main -> this sha
+
+test('F-W2b: a requestedBaseSha != the LIVE base => moved-base alert + throw, ZERO tree/commit/ref/pull writes (NON-VACUOUS)', () => {
+  const gh = makeGh();
+  const moved = 'b'.repeat(40);   // the approver intended base 'b'*40; the live upstream base is 'a'*40 -> moved
+  const { err } = captureAlerts(() => G.ghEmit({ draft: draftFor(NEWFILE_DIFF), approvalHash: hashFor(NEWFILE_DIFF), env: {}, requestedBaseSha: moved }, { runGh: gh }));
+  assert.ok(err, 'a moved base throws');
+  assert.ok(/upstream base moved|moved-base|fail-closed/.test(err.message), `the throw names the moved-base refusal (got ${err && err.message})`);
+  // fail-CLOSED before ANY write: no tree/commit/ref POST, no pull POST, no ref DELETE.
+  assert.strictEqual(writeCalls(gh).length, 0, 'zero write calls on a moved base (the gate sits before the first tree POST)');
+});
+
+test('F-W2b: the moved-base refusal emits an observable moved-base alert (fail-closed must be observable)', () => {
+  const gh = makeGh();
+  const { text } = captureAlerts(() => G.ghEmit({ draft: draftFor(NEWFILE_DIFF), approvalHash: hashFor(NEWFILE_DIFF), env: {}, requestedBaseSha: 'c'.repeat(40) }, { runGh: gh }));
+  assert.ok(/moved-base/.test(text), `the reject path emits a moved-base alert (got ${JSON.stringify(text.slice(0, 200))})`);
+});
+
+test('F-W2b: a requestedBaseSha === the LIVE base => proceeds normally (writes fire, PR created)', () => {
+  const gh = makeGh();
+  const r = G.ghEmit({ draft: draftFor(NEWFILE_DIFF), approvalHash: hashFor(NEWFILE_DIFF), env: {}, requestedBaseSha: LIVE_BASE }, { runGh: gh });
+  assert.strictEqual(r.number, 9, 'a matching base proceeds to a real PR');
+  assert.strictEqual(r.base_sha, LIVE_BASE);
+  assert.ok(writeCalls(gh).length >= 4, 'the tree/commit/ref/pull writes fired on a matching base');
+});
+
+test('F-W2b: an EMPTY (dormant "") requestedBaseSha is byte-identical to omitting it (the golden-bytes acceptance gate)', () => {
+  const diff = NEWFILE_DIFF;
+  // baseline: no requestedBaseSha arg at all
+  const ghOmit = makeGh();
+  const rOmit = G.ghEmit({ draft: draftFor(diff), approvalHash: hashFor(diff), env: {} }, { runGh: ghOmit });
+  // the dormant '' sentinel explicitly passed
+  const ghEmpty = makeGh();
+  const rEmpty = G.ghEmit({ draft: draftFor(diff), approvalHash: hashFor(diff), env: {}, requestedBaseSha: '' }, { runGh: ghEmpty });
+  // IDENTICAL return, IDENTICAL argv sequence, IDENTICAL POST bodies, IDENTICAL call count (D10 mechanism).
+  assert.deepStrictEqual(rEmpty, rOmit, 'the return is identical for "" vs omitted');
+  assert.deepStrictEqual(endpointsOf(ghEmpty), endpointsOf(ghOmit), 'the argv/endpoint sequence is identical');
+  assert.strictEqual(ghEmpty.calls.length, ghOmit.calls.length, 'the gh call COUNT is identical');
+  const bodiesOmit = ghOmit.calls.map((c) => c.input);
+  const bodiesEmpty = ghEmpty.calls.map((c) => c.input);
+  assert.deepStrictEqual(bodiesEmpty, bodiesOmit, 'every POST body (tree/commit/ref/pull) is byte-identical');
+});
+
+test('F-W2b: a matching base MODIFY emit is byte-identical to omitting requestedBaseSha (dormant over the modify path too)', () => {
+  const diff = MODIFY_DIFF;
+  const ghOmit = makeGh({ baseContents: { 'f.txt': MODIFY_BASE } });
+  G.ghEmit({ draft: draftFor(diff), approvalHash: hashFor(diff), env: {} }, { runGh: ghOmit });
+  const ghMatch = makeGh({ baseContents: { 'f.txt': MODIFY_BASE } });
+  G.ghEmit({ draft: draftFor(diff), approvalHash: hashFor(diff), env: {}, requestedBaseSha: LIVE_BASE }, { runGh: ghMatch });
+  assert.deepStrictEqual(endpointsOf(ghMatch), endpointsOf(ghOmit), 'a matching-base modify emits the identical sequence');
+  assert.deepStrictEqual(ghMatch.calls.map((c) => c.input), ghOmit.calls.map((c) => c.input), 'the modify POST bodies are byte-identical');
+});
+
+test('F-W2b: a requestedBaseSha is a NAMED ghEmit arg — a value planted in draft is IGNORED (the C2 #273 trap; mirror forkRepo)', () => {
+  // draft is hash-bound; a requestedBaseSha in it would be an unsigned, co-forgeable steering field. ghEmit reads
+  // the base sha ONLY from the named arg (the sig-covered verified-body value). A moved sha in draft must NOT gate.
+  const gh = makeGh();
+  const draftWithBase = Object.assign(draftFor(NEWFILE_DIFF), { requestedBaseSha: 'b'.repeat(40) });   // planted, must be ignored
+  const r = G.ghEmit({ draft: draftWithBase, approvalHash: hashFor(NEWFILE_DIFF), env: {} }, { runGh: gh });   // no NAMED arg
+  assert.strictEqual(r.number, 9, 'a draft-planted base sha does NOT gate (only the named arg steers the moved-base check)');
+  assert.ok(writeCalls(gh).length >= 4, 'the emit proceeded (the planted draft field is inert)');
+});
+
+test('F-W2b (VALIDATE fold): a NON-STRING/malformed requestedBaseSha fails LOUD at the ghEmit consumer boundary (a null/0 must NOT silently skip the gate)', () => {
+  // The coercion maps only undefined->''; a null/0/false is falsy, so without the isSafeBaseSha consumer guard it
+  // would SKIP the moved-base check (the unsafe direction) instead of refusing. Symmetric with the mint side
+  // (approvalSigBasis/recordApproval/broker-bind all THROW on a non-string). Unreachable live, but fail-closed +
+  // observable + NON-VACUOUS (each malformed input fires the guard; zero writes).
+  for (const bad of [null, 0, false, 123, 'NOTHEX', 'a'.repeat(39)]) {
+    const gh = makeGh();
+    const { err } = captureAlerts(() => G.ghEmit({ draft: draftFor(NEWFILE_DIFF), approvalHash: hashFor(NEWFILE_DIFF), env: {}, requestedBaseSha: bad }, { runGh: gh }));
+    assert.ok(err && /requestedBaseSha must be|requested-base-malformed|fail-closed/.test(err.message), `a non-conforming requestedBaseSha (${JSON.stringify(bad)}) fails loud (got ${err && err.message})`);
+    assert.strictEqual(writeCalls(gh).length, 0, `zero writes on a malformed requestedBaseSha (${JSON.stringify(bad)})`);
+  }
+});
+
+test('F-W2b/D5: the live base is tightened to the full BASE_SHA_RE domain — a short (non-full-hex) live base fails LOUD', () => {
+  // gh-emit.js:736 tightens from /^[0-9a-f]{7,64}$/ to BASE_SHA_RE (40|64). GitHub returns a full 40-hex today, so
+  // the real path is byte-identical; a truncated/abbreviated live base (a mock/regression) must throw base-sha-malformed,
+  // never a silent false-reject or a compare across an inconsistent domain.
+  const gh = makeGh();
+  const realGh = gh;
+  const shortBaseGh = (args, o) => {
+    const ep = args[1] || '';
+    if (/\/git\/ref\/heads\//.test(ep)) return JSON.stringify({ object: { sha: 'abc1234' } });   // a 7-hex abbreviated sha
+    return realGh(args, o);
+  };
+  shortBaseGh.calls = gh.calls;
+  const { err } = captureAlerts(() => G.ghEmit({ draft: draftFor(NEWFILE_DIFF), approvalHash: hashFor(NEWFILE_DIFF), env: {} }, { runGh: shortBaseGh }));
+  assert.ok(err, 'a non-full-hex live base throws');
+  assert.ok(/base commit sha|base-sha-malformed|fail-closed/.test(err.message), `the throw names the malformed base (got ${err && err.message})`);
+});
+
 (async () => {
   for (const { name, fn } of tests) {
     try { await fn(); process.stdout.write(`  PASS ${name}\n`); passed += 1; }

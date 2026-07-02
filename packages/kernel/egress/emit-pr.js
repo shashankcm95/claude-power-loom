@@ -214,6 +214,11 @@ const DISPOSITION_KEYS = Object.freeze([
   'headRepo', 'head_repo', 'head-repo',
   'baseRepo', 'base_repo', 'base-repo',
   'sourceRepo', 'source_repo', 'source-repo',
+  // F-W2b (D8) — the moved-base steering field is a CUSTODY value (it rides the SIGNED approval body, provenance-
+  // bound to the broker sig); an actor must never inject it via untrusted data (the #273 exact-set deny-list). All
+  // three spellings (camel/snake/kebab) — the set is case-folded, but hyphen/underscore are distinct own-key shapes.
+  'requestedBaseSha', 'requested_base_sha', 'requested-base-sha',
+  'baseSha', 'base_sha', 'base-sha',
 ]);
 // CASE-FOLDED match set (+ the prototype-pollution keys) so a casing/spelling variant (Live / DRY_RUN /
 // __proto__) cannot slip the deny-list (VALIDATE-hacker).
@@ -420,9 +425,12 @@ const OBJECT_SHARING_PROBE_RECORDED = false;
  * below (F-W1 never populates them — same-owner, byte-identical); they enter ONLY via a direct armedEmit
  * caller (the custody-only entry point). They are NEVER read from `draft` (draft is hash-bound; a forkRepo in
  * it would be an unsigned co-forgeable steering field — the C2 #273 trap), so they are explicit named args.
- * @param {{ draft: object, token: string, ghConfigDir: string, approvalHash: string, forkRepo?: string, expectedForkOwner?: string }} args
+ * F-W2b — `requestedBaseSha` (the approver-intended base, from the VERIFIED approval body) threads the same way:
+ * emitPR's production call below PASSES it (unlike forkRepo, it IS populated on the live path — from appr.body),
+ * armedEmit forwards it to ghEmit's moved-base gate. Also a NAMED arg, never read from `draft` (the same trap).
+ * @param {{ draft: object, token: string, ghConfigDir: string, approvalHash: string, forkRepo?: string, expectedForkOwner?: string, requestedBaseSha?: string }} args
  */
-function armedEmit({ draft, token, ghConfigDir, approvalHash, forkRepo, expectedForkOwner } = {}) {
+function armedEmit({ draft, token, ghConfigDir, approvalHash, forkRepo, expectedForkOwner, requestedBaseSha } = {}) {
   // F-W4 ARMING GATE (hacker/honesty VERIFY H1) — a LIVE fork write depends on the UNPROBED fork-object-sharing
   // claim (Q3: can a fork-side commit reference an upstream-only sha; DOC-SILENT — see the F-W2 plan's F-W4 arming
   // preconditions). armedEmit is the custody-only production entry F-W4 will use to POPULATE a live forkRepo, so
@@ -437,7 +445,7 @@ function armedEmit({ draft, token, ghConfigDir, approvalHash, forkRepo, expected
   }
   const { ghEmit } = require('./gh-emit');                            // lazy — breaks the emit-pr<->gh-emit cycle
   const env = buildEmitEnv({ token, ghConfigDir });
-  return ghEmit({ draft, approvalHash, env, forkRepo, expectedForkOwner });
+  return ghEmit({ draft, approvalHash, env, forkRepo, expectedForkOwner, requestedBaseSha });
 }
 
 // --------------------------------------------------------------------------
@@ -526,12 +534,15 @@ function emitPR(data, opts = {}) {
         // returns the body { hash, emission, approvedAt, nonce, sig, key_id, lesson_commitment } (approval-store.js).
         // A missing body -> undefined fields -> writeJoinKey's validateRecord rejects -> the existing observable,
         // non-reverting jk.ok===false branch below; this NEVER throws the emission (the additive-write contract).
-        const { approvedAt, nonce, key_id: apprKeyId, sig: brokerSig } = appr.body || {};
+        // F-W2b (D2c) — read requestedBaseSha from the VERIFIED body (sig-covered, provenance-bound) alongside the
+        // sig bundle, and thread it to armedEmit -> ghEmit's moved-base gate. Omitting it here would leave the gate
+        // silently DEAD on the only live path while every unit/golden test passes (the Rule-2a-corollary dead-guard).
+        const { approvedAt, nonce, key_id: apprKeyId, sig: brokerSig, requestedBaseSha: apprRequestedBaseSha } = appr.body || {};
         // emit-then-record (③.2.4 I2 — fold the reservation-before-throw): armedEmit FIRST (throws this wave);
         // ONLY on success RESERVE the cap + ledger and CONSUME the one-shot approval. A throw -> the outer
         // catch -> fail-closed, with cap + ledger + approval all UNCHANGED (proven via an injected armedEmitFn).
         const armedEmitFn = typeof opts.armedEmitFn === 'function' ? opts.armedEmitFn : armedEmit;
-        const pr = armedEmitFn({ draft, token, ghConfigDir: opts.ghConfigDir, approvalHash });
+        const pr = armedEmitFn({ draft, token, ghConfigDir: opts.ghConfigDir, approvalHash, requestedBaseSha: apprRequestedBaseSha });
         if (typeof opts.custodyCapStatePath === 'string') recordEmit(opts.custodyCapStatePath, { now, windowMs: opts.windowMs });
         if (typeof opts.custodyEtiquetteLedgerPath === 'string') recordEmitted(opts.custodyEtiquetteLedgerPath, etqKey);
         consumeApproval(opts.custodyApprovalsDir, approvalHash);

@@ -16,7 +16,7 @@
 
 'use strict';
 
-const { computeEmissionHash, approvalSigBasis } = require('./approval');
+const { computeEmissionHash, approvalSigBasis, isSafeBaseSha } = require('./approval');
 
 // the basis is a lowercase 64-hex sha256 (approvalSigBasis -> createHash('sha256').digest('hex')). A local check
 // (edge-attestation does not export one; importing isCanonicalBase64 would be the wrong predicate).
@@ -24,13 +24,13 @@ const HEX64 = /^[0-9a-f]{64}$/;
 function isHex64(v) { return typeof v === 'string' && HEX64.test(v); }
 
 // the exact top-level ctx shape recordApproval threads to signFn: { emission, approvedAt, nonce, key_id,
-// lesson_commitment } (OQ-3 grew the exact-set to 5; a 4-key ctx now fails the shape check fail-closed).
-// FROZEN: CTX_KEYS is the exported fail-closed authorization-shape policy validateCtxShape reads (length + every
-// hasOwnProperty). A bare exported array is MUTABLE — an in-process consumer could `CTX_KEYS.push('x')` to widen
-// the accepted key set so a forged 6-key ctx slips the gate. Object.freeze removes that runtime policy-widening
-// vector (no behavior change; the validator reads the frozen array identically). Mirrors the same freeze applied
-// to the sibling edge-bind module's exported ctx-key policy (same exported-mutable-array class).
-const CTX_KEYS = Object.freeze(['emission', 'approvedAt', 'nonce', 'key_id', 'lesson_commitment']);
+// lesson_commitment, requestedBaseSha } (OQ-3 grew the exact-set to 5; F-W2b to 6; a 5-key ctx now fails the shape
+// check fail-closed). FROZEN: CTX_KEYS is the exported fail-closed authorization-shape policy validateCtxShape reads
+// (length + every hasOwnProperty). A bare exported array is MUTABLE — an in-process consumer could
+// `CTX_KEYS.push('x')` to widen the accepted key set so a forged 7-key ctx slips the gate. Object.freeze removes
+// that runtime policy-widening vector (no behavior change; the validator reads the frozen array identically).
+// Mirrors the same freeze applied to the sibling edge-bind module's exported ctx-key policy.
+const CTX_KEYS = Object.freeze(['emission', 'approvedAt', 'nonce', 'key_id', 'lesson_commitment', 'requestedBaseSha']);
 
 function isPlainObject(v) {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -61,6 +61,11 @@ function validateCtxShape(ctx) {
   // the recompute basis), then the lowercase-64-hex-or-empty shape. A non-conforming value never reaches the signer.
   if (typeof ctx.lesson_commitment !== 'string') return { ok: false, reason: 'lesson_commitment-not-hex64-or-empty' };
   if (!(ctx.lesson_commitment === '' || HEX64.test(ctx.lesson_commitment))) return { ok: false, reason: 'lesson_commitment-not-hex64-or-empty' };
+  // F-W2b — requestedBaseSha is a 40/64-hex (lowercase) base commit sha or '' (no base). Type-check FIRST (D7: a
+  // non-string flips the recompute basis + a distinct reason), then the shared isSafeBaseSha shape. A non-conforming
+  // value never reaches the signer.
+  if (typeof ctx.requestedBaseSha !== 'string') return { ok: false, reason: 'requestedBaseSha-not-a-string' };
+  if (!isSafeBaseSha(ctx.requestedBaseSha)) return { ok: false, reason: 'requestedBaseSha-not-hex-or-empty' };
   // emission MUST be a plain non-array object: computeEmissionHash([...]) / a scalar returns a VALID hex (probed),
   // so this is load-bearing — an array/scalar emission must never reach the signer.
   if (!isPlainObject(ctx.emission)) return { ok: false, reason: 'emission-not-an-object' };
@@ -110,6 +115,7 @@ function authorizeRequest(opts = {}) {
       nonce: ctx.nonce,
       key_id: ctx.key_id,
       lesson_commitment: ctx.lesson_commitment,   // OQ-3 — fold the binding into the recompute basis
+      requestedBaseSha: ctx.requestedBaseSha,      // F-W2b — fold the moved-base binding into the recompute basis
     });
   } catch { return deny('basis-uncomputable'); }
 
