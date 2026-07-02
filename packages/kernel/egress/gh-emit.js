@@ -56,11 +56,15 @@
 
 const { execFileSync } = require('child_process');
 const { computeEmissionHash } = require('./approval');
-const { parseDiffPaths, isEgressDeniedPath, ENV_ALLOWLIST } = require('./emit-pr');
+const { parseDiffPaths, isEgressDeniedPath, ENV_ALLOWLIST, OWNER_RE } = require('./emit-pr');
 const { emitEgressAlert } = require('./alert');                       // #412 — extracted shared egress alert (also used by the host-actor guard)
 
 const HASH64 = /^[0-9a-f]{64}$/;
 const SAFE_BRANCH = /^[A-Za-z0-9._/-]+$/;          // the API-resolved default_branch charset (rides into argv + a ref path)
+// F-W1 — the NORMALIZED owner/name shape a resolvedForkRepo must match (the SAME normalized form
+// validateEmitInputs enforces on draft.repo). A custody fork target is lowercased-normalized by construction;
+// re-asserting the shape at the gh-emit sink is defense-in-depth (the fork string rides into the write argv).
+const NORMALIZED_REPO_RE = /^[a-z0-9][a-z0-9-]*\/[a-z0-9._-]+$/;
 const DEFAULT_TIMEOUT_MS = 30000;
 const DEFAULT_MAX_BYTES = 8 * 1024 * 1024;         // a generous bound on any single gh response (DoS cap)
 const MAX_DIFF_BYTES = 5 * 1024 * 1024;            // self-defend the kernel module (mirrors emit-pr's upstream cap)
@@ -403,6 +407,57 @@ function prBody(issueRef, hash, baseSha) {
 }
 
 // --------------------------------------------------------------------------
+// F-W1 — the two-identity axis: upstreamRepo (reads + dedup endpoint + PR base) vs forkRepo (tree/commit/ref
+// writes + rollback). validateForkIdentity is a PURE derivation guard: when forkRepo is ABSENT it resolves to
+// the upstream (byte-identical, same-owner); when PRESENT it is structurally DORMANT in F-W1 (no fork write
+// yet) but the guards MUST exist before F-W3 populates a real cross-repo head. Each reject ALERTS (observable)
+// then throws.
+// --------------------------------------------------------------------------
+
+/**
+ * Derive the fork write-identity from the upstream + an optional custody fork target. PURE. FAIL-CLOSED — a
+ * SECURITY boundary, so each reject emits an observable alert then throws.
+ *   - resolvedForkRepo = forkRepo === undefined ? upstreamRepo : forkRepo (EXPLICIT undefined check, NOT `||`:
+ *     an empty-string forkRepo from a custody mis-wire must fail LOUD, never silently resolve to upstream — F-5).
+ *   - the resolved fork target must be a NORMALIZED owner/name (re-asserted at the write sink — C-1 chain).
+ *   - present-target precondition (M-2): a nameless upstream (empty upstreamName) must NOT let a mismatch pass
+ *     vacuously (undefined === undefined) — require a non-empty upstream name BEFORE the equality.
+ *   - forkOwner must pass OWNER_RE (C-1): a distinct forkOwner var breaks the assertSafeRepoRef chain, and it
+ *     interpolates raw into `pulls?head=${forkOwner}:${branch}` — a malformed owner is param-injection.
+ *   - a fork must share the repo NAME (forkName === upstreamName) — else fork-identity-mismatch.
+ *   - an optional expectedForkOwner (F-W4 custody value) is asserted ONLY when provided.
+ * @param {{ upstreamRepo: string, forkRepo?: string, expectedForkOwner?: string }} o
+ * @returns {{ resolvedForkRepo: string, forkOwner: string }}
+ */
+function validateForkIdentity({ upstreamRepo, forkRepo, expectedForkOwner } = {}) {
+  const resolvedForkRepo = forkRepo === undefined ? upstreamRepo : forkRepo;
+  if (typeof resolvedForkRepo !== 'string' || !NORMALIZED_REPO_RE.test(resolvedForkRepo)) {
+    emitEgressAlert('fork-repo-unsafe', { forkRepo: String(resolvedForkRepo).slice(0, 80) });
+    throw new Error(`ghEmit: forkRepo is not a normalized owner/name (${JSON.stringify(String(resolvedForkRepo).slice(0, 80))}) — fail-closed`);
+  }
+  const [forkOwner, forkName] = resolvedForkRepo.split('/');
+  const [, upstreamName] = String(upstreamRepo).split('/');
+  // M-2 present-target precondition: a nameless upstream would let forkName === upstreamName pass vacuously.
+  if (typeof upstreamName !== 'string' || upstreamName.length === 0) {
+    emitEgressAlert('fork-identity-mismatch', { reason: 'no-upstream-name', upstreamRepo: String(upstreamRepo).slice(0, 80) });
+    throw new Error('ghEmit: upstreamRepo has no name segment — cannot derive a fork identity (fail-closed)');
+  }
+  if (!OWNER_RE.test(forkOwner)) {
+    emitEgressAlert('fork-owner-unsafe', { forkOwner: String(forkOwner).slice(0, 80) });
+    throw new Error(`ghEmit: forkOwner is not a valid GitHub login (${JSON.stringify(String(forkOwner).slice(0, 80))}) — fail-closed`);
+  }
+  if (forkName !== upstreamName) {
+    emitEgressAlert('fork-identity-mismatch', { forkName, upstreamName });
+    throw new Error(`ghEmit: a fork must share the repo NAME (fork ${JSON.stringify(forkName)} != upstream ${JSON.stringify(upstreamName)}) — fail-closed`);
+  }
+  if (expectedForkOwner !== undefined && forkOwner !== expectedForkOwner) {
+    emitEgressAlert('fork-identity-mismatch', { forkOwner, expectedForkOwner });
+    throw new Error(`ghEmit: forkOwner ${JSON.stringify(forkOwner)} != expectedForkOwner ${JSON.stringify(expectedForkOwner)} — fail-closed`);
+  }
+  return { resolvedForkRepo, forkOwner };
+}
+
+// --------------------------------------------------------------------------
 // ghEmit — the tree->commit->ref->pull sequence behind the gate.
 // --------------------------------------------------------------------------
 
@@ -488,31 +543,42 @@ function validateEmitInputs({ draft, approvalHash, env }) {
 /**
  * Create a real DRAFT PR from the approved scrubbed draft via the gh REST git-data API. Called by emit-pr's
  * armedEmit ONLY after the gate passed. `env` already carries GH_TOKEN (buildEmitEnv) — the sole credential path.
- * @param {{ draft: object, approvalHash: string, env: object }} args
+ * F-W1 — `forkRepo` / `expectedForkOwner` are NEW top-level named args (NEVER read from `draft` — draft is
+ * hash-bound, so a forkRepo in it would be an unsigned co-forgeable steering field, the C2 #273 trap). When
+ * absent, resolvedForkRepo === upstreamRepo and forkOwner === upstreamOwner => byte-identical same-owner emit.
+ * @param {{ draft: object, approvalHash: string, env: object, forkRepo?: string, expectedForkOwner?: string }} args
  * @param {{ runGh?: Function }} [deps]  inject a mock gh for unit tests (the real network is never touched)
  * @returns {{ pr_url: string, number: number, branch: string, base_sha: string, deduped?: boolean }}
  *   base_sha (HEX, the resolved base commit sha) is additive on BOTH returns — the kernel egress
  *   join-key (item 1) seals it; existing callers ignore the extra field.
  */
-function ghEmit({ draft, approvalHash, env } = {}, deps = {}) {
+function ghEmit({ draft, approvalHash, env, forkRepo, expectedForkOwner } = {}, deps = {}) {
   const gh = deps.runGh || runGh;
   // 1. the REAL self-check (BEFORE any network): env guard + hash cross-check + parse + per-path validation. ADD
   //    post-images are pre-built here (pure); MODIFY content is resolved below (it needs the base fetch).
-  const { repo, issueRef, stanzas } = validateEmitInputs({ draft, approvalHash, env });
+  const { repo: upstreamRepo, issueRef, stanzas } = validateEmitInputs({ draft, approvalHash, env });
+
+  // 1a. F-W1 two-identity derivation (BEFORE any network). forkRepo/expectedForkOwner are read ONLY from the
+  //     named args (never draft). Absent => resolvedForkRepo === upstreamRepo, forkOwner === upstreamOwner
+  //     (byte-identical). The two local helpers are the SINGLE hiding-point for "which identity" (SRP — F-4):
+  //     reads/dedup-endpoint/PR-base use upstreamApi; tree/commit/ref writes + rollback use forkApi.
+  const { resolvedForkRepo, forkOwner } = validateForkIdentity({ upstreamRepo, forkRepo, expectedForkOwner });
+  const upstreamApi = (s) => (s ? `repos/${upstreamRepo}/${s}` : `repos/${upstreamRepo}`);
+  const forkApi = (s) => (s ? `repos/${resolvedForkRepo}/${s}` : `repos/${resolvedForkRepo}`);
 
   // 2. resolve + VALIDATE the base (default) branch — never actor-supplied; the API value rides into argv + a ref.
-  const repoMeta = ghJson(gh, ['api', `repos/${repo}`], { env });
+  const repoMeta = ghJson(gh, ['api', upstreamApi()], { env });
   const base = repoMeta && repoMeta.default_branch;
   if (typeof base !== 'string' || base.length === 0 || !SAFE_BRANCH.test(base) || base.includes('..') || base.includes(':')) {
     emitEgressAlert('default-branch-unsafe', { base: String(base).slice(0, 80) });
     throw new Error(`ghEmit: API default_branch is unsafe (${JSON.stringify(base)})`);
   }
-  const refObj = ghJson(gh, ['api', `repos/${repo}/git/ref/heads/${base}`], { env });
+  const refObj = ghJson(gh, ['api', upstreamApi(`git/ref/heads/${base}`)], { env });
   const baseCommitSha = refObj && refObj.object && refObj.object.sha;
   if (typeof baseCommitSha !== 'string' || !/^[0-9a-f]{7,64}$/.test(baseCommitSha)) {
     throw new Error('ghEmit: could not resolve the base commit sha');
   }
-  const baseCommit = ghJson(gh, ['api', `repos/${repo}/git/commits/${baseCommitSha}`], { env });
+  const baseCommit = ghJson(gh, ['api', upstreamApi(`git/commits/${baseCommitSha}`)], { env });
   const baseTreeSha = baseCommit && baseCommit.tree && baseCommit.tree.sha;
   if (typeof baseTreeSha !== 'string') throw new Error('ghEmit: could not resolve the base tree sha');
 
@@ -522,7 +588,7 @@ function ghEmit({ draft, approvalHash, env } = {}, deps = {}) {
   //     truncated tree (a huge repo) fails CLOSED — base-mode preservation can't be guaranteed, so don't guess.
   let baseModes = null;
   if (stanzas.some((s) => s.type === 'modify')) {
-    const treeResp = ghJson(gh, ['api', `repos/${repo}/git/trees/${baseTreeSha}?recursive=1`], { env });
+    const treeResp = ghJson(gh, ['api', upstreamApi(`git/trees/${baseTreeSha}?recursive=1`)], { env });
     if (!treeResp || treeResp.truncated === true || !Array.isArray(treeResp.tree)) {
       emitEgressAlert('base-tree-unavailable', { truncated: treeResp && treeResp.truncated });
       throw new Error('ghEmit: base tree truncated/unavailable — cannot resolve modify file modes (fail-closed)');
@@ -547,7 +613,7 @@ function ghEmit({ draft, approvalHash, env } = {}, deps = {}) {
     }
     let enc;
     try {
-      enc = ghJson(gh, ['api', `repos/${repo}/contents/${st.pathB}?ref=${baseCommitSha}`], { env });
+      enc = ghJson(gh, ['api', upstreamApi(`contents/${st.pathB}?ref=${baseCommitSha}`)], { env });
     } catch (err) {
       emitEgressAlert('base-fetch-failed', { path: st.pathB, message: err && err.message });
       throw err;
@@ -588,30 +654,38 @@ function ghEmit({ draft, approvalHash, env } = {}, deps = {}) {
     base_tree: baseTreeSha,
     tree: files.map((f) => ({ path: f.path, mode: f.mode, type: 'blob', content: f.content })),
   });
-  const tree = ghJson(gh, ['api', `repos/${repo}/git/trees`, '--method', 'POST', '--input', '-'], { env, input: treeBody });
+  const tree = ghJson(gh, ['api', forkApi('git/trees'), '--method', 'POST', '--input', '-'], { env, input: treeBody });
   if (!tree || typeof tree.sha !== 'string') throw new Error('ghEmit: tree create returned no sha');
 
-  // 4. commit (message is a kernel constant; the resolved base sha is bound in for attestability).
+  // 4. commit (message is a kernel constant; the resolved base sha is bound in for attestability). WRITE => fork
+  //    (the base tree/parent are the UPSTREAM's shared git objects — fork-object-sharing, an F-W2 live probe).
   const commitBody = JSON.stringify({ message: commitMessage(issueRef, approvalHash, baseCommitSha), tree: tree.sha, parents: [baseCommitSha] });
-  const commit = ghJson(gh, ['api', `repos/${repo}/git/commits`, '--method', 'POST', '--input', '-'], { env, input: commitBody });
+  const commit = ghJson(gh, ['api', forkApi('git/commits'), '--method', 'POST', '--input', '-'], { env, input: commitBody });
   if (!commit || typeof commit.sha !== 'string') throw new Error('ghEmit: commit create returned no sha');
 
-  // 5. ref (RESERVE). The branch name is kernel-built from the validated integer + the hash — deterministic =>
-  //    the idempotency key. A 422 "already exists" => dedup-reconcile to the existing PR (no duplicate).
-  const owner = repo.split('/')[0];
+  // 5. ref (RESERVE) on the FORK (H3 — the write target). The branch name is kernel-built from the validated
+  //    integer + the hash — deterministic => the idempotency key. A 422 "already exists" => dedup-reconcile to
+  //    the existing PR (no duplicate). The dedup GET endpoint is UPSTREAM (where the PR lives), head=forkOwner.
   const branch = `loom/issue-${issueRef}-${approvalHash.slice(0, 12)}`;
   const refBody = JSON.stringify({ ref: `refs/heads/${branch}`, sha: commit.sha });
   let reserved = false;
   try {
-    gh(['api', `repos/${repo}/git/refs`, '--method', 'POST', '--input', '-'], { env, input: refBody });
+    gh(['api', forkApi('git/refs'), '--method', 'POST', '--input', '-'], { env, input: refBody });
     reserved = true;
   } catch (err) {
     if (!isAlreadyExists(err)) throw err;
-    // dedup-on-key: a 422 "already exists" => reconcile to the existing OPEN PR for THIS exact branch. VALIDATE-hacker
-    // LOW: verify head.ref === our branch before trusting it (self-validating, not solely the `?head=` filter).
-    const existing = ghJson(gh, ['api', `repos/${repo}/pulls?head=${owner}:${branch}&state=open`], { env });
+    // dedup-on-key: a 422 "already exists" => reconcile to the existing OPEN PR for THIS exact branch. The dedup
+    // predicate is EXACT-SET (C-2), not a subset .includes: ALL of head.ref === branch, draft === true,
+    // base.repo.full_name === upstreamRepo (both lowercased — upstream is normalized, full_name canonical-cased),
+    // AND base.ref === base (the resolved default branch). A subset match is superset-tolerant / laundering-prone.
+    const existing = ghJson(gh, ['api', upstreamApi(`pulls?head=${forkOwner}:${branch}&state=open`)], { env });
     const pr = Array.isArray(existing)
-      ? existing.find((p) => p && p.head && p.head.ref === branch && p.draft === true)
+      ? existing.find((p) => p
+        && p.head && p.head.ref === branch
+        && p.draft === true
+        && p.base && p.base.repo && typeof p.base.repo.full_name === 'string'
+        && p.base.repo.full_name.toLowerCase() === upstreamRepo
+        && p.base.ref === base)
       : null;
     if (pr) return { pr_url: pr.html_url, number: pr.number, branch, base_sha: baseCommitSha, deduped: true };
     // VALIDATE-hacker MEDIUM (dedup laundering) — the ref EXISTS but no OPEN loom PR points at it. DO NOT auto-create
@@ -622,18 +696,46 @@ function ghEmit({ draft, approvalHash, env } = {}, deps = {}) {
     throw new Error(`ghEmit: ref ${branch} exists but no open loom DRAFT PR points at it — refusing to auto-create on a pre-existing branch (operator must verify)`);
   }
 
-  // 6. pull (draft:true is a HARD CONSTANT — never a parameter). reserve->rollback ONLY if WE created the ref.
+  // 6. pull (draft:true is a HARD CONSTANT — never a parameter). The PR-create endpoint is provably UPSTREAM
+  //    (H-1 structural pre-network bind: upstreamApi is derived from the validated upstreamRepo kernel value,
+  //    NEVER from forkRepo). F-W1 keeps `head` the bare branch (same-owner PR); F-W3 flips it to
+  //    `${forkOwner}:${branch}` once the fork exists. reserve->rollback ONLY if WE created the ref.
   try {
     const prBodyJson = JSON.stringify({ title: prTitle(issueRef), head: branch, base, body: prBody(issueRef, approvalHash, baseCommitSha), draft: true });
-    const pr = ghJson(gh, ['api', `repos/${repo}/pulls`, '--method', 'POST', '--input', '-'], { env, input: prBodyJson });
+    const pr = ghJson(gh, ['api', upstreamApi('pulls'), '--method', 'POST', '--input', '-'], { env, input: prBodyJson });
+    // post-create backstop (C1 defense-in-depth half; F-2: NON-LOAD-BEARING in F-W1 — vacuous in same-owner,
+    // scaffolding placed early so F-W3 inherits it). The PR-create endpoint is provably UPSTREAM (H-1 pre-network
+    // structural bind), so the CREATED PR's base is already guaranteed to be the upstream. This backstop is a
+    // detect-after-emit belt-and-suspenders:
+    //   - PRESENT-but-MISMATCHED base.repo.full_name  => a real wrong-repo signal: alert + BEST-EFFORT close (may
+    //     403 on an unowned repo — does NOT reverse the exfiltration; the real prevention is H-1) + throw.
+    //   - ABSENT/malformed base.repo.full_name         => FAIL-SAFE, do NOT throw (VALIDATE-honesty F-1): the field
+    //     is schema-guaranteed on a conformant GitHub 201 (rest-api-description: Repository.required includes
+    //     full_name, pull-request.base.required includes repo — VALIDATE-hacker OpenAPI deref), so its absence is
+    //     an API anomaly, NOT a wrong-repo attack. Since H-1 already guarantees the endpoint was upstream, a
+    //     response-shape surprise must NOT regress the working same-owner emit. Alert (observable) + proceed.
+    const prBaseFull = pr && pr.base && pr.base.repo && pr.base.repo.full_name;
+    if (typeof prBaseFull === 'string' && prBaseFull.toLowerCase() !== upstreamRepo) {
+      emitEgressAlert('pr-base-not-upstream', { got: prBaseFull.slice(0, 80), branch });
+      try {
+        gh(['api', upstreamApi(`pulls/${pr.number}`), '--method', 'PATCH', '--input', '-'], { env, input: JSON.stringify({ state: 'closed' }) });
+      } catch { emitEgressAlert('pr-close-attempt-failed', { number: pr && pr.number, branch }); }
+      throw new Error(`ghEmit: created PR base repo ${JSON.stringify(prBaseFull.slice(0, 80))} is not the upstream — fail-closed`);
+    }
+    if (typeof prBaseFull !== 'string') {
+      // cannot verify the created PR's base repo (absent/malformed response field) — H-1 is the guarantee; the
+      // backstop fails SAFE (alert + proceed) rather than regressing a working same-owner emit on a shape surprise.
+      emitEgressAlert('pr-base-unverifiable', { note: 'base.repo.full_name absent/malformed in create response; H-1 structural bind is the guarantee', branch });
+    }
     return { pr_url: pr.html_url, number: pr.number, branch, base_sha: baseCommitSha };
   } catch (err) {
     if (reserved) {
-      // best-effort rollback of the orphan ref so a retry isn't blocked; never throw over the original error.
-      try { gh(['api', `repos/${repo}/git/refs/heads/${branch}`, '--method', 'DELETE'], { env }); } catch { /* best-effort */ }
+      // best-effort rollback of the orphan ref on the FORK (H3 — the ref was created on the fork) so a retry
+      // isn't blocked; never throw over the original error.
+      try { gh(['api', forkApi(`git/refs/heads/${branch}`), '--method', 'DELETE'], { env }); } catch { /* best-effort */ }
     }
     throw err;
   }
 }
 
-module.exports = { ghEmit, runGh, parseDiffStanzas, applyHunks, splitBaseLines, isAlreadyExists, prTitle, commitMessage, prBody };
+module.exports = { ghEmit, validateForkIdentity, runGh, parseDiffStanzas, applyHunks, splitBaseLines, isAlreadyExists, prTitle, commitMessage, prBody };

@@ -220,6 +220,25 @@ test('EC1b.5 armedEmit is WIRED to the gh-REST seam + fails-closed on a missing 
   assert.throws(() => E.armedEmit({ draft: {}, token: FAKE_CUSTODY, approvalHash: 'x' }), /ghConfigDir/);
 });
 
+test('F-W1: armedEmit THREADS forkRepo + expectedForkOwner through to ghEmit (dormant custody-only entry point)', () => {
+  // armedEmit lazily `require('./gh-emit').ghEmit`; intercept the cached export to capture the forwarded args.
+  const ghMod = require(path.join(REPO, 'packages', 'kernel', 'egress', 'gh-emit.js'));
+  const realGhEmit = ghMod.ghEmit;
+  const cfg = scratch('loom-ghcfg-');   // an EMPTY dir so buildEmitEnv passes
+  let seen = null;
+  ghMod.ghEmit = (args) => { seen = args; return { pr_url: 'u', number: 1, branch: 'b', base_sha: 'a'.repeat(40) }; };
+  try {
+    E.armedEmit({ draft: { repo: 'owner/repo', issueRef: 42, diff: 'd' }, token: FAKE_CUSTODY, ghConfigDir: cfg, approvalHash: 'h', forkRepo: 'botacct/repo', expectedForkOwner: 'botacct' });
+    assert.strictEqual(seen.forkRepo, 'botacct/repo', 'forkRepo is forwarded to ghEmit');
+    assert.strictEqual(seen.expectedForkOwner, 'botacct', 'expectedForkOwner is forwarded to ghEmit');
+    assert.ok(seen.env && typeof seen.env === 'object', 'the sanitized env is still built + forwarded');
+    // and the F-W1 default (no fork args) forwards undefined for both (byte-identical same-owner).
+    E.armedEmit({ draft: { repo: 'owner/repo', issueRef: 42, diff: 'd' }, token: FAKE_CUSTODY, ghConfigDir: cfg, approvalHash: 'h' });
+    assert.strictEqual(seen.forkRepo, undefined, 'the F-W1 default leaves forkRepo undefined');
+    assert.strictEqual(seen.expectedForkOwner, undefined, 'the F-W1 default leaves expectedForkOwner undefined');
+  } finally { ghMod.ghEmit = realGhEmit; fs.rmSync(cfg, { recursive: true, force: true }); }
+});
+
 // An "armed" custody (killswitch OFF + token + LIVE disposition + an empty approvals dir). The 4th AND — a
 // per-emission approval — is minted per-test via recordApproval so we prove BOTH the awaiting + the approved paths.
 function armedCustody(dir) {
@@ -608,6 +627,28 @@ test('③.2.4 H7 + ③.2.5a: the full approval + signing vocabulary is in the da
     assert.strictEqual(r.ok, false, `data.${k} rejected end-to-end`);
     assert.ok(/policy key/.test(r.reason), `data.${k} names the policy-key rejection (got ${r.reason})`);
   }
+});
+
+test('F-W1 (M-1): the fork/identity vocabulary is in the data deny-list (actor cannot inject a fork/head/base repo)', () => {
+  for (const k of ['forkRepo', 'fork_repo', 'fork-repo', 'forkOwner', 'fork_owner', 'upstreamRepo', 'upstream_repo',
+    'expectedForkOwner', 'expected_fork_owner', 'forkName', 'headRepo', 'head_repo', 'baseRepo', 'base_repo',
+    'sourceRepo', 'source_repo']) {
+    assert.ok(E.DISPOSITION_KEYS.includes(k), `${k} must be a declared disposition key`);
+    const r = E.emitPR(goodData({ [k]: 'attacker/evil' }));
+    assert.strictEqual(r.ok, false, `data.${k} rejected end-to-end`);
+    assert.ok(/policy key/.test(r.reason), `data.${k} names the policy-key rejection (got ${r.reason})`);
+  }
+  // casing variants collapse via the case-fold at :204 (assertDataIsPolicyFree lowercases every own key).
+  for (const k of ['FORKREPO', 'ForkRepo', 'FORKOWNER', 'ExpectedForkOwner']) {
+    assert.throws(() => E.assertDataIsPolicyFree(goodData({ [k]: 'x' })), /policy key/, `data.${k} rejected (case-folded)`);
+  }
+});
+
+test('F-W1: OWNER_RE is exported (gh-emit imports it to re-validate a distinct forkOwner at the sink — C-1)', () => {
+  assert.ok(E.OWNER_RE instanceof RegExp, 'OWNER_RE is an exported RegExp');
+  assert.ok(E.OWNER_RE.test('botacct') && E.OWNER_RE.test('0'), 'a valid login (incl. digit-only) matches');
+  assert.ok(!E.OWNER_RE.test('-evil') && !E.OWNER_RE.test('o.w') && !E.OWNER_RE.test('a_b') && !E.OWNER_RE.test('a--b'),
+    'leading-hyphen / dotted / underscored / double-hyphen owners are rejected');
 });
 
 test('③.2.4 H5: draft.repo is the NORMALIZED canonical (a .git / case input collapses to owner/repo)', () => {
