@@ -55,7 +55,7 @@
 // (emit-pr's armedEmit -> gh-emit) is a LAZY require inside that function, so there is no load-time cycle.
 
 const { execFileSync } = require('child_process');
-const { computeEmissionHash } = require('./approval');
+const { computeEmissionHash, BASE_SHA_RE, isSafeBaseSha } = require('./approval');   // F-W2b — the shared base-sha shape gate (the live-base domain + moved-base compare + the consumer-boundary guard)
 const { parseDiffPaths, isEgressDeniedPath, ENV_ALLOWLIST, OWNER_RE } = require('./emit-pr');
 const { emitEgressAlert } = require('./alert');                       // #412 — extracted shared egress alert (also used by the host-actor guard)
 const { sleepSync } = require('../_lib/sleep');                       // F-W2 — the shared synchronous-sleep primitive (DRY: same core as _lib/lock.js's _waitSleep) for the bounded fork-readiness poll
@@ -696,13 +696,16 @@ function validateEmitInputs({ draft, approvalHash, env }) {
  * F-W1 — `forkRepo` / `expectedForkOwner` are NEW top-level named args (NEVER read from `draft` — draft is
  * hash-bound, so a forkRepo in it would be an unsigned co-forgeable steering field, the C2 #273 trap). When
  * absent, resolvedForkRepo === upstreamRepo and forkOwner === upstreamOwner => byte-identical same-owner emit.
- * @param {{ draft: object, approvalHash: string, env: object, forkRepo?: string, expectedForkOwner?: string }} args
+ * F-W2b — `requestedBaseSha` (the approver-INTENDED base commit, bound into the SIGNED approval basis + carried on
+ * the verified body) is likewise a NAMED arg, NEVER read from `draft` (same co-forge trap). The moved-base gate
+ * below refuses when the LIVE upstream base != this value; '' (the dormant default / omitted) skips => byte-identical.
+ * @param {{ draft: object, approvalHash: string, env: object, forkRepo?: string, expectedForkOwner?: string, requestedBaseSha?: string }} args
  * @param {{ runGh?: Function }} [deps]  inject a mock gh for unit tests (the real network is never touched)
  * @returns {{ pr_url: string, number: number, branch: string, base_sha: string, deduped?: boolean }}
  *   base_sha (HEX, the resolved base commit sha) is additive on BOTH returns — the kernel egress
  *   join-key (item 1) seals it; existing callers ignore the extra field.
  */
-function ghEmit({ draft, approvalHash, env, forkRepo, expectedForkOwner } = {}, deps = {}) {
+function ghEmit({ draft, approvalHash, env, forkRepo, expectedForkOwner, requestedBaseSha } = {}, deps = {}) {
   const gh = deps.runGh || runGh;
   // 1. the REAL self-check (BEFORE any network): env guard + hash cross-check + parse + per-path validation. ADD
   //    post-images are pre-built here (pure); MODIFY content is resolved below (it needs the base fetch).
@@ -731,10 +734,38 @@ function ghEmit({ draft, approvalHash, env, forkRepo, expectedForkOwner } = {}, 
     emitEgressAlert('default-branch-unsafe', { base: String(base).slice(0, 80) });
     throw new Error(`ghEmit: API default_branch is unsafe (${JSON.stringify(base)})`);
   }
+  // D11 — the live base is resolved ONCE here and PINNED as a captured snapshot into every downstream fetch
+  //       (contents?ref=, the base_tree) + the commit parent below. The moved-base gate + the frozen-sha reuse sit
+  //       adjacent to this single resolution point (a future re-resolve-HEAD regression would be visible here).
   const refObj = ghJson(gh, ['api', upstreamApi(`git/ref/heads/${base}`)], { env });
   const baseCommitSha = refObj && refObj.object && refObj.object.sha;
-  if (typeof baseCommitSha !== 'string' || !/^[0-9a-f]{7,64}$/.test(baseCommitSha)) {
-    throw new Error('ghEmit: could not resolve the base commit sha');
+  // D5 — the live base must be in the SHARED full-hex BASE_SHA_RE domain (40|64), so the moved-base `===` below
+  //      compares both operands in one domain. GitHub returns a full 40-hex today (byte-identical on the real path);
+  //      a non-full-hex live base fails LOUD (base-sha-malformed), never a silent false-reject.
+  if (typeof baseCommitSha !== 'string' || !BASE_SHA_RE.test(baseCommitSha)) {
+    throw new Error('ghEmit: could not resolve the base commit sha (base-sha-malformed — not full 40/64-hex)');
+  }
+
+  // F-W2b — MOVED-BASE INVALIDATION (fold D3/D4). requestedBaseSha (the approver-intended base, bound into the
+  // SIGNED basis and carried on the verified approval body — a NAMED arg, NEVER read from `draft`, so it is
+  // provenance-bound to the broker signature) must equal the LIVE upstream base. A non-empty mismatch => the
+  // upstream advanced since approval => the approved hunks would rebuild the post-image against a tree the approver
+  // never reviewed (#405). Fail CLOSED + observable, BEFORE any base-tree/contents fetch or write; re-approve
+  // against the new base. Empty '' (the dormant default / omitted) skips (byte-identical). '' as-disable is the
+  // standing same-uid co-forge residual (NARROWS, not closes — consistent with approval-store.js).
+  const reqBaseSha = requestedBaseSha === undefined ? '' : requestedBaseSha;
+  // VALIDATE fold (hacker LOW + code-reviewer PRINCIPLE) — fail LOUD at this CONSUMER boundary, symmetric with the
+  // mint side (approvalSigBasis / recordApproval / broker-bind all THROW on a non-string). A null/0/false reqBaseSha
+  // is falsy, so without this it would SILENTLY SKIP the moved-base gate (the unsafe direction) instead of refusing.
+  // Unreachable on the live path today (verifyApproval yields '' or a valid lowercase hex), but this closes the
+  // consumer/mint asymmetry BEFORE F-W3 arms auto-capture and a bug could feed a non-string (non-bypassable-guard).
+  if (!isSafeBaseSha(reqBaseSha)) {
+    emitEgressAlert('requested-base-malformed', { got: typeof reqBaseSha });
+    throw new Error('ghEmit: requestedBaseSha must be a 40/64-hex sha or empty — fail-closed');
+  }
+  if (reqBaseSha && reqBaseSha !== baseCommitSha) {
+    emitEgressAlert('moved-base', { requested: String(reqBaseSha).slice(0, 16), live: baseCommitSha.slice(0, 16) });
+    throw new Error('ghEmit: upstream base moved since approval (requestedBaseSha != live base) — fail-closed');
   }
   const baseCommit = ghJson(gh, ['api', upstreamApi(`git/commits/${baseCommitSha}`)], { env });
   const baseTreeSha = baseCommit && baseCommit.tree && baseCommit.tree.sha;

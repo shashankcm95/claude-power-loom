@@ -37,6 +37,15 @@ const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000;     // 24h — an approval that outl
 const LESSON_COMMITMENT_RE = /^[a-f0-9]{64}$/;
 function isSafeLessonCommitment(v) { return v === '' || (typeof v === 'string' && LESSON_COMMITMENT_RE.test(v)); }
 
+// F-W2b — the requestedBaseSha contract (the approver-INTENDED base commit, bound into the SIGNED basis for
+// moved-base invalidation at the emit gate): '' (no base constraint — the DORMANT default) or a LOWERCASE 40-hex
+// (SHA-1, GitHub today) or 64-hex (SHA-256 forward-compat) git commit sha. Defined ONCE here (mirror
+// LESSON_COMMITMENT_RE/isSafeLessonCommitment) + imported at EVERY site (basis, verify, mint, broker-bind, CLI, and
+// the gh-emit live-base check) so there is ONE hiding-point for "what is a valid base sha" — six independently-
+// driftable regexes otherwise (fold D5).
+const BASE_SHA_RE = /^([0-9a-f]{40}|[0-9a-f]{64})$/;
+function isSafeBaseSha(v) { return v === '' || (typeof v === 'string' && BASE_SHA_RE.test(v)); }
+
 /** Canonical (repo, issue) normalization — the SAME form the etiquette ledger uses (no bypass-by-casing/.git). */
 function normalizeRepo(repo) {
   const [owner = '', name = ''] = String(repo == null ? '' : repo).split('/');
@@ -82,13 +91,21 @@ function computeEmissionHash(draft) {
  * '', and key-absent would be THREE distinct bases — the broker would sign a different string than the human
  * approved. So an undefined / absent value is COERCED to '' here, and a non-string value THROWS (never silently
  * hashed). The lesson is NOT emitted in the PR (computeEmissionHash is untouched, §4); only this basis grows.
- * @param {{ hash: string, approvedAt: number, nonce: string, key_id?: string, lesson_commitment?: string }} o
+ *
+ * F-W2b — the 6th field `requestedBaseSha` (the approver-INTENDED base commit) binds moved-base invalidation into
+ * the SIGNED basis (a basis-only field, NEVER in the emission hash — the live base does not EXIST at approval time,
+ * so it CANNOT enter emissionAxiom; the temporal-impossibility invariant). Same ALWAYS-A-STRING discipline as
+ * lesson_commitment: undefined/absent -> '' (the dormant no-base default), a non-string THROWS. The gate at ghEmit
+ * REFUSES when the live upstream base != this bound value; '' skips (dormant). computeEmissionHash is UNTOUCHED.
+ * @param {{ hash: string, approvedAt: number, nonce: string, key_id?: string, lesson_commitment?: string, requestedBaseSha?: string }} o
  * @returns {string} 64-hex
  */
-function approvalSigBasis({ hash, approvedAt, nonce, key_id, lesson_commitment }) {
+function approvalSigBasis({ hash, approvedAt, nonce, key_id, lesson_commitment, requestedBaseSha }) {
   const lc = lesson_commitment === undefined ? '' : lesson_commitment;
   if (typeof lc !== 'string') throw new Error('approvalSigBasis: lesson_commitment must be a string (64-hex or empty)');
-  return crypto.createHash('sha256').update(canonicalJsonSerialize({ hash, approvedAt, nonce, key_id, lesson_commitment: lc }), 'utf8').digest('hex');
+  const rbs = requestedBaseSha === undefined ? '' : requestedBaseSha;
+  if (typeof rbs !== 'string') throw new Error('approvalSigBasis: requestedBaseSha must be a string (40/64-hex or empty)');
+  return crypto.createHash('sha256').update(canonicalJsonSerialize({ hash, approvedAt, nonce, key_id, lesson_commitment: lc, requestedBaseSha: rbs }), 'utf8').digest('hex');
 }
 
 /**
@@ -133,6 +150,12 @@ function verifyApproval({ fileBytes, requestedHash, now, ttlMs = DEFAULT_TTL_MS,
   // never silently '' — that would launder a pre-OQ-3 approval into a no-lesson match).
   if (!isSafeLessonCommitment(body.lesson_commitment)) return { ok: false, reason: 'no-body-lesson-commitment' };
   if (body.lesson_commitment !== reqLC) return { ok: false, reason: 'lesson-commitment-mismatch' };
+  // F-W2b — the requestedBaseSha binding (fold D1/D6: immediately AFTER the lesson gate, BEFORE nonce/approvedAt/TTL/
+  // body-hash/sig). PARTIAL mirror: there is NO emit-time request analog to cross-check against (the "expected" base
+  // is the LIVE upstream base, resolved in ghEmit, not an actor claim) — so verifyApproval ONLY shape-gates the BODY
+  // (distinct fail-closed `no-body-requested-base-sha` if absent/non-string/malformed — the body is NEVER coerced,
+  // never launder a pre-F-W2b approval into a no-base match) and folds it into the basis re-derive below.
+  if (!isSafeBaseSha(body.requestedBaseSha)) return { ok: false, reason: 'no-body-requested-base-sha' };
   if (typeof body.nonce !== 'string' || body.nonce.trim().length === 0) return { ok: false, reason: 'no-nonce' };
   if (typeof body.approvedAt !== 'number' || !Number.isFinite(body.approvedAt)) return { ok: false, reason: 'no-approvedAt' };
   if (now - body.approvedAt > ttlMs || now < body.approvedAt) return { ok: false, reason: 'stale-or-future' };
@@ -146,11 +169,11 @@ function verifyApproval({ fileBytes, requestedHash, now, ttlMs = DEFAULT_TTL_MS,
   // lesson_commitment flips the basis -> sig-invalid, so only the key-holder can issue a fresh approval binding a
   // given lesson. Missing/invalid/wrong-key => fail-closed. The pin selects the key; key_id never does.
   if (typeof body.sig !== 'string' || body.sig.length === 0) return { ok: false, reason: 'sig-missing' };
-  const basis = approvalSigBasis({ hash: body.hash, approvedAt: body.approvedAt, nonce: body.nonce, key_id: body.key_id, lesson_commitment: body.lesson_commitment });
+  const basis = approvalSigBasis({ hash: body.hash, approvedAt: body.approvedAt, nonce: body.nonce, key_id: body.key_id, lesson_commitment: body.lesson_commitment, requestedBaseSha: body.requestedBaseSha });
   if (!verifyRecordSig(basis, body.sig, { publicKeyPem: verifyKeyPem, allowEnvFallback: false })) {
     return { ok: false, reason: 'sig-invalid' };
   }
   return { ok: true, body };
 }
 
-module.exports = { emissionAxiom, computeEmissionHash, approvalSigBasis, verifyApproval, normalizeRepo, DEFAULT_TTL_MS };
+module.exports = { emissionAxiom, computeEmissionHash, approvalSigBasis, verifyApproval, normalizeRepo, isSafeBaseSha, BASE_SHA_RE, DEFAULT_TTL_MS };

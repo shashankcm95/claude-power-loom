@@ -180,9 +180,9 @@ test('#436: runCustodyCheck WITHOUT deps drives the REAL default crossUidLoomBro
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-// === OQ-3 W2 (fold F8) — the C3 live-sign probe presents a 5-field ctx carrying lesson_commitment:'' ===
+// === OQ-3 W2 (fold F8) + F-W2b (fold D9) — the C3 live-sign probe presents a 6-field ctx (lesson_commitment:'' + requestedBaseSha:'') ===
 
-test('gatherCustodyFacts [OQ-3]: the injected signer receives a 5-field ctx with lesson_commitment:"" and the basis binds it', () => {
+test('gatherCustodyFacts [OQ-3/F-W2b]: the injected signer receives a 6-field ctx (lesson_commitment:"" + requestedBaseSha:"") and the basis binds both', () => {
   const A = require(path.join(REPO, 'packages', 'kernel', 'egress', 'approval.js'));
   let seenCtx = null;
   // a signer that records the ctx it was handed; it returns null (so C3 reports signed:false — fine, we are
@@ -190,14 +190,15 @@ test('gatherCustodyFacts [OQ-3]: the injected signer receives a 5-field ctx with
   const signer = (basis, ctx) => { seenCtx = { basis, ctx }; return null; };
   V.gatherCustodyFacts({ keyFile: path.join(REPO, 'no-such-key-file'), signer, verifyKeyPem: 'PEM' });
   assert.ok(seenCtx, 'the C3 probe invoked the signer');
-  assert.deepStrictEqual(Object.keys(seenCtx.ctx).sort(), ['approvedAt', 'emission', 'key_id', 'lesson_commitment', 'nonce'], 'the probe ctx is the 5-field shape');
+  assert.deepStrictEqual(Object.keys(seenCtx.ctx).sort(), ['approvedAt', 'emission', 'key_id', 'lesson_commitment', 'nonce', 'requestedBaseSha'], 'the probe ctx is the 6-field shape');
   assert.strictEqual(seenCtx.ctx.lesson_commitment, '', 'the probe rides the no-lesson sentinel');
-  // the basis the probe asks the broker to sign binds that '' commitment (matches a real no-lesson approval basis).
+  assert.strictEqual(seenCtx.ctx.requestedBaseSha, '', 'the probe rides the no-base sentinel (F-W2b)');
+  // the basis the probe asks the broker to sign binds both '' sentinels (matches a real no-lesson/no-base approval basis).
   const expected = A.approvalSigBasis({
     hash: A.computeEmissionHash(seenCtx.ctx.emission),
-    approvedAt: seenCtx.ctx.approvedAt, nonce: seenCtx.ctx.nonce, key_id: seenCtx.ctx.key_id, lesson_commitment: '',
+    approvedAt: seenCtx.ctx.approvedAt, nonce: seenCtx.ctx.nonce, key_id: seenCtx.ctx.key_id, lesson_commitment: '', requestedBaseSha: '',
   });
-  assert.strictEqual(seenCtx.basis, expected, 'the probe basis folds lesson_commitment:"" (the OQ-3 extended basis)');
+  assert.strictEqual(seenCtx.basis, expected, 'the probe basis folds lesson_commitment:"" + requestedBaseSha:"" (the F-W2b 6-field basis)');
 });
 
 (async () => {

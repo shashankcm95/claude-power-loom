@@ -25,7 +25,7 @@ const fs = require('fs');
 const path = require('path');
 const { currentUid } = require('../_lib/safe-resolve');
 const { isCanonicalBase64, verifyRecordSig } = require('../_lib/edge-attestation');   // ③.2.5a — the sig output gate
-const { computeEmissionHash, emissionAxiom, approvalSigBasis, verifyApproval } = require('./approval');
+const { computeEmissionHash, emissionAxiom, approvalSigBasis, verifyApproval, isSafeBaseSha } = require('./approval');
 
 const HEX64 = /^[a-f0-9]{64}$/;
 const SUFFIX = '.approved';
@@ -90,14 +90,19 @@ function readVerifiedApproval(dir, hash, { now, ttlMs, selfUid = currentUid(), v
  * OQ-3 (RFC §5.3) — `lesson_commitment` (64-hex or '' for no-lesson) is persisted into the body AND signed into
  * the EXTENDED freshness basis. Coerced (undefined -> '') and shape-gated ('' or 64-hex lowercase) BEFORE any
  * sign/write, so a malformed commitment never reaches the basis or the wx slot.
+ * F-W2b — `requestedBaseSha` (the approver-INTENDED base, '' | 40/64-hex lowercase) is likewise persisted + signed
+ * into the 6-field basis. Coerced (undefined -> '') + shape-gated (isSafeBaseSha) BEFORE the basis / the wx write,
+ * so a malformed base sha never poisons the slot. The DORMANT default is '' (no base constraint => the emit gate is
+ * inert => the emitted bytes stay byte-identical); a later flip auto-captures the live upstream tip at mint (F-W3).
  * @param {string} dir
  * @param {object} draft  { repo, issueRef, diff } (the scrubbed draft)
- * @param {{ now: number, nonce: string, selfUid?: number|null, signFn: Function, keyId?: string, verifyKeyPem?: string, lesson_commitment?: string }} o
+ * @param {{ now: number, nonce: string, selfUid?: number|null, signFn: Function, keyId?: string, verifyKeyPem?: string, lesson_commitment?: string, requestedBaseSha?: string }} o
  *   verifyKeyPem — OPTIONAL: when the matching broker pubkey is known at mint, the sig is verified over the basis
  *   BEFORE the write (H2 boundary check) so a value-swap signFn fails at mint, not later at the read gate.
  *   lesson_commitment — OQ-3: 64-hex (a captured lesson) or '' (no lesson); coerced + shape-gated below.
+ *   requestedBaseSha — F-W2b: '' (dormant default) or a 40/64-hex lowercase base commit sha; coerced + shape-gated.
  */
-function recordApproval(dir, draft, { now, nonce, selfUid = currentUid(), signFn, keyId = 'v0', verifyKeyPem, lesson_commitment } = {}) {
+function recordApproval(dir, draft, { now, nonce, selfUid = currentUid(), signFn, keyId = 'v0', verifyKeyPem, lesson_commitment, requestedBaseSha } = {}) {
   if (typeof signFn !== 'function') throw new Error('approval-store: recordApproval requires a signFn (no same-uid default — the cross-uid broker or a test injects it)');
   if (typeof now !== 'number' || !Number.isFinite(now)) throw new Error('approval-store: recordApproval requires a numeric now');
   if (typeof nonce !== 'string' || nonce.trim().length === 0) throw new Error('approval-store: recordApproval requires a non-empty nonce');
@@ -105,6 +110,12 @@ function recordApproval(dir, draft, { now, nonce, selfUid = currentUid(), signFn
   const lc = lesson_commitment === undefined ? '' : lesson_commitment;
   if (!(lc === '' || (typeof lc === 'string' && HEX64.test(lc)))) {
     throw new Error('approval-store: recordApproval lesson_commitment must be 64-hex (lowercase) or "" (no lesson)');
+  }
+  // F-W2b — coerce (undefined -> '') + shape-gate the base sha (the SHARED isSafeBaseSha domain) BEFORE the basis /
+  // the wx write, so a malformed base sha never reaches the signer or poisons the exclusive-create slot.
+  const rbs = requestedBaseSha === undefined ? '' : requestedBaseSha;
+  if (!isSafeBaseSha(rbs)) {
+    throw new Error('approval-store: recordApproval requestedBaseSha must be a 40/64-hex (lowercase) sha or "" (no base)');
   }
   // VALIDATE-reviewer F2 — reject a malformed draft that emissionAxiom would SILENTLY collapse (a NaN issueRef ->
   // null, a 3-segment 'owner/repo/extra' -> the extra dropped) so the minted approval's hash is unambiguous. The
@@ -125,8 +136,8 @@ function recordApproval(dir, draft, { now, nonce, selfUid = currentUid(), signFn
   // a TTL-bump / nonce-swap replay is then unforgeable without the key. The full pre-image is threaded to signFn so
   // PR-2's broker recompute-binds (recompute hash from emission + the basis from the freshness fields, refuse a mismatch).
   const approvedAt = now;
-  const basis = approvalSigBasis({ hash, approvedAt, nonce, key_id: keyId, lesson_commitment: lc });
-  const sig = signFn(basis, { emission, approvedAt, nonce, key_id: keyId, lesson_commitment: lc });
+  const basis = approvalSigBasis({ hash, approvedAt, nonce, key_id: keyId, lesson_commitment: lc, requestedBaseSha: rbs });
+  const sig = signFn(basis, { emission, approvedAt, nonce, key_id: keyId, lesson_commitment: lc, requestedBaseSha: rbs });
   // F5/F1 — GATE the sig BEFORE the body / the wx write (never half-write; never poison the wx slot with a malformed
   // sig that would EEXIST-lock the hash). null/empty/non-canonical/wrong-length == refuse (the SAME output gate
   // signRecordId applies — reuse isCanonicalBase64 + the 64-byte ed25519 shape; do NOT re-implement it).
@@ -139,7 +150,7 @@ function recordApproval(dir, draft, { now, nonce, selfUid = currentUid(), signFn
       && !verifyRecordSig(basis, sig, { publicKeyPem: verifyKeyPem, allowEnvFallback: false })) {
     throw new Error('approval-store: signature does not verify over the basis at mint (boundary check) — no approval written');
   }
-  const body = { hash, emission, approvedAt, nonce, sig, key_id: keyId, lesson_commitment: lc };  // immutable — built once, never mutated
+  const body = { hash, emission, approvedAt, nonce, sig, key_id: keyId, lesson_commitment: lc, requestedBaseSha: rbs };  // immutable — built once, never mutated
   const file = path.join(dir, hash + SUFFIX);
   fs.writeFileSync(file, JSON.stringify(body), { flag: 'wx', mode: 0o600 }); // exclusive create; EEXIST on a pre-seed
   return { hash, path: file };

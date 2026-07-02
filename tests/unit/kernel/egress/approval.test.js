@@ -73,7 +73,9 @@ function sign(hash, body, priv) { return signRecordId(hash, { privateKeyPem: pri
 // signs + verifies the EXTENDED basis additively (a '' commitment is what a real no-lesson emission carries).
 function approvalBody(over, signWith) {
   const d = draft();
-  const base = { hash: A.computeEmissionHash(d), emission: A.emissionAxiom(d), approvedAt: 1000, nonce: 'n-abc', key_id: 'v0', lesson_commitment: '' };
+  // F-W2b: the body defaults requestedBaseSha:'' (the no-base sentinel) so EVERY existing test signs + verifies the
+  // EXTENDED 6-field basis additively — a '' base sha is what a real dormant (no-base) approval carries.
+  const base = { hash: A.computeEmissionHash(d), emission: A.emissionAxiom(d), approvedAt: 1000, nonce: 'n-abc', key_id: 'v0', lesson_commitment: '', requestedBaseSha: '' };
   const merged = Object.assign(base, over || {});
   if (!Object.prototype.hasOwnProperty.call(over || {}, 'sig')) merged.sig = sign(A.approvalSigBasis(merged), merged, signWith);
   return merged;
@@ -89,7 +91,7 @@ test('verifyApproval: an UNSIGNED (③.2.4-shape) approval -> sig-missing (fail-
   const d = draft(); const h = A.computeEmissionHash(d);
   // OQ-3 W2: carry lesson_commitment:'' so the lesson gate (which fires BEFORE the sig check) passes and the
   // ASSERTED defect (a missing sig) is the one this test isolates.
-  const unsigned = JSON.stringify({ hash: h, emission: A.emissionAxiom(d), approvedAt: 1000, nonce: 'n', lesson_commitment: '' }); // no sig
+  const unsigned = JSON.stringify({ hash: h, emission: A.emissionAxiom(d), approvedAt: 1000, nonce: 'n', lesson_commitment: '', requestedBaseSha: '' }); // no sig
   assert.strictEqual(A.verifyApproval({ fileBytes: unsigned, requestedHash: h, now: 2000, ttlMs: 10000, verifyKeyPem: VKEY }).reason, 'sig-missing');
 });
 
@@ -99,7 +101,7 @@ test('verifyApproval: a sig from the WRONG key -> sig-invalid; a sig over a DIFF
   assert.strictEqual(A.verifyApproval({ fileBytes: JSON.stringify(approvalBody({}, ATTACKER.privateKeyPem)), requestedHash: h, now: 2000, ttlMs: 10000, verifyKeyPem: VKEY }).reason, 'sig-invalid');
   // tampered: a body whose sig is over the right hash but emission re-derives elsewhere -> body-hash-mismatch (before sig).
   // OQ-3 W2: carry lesson_commitment:'' so the lesson gate (which fires earlier) passes and the body-hash defect is isolated.
-  const forged = JSON.stringify({ hash: h, emission: A.emissionAxiom(draft({ diff: SCRUBBED + 'T' })), approvedAt: 1000, nonce: 'n', lesson_commitment: '', sig: sign(h, A.emissionAxiom(draft())) });
+  const forged = JSON.stringify({ hash: h, emission: A.emissionAxiom(draft({ diff: SCRUBBED + 'T' })), approvedAt: 1000, nonce: 'n', lesson_commitment: '', requestedBaseSha: '', sig: sign(h, A.emissionAxiom(draft())) });
   assert.strictEqual(A.verifyApproval({ fileBytes: forged, requestedHash: h, now: 2000, ttlMs: 10000, verifyKeyPem: VKEY }).reason, 'body-hash-mismatch');
 });
 
@@ -137,7 +139,7 @@ test('verifyApproval [H1]: a signed approval is NOT replayable past TTL by editi
 test('verifyApproval: a body whose emission re-derives to a DIFFERENT hash than its claimed hash -> false (#273)', () => {
   const d = draft(); const h = A.computeEmissionHash(d);
   // OQ-3 W2: lesson_commitment:'' present so the lesson gate passes and the #273 body-hash defect is the asserted one.
-  const forged = JSON.stringify({ hash: h, emission: A.emissionAxiom(draft({ diff: SCRUBBED + 'TAMPERED' })), approvedAt: 1000, nonce: 'n', lesson_commitment: '', sig: sign(h, A.emissionAxiom(d)) });
+  const forged = JSON.stringify({ hash: h, emission: A.emissionAxiom(draft({ diff: SCRUBBED + 'TAMPERED' })), approvedAt: 1000, nonce: 'n', lesson_commitment: '', requestedBaseSha: '', sig: sign(h, A.emissionAxiom(d)) });
   assert.strictEqual(A.verifyApproval({ fileBytes: forged, requestedHash: h, now: 2000, ttlMs: 10000, verifyKeyPem: VKEY }).reason, 'body-hash-mismatch');
 });
 
@@ -251,6 +253,111 @@ test('verifyApproval [OQ-3]: a non-string requestedLessonCommitment -> no-reques
   for (const bad of [5, null, {}, []]) {
     assert.strictEqual(A.verifyApproval({ fileBytes: body, requestedHash: h, now: 2000, ttlMs: 10000, verifyKeyPem: VKEY, requestedLessonCommitment: bad }).reason, 'no-requested-lesson-commitment', `non-string request ${JSON.stringify(bad)} fail-closes`);
   }
+});
+
+// === F-W2b — BASE_SHA_RE / isSafeBaseSha shared shape gate (the single "what is a valid base sha") ===
+
+const SHA40 = 'a'.repeat(40);
+const SHA64 = 'b'.repeat(64);
+
+test('F-W2b: BASE_SHA_RE / isSafeBaseSha are exported; accept "" | 40-hex | 64-hex lowercase, reject the rest', () => {
+  assert.ok(A.BASE_SHA_RE instanceof RegExp, 'BASE_SHA_RE is an exported RegExp');
+  assert.strictEqual(typeof A.isSafeBaseSha, 'function', 'isSafeBaseSha is exported');
+  // accept
+  assert.ok(A.isSafeBaseSha(''), '"" (the dormant no-base sentinel) is accepted');
+  assert.ok(A.isSafeBaseSha(SHA40), 'a 40-hex sha (SHA-1, GitHub today) is accepted');
+  assert.ok(A.isSafeBaseSha(SHA64), 'a 64-hex sha (SHA-256 forward-compat) is accepted');
+  // reject: wrong length / uppercase / non-hex / non-string
+  for (const bad of ['a'.repeat(39), 'a'.repeat(41), 'a'.repeat(63), 'a'.repeat(65), 'A'.repeat(40), 'g'.repeat(40), 'not-hex', 5, null, {}, []]) {
+    assert.strictEqual(A.isSafeBaseSha(bad), false, `${JSON.stringify(bad)} rejected`);
+  }
+});
+
+// === F-W2b — approvalSigBasis grows to 6 fields (the requestedBaseSha binding) ===
+
+test('F-W2b: approvalSigBasis — an undefined/absent requestedBaseSha === the explicit "" basis (the canonical-hash footgun)', () => {
+  const base = { hash: 'a'.repeat(64), approvedAt: 1000, nonce: 'n', key_id: 'v0', lesson_commitment: '' };
+  const undef = A.approvalSigBasis(Object.assign({}, base, { requestedBaseSha: undefined }));
+  const empty = A.approvalSigBasis(Object.assign({}, base, { requestedBaseSha: '' }));
+  const absent = A.approvalSigBasis(base);   // key absent
+  assert.strictEqual(undef, empty, 'undefined requestedBaseSha coerces to the SAME basis as explicit "" (never the literal `undefined` token)');
+  assert.strictEqual(absent, empty, 'an absent requestedBaseSha coerces to the SAME basis as explicit ""');
+});
+
+test('F-W2b: approvalSigBasis — a populated requestedBaseSha changes the basis vs ""', () => {
+  const base = { hash: 'a'.repeat(64), approvedAt: 1000, nonce: 'n', key_id: 'v0', lesson_commitment: '' };
+  const withBase = A.approvalSigBasis(Object.assign({}, base, { requestedBaseSha: SHA40 }));
+  const empty = A.approvalSigBasis(Object.assign({}, base, { requestedBaseSha: '' }));
+  assert.notStrictEqual(withBase, empty, 'a real base sha binds a DIFFERENT basis than the no-base sentinel');
+});
+
+test('F-W2b: approvalSigBasis — a non-string requestedBaseSha THROWS (never silently hashed)', () => {
+  const base = { hash: 'a'.repeat(64), approvedAt: 1000, nonce: 'n', key_id: 'v0', lesson_commitment: '' };
+  for (const bad of [5, null, {}, []]) {
+    assert.throws(() => A.approvalSigBasis(Object.assign({}, base, { requestedBaseSha: bad })), /requestedBaseSha must be a string/, `${JSON.stringify(bad)} throws`);
+  }
+});
+
+test('F-W2b: approvalSigBasis — key-insertion-order-independent + a legacy 5-field-style object does NOT collide with the 6-field "" basis', () => {
+  // order-independence: the same 6 fields in a different insertion order hash identically (canonical-json).
+  const a = A.approvalSigBasis({ hash: 'a'.repeat(64), approvedAt: 1000, nonce: 'n', key_id: 'v0', lesson_commitment: '', requestedBaseSha: SHA40 });
+  const b = A.approvalSigBasis({ requestedBaseSha: SHA40, lesson_commitment: '', key_id: 'v0', nonce: 'n', approvedAt: 1000, hash: 'a'.repeat(64) });
+  assert.strictEqual(a, b, 'reordered keys hash identically');
+  // a hand-built 5-field object (no requestedBaseSha key at all) coerces to the SAME basis as an explicit '' (the
+  // additive-safety property) — but a populated base sha must NOT collide with the no-base basis (proven above).
+  const fiveField = A.approvalSigBasis({ hash: 'a'.repeat(64), approvedAt: 1000, nonce: 'n', key_id: 'v0', lesson_commitment: '' });
+  const sixFieldEmpty = A.approvalSigBasis({ hash: 'a'.repeat(64), approvedAt: 1000, nonce: 'n', key_id: 'v0', lesson_commitment: '', requestedBaseSha: '' });
+  assert.strictEqual(fiveField, sixFieldEmpty, 'a no-base 6-field basis === the additive-safe coerced 5-field basis');
+});
+
+// === F-W2b — verifyApproval body.requestedBaseSha gate (PARTIAL mirror: NO request param, D1) ===
+
+// A well-formed SIGNED body carrying requestedBaseSha (approvalBody defaults it to '' additively so every EXISTING
+// case above still signs+verifies the 6-field basis). The base helper defaults must include requestedBaseSha now.
+function bodyWithBase(baseSha, signWith) {
+  return approvalBody({ requestedBaseSha: baseSha }, signWith);
+}
+
+test('F-W2b: verifyApproval — a populated requestedBaseSha body + a 6-field sig verifies; the returned body exposes it', () => {
+  const h = A.computeEmissionHash(draft());
+  const r = A.verifyApproval({ fileBytes: JSON.stringify(bodyWithBase(SHA40)), requestedHash: h, now: 2000, ttlMs: 10000, verifyKeyPem: VKEY });
+  assert.strictEqual(r.ok, true, r.reason);
+  assert.strictEqual(r.body.requestedBaseSha, SHA40, 'the verified body exposes requestedBaseSha for the emit gate');
+});
+
+test('F-W2b: verifyApproval — a "" (no-base) body verifies and round-trips the sentinel (additive-safe)', () => {
+  const h = A.computeEmissionHash(draft());
+  const r = A.verifyApproval({ fileBytes: JSON.stringify(approvalBody()), requestedHash: h, now: 2000, ttlMs: 10000, verifyKeyPem: VKEY });
+  assert.strictEqual(r.ok, true, r.reason);
+  assert.strictEqual(r.body.requestedBaseSha, '', 'the no-base sentinel round-trips');
+});
+
+test('F-W2b: verifyApproval — an ABSENT body.requestedBaseSha -> no-body-requested-base-sha (distinct reason; body NOT coerced)', () => {
+  const d = draft(); const h = A.computeEmissionHash(d);
+  // a pre-F-W2b body that predates the field entirely (no requestedBaseSha key) — fail-closed with a DISTINCT reason,
+  // NEVER laundered into a no-base match. lesson_commitment:'' present so the lesson gate passes and the F-W2b
+  // absence is the isolated defect. NON-VACUOUS: inject the absence, watch the distinct reason fire.
+  const legacy = JSON.stringify({ hash: h, emission: A.emissionAxiom(d), approvedAt: 1000, nonce: 'n', key_id: 'v0', lesson_commitment: '', sig: 'irrelevant' });
+  assert.strictEqual(A.verifyApproval({ fileBytes: legacy, requestedHash: h, now: 2000, ttlMs: 10000, verifyKeyPem: VKEY }).reason, 'no-body-requested-base-sha');
+});
+
+test('F-W2b: verifyApproval — a MALFORMED body.requestedBaseSha (non-string / wrong-shape) -> no-body-requested-base-sha', () => {
+  const d = draft(); const h = A.computeEmissionHash(d);
+  // an arbitrary-string / uppercase / 41-hex base sha in the body fails the SHAPE gate (isSafeBaseSha), same
+  // distinct reason — not a generic sig-invalid fall-through. approvalBody signs the arbitrary basis; the shape
+  // gate rejects it first.
+  for (const bad of ['not-a-sha', 'A'.repeat(40), 'a'.repeat(41)]) {
+    const badBody = JSON.stringify(approvalBody({ requestedBaseSha: bad }));
+    assert.strictEqual(A.verifyApproval({ fileBytes: badBody, requestedHash: h, now: 2000, ttlMs: 10000, verifyKeyPem: VKEY }).reason, 'no-body-requested-base-sha', `body base sha ${JSON.stringify(bad)} fail-closes at the shape gate`);
+  }
+});
+
+test('F-W2b: verifyApproval — an in-place EDIT of body.requestedBaseSha under the OLD sig -> sig-invalid (basis-covered)', () => {
+  const h = A.computeEmissionHash(draft());
+  const signed = bodyWithBase(SHA40);                                     // signed over base SHA40
+  const edited = Object.assign({}, signed, { requestedBaseSha: SHA64 });  // attacker swaps the field, keeps the old sig
+  const r = A.verifyApproval({ fileBytes: JSON.stringify(edited), requestedHash: h, now: 2000, ttlMs: 10000, verifyKeyPem: VKEY });
+  assert.strictEqual(r.reason, 'sig-invalid', 'editing the body base sha under the old sig flips the freshness-bound sig (the binding is signed-over)');
 });
 
 (async () => {

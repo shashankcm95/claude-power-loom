@@ -53,7 +53,9 @@
 // 64-byte broker_sig), NOT cryptographically verified - this store holds no verify key, by design;
 // verifyApproval already verified the sig at emit, and PR-A2 re-verifies it at world-anchor mint. PR-A2
 // crypto-verifies `broker_sig` over `approvalSigBasis({hash:approval_hash, approvedAt, nonce, key_id,
-// lesson_commitment})`. The sig basis intentionally OMITS pr_number/repo/pr_url - the SAME out-of-basis
+// lesson_commitment, requestedBaseSha})` (F-W2b grew the signed basis to 6 fields — this store stays
+// code-untouched, but PR-A2 MUST recompute ALL SIX or every non-empty-base verify fails-closed). The sig
+// basis intentionally OMITS pr_number/repo/pr_url - the SAME out-of-basis
 // posture as `merge_commit_sha`; `approval_hash` is one-shot (the nonce is consumed at emit) so a bundle
 // replant gains no lesson-swap. Integrity-at-rest here, provenance-at-PR-A2; and even then the binding is
 // unforgeable only once the broker actually runs cross-uid (OQ-NS-6: merged code NARROWS, deployment HARDENS).

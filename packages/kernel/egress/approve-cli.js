@@ -29,7 +29,7 @@ const fs = require('fs');
 const tty = require('tty');
 const crypto = require('crypto');
 const { scrubEmitDiff } = require('./scrub');
-const { computeEmissionHash, emissionAxiom } = require('./approval');
+const { computeEmissionHash, emissionAxiom, isSafeBaseSha } = require('./approval');   // F-W2b — the shared base-sha shape gate
 const { assertCustodyApprovalsDir, recordApproval } = require('./approval-store');
 const { assertDataIsPolicyFree, assertSafeRepoRef, assertSafeIssueRef, assertEgressSafeDiff } = require('./emit-pr');
 const { computeLessonCommitment } = require('../_lib/lesson-commitment');   // OQ-3 — the single-source lesson commitment
@@ -221,7 +221,10 @@ function currentUid() { return typeof process.getuid === 'function' ? process.ge
 // =============================== the orchestrated flow (deps-injectable for tests) ===============================
 
 /**
- * @param {{draftPath, approvalsDir, brokerUser, wrapperPath, sudoPath, verifyKeyPath, keyId}} opts
+ * @param {{draftPath, approvalsDir, brokerUser, wrapperPath, sudoPath, verifyKeyPath, keyId, baseSha?}} opts
+ *   baseSha — F-W2b: the OPTIONAL approver-intended base commit sha ('' | 40/64-hex lowercase). Default ''
+ *   (dormant / byte-identical). Shape-gated at the CLI boundary (fail-FAST, before the prompt), then bound into
+ *   the broker-signed approval basis so a moved upstream base invalidates the emit.
  * @param {{readConfirm?, makeSigner?, now?, randomNonce?, selfUid?}} deps  (tests inject; defaults are the real I/O)
  * @returns {{ok:boolean, reason?:string, hash?:string}}
  */
@@ -231,6 +234,13 @@ function runApprove(opts = {}, deps = {}) {
   const now = deps.now || Date.now;
   const randomNonce = deps.randomNonce || (() => crypto.randomBytes(16).toString('hex'));
   const selfUid = deps.selfUid !== undefined ? deps.selfUid : currentUid();
+
+  // F-W2b — shape-gate the optional base sha at the CLI boundary (fail-FAST, before any render/prompt/mint; D5:
+  // the SHARED isSafeBaseSha domain, not only recordApproval's later re-check). Absent/undefined -> '' (dormant).
+  const requestedBaseSha = opts.baseSha === undefined ? '' : opts.baseSha;
+  if (!isSafeBaseSha(requestedBaseSha)) {
+    throw new Error('approve-cli: --base-sha must be a 40/64-hex (lowercase) commit sha or omitted (no base)');
+  }
 
   // 1. read + validate the RAW draft (reusing emitPR's gates) BEFORE any render/prompt.
   const data = readDraftFile(opts.draftPath);
@@ -259,10 +269,11 @@ function runApprove(opts = {}, deps = {}) {
   if (!confirm.ok) return { ok: false, reason: confirm.reason }; // no-tty / not-a-tty -> no mint
   if (!checkConfirmation(confirm.line, hash)) return { ok: false, reason: 'not-confirmed' };
 
-  // 6. mint: a fresh nonce + the cross-uid broker signFn. The commitment binds into the EXTENDED broker-signed basis.
+  // 6. mint: a fresh nonce + the cross-uid broker signFn. The commitment + the requestedBaseSha bind into the
+  //    6-field broker-signed basis (F-W2b: '' is the dormant default => the moved-base emit gate stays inert).
   const signFn = makeSigner({ brokerUser: opts.brokerUser, wrapperPath: opts.wrapperPath, sudoPath: opts.sudoPath });
   recordApproval(opts.approvalsDir, scrubbed, {
-    now: now(), nonce: randomNonce(), signFn, keyId: opts.keyId || 'v0', verifyKeyPem, selfUid, lesson_commitment,
+    now: now(), nonce: randomNonce(), signFn, keyId: opts.keyId || 'v0', verifyKeyPem, selfUid, lesson_commitment, requestedBaseSha,
   });
   return { ok: true, hash };
 }
@@ -272,6 +283,7 @@ function runApprove(opts = {}, deps = {}) {
 const VALUE_FLAGS = {
   '--draft': 'draftPath', '--approvals-dir': 'approvalsDir', '--broker-user': 'brokerUser',
   '--wrapper': 'wrapperPath', '--sudo': 'sudoPath', '--verify-key': 'verifyKeyPath', '--key-id': 'keyId',
+  '--base-sha': 'baseSha',   // F-W2b — the OPTIONAL approver-intended base commit sha ('' | 40/64-hex; default '')
 };
 // NOTE: no --ttl-ms — the TTL is a READ-side concern (readVerifiedApproval/verifyApproval); recordApproval has no
 // mint-time TTL knob, so a --ttl-ms flag would be inert (VALIDATE: all 3 lenses flagged the dead flag). Omitting it
@@ -290,7 +302,7 @@ function parseArgv(argv, die) {
 }
 
 function main() {
-  const usage = 'usage: approve-cli --draft <draft.json> --approvals-dir <dir> --broker-user <user> --wrapper <abs-path> [--verify-key <pem>] [--key-id <id>] [--sudo <abs-path>]\n';
+  const usage = 'usage: approve-cli --draft <draft.json> --approvals-dir <dir> --broker-user <user> --wrapper <abs-path> [--verify-key <pem>] [--key-id <id>] [--sudo <abs-path>] [--base-sha <40/64-hex>]\n';
   const o = parseArgv(process.argv.slice(2), (m) => { process.stderr.write('approve-cli: ' + m + '\n' + usage); process.exit(2); });
   if (!o.draftPath || !o.approvalsDir || !o.brokerUser || !o.wrapperPath) { process.stderr.write(usage); process.exit(2); }
   let res;

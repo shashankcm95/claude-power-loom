@@ -167,10 +167,11 @@ function gatherCustodyFacts(opts = {}) {
   let sign = { signed: false, sigVerifies: false };
   try {
     const emission = { repo: 'loom-broker/custody-probe', issueRef: 1, diff: 'custody-probe' };
-    // OQ-3 (fold F6): the probe ctx + basis carry lesson_commitment:'' — the no-lesson sentinel shared with every
-    // real no-lesson emission, so the probe basis matches what recordApproval signs for a no-lesson approval.
-    const ctx = { emission, approvedAt: 1, nonce: crypto.randomBytes(16).toString('hex'), key_id: 'custody-probe', lesson_commitment: '' };
-    const basis = approvalSigBasis({ hash: computeEmissionHash(emission), approvedAt: ctx.approvedAt, nonce: ctx.nonce, key_id: ctx.key_id, lesson_commitment: ctx.lesson_commitment });
+    // OQ-3 (fold F6) + F-W2b (fold D9): the probe ctx + basis carry lesson_commitment:'' AND requestedBaseSha:'' —
+    // the no-lesson / no-base sentinels shared with every real dormant emission, so the probe basis matches what
+    // recordApproval signs for a no-lesson/no-base approval (the C3 self-test stays valid over the 6-field basis).
+    const ctx = { emission, approvedAt: 1, nonce: crypto.randomBytes(16).toString('hex'), key_id: 'custody-probe', lesson_commitment: '', requestedBaseSha: '' };
+    const basis = approvalSigBasis({ hash: computeEmissionHash(emission), approvedAt: ctx.approvedAt, nonce: ctx.nonce, key_id: ctx.key_id, lesson_commitment: ctx.lesson_commitment, requestedBaseSha: ctx.requestedBaseSha });
     const sig = typeof signer === 'function' ? signer(basis, ctx) : null;
     if (sig) {
       sign.signed = true;

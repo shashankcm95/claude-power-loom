@@ -240,6 +240,13 @@ test('F-W2 H1 arming gate: armedEmit REFUSES a populated forkRepo (object-sharin
     assert.strictEqual(seen.forkRepo, undefined, 'the F-W1 default leaves forkRepo undefined (ungated — threads through)');
     assert.strictEqual(seen.expectedForkOwner, undefined, 'the F-W1 default leaves expectedForkOwner undefined');
     assert.ok(seen.env && typeof seen.env === 'object', 'the sanitized env is still built + forwarded on the default path');
+    // F-W2b leg-(b) (VALIDATE honesty LOW) — a POPULATED requestedBaseSha (no forkRepo => H1 does not fire) threads
+    // through the REAL armedEmit into the ghEmit args (the inner emit-pr.js -> ghEmit forward — otherwise the
+    // production emitPR->armedEmit->ghEmit chain's middle leg was inspection-verified only; a dropped forward here
+    // would be caught only by the un-exercised live-network path).
+    seen = null;
+    E.armedEmit({ draft: { repo: 'owner/repo', issueRef: 42, diff: 'd' }, token: FAKE_CUSTODY, ghConfigDir: cfg, approvalHash: 'h', requestedBaseSha: 'a'.repeat(40) });
+    assert.strictEqual(seen.requestedBaseSha, 'a'.repeat(40), 'a populated requestedBaseSha threads through the REAL armedEmit -> ghEmit (D2 leg-b)');
   } finally { ghMod.ghEmit = realGhEmit; fs.rmSync(cfg, { recursive: true, force: true }); }
 });
 
@@ -619,6 +626,58 @@ test('OQ-3 NON-VACUOUS: a REAL approval bound to commitment X + data.lesson_comm
       assert.strictEqual(seamCalls, 0, 'the seam was NEVER reached on a swapped commitment (fail-closed before emit)');
     });
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// === F-W2b — the requestedBaseSha threads from the VERIFIED approval body through armedEmit -> ghEmit (D2) ===
+
+// mint an approval carrying a populated requestedBaseSha (signed over the 6-field basis by recordApproval).
+function mintApprovalWithBase(opts, baseSha) {
+  return S.recordApproval(opts.custodyApprovalsDir, { repo: 'owner/repo', issueRef: 42, diff: GOOD_DIFF },
+    { now: opts.now, nonce: 'n-test', selfUid: SELF_UID, signFn: SIGN, requestedBaseSha: baseSha });
+}
+
+test('F-W2b (D2): emitPR reads appr.body.requestedBaseSha and passes it THROUGH armedEmit -> ghEmit (END-TO-END, the live-path assertion)', () => {
+  const dir = scratch('loom-custody-');
+  const BASE = 'a'.repeat(40);
+  try {
+    withKillswitchEnvCleared(() => {
+      const opts = armedCustody(dir);
+      mintApprovalWithBase(opts, BASE);                                   // a REAL signed approval binding BASE
+      let seen = null;
+      // the PRODUCTION emitPR -> armedEmitFn call must forward the verified body's requestedBaseSha (fold D2c). If
+      // the :534 call omits it, this stub receives undefined and the gate is silently DEAD on the only live path.
+      const r = E.emitPR(goodData(), Object.assign({}, opts, { armedEmitFn: (a) => { seen = a; return { pr_url: 'https://example/pr/1', number: 1, base_sha: BASE }; } }));
+      assert.strictEqual(r.emitted, true, 'the emit fired (got ' + r.reason + '/' + r.approvalReason + ')');
+      assert.ok(seen, 'the armed seam was reached');
+      assert.strictEqual(seen.requestedBaseSha, BASE, 'emitPR forwarded the verified body requestedBaseSha to armedEmit (the D2 dead-guard)');
+    });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('F-W2b (D2): a no-base ("") approval threads "" (the dormant default, byte-identical live path)', () => {
+  const dir = scratch('loom-custody-');
+  try {
+    withKillswitchEnvCleared(() => {
+      const opts = armedCustody(dir);
+      mintApprovalFor(opts);                                             // a no-base ('') approval
+      let seen = null;
+      E.emitPR(goodData(), Object.assign({}, opts, { armedEmitFn: (a) => { seen = a; return { pr_url: 'x', number: 1, base_sha: 'b'.repeat(40) }; } }));
+      assert.strictEqual(seen.requestedBaseSha, '', 'the dormant "" sentinel is threaded (no moved-base gate fires downstream)');
+    });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('F-W2b (D8): the base-sha/identity vocabulary is in the data deny-list (actor cannot inject requestedBaseSha via data)', () => {
+  for (const k of ['requestedBaseSha', 'requested_base_sha', 'requested-base-sha', 'baseSha', 'base_sha', 'base-sha']) {
+    assert.ok(E.DISPOSITION_KEYS.includes(k), `${k} must be a declared disposition key`);
+    const r = E.emitPR(goodData({ [k]: 'a'.repeat(40) }));
+    assert.strictEqual(r.ok, false, `data.${k} rejected end-to-end`);
+    assert.ok(/policy key/.test(r.reason), `data.${k} names the policy-key rejection (got ${r.reason})`);
+  }
+  // casing variants collapse via the case-fold in assertDataIsPolicyFree.
+  for (const k of ['REQUESTEDBASESHA', 'RequestedBaseSha', 'BASESHA', 'Base_Sha']) {
+    assert.throws(() => E.assertDataIsPolicyFree(goodData({ [k]: 'x' })), /policy key/, `data.${k} rejected (case-folded)`);
+  }
 });
 
 // === ③.2.4 — the per-emission approval gate riders (H5 normalize-once + H7 deny-list completeness) ===
