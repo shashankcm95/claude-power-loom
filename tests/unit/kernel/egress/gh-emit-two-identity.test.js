@@ -14,6 +14,7 @@ const path = require('path');
 const REPO = path.join(__dirname, '..', '..', '..', '..');
 const G = require(path.join(REPO, 'packages', 'kernel', 'egress', 'gh-emit.js'));
 const { computeEmissionHash } = require(path.join(REPO, 'packages', 'kernel', 'egress', 'approval.js'));
+const { isEgressDeniedPath } = require(path.join(REPO, 'packages', 'kernel', 'egress', 'emit-pr.js'));   // F-W3 — BD-2 guard under test
 
 let passed = 0; let failed = 0; let skipped = 0;
 const tests = [];
@@ -450,13 +451,72 @@ test('15c dedup head-repo: ref-exists + a PR with the right head.ref+base but he
   );
 });
 
-// === TEST 16: PR-create head stays the bare branch even with forkRepo supplied (F-W1/F-W3 boundary lock) ===
+// === TEST 16: SAME-OWNER (forkRepo === upstream => isForkMode false) — head bare, no maintainer_can_modify ===
 
-test('16 PR-create head bare branch: even with forkRepo supplied, head is the bare branch (F-W3 flips to owner:branch)', () => {
+test('16 PR-create head bare in SAME-OWNER (forkRepo===upstream => isForkMode false): head stays bare, NO maintainer_can_modify (byte-identical)', () => {
+  // forkRepo === GOOD_REPO === upstreamRepo => resolvedForkRepo === upstreamRepo => isForkMode false. F-W3's
+  // cross-repo head + maintainer_can_modify are gated on isForkMode, so this same-owner path is byte-identical.
   const gh = makeGh();
   G.ghEmit({ draft: draftFor(GOLDEN_ADD_DIFF), approvalHash: GOLDEN_ADD_HASH, env: {}, forkRepo: GOOD_REPO }, { runGh: gh });
   const pull = JSON.parse(findCall(gh, /\/pulls$/, 'POST').input);
-  assert.strictEqual(pull.head, `loom/issue-42-${GOLDEN_ADD_HASH.slice(0, 12)}`, 'F-W1 keeps head as the bare branch (no owner: prefix)');
+  assert.strictEqual(pull.head, `loom/issue-42-${GOLDEN_ADD_HASH.slice(0, 12)}`, 'same-owner keeps head bare (no owner: prefix)');
+  assert.strictEqual(pull.maintainer_can_modify, undefined, 'same-owner NEVER sends maintainer_can_modify (byte-identical)');
+});
+
+// === F-W3: the cross-repo PR-open (head=forkOwner:branch + maintainer_can_modify), DORMANT until F-W4 arms ===
+
+test('F-W3a cross-repo head: a DISTINCT fork => the PR-create head is forkOwner:branch + maintainer_can_modify:true, base upstream', () => {
+  const gh = makeForkGh({ forkRefSha: SHA_D });
+  const r = G.ghEmit({ draft: draftFor(GOLDEN_ADD_DIFF), approvalHash: GOLDEN_ADD_HASH, env: {}, forkRepo: FORK_REPO, expectedForkOwner: 'botacct' }, { runGh: gh });
+  assert.strictEqual(r.number, 9, 'the fork-mode emit created the PR');
+  const branch = `loom/issue-42-${GOLDEN_ADD_HASH.slice(0, 12)}`;
+  const pull = JSON.parse(findCall(gh, /\/pulls$/, 'POST').input);
+  assert.strictEqual(pull.head, `botacct:${branch}`, 'the cross-repo head is namespaced forkOwner:branch');
+  assert.strictEqual(pull.base, 'main', 'the base is the upstream default branch (unchanged)');
+  assert.strictEqual(pull.maintainer_can_modify, true, 'maintainer_can_modify is the fork-mode kernel constant true');
+  assert.strictEqual(pull.draft, true, 'draft:true hard constant preserved');
+  assert.ok(findCall(gh, /\/pulls$/, 'POST').args[1] === `repos/${GOOD_REPO}/pulls`, 'the PR-create endpoint is still UPSTREAM (H-1)');
+});
+
+test('F-W3b dedup/create head consistency: in fork mode the dedup ?head= query uses the SAME forkOwner:branch as the create', () => {
+  // force the 422-reconcile path (refExists) with a matching open loom PR whose head.repo is OUR fork.
+  const branch = `loom/issue-42-${GOLDEN_ADD_HASH.slice(0, 12)}`;
+  const gh = makeForkGh({ refExists: true, existingPulls: [{ html_url: 'https://github.com/o/r/pull/5', number: 5, head: { ref: branch, repo: { full_name: FORK_REPO } }, draft: true, base: { ref: 'main', repo: { full_name: GOOD_REPO } } }] });
+  const r = G.ghEmit({ draft: draftFor(GOLDEN_ADD_DIFF), approvalHash: GOLDEN_ADD_HASH, env: {}, forkRepo: FORK_REPO, expectedForkOwner: 'botacct' }, { runGh: gh });
+  assert.strictEqual(r.deduped, true, 'the fork-mode dedup reconciled to the existing PR');
+  const dedupCall = gh.calls.find((c) => /\/pulls\?head=/.test(c.args[1]));
+  assert.ok(dedupCall && dedupCall.args[1].includes(`head=botacct:${branch}`), `the dedup query head is forkOwner:branch (got ${dedupCall && dedupCall.args[1]})`);
+});
+
+test('F-W3c maintainer_can_modify is a HARD CONSTANT: a draft-planted maintainer_can_modify:false is IGNORED (fork mode still sends true)', () => {
+  // draft is hash-bound + a steering field must never override the kernel constant (the #273 trap). emissionAxiom
+  // reads only {repo,issueRef,diff} so the planted field does not change the hash; ghEmit never reads it.
+  const gh = makeForkGh({ forkRefSha: SHA_D });
+  const draft = draftFor(GOLDEN_ADD_DIFF, { maintainer_can_modify: false });
+  G.ghEmit({ draft, approvalHash: GOLDEN_ADD_HASH, env: {}, forkRepo: FORK_REPO, expectedForkOwner: 'botacct' }, { runGh: gh });
+  const pull = JSON.parse(findCall(gh, /\/pulls$/, 'POST').input);
+  assert.strictEqual(pull.maintainer_can_modify, true, 'the kernel constant wins; the draft-planted false is ignored');
+});
+
+test('F-W3d BD-2 (existing .github/ denial, NON-VACUOUS): a workflow path is denied AND a benign path is allowed (the guard discriminates)', () => {
+  // BD-2 (no workflows in the fork, so a maintainer_can_modify fork can never run a workflow with the fork's secrets)
+  // is ALREADY covered by the ALWAYS-on .github/ egress denial (emit-pr.js). Non-vacuous: prove the denial FIRES on a
+  // present target AND a benign path PASSES (a positive control — the guard is not deny-everything).
+  assert.strictEqual(isEgressDeniedPath('.github/workflows/ci.yml'), true, 'a workflow path is denied (BD-2)');
+  assert.strictEqual(isEgressDeniedPath('.github/dependabot.yml'), true, 'any .github/ path is denied (superset of workflows)');
+  assert.strictEqual(isEgressDeniedPath('src/index.js'), false, 'a benign path is ALLOWED (positive control — the guard discriminates)');
+  assert.strictEqual(isEgressDeniedPath('README.md'), false, 'a normal doc is allowed');
+});
+
+test('F-W3e BD-2 literal-tree-path pin: %2e/%2f-encoded .github forms ALLOW but are HARMLESS (the tree path is stored literally, not URL-decoded)', () => {
+  // These encoded forms slip the .github/ regex because they are literally `.git%2ehub` / `.github%2fworkflows`, NOT
+  // `.github/`. They are NOT a BD-2 bypass: the tree `path` is sent VERBATIM (gh-emit.js) and GitHub does not URL-decode
+  // it, so `.git%2ehub` becomes a literal non-workflow directory. PIN the premise so a future GitHub decode change would
+  // surface here rather than silently bypassing BD-2.
+  assert.strictEqual(isEgressDeniedPath('.git%2ehub/workflows/ci.yml'), false, '%2e form allowed (literal .git%2ehub, not .github)');
+  assert.strictEqual(isEgressDeniedPath('.github%2fworkflows/ci.yml'), false, '%2f form allowed (literal, not a nested .github/)');
+  // the real traversal to .github is STILL denied (the encoding trick does not open the real path):
+  assert.strictEqual(isEgressDeniedPath('a/../.github/x.yml'), true, 'traversal to a real .github is still denied');
 });
 
 // === TEST 17: MODIFY + distinct forkRepo => base reads still hit repos/${upstreamRepo} ===

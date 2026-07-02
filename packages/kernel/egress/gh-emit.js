@@ -71,6 +71,17 @@ const NORMALIZED_REPO_RE = /^[a-z0-9][a-z0-9-]*\/[a-z0-9._-]+$/;
 // unobservable) into a fail-FAST + observable alert BEFORE F-W3 gives forkRepo a live head. Kernel constants.
 const MAX_OWNER_LEN = 39;
 const MAX_REPO_REF_LEN = 100;
+// F-W3 — maintainer_can_modify is a HARD KERNEL CONSTANT (mirror `draft:true`; security.md non-bypassable-guard),
+// added to the cross-repo PR-create ONLY in fork mode. NEVER read from `draft`/`data`/a param — a maintainer-edit
+// permission bit is exactly the policy an actor must not set through the envelope (#273 steering-field rule).
+// SCOPE (VALIDATE hacker MEDIUM — do NOT over-claim): the ALWAYS-on `.github/` egress denial (emit-pr.js
+// isEgressDeniedPath) guarantees loom never AUTHORS a workflow into the EMITTED tree — it does NOT reach what the
+// fork ALREADY contains. A GitHub fork INHERITS the upstream's `.github/workflows` at creation, and
+// maintainer_can_modify grants the upstream maintainer push access to the fork branch, so the fork-INHERITED-workflow
+// + maintainer-push secrets hazard is a SEPARATE F-W4 ARMING PRECONDITION (disable Actions on the ephemeral fork, or
+// delete the inherited workflows, or keep this false until proven), NOT closed here. Inert until F-W4 populates a
+// live forkRepo (isForkMode is always false in production => this const never rides the wire this wave).
+const MAINTAINER_CAN_MODIFY = true;
 // F-W2 fork-readiness poll (architect F-5 + code-reviewer + hacker M3 — triple convergence). HARD KERNEL
 // CONSTANTS, NEVER caller-overridable opts (security.md non-bypassable-guard): only the wait MECHANISM (`sleep`)
 // is injectable, for test speed. The bounded exponential backoff: attempt 1 = an immediate GET; on a 404,
@@ -944,7 +955,15 @@ function ghEmit({ draft, approvalHash, env, forkRepo, expectedForkOwner, request
     // and the 422-reconcile paths so a mid-flight fork-branch force-push between the reserve and the PR-open
     // fails closed rather than opening a PR onto foreign content.
     assertForkTip();
-    const prBodyJson = JSON.stringify({ title: prTitle(issueRef), head: branch, base, body: prBody(issueRef, approvalHash, baseCommitSha), draft: true });
+    // F-W3 — the CROSS-REPO PR-open. In fork mode the head is namespaced `${forkOwner}:${branch}` (forkOwner is the
+    // SAME kernel value validateForkIdentity OWNER_RE-validated at the identity gate and ensureFork bound to
+    // expectedForkOwner — it is an immutable const, so the interpolation sink needs no re-validation; the single
+    // validated origin holds, exercised NON-VACUOUSLY by the OWNER_RE test), and maintainer_can_modify is added (the
+    // hard kernel constant). In same-owner mode isForkMode is false => head stays bare `branch` and the key is absent.
+    // SPREAD appends the fork-only key LAST, so the same-owner key order (and JSON bytes) is provably unchanged.
+    const prBase = { title: prTitle(issueRef), head: isForkMode ? `${forkOwner}:${branch}` : branch, base, body: prBody(issueRef, approvalHash, baseCommitSha), draft: true };
+    const prPayload = isForkMode ? { ...prBase, maintainer_can_modify: MAINTAINER_CAN_MODIFY } : prBase;
+    const prBodyJson = JSON.stringify(prPayload);
     const pr = ghJson(gh, ['api', upstreamApi('pulls'), '--method', 'POST', '--input', '-'], { env, input: prBodyJson });
     // post-create backstop (C1 defense-in-depth half; F-2: NON-LOAD-BEARING in F-W1 — vacuous in same-owner,
     // scaffolding placed early so F-W3 inherits it). The PR-create endpoint is provably UPSTREAM (H-1 pre-network
