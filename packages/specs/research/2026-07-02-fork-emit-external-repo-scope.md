@@ -18,12 +18,15 @@ own) is unbuilt. This scopes that path. Recon workflow `wf_18e9fa79-030` (egress
 
 ## THE DECISION-CRITICAL FINDING (read first)
 
-**A fine-grained PAT CANNOT open a cross-repo PR to an upstream you do not own.** Confirmed GitHub limitation
-(not a permissions misconfig): fine-grained PATs are scoped to a single resource owner and get **read-only**
-access to unowned public repos; `POST /repos/{unowned-upstream}/pulls` returns `403 Resource not accessible by
-personal access token`, and adding "Pull requests: write" does not fix it. Only a **classic PAT** (`public_repo`
-scope) can open a PR against a repo you do not own. (Sources: docs.github.com permissions-required-for-fine-grained
--PATs + managing-your-PATs; community #106661, #131615; roadmap #600.)
+**A fine-grained PAT CANNOT open a cross-repo PR to an arbitrary unowned upstream (absent an explicit grant from
+that upstream).** Confirmed GitHub limitation (not a permissions misconfig): fine-grained PATs are scoped to a single
+resource owner and get **read-only** access to unowned public repos; `POST /repos/{unowned-upstream}/pulls` is
+**blocked** (probe the EXACT status on the live endpoint — the create-PR endpoint documents only 201/403/422, so the
+`403 Resource not accessible by personal access token` here is INFERENCE, NOT doc-confirmed; see Rev 3 BD-4 below),
+and adding "Pull requests: write" does not fix it. Only a **classic PAT** (`public_repo` scope) can open a PR against
+a repo you do not own (a GitHub App installation token works ONLY where the app is installed on the upstream — see the
+Rev 3 capability matrix). (Sources: docs.github.com permissions-required-for-fine-grained-PATs + managing-your-PATs;
+community #106661, #131615; roadmap #600.)
 
 **Consequence:** the current egress token is a fine-grained PAT (`Contents:write`, emitPR-only, selected repos).
 The fork path needs a token that can open cross-repo PRs -> a **classic PAT (`public_repo`)** or a **GitHub App

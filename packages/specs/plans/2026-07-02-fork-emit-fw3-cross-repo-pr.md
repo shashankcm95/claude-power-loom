@@ -20,14 +20,18 @@ branch` and no `maintainer_can_modify` => the golden gh argv/bodies are unchange
 ## Recon-completeness win (grep before build — the drift:recon-depth discipline)
 
 The scope doc names **BD-2: the ephemeral bot fork MUST carry NO `.github/workflows/**`** (the "Allow edits from
-maintainers" -> "and access to secrets" hazard when a fork carries workflows). **This is ALREADY structurally
-covered** and needs NO new guard: `isEgressDeniedPath` (`emit-pr.js:288`) denies ANY `.github/` path
-case-insensitively (`/(^|\/)\.github(\/|$)/i`, comment "workflows / actions"), enforced at BOTH `assertEgressSafeDiff`
-(`emit-pr.js:473`, before the draft is even built) AND the per-path validation in `ghEmit` (`:673`,
-`isEgressDeniedPath(st.pathB)`). So a diff touching `.github/workflows/**` (or any `.github/`) is refused before any
-emit — the emitted tree structurally cannot contain a workflow file. **F-W3 adds a NON-VACUOUS test asserting this
-(a `.github/workflows/` diff is refused) + a comment naming BD-2 as satisfied by the existing guard — NOT a new
-guard.** (Firsthand-probed on `d44a81c`; the absence of a claim is not evidence of absence — grep found the gate.)
+maintainers" -> "and access to secrets" hazard when a fork carries workflows). **For LOOM's EMITTED tree this is
+ALREADY structurally covered** and needs NO new guard: `isEgressDeniedPath` (`emit-pr.js:288`) denies ANY `.github/`
+path case-insensitively (`/(^|\/)\.github(\/|$)/i`, comment "workflows / actions"), enforced at BOTH
+`assertEgressSafeDiff` (`emit-pr.js:473`, before the draft is even built) AND the per-path validation in `ghEmit`
+(`:673`, `isEgressDeniedPath(st.pathB)`). So a diff touching `.github/workflows/**` (or any `.github/`) is refused
+before any emit — the EMITTED tree structurally cannot contain a workflow file. **F-W3 adds a NON-VACUOUS test
+asserting this (a `.github/workflows/` diff is refused) + a comment naming BD-2 as satisfied by the existing guard —
+NOT a new guard.** (Firsthand-probed on `d44a81c`; the absence of a claim is not evidence of absence — grep found the
+gate.) **SCOPE (do NOT over-read — VALIDATE hacker MEDIUM, see the VALIDATE result section):** this covers only what
+loom AUTHORS into the emitted tree; it does NOT reach what the fork ALREADY contains. A fork INHERITS the upstream's
+`.github/workflows` at creation, so the fork-INHERITED-workflow + `maintainer_can_modify`-push hazard is a SEPARATE
+F-W4 arming precondition, NOT closed here.
 
 ## The change (small — the PR-create in `ghEmit`, firsthand-probed on `d44a81c`)
 
