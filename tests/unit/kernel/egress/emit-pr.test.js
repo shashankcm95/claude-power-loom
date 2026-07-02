@@ -220,22 +220,26 @@ test('EC1b.5 armedEmit is WIRED to the gh-REST seam + fails-closed on a missing 
   assert.throws(() => E.armedEmit({ draft: {}, token: FAKE_CUSTODY, approvalHash: 'x' }), /ghConfigDir/);
 });
 
-test('F-W1: armedEmit THREADS forkRepo + expectedForkOwner through to ghEmit (dormant custody-only entry point)', () => {
-  // armedEmit lazily `require('./gh-emit').ghEmit`; intercept the cached export to capture the forwarded args.
+test('F-W2 H1 arming gate: armedEmit REFUSES a populated forkRepo (object-sharing-unprobed) + threads the F-W1 default (undefined) to ghEmit', () => {
+  // armedEmit lazily `require('./gh-emit').ghEmit`; intercept the cached export to capture what (if anything) is forwarded.
   const ghMod = require(path.join(REPO, 'packages', 'kernel', 'egress', 'gh-emit.js'));
   const realGhEmit = ghMod.ghEmit;
   const cfg = scratch('loom-ghcfg-');   // an EMPTY dir so buildEmitEnv passes
   let seen = null;
   ghMod.ghEmit = (args) => { seen = args; return { pr_url: 'u', number: 1, branch: 'b', base_sha: 'a'.repeat(40) }; };
   try {
-    E.armedEmit({ draft: { repo: 'owner/repo', issueRef: 42, diff: 'd' }, token: FAKE_CUSTODY, ghConfigDir: cfg, approvalHash: 'h', forkRepo: 'botacct/repo', expectedForkOwner: 'botacct' });
-    assert.strictEqual(seen.forkRepo, 'botacct/repo', 'forkRepo is forwarded to ghEmit');
-    assert.strictEqual(seen.expectedForkOwner, 'botacct', 'expectedForkOwner is forwarded to ghEmit');
-    assert.ok(seen.env && typeof seen.env === 'object', 'the sanitized env is still built + forwarded');
-    // and the F-W1 default (no fork args) forwards undefined for both (byte-identical same-owner).
+    // H1: a populated forkRepo is fail-closed-forbidden until F-W4 records the object-sharing probe
+    // (OBJECT_SHARING_PROBE_RECORDED === false). The gate throws BEFORE delegating to ghEmit — no live fork write.
+    assert.throws(
+      () => E.armedEmit({ draft: { repo: 'owner/repo', issueRef: 42, diff: 'd' }, token: FAKE_CUSTODY, ghConfigDir: cfg, approvalHash: 'h', forkRepo: 'botacct/repo', expectedForkOwner: 'botacct' }),
+      /object-sharing-unprobed|recorded object-sharing probe/,
+    );
+    assert.strictEqual(seen, null, 'the H1 gate refused BEFORE delegating to ghEmit (no live fork write reached the seam)');
+    // the F-W1 default (no fork args) is NOT gated => threads undefined to ghEmit (byte-identical same-owner).
     E.armedEmit({ draft: { repo: 'owner/repo', issueRef: 42, diff: 'd' }, token: FAKE_CUSTODY, ghConfigDir: cfg, approvalHash: 'h' });
-    assert.strictEqual(seen.forkRepo, undefined, 'the F-W1 default leaves forkRepo undefined');
+    assert.strictEqual(seen.forkRepo, undefined, 'the F-W1 default leaves forkRepo undefined (ungated — threads through)');
     assert.strictEqual(seen.expectedForkOwner, undefined, 'the F-W1 default leaves expectedForkOwner undefined');
+    assert.ok(seen.env && typeof seen.env === 'object', 'the sanitized env is still built + forwarded on the default path');
   } finally { ghMod.ghEmit = realGhEmit; fs.rmSync(cfg, { recursive: true, force: true }); }
 });
 
