@@ -6,6 +6,8 @@
 // custody-real (only hostObservableChecksPassed + the out-of-band residual).
 
 const assert = require('assert');
+const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 const REPO = path.join(__dirname, '..', '..', '..', '..');
@@ -156,6 +158,26 @@ test('#436: runCustodyCheck constructs the signer with neutralizeCwd:true AND fo
   assert.strictEqual(received.brokerUser, 'loom_broker', 'forwards brokerUser');
   assert.strictEqual(received.wrapperPath, '/opt/loom/broker-sign.sh', 'forwards wrapperPath');
   assert.ok(report && typeof report.hostObservableChecksPassed === 'boolean', 'still returns a custody report (runner is total)');
+});
+
+// #436 default-wiring integration (CodeRabbit fold): drive runCustodyCheck WITHOUT deps so it uses the REAL default
+// signerFactory (require('./loom-broker-launch').crossUidLoomBrokerSigner) — the exact runtime path main() relies on.
+// Proves neutralizeCwd:true threads end-to-end through the actual wiring (Rule-2a-corollary: the spy test above only
+// checked the factory args; this exercises the real chain). Stub-sudo `shift 3; exec "$@"` preserves cwd -> the
+// wrapper reports its own process.cwd() as `/`.
+test('#436: runCustodyCheck WITHOUT deps drives the REAL default crossUidLoomBrokerSigner from / (integration)', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loom-cv-'));
+  try {
+    const sudo = path.join(dir, 'stub-sudo.sh');
+    fs.writeFileSync(sudo, '#!/bin/sh\nshift 3\nexec "$@"\n', { mode: 0o755 });
+    const side = path.join(dir, 'wrapper-cwd.txt');
+    const wrapper = path.join(dir, 'broker-stub.js');
+    fs.writeFileSync(wrapper, '#!' + process.execPath + '\nrequire("fs").writeFileSync(' + JSON.stringify(side) + ', process.cwd());process.stdout.write(Buffer.alloc(64, 7).toString("base64") + "\\n");\n', { mode: 0o755 });
+    // no deps.signerFactory -> the real default require('./loom-broker-launch').crossUidLoomBrokerSigner runs the chain.
+    const report = V.runCustodyCheck({ keyFile: path.join(dir, 'nokey'), verifyKeyPem: 'pem', brokerUser: 'loom_broker', wrapperPath: wrapper, sudoPath: sudo });
+    assert.ok(report && typeof report.hostObservableChecksPassed === 'boolean', 'runs a custody report through the real default wiring');
+    assert.strictEqual(fs.readFileSync(side, 'utf8'), '/', 'the default-wired cross-uid child signed from / (neutralizeCwd threads through the runtime path main() uses)');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 // === OQ-3 W2 (fold F8) — the C3 live-sign probe presents a 5-field ctx carrying lesson_commitment:'' ===
