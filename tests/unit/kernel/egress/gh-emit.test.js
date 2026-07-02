@@ -535,7 +535,7 @@ test('HIGH-3 + draft-const: the PR body/title/commit-message carry ONLY issueRef
 
 test('HIGH-1: a 422 "Reference already exists" + an OPEN PR on THAT branch => dedup-reconcile (deduped:true), NO duplicate', () => {
   const diff = NEWFILE_DIFF; const branch = `loom/issue-42-${hashFor(diff).slice(0, 12)}`;
-  const gh = makeGh({ refExists: true, existingPulls: [{ html_url: 'https://github.com/o/r/pull/7', number: 7, head: { ref: branch }, draft: true, base: { ref: 'main', repo: { full_name: GOOD_REPO } } }] });
+  const gh = makeGh({ refExists: true, existingPulls: [{ html_url: 'https://github.com/o/r/pull/7', number: 7, head: { ref: branch, repo: { full_name: GOOD_REPO } }, draft: true, base: { ref: 'main', repo: { full_name: GOOD_REPO } } }] });
   const r = G.ghEmit({ draft: draftFor(diff), approvalHash: hashFor(diff), env: {} }, { runGh: gh });
   assert.deepStrictEqual(r, { pr_url: 'https://github.com/o/r/pull/7', number: 7, branch, deduped: true, base_sha: 'a'.repeat(40) });
   assert.ok(endpointsOf(gh).some((e) => /pulls\?head=/.test(e)), 'the dedup GET pulls?head fired');
@@ -614,7 +614,7 @@ test('item1: ghEmit returns base_sha on the NORMAL (create-PR) success path', ()
 
 test('item1: ghEmit returns base_sha on the DEDUP (422-reconcile) success path too', () => {
   const branch = `loom/issue-42-${hashFor(NEWFILE_DIFF).slice(0, 12)}`;
-  const gh = makeGh({ refExists: true, existingPulls: [{ html_url: 'https://github.com/o/r/pull/7', number: 7, head: { ref: branch }, draft: true, base: { ref: 'main', repo: { full_name: GOOD_REPO } } }] });
+  const gh = makeGh({ refExists: true, existingPulls: [{ html_url: 'https://github.com/o/r/pull/7', number: 7, head: { ref: branch, repo: { full_name: GOOD_REPO } }, draft: true, base: { ref: 'main', repo: { full_name: GOOD_REPO } } }] });
   const r = G.ghEmit({ draft: draftFor(NEWFILE_DIFF), approvalHash: hashFor(NEWFILE_DIFF), env: {} }, { runGh: gh });
   assert.strictEqual(r.deduped, true);
   assert.strictEqual(r.base_sha, 'a'.repeat(40), 'the dedup return also carries base_sha (additive on both sites)');

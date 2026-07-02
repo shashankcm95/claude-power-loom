@@ -199,11 +199,16 @@ const DISPOSITION_KEYS = Object.freeze([
   'custodyJoinKeyDir', 'joinKeyMeta',
   // F-W1 (M-1) — the fork/identity policy vocabulary. The bot-account fork target + the identity-derivation
   // fields are CUSTODY values (operator-configured); an actor must never inject a fork/head/base repo via
-  // untrusted data (the #273 exact-set deny-list). The set is case-folded at :204, so casing variants collapse;
-  // the underscore/hyphen spellings are DISTINCT own-key shapes and are listed explicitly.
-  'forkRepo', 'fork_repo', 'fork-repo', 'forkOwner', 'fork_owner', 'upstreamRepo', 'upstream_repo',
-  'expectedForkOwner', 'expected_fork_owner', 'forkName', 'headRepo', 'head_repo', 'baseRepo', 'base_repo',
-  'sourceRepo', 'source_repo',
+  // untrusted data (the #273 exact-set deny-list). The set is case-folded at :204 (casing variants collapse),
+  // but hyphen and underscore spellings are DISTINCT own-key shapes AFTER lowercasing — so every identity field
+  // is listed in ALL THREE spellings (camelCase, snake_case, kebab-case) or a variant would slip the deny-list.
+  'forkRepo', 'fork_repo', 'fork-repo', 'forkOwner', 'fork_owner', 'fork-owner',
+  'upstreamRepo', 'upstream_repo', 'upstream-repo',
+  'expectedForkOwner', 'expected_fork_owner', 'expected-fork-owner',
+  'forkName', 'fork_name', 'fork-name',
+  'headRepo', 'head_repo', 'head-repo',
+  'baseRepo', 'base_repo', 'base-repo',
+  'sourceRepo', 'source_repo', 'source-repo',
 ]);
 // CASE-FOLDED match set (+ the prototype-pollution keys) so a casing/spelling variant (Live / DRY_RUN /
 // __proto__) cannot slip the deny-list (VALIDATE-hacker).

@@ -104,7 +104,7 @@ function makeGh({ upstreamRepo = GOOD_REPO, defaultBranch = 'main', refExists = 
       return JSON.stringify({ ref: 'refs/heads/x' });
     }
     if (/\/pulls\?head=/.test(ep)) {
-      const dflt = [{ html_url: 'https://github.com/o/r/pull/7', number: 7, head: { ref: 'x' }, draft: true, base: { ref: baseRef, repo: { full_name: baseFull } } }];
+      const dflt = [{ html_url: 'https://github.com/o/r/pull/7', number: 7, head: { ref: 'x', repo: { full_name: baseFull } }, draft: true, base: { ref: baseRef, repo: { full_name: baseFull } } }];
       return JSON.stringify(existingPulls || dflt);
     }
     if (/\/pulls$/.test(ep) && m === 'POST') {
@@ -255,7 +255,7 @@ test('6b post-create backstop FAIL-SAFE (F-1): an absent/null base.repo.full_nam
 
 test('7 dedup tightened (base.repo): ref-exists + a PR with the right head.ref but base.repo != upstream is NOT deduped', () => {
   const branch = `loom/issue-42-${GOLDEN_ADD_HASH.slice(0, 12)}`;
-  const gh = makeGh({ refExists: true, existingPulls: [{ html_url: 'x', number: 999, head: { ref: branch }, draft: true, base: { ref: 'main', repo: { full_name: 'attacker/otherrepo' } } }] });
+  const gh = makeGh({ refExists: true, existingPulls: [{ html_url: 'x', number: 999, head: { ref: branch, repo: { full_name: GOOD_REPO } }, draft: true, base: { ref: 'main', repo: { full_name: 'attacker/otherrepo' } } }] });
   assert.throws(
     () => G.ghEmit({ draft: draftFor(GOLDEN_ADD_DIFF), approvalHash: GOLDEN_ADD_HASH, env: {} }, { runGh: gh }),
     /pre-existing branch|no open loom/,
@@ -267,7 +267,7 @@ test('7 dedup tightened (base.repo): ref-exists + a PR with the right head.ref b
 
 test('7b dedup case-fold: pr.base.repo.full_name canonical-cased vs the normalized upstream => still dedups (lowercase both sides)', () => {
   const branch = `loom/issue-42-${GOLDEN_ADD_HASH.slice(0, 12)}`;
-  const gh = makeGh({ refExists: true, existingPulls: [{ html_url: 'https://github.com/o/r/pull/7', number: 7, head: { ref: branch }, draft: true, base: { ref: 'main', repo: { full_name: 'Owner/Repo' } } }] });
+  const gh = makeGh({ refExists: true, existingPulls: [{ html_url: 'https://github.com/o/r/pull/7', number: 7, head: { ref: branch, repo: { full_name: GOOD_REPO } }, draft: true, base: { ref: 'main', repo: { full_name: 'Owner/Repo' } } }] });
   const r = G.ghEmit({ draft: draftFor(GOLDEN_ADD_DIFF), approvalHash: GOLDEN_ADD_HASH, env: {} }, { runGh: gh });
   assert.strictEqual(r.deduped, true, 'a canonical-cased base.repo.full_name still matches the lowercased upstream');
   assert.strictEqual(r.number, 7);
@@ -277,7 +277,7 @@ test('7b dedup case-fold: pr.base.repo.full_name canonical-cased vs the normaliz
 
 test('7c dedup happy: ref-exists + a matching (head.ref, draft, base.repo, base.ref) open PR => deduped', () => {
   const branch = `loom/issue-42-${GOLDEN_ADD_HASH.slice(0, 12)}`;
-  const gh = makeGh({ refExists: true, existingPulls: [{ html_url: 'https://github.com/o/r/pull/7', number: 7, head: { ref: branch }, draft: true, base: { ref: 'main', repo: { full_name: GOOD_REPO } } }] });
+  const gh = makeGh({ refExists: true, existingPulls: [{ html_url: 'https://github.com/o/r/pull/7', number: 7, head: { ref: branch, repo: { full_name: GOOD_REPO } }, draft: true, base: { ref: 'main', repo: { full_name: GOOD_REPO } } }] });
   const r = G.ghEmit({ draft: draftFor(GOLDEN_ADD_DIFF), approvalHash: GOLDEN_ADD_HASH, env: {} }, { runGh: gh });
   assert.deepStrictEqual(r, { pr_url: 'https://github.com/o/r/pull/7', number: 7, branch, deduped: true, base_sha: SHA_A });
 });
@@ -373,7 +373,33 @@ test('14 forkOwner OWNER_RE: a forkRepo whose owner is not a valid GitHub login 
 
 test('15 dedup base.ref: ref-exists + a PR with the right head.ref+base.repo but base.ref != base is NOT deduped', () => {
   const branch = `loom/issue-42-${GOLDEN_ADD_HASH.slice(0, 12)}`;
-  const gh = makeGh({ refExists: true, existingPulls: [{ html_url: 'x', number: 999, head: { ref: branch }, draft: true, base: { ref: 'a-different-branch', repo: { full_name: GOOD_REPO } } }] });
+  const gh = makeGh({ refExists: true, existingPulls: [{ html_url: 'x', number: 999, head: { ref: branch, repo: { full_name: GOOD_REPO } }, draft: true, base: { ref: 'a-different-branch', repo: { full_name: GOOD_REPO } } }] });
+  assert.throws(
+    () => G.ghEmit({ draft: draftFor(GOLDEN_ADD_DIFF), approvalHash: GOLDEN_ADD_HASH, env: {} }, { runGh: gh }),
+    /pre-existing branch|no open loom/,
+  );
+});
+
+// === TEST 15b: dedup NON-DRAFT negative control (CodeRabbit Minor) ===
+
+test('15b dedup non-draft: ref-exists + a matching (head, base) PR but draft === false is NOT deduped (fail-closed)', () => {
+  // the exact-set predicate includes draft === true; a non-draft PR (a maintainer's real PR sharing the branch)
+  // must never dedup into loom's approval envelope. Non-vacuity control for the draft conjunct.
+  const branch = `loom/issue-42-${GOLDEN_ADD_HASH.slice(0, 12)}`;
+  const gh = makeGh({ refExists: true, existingPulls: [{ html_url: 'x', number: 999, head: { ref: branch, repo: { full_name: GOOD_REPO } }, draft: false, base: { ref: 'main', repo: { full_name: GOOD_REPO } } }] });
+  assert.throws(
+    () => G.ghEmit({ draft: draftFor(GOLDEN_ADD_DIFF), approvalHash: GOLDEN_ADD_HASH, env: {} }, { runGh: gh }),
+    /pre-existing branch|no open loom/,
+  );
+});
+
+// === TEST 15c: dedup HEAD-repo binding (CodeRabbit Major) — a PR whose head.repo != the resolved fork is NOT deduped ===
+
+test('15c dedup head-repo: ref-exists + a PR with the right head.ref+base but head.repo != resolvedForkRepo is NOT deduped', () => {
+  // the dedup reconciles to a PR we did NOT create; its head must be OUR fork, not an upstream branch that
+  // coincidentally shares the loom branch name. Non-vacuity control for the head.repo.full_name conjunct.
+  const branch = `loom/issue-42-${GOLDEN_ADD_HASH.slice(0, 12)}`;
+  const gh = makeGh({ refExists: true, existingPulls: [{ html_url: 'x', number: 999, head: { ref: branch, repo: { full_name: 'someoneelse/repo' } }, draft: true, base: { ref: 'main', repo: { full_name: GOOD_REPO } } }] });
   assert.throws(
     () => G.ghEmit({ draft: draftFor(GOLDEN_ADD_DIFF), approvalHash: GOLDEN_ADD_HASH, env: {} }, { runGh: gh }),
     /pre-existing branch|no open loom/,

@@ -325,3 +325,28 @@ LIVE node probes, not the plan):
 files, 0 failed); eslint clean, zero eslint-disable; signpost up-to-date; release-surface clean. Same-owner emit
 byte-identical to origin/main (golden-bytes exact-string, non-vacuity demonstrated). **DISPOSITION: SHIP** (SHADOW,
 emit-OFF, byte-identical — forkRepo never populated in F-W1).
+
+## CodeRabbit review folds (post-PR, 2026-07-02)
+
+The async CodeRabbit bot (hit a spending-cap wall; a re-nudge past the window produced a real review) posted 3
+actionable + 1 nitpick on PR #488. Each was premise-probed firsthand before folding:
+
+- **Major (Security) — DISPOSITION_KEYS incomplete hyphen spellings [FOLDED].** The set had `fork-repo` but only
+  underscore forms for the other identity fields, contradicting the comment. Completed every identity field to all
+  three spellings (camelCase / snake_case / kebab-case) + corrected the comment. (Non-exploitable in F-W1 — the
+  hacker VALIDATE confirmed these are never read from `data` this wave — but the deny-list must be complete before
+  F-W2/F-W3 reads forkRepo, and the comment was false.)
+- **Major (Data Integrity) — dedup not bound to the fork head repo [FOLDED, partial].** The dedup `.find` bound
+  `base.repo.full_name` but not `head.repo.full_name === resolvedForkRepo`; a reconcile could return a PR whose head
+  is an upstream branch coincidentally sharing the loom branch name. Added the head-repo binding (re-asserted, not
+  trusted solely from the `?head=` query filter) + mock updates + two non-vacuity tests (15b non-draft, 15c wrong
+  head-repo). **Skipped** the suggested post-create backstop head-check with reason: the backstop verifies a PR *we*
+  created with a `head` *we* set in the request (not an untrusted value there); the meaningful risk is the dedup
+  reconcile-to-a-pre-existing-PR, now closed.
+- **Minor — no non-draft dedup negative control [FOLDED].** Added test 15b (a `draft:false` PR sharing the branch is
+  not deduped).
+- **Nitpick (Trivial) — extract a shared two-identity mock helper [SKIPPED, reason].** Kept the inline mocks: the diff
+  stays minimal on a security-sensitive test file, and the three inline mocks are self-contained and clear.
+
+Post-fold gate: 140 egress tests (two-identity 22 + gh-emit 57 + emit-pr 61) + full kernel suite (115 files) green;
+eslint clean, zero eslint-disable. Same-owner emit still byte-identical (golden test unchanged, passing).

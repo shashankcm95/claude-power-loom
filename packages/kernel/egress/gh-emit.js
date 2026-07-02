@@ -675,13 +675,18 @@ function ghEmit({ draft, approvalHash, env, forkRepo, expectedForkOwner } = {}, 
   } catch (err) {
     if (!isAlreadyExists(err)) throw err;
     // dedup-on-key: a 422 "already exists" => reconcile to the existing OPEN PR for THIS exact branch. The dedup
-    // predicate is EXACT-SET (C-2), not a subset .includes: ALL of head.ref === branch, draft === true,
-    // base.repo.full_name === upstreamRepo (both lowercased — upstream is normalized, full_name canonical-cased),
-    // AND base.ref === base (the resolved default branch). A subset match is superset-tolerant / laundering-prone.
+    // predicate is EXACT-SET (C-2 + CodeRabbit Major), not a subset .includes: ALL of head.ref === branch, the
+    // HEAD repo is the resolved fork (head.repo.full_name === resolvedForkRepo — the dedup reconciles to a PR we
+    // did NOT create, so its head must be OUR fork, not an upstream branch that coincidentally shares the name;
+    // re-asserted here, not trusted solely from the `?head=` query filter), draft === true, base.repo.full_name
+    // === upstreamRepo, AND base.ref === base. All lowercased (upstream/fork are normalized; full_name is
+    // canonical-cased). A subset match is superset-tolerant / laundering-prone.
     const existing = ghJson(gh, ['api', upstreamApi(`pulls?head=${forkOwner}:${branch}&state=open`)], { env });
     const pr = Array.isArray(existing)
       ? existing.find((p) => p
         && p.head && p.head.ref === branch
+        && p.head.repo && typeof p.head.repo.full_name === 'string'
+        && p.head.repo.full_name.toLowerCase() === resolvedForkRepo
         && p.draft === true
         && p.base && p.base.repo && typeof p.base.repo.full_name === 'string'
         && p.base.repo.full_name.toLowerCase() === upstreamRepo
