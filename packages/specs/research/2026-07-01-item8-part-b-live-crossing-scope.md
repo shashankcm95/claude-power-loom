@@ -41,7 +41,13 @@ an explicit go-ahead; the operator executes every deploy/attest/arm rung.** Clau
 NEVER, in any rung: write or read under `/etc/loom`, run any `--attested-cross-uid` path,
 run `install.sh --schedule-liveloop`, or set an arm flag. Those are operator actions.
 
-### Rung 0 — pre-crossing hardening (SHADOW, code-only, Claude-run)
+### Rung 0 — pre-crossing hardening (SHADOW, code-only, Claude-run) — BUILT (PR #485)
+
+**Status:** BUILT and settled — vehicle chosen and delivered in the rung-0 plan
+`packages/specs/plans/2026-07-01-part-b-r0-edge-cwd-neutralization.md`. A client-owned STRICT-boolean
+`neutralizeCwd` threads probe -> `crossUidLoomEdgeSigner` -> `loomBrokerSigner` (spawn from `NEUTRAL_CWD='/'`
+only when engaged; byte-identical otherwise); the broker sibling shares the gap through the LIVE approval
+launcher and is a named deferred residual. The forward-looking sketch below is retained for context.
 
 **What:** edge-parity to the merged #480 (`3567ff9`) cwd-neutralization. `loom-edge-custody-verify.js:200`
 runs the C3 cross-uid sign-probe (`signer(probeBasis, ctx)`) without neutralizing the
@@ -58,9 +64,10 @@ before rung 2.
 **Open design point (for the rung-0 plan, not settled here):** the actor fix put `cwd` on
 direct `spawnSync` calls; the edge C3 probe calls an injected `signer` **function**, so the
 fix vehicle is either (a) thread a neutral cwd through the launcher (`crossUidLoomEdgeSigner`),
-or (b) neutralize at the probe. A rung-0 plan + 2-lens VERIFY settles which. Also check
-whether the broker `loom-custody-verify.js` C3 has the same gap (grep found no spawn there;
-it may verify differently — probe before asserting).
+or (b) neutralize at the probe. RESOLVED in the rung-0 plan: option (a), via a client-owned STRICT
+boolean. Broker-sibling probe RESULT (R0, firsthand): `loom-custody-verify.js:174` DOES share the
+identical gap through `crossUidLoomBrokerSigner` -> the same `loomBrokerSigner` — but that launcher is
+also the LIVE approval signer (`approve-cli.js:230,263`), so the broker fix is the named deferred residual.
 
 **Go-ahead needed:** "do rung 0" -> a small SHADOW hardening PR, full per-wave rigor.
 **Rollback:** trivial (SHADOW, no behavior change on the un-armed path).
