@@ -553,6 +553,34 @@ function verifyForkRepo(repo, upstreamRepo, expectedForkOwner) {
   }
 }
 
+// F-W4 M1 — request GitHub Actions be disabled on the ephemeral fork BEFORE ensureFork returns ready. A fork INHERITS
+// the upstream's .github/workflows at POST /forks (SCAR #21 — the emitted-tree .github/ denial covers only loom's
+// EMITTED tree, never the fork's inherited state). A fresh fork defaults Actions-DISABLED, but a REUSED fork (the
+// steady-state path — one throwaway fork reused across emits) may have had them enabled, so we EXPLICITLY disable on
+// BOTH ready paths. Kernel-constant {enabled:false} body — no actor bytes. DORMANT: reached only via ensureFork,
+// itself gated on isForkMode (always false in production => this never fires in prod); M1 is OPTIONAL defense-in-depth
+// since M0 set maintainer_can_modify=false.
+// BEST-EFFORT on the SUCCESS path (hacker VALIDATE M-1): a non-throwing PUT is treated as disabled. GitHub's PUT
+// returns 204 (no body), and a 2xx that did NOT actually disable (an org-policy override / eventual consistency) is
+// NOT re-verified here. A hard read-back state-verify (GET .../actions/permissions, assert enabled===false) plus a
+// re-check at the H2 rebind (M-2 TOCTOU) are NAMED F-W4 ARMING preconditions (see the plan), deferred while dormant —
+// they must land BEFORE isForkMode can ever be true in production. On the FAIL path (the PUT throws non-2xx) we emit a
+// SPECIFIC observable alert (security.md fail-silent rule) then re-throw, PRESERVING the underlying gh diagnostic
+// fields (.httpStatus/.status/.cause — a public_repo-token 403 on this endpoint is the Q-M1-token-scope signal) — a
+// fork whose disable REQUEST failed is exactly the hazard, so the emit must NEVER proceed to write to it.
+function disableForkActions(gh, resolvedForkRepo, env) {
+  try {
+    gh(['api', `repos/${resolvedForkRepo}/actions/permissions`, '--method', 'PUT', '--input', '-'], { env, input: JSON.stringify({ enabled: false }) });
+  } catch (err) {
+    emitEgressAlert('fork-actions-disable-failed', { resolvedForkRepo: String(resolvedForkRepo).slice(0, 80), httpStatus: err && err.httpStatus, message: String(err && err.message).slice(0, 200) });
+    const e = new Error(`ghEmit: fork-actions-disable-failed — the disable-Actions request failed on ${JSON.stringify(String(resolvedForkRepo).slice(0, 80))} — fail-closed (never write to a fork with Actions possibly enabled)`);
+    e.cause = err;
+    e.httpStatus = err && err.httpStatus;
+    e.status = err && err.status;
+    throw e;
+  }
+}
+
 /**
  * Ensure the bot's fork of `upstreamRepo` exists at `resolvedForkRepo` and is verified as LOOM's fork BEFORE any
  * fork-side write. PURE of any tree/commit/ref write. Returns { ready: true } or throws (fail-closed).
@@ -590,6 +618,7 @@ function ensureFork({ upstreamRepo, resolvedForkRepo, forkOwner, expectedForkOwn
   }
   if (existing !== null) {
     verifyForkRepo(existing, upstreamRepo, expectedForkOwner);
+    disableForkActions(gh, resolvedForkRepo, env);   // F-W4 M1 — disable inherited Actions before ready (REUSE path — the common case)
     return { ready: true };
   }
 
@@ -607,6 +636,7 @@ function ensureFork({ upstreamRepo, resolvedForkRepo, forkOwner, expectedForkOwn
     }
     if (repo !== null) {
       verifyForkRepo(repo, upstreamRepo, expectedForkOwner);   // the SAME verify as the immediate-200 path
+      disableForkActions(gh, resolvedForkRepo, env);   // F-W4 M1 — disable inherited Actions before ready (CREATE path)
       return { ready: true };
     }
     // still 404: sleep per the backoff then retry — but NO sleep after the last failed attempt.
