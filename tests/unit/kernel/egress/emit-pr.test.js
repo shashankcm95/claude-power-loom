@@ -430,6 +430,143 @@ test('EC1b.5 killswitch default-ON: absent custody => killswitch on => token nul
   assert.strictEqual(E.resolveToken({ killswitchOn: true, custodyTokenPath: '/whatever' }), null, 'killswitch on => no token');
 });
 
+// === VC-W1b — the DORMANT post-emit injected-verifier SEAM (QUALITY, not TRUST; fail-open, discard-the-verdict) ===
+// A verifier is injected as opts.verifyFn (like armedEmitFn, K12 lab-agnostic); prod injects none => byte-identical.
+// The seam sits AFTER a successful, non-deduped emit (the additive join-key position): it grades a candidate that
+// actually SHIPPED, on the emitted pr.base_sha. Advisory: it NEVER alters/blocks/reverts the emit; a throw/rejection
+// is swallowed; the verdict is discarded (reads nothing back). Inputs are the SCRUBBED/normalized draft.* + pr.base_sha.
+
+// A live+approved emit whose mock armedEmitFn returns a non-deduped pr with a known base_sha; extraOpts injects verifyFn.
+function liveApprovedEmit(dir, extraOpts) {
+  const opts = armedCustody(dir);
+  mintApprovalFor(opts);
+  const base = 'b'.repeat(40);
+  const armedEmitFn = () => ({ pr_url: 'https://example/pr/1', number: 7, branch: 'loom/x', base_sha: base });
+  const r = E.emitPR(goodData(), Object.assign({}, opts, { armedEmitFn }, extraOpts || {}));
+  return { r, base };
+}
+
+test('VC-W1b dormant: a live+approved emit with NO verifyFn emits normally (the seam is skipped => byte-identical)', () => {
+  const dir = scratch('loom-custody-');
+  try { withKillswitchEnvCleared(() => {
+    const { r } = liveApprovedEmit(dir);
+    assert.strictEqual(r.ok, true);
+    assert.strictEqual(r.emitted, true, 'no verifyFn => the emit proceeds unchanged');
+  }); } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('VC-W1b seam fires POST-emit: an injected verifyFn is called ONCE with {repo, issueRef, base_sha=pr.base_sha, candidate_patch=draft.diff, approvalHash}', () => {
+  const dir = scratch('loom-custody-');
+  try { withKillswitchEnvCleared(() => {
+    let seen = null; let calls = 0;
+    const { r, base } = liveApprovedEmit(dir, { verifyFn: (v) => { calls += 1; seen = v; } });
+    assert.strictEqual(r.emitted, true);
+    assert.strictEqual(calls, 1, 'verifyFn called EXACTLY once on a shipped, non-deduped emit');
+    assert.strictEqual(seen.repo, 'owner/repo', 'repo === the normalized draft.repo');
+    assert.strictEqual(seen.issueRef, 42, 'issueRef === the draft issueRef');
+    assert.strictEqual(seen.base_sha, base, 'base_sha === the EMITTED pr.base_sha (the base the PR opened against)');
+    assert.strictEqual(seen.candidate_patch, r.draft.diff, 'candidate_patch === the SCRUBBED draft.diff (never raw data)');
+    assert.strictEqual(seen.approvalHash, r.approvalHash, 'approvalHash === the candidate identity (the sidecar join)');
+  }); } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('VC-W1b fail-open (sync throw): a verifyFn that throws synchronously => the emit STILL succeeds, no throw escapes', () => {
+  const dir = scratch('loom-custody-');
+  try { withKillswitchEnvCleared(() => {
+    const { r } = liveApprovedEmit(dir, { verifyFn: () => { throw new Error('verify-blew-up'); } });
+    assert.strictEqual(r.ok, true);
+    assert.strictEqual(r.emitted, true, 'a QUALITY verify throw NEVER blocks a human-approved emit');
+  }); } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('VC-W1b fail-open (async): the seam passes a REJECTION handler to a thenable verifyFn result (an async rejection is swallowed, never unhandled)', () => {
+  const dir = scratch('loom-custody-');
+  try { withKillswitchEnvCleared(() => {
+    let onRejectedIsFn = null;
+    const thenable = { then: (_onF, onR) => { onRejectedIsFn = typeof onR === 'function'; } };
+    const { r } = liveApprovedEmit(dir, { verifyFn: () => thenable });
+    assert.strictEqual(r.emitted, true, 'a thenable-returning verifyFn does not block the emit');
+    assert.strictEqual(onRejectedIsFn, true, 'the seam calls .then(onF, onRejected) => the async rejection is swallowed');
+  }); } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('VC-W1b non-altering + discard: a verifyFn returning a poison verdict is IGNORED (the emit result + pr unchanged; the verdict never leaks)', () => {
+  const dir = scratch('loom-custody-');
+  try { withKillswitchEnvCleared(() => {
+    const poison = { passed: false, result_class: 'HIJACK' };
+    const { r } = liveApprovedEmit(dir, { verifyFn: () => poison });
+    assert.strictEqual(r.emitted, true);
+    assert.strictEqual(r.pr && r.pr.pr_url, 'https://example/pr/1', 'the emit result pr is the ARMED emit pr, never the verify verdict');
+    assert.ok(!('verify' in r) && !('verdict' in r), 'the verify verdict is DISCARDED — never on the emit result (the seam reads nothing back)');
+  }); } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('VC-W1b only-on-shipped: verifyFn is NOT called on the awaiting-approval path (no emit => no candidate to verify)', () => {
+  const dir = scratch('loom-custody-');
+  try { withKillswitchEnvCleared(() => {
+    let calls = 0;
+    const opts = armedCustody(dir);   // NO approval minted => awaiting-approval
+    const r = E.emitPR(goodData(), Object.assign({}, opts, { armedEmitFn: () => ({ pr_url: 'x' }), verifyFn: () => { calls += 1; } }));
+    assert.strictEqual(r.emitted, false);
+    assert.strictEqual(r.reason, 'awaiting-approval');
+    assert.strictEqual(calls, 0, 'no emit => verifyFn NOT called');
+  }); } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('VC-W1b only-on-shipped: verifyFn is NOT called when the emit DEDUPED (pr.deduped => the candidate was verified on the original emit)', () => {
+  const dir = scratch('loom-custody-');
+  try { withKillswitchEnvCleared(() => {
+    let calls = 0;
+    const opts = armedCustody(dir); mintApprovalFor(opts);
+    const r = E.emitPR(goodData(), Object.assign({}, opts, { armedEmitFn: () => ({ pr_url: 'x', number: 7, deduped: true, base_sha: 'c'.repeat(40) }), verifyFn: () => { calls += 1; } }));
+    assert.strictEqual(r.emitted, true);
+    assert.strictEqual(calls, 0, 'a deduped emit does NOT re-verify (mirrors the join-key !pr.deduped guard)');
+  }); } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('VC-W1b scrubbed-not-raw (hacker M3): verifyFn gets the SCRUBBED draft.diff, never the raw data.diff (no secret leak into the new sink)', () => {
+  const dir = scratch('loom-custody-');
+  try { withKillswitchEnvCleared(() => {
+    const secret = `github_pat_${'a'.repeat(82)}`;
+    const rawDiff = `diff --git a/c.py b/c.py\n--- a/c.py\n+++ b/c.py\n@@ -0,0 +1 @@\n+token = "${secret}"\n`;
+    const opts = armedCustody(dir);
+    const pending = E.emitPR(goodData({ diff: rawDiff }), opts);   // awaiting => surfaces the scrubbed draft
+    assert.strictEqual(pending.emitted, false);
+    assert.notStrictEqual(pending.draft.diff, rawDiff, 'scrub changed the bytes (the secret was redacted)');
+    // mint the approval for the SCRUBBED draft (the minimal-set axiom hashes the scrubbed diff).
+    S.recordApproval(opts.custodyApprovalsDir, { repo: 'owner/repo', issueRef: 42, diff: pending.draft.diff }, { now: opts.now, nonce: 'n-test', selfUid: SELF_UID, signFn: SIGN });
+    let seen = null;
+    const r = E.emitPR(goodData({ diff: rawDiff }), Object.assign({}, opts, { armedEmitFn: () => ({ pr_url: 'x', number: 7, base_sha: 'b'.repeat(40) }), verifyFn: (v) => { seen = v; } }));
+    assert.strictEqual(r.emitted, true, 'the (scrubbed) candidate emits');
+    assert.strictEqual(seen.candidate_patch, r.draft.diff, 'candidate_patch === the SCRUBBED draft.diff');
+    assert.notStrictEqual(seen.candidate_patch, rawDiff, 'candidate_patch is NEVER the raw data.diff');
+    assert.ok(!seen.candidate_patch.includes(secret), 'the redacted secret NEVER reaches the verify sink');
+  }); } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('VC-W1b deny-list (hacker L2 + M1): a verifyFn planted in untrusted DATA is fail-closed rejected in ALL spellings (camel/snake/kebab + casings)', () => {
+  // the seam reads ONLY opts.verifyFn, so a data-key never reaches it — but the deny-list PROMISES "no policy-shaped
+  // key in data", so every spelling must be rejected (hyphen/underscore are distinct own-keys after case-folding).
+  for (const k of ['verifyFn', 'verify_fn', 'verify-fn', 'VerifyFn', 'VERIFYFN']) {
+    assert.throws(() => E.assertDataIsPolicyFree(goodData({ [k]: () => {} })), /policy key/, `data.${k} is deny-listed`);
+    assert.strictEqual(E.emitPR(goodData({ [k]: () => {} })).ok, false, `a poisoned-data ${k} => fail-closed reject`);
+  }
+});
+
+test('VC-W1b fail-open (async RUNTIME): a REAL rejected-promise verifyFn => emit succeeds + ZERO unhandledRejection events (the swallow is load-bearing)', async () => {
+  const dir = scratch('loom-custody-');
+  const seen = [];
+  const onUnhandled = () => { seen.push(1); };
+  process.on('unhandledRejection', onUnhandled);
+  try {
+    const r = withKillswitchEnvCleared(() => liveApprovedEmit(dir, { verifyFn: () => Promise.reject(new Error('async-verify-fail')) }).r);
+    assert.strictEqual(r.emitted, true, 'a real async rejection NEVER blocks the emit');
+    await new Promise((res) => setImmediate(res));
+    await new Promise((res) => setImmediate(res));
+    assert.strictEqual(seen.length, 0, 'the .then(() => {}, () => {}) swallow => ZERO unhandled rejections for a real rejected promise');
+  } finally { process.removeListener('unhandledRejection', onUnhandled); fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 // === EC1b.2 — sole-chokepoint: (a) the lint + (b) the custody env-isolation control ===
 
 test('EC1b.2a sole-chokepoint LINT: no PRODUCTION module outside emit-pr.js spawns gh/git-push or reads the token', () => {
