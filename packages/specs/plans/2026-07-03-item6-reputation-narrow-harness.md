@@ -165,3 +165,10 @@ narrows-only codomain + exit-0-on-all-reroute invariant.
     stable string (never a dropped `candidate` key).
 
 Post-fold tests: narrow 10/0, full lab suite 134/0; eslint + signpost clean. SHADOW/advisory, never gates.
+
+- **CodeRabbit: 3 Nitpicks (all Trivial), premise-probed + FOLDED.** (1) `narrow.js` breakerOf: log the
+  swallowed breaker throw before returning null (a starved source doesn't throw → the catch only fires on an
+  UNEXPECTED evalFn defect; no-silent-catch fundamental). (2) `spawnSync` timeout: 5000 on both CLI tests
+  (fail-fast if the CLI hangs). (3) coverage: a `source_starved:true` test (the CLI-warning trigger; tripped
+  ignored → no reroute) + a throwing-evaluateFn test (degrades to null, axis A still fires, diagnostic emitted).
+  narrow 12/0 post-fold.

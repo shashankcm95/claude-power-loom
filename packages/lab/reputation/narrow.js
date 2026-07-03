@@ -67,7 +67,11 @@ function narrow(candidates, opts = {}) {
   const breakerOf = (c) => {
     try {
       return evalFn({ persona: c, source: DEFAULT_SOURCE, now: o.now });
-    } catch {
+    } catch (e) {
+      // Degrade to no-signal (recommendNarrowing treats null as "no breaker axis"). A STARVED source does NOT
+      // throw (it returns source_starved:true, surfaced via evidence) — so this only fires on an UNEXPECTED evalFn
+      // defect; emit a diagnostic rather than swallow it silently (CodeRabbit nitpick; fundamentals no-silent-catch).
+      process.stderr.write(`reputation: narrow breakerOf(${c}) threw - degrading to no-signal: ${e && e.message}\n`);
       return null;
     }
   };

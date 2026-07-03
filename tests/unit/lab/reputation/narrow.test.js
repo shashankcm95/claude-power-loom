@@ -110,10 +110,33 @@ test('MED-2 empty store: no rows -> every candidate proceeds (insufficient-evide
   assert.ok(out.every((r) => r.recommendation === 'proceed'), 'an empty store advises proceed for all');
 });
 
+test('a STARVED breaker surfaces evidence.source_starved (the CLI-warning trigger) + its tripped is IGNORED (no reroute)', () => {
+  const starved = () => ({ tripped: true, source_starved: true }); // a starved source is NOT a safety signal
+  const out = narrow(['x'], { projectReputationFn: () => rep([]), evaluateFn: starved });
+  assert.strictEqual(out[0].evidence.source_starved, true, 'source_starved surfaces into evidence (the CLI warns on it)');
+  assert.strictEqual(out[0].recommendation, 'proceed', 'a starved source contributes NO reroute (tripped is ignored)');
+});
+
+test('a THROWING evaluateFn degrades to no-signal (null) — the reputation axis still fires; a diagnostic is emitted', () => {
+  const store = () => rep([persona('bad', 1, 0, 9)]); // 1/10 pass -> down-weight from axis A
+  const boomBreaker = () => { throw new Error('breaker-blew-up'); };
+  const savedWrite = process.stderr.write;
+  let logged = '';
+  process.stderr.write = (s) => { logged += String(s); return true; };
+  let out;
+  try {
+    out = narrow(['bad'], { projectReputationFn: store, evaluateFn: boomBreaker });
+  } finally {
+    process.stderr.write = savedWrite;
+  }
+  assert.strictEqual(out[0].recommendation, 'down-weight', 'a dead breaker does NOT swallow the reputation axis (axis A still fires)');
+  assert.ok(/breakerOf\(bad\) threw/.test(logged), 'the swallowed breaker throw emits a diagnostic (not a silent catch)');
+});
+
 // --- CLI: exit 0 on a resolved read (F4 — the CLI must NEVER become a gate via a non-zero exit) ---
 
 test('CLI narrow: exits 0 on a resolved read + emits the narrows-only advisory JSON with the NEVER-a-gate note', () => {
-  const r = spawnSync('node', [CLI, 'narrow', '--personas', 'architect,node-backend,hacker'], { encoding: 'utf8' });
+  const r = spawnSync('node', [CLI, 'narrow', '--personas', 'architect,node-backend,hacker'], { encoding: 'utf8', timeout: 5000 });
   assert.strictEqual(r.status, 0, `narrow exits 0 on a resolved read (got ${r.status}: ${r.stderr})`);
   const out = JSON.parse(r.stdout);
   assert.ok(Array.isArray(out.recommendations), 'emits a recommendations array');
@@ -122,7 +145,7 @@ test('CLI narrow: exits 0 on a resolved read + emits the narrows-only advisory J
 });
 
 test('CLI narrow: requires a candidate set (--personas) — exits 1 with a clean message, no stack dump', () => {
-  const r = spawnSync('node', [CLI, 'narrow'], { encoding: 'utf8' });
+  const r = spawnSync('node', [CLI, 'narrow'], { encoding: 'utf8', timeout: 5000 });
   assert.strictEqual(r.status, 1, 'no --personas -> usage error exit 1');
   assert.ok(/requires a candidate SET/.test(r.stderr), 'a clean message');
   assert.ok(!/at Object|at Module|\.js:\d+:\d+/.test(r.stderr), 'no stack dump');
