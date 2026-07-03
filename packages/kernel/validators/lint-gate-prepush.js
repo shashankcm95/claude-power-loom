@@ -265,7 +265,11 @@ function runYaml(spawn, repoRoot, files, mode, failures) {
   let mdFiles = files.filter(notExcluded(MARKDOWNLINT_EXCLUDE));
   if (mode === 'full') {
     const res = spawn('git', ['ls-files', '*.md'], { cwd: repoRoot, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, timeout: GIT_TIMEOUT_MS });
-    if (res.error || res.status !== 0) { logger('yaml_enumerate_failed', {}); return; }
+    if (res.error || res.status !== 0) {
+      logger('yaml_enumerate_failed', {});
+      process.stderr.write('[lint-gate] yaml frontmatter enumeration failed -- SKIPPED locally (CI still lints).\n');
+      return;
+    }
     mdFiles = res.stdout.split('\n').map((l) => l.trim()).filter(Boolean).filter(notExcluded(MARKDOWNLINT_EXCLUDE));
   }
   if (mdFiles.length === 0) return;
@@ -321,7 +325,7 @@ function readStdin() {
  *  not error on every new-branch push. */
 function resolveMainRef(repoRoot) {
   try {
-    const res = spawnSync('git', ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'], { cwd: repoRoot, encoding: 'utf8' });
+    const res = spawnSync('git', ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'], { cwd: repoRoot, encoding: 'utf8', timeout: GIT_TIMEOUT_MS });
     if (res.status === 0) {
       const ref = res.stdout.trim();
       if (ref) return ref;
@@ -340,7 +344,7 @@ function filterExisting(files, repoRoot, existsFn) {
 
 function main() {
   try {
-    const topRes = spawnSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' });
+    const topRes = spawnSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8', timeout: GIT_TIMEOUT_MS });
     const root = (topRes.status === 0 && topRes.stdout.trim()) || process.cwd();
     const stdinText = readStdin();
     const decision = decideLintScope({ stdinText, git: realGit(root), mainRef: resolveMainRef(root) });
