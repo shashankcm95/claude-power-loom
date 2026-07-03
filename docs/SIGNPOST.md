@@ -396,6 +396,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 
 ### `lab/verify-container/`
 
+- `packages/lab/verify-container/disposition-decider.js` - disposition-decider.js (VC-W2a) — the PURE anti-bypass disposition decider for the verify gate.
 - `packages/lab/verify-container/verify-candidate.js` - VC-W1a — the pre-emit QUALITY verifier (SHADOW/advisory).
 - `packages/lab/verify-container/verify-sidecar-store.js` - VC-W1a — the advisory verify sidecar (SHADOW).
 
