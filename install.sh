@@ -38,6 +38,9 @@ usage() {
   echo "  --schedule-liveloop      Schedule the SHADOW live-loop runner (EMIT-OFF, every 6h; the deliberate opt-in)"
   echo "  --unschedule-liveloop    Remove the scheduled live-loop runner"
   echo ""
+  echo "Git-native pre-push lint gate (opt-in, THIS repo only -- copies into .git/hooks/):"
+  echo "  --git-hooks  Install .githooks/pre-push (fast eslint/markdownlint/yaml on changed files before push)"
+  echo ""
   echo "Options:"
   echo "  --diff       Preview changes without installing (dry run)"
   echo "  --backup     Back up existing ~/.claude/ before overwriting"
@@ -343,6 +346,48 @@ install_hooks() {
   echo "  Pause without unscheduling: touch ~/.claude/checkpoints/ghost-heartbeat.disabled"
 }
 
+install_git_hooks() {
+  # Git-native pre-push lint gate (opt-in, THIS repo only). COPY .githooks/pre-push
+  # into the repo's hooks dir. The copy model (NOT core.hooksPath) is deliberate:
+  # core.hooksPath would clobber this repo's existing hooksPath pin, resolve
+  # inconsistently under worktreeConfig=true, and silently disable every other
+  # .git/hooks/* (plan 2026-07-03-lint-gate-prepush-hook.md §10.2 G-A; the
+  # .githooks/pre-push header carries the same rationale).
+  local src="$SCRIPT_DIR/.githooks/pre-push.sh"
+  if [ ! -f "$src" ]; then
+    echo "  git-hooks: $src not found -- skipping."
+    return
+  fi
+  # Resolve the hooks dir honoring core.hooksPath + worktrees.
+  local hooks_dir
+  hooks_dir="$(cd "$SCRIPT_DIR" && git rev-parse --git-path hooks 2>/dev/null)"
+  if [ -z "$hooks_dir" ]; then
+    echo "  git-hooks: $SCRIPT_DIR is not a git repo -- skipping."
+    return
+  fi
+  case "$hooks_dir" in
+    /*) : ;;                                  # already absolute (an absolute core.hooksPath pin)
+    *)  hooks_dir="$SCRIPT_DIR/$hooks_dir" ;; # make a repo-relative path absolute
+  esac
+  local target="$hooks_dir/pre-push"
+
+  if $DRY_RUN; then
+    echo "[DRY RUN] git-hooks: would copy $src -> $target (chmod +x)"
+    return
+  fi
+
+  mkdir -p "$hooks_dir"
+  # Never clobber a pre-existing, DIFFERENT pre-push -- back it up first.
+  if [ -f "$target" ] && ! cmp -s "$src" "$target"; then
+    cp "$target" "$target.pre-loom.bak"
+    echo "  git-hooks: backed up existing pre-push -> $target.pre-loom.bak"
+  fi
+  cp "$src" "$target"
+  chmod +x "$target"
+  echo "  -> git-hooks: pre-push lint gate installed to $target"
+  echo "     (bypass one push with 'git push --no-verify'; uninstall with 'rm $target')"
+}
+
 install_commands() {
   # Phase 0 (v3.0-alpha): source moved commands/ → packages/skills/commands/.
   local commands_src="$SCRIPT_DIR/packages/skills/commands"
@@ -560,6 +605,7 @@ fi
 INSTALL_AGENTS=false
 INSTALL_RULES=false
 INSTALL_HOOKS=false
+INSTALL_GIT_HOOKS=false
 INSTALL_COMMANDS=false
 INSTALL_SKILLS=false
 SCHEDULE_HEARTBEAT=false
@@ -580,6 +626,7 @@ for arg in "$@"; do
     --agents)   INSTALL_AGENTS=true ;;
     --rules)    INSTALL_RULES=true ;;
     --hooks)    INSTALL_HOOKS=true ;;
+    --git-hooks) INSTALL_GIT_HOOKS=true ;;
     --commands) INSTALL_COMMANDS=true ;;
     --skills)   INSTALL_SKILLS=true ;;
     --schedule-heartbeat)   SCHEDULE_HEARTBEAT=true ;;
@@ -616,6 +663,7 @@ $INSTALL_RULES   && install_rules
 $INSTALL_HOOKS   && install_hooks
 $INSTALL_COMMANDS && install_commands
 $INSTALL_SKILLS  && install_skills
+$INSTALL_GIT_HOOKS && install_git_hooks
 # Scheduler dispatch MUST come AFTER install_hooks (the runner-file guard inside
 # schedule_heartbeat needs the just-installed runner present -- VERIFY code-rev HIGH #6).
 $SCHEDULE_HEARTBEAT   && schedule_heartbeat

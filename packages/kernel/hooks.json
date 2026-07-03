@@ -183,6 +183,17 @@
         ]
       },
       {
+        "_comment": "observe-noverify-push: ADVISORY (logs-only, never blocks) observer for `git push --no-verify`, the native escape of the git-native pre-push lint gate (packages/kernel/validators/lint-gate-prepush.js, installed via `install.sh --git-hooks`). A --no-verify skip fires NO git hook and leaves zero trace; this observer is the ONLY surface that can see it, so over-use resurfaces to /self-improve rather than hiding (plan 2026-07-03-lint-gate-prepush-hook.md §10.2 G-E/M-C). It LOGS + emits a stderr NOTE only — it never parses for enforcement and never runs repo code, so it does NOT reintroduce the v1 RCE/parser surface (C1/H1). A missed detection just fails to log one skip (no security consequence).",
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/packages/kernel/hooks/post/observe-noverify-push.js",
+            "timeout": 5
+          }
+        ]
+      },
+      {
         "_comment": "network-egress-audit: ADVISORY (class 1) detection of Bash egress to hosts NOT in any persona's network_* trait (the 'audited post-hoc' the registry's network_anthropic._doc promises). The network axis decomposes into tool-mediated egress (WebFetch/WebSearch/MCP — already enforced via agents/<name>.md tools:) + Bash-subprocess egress (curl/wget/nc — this hook). It is audit, NOT prevention: per-spawn injection is inert (ADR-0012) and PreToolUse:Bash pattern-DENY is evadable theater; real prevention is ContainerAdapter-tier. The contracts-validate.js network comment (un-reconciled by design — no tools: referent) is the static-side companion to this runtime audit.",
         "matcher": "Bash",
         "hooks": [
