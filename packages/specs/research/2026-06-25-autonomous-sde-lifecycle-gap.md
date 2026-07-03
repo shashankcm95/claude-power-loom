@@ -11,7 +11,11 @@ Date: 2026-06-25.
 > #454 (live-solve capture) -> #455 (mint-side captured floor) -> #456 (emit-side attest-from-capture
 > producer) -> #457 (leg 1, the real `claude -p` deriver; `lessonLegFn` null->real on the live-run path).
 > The whole arc stays production-INERT: `LIVE_SOURCES=Object.freeze([])`, the edge is UNSIGNED, no weight
-> reads the captured signal. **STILL GENUINELY MISSING:** item 4 (issue->persona classifier + materializer),
+> reads the captured signal. **STILL GENUINELY MISSING** [**STATUS CORRECTION 2026-07-03**: ~~item 4~~ was
+> a STALE listing — item 4 (issue->persona classifier + materializer) was ALREADY built + merged in **#443
+> `2a4c1d7`** when this MISSING list was written (a `drift:recon-depth` self-catch); it is SHADOW-wired behind
+> `LOOM_PERSONA_MATERIALIZE` (off), behavioral activation deferred. The open item-4 delta = classifier
+> signal-coverage + a telemetry aggregator (this wave). STILL missing:]
 > item 5's authenticated cross-uid edge signer (**PR-A2** — the real #273 close; RFC-premature per OQ-2
 > until a lab-derived weight names a real gate), item 8 (production scheduler). Phase-close sign-off:
 > `docs/ROADMAP.md` + library `toolkit/phase-close/capture-wire-close`.

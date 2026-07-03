@@ -206,6 +206,57 @@ test('F3-positive: "model inference latency" -> ml-engineer (multi-word phrase m
   assert.strictEqual(r.persona, 'ml-engineer');
 });
 
+// === W1-next signal widening (2026-07-03) — each added phrase classifies + stays audited =====
+test('widen: "fastapi pydantic" -> python-backend', () => {
+  assert.strictEqual(classifyIssue(rec('a fastapi pydantic model validation error')).persona, 'python-backend');
+});
+test('widen: "prisma migration" -> node-backend', () => {
+  assert.strictEqual(classifyIssue(rec('the prisma migration fails on deploy')).persona, 'node-backend');
+});
+test('widen (boundary): "prismatic" does NOT match prisma -> node', () => {
+  assert.strictEqual(classifyIssue(rec('the ui gradient looks prismatic and colorful')).persona, null);
+});
+test('widen: "redux useeffect" -> react-frontend', () => {
+  assert.strictEqual(classifyIssue(rec('migrate the redux store off the useeffect hook')).persona, 'react-frontend');
+});
+test('widen: "uikit cocoapods" -> ios-developer', () => {
+  assert.strictEqual(classifyIssue(rec('set up cocoapods for the uikit view controller')).persona, 'ios-developer');
+});
+test('widen: "ssrf / owasp / path traversal" -> security-auditor', () => {
+  assert.strictEqual(classifyIssue(rec('an ssrf flagged by the owasp scan, plus a path traversal')).persona, 'security-auditor');
+});
+test('widen: "kafka parquet" -> data-engineer', () => {
+  assert.strictEqual(classifyIssue(rec('the kafka consumer writes malformed parquet files')).persona, 'data-engineer');
+});
+test('widen (boundary): "kafkaesque" does NOT match kafka -> data-engineer', () => {
+  assert.strictEqual(classifyIssue(rec('this stack trace is kafkaesque and impossible to read')).persona, null);
+});
+test('widen: "argocd istio" -> devops-sre', () => {
+  assert.strictEqual(classifyIssue(rec('the argocd sync breaks the istio sidecar injection')).persona, 'devops-sre');
+});
+test('widen: "kotlin quarkus" -> java-backend', () => {
+  assert.strictEqual(classifyIssue(rec('the kotlin quarkus native image build fails')).persona, 'java-backend');
+});
+test('widen (multi-word): "hibernate orm" -> java-backend; bare "hibernate" alone does NOT', () => {
+  assert.strictEqual(classifyIssue(rec('the hibernate orm lazy-load throws')).persona, 'java-backend');
+  assert.strictEqual(classifyIssue(rec('the laptop will not hibernate after the update')).persona, null);
+});
+test('widen: "pytorch huggingface" -> ml-engineer', () => {
+  assert.strictEqual(classifyIssue(rec('a pytorch training loop using a huggingface model')).persona, 'ml-engineer');
+});
+test('widen (real-word fix, VALIDATE hacker): bare "parquet"/"ansible" do NOT classify; multi-word forms do', () => {
+  // 'parquet' (flooring / a CSS tiling pattern) and 'ansible' (a standard SF term) are real words —
+  // scoped to multi-word after the hacker caught them, so a frontend/sci-fi issue no longer mis-classifies.
+  assert.strictEqual(classifyIssue(rec('the css grid renders the parquet pattern wrong on safari')).persona, null);
+  assert.strictEqual(classifyIssue(rec('port the ansible from the original sci-fi novel into dialogue')).persona, null);
+  assert.strictEqual(classifyIssue(rec('the etl job writes a corrupt parquet file')).persona, 'data-engineer');
+  assert.strictEqual(classifyIssue(rec('the ansible playbook fails on the vault step')).persona, 'devops-sre');
+});
+test('widen (dropped real words): "poetry" and "spark" and "redshift" do NOT classify', () => {
+  assert.strictEqual(classifyIssue(rec('a bug in the poetry-slam scheduling logic')).persona, null);
+  assert.strictEqual(classifyIssue(rec('the spark of an idea for the redshift of the sunset gradient')).persona, null);
+});
+
 process.stdout.write('\n=== issue-classifier.test.js Summary ===\n');
 process.stdout.write(`  Passed: ${passed}\n  Failed: ${failed}\n`);
 if (failed > 0) process.exit(1);
