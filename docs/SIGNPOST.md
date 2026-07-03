@@ -120,6 +120,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/kernel/hooks/lifecycle/ghost-heartbeat-stop.js` - Ghost Heartbeat W2-PR2 — the Stop-hook CARRIER.
 - `packages/kernel/hooks/post/kb-citation-gate.js` - PostToolUse:Agent|Task hook — enforces KB citation contract on sub-agent results.
 - `packages/kernel/hooks/_lib/marketplace-state-reader.js` - H.7.22 + H.7.23 — DRY shared marketplace-state reader.
+- `packages/kernel/hooks/post/observe-noverify-push.js` - observe-noverify-push.js — PostToolUse:Bash observer (logs-only, never blocks).
 - `packages/kernel/hooks/lifecycle/pre-compact-save.js` - PreCompact hook: deterministically saves a checkpoint of the conversation
 - `packages/kernel/hooks/lifecycle/prompt-enrich-trigger.js` - UserPromptSubmit hook: detects vague prompts and injects a forcing
 - `packages/kernel/hooks/pre/redirect-plan-mode-in-headless.js` - PreToolUse:EnterPlanMode hook — DETERMINISTIC redirect to TodoWrite when
@@ -160,6 +161,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 ### `kernel/validators/`
 
 - `packages/kernel/validators/contract-verifier.js` - Contract verifier — runs functional + anti-pattern checks against an
+- `packages/kernel/validators/lint-gate-prepush.js` - lint-gate-prepush.js — the git-native pre-push lint gate (v1, toolkit-only).
 - `packages/kernel/validators/validate-adr-drift.js` - PreToolUse:Edit|Write hook (H.8.2): emits [ADR-DRIFT-CHECK] forcing
 - `packages/kernel/validators/validate-config-redirect.js` - validate-config-redirect.js — v2.9.0 Phase D.1 (FIX-I9)
 - `packages/kernel/validators/validate-frontmatter-on-skills.js` - PreToolUse:Edit|Write validator (H.4.2 + H.7.20): blocks Write/Edit of skill
