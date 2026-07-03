@@ -394,6 +394,11 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/lab/verdict-attestation/enrich-from-spawn-state.js` - v3.4 Wave 1 — the verdict-attestation ENRICHER.
 - `packages/lab/verdict-attestation/store.js` - v3.4 Wave 1 — Verdict-emission attestation store.
 
+### `lab/verify-container/`
+
+- `packages/lab/verify-container/verify-candidate.js` - VC-W1a — the pre-emit QUALITY verifier (SHADOW/advisory).
+- `packages/lab/verify-container/verify-sidecar-store.js` - VC-W1a — the advisory verify sidecar (SHADOW).
+
 ### `lab/world-anchor/`
 
 - `packages/lab/world-anchor/admit-world-anchor-node.js` - Autonomous-SDE ladder item 5, PR-B B2 - the COMMITMENT-GATED world-anchor ADMISSION TAG (SHADOW).
