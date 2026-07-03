@@ -43,16 +43,26 @@ const { materializablePersonas } = require('./persona-brief-map');
 //   - java-backend: 'spring' -> 'spring boot' + 'spring framework' (multi-word; "spring cleaning"
 //     no longer matches).
 //   - ml-engineer: 'embedding' -> 'model embedding'; 'inference' -> 'model inference'.
+//   - W1-next widening (2026-07-03): each ADDED phrase passed the same three-part audit — (a)
+//     word-boundary safe (single alnum tokens ride wordMatch's boundary regex; 'prisma' cannot hit
+//     "prismatic", 'kafka' cannot hit "kafkaesque"), (b) NOT a real English word even word-bounded
+//     (so ambiguous single words were dropped: 'poetry'/'redshift'/'spark', and made multi-word:
+//     'hibernate' -> 'hibernate orm', 'tailwind' -> 'tailwind css', 'apache spark'; the VALIDATE hacker
+//     then caught TWO more real-word single tokens I had missed — 'parquet' (hardwood flooring / a
+//     tiling pattern) and 'ansible' (a standard SF FTL-comms term) — now made multi-word 'parquet file'
+//     / 'ansible playbook' so a CSS-pattern or sci-fi issue no longer mis-classifies), (c) discriminative
+//     for one builder (a genuinely cross-cutting token like 'kafka' is fine — it TIES honestly via
+//     ambiguous-tie when a sibling signal co-occurs, never a silent mis-pick).
 const PERSONA_SIGNALS = Object.freeze({
-  'python-backend': Object.freeze(['python', 'pytest', 'pip', 'django', 'flask', 'uv ', 'asyncio']),
-  'node-backend': Object.freeze(['express', 'nestjs', 'npm', 'node.js', 'route handler', 'api endpoint']),
-  'react-frontend': Object.freeze(['react', 'jsx', 'tsx', 'usestate']),
-  'ios-developer': Object.freeze(['swift', 'swiftui', 'xcode', 'ios']),
-  'security-auditor': Object.freeze(['vulnerability', 'xss', 'sql injection', 'auth bypass', 'csrf']),
-  'data-engineer': Object.freeze(['airflow', 'dbt', 'etl', 'warehouse']),
-  'devops-sre': Object.freeze(['kubernetes', 'helm', 'terraform', 'prometheus']),
-  'java-backend': Object.freeze(['spring boot', 'spring framework', 'jvm', 'maven', 'gradle']),
-  'ml-engineer': Object.freeze(['training pipeline', 'model embedding', 'model inference', 'llm eval']),
+  'python-backend': Object.freeze(['python', 'pytest', 'pip', 'django', 'flask', 'uv ', 'asyncio', 'fastapi', 'pydantic', 'sqlalchemy', 'uvicorn']),
+  'node-backend': Object.freeze(['express', 'nestjs', 'npm', 'node.js', 'route handler', 'api endpoint', 'fastify', 'typeorm', 'prisma']),
+  'react-frontend': Object.freeze(['react', 'jsx', 'tsx', 'usestate', 'nextjs', 'redux', 'useeffect', 'tailwind css']),
+  'ios-developer': Object.freeze(['swift', 'swiftui', 'xcode', 'ios', 'uikit', 'cocoapods']),
+  'security-auditor': Object.freeze(['vulnerability', 'xss', 'sql injection', 'auth bypass', 'csrf', 'ssrf', 'idor', 'owasp', 'path traversal']),
+  'data-engineer': Object.freeze(['airflow', 'dbt', 'etl', 'warehouse', 'kafka', 'parquet file', 'apache spark']),
+  'devops-sre': Object.freeze(['kubernetes', 'helm', 'terraform', 'prometheus', 'grafana', 'ansible playbook', 'argocd', 'istio']),
+  'java-backend': Object.freeze(['spring boot', 'spring framework', 'jvm', 'maven', 'gradle', 'kotlin', 'quarkus', 'hibernate orm']),
+  'ml-engineer': Object.freeze(['training pipeline', 'model embedding', 'model inference', 'llm eval', 'pytorch', 'tensorflow', 'huggingface', 'scikit-learn']),
 });
 
 // Match a fixed table phrase against the (already-lowercased) haystack. A SINGLE alnum token

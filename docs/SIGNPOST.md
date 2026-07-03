@@ -358,6 +358,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/lab/persona-experiment/arm-loop.js` - 3.1-W3b -- the subject-agnostic run scaffold.
 - `packages/lab/persona-experiment/arm-query.js` - 3.1-W3b -- arm-aware aggregation over an F7 timeline.
 - `packages/lab/persona-experiment/canonical-persona-key.js` - 3.1-W3a -- the C2 read-side persona-key normalizer (fork 1).
+- `packages/lab/persona-experiment/classify-telemetry.js` - item 4 (W1-next) - a PURE, read-only telemetry fold over persisted live artifacts.
 - `packages/lab/persona-experiment/cli.js` - 3.1-W3b -- the persona-experiment CLI: run a 3-arm experiment + query the emitted timeline.
 - `packages/lab/persona-experiment/_spike/dogfood-arms.js` - 3.1-W3a DOGFOOD (_spike) -- the Rule-2a-corollary REAL-PATH proof.
 - `packages/lab/persona-experiment/_spike/dogfood-run.js` - 3.1-W3b DOGFOOD (_spike) -- the Rule-2a-corollary REAL-PATH proof for the run+measure layer.
