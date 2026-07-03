@@ -6,6 +6,8 @@ status: SCOPED (pre-build, ratify-before-build)
 
 # Fork-based external-repo emit path — SCOPE (2026-07-02)
 
+> **UPDATE (2026-07-02, F-W4 M0):** any `maintainer_can_modify: true` framing below is superseded. Q-M1-necessity RESOLVED it to `false` (the live const at `gh-emit.js:84` is now `false`). See `plans/2026-07-02-fork-emit-fw4-arming-scope.md`.
+
 ## Why
 
 Track-A (the live issue->PR beta) produced its first verified-correct draft (`schmug/colophon#27`,

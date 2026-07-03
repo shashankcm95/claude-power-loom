@@ -10,6 +10,7 @@
 
 const assert = require('assert');
 const path = require('path');
+const fs = require('fs');   // F-W4 M4 — the structural single-producer pin reads gh-emit.js source
 
 const REPO = path.join(__dirname, '..', '..', '..', '..');
 const G = require(path.join(REPO, 'packages', 'kernel', 'egress', 'gh-emit.js'));
@@ -49,6 +50,10 @@ const GOLDEN_TREE_BODY = '{"base_tree":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 const GOLDEN_COMMIT_BODY = '{"message":"loom: candidate for issue #42\\n\\napproval-hash: dc74ea1c2a5cde31a31f0bec601cd3752237f3f3a901b73bedd01456285018d9\\nbase-commit: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\n","tree":"cccccccccccccccccccccccccccccccccccccccc","parents":["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]}';
 const GOLDEN_REF_BODY = '{"ref":"refs/heads/loom/issue-42-dc74ea1c2a5c","sha":"dddddddddddddddddddddddddddddddddddddddd"}';
 const GOLDEN_PULL_BODY = '{"title":"loom: candidate for issue #42","head":"loom/issue-42-dc74ea1c2a5c","base":"main","body":"Automated DRAFT candidate from Power Loom for issue #42.\\n\\nThis is a SHADOW/DRAFT egress behind a signed, human-approved gate. It is a draft for human review, not a merge request.\\n\\napproval-hash: dc74ea1c2a5cde31a31f0bec601cd3752237f3f3a901b73bedd01456285018d9\\nbase-commit: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\n","draft":true}';
+// F-W4 M0/M5 — the FROZEN fork-mode golden pull body (maintainer_can_modify EXPLICITLY false; head namespaced
+// forkOwner:branch). Hand-frozen literal (NOT regenerated from code — HIGH-2), like the same-owner golden above:
+// a future key-reorder OR a stray maintainer_can_modify:true fails a byte-diff, not merely a field assert.
+const GOLDEN_FORK_PULL_BODY = '{"title":"loom: candidate for issue #42","head":"botacct:loom/issue-42-dc74ea1c2a5c","base":"main","body":"Automated DRAFT candidate from Power Loom for issue #42.\\n\\nThis is a SHADOW/DRAFT egress behind a signed, human-approved gate. It is a draft for human review, not a merge request.\\n\\napproval-hash: dc74ea1c2a5cde31a31f0bec601cd3752237f3f3a901b73bedd01456285018d9\\nbase-commit: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\n","draft":true,"maintainer_can_modify":false}';
 
 // A clean MODIFY diff (mirrors gh-emit.test.js): change line 2, append line 4. base "line1\nline2\nline3\n".
 const MODIFY_BASE = 'line1\nline2\nline3\n';
@@ -465,7 +470,7 @@ test('16 PR-create head bare in SAME-OWNER (forkRepo===upstream => isForkMode fa
 
 // === F-W3: the cross-repo PR-open (head=forkOwner:branch + maintainer_can_modify), DORMANT until F-W4 arms ===
 
-test('F-W3a cross-repo head: a DISTINCT fork => the PR-create head is forkOwner:branch + maintainer_can_modify:true, base upstream', () => {
+test('F-W3a cross-repo head: a DISTINCT fork => the PR-create head is forkOwner:branch + maintainer_can_modify:false, base upstream', () => {
   const gh = makeForkGh({ forkRefSha: SHA_D });
   const r = G.ghEmit({ draft: draftFor(GOLDEN_ADD_DIFF), approvalHash: GOLDEN_ADD_HASH, env: {}, forkRepo: FORK_REPO, expectedForkOwner: 'botacct' }, { runGh: gh });
   assert.strictEqual(r.number, 9, 'the fork-mode emit created the PR');
@@ -473,7 +478,7 @@ test('F-W3a cross-repo head: a DISTINCT fork => the PR-create head is forkOwner:
   const pull = JSON.parse(findCall(gh, /\/pulls$/, 'POST').input);
   assert.strictEqual(pull.head, `botacct:${branch}`, 'the cross-repo head is namespaced forkOwner:branch');
   assert.strictEqual(pull.base, 'main', 'the base is the upstream default branch (unchanged)');
-  assert.strictEqual(pull.maintainer_can_modify, true, 'maintainer_can_modify is the fork-mode kernel constant true');
+  assert.strictEqual(pull.maintainer_can_modify, false, 'F-W4 M0: maintainer_can_modify is the fork-mode kernel constant FALSE (Q-M1-necessity resolved: loom grants the upstream maintainer NO edit access to its fork branch)');
   assert.strictEqual(pull.draft, true, 'draft:true hard constant preserved');
   assert.ok(findCall(gh, /\/pulls$/, 'POST').args[1] === `repos/${GOOD_REPO}/pulls`, 'the PR-create endpoint is still UPSTREAM (H-1)');
 });
@@ -488,14 +493,17 @@ test('F-W3b dedup/create head consistency: in fork mode the dedup ?head= query u
   assert.ok(dedupCall && dedupCall.args[1].includes(`head=botacct:${branch}`), `the dedup query head is forkOwner:branch (got ${dedupCall && dedupCall.args[1]})`);
 });
 
-test('F-W3c maintainer_can_modify is a HARD CONSTANT: a draft-planted maintainer_can_modify:false is IGNORED (fork mode still sends true)', () => {
+test('F-W3c maintainer_can_modify is a HARD CONSTANT: a draft-planted maintainer_can_modify:true is IGNORED (fork mode still sends the kernel constant false)', () => {
   // draft is hash-bound + a steering field must never override the kernel constant (the #273 trap). emissionAxiom
-  // reads only {repo,issueRef,diff} so the planted field does not change the hash; ghEmit never reads it.
+  // reads only {repo,issueRef,diff} so the planted field does not change the hash; ghEmit never reads it. F-W4 M0
+  // sharpens the direction that matters: an actor planting maintainer_can_modify:true (attempting to ESCALATE to
+  // maintainer push/edit access on loom's fork branch) is IGNORED — the kernel constant false wins, so the actor
+  // cannot grant maintainer edit access through the envelope.
   const gh = makeForkGh({ forkRefSha: SHA_D });
-  const draft = draftFor(GOLDEN_ADD_DIFF, { maintainer_can_modify: false });
+  const draft = draftFor(GOLDEN_ADD_DIFF, { maintainer_can_modify: true });
   G.ghEmit({ draft, approvalHash: GOLDEN_ADD_HASH, env: {}, forkRepo: FORK_REPO, expectedForkOwner: 'botacct' }, { runGh: gh });
   const pull = JSON.parse(findCall(gh, /\/pulls$/, 'POST').input);
-  assert.strictEqual(pull.maintainer_can_modify, true, 'the kernel constant wins; the draft-planted false is ignored');
+  assert.strictEqual(pull.maintainer_can_modify, false, 'the kernel constant false wins; the draft-planted true is ignored (no actor escalation)');
 });
 
 test('F-W3d BD-2 (existing .github/ denial, NON-VACUOUS): a workflow path is denied AND a benign path is allowed (the guard discriminates)', () => {
@@ -517,6 +525,56 @@ test('F-W3e BD-2 literal-tree-path pin: %2e/%2f-encoded .github forms ALLOW but 
   assert.strictEqual(isEgressDeniedPath('.github%2fworkflows/ci.yml'), false, '%2f form allowed (literal, not a nested .github/)');
   // the real traversal to .github is STILL denied (the encoding trick does not open the real path):
   assert.strictEqual(isEgressDeniedPath('a/../.github/x.yml'), true, 'traversal to a real .github is still denied');
+});
+
+// === F-W4 M0/M5: the fork-mode PR body is byte-frozen (maintainer_can_modify EXPLICITLY false) ===
+
+test('F-W4 M5 fork-mode golden-bytes: the cross-repo /pulls POST body is BYTE-IDENTICAL to the frozen fork-mode golden (head namespaced + maintainer_can_modify:false)', () => {
+  const gh = makeForkGh({ forkRefSha: SHA_D });
+  G.ghEmit({ draft: draftFor(GOLDEN_ADD_DIFF), approvalHash: GOLDEN_ADD_HASH, env: {}, forkRepo: FORK_REPO, expectedForkOwner: 'botacct' }, { runGh: gh });
+  assert.strictEqual(findCall(gh, /\/pulls$/, 'POST').input, GOLDEN_FORK_PULL_BODY, 'the fork-mode pull body is byte-identical to the frozen golden');
+});
+
+test('F-W4 M5 golden NON-VACUITY (negative control): the fork golden differs from the same-owner golden in EXACTLY head + the appended maintainer_can_modify:false, and a flip to true fails the byte-assert', () => {
+  // prove the fork golden is not accidentally equal to the same-owner one, that the ONLY structural difference is the
+  // head namespace + the appended maintainer_can_modify:false, and that a stray maintainer_can_modify:true would fail
+  // the byte-assert (so F-W4 M5 catches BOTH a head-namespacing regression AND a maintainer_can_modify escalation).
+  assert.notStrictEqual(GOLDEN_FORK_PULL_BODY, GOLDEN_PULL_BODY, 'fork golden != same-owner golden');
+  const forked = JSON.parse(GOLDEN_FORK_PULL_BODY);
+  const same = JSON.parse(GOLDEN_PULL_BODY);
+  assert.strictEqual(forked.maintainer_can_modify, false, 'the fork golden carries maintainer_can_modify:false EXPLICITLY');
+  assert.strictEqual(same.maintainer_can_modify, undefined, 'the same-owner golden carries NO maintainer_can_modify key');
+  assert.strictEqual(forked.head, `botacct:${same.head}`, 'the ONLY head difference is the forkOwner: namespace');
+  const escalated = JSON.stringify({ ...forked, maintainer_can_modify: true });
+  assert.notStrictEqual(escalated, GOLDEN_FORK_PULL_BODY, 'a maintainer_can_modify:true body != the golden => the byte-assert catches an escalation');
+});
+
+// === F-W4 M4: structural single-producer pin — forkOwner reaches the head sink from ONE validated origin (SCAR #22) ===
+
+test('F-W4 M4 structural single-producer: the two ${forkOwner}: head sinks (dedup + create) are both fed by ONE validateForkIdentity origin', () => {
+  // SCAR #22: the F-W3 head-site OWNER_RE re-assert was declined as provably-dead code because forkOwner has exactly
+  // ONE validated origin (validateForkIdentity's OWNER_RE gate, exercised by tests 14/18). The namespaced head is
+  // interpolated at TWO sinks — the dedup `?head=` query and the PR-create head (F-W3b tests they stay consistent) —
+  // and BOTH draw from that single origin. This STRUCTURAL pin mechanically enforces the premise so a refactor cannot
+  // silently add a SECOND, unvalidated origin OR a THIRD head sink without a conscious update here. Reads the SOURCE
+  // (grep-style), non-vacuous by the exact counts.
+  const src = fs.readFileSync(path.join(REPO, 'packages', 'kernel', 'egress', 'gh-emit.js'), 'utf8');
+  // strip comments (block + line) BEFORE counting — comment prose references `${forkOwner}:` for documentation and
+  // must not inflate the count; only EXECUTABLE occurrences are the structural surface this pin guards.
+  const codeOnly = src.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
+  // TWO sinks, VALIDATED-NAME: match EVERY `${<ident>}:${branch}` namespaced head interpolation, assert exactly two
+  // (the dedup `?head=` query + the PR-create head) AND that each owner identifier is the validated `forkOwner`. A
+  // divergent-name owner sink (`${evilOwner}:${branch}`) is CAUGHT here, not silently ignored (VALIDATE hacker LOW-2).
+  const headSinks = [...codeOnly.matchAll(/\$\{(\w+)\}:\$\{branch\}/g)];
+  assert.strictEqual(headSinks.length, 2, `exactly TWO namespaced head interpolations (dedup + create); found ${headSinks.length}`);
+  for (const m of headSinks) assert.strictEqual(m[1], 'forkOwner', `every namespaced head owner must be the validated forkOwner (found ${JSON.stringify(m[1])})`);
+  // ONE origin, ORDER-INSENSITIVE: validateForkIdentity is CALLED exactly once (the single validated origin), and
+  // forkOwner is destructured from that one call regardless of property order in the braces — a routine
+  // `{ forkOwner, resolvedForkRepo }` reorder must NOT false-RED the pin (VALIDATE hacker LOW-1).
+  const vfiCalls = codeOnly.match(/=\s*validateForkIdentity\(/g) || [];
+  assert.strictEqual(vfiCalls.length, 1, `validateForkIdentity is called exactly once (the single validated origin); found ${vfiCalls.length}`);
+  const vfiForkOwner = codeOnly.match(/\{[^{}]*\bforkOwner\b[^{}]*\}\s*=\s*validateForkIdentity\(/g) || [];
+  assert.strictEqual(vfiForkOwner.length, 1, `forkOwner is destructured from the validateForkIdentity call exactly once, any property order; found ${vfiForkOwner.length}`);
 });
 
 // === TEST 17: MODIFY + distinct forkRepo => base reads still hit repos/${upstreamRepo} ===
