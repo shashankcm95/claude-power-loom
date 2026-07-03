@@ -53,12 +53,17 @@ function disableForkActions(gh, resolvedForkRepo, env) {
   try {
     gh(['api', `repos/${resolvedForkRepo}/actions/permissions`, '--method', 'PUT', '--input', '-'],
        { env, input: JSON.stringify({ enabled: false }) });   // kernel-constant body — no actor bytes
-  } catch (err) {
-    emitEgressAlert('fork-actions-disable-failed', { resolvedForkRepo: <=80, message: err && err.message });
-    throw new Error('ghEmit: fork-actions-disable-failed — <repo> — fail-closed (never write to a fork with Actions possibly enabled)');
+  } catch (err) {   // fail-closed + OBSERVABLE; PRESERVE runGh's diagnostic fields (folded per the VALIDATE below)
+    emitEgressAlert('fork-actions-disable-failed', { resolvedForkRepo: <=80, httpStatus: err && err.httpStatus, message: <=200 });
+    const e = new Error('ghEmit: fork-actions-disable-failed — the disable-Actions request failed on <repo> — fail-closed');
+    e.cause = err; e.httpStatus = err && err.httpStatus; e.status = err && err.status;
+    throw e;
   }
 }
 ```
+
+The SUCCESS path is BEST-EFFORT (a non-throwing 204 PUT is treated as disabled; the hard read-back
+state-verify is a named arming precondition, M-1 in the VALIDATE result below).
 
 Called at BOTH ready paths: after `verifyForkRepo` on `:592` and on `:609`, before each
 `return { ready: true }`. ONE helper, TWO call sites (DRY; a single producer cannot wire only the
