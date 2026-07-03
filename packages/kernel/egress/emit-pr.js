@@ -117,6 +117,11 @@ const REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 // NB GitHub DOES permit a digit-only owner (e.g. some bot accounts), so OWNER_RE accepting `0`/`123`
 // is correct, not an over-accept — do not "fix" it to require a leading letter.
 const OWNER_RE = /^[A-Za-z0-9](?:-?[A-Za-z0-9])*$/;
+// GitHub's login (owner) max = 39 chars — a stable platform fact (mirrors gh-emit.js MAX_OWNER_LEN). ONE in-module
+// source of truth for the two emit-pr uses: assertSafeRepoRef's owner cap AND F-W4 M2's custody-owner reader. NB
+// emit-pr CANNOT import gh-emit's MAX_OWNER_LEN — gh-emit requires emit-pr (the reverse import cycles; the lazy
+// require in armedEmit sidesteps that only because it is deferred past module-init).
+const GITHUB_LOGIN_MAX_LEN = 39;
 const REPO_NAME_RE = /^[A-Za-z0-9._-]+$/;
 
 /** Throws unless `repo` is a bare `owner/repo` on an allowlisted host (owner-vs-repo-typed, ③.2.3 H1). */
@@ -134,8 +139,8 @@ function assertSafeRepoRef(repo, { hostAllowlist = DEFAULT_REPO_HOST_ALLOWLIST }
   }
   // F-W2 length cap (consistent with gh-emit's validateForkIdentity): GitHub's login (owner) max is 39 chars.
   // A fail-FAST + observable bound; turns a fail-late (a 500-char owner 404s at the network) into a fail-fast.
-  if (owner.length > 39) {
-    throw new Error(`emitPR: repo owner exceeds GitHub's 39-char login max: ${JSON.stringify(repo)}`);
+  if (owner.length > GITHUB_LOGIN_MAX_LEN) {
+    throw new Error(`emitPR: repo owner exceeds GitHub's ${GITHUB_LOGIN_MAX_LEN}-char login max: ${JSON.stringify(repo)}`);
   }
   // REPO name: alnum + `. _ -`; may lead with `.`/`_` (e.g. `.github`), but NOT be exactly `.`/`..`, lead with
   // `-` (an argv-flag-injection shape), or end with `.` (a git-ref / case-insensitive-FS foot-gun).
@@ -190,6 +195,10 @@ const DISPOSITION_KEYS = Object.freeze([
   'cap', 'window', 'windowCount', 'windowStart', 'emitCount', 'ledger', 'backpressure',
   'rateLimit', 'perWindowCap', 'windowMs', 'emittedKeys', 'seen', 'now', 'count',
   'custodyCapStatePath', 'custodyEtiquetteLedgerPath', 'custodyTokenPath', 'custodyDispositionPath',
+  // F-W4 M2 — the fork-owner custody-file PATH. SINGLE-spelling (camelCase), matching every custody*Path key: a path
+  // is internal opts-plumbing the orchestrator sets, never an actor-supplied VALUE, so the 3-spelling treatment the
+  // fork/base VALUE vocabulary uses (below) does not apply here (code-reviewer VERIFY F1).
+  'custodyForkOwnerPath',
   'killswitchPath', 'lockPath', 'ghConfigDir', 'hostAllowlist',
   // ③.2.4 H7 — the FULL per-emission-approval vocabulary (the actor never sets an approval/custody-approvals
   // path, a pre-baked hash, the clock/ttl/uid the gate reads, OR the injectable emit fn). Exact-set deny (#273).
@@ -358,6 +367,46 @@ function resolveToken({ custodyTokenPath, killswitchOn } = {}) {
     const t = fs.readFileSync(custodyTokenPath, 'utf8').trim();
     return t.length > 0 ? t : null;
   } catch { return null; }
+}
+
+/**
+ * F-W4 M2 — the fork-owner identity value (`expectedForkOwner`), from CUSTODY ONLY (Q-M2=c — a custody file
+ * co-located with the token; the SAME trust root as resolveToken). Per #273 (integrity is not provenance), the
+ * fork-owner login must NOT arrive as an actor-influenceable field: it steers the fork write target, so it is read
+ * OUTSIDE the actor envelope. This NARROWS the surface (removes it from actor bytes) — it is DEFENSE-IN-DEPTH, NOT a
+ * trust anchor (a custody value is still same-uid co-forgeable; authorization roots stay approvalHash + the token
+ * capability). `custodyForkOwnerPath` is in DISPOSITION_KEYS — the actor cannot supply it via untrusted data.
+ *
+ * Mirrors the READ PATTERN of resolveToken (a bare readFileSync().trim(), symlink-following by deliberate custody
+ * parity, fail-on-throw) but DELIBERATELY INVERTS the empty sentinel: returns `undefined` (NEVER `null`) on every
+ * absent/invalid branch. THE `null` TRAP (P1a — load-bearing): validateForkIdentity gates its owner assertion on
+ * `expectedForkOwner !== undefined`, and `null !== undefined` is TRUE, so a `null` return would make the dormant
+ * (non-fork) prod path throw `fork-identity-mismatch` (upstreamOwner !== "null") = a byte-identity/dormancy brick.
+ * ALL FIVE branches (non-string path / unreadable / empty / malformed-shape / over-length) return `undefined`.
+ *
+ * A PRESENT-but-malformed value is an OPERATOR MISCONFIG (not a dormant absence): it emits an OBSERVABLE
+ * `fork-owner-custody-invalid` alert (distinct from the downstream attack-shaped `fork-owner-unsafe`; security.md
+ * "a fail-closed decision must be OBSERVABLE") carrying the PATH + length only (never the raw value), and returns
+ * `undefined` — downstream ensureFork still fail-closes (`fork-owner-required`) when armed, so the net stays
+ * fail-closed, just re-signalled at the reader for the operator (a single root cause, a two-alert trail when armed).
+ */
+function resolveExpectedForkOwner({ custodyForkOwnerPath } = {}) {
+  if (typeof custodyForkOwnerPath !== 'string') return undefined;    // dormant: prod passes no path
+  let raw;
+  try {
+    raw = fs.readFileSync(custodyForkOwnerPath, 'utf8').trim();
+  } catch { return undefined; }                                      // absent / unreadable
+  if (raw.length === 0) return undefined;                            // empty / whitespace-only
+  // OWNER_RE is LENGTH-BLIND (VERIFY-hacker M1) — a 40-char value passes it; the login-max cap is a DISTINCT clause.
+  // The cap MUST come FIRST (order is LOAD-BEARING — VALIDATE-hacker M1/DoS): OWNER_RE's `(?:-?[A-Za-z0-9])*`
+  // catastrophic-recurses (a RangeError stack-overflow) on a multi-MB all-alnum string, and that throw would ESCAPE
+  // the reader — breaking the "always returns undefined, never throws" contract (a dormant-path brick risk). With the
+  // cap first, `||` short-circuits so OWNER_RE never sees more than GITHUB_LOGIN_MAX_LEN chars. Do NOT reorder.
+  if (raw.length > GITHUB_LOGIN_MAX_LEN || !OWNER_RE.test(raw)) {
+    emitEgressAlert('fork-owner-custody-invalid', { custodyForkOwnerPath: String(custodyForkOwnerPath).slice(0, 80), length: raw.length });
+    return undefined;
+  }
+  return raw;                                                        // a valid login (casing preserved; downstream lowercases both sides)
 }
 
 /**
@@ -546,7 +595,16 @@ function emitPR(data, opts = {}) {
         // ONLY on success RESERVE the cap + ledger and CONSUME the one-shot approval. A throw -> the outer
         // catch -> fail-closed, with cap + ledger + approval all UNCHANGED (proven via an injected armedEmitFn).
         const armedEmitFn = typeof opts.armedEmitFn === 'function' ? opts.armedEmitFn : armedEmit;
-        const pr = armedEmitFn({ draft, token, ghConfigDir: opts.ghConfigDir, approvalHash, requestedBaseSha: apprRequestedBaseSha });
+        // F-W4 M2 — resolve the fork-owner identity from CUSTODY (never actor bytes); `undefined` in prod (no
+        // custodyForkOwnerPath opt) => byte-identical (positioned like the requestedBaseSha sibling). DORMANCY
+        // INVARIANT — do NOT add a forkRepo<->expectedForkOwner coupling guard here: explicit `undefined` is
+        // identical to key-omission because every downstream consumer (armedEmit / ghEmit / validateForkIdentity)
+        // ONLY DESTRUCTURES this arg, none key-iterates. The both-present(armed)/both-absent(dormant) invariant is
+        // already enforced by two DISJOINT fail-closed gates — ensureFork (fork-owner-required: forkRepo set +
+        // owner absent) and validateForkIdentity's `!== undefined` owner assertion (owner set + forkRepo absent =>
+        // fork-identity-mismatch) — so a co-located third guard would split one invariant across modules (architect VERIFY F3).
+        const expectedForkOwner = resolveExpectedForkOwner({ custodyForkOwnerPath: opts.custodyForkOwnerPath });
+        const pr = armedEmitFn({ draft, token, ghConfigDir: opts.ghConfigDir, approvalHash, expectedForkOwner, requestedBaseSha: apprRequestedBaseSha });
         if (typeof opts.custodyCapStatePath === 'string') recordEmit(opts.custodyCapStatePath, { now, windowMs: opts.windowMs });
         if (typeof opts.custodyEtiquetteLedgerPath === 'string') recordEmitted(opts.custodyEtiquetteLedgerPath, etqKey);
         consumeApproval(opts.custodyApprovalsDir, approvalHash);
@@ -630,6 +688,6 @@ module.exports = {
   emitPR,
   buildEmitEnv, assertIsolatedGhConfigDir, armedEmit,
   assertDataIsPolicyFree, assertRecordedClaim, assertSafeRepoRef, assertSafeIssueRef, assertEgressSafeDiff, assertSafeLessonCommitment,
-  isKillswitchOn, isEmitArmed, resolveToken, resolveDisposition, resolveVerifyKey, parseDiffPaths, isEgressDeniedPath,
+  isKillswitchOn, isEmitArmed, resolveToken, resolveExpectedForkOwner, resolveDisposition, resolveVerifyKey, parseDiffPaths, isEgressDeniedPath,
   DISPOSITION_KEYS, DEFAULT_REPO_HOST_ALLOWLIST, ENV_ALLOWLIST, OWNER_RE,
 };

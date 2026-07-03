@@ -371,6 +371,114 @@ test('EC1b.5c armed + valid approval + an injected SUCCEEDING armedEmitFn => emi
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// === F-W4 M2 — expectedForkOwner from a custody file (Q-M2=c) — the resolveExpectedForkOwner reader + dormant thread ===
+// (the deny-list for `custodyForkOwnerPath` is covered by EC1b.3 above, which iterates E.DISPOSITION_KEYS.)
+
+test('F-W4 M2 reader: non-string / absent / unreadable / empty => STRICT undefined, never null (the P1a dormancy contract)', () => {
+  const dir = scratch('loom-fw4m2-');
+  try {
+    // non-string path = the prod-dormant case (opts.custodyForkOwnerPath is undefined)
+    assert.strictEqual(E.resolveExpectedForkOwner({}), undefined, 'no path => undefined');
+    assert.strictEqual(E.resolveExpectedForkOwner({ custodyForkOwnerPath: 123 }), undefined, 'non-string path => undefined');
+    // absent file
+    assert.strictEqual(E.resolveExpectedForkOwner({ custodyForkOwnerPath: path.join(dir, 'nope') }), undefined, 'absent => undefined');
+    // unreadable: a directory as the path => readFileSync throws EISDIR => caught => undefined
+    assert.strictEqual(E.resolveExpectedForkOwner({ custodyForkOwnerPath: dir }), undefined, 'unreadable (dir) => undefined');
+    // empty + whitespace-only
+    const empty = path.join(dir, 'empty'); fs.writeFileSync(empty, '');
+    const ws = path.join(dir, 'ws'); fs.writeFileSync(ws, '   \n\t ');
+    assert.strictEqual(E.resolveExpectedForkOwner({ custodyForkOwnerPath: empty }), undefined, 'empty => undefined');
+    assert.strictEqual(E.resolveExpectedForkOwner({ custodyForkOwnerPath: ws }), undefined, 'whitespace-only => undefined');
+    // P1a REGRESSION (load-bearing): the return is the PRIMITIVE undefined, NOT null. validateForkIdentity:500 gates
+    // on `!== undefined`, and null !== undefined is TRUE => a null return would brick the dormant (non-fork) prod path.
+    assert.notStrictEqual(E.resolveExpectedForkOwner({ custodyForkOwnerPath: empty }), null, 'absent branch returns undefined, NOT null');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('F-W4 M2 reader: a VALID login => the trimmed value (casing preserved; digit-only + 39-char boundary accepted)', () => {
+  const dir = scratch('loom-fw4m2-');
+  try {
+    const f = path.join(dir, 'owner');
+    fs.writeFileSync(f, 'LoomBot\n');
+    assert.strictEqual(E.resolveExpectedForkOwner({ custodyForkOwnerPath: f }), 'LoomBot', 'casing preserved, trailing newline trimmed');
+    fs.writeFileSync(f, '0');            // GitHub permits a digit-only owner (see OWNER_RE comment)
+    assert.strictEqual(E.resolveExpectedForkOwner({ custodyForkOwnerPath: f }), '0');
+    fs.writeFileSync(f, 'a-b');          // single internal hyphen ok
+    assert.strictEqual(E.resolveExpectedForkOwner({ custodyForkOwnerPath: f }), 'a-b');
+    fs.writeFileSync(f, 'a'.repeat(39)); // exactly the 39-char login max => valid
+    assert.strictEqual(E.resolveExpectedForkOwner({ custodyForkOwnerPath: f }), 'a'.repeat(39), '39 chars is the inclusive boundary');
+    fs.writeFileSync(f, '\uFEFFLoomBot'); // a LEADING BOM: U+FEFF IS ECMAScript WhiteSpace, so .trim() strips it =>
+    assert.strictEqual(E.resolveExpectedForkOwner({ custodyForkOwnerPath: f }), 'LoomBot', 'a leading BOM is trimmed to the clean login (tolerant of an editor artifact; safe — the trimmed value has no BOM to inject)');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('F-W4 M2 reader: PRESENT-but-malformed => STRICT undefined + OBSERVABLE fork-owner-custody-invalid alert (incl. 40-char valid-shape [M1] + BOM)', () => {
+  const dir = scratch('loom-fw4m2-');
+  try {
+    const f = path.join(dir, 'owner');
+    // owner/repo (slash), bad char, leading/trailing hyphen, space, consecutive hyphens, dot, a 40-char valid-SHAPE
+    // login (OWNER_RE is length-blind — hacker M1), an EMBEDDED-BOM login (a MID-string U+FEFF survives .trim() and
+    // fails OWNER_RE — the fail-closed case; a LEADING BOM is instead stripped by .trim() to a clean login, see the
+    // valid-login test — the code-reviewer F5 "trim doesn't strip a BOM" claim was empirically wrong), an argv-injection attempt.
+    const bad = ['owner/repo', 'bad*char', '-lead', 'trail-', 'a b', 'a--b', 'o.w', 'a'.repeat(40), 'Loom\uFEFFBot', 'attacker:x&state=all'];
+    for (const v of bad) {
+      fs.writeFileSync(f, v);
+      const { value, alerts } = captureAlerts(() => E.resolveExpectedForkOwner({ custodyForkOwnerPath: f }));
+      assert.strictEqual(value, undefined, `malformed ${JSON.stringify(v)} => undefined`);
+      assert.notStrictEqual(value, null, `malformed ${JSON.stringify(v)} => undefined NOT null (P1a on the malformed branch — hacker M3)`);
+      assert.ok(/fork-owner-custody-invalid/.test(alerts), `malformed ${JSON.stringify(v)} => the exact custody-invalid alert fires`);
+    }
+    // PIN the no-raw-value-echo contract (VC-W2a M2 lesson): a distinctive hostile value must NOT appear in the alert.
+    fs.writeFileSync(f, 'EVILINJECTMARKER*x');
+    const { alerts } = captureAlerts(() => E.resolveExpectedForkOwner({ custodyForkOwnerPath: f }));
+    assert.ok(!alerts.includes('EVILINJECTMARKER'), 'the alert carries the path + length only, never the raw malformed value');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('F-W4 M2 reader: a MULTI-MB all-alnum custody file => undefined + alert, NEVER a thrown RangeError (VALIDATE-hacker M1: the length cap MUST precede OWNER_RE)', () => {
+  const dir = scratch('loom-fw4m2-');
+  try {
+    const f = path.join(dir, 'owner');
+    // 12 MB of 'a' — over the ~8.4 MB threshold at which OWNER_RE's `(?:-?[A-Za-z0-9])*` stack-overflows. With the
+    // length-cap-first order the regex never runs on it (short-circuit), so the reader returns undefined, never throws.
+    fs.writeFileSync(f, Buffer.alloc(12 * 1024 * 1024, 0x61));
+    let threw = null; let value;
+    const { alerts } = captureAlerts(() => { try { value = E.resolveExpectedForkOwner({ custodyForkOwnerPath: f }); } catch (e) { threw = e; } });
+    assert.strictEqual(threw, null, 'the reader must NOT throw (the cap short-circuits before OWNER_RE sees the huge string — the never-throws contract)');
+    assert.strictEqual(value, undefined, 'an over-length file => undefined');
+    assert.ok(/fork-owner-custody-invalid/.test(alerts), 'the over-length reject stays observable');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('F-W4 M2 DORMANCY: emitPR with NO custodyForkOwnerPath threads expectedForkOwner===undefined (key PRESENT + undefined; byte-identical, no throw)', () => {
+  const dir = scratch('loom-custody-');
+  try {
+    withKillswitchEnvCleared(() => {
+      const opts = armedCustody(dir);
+      mintApprovalFor(opts);
+      let seen = null;
+      const r = E.emitPR(goodData(), Object.assign({}, opts, { armedEmitFn: (a) => { seen = a; return { pr_url: 'x' }; } }));
+      assert.strictEqual(r.emitted, true, 'the dormant thread does not break a normal emit');
+      assert.ok('expectedForkOwner' in seen, 'the seam arg CARRIES the key (explicit-undefined is identical to omission only under destructuring — architect F2)');
+      assert.strictEqual(seen.expectedForkOwner, undefined, 'no custody file => undefined => validateForkIdentity:500 skipped => non-fork path unaffected');
+    });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('F-W4 M2 ARMED-THREAD: emitPR WITH a valid custodyForkOwnerPath threads that login as expectedForkOwner', () => {
+  const dir = scratch('loom-custody-');
+  try {
+    withKillswitchEnvCleared(() => {
+      const opts = armedCustody(dir);
+      mintApprovalFor(opts);
+      const ownerFile = path.join(dir, 'fork-owner'); fs.writeFileSync(ownerFile, 'loombot\n');
+      let seen = null;
+      E.emitPR(goodData(), Object.assign({}, opts, { custodyForkOwnerPath: ownerFile, armedEmitFn: (a) => { seen = a; return { pr_url: 'x' }; } }));
+      assert.strictEqual(seen.expectedForkOwner, 'loombot', 'the custody login reaches the seam (arming supplies BOTH this + forkRepo)');
+    });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('EC1b.5d a CONSUMED approval does not re-fire; a TTL-expired approval => awaiting-approval (H4 one-shot + TTL)', () => {
   const dir = scratch('loom-custody-');
   try {
