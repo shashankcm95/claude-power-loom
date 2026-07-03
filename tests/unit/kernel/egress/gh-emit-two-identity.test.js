@@ -91,7 +91,7 @@ const MODIFY_DIFF = [
 //                          a FORK-branch-ref (`repos/${forkRepo}/git/ref/heads/...`) => `forkRefSha`.
 function makeGh({ upstreamRepo = GOOD_REPO, defaultBranch = 'main', refExists = false, failPulls = false, existingPulls,
   baseContents = {}, baseTreeModes = {},
-  forkRepo, forkGetSequence, forkRepoMeta, forkRefSha = SHA_D,
+  forkRepo, forkGetSequence, forkRepoMeta, forkRefSha = SHA_D, failActionsDisable = false,
   prBaseRepoFullName, prBaseRef, prNumber = 9, prUrl = 'https://github.com/o/r/pull/9' } = {}) {
   const calls = [];
   function method(args) { const i = args.indexOf('--method'); return i >= 0 ? args[i + 1] : 'GET'; }
@@ -123,6 +123,14 @@ function makeGh({ upstreamRepo = GOOD_REPO, defaultBranch = 'main', refExists = 
     // must be checked BEFORE the upstream-meta route, and the POST /forks + fork-ref-tip routes before the generic ones.
     if (ep === `repos/${forkId}` && forkId !== upstreamRepo && m === 'GET') return forkGetResponse();
     if (ep === `repos/${upstreamRepo}/forks` && m === 'POST') return JSON.stringify({ full_name: forkId });
+    // F-W4 M1 — the disable-Actions-on-fork PUT (fork mode only; kernel-constant {enabled:false} body). GitHub
+    // returns 204 No Content, so the body is ignored by disableForkActions. failActionsDisable => a non-2xx throw.
+    if (forkId !== upstreamRepo && ep === `repos/${forkId}/actions/permissions` && m === 'PUT') {
+      // a runGh-SHAPED error (runGh parses HTTP status off stderr into .httpStatus) so the fail-closed test can assert
+      // the preserved diagnostic fields — a public_repo-token 403 on this endpoint is the Q-M1-token-scope signal.
+      if (failActionsDisable) { const e = new Error('runGh: gh api failed (HTTP 403)'); e.httpStatus = '403'; e.status = 1; e.stderr = 'gh: error (HTTP 403)'; throw e; }
+      return '';
+    }
     if (forkId !== upstreamRepo && new RegExp(`^repos/${forkId}/git/ref/heads/`).test(ep) && m === 'GET') {
       return JSON.stringify({ object: { sha: forkRefSha } });
     }
@@ -577,6 +585,69 @@ test('F-W4 M4 structural single-producer: the two ${forkOwner}: head sinks (dedu
   assert.strictEqual(vfiForkOwner.length, 1, `forkOwner is destructured from the validateForkIdentity call exactly once, any property order; found ${vfiForkOwner.length}`);
 });
 
+// === F-W4 M1: disable Actions on the ephemeral fork (BOTH ensureFork ready paths), DORMANT until F-W4 arms ===
+// A fork INHERITS the upstream .github/workflows at POST /forks (the emitted-tree .github/ denial does not reach
+// inherited state — SCAR #21). A fresh fork defaults Actions-DISABLED, but a REUSED fork may have had them enabled,
+// so M1 EXPLICITLY disables on BOTH ready paths (reuse + create), AFTER verify, BEFORE ready. Kernel-constant body.
+
+test('F-W4 M1 reuse-path: ensureFork disables Actions (single-200 reuse) AFTER verify, BEFORE ready; body is the kernel constant', () => {
+  // the STEADY-STATE path: an operator provisions one throwaway fork; every emit after the first reuses it (a single
+  // 200 fork GET). M1 must disable Actions HERE, not only on create (the reuse path is the common case — SCAR #21).
+  const gh = makeForkGh({ forkGetSequence: [200] });
+  const r = G.ensureFork({ upstreamRepo: GOOD_REPO, resolvedForkRepo: FORK_REPO, forkOwner: 'botacct', expectedForkOwner: 'botacct' }, { gh, env: {} });
+  assert.deepStrictEqual(r, { ready: true });
+  assert.deepStrictEqual(endpointsOf(gh), [
+    `GET repos/${FORK_REPO}`,
+    `PUT repos/${FORK_REPO}/actions/permissions`,
+  ], 'the reuse path: the verify GET then the disable-Actions PUT, in that order, nothing else');
+  const put = findCall(gh, /\/actions\/permissions$/, 'PUT');
+  assert.deepStrictEqual(JSON.parse(put.input), { enabled: false }, 'the disable body is the kernel constant {enabled:false} (no actor bytes)');
+});
+
+test('F-W4 M1 create-path: ensureFork disables Actions after CREATE+readiness too, and fires EXACTLY once', () => {
+  // fork GET 404 => POST /forks => readiness GET 200 => verify => disable. The PUT must fire on this path as well as
+  // reuse — and exactly once (not doubled across the idempotency + readiness legs), AFTER the fork is created.
+  const gh = makeForkGh({ forkGetSequence: [404, 200] });
+  const r = G.ensureFork({ upstreamRepo: GOOD_REPO, resolvedForkRepo: FORK_REPO, forkOwner: 'botacct', expectedForkOwner: 'botacct' }, { gh, env: {} });
+  assert.deepStrictEqual(r, { ready: true });
+  const puts = gh.calls.filter((c) => /\/actions\/permissions$/.test(c.args[1]) && c.method === 'PUT');
+  assert.strictEqual(puts.length, 1, 'the disable-Actions PUT fires exactly once on the create path');
+  const eps = endpointsOf(gh);
+  assert.ok(eps.indexOf(`POST repos/${GOOD_REPO}/forks`) < eps.indexOf(`PUT repos/${FORK_REPO}/actions/permissions`), 'the fork is created before Actions are disabled');
+});
+
+test('F-W4 M1 fail-closed: a non-2xx disable-Actions PUT => ghEmit THROWS + emits fork-actions-disable-failed + ZERO fork writes', () => {
+  // a fork whose Actions could not be confirmed-disabled is exactly the hazard M1 closes => fail-closed. The reject
+  // must be OBSERVABLE (the fail-silent security rule) and the emit must never reach the fork write phase.
+  const gh = makeForkGh({ failActionsDisable: true });
+  const cap = captureAlerts(() => G.ghEmit({ draft: draftFor(GOLDEN_ADD_DIFF), approvalHash: GOLDEN_ADD_HASH, env: {}, forkRepo: FORK_REPO, expectedForkOwner: 'botacct' }, { runGh: gh }));
+  assert.ok(cap.err, 'ghEmit throws fail-closed when Actions cannot be disabled');
+  assert.match(String(cap.err.message), /fork-actions-disable-failed|fail-closed/, 'the throw names the fail-closed disable');
+  assert.match(cap.text, /\[LOOM-EGRESS-ALERT\].*fork-actions-disable-failed/, 'the reject is OBSERVABLE (a fork-actions-disable-failed egress alert)');
+  // diagnostic fidelity (code-reviewer LOW + hacker L-1 fold): the thrown error PRESERVES runGh's structured fields
+  // and the alert carries httpStatus, so a public_repo-token 403 on actions/permissions is diagnosable at arming.
+  assert.strictEqual(cap.err.httpStatus, '403', 'the thrown error preserves the underlying gh .httpStatus');
+  assert.ok(cap.err.cause, 'the thrown error chains the original gh error as .cause');
+  assert.match(cap.text, /"httpStatus":"403"/, 'the alert payload carries the httpStatus (a token-scope 403 is diagnosable)');
+  assert.strictEqual(forkWriteCalls(gh).length, 0, 'ZERO fork tree/commit/ref writes — the emit never touched the fork');
+});
+
+test('F-W4 M1 ordering (full emit): the disable-Actions PUT precedes the first fork tree WRITE', () => {
+  const gh = makeForkGh({ forkRefSha: SHA_D });
+  G.ghEmit({ draft: draftFor(GOLDEN_ADD_DIFF), approvalHash: GOLDEN_ADD_HASH, env: {}, forkRepo: FORK_REPO, expectedForkOwner: 'botacct' }, { runGh: gh });
+  const eps = endpointsOf(gh);
+  const putIdx = eps.indexOf(`PUT repos/${FORK_REPO}/actions/permissions`);
+  const treeIdx = eps.indexOf(`POST repos/${FORK_REPO}/git/trees`);
+  assert.ok(putIdx >= 0 && treeIdx >= 0, 'both the disable PUT and the first fork tree write happened');
+  assert.ok(putIdx < treeIdx, 'Actions are disabled BEFORE the first write to the fork');
+});
+
+test('F-W4 M1 dormant (same-owner): a same-owner emit makes ZERO actions/permissions calls (byte-identical)', () => {
+  const gh = makeGh();
+  G.ghEmit({ draft: draftFor(GOLDEN_ADD_DIFF), approvalHash: GOLDEN_ADD_HASH, env: {} }, { runGh: gh });
+  assert.ok(!gh.calls.some((c) => /\/actions\/permissions$/.test(c.args[1])), 'same-owner (isForkMode false) never disables Actions — the M1 wire is dormant');
+});
+
 // === TEST 17: MODIFY + distinct forkRepo => base reads still hit repos/${upstreamRepo} ===
 
 test('17 MODIFY + distinct fork: base-tree + contents READS still target the upstream (highest-risk stray combo)', () => {
@@ -590,6 +661,7 @@ test('17 MODIFY + distinct fork: base-tree + contents READS still target the ups
     // F-W2 fork lifecycle: ensureFork verifies the fork (GET repos/fork => valid), the H2 re-bind re-reads it before
     // the write, and the H3 fork-tip read (GET repos/fork/git/ref/heads/branch) returns the created commit sha.
     if (ep === `repos/${fork}` && m === 'GET') return JSON.stringify({ fork: true, full_name: fork, owner: { login: 'botacct' }, source: { full_name: upstream } });
+    if (ep === `repos/${fork}/actions/permissions` && m === 'PUT') return '';   // F-W4 M1 — disable-Actions on the fork
     if (new RegExp(`^repos/${fork}/git/ref/heads/`).test(ep) && m === 'GET') return JSON.stringify({ object: { sha: SHA_D } });
     if (ep === `repos/${upstream}`) return JSON.stringify({ default_branch: 'main' });
     if (/\/git\/ref\/heads\//.test(ep)) return JSON.stringify({ object: { sha: SHA_A } });
@@ -655,6 +727,7 @@ test('rollback DELETE targets the fork: with a distinct fork + failPulls, the DE
     const ep = args[1] || ''; const m = method(args);
     // F-W2 fork lifecycle: ensureFork verify + H2 re-bind (GET repos/fork => valid) + H3 fork-tip (=== commit sha).
     if (ep === `repos/${fork}` && m === 'GET') return JSON.stringify({ fork: true, full_name: fork, owner: { login: 'botacct' }, source: { full_name: upstream } });
+    if (ep === `repos/${fork}/actions/permissions` && m === 'PUT') return '';   // F-W4 M1 — disable-Actions on the fork
     if (new RegExp(`^repos/${fork}/git/ref/heads/`).test(ep) && m === 'GET') return JSON.stringify({ object: { sha: SHA_D } });
     if (ep === `repos/${upstream}`) return JSON.stringify({ default_branch: 'main' });
     if (/\/git\/ref\/heads\//.test(ep)) return JSON.stringify({ object: { sha: SHA_A } });
