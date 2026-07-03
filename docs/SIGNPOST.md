@@ -373,6 +373,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 
 - `packages/lab/reputation/cli.js` - v3.4 Wave 2 — E4 reputation CLI: inspect the advisory-verdict DISTRIBUTION over kernel-attested
 - `packages/lab/reputation/materialize.js` - v3.4 Wave 3 — the off-hot-path A6 materializer.
+- `packages/lab/reputation/narrow.js` - item-6 — the `narrow` HARNESS: the missing LIVE caller of the pure `recommendNarrowing` (reputation-gate.js,
 - `packages/lab/reputation/project.js` - v3.4 Wave 2 — E4 reputation derived-view.
 - `packages/lab/reputation/_spike/reputation-gate-diagnostic.js` - v3.10-W3 E3 — the LIVE diagnostic: run the reputation-gate advisory over the REAL projectReputation output +
 - `packages/lab/reputation/reputation-gate.js` - v3.10-W3 — the reputation-gate ADVISORY consumer: the spawn-narrowing decision that closes the reputation

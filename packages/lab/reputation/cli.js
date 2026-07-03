@@ -3,12 +3,17 @@
 // @loom-layer: lab
 //
 // v3.4 Wave 2 — E4 reputation CLI: inspect the advisory-verdict DISTRIBUTION over kernel-attested
-// spawns (display-only). It only READS (the projection is pure); it never writes, gates, or routes.
+// spawns (display-only). It only READS (the projection is pure); it never writes, GATES, or itself
+// dispatches a spawn ("routes" = the CLI performs the routing — it never does). `snapshot` and `narrow`
+// produce a decision-INPUT the ORCHESTRATOR consults; neither gates. Emitting a `reroute`-bearing
+// advisory is NOT a charter breach — do not "fix" `narrow` to exit non-zero on reroute (architect VERIFY F2).
 //
 // Subcommands:
 //   show [--persona <name>]      print the LIVE per-subject-persona distribution (pure projection)
 //   materialize                  write the A6 reputation SNAPSHOT off-hot-path (what the kernel reads)
 //   snapshot [--personas a,b,c]  read the PRE-COMPUTED snapshot, optionally filtered to a candidate SET
+//   narrow --personas a,b,c      the COMBINED advisory (reputation + breaker via recommendNarrowing):
+//                                per-candidate proceed|down-weight|reroute. Narrows-only, NEVER a gate
 //
 // `snapshot` is the v3.4 advisory READ PATH consumed by the orchestrator persona-selection step (the
 // A6-advise convention in agent-identity-reputation.md): it reads the snapshot the kernel records, NOT
@@ -22,6 +27,8 @@
 
 const { projectReputation } = require('./project');
 const { materializeSnapshot } = require('./materialize');
+const { narrow } = require('./narrow');                             // item-6 — the combined recommendNarrowing advisory
+const { DEFAULT_SOURCE } = require('../circuit-breaker/project');   // the pinned breaker source (for the starved-source warning)
 const { readEvolutionSnapshot, resolveSnapshotPath } = require('../../kernel/_lib/evolution-snapshot-read');
 const { canonicalPersonaKey } = require('../persona-experiment/canonical-persona-key');
 
@@ -65,6 +72,8 @@ const USAGE = [
   '  cli.js materialize                    write the A6 reputation SNAPSHOT (off-hot-path; the kernel reads it)',
   '  cli.js snapshot [--personas a,b,c]    read the PRE-COMPUTED snapshot, optionally filtered to a candidate',
   '                                        SET in caller order (the A6-advise read; NOT ranked, NOT a score)',
+  '  cli.js narrow --personas a,b,c        the COMBINED advisory (reputation + breaker): per-candidate',
+  '                                        proceed|down-weight|reroute (recommendNarrowing). Narrows-only, NEVER a gate',
   '  cli.js verify-snapshot                A6 M1 provenance check: exit 0 iff present AND witnessed by a',
   '                                        materialize event (witnessed != authentic-beyond-same-uid)',
   '',
@@ -139,6 +148,36 @@ function main(argv) {
         requested,
         note: 'distributions in CALLER ORDER - NOT ranked, NOT a score; the orchestrator judges. no-data / pending_enrichment>0 means UNMEASURED: neither better NOR worse than a measured distribution - do NOT prefer OR deselect on absence alone; when candidates differ only by measured-vs-unmeasured, fall back to lens-fit (VALIDATE hacker M2).',
       },
+    }, null, 2)}\n`);
+    process.exit(0);
+  }
+
+  if (cmd === 'narrow') {
+    // item-6 — the COMBINED advisory: reputation distribution + breaker -> per-candidate proceed|down-weight|reroute
+    // (the pure recommendNarrowing, fed the LIVE lane). NARROWS-ONLY, NEVER A GATE (§0a.3.1-clean; the orchestrator
+    // MAY consult it to narrow its OWN choice among lens-equals). Exit 0 on a resolved read (an empty store -> all
+    // proceed/insufficient-evidence is VALID, not an error); a projectReputation FAULT fails LOUD (exit 1, MED-1).
+    const requested = collectPersonas(args);
+    if (requested.length === 0) {
+      process.stderr.write('reputation: narrow requires a candidate SET via --personas a,b,c (or --persona <name>)\n');
+      process.exit(1);
+      return;
+    }
+    let recs;
+    try {
+      recs = narrow(requested, {});          // MED-1: a store-read throw propagates here -> exit 1 (a fault, never `proceed`)
+    } catch (e) {
+      process.stderr.write(`reputation: narrow failed: ${e.message}\n`);
+      process.exit(1);
+      return;
+    }
+    // HIGH-2: a STARVED live source giving a false-clear must be VISIBLE — never let it masquerade as a clean advisory.
+    if (recs.some((r) => r && r.evidence && r.evidence.source_starved === true)) {
+      process.stderr.write(`reputation: WARNING the pinned breaker source '${DEFAULT_SOURCE}' is STARVED (its producer is probe-dead) - the reroute axis is NOT a safety signal for this read; only the reputation axis is live.\n`);
+    }
+    process.stdout.write(`${JSON.stringify({
+      recommendations: recs,
+      note: 'ADVISORY - narrows-only (proceed | down-weight | reroute), NEVER a hard gate: the orchestrator MAY consult it to narrow its OWN spawn choice among lens-equals; nothing acts on it automatically. A SHADOW read of the LIVE reputation lane (integrity-not-provenance, #273-open) + the pinned verdict-fail breaker. Candidate tokens are CANONICALIZED to the reputation store keys.',
     }, null, 2)}\n`);
     process.exit(0);
   }
