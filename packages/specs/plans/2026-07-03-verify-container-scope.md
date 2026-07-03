@@ -199,8 +199,10 @@ loom-added-tests path.
   world-anchor / lesson stores, any reputation / verdict-attestation record, or any field a
   `weight-source-gate` consumer reads — never a trust weight / `world_anchored` / `LIVE_SOURCES`
   (OQ-NS-6; disjoint from the #273 axis). Back it with a structural import-exclusion test (mirroring
-  the live-loop world-anchor exclusion test) asserting the verify module writes none of the trust-axis
-  stores. (VERIFY LOW — a NAMED forbidden sink, not just an abstract goal.)
+  the live-loop world-anchor exclusion test) proving verify-container does not IMPORT any trust-axis
+  lane (so it cannot call a trust-store writer); the sidecar-schema test (the QUALITY-only record shape,
+  no trust field) covers the write side, and a raw-fs write to a trust dir is the documented
+  data-channel residual. (VERIFY LOW — a NAMED forbidden sink, not just an abstract goal.)
 - Running an untrusted candidate MUST use the contained Docker/Linux backend; the macOS `sandbox-exec`
   backend has R12 residuals OPEN (H1 absolute-write-escape) and is NOT full containment. VC-W1 DEFAULTS
   to MockBackend.
