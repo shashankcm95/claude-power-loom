@@ -195,6 +195,10 @@ const DISPOSITION_KEYS = Object.freeze([
   // path, a pre-baked hash, the clock/ttl/uid the gate reads, OR the injectable emit fn). Exact-set deny (#273).
   'approval', 'approvalHash', 'approved', 'emission', 'approvedAt', 'nonce',
   'custodyApprovalsDir', 'custodyApprovalsPath', 'ttlMs', 'selfUid', 'armedEmitFn',
+  // VC-W1b — the QUALITY verify seam fn is CUSTODY-injected (like armedEmitFn); an actor must never plant it via
+  // untrusted data (the #273 exact-set deny-list; symmetry with armedEmitFn — hacker VERIFY L2). All three spellings
+  // (camel/snake/kebab) — the set is case-folded, but hyphen/underscore are DISTINCT own-keys (VALIDATE-hacker M1).
+  'verifyFn', 'verify_fn', 'verify-fn',
   // ③.2.5a — the broker-signature verify vocab is CUSTODY-only; an actor must never inject the verify key or a
   // sig via untrusted data (the #273 exact-set deny-list; VERIFY-arch F3 / honesty H1).
   'sig', 'key_id', 'keyId', 'signFn', 'verifyKeyPem', 'verifyKey', 'publicKeyPem', 'custodyVerifyKeyPath',
@@ -582,6 +586,31 @@ function emitPR(data, opts = {}) {
             }
           } catch (e) {
             emitEgressAlert('egress-join-key-write-failed', { pr_url: pr && pr.pr_url, reason: (e && e.message) || 'error' });
+          }
+        }
+        // VC-W1b — the DORMANT post-emit verify SEAM (QUALITY, not TRUST — OQ-NS-6). ADVISORY: fail-open,
+        // throw-swallowing, and it NEVER alters/blocks/reverts the emit or its bytes. Placed AFTER a successful,
+        // non-deduped emit (the additive join-key position) so the verdict describes a candidate that actually
+        // SHIPPED, graded on pr.base_sha (the base the PR opened against). Prod injects no verifyFn => this block is
+        // skipped => byte-identical. The kernel stays lab-agnostic (an injected fn like armedEmitFn — K12; no lab
+        // import). approvalHash IS the candidate identity (the join to the sidecar candidateId; the injected
+        // verifier is an ADAPTER mapping approvalHash -> candidateId). Inputs are the SCRUBBED/normalized draft.*
+        // + pr.base_sha, NEVER the raw actor data.*. The verifyFn CALL is synchronous and runs INSIDE the egress
+        // lock, so an injected verifyFn MUST return promptly (kick off real work in its ASYNC body — verifyCandidate
+        // does); the detached async continuation then runs fire-and-forget OUTSIDE the released lock (W1-benign:
+        // reads nothing back, self-records). Deferring the call past the lock release + a concurrency bound on a real
+        // (Docker) run are NAMED VC-W2 preconditions (VALIDATE-hacker M2 + R12 output-DoS). The verdict is DISCARDED
+        // (vp is never read back).
+        if (typeof opts.verifyFn === 'function' && pr && !pr.deduped) {
+          try {
+            const vp = opts.verifyFn({ repo: draft.repo, issueRef: draft.issueRef, base_sha: pr.base_sha, candidate_patch: draft.diff, approvalHash });
+            // verifyCandidate is async + self-records; do NOT await (advisory, non-blocking). Swallow an async
+            // rejection so a QUALITY verify can never surface as an unhandled rejection (no unhandledRejection
+            // listener exists in egress => this swallow is load-bearing). Inline no-ops (no undefined NOOP).
+            if (vp && typeof vp.then === 'function') vp.then(() => {}, () => {});
+          } catch {
+            // documented fail-open (NOT a silent swallow): a QUALITY verify throw must never block/alter a shipped
+            // emit. W1 has no verdict consumer; observability of a verify-seam throw is a VC-W2 concern.
           }
         }
         return { ok: true, emitted: true, disposition, draft, approvalHash, pr };
