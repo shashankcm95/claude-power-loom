@@ -170,6 +170,34 @@ activated.
    observer into a continuous differential producer and lets a hardened reputation change spawn decisions. Depends on
    1, 2, 4, 5.
 
+## STATUS ACCRETION (2026-07-04) — three world-contact rungs (7-9), from the colophon live dogfood
+
+The 6-rung plan above is the *internal* mechanics (issue -> solve -> emit -> observe-merge -> lesson -> persona).
+The `schmug/colophon#27` dogfood (shipped `live-solve-one`, SHADOW/dry) + the blocked manual submission surfaced
+**three rungs the map never had, because they only exist at the contact surface with the outside world.** Each
+blocks the north-star apex signal (an external maintainer's merge) for ordinary repos. Full findings + evidence:
+[`2026-07-04-live-dogfood-lifecycle-gaps.md`](2026-07-04-live-dogfood-lifecycle-gaps.md).
+
+7. **INTAKE — PR-acceptance precheck.** Status: **GAP, unscheduled (drafted).** A repo that blocks external PRs
+   (collaborators-only) can never produce the apex merge; today we learn it only at the `CreatePullRequest` step,
+   after a full solve (the colophon dead-end). The interaction limit is admin-only/unreadable; the discriminator is
+   *external-merged-PR history* (colophon: 0; spec-kitty: 5). Design (a readable intake heuristic + a submit-time
+   fail-fast-and-dispose): [`2026-07-04-intake-pr-acceptance-gate-design.md`](2026-07-04-intake-pr-acceptance-gate-design.md).
+   Cheapest fix; the natural first build. Feeds rung 9 (dispose on terminal-block) + the deferred issue-dataset.
+8. **REVIEW LOOP — external review -> persona.** Status: **GAP, unscheduled (sketched).** A maintainer/bot review on
+   the emitted PR has no ingestion path; only the `merged` boolean flows back (`merge-observer.js`), nothing reads
+   `/pulls/N/reviews`, `emitPR` is create-only, the outcome enum is frozen `['merged']`. On the critical path
+   (maintainers review before merging). Needs: a review-observer + `reviewContext` through the materializer + an
+   `emitPR` UPDATE path; reviewer prose is untrusted (the #273 scrub invariant). Depends on 1-6 + the emit-update seam.
+9. **DISPOSAL — of never-merged candidates.** Status: **GAP, unscheduled (sketched).** "Only merged is retained" is
+   implemented as *non-promotion*, not disposal: an un-merged candidate is never promoted but never disposed (the
+   ephemeral container/clone IS reaped; durable `draft-*.json` + ledger residue persists). Needs an explicit
+   disposal/expiry, and a terminal-block (rung 7, or a closed issue) should dispose *immediately*. Observable, never a
+   silent delete. Depends on 7 (the terminal-block signal).
+
+**Tracking note:** rungs 7-9 are the external-contact layer; the internal 1-6 are mechanism-complete (SHADOW). All
+nine are mirrored in [`docs/PRD.md`](../../../docs/PRD.md) §6. Only a world-anchored merge hardens any of it (OQ-NS-6).
+
 ## Caveats (honesty pass)
 
 - **The egress in-repo comments are stale and actively misleading.** `emit-pr.js:20/39/51/352` still say "armedEmit
