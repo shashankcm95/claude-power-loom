@@ -659,11 +659,11 @@ Durable record: the `toolkit/phase-close/router-v2-close` library volume.
 
 ## 🟡 ③.2 — The live external-PR beta (the apex trust unlock — IN PROGRESS)
 
-The apex of the North-Star: an EXTERNAL maintainer merging a PR an autonomous SDE produced — the **only** thing that HARDENS trust (everything prior NARROWS, OQ-NS-6). The charter sequences it ③.0 readiness → ③.1 dry-run → **③.2 gated real-PR**, all under **PATH-1** (the human is the sole gate; the behavioral grade is SHADOW and NEVER gates per [ADR-0017](../packages/specs/adrs/0017-lab-grade-integrity-bounded-not-closed.md)). Merged sub-waves (PRs #380–#397 on `origin/main`; all SHADOW / DRAFT-only):
+The apex of the North-Star: an EXTERNAL maintainer merging a PR an autonomous SDE produced — the **only** thing that HARDENS trust (everything prior NARROWS, OQ-NS-6). The charter sequences it ③.0 readiness → ③.1 dry-run → **③.2 gated real-PR**, all under **PATH-1** (the human is the sole gate; the behavioral grade is SHADOW and NEVER gates per [ADR-0017](../packages/specs/adrs/0017-lab-grade-integrity-bounded-not-closed.md)). Merged sub-waves (PRs #380–#402 on `origin/main`; all SHADOW / DRAFT-only):
 
 - **③.2.0 #380 / #381** — readiness hardening for the live external-PR beta (+ a folded CodeRabbit review: 1 CRITICAL + 2 Major).
 - **③.2.1a #383 / #387** — the grade-integrity producer gate + diff-scope + a pinned pytest harness, plus the honest bound **[ADR-0017](../packages/specs/adrs/0017-lab-grade-integrity-bounded-not-closed.md)** (the assertion-oracle floor — the grade is integrity-bounded, SHADOW, never gates).
-- **③.2.1b #388 / #389 — the PR-egress kernel.** `packages/kernel/egress/` (`emit-pr.js` + `policy.js` + `scrub.js`) is the **sole `emitPR` chokepoint**; the killswitch is `buildEmitEnv` env-sanitization (**capability-removal, not a hook** — [ADR-0012](../packages/specs/adrs/0012-capability-enforcement-is-static-not-runtime-injected.md)), and `armedEmit()` **THROWS** so the emitter cannot reach the network by construction. PR-B adds egress secret-scrub + a per-window cap + an etiquette gate (defense-in-depth).
+- **③.2.1b #388 / #389 — the PR-egress kernel.** `packages/kernel/egress/` (`emit-pr.js` + `policy.js` + `scrub.js`) is the **sole `emitPR` chokepoint**; the killswitch is `buildEmitEnv` env-sanitization (**capability-removal, not a hook** — [ADR-0012](../packages/specs/adrs/0012-capability-enforcement-is-static-not-runtime-injected.md)), and at this wave `armedEmit()` still **threw** so the emitter could not reach the network by construction (armed later at ③.2.5c #402). PR-B adds egress secret-scrub + a per-window cap + an etiquette gate (defense-in-depth).
 - **③.2.2a #390** — a read-only good-first-issue live puller + `validatePublicRecord` (the public-record boundary).
 - **③.2.2b #391** — the Docker **actor-write** sandbox + a cost-guard (the contained-actor primitive; `docker-actor-backend.js` + `Dockerfile.actor`).
 - **③.2.2c #395** — a semantic-only DRAFT loop on real repos (SHADOW, emits nothing); plus #396, a fix closing an LSP-tool leak in the capability-free `claude -p` recipe.
@@ -673,7 +673,7 @@ The apex of the North-Star: an EXTERNAL maintainer merging a PR an autonomous SD
 - **③.2.5b #400 / #401** — the cross-uid `loom-broker` VEHICLE (`loom-broker-*` + `loom-custody-verify`) + the `approve-cli` human sign-what-you-see gate.
 - **③.2.5c #402 — the network ARMING.** `gh-emit.js` (a `gh api --input -` `tree → commit → ref → pull` sequence) implements the seam, and **`armedEmit` now delegates to it** (no longer a throw) behind the full gate. Reconstructs the post-image positionally from the approved scrubbed diff (new-file adds only this wave), with a kernel-constant envelope and a hard `draft:true`.
 
-**Status: ARMED + first egress proven (own-repo).** The network path works end-to-end — an own-repo egress dogfood emitted a real gated DRAFT PR with a byte-faithful post-image (the dogfood PR has since been closed). Two BLOCKERs stand before a real EXTERNAL PR: the cross-uid `loom-broker` is built but **not deployed** (so the approval is integrity-only and the human-gate is not yet a real authorization boundary), and `gh-emit` reconstructs **new-file adds only** (a real modify-diff is not yet emittable). These plus the runtime-residual measurements are tracked in the **beta-readiness checklist** ([`packages/specs/plans/2026-06-23-beta-readiness-checklist.md`](../packages/specs/plans/2026-06-23-beta-readiness-checklist.md), issues #404–#410) — no real external PR until every BLOCKER closes. Per OQ-NS-6 only an external maintainer-merge HARDENS trust.
+**Status: ARMED + first egress proven (own-repo).** The network path works end-to-end — an own-repo egress dogfood emitted a real gated DRAFT PR with a byte-faithful post-image (the dogfood PR has since been closed). Two BLOCKERs stand before a real EXTERNAL PR: the cross-uid `loom-broker` is built but **not deployed** (so the approval is integrity-only and the human-gate is not yet a real authorization boundary), and `gh-emit` reconstructs **new-file adds only** (a real modify-diff is not yet emittable). These plus the runtime-residual measurements are tracked in the **beta-readiness checklist** ([`packages/specs/plans/2026-06-23-beta-readiness-checklist.md`](../packages/specs/plans/2026-06-23-beta-readiness-checklist.md), issues #404–#410) — no real external PR until every BLOCKER closes. Per OQ-NS-6 only an external maintainer-merge HARDENS trust. *(This status is as of ③.2.5c / 2026-06-23; see the post-sign-off refresh below for the 2026-06-30-to-07-04 waves.)*
 
 ## Phase-close sign-off (autonomous-SDE capture wire, 2026-06-29)
 
@@ -720,6 +720,22 @@ NAMED residual (external boundary, not faked).
 
 The gate earned its keep: it caught the stale gap-map (a MEDIUM cross-arc doc-drift no per-PR review could
 see) + gave a decisive PR-A2 forward-contract read.
+
+## Status refresh: post-sign-off waves (2026-06-30 to 2026-07-04, all SHADOW)
+
+Since the 2026-06-29 sign-off, the remaining autonomous-SDE ladder rungs reached **mechanism-complete in SHADOW**: every one built, merged, and inert-by-design (no version bump; the release surface correctly holds at v3.11). The "two BLOCKERs" status above is superseded — the cross-repo delivery mechanism now exists as code (gated OFF), so the remaining gate is arming, not construction.
+
+| Arc | PRs | State |
+|---|---|---|
+| **Fork-emit** (fork to cross-repo PR against an UNOWNED upstream; the autonomous-delivery vehicle) | F-W1..F-W4 M2, #488–#499 | SHADOW/dormant: `forkRepo`/`expectedForkOwner` never populated in prod, `isForkMode` false; the operator-arming half is HELD ([`fork-emit-fw4-arming-scope.md`](../packages/specs/plans/2026-07-02-fork-emit-fw4-arming-scope.md)) |
+| **Verify-container** (SHADOW pre-emit quality verifier + anti-bypass disposition-decider; disjoint from the trust axis) | VC-W1a/b, VC-W2a, #493/#495/#497 | SHADOW/advisory: emits only on a sealed `resolved===true` |
+| **World-anchor HARDEN gate, Part A** (world-anchored weight to recall; the OQ-NS-6 harden path) + a SHADOW live-loop scheduler | #475–#487 (B5 arming #479); scheduler #483/#484 | ships **DARK**: `LIVE_SOURCES` stays empty until an operator arms `LOOM_WORLD_ANCHOR_ARM`; the loop is emit-OFF |
+| **item-4** issue-to-persona classifier + classify-telemetry | #443, #498 | SHADOW (`LOOM_PERSONA_MATERIALIZE` off); materializer activation deferred (gated on item-5) |
+| **item-5** authenticated cross-uid edge-minter (the "#273 close" crypto) | #463–#474 | SHADOW: the real close needs an OPERATOR-deployed separate-uid signer (out-of-band; integrity is not provenance until then) |
+| **item-6** reputation `narrow` harness + persona case-fold | #500–#502 | SHADOW/advisory: narrows-only, gates nothing |
+| pre-push lint gate (git-native, opt-in) | #496 | fast-feedback, not a security gate |
+
+**Current gate to a first LIVE external PR (all named; none is more SHADOW wiring):** the delivery mechanism is complete and correctly fail-closed; what remains is **operator/deploy plus one USER decision**: the F-W4 operator arming (a throwaway classic `public_repo` PAT, the object-sharing probe, populating `forkRepo`, and flipping the strict-truthy arm flag; steps O1-O5), the item-5 signer **deploy** (the #273 close / Part-B R2), and the USER's #273 trust sign-off (Part-B R3). Tracked in the beta-readiness checklist ([`2026-06-23-beta-readiness-checklist.md`](../packages/specs/plans/2026-06-23-beta-readiness-checklist.md)) and the Part-B scope ([`2026-07-01-item8-part-b-live-crossing-scope.md`](../packages/specs/research/2026-07-01-item8-part-b-live-crossing-scope.md)); the hard broker-deploy and actor-uid-separation blockers have since closed, leaving **#406** (the first real external PR — the launch gate) as the anchor open item. Per OQ-NS-6, only an external maintainer-merge HARDENS trust.
 
 ---
 
