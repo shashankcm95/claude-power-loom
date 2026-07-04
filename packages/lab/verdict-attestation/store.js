@@ -170,9 +170,27 @@ function validateRecordVerdictInput(o) {
   if (!nonEmptyString(subject.persona)) {
     throw new Error('recordVerdict: subject.persona (the judged persona) is required');
   }
-  // M2 — bound each field so a multi-MB value can't bloat the re-serialized ledger.
+  // item-6 follow-up (VALIDATE-hacker case-mismatch gap): CASE-FOLD the persona at the write boundary so a
+  // mixed-case record (`Node-Backend`) is STORED under the canonical lowercase key. canonicalPersonaKey's
+  // BARE_SHAPE is lowercase-only, so an un-normalized mixed-case row falls back to RAW in every reputation
+  // consumer's read (reputation/project.js personaOf, circuit-breaker/project.js personaOfVerdict,
+  // narrow.js canonToken) and MISSES its canonical row — a poor distribution silently skipped (fails SAFE:
+  // a missed down-weight, never inverted). Normalize ONCE here so every read stays a pure
+  // `canonicalPersonaKey(raw) || raw` (the read paths are UNCHANGED; a hand-written legacy mixed-case row is
+  // the pre-existing raw fallback — no regression). This MIRRORS narrow.js:canonToken's query-side fold; do
+  // NOT push it into canonicalPersonaKey — that is SHARED by the hand-crafted-ledger fixtures (persona 'pRaw')
+  // and would rewrite them. Lowercasing normalizes casing of the SAME logical persona (the roster is
+  // all-lowercase, so case-variants ARE the same persona); it does NOT collapse DISTINCT off-roster personas
+  // (`13-foo` vs `foo` differ by numbered PREFIX, not case). `.toLowerCase()` NOT `.toLocaleLowerCase()` — a
+  // Turkish locale would fold ASCII `I` -> dotless-i and split a roster token; the fold must be locale-free.
+  // The NORMALIZED value is validated + stored below so the bound + control-char invariants hold on exactly
+  // what lands on disk — a U+0130 (dotted-I) -> 2-char lowercase growth then fails CLOSED at the cap (the
+  // safe direction). attestation_id excludes persona (below), so dedup/accumulation is unchanged.
+  const persona = subject.persona.toLowerCase();
+  // M2 — bound each field so a multi-MB value can't bloat the re-serialized ledger. Persona is bounded on the
+  // NORMALIZED value (VERIFY hacker MEDIUM-1: a raw-length check would let `"I-dot".repeat(257)` grow past the cap).
   if (o.agentId.length > MAX_FIELD_LEN || verifier.identity.length > MAX_FIELD_LEN
-      || verifier.kind.length > MAX_FIELD_LEN || subject.persona.length > MAX_FIELD_LEN) {
+      || verifier.kind.length > MAX_FIELD_LEN || persona.length > MAX_FIELD_LEN) {
     throw new Error(`recordVerdict: a field exceeds the ${MAX_FIELD_LEN}-char cap (agentId/verifier.identity/verifier.kind/subject.persona must be bounded)`);
   }
   // M-1 — agentId is later path-joined by the enricher (resolver-journal-<agentId>.jsonl), so it MUST be
@@ -182,8 +200,9 @@ function validateRecordVerdictInput(o) {
     throw new Error(`recordVerdict: agentId ${JSON.stringify(o.agentId)} is not a safe path segment (no separators, '..', or NUL — it is later path-joined by the enricher)`);
   }
   // M-1 — reject control chars in EVERY stored string field (agentId too: isSafePathSegment misses
-  // newline/CR/tab, which would split a JSONL line).
-  const fields = [['agentId', o.agentId], ['verifier.identity', verifier.identity], ['verifier.kind', verifier.kind], ['subject.persona', subject.persona]];
+  // newline/CR/tab, which would split a JSONL line). subject.persona is checked on the NORMALIZED value —
+  // the value that persists — closing any (theoretical) case-fold-into-a-control-char gap.
+  const fields = [['agentId', o.agentId], ['verifier.identity', verifier.identity], ['verifier.kind', verifier.kind], ['subject.persona', persona]];
   for (const [name, val] of fields) {
     if (hasControlChars(val)) {
       throw new Error(`recordVerdict: ${name} contains a control / line-separator character (C0/DEL/C1/U+2028/U+2029 are rejected at the store boundary)`);
@@ -191,7 +210,9 @@ function validateRecordVerdictInput(o) {
   }
   const expiresAfterDays = (typeof o.expiresAfterDays === 'number' && o.expiresAfterDays > 0)
     ? o.expiresAfterDays : DEFAULT_EXPIRES_AFTER_DAYS;
-  return { verifier, subject, expiresAfterDays };
+  // Return a FRESH subject with the normalized persona (immutability — never mutate o.subject; drops any
+  // extraneous caller fields, narrowing to the { persona } schema recordVerdict stores).
+  return { verifier, subject: { persona }, expiresAfterDays };
 }
 
 /**
@@ -243,10 +264,12 @@ function recordVerdict(input) {
     // (Scanned against LIVE records only — an aged-out persona is forgotten; reuses this read, O(live).)
     // W4d 1c (C2 roster reconcile, folds F1): NORMALIZE BOTH SIDES of the comparison so a legacy
     // `13-node-backend` row + a `node-backend` input for one agentId are recognized as the SAME persona
-    // (no FALSE mislabel-throw on a numbered/bare collision). The stored value is unchanged below
-    // (recordVerdict writes the raw input verbatim → disk byte-stable). attestation_id basis excludes
-    // persona, so dedup is unaffected. canonicalPersonaKey returns null for an off-roster name → `|| raw`
-    // keeps two genuinely-distinct personas (e.g. node-backend vs ml-engineer) tripping the guard.
+    // (no FALSE mislabel-throw on a numbered/bare collision). `subject.persona` is already CASE-FOLDED by
+    // validateRecordVerdictInput (item-6 follow-up) — the numbered PREFIX is preserved (13c disk stays
+    // byte-stable), only casing is normalized; so two NEW `Node-Backend`+`node-backend` records for one
+    // agentId now both store `node-backend` and coexist (pre-fix they false-threw). attestation_id basis
+    // excludes persona, so dedup is unaffected. canonicalPersonaKey returns null for an off-roster name →
+    // `|| raw` keeps two genuinely-distinct personas (e.g. node-backend vs ml-engineer) tripping the guard.
     const inputKey = canonicalPersonaKey(subject.persona) || subject.persona;
     const mislabel = live.find((r) => r.evidence_refs && r.evidence_refs.agent_id === o.agentId
       && r.subject && (canonicalPersonaKey(r.subject.persona) || r.subject.persona) !== inputKey);

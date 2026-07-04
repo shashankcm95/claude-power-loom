@@ -82,46 +82,48 @@ test('★ INV-W1: unenriched excluded (global + per-persona pending_enrichment);
 });
 
 // ── 3. group-by subject.persona; by_verdict counts.
+// NB (item-6 follow-up): synthetic persona labels here are LOWERCASE — the store now case-folds
+// subject.persona at the write boundary, so an opaque label must be lowercase to match its stored key.
 test('group-by persona + by_verdict counts', () => {
-  recEnriched({ persona: 'pA', verifierId: 'r.a', verdict: 'pass', agentId: 'a1', txid: 't1' });
-  recEnriched({ persona: 'pA', verifierId: 'r.b', verdict: 'fail', agentId: 'a2', txid: 't2' });
-  recEnriched({ persona: 'pB', verifierId: 'r.a', verdict: 'partial', agentId: 'a3', txid: 't3' });
+  recEnriched({ persona: 'pa', verifierId: 'r.a', verdict: 'pass', agentId: 'a1', txid: 't1' });
+  recEnriched({ persona: 'pa', verifierId: 'r.b', verdict: 'fail', agentId: 'a2', txid: 't2' });
+  recEnriched({ persona: 'pb', verifierId: 'r.a', verdict: 'partial', agentId: 'a3', txid: 't3' });
   const out = projectReputation({ now: NOW });
-  assert.deepStrictEqual(personaOf(out, 'pA').by_verdict, { pass: 1, partial: 0, fail: 1 });
-  assert.deepStrictEqual(personaOf(out, 'pB').by_verdict, { pass: 0, partial: 1, fail: 0 });
+  assert.deepStrictEqual(personaOf(out, 'pa').by_verdict, { pass: 1, partial: 0, fail: 1 });
+  assert.deepStrictEqual(personaOf(out, 'pb').by_verdict, { pass: 0, partial: 1, fail: 0 });
 });
 
 // ── 4. ★ R1: by_verifier_kind stratifies (structural vs test-run distinct).
 test('★ R1: by_verifier_kind stratifies structural vs test-run', () => {
-  recEnriched({ persona: 'pX', verifierId: 'r.a', kind: 'structural', agentId: 'a1', txid: 't1' });
-  recEnriched({ persona: 'pX', verifierId: 'r.b', kind: 'test-run', agentId: 'a2', txid: 't2' });
-  const p = personaOf(projectReputation({ now: NOW }), 'pX');
+  recEnriched({ persona: 'px', verifierId: 'r.a', kind: 'structural', agentId: 'a1', txid: 't1' });
+  recEnriched({ persona: 'px', verifierId: 'r.b', kind: 'test-run', agentId: 'a2', txid: 't2' });
+  const p = personaOf(projectReputation({ now: NOW }), 'px');
   assert.strictEqual(p.by_verifier_kind.structural.pass, 1);
   assert.strictEqual(p.by_verifier_kind['test-run'].pass, 1);
 });
 
 // ── 5. ★ distinct_spawns = distinct agent_id (3 reviewers of 1 spawn → total 3, distinct_spawns 1).
 test('★ distinct_spawns: 3 verifiers of ONE spawn → total 3, distinct_spawns 1', () => {
-  for (const v of ['r.a', 'r.b', 'r.c']) recEnriched({ persona: 'pS', verifierId: v, agentId: 'aSAME', txid: 'tSAME' });
-  const p = personaOf(projectReputation({ now: NOW }), 'pS');
+  for (const v of ['r.a', 'r.b', 'r.c']) recEnriched({ persona: 'ps', verifierId: v, agentId: 'aSAME', txid: 'tSAME' });
+  const p = personaOf(projectReputation({ now: NOW }), 'ps');
   assert.strictEqual(p.total, 3, 'three distinct verifier attestations accumulate');
   assert.strictEqual(p.distinct_spawns, 1, 'but ONE delta-bearing spawn');
 });
 
 // ── 6. ★ HIGH-1 adapter (non-vacuous): recency uses recorded_at via {ts:…}; recent > old, ∈ (0,1].
 test('★ HIGH-1: recency_decay_factor is a number in (0,1]; recent persona > old persona', () => {
-  recEnriched({ persona: 'recentP', verifierId: 'r.a', agentId: 'aR', txid: 'tR', now: daysAgo(0) });
-  recEnriched({ persona: 'oldP', verifierId: 'r.a', agentId: 'aO', txid: 'tO', now: daysAgo(20) });
+  recEnriched({ persona: 'recentp', verifierId: 'r.a', agentId: 'aR', txid: 'tR', now: daysAgo(0) });
+  recEnriched({ persona: 'oldp', verifierId: 'r.a', agentId: 'aO', txid: 'tO', now: daysAgo(20) });
   const out = projectReputation({ now: NOW });
-  const r = personaOf(out, 'recentP').recency_decay_factor;
-  const o = personaOf(out, 'oldP').recency_decay_factor;
+  const r = personaOf(out, 'recentp').recency_decay_factor;
+  const o = personaOf(out, 'oldp').recency_decay_factor;
   assert.ok(typeof r === 'number' && r > 0 && r <= 1, `recent factor ∈ (0,1] (got ${r})`);
   assert.ok(r > o, `recent (${r}) > old (${o}) — proves the recorded_at→ts adapter (raw pass-through would be null)`);
 });
 
 // ── 7. ★ HIGH-2 determinism: with a pinned now, two calls deep-equal; no ledger mutation.
 test('★ HIGH-2: pinned now → two calls deep-equal (uses computeRecencyDecayAt, not Date.now())', () => {
-  recEnriched({ persona: 'pD', verifierId: 'r.a', agentId: 'aD', txid: 'tD', now: daysAgo(3) });
+  recEnriched({ persona: 'pd', verifierId: 'r.a', agentId: 'aD', txid: 'tD', now: daysAgo(3) });
   const before = store.listVerdicts({ now: NOW }).length;
   const a = projectReputation({ now: NOW });
   const b = projectReputation({ now: NOW });
@@ -152,10 +154,10 @@ test('★ containment: project.js imports no runtime identity STATE module', () 
 
 // ── 10. Honest label present; NO scalar score/quality/rank field (the §0a.3.1 "not a score" discipline).
 test('honest label present; no scalar score/quality/rank field', () => {
-  recEnriched({ persona: 'pL', verifierId: 'r.a', agentId: 'aL', txid: 'tL' });
+  recEnriched({ persona: 'pl', verifierId: 'r.a', agentId: 'aL', txid: 'tL' });
   const out = projectReputation({ now: NOW });
   assert.ok(/NOT a quality score/i.test(out.label), 'carries the honest "not a quality score" label');
-  const p = personaOf(out, 'pL');
+  const p = personaOf(out, 'pl');
   assert.ok(!Object.keys(p).some((k) => /^(score|quality|rank|grade|trust)$/i.test(k)), 'no scalar-grade field');
 });
 
@@ -213,6 +215,33 @@ test('★ W4d residual: OFF-ROSTER 13-foo vs foo do NOT collapse (canonicalPerso
   const names = out.personas.map((p) => p.persona);
   assert.ok(names.includes('13-foo'), 'off-roster numbered form stays distinct (raw)');
   assert.ok(names.includes('foo'), 'off-roster bare form stays distinct (raw)');
+});
+
+// ── 16. ★ item-6 follow-up (case-mismatch WRITE-side, task_93e9c55c): a record WRITTEN mixed-case
+//        (`Node-Backend`) is case-folded at the store WRITE boundary → PROJECTS under the canonical
+//        `node-backend` row, so a consumer querying the canonical key HITS it. Pre-fix it keyed under the
+//        raw `Node-Backend` and a canonical query MISSED → a poor distribution silently skipped. End-to-end
+//        close of the item-6 VALIDATE-hacker gap: write mixed-case + write canonical (DISTINCT spawns) → ONE
+//        canonical row. Complements narrow.js's already-shipped query-side canonToken fold.
+test('★ 16 (item-6 follow-up): a record WRITTEN Node-Backend projects under the canonical node-backend (canonical query hits it)', () => {
+  recEnriched({ persona: 'Node-Backend', verifierId: 'r.a', agentId: 'aMixed', txid: 'txM' });
+  recEnriched({ persona: 'node-backend', verifierId: 'r.b', agentId: 'aBare', txid: 'txB2' });
+  const out = projectReputation({ now: NOW });
+  const rows = out.personas.filter((p) => p.persona === 'node-backend' || p.persona === 'Node-Backend');
+  assert.strictEqual(rows.length, 1, 'mixed-case + canonical collapse to ONE projection row');
+  assert.strictEqual(rows[0].persona, 'node-backend', 'keyed on the canonical lowercase key — a canonical query hits it');
+  assert.strictEqual(rows[0].total, 2, 'both records counted under the one canonical persona');
+});
+
+// ── 17. ★ item-6 follow-up: for an OFF-ROSTER persona the write-boundary fold normalizes CASE (`Foo` → `foo`)
+//        but does NOT strip the numbered PREFIX (`13-foo` stays distinct from `foo`). Case normalizes, prefix
+//        does not — the fold collapses ONLY case-variants of the SAME token, never two logically-distinct
+//        off-roster personas (the invariant test 15 above guards, restated for the mixed-case write path).
+test('★ 17 (item-6 follow-up): OFF-ROSTER Foo folds to foo (case) while 13-foo stays distinct from foo (prefix)', () => {
+  recEnriched({ persona: 'Foo', verifierId: 'r.a', agentId: 'aFooUpper', txid: 'txFU' });
+  recEnriched({ persona: '13-foo', verifierId: 'r.b', agentId: 'aFooNum', txid: 'txFN' });
+  const names = projectReputation({ now: NOW }).personas.map((p) => p.persona).sort();
+  assert.deepStrictEqual(names, ['13-foo', 'foo'], 'Foo case-folds to foo; 13-foo stays distinct (differs by prefix, not case)');
 });
 
 process.stdout.write(`\nproject.test.js (E4 reputation): ${passed} passed, ${failed} failed\n`);
