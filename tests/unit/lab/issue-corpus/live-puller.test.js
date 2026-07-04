@@ -21,6 +21,7 @@ const {
   assertSafeOwnerRepo, parseRepoSlug, isLicenseCompatible, isPrCapable, isUnassigned,
   boundProblemStatement, buildPublicRecord, pullLiveCorpus, MAX_PROBLEM_BYTES, LICENSE_ALLOWLIST,
   assertReadOnlyGhArgs, ghApiReadArgs, buildSearchArgs, fetchOneIssueRecord,
+  ghApiEndpoint, hasExternalMergeHistory, ghApiClosedPullsArgs,
 } = P;
 const { validatePublicRecord } = require(path.join(REPO, 'packages', 'lab', 'issue-corpus', 'corpus.js'));
 const { parseRecordRef } = require(path.join(REPO, 'packages', 'lab', 'persona-experiment', 'live-draft-run.js'));
@@ -394,6 +395,125 @@ test('j2. ghApiReadArgs REJECTS a non-digit / traversal / 16-digit / cross-form 
   for (const suf of ['/issues/2a', '/issues/../x', '/issues/', '/issues/1234567890123456', '/commits/HEAD/issues/5', '/pulls/1', '/issues/7/comments']) {
     assert.throws(() => ghApiReadArgs('o', 'r', suf), /gh-endpoint/, JSON.stringify(suf));
   }
+});
+
+// ── (k) hasExternalMergeHistory — the intake PR-acceptance guard (Gap 7 Part A / Wave 1) ──
+// The colophon discriminator: has this repo ever MERGED a PR from a non-insider? Unit (the guard takes an
+// injected ghRunner) + integration (the SHADOW-gated drop in pullLiveCorpus + the advisory in
+// fetchOneIssueRecord). SECURITY: the /pulls read is GET-pinned; untrusted author_association/merged_at flow
+// only into a Set test + a logger reason (no interpolation). Fail-closed to false on any throw (hacker VERIFY).
+function pullsRunner(pulls) {
+  return function ghRunner(args) {
+    const ep = args.find((a) => typeof a === 'string' && /^repos\/[^/]+\/[^/]+\/pulls$/.test(a));
+    if (ep) return typeof pulls === 'string' ? pulls : JSON.stringify(pulls);
+    throw new Error('pullsRunner: unexpected call ' + args.join(' '));
+  };
+}
+function mergedBy(assoc, over) { return Object.assign({ merged_at: '2026-01-01T00:00:00Z', author_association: assoc }, over || {}); }
+
+test('k1. a merged non-insider PR (CONTRIBUTOR / FIRST_TIME_CONTRIBUTOR) -> true (spec-kitty shape)', () => {
+  assert.strictEqual(hasExternalMergeHistory('a', 'b', pullsRunner([mergedBy('CONTRIBUTOR')])), true);
+  assert.strictEqual(hasExternalMergeHistory('a', 'b', pullsRunner([mergedBy('FIRST_TIME_CONTRIBUTOR')])), true);
+});
+test('k2. all merged PRs OWNER -> false (colophon shape); empty / open-only -> false', () => {
+  assert.strictEqual(hasExternalMergeHistory('a', 'b', pullsRunner([mergedBy('OWNER'), mergedBy('OWNER')])), false);
+  assert.strictEqual(hasExternalMergeHistory('a', 'b', pullsRunner([])), false);
+  assert.strictEqual(hasExternalMergeHistory('a', 'b', pullsRunner([{ merged_at: null, author_association: 'CONTRIBUTOR' }])), false);
+});
+test('k3. INSIDER={OWNER,MEMBER,COLLABORATOR} -> false; an unknown-but-string assoc merge -> external (lenient KEEP)', () => {
+  assert.strictEqual(hasExternalMergeHistory('a', 'b', pullsRunner([mergedBy('MEMBER'), mergedBy('COLLABORATOR')])), false);
+  assert.strictEqual(hasExternalMergeHistory('a', 'b', pullsRunner([mergedBy('SPONSOR')])), true);
+});
+test('k4. TRI-STATE: gh throw / non-JSON / non-array -> null (could-not-assess); a VALID junk array -> false; NEVER throws out', () => {
+  // transient / malformed = null (unknown) — a flaky read must not read as a structural block (VALIDATE MEDIUM).
+  assert.strictEqual(hasExternalMergeHistory('a', 'b', () => { throw new Error('network'); }), null);
+  assert.strictEqual(hasExternalMergeHistory('a', 'b', () => 'not json'), null);
+  assert.strictEqual(hasExternalMergeHistory('a', 'b', pullsRunner({ not: 'an array' })), null);
+  // a VALID array with junk elements is a real read with NO valid external merge -> false (confirmed), never throws.
+  const junk = pullsRunner([null, 42, mergedBy(123), { author_association: 'CONTRIBUTOR' }]); // null elem + non-string assoc + no merged_at
+  assert.strictEqual(hasExternalMergeHistory('a', 'b', junk), false);
+});
+test('k5. a non-string author_association is NOT counted external (hacker LOW — typed-confusion closed)', () => {
+  assert.strictEqual(hasExternalMergeHistory('a', 'b', pullsRunner([mergedBy({ evil: 1 })])), false);
+  assert.strictEqual(hasExternalMergeHistory('a', 'b', pullsRunner([mergedBy(['CONTRIBUTOR'])])), false);
+});
+test('k6. ghApiClosedPullsArgs is a GET-pinned /pulls read (passes assertReadOnlyGhArgs, has state=closed)', () => {
+  const args = ghApiClosedPullsArgs('psf', 'requests', 30);
+  assert.doesNotThrow(() => assertReadOnlyGhArgs(args));
+  assert.ok(args.includes('repos/psf/requests/pulls'));
+  assert.ok(args.includes('-X') && args.includes('GET'));
+  assert.ok(args.includes('state=closed'));
+});
+test('k7. ENDPOINT_RE regression: /pulls passes; write(PUT)/reviews/param/traversal REJECT (hacker LOW)', () => {
+  assert.doesNotThrow(() => ghApiEndpoint('psf', 'requests', '/pulls'));
+  for (const bad of ['/pulls/1/merge', '/pulls/1/reviews', '/pullsX', '/pulls?state=closed', '/pulls/../x', '/issues/1/comments']) {
+    assert.throws(() => ghApiEndpoint('psf', 'requests', bad), /endpoint|shape/i, `must reject ${bad}`);
+  }
+});
+
+// integration — the SHADOW-gated drop (pullLiveCorpus) + the advisory (fetchOneIssueRecord)
+function withPulls(baseMk) {
+  return function (fixtures, seen) {
+    const base = baseMk(fixtures, seen);
+    return function ghRunner(args) {
+      if (Array.isArray(seen)) seen.push(args.join(' '));
+      const ep = args.find((a) => typeof a === 'string' && /^repos\/[^/]+\/[^/]+\/pulls$/.test(a));
+      if (ep) { const key = ep.replace(/^repos\//, '').replace(/\/pulls$/, ''); return JSON.stringify((fixtures.pulls && fixtures.pulls[key]) || []); }
+      return base(args);
+    };
+  };
+}
+const mockRunnerWithPulls = withPulls(mockRunner);
+const issueMockWithPulls = withPulls(issueMock);
+
+test('k8. pullLiveCorpus — DEFAULT (flag off) does NOT invoke the guard: record kept, no /pulls call (inert)', async () => {
+  const fixtures = { search: { items: [searchItem()] }, repos: { 'octo/widget': permissiveRepo() }, shas: { 'octo/widget': 'c'.repeat(40) } };
+  const seen = [];
+  const { records } = await pullLiveCorpus({ ghRunner: mockRunnerWithPulls(fixtures, seen), limit: 10 });
+  assert.strictEqual(records.length, 1, 'default keeps the record');
+  assert.ok(!seen.some((s) => /\/pulls/.test(s)), 'no /pulls call fires in the default (inert) path');
+});
+test('k9. pullLiveCorpus — ARMED drops a repo with no external-merge history (colophon shape)', async () => {
+  const fixtures = { search: { items: [searchItem()] }, repos: { 'octo/widget': permissiveRepo() }, shas: { 'octo/widget': 'c'.repeat(40) }, pulls: { 'octo/widget': [mergedBy('OWNER')] } };
+  const { records, stats } = await pullLiveCorpus({ ghRunner: mockRunnerWithPulls(fixtures), limit: 10, dropOnNoExternalMerge: true });
+  assert.strictEqual(records.length, 0, 'the risky repo is dropped when armed');
+  assert.ok(stats.dropReasons.some((r) => /no external PR/.test(r)), 'the drop reason is greppable');
+});
+test('k10. pullLiveCorpus — ARMED keeps a repo WITH external-merge history', async () => {
+  const fixtures = { search: { items: [searchItem()] }, repos: { 'octo/widget': permissiveRepo() }, shas: { 'octo/widget': 'c'.repeat(40) }, pulls: { 'octo/widget': [mergedBy('CONTRIBUTOR')] } };
+  const { records } = await pullLiveCorpus({ ghRunner: mockRunnerWithPulls(fixtures), limit: 10, dropOnNoExternalMerge: true });
+  assert.strictEqual(records.length, 1, 'a repo that merges external PRs is kept when armed');
+});
+test('k11. fetchOneIssueRecord — a logger WARNS on a risky repo; record returned UNCHANGED (public shape locked)', () => {
+  const fx = { issues: { 'octo/widget#7': issueObj() }, repos: { 'octo/widget': permissiveRepo() }, shas: { 'octo/widget': 'a'.repeat(40) }, pulls: { 'octo/widget': [mergedBy('OWNER')] } };
+  const warns = [];
+  const rec = fetchOneIssueRecord({ owner: 'octo', repo: 'widget', number: 7, ghRunner: issueMockWithPulls(fx), logger: (e) => warns.push(e) });
+  assert.deepStrictEqual(Object.keys(rec).sort(), ['base_sha', 'id', 'problem_statement', 'repo'], 'record shape unchanged');
+  assert.ok(warns.some((w) => w && w.reason === 'no-external-merge-history'), 'warned on the risky repo');
+});
+test('k12. fetchOneIssueRecord — NO logger -> guard not invoked (no /pulls call fires); record valid', () => {
+  const fx = { issues: { 'octo/widget#7': issueObj() }, repos: { 'octo/widget': permissiveRepo() }, shas: { 'octo/widget': 'a'.repeat(40) } };
+  const seen = [];
+  const rec = fetchOneIssueRecord({ owner: 'octo', repo: 'widget', number: 7, ghRunner: issueMockWithPulls(fx, seen) });
+  assert.strictEqual(validatePublicRecord(rec), true);
+  assert.ok(!seen.some((s) => /\/pulls/.test(s)), 'no /pulls call fires without a logger');
+});
+test('k13. empty-string / lowercase author_association is a (malformed) unknown string -> external (lenient KEEP; case-sensitive)', () => {
+  assert.strictEqual(hasExternalMergeHistory('a', 'b', pullsRunner([mergedBy('')])), true);        // '' is a string not in INSIDER
+  assert.strictEqual(hasExternalMergeHistory('a', 'b', pullsRunner([mergedBy('owner')])), true);   // lowercase != 'OWNER' (case-sensitive)
+});
+test('k14. a THROWING advisory logger does NOT abort fetchOneIssueRecord (fail-soft; VALIDATE MEDIUM)', () => {
+  const fx = { issues: { 'octo/widget#7': issueObj() }, repos: { 'octo/widget': permissiveRepo() }, shas: { 'octo/widget': 'a'.repeat(40) }, pulls: { 'octo/widget': [mergedBy('OWNER')] } };
+  const boom = () => { throw new Error('logger boom'); };
+  const rec = fetchOneIssueRecord({ owner: 'octo', repo: 'widget', number: 7, ghRunner: issueMockWithPulls(fx), logger: boom });
+  assert.strictEqual(validatePublicRecord(rec), true, 'the record is still built despite the throwing logger');
+});
+test('k15. ARMED pullLiveCorpus does NOT drop on a transient /pulls error (null != false; VALIDATE MEDIUM)', async () => {
+  const fixtures = { search: { items: [searchItem()] }, repos: { 'octo/widget': permissiveRepo() }, shas: { 'octo/widget': 'c'.repeat(40) } };
+  const base = mockRunner(fixtures);
+  const gh = (args) => { if (args.some((a) => typeof a === 'string' && /\/pulls$/.test(a))) throw new Error('rate limit'); return base(args); };
+  const { records } = await pullLiveCorpus({ ghRunner: gh, limit: 10, dropOnNoExternalMerge: true });
+  assert.strictEqual(records.length, 1, 'a transient /pulls error (guard -> null) keeps the candidate, never drops');
 });
 
 // summary — awaits ALL tests' actual completion (Promise.all), then exits on the real pass/fail count.
