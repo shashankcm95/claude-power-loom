@@ -32,24 +32,36 @@ non-starters, and a **fail-fast-and-dispose** at submit that catches the rest cl
 
 ## Design
 
-### Part A — intake heuristic filter (pre-solve, cheap, in the populator)
+### Part A — one new viability guard in the populator (not a separate filter)
 
-Wire an `assessRepoAcceptance({owner, repo, ghRunner})` check into the candidate populator
-(`fetchOneIssueRecord` / `pullLiveCorpus` in `packages/lab/issue-corpus/live-puller.js`), running BEFORE the
-expensive contained solve. It reads only public repo metadata (no auth escalation) via the existing
-read-only `ghApiReadArgs` surface.
+> **Correction (`drift:recon-depth`, 2026-07-04).** An earlier draft of this section proposed a separate
+> "intake filter" with a HARD-REFUSE set (`allow_forking===false` / `archived` / `disabled` / template). A read
+> of the actual populator shows **that set is already enforced** by `isPrCapable` in
+> `packages/lab/issue-corpus/live-puller.js` — `!!meta && meta.archived===false && meta.disabled===false &&
+> meta.allow_forking===true && meta.is_template===false` — applied per-item in `pullLiveCorpus`'s throw-to-drop
+> loop (and imported by `fetchOneIssueRecord`). So there is no separate filter to build and no hard-refuse set to
+> re-implement. Part A scopes down to the ONE signal the populator does not yet have.
 
-- **HARD-REFUSE (never solve):** `allow_forking === false`, `archived`, `disabled`, or no fork/read access. These
-  are unambiguous non-starters; refuse at intake with a typed reason (mirrors the existing `isPrCapable` /
-  license HARD-refuse gates in the populator).
-- **RISK-FLAG / down-rank (the colophon signature):** the repo has **zero external-contributor merged PRs** ever
-  (every merged PR is by an `OWNER`/`MEMBER`). This is the readable proxy for "may be collaborators-only." In a
-  candidate-pool ranking it de-prioritizes such repos; for a single explicitly-targeted issue it emits a loud
-  advisory ("no external PR has ever merged here; submission may be blocked") but does not hard-refuse (the
-  operator may still want to try, e.g. a brand-new repo with no PR history yet).
-- **Output:** a structured `{acceptance: 'ok' | 'risky' | 'refused', signals: {...}, reason}` folded onto the
-  public record, so downstream (and the operator) see the risk before the solve, and telemetry can measure how
-  often the heuristic predicts the eventual submit outcome.
+The populator is *already* the intake filter: `pullLiveCorpus` drops non-viable candidates per-item
+(`isUnassigned` -> `isPrCapable` -> `isLicenseCompatible`, each throwing a greppable `drop:` reason). The only
+PR-acceptance signal missing from that sequence is the colophon discriminator — **has this repo ever merged an
+external-contributor PR?** Add exactly one guard, reusing the existing pattern:
+
+- **New guard `hasExternalMergeHistory(owner, repo, ghRunner)`** — reads the closed-PR list (via the existing
+  read-only `ghApiReadArgs`) and returns true iff at least one merged PR has `author_association` in
+  `{CONTRIBUTOR, COLLABORATOR, MEMBER, FIRST_TIME_CONTRIBUTOR}` (i.e. a non-`OWNER` merge). colophon: false
+  (all `OWNER`); spec-kitty: true (5 external authors). It costs one extra `gh` read, so it runs AFTER the
+  cheap metadata guards, only for candidates that already passed `isPrCapable`.
+- **Disposition differs by path:**
+  - `pullLiveCorpus` (pool discovery): a **drop-filter**, same throw-to-drop shape —
+    `if (!hasExternalMergeHistory(...)) throw new Error('drop: no external PR ever merged')` (or a down-rank in a
+    ranked pool).
+  - `fetchOneIssueRecord` (single targeted): an **advisory, not a drop** — the operator explicitly chose this
+    issue, so attach the verdict and warn ("no external PR has ever merged here; submission may be blocked"),
+    but do not discard their pick on a heuristic (a brand-new repo may simply have no PR history yet).
+- **Output:** a structured `{acceptance: 'ok' | 'risky', signals: {...}, reason}` folded onto the public record,
+  so downstream (and the operator) see the risk before the solve, and telemetry can measure how often the
+  heuristic predicts the eventual submit outcome (calibration against Part B).
 
 ### Part B — submit-time fail-fast-and-dispose (the definitive gate)
 
@@ -72,12 +84,14 @@ a calibration data point."
 
 ## Wiring + mode
 
-- **Part A:** `assessRepoAcceptance` in `live-puller.js`, called from `fetchOneIssueRecord` after the slug/number
-  guards, before `buildPublicRecord`. Reads only via `ghApiReadArgs` (read-only, value-redacted errors).
+- **Part A:** one `hasExternalMergeHistory(owner, repo, ghRunner)` guard in `live-puller.js`, slotted into the
+  existing per-item guard sequence AFTER `isPrCapable` (which already gates `archived`/`disabled`/no-fork/template)
+  and the cheap rejects — a drop in `pullLiveCorpus`, an advisory verdict in `fetchOneIssueRecord`. Reads only via
+  `ghApiReadArgs` (read-only, value-redacted errors).
 - **Part B:** in the submit/emit path; classify the create error, emit a `terminal-block` outcome, invoke disposal.
-- **Mode:** SHADOW-first — Part A logs its `acceptance` verdict as an advisory and does NOT hard-block the risky
-  case until the calibration (Part B outcomes) shows the heuristic is trustworthy. The HARD-REFUSE sub-cases
-  (`archived`/no-fork) can gate immediately; they are unambiguous.
+- **Mode:** SHADOW-first — the new guard logs its `acceptance` verdict as an advisory and does NOT drop the risky
+  single-targeted case until the calibration (Part B outcomes) shows the heuristic is trustworthy. The unambiguous
+  non-starters (`archived`/no-fork/template) already gate today via `isPrCapable` — no change needed there.
 
 ## Security
 
