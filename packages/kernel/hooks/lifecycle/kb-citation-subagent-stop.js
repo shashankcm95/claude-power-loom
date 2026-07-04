@@ -42,10 +42,13 @@
 // the ADR-0012 failure class (architect VERIFY F2).
 //
 // Composition with the PostToolUse gate (additive, no double-block): SubagentStop
-// fires ~50ms before PostToolUse:Agent, self-corrects first; PostToolUse then sees
-// the corrected response (sync) or skips the stub (async). If self-correction is
+// is OBSERVED to fire before PostToolUse:Agent (probe 1: 53ms, single sync sample;
+// ordering is observed behavior, not a guaranteed contract — monitor before
+// treating as load-bearing), so it self-corrects first; PostToolUse then sees the
+// corrected response (sync) or skips the stub (async). If self-correction is
 // exhausted (stop_hook_active), this hook yields and PostToolUse's sync path is
-// the backstop.
+// the backstop (so the "no double-block" property holds even if the ordering
+// ever changes).
 //
 // Fail-soft per ADR-0001: any error path ALLOWS the stop (`{}`). Never brick a
 // subagent close.
