@@ -239,6 +239,29 @@ printf '{}' | sudo -n -u loom-edge-signer /usr/local/bin/loom-edge-sign "$HEX"
 #   sudo sed -i '' 's/ALLOWED_UIDS=999/ALLOWED_UIDS=501/' /usr/local/bin/loom-edge-sign   # RESTORE
 ```
 
+## Refreshing an existing deployment (after a merge to current main)
+
+The helper stages a SNAPSHOT of `packages/kernel` into `/opt/loom`. When new kernel/egress code merges to `main` (e.g. the world-anchor arming waves), that snapshot goes **stale**: the running edge-signer still execs the old binary. Refresh it, then re-verify and re-attest.
+
+**Refreshing is a safe re-run of the same `--apply`; it does NOT rotate the key.** Run the first-deploy command again:
+
+```sh
+sudo bash scripts/loom-edge-deploy-macos.sh --node /usr/local/bin/node --apply
+```
+
+On a re-run every step is idempotent:
+
+- **The staging step re-stages the code** (`rm -rf /opt/loom/packages/kernel` then `cp -R` the current tree). This is the refresh. While SHADOW (`LIVE_SOURCES` empty, no live mint) it is safe to re-stage anytime; once a live consumer reads signed edges, quiesce the signer before this `rm -rf`.
+- **The uid and keypair are PRESERVED.** The helper skips an existing `loom-edge-signer` uid and REFUSES to regenerate an existing `/etc/loom/edge.key` (it validates owner, `0600`, and a present `edge-verify.pem`, then leaves both). So the pinned public key stays valid and no re-pin is needed.
+- **The wrapper is rewritten** from the same inputs (`LOOM_EDGE_ALLOWED_UIDS`, key path, staged entrypoint), so its body is unchanged.
+- **The sudoers block is print-only** and was applied on first deploy; nothing to redo unless the host username or paths changed.
+
+**Then re-verify (mandatory), and re-attest.** The staged binary changed, so re-run the §6 verify as your host uid: its **C3 re-exercises the refreshed signer** end-to-end (it signs through the wrapper, which now execs the new binary), while C0-C2 re-confirm key custody. (The staged entrypoint's root-lock is re-checked by the helper's own step 1b during the `--apply` re-stage.) Then repeat the out-of-band checks (`id`; `ls -l` shows a non-host key owner; `cat` the key is denied) and re-run with `--attested-cross-uid`. That out-of-band step attests **uid separation**, which a code refresh does not change, so re-confirming it is good hygiene rather than strictly code-driven.
+
+**To ROTATE the key** (a separate operation, not a refresh): delete BOTH `/etc/loom/edge.key` and `/etc/loom/edge-verify.pem` first, re-run `--apply` to regenerate the pair, then re-pin the new public key (§5). The old attestation no longer matches.
+
+**Sibling stages.** The broker (uid 610) and actor (uid 611) stages can go stale the same way; refresh each via its own helper (`scripts/loom-broker-deploy-macos.sh`, `scripts/loom-actor-deploy-macos.sh`) and re-attest, same pattern.
+
 ## Residuals (open — NOT closed by this deployment)
 
 - **No live consumer until PR-B.** This ships + provisions the VEHICLE. `LIVE_SOURCES` is empty, so no world-anchor
