@@ -18,9 +18,14 @@
 //   2. The PR is built via the gh REST API from the diff-as-DATA — NEVER a `git push` from the candidate
 //      clone (a push runs the clone's pre-push hooks / credential.helper / insteadOf / submodules). The
 //      live emission SEAM `armedEmit()` IS armed (③.2.5c): it delegates to gh-emit.js (the gh-REST
-//      tree->commit->ref->pull) and the live network egress has been proven (spec-kitty#2137). Emission is
-//      gated by the full chain (live AND token AND killswitch-off AND a VALID signed human approval), not
-//      by an absent seam.
+//      tree->commit->ref->pull) and the automated network egress has been proven by an OWN-REPO egress
+//      dogfood — a real gated DRAFT PR with a byte-faithful post-image, since closed (docs/ROADMAP.md,
+//      "③.2.5c — the network ARMING"). NOT spec-kitty#2137: that was a MANUAL cross-repo fork PR (author
+//      shashankcm95, head shashankcm95:loom/issue-2097-...) to the UNOWNED public-MIT `Priivacy-ai/spec-kitty`,
+//      merged by an external maintainer (stijn-dejongh, 2026-06-25) — the world-anchored merge+HARDEN signal
+//      (OQ-NS-6), which never went through this automated same-owner seam (fork-emit builds that cross-repo
+//      delivery). Emission is gated by the full chain (live AND token AND killswitch-off AND a VALID signed
+//      human approval), not by an absent seam.
 //   3. UNTRUSTED DATA is separated from TRUSTED POLICY: `data` carries only the bounded candidate diff +
 //      the repo/issue ref (actor-influenceable); the disposition + token come ONLY from custody. A
 //      disposition-shaped key in `data` is fail-closed REJECTED (the #273 exact-set lesson — never merge).
