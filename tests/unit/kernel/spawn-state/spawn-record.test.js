@@ -470,5 +470,99 @@ test('write_scope_violations: a populated element conforms to the §write-scope-
   assert.ok(Array.isArray(populated.flags), 'flags is an array (may carry K14_SUSPECTED_FALSE_POSITIVE)');
 });
 
+// ===========================================================================
+// Async-launch stub honesty (follow-up 2 of #508). For a background/async spawn
+// PostToolUse fires at LAUNCH with the launch-ack stub (status:'async_launched',
+// no .text/.content), so extractResultText stringifies it (dominated by the
+// echoed prompt). Recording THAT as completion_sha256/excerpt mis-labels the
+// launch ack as the sub-agent completion. The fix records honestly instead.
+// ===========================================================================
+
+const ASYNC_STUB = Object.freeze({
+  isAsync: true,
+  status: 'async_launched',
+  agentId: 'aBEEF12345abc0001',
+  description: 'architect VERIFY lens',
+  resolvedModel: 'claude-opus-4-8',
+  prompt: 'ECHOED_PROMPT_MARKER_UNIQUE_9931 — the full architect prompt echoed back',
+  outputFile: '/tmp/tasks/aBEEF12345abc0001.output',
+  canReadOutputFile: true,
+});
+
+test('async-launch stub → bounded_output is honestly NOT-captured (not the stringified ack)', () => {
+  const buildEnvelope = getBuildEnvelope();
+  const env = buildEnvelope({
+    input: { session_id: 'sess-async', cwd: '/tmp/wt' },
+    toolName: 'Agent',
+    toolInput: { subagent_type: 'architect', prompt: 'do the thing' },
+    toolResponse: ASYNC_STUB,
+  });
+  const bo = env.attestations.bounded_output;
+  assert.strictEqual(bo.completion_captured, false, 'async launch: completion_captured must be false');
+  assert.strictEqual(bo.capture_phase, 'async-launch', "capture_phase must be 'async-launch'");
+  assert.strictEqual(bo.completion_sha256, null, 'no completion sha for a launch ack (null, not the ack sha)');
+  assert.strictEqual(bo.completion_chars, null, 'no completion chars for a launch ack (null, not the ack length)');
+  assert.strictEqual(bo.excerpt_head, '', 'no excerpt for a launch ack');
+  assert.strictEqual(bo.excerpt_tail, '', 'no excerpt tail for a launch ack');
+});
+
+test('async-launch stub → the echoed prompt does NOT leak into the provenance record (the bug)', () => {
+  const buildEnvelope = getBuildEnvelope();
+  const env = buildEnvelope({
+    input: { session_id: 'sess-async2', cwd: '/tmp/wt' },
+    toolName: 'Agent',
+    toolInput: { subagent_type: 'architect', prompt: 'do the thing' },
+    toolResponse: ASYNC_STUB,
+  });
+  assert.ok(
+    !JSON.stringify(env.attestations.bounded_output).includes('ECHOED_PROMPT_MARKER_UNIQUE_9931'),
+    'the echoed launch-ack prompt must NOT appear in bounded_output (it was being recorded as the completion)'
+  );
+});
+
+test('async-launch stub → agent_id captured for correlating the deferred real completion', () => {
+  const buildEnvelope = getBuildEnvelope();
+  const env = buildEnvelope({
+    input: { session_id: 'sess-async3', cwd: '/tmp/wt' },
+    toolName: 'Agent',
+    toolInput: { subagent_type: 'architect', prompt: 'do the thing' },
+    toolResponse: ASYNC_STUB,
+  });
+  assert.strictEqual(env.attestations.bounded_output.agent_id, 'aBEEF12345abc0001', 'stub agentId captured as correlation key');
+});
+
+test('completed (sync) response → captured normally + uniform markers', () => {
+  const buildEnvelope = getBuildEnvelope();
+  const env = buildEnvelope({
+    input: { session_id: 'sess-sync', cwd: '/tmp/wt' },
+    toolName: 'Agent',
+    toolInput: { subagent_type: 'architect', prompt: 'do the thing' },
+    toolResponse: { status: 'completed', content: [{ type: 'text', text: 'REAL_RESPONSE_TEXT here' }] },
+  });
+  const bo = env.attestations.bounded_output;
+  assert.strictEqual(bo.completion_captured, true, 'sync completion: completion_captured true');
+  assert.strictEqual(bo.capture_phase, 'completed', "capture_phase 'completed'");
+  assert.ok(typeof bo.completion_sha256 === 'string' && bo.completion_sha256.length === 64, 'real sha256 present');
+  assert.ok(bo.completion_chars > 0, 'real completion_chars');
+  assert.ok(bo.excerpt_head.includes('REAL_RESPONSE_TEXT'), 'real excerpt captured');
+});
+
+test('EMPTY sync response → honest markers (captured:false, capture_phase:completed-empty), not a 0-char "completion"', () => {
+  const buildEnvelope = getBuildEnvelope();
+  // A completed close with empty text content → extractResultText → '' (the
+  // genuinely-empty case; note a content-LESS object like {status:'completed'}
+  // instead stringifies to a non-empty blob via extractResultText's fallthrough).
+  const env = buildEnvelope({
+    input: { session_id: 'sess-empty', cwd: '/tmp/wt' },
+    toolName: 'Agent',
+    toolInput: { subagent_type: 'architect', prompt: 'p' },
+    toolResponse: { status: 'completed', content: [{ type: 'text', text: '' }] },
+  });
+  const bo = env.attestations.bounded_output;
+  assert.strictEqual(bo.completion_captured, false, 'empty completion must NOT read as captured:true');
+  assert.strictEqual(bo.capture_phase, 'completed-empty', "capture_phase distinguishes the empty completed close");
+  assert.strictEqual(bo.completion_chars, 0, 'chars honestly 0');
+});
+
 process.stdout.write(`\nspawn-record.test.js: ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
