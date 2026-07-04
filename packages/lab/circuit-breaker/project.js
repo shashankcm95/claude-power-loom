@@ -388,8 +388,14 @@ function evaluate(opts) {
   // Without this, evaluate({persona:'13-node-backend'}) would miss the records now keyed 'node-backend'
   // and report a false "clear" — a query-side BYPASS of a halt (the same laundering lever the read-side
   // reconcile closes). Fail-soft to raw for an off-roster persona (mirrors personaOfVerdict + the CLI 1d).
+  // CASE-FOLD (item-6 follow-up, mirror narrow.js canonToken): BARE_SHAPE is lowercase-only, so a
+  // mixed-case query ('Node-Backend') else falls back to RAW and misses its canonical 'node-backend'
+  // row — another false "clear". Lowercase FIRST via `folded`, then canonicalize; `.toLowerCase()`
+  // never empties a non-empty string, so `persona`'s truthiness is identical to before the fold and the
+  // downstream personaRow / threshold / denials_in_window branches are unchanged.
   const rawPersona = (typeof o.persona === 'string' && o.persona) || null;
-  const persona = rawPersona ? (canonicalPersonaKey(rawPersona) || rawPersona) : null;
+  const folded = rawPersona ? rawPersona.toLowerCase() : null;
+  const persona = folded ? (canonicalPersonaKey(folded) || folded) : null;
   const view = projectBreaker({ now: o.now, source: o.source, stateDir: o.stateDir });
   if (view.bypassed) {
     // Bypass is checked BEFORE the requireLive guard (CR-F3): the operator's exact-'1' override

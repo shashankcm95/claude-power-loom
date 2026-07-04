@@ -198,5 +198,40 @@ test('W4d 1d residual: off-roster numbered token stays raw (13-alpha does NOT ma
   assert.strictEqual(j.value[0].status, 'no-data', 'off-roster numbered token does not collapse onto the bare row');
 });
 
+// ── QUERY-side case-fold (item-6 follow-up, mirrors narrow.js canonToken): canonicalPersonaKey's
+//    BARE_SHAPE is lowercase-only, so a mixed-case query token (`Node-Backend`) must fold to
+//    `node-backend` FIRST, then canonicalize — otherwise it falls back to RAW and misses its own
+//    canonical row. The complementary mixed-case-RECORD half is the verdict-attestation write-boundary
+//    normalization (a NAMED follow-up).
+
+test('query case-fold: show --persona Node-Backend matches the canonical node-backend row', () => {
+  seedEnriched('node-backend', 'aCase1', 'txCase1');
+  const r = run(['show', '--persona', 'Node-Backend']);
+  assert.strictEqual(r.code, 0, `exit 0 (stderr=${r.err})`);
+  assert.ok(/"persona": "node-backend"/.test(r.out), 'a mixed-case query matches the canonical lowercase row');
+});
+
+test('query case-fold: snapshot --personas 13-Node-Backend (mixed-case + numbered) → the canonical distribution', () => {
+  seedEnriched('node-backend', 'aCase2', 'txCase2');
+  run(['materialize']);
+  const r = run(['snapshot', '--personas', '13-Node-Backend']);
+  assert.strictEqual(r.code, 0, `exit 0 (stderr=${r.err})`);
+  const j = JSON.parse(r.out);
+  assert.deepStrictEqual(j.value.map((p) => p.persona), ['node-backend'], 'mixed-case numbered token canonicalized to the emitted bare key');
+  assert.ok(j.value[0].by_verdict, 'present distribution, not a no-data marker');
+});
+
+test('query case-fold residual: off-roster 13-Foo does NOT collapse onto foo (W4d distinctness holds)', () => {
+  // foo is off-roster → canonicalPersonaKey('13-foo') strips 13- → foo → null → stays raw '13-foo';
+  // a seeded 'foo' row stays a distinct key. Case-fold normalizes CASING only, never the numbered prefix.
+  seedEnriched('foo', 'aCase3', 'txCase3');
+  run(['materialize']);
+  const r = run(['snapshot', '--personas', '13-Foo']);
+  assert.strictEqual(r.code, 0, `exit 0 (stderr=${r.err})`);
+  const j = JSON.parse(r.out);
+  assert.deepStrictEqual(j.value.map((p) => p.persona), ['13-foo'], 'off-roster numbered token stays raw (lowercased), NOT collapsed onto foo');
+  assert.strictEqual(j.value[0].status, 'no-data', 'no collapse onto the foo row');
+});
+
 process.stdout.write(`\ncli.test.js (E4 reputation): ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
