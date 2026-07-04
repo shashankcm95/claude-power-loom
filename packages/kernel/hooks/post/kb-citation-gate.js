@@ -42,7 +42,11 @@ const path = require('path');
 const { log } = require('../_lib/_log.js');
 const logger = log('kb-citation-gate');
 
-const LOG_FILE = path.join(os.homedir(), '.claude/checkpoints/kb-citation-log.jsonl');
+// Overridable log path (mirrors the LOOM_<THING>_PATH override convention of the
+// sibling kernel hooks). Lets tests point the append at a temp file so they stay
+// hermetic instead of polluting the real ~/.claude/checkpoints log.
+const LOG_FILE = process.env.LOOM_KB_CITATION_LOG_PATH
+  || path.join(os.homedir(), '.claude/checkpoints/kb-citation-log.jsonl');
 
 // Subagents that MUST include `## KB Sources Consulted` section per their
 // definition's output contract. Plugin-prefixed names (power-loom:architect)
@@ -97,6 +101,44 @@ function extractResultText(toolResponse) {
   return String(toolResponse);
 }
 
+/**
+ * Detect the ASYNC-LAUNCH STUB the harness returns as the IMMEDIATE tool_response
+ * when an Agent/Task is launched in the background. (Per the Claude Code sub-agents
+ * doc — external, not repo-probed — background launch is now the default; the STUB
+ * SHAPE below is what is firsthand-verified against on-disk spawn-state, distinct
+ * from any doc-sourced version claim.)
+ *
+ * The stub is a structured launch ACKNOWLEDGMENT, not the agent's response:
+ *   { isAsync: true, status: 'async_launched', agentId, description,
+ *     resolvedModel, prompt: <full prompt echoed>, outputFile, canReadOutputFile }
+ * It carries no `.text`/`.content`, so extractResultText() falls through to
+ * JSON.stringify(obj) — a 3-8KB blob dominated by the echoed prompt that never
+ * contains `## KB Sources Consulted`, so the gate blocked EVERY async architect
+ * spawn (a 100% false positive). The agent's real response is delivered
+ * out-of-band via a task-notification and does NOT re-fire PostToolUse:Agent
+ * (firsthand-verified 2026-07-04: 193 async-launch agentIds, 0 completion
+ * re-fires). So this hook cannot see the response here — it must not block.
+ * Restoring async enforcement is a tracked SubagentStop follow-up (its payload is
+ * undocumented + inferred advisory-only; building block-enforcement on it now
+ * would be the ADR-0012 assumed-harness-mechanism trap).
+ *
+ * Discriminator: `status === 'async_launched'` is unique to the launch stub — a
+ * COMPLETED spawn carries `status === 'completed'` (per spawn-close-resolver), so
+ * this never false-skips a completed response we could evaluate. The strict
+ * `isAsync === true` branch is a DEFENSIVE fallback for an unobserved future stub
+ * that might drop `status`; the only shape actually probed carries both fields.
+ * It costs nothing: no completed-response shape (string / {content:[…]} / {text})
+ * carries an `isAsync` field. Strict `=== true` (not truthy) is deliberate — it
+ * refuses to skip on a garbage `isAsync: 'false'` / `isAsync: 1`, failing toward
+ * the safe direction (evaluate rather than skip when the flag is malformed).
+ */
+function isAsyncLaunchStub(toolResponse) {
+  if (!toolResponse || typeof toolResponse !== 'object' || Array.isArray(toolResponse)) {
+    return false;
+  }
+  return toolResponse.status === 'async_launched' || toolResponse.isAsync === true;
+}
+
 function main() {
   const input = readStdin();
   if (!input) {
@@ -121,6 +163,34 @@ function main() {
     : rawSubagentType;
 
   if (!KB_REQUIRED_SUBAGENTS.has(subagentBase)) {
+    emit({ decision: 'approve' });
+    return;
+  }
+
+  // Async-launch stub: the harness fired PostToolUse at LAUNCH with a launch-ack
+  // object, not the agent's response (which arrives out-of-band via a
+  // task-notification and never re-fires this hook). We cannot evaluate a
+  // response we cannot see — approve, but RECORD the coverage gap so it stays
+  // auditable rather than silent (the failure mode that made blocking-on-the-stub
+  // and silent-skip both wrong). Placed AFTER the KB-required gate so non-KB
+  // personas exit via the pass-through above (keeps this disposition scoped to
+  // KB-contracted personas), and BEFORE extractResultText so we never stringify
+  // an 8KB launch-ack we are about to skip. See isAsyncLaunchStub() for rationale.
+  if (isAsyncLaunchStub(toolResponse)) {
+    appendLog({
+      timestamp: new Date().toISOString(),
+      session_id: input.session_id || input.sessionId || null,
+      tool_use_id: input.tool_use_id || input.toolUseId || null,
+      subagent_type: rawSubagentType,
+      subagent_base: subagentBase,
+      // null (not false/0): the response was NOT evaluated — it was not observable
+      // here. false/0 would dishonestly read as "evaluated, found none".
+      has_kb_section: null,
+      kb_refs_count: null,
+      result_length: null,
+      compliant: null,
+      disposition: 'skip-async-launch-stub',
+    });
     emit({ decision: 'approve' });
     return;
   }
