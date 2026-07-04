@@ -20,9 +20,10 @@ const P = require(path.join(REPO, 'packages', 'lab', 'issue-corpus', 'live-pulle
 const {
   assertSafeOwnerRepo, parseRepoSlug, isLicenseCompatible, isPrCapable, isUnassigned,
   boundProblemStatement, buildPublicRecord, pullLiveCorpus, MAX_PROBLEM_BYTES, LICENSE_ALLOWLIST,
-  assertReadOnlyGhArgs, ghApiReadArgs, buildSearchArgs,
+  assertReadOnlyGhArgs, ghApiReadArgs, buildSearchArgs, fetchOneIssueRecord,
 } = P;
 const { validatePublicRecord } = require(path.join(REPO, 'packages', 'lab', 'issue-corpus', 'corpus.js'));
+const { parseRecordRef } = require(path.join(REPO, 'packages', 'lab', 'persona-experiment', 'live-draft-run.js'));
 
 let passed = 0; let failed = 0;
 // Collect every test's promise so the summary awaits ACTUAL completion, not a timer tick (CodeRabbit
@@ -294,6 +295,105 @@ test('h3. defaultGhRunner INVOKES the gate: a write arg throws (gh-readonly) BEF
   assert.throws(() => P.defaultGhRunner(['api', '-X', 'POST', 'repos/o/r/pulls']), /gh-readonly/);
   assert.throws(() => P.defaultGhRunner(['pr', 'create', '--title', 't']), /gh-readonly/);
   assert.throws(() => P.defaultGhRunner(['api', '-f', 'title=t', 'repos/o/r/pulls']), /gh-readonly/); // -f auto-POST, no -X GET
+});
+
+// ── (i) fetchOneIssueRecord — the single-issue populator (VERIFY architect: slug-guard-FIRST, number
+//        boundary before the GET, PR-refusal, license/PR-capable HARD-refuse, /issues/N endpoint, the
+//        -issue-N END-anchor, TYPED value-redacted gh errors) ──
+function issueMock(fixtures, seen) {
+  return function ghRunner(args) {
+    if (Array.isArray(seen)) seen.push(args.join(' '));
+    const ep = args.find((a) => a.startsWith('repos/')) || '';
+    const iss = ep.match(/^repos\/([^/]+)\/([^/]+)\/issues\/(\d+)$/);
+    if (iss) {
+      const key = `${iss[1]}/${iss[2]}#${iss[3]}`;
+      if (!fixtures.issues || !fixtures.issues[key]) throw new Error(`gh: 404 issue ${key}`);
+      return JSON.stringify(fixtures.issues[key]);
+    }
+    const head = ep.match(/^repos\/([^/]+)\/([^/]+)\/commits\/HEAD$/);
+    if (head) return JSON.stringify({ sha: (fixtures.shas && fixtures.shas[`${head[1]}/${head[2]}`]) || 'c'.repeat(40) });
+    const meta = ep.match(/^repos\/([^/]+)\/([^/]+)$/);
+    if (meta) {
+      const key = `${meta[1]}/${meta[2]}`;
+      if (!fixtures.repos || !fixtures.repos[key]) throw new Error(`gh: 404 ${key}`);
+      return JSON.stringify(fixtures.repos[key]);
+    }
+    throw new Error(`issueMock: unrecognized gh call ${args.join(' ')}`);
+  };
+}
+function issueObj(over) { return Object.assign({ number: 7, title: 'Guard the thing', body: 'It emits 0/0/0.', state: 'open' }, over || {}); }
+
+test('i1. happy path — a targeted issue -> a valid PUBLIC record (exactly 4 fields, github.com url, pinned sha)', () => {
+  const fx = { issues: { 'octo/widget#7': issueObj() }, repos: { 'octo/widget': permissiveRepo() }, shas: { 'octo/widget': 'a'.repeat(40) } };
+  const rec = fetchOneIssueRecord({ owner: 'octo', repo: 'widget', number: 7, ghRunner: issueMock(fx) });
+  assert.deepStrictEqual(Object.keys(rec).sort(), ['base_sha', 'id', 'problem_statement', 'repo']);
+  assert.strictEqual(rec.id, 'octo__widget-issue-7');
+  assert.strictEqual(rec.repo, 'https://github.com/octo/widget');
+  assert.strictEqual(rec.base_sha, 'a'.repeat(40));
+  assert.match(rec.problem_statement, /Guard the thing/);
+  assert.strictEqual(validatePublicRecord(rec), true);
+});
+
+test('i2. the record id -issue-N is END-anchored — a repo literally named *-issue-* is safe (parseRecordRef)', () => {
+  const fx = { issues: { 'octo/foo-issue-99#7': issueObj() }, repos: { 'octo/foo-issue-99': permissiveRepo() }, shas: { 'octo/foo-issue-99': 'a'.repeat(40) } };
+  const rec = fetchOneIssueRecord({ owner: 'octo', repo: 'foo-issue-99', number: 7, ghRunner: issueMock(fx) });
+  assert.strictEqual(rec.id, 'octo__foo-issue-99-issue-7');
+  assert.strictEqual(parseRecordRef(rec).issueRef, 7);   // extracts 7 (the END-anchor), never 99
+});
+
+test('i3. a bad issue number is REFUSED BEFORE any gh call (0 / negative / float / NaN / >MAX_SAFE / string)', () => {
+  const boom = () => { throw new Error('gh MUST NOT be called for a bad number'); };
+  for (const n of [0, -1, 1.5, NaN, Number.MAX_SAFE_INTEGER + 1, '7']) {
+    assert.throws(() => fetchOneIssueRecord({ owner: 'o', repo: 'r', number: n, ghRunner: boom }), /positive safe integer/i, JSON.stringify(n));
+  }
+});
+
+test('i4. an unsafe owner/repo is REFUSED BEFORE any gh call (slug guard runs first)', () => {
+  const boom = () => { throw new Error('gh MUST NOT be called for a bad slug'); };
+  for (const [o, r] of [['a/b', 'c'], ['o', 'r/../x'], ['-X', 'r'], ['o', '-rf'], ['o', 'r?x']]) {
+    assert.throws(() => fetchOneIssueRecord({ owner: o, repo: r, number: 7, ghRunner: boom }), /slug|owner|repo/i, `${o}/${r}`);
+  }
+});
+
+test('i5. a PR-number (the issues endpoint returns PRs) is REFUSED', () => {
+  const fx = { issues: { 'octo/widget#7': issueObj({ pull_request: { url: 'x' } }) }, repos: { 'octo/widget': permissiveRepo() }, shas: { 'octo/widget': 'a'.repeat(40) } };
+  assert.throws(() => fetchOneIssueRecord({ owner: 'octo', repo: 'widget', number: 7, ghRunner: issueMock(fx) }), /pull request/i);
+});
+
+test('i6. a non-permissive license is HARD-REFUSED (fail-closed on null too)', () => {
+  const gpl = { issues: { 'o/r#7': issueObj() }, repos: { 'o/r': permissiveRepo({ license: { spdx_id: 'GPL-3.0' } }) }, shas: { 'o/r': 'a'.repeat(40) } };
+  assert.throws(() => fetchOneIssueRecord({ owner: 'o', repo: 'r', number: 7, ghRunner: issueMock(gpl) }), /license/i);
+  const noLic = { issues: { 'o/r#7': issueObj() }, repos: { 'o/r': permissiveRepo({ license: null }) }, shas: { 'o/r': 'a'.repeat(40) } };
+  assert.throws(() => fetchOneIssueRecord({ owner: 'o', repo: 'r', number: 7, ghRunner: issueMock(noLic) }), /license/i);
+});
+
+test('i7. a non-PR-capable repo (archived) is HARD-REFUSED', () => {
+  const fx = { issues: { 'o/r#7': issueObj() }, repos: { 'o/r': permissiveRepo({ archived: true }) }, shas: { 'o/r': 'a'.repeat(40) } };
+  assert.throws(() => fetchOneIssueRecord({ owner: 'o', repo: 'r', number: 7, ghRunner: issueMock(fx) }), /PR-capable|archived/i);
+});
+
+test('i8. a non-40-hex .sha is REFUSED (untrusted gh field, never coerced)', () => {
+  const fx = { issues: { 'o/r#7': issueObj() }, repos: { 'o/r': permissiveRepo() }, shas: { 'o/r': 'HEAD' } };
+  assert.throws(() => fetchOneIssueRecord({ owner: 'o', repo: 'r', number: 7, ghRunner: issueMock(fx) }), /sha|hex|40/i);
+});
+
+test('i9. a gh failure is rethrown TYPED + value-redacted (raw stderr / token context never leaks)', () => {
+  const boom = () => { throw new Error('gh: 403 rate limit; Authorization: token ghp_SECRETLEAK...'); };
+  try { fetchOneIssueRecord({ owner: 'o', repo: 'r', number: 7, ghRunner: boom }); assert.fail('should throw'); }
+  catch (e) { assert.match(e.message, /issue-fetch.*failed/i); assert.doesNotMatch(e.message, /ghp_SECRETLEAK/); }
+});
+
+// ── (j) ENDPOINT_RE shared-constant regression — the widening allows /issues/<1-15 digits> but stays a
+//        CLOSED set; the puller's own forms (bare + /commits/HEAD) remain the only other reachable shapes ──
+test('j1. ghApiReadArgs accepts the bare + /commits/HEAD + /issues/<1-15 digits> forms', () => {
+  for (const suf of ['', '/commits/HEAD', '/issues/27', '/issues/1', '/issues/123456789012345']) {
+    assert.doesNotThrow(() => ghApiReadArgs('o', 'r', suf), JSON.stringify(suf));
+  }
+});
+test('j2. ghApiReadArgs REJECTS a non-digit / traversal / 16-digit / cross-form / other-endpoint suffix', () => {
+  for (const suf of ['/issues/2a', '/issues/../x', '/issues/', '/issues/1234567890123456', '/commits/HEAD/issues/5', '/pulls/1', '/issues/7/comments']) {
+    assert.throws(() => ghApiReadArgs('o', 'r', suf), /gh-endpoint/, JSON.stringify(suf));
+  }
 });
 
 // summary — awaits ALL tests' actual completion (Promise.all), then exits on the real pass/fail count.

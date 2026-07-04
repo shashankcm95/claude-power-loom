@@ -51,7 +51,11 @@ const LICENSE_ALLOWLIST = new Set(['MIT', 'Apache-2.0', 'BSD-2-Clause', 'BSD-3-C
 // dot, no `?`, no whitespace, no control). The leading-`-` + dot-only-segment rejects are below.
 const OWNER_REPO_RE = /^[A-Za-z0-9_.-]{1,39}\/[A-Za-z0-9_.-]{1,100}$/;
 // The constructed gh-api endpoint shape (the belt-and-suspenders re-assertion right before the call).
-const ENDPOINT_RE = /^repos\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(\/commits\/HEAD)?$/;
+// The optional suffix is a CLOSED set: `/commits/HEAD` (base_sha) or `/issues/<digits>` (a single-issue
+// fetch). `[0-9]{1,15}` is digit-only + anchored (no `..`/`/`/traversal) AND length-capped below 2^53's
+// 16 digits, so the regex is a true re-assertion of — never weaker than — the caller's own
+// positive-safe-integer validation of the number before it reaches the path.
+const ENDPOINT_RE = /^repos\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(\/commits\/HEAD|\/issues\/[0-9]{1,15})?$/;
 // A caller-supplied search term (label/language) is OUR config, not attacker data — but guard it anyway
 // so it cannot break the `q=` string (no quotes/newlines/control).
 const SEARCH_TERM_RE = /^[A-Za-z0-9 _.-]{1,60}$/;
@@ -254,9 +258,65 @@ async function pullLiveCorpus({
   return { records, stats: { searched: items.length, eligible: records.length, dropped, dropReasons } };
 }
 
+/**
+ * Fetch ONE explicitly-targeted open issue as a PUBLIC-ONLY record — the single-item analog of
+ * pullLiveCorpus (SAME guard sequence, no search). `owner`/`repo`/`number` are operator-supplied; the
+ * slug is still guarded and the number validated BEFORE any gh call. HARD-refuses a non-PR-capable or
+ * non-permissive-license repo (safety gates: never autonomously solve where we cannot / should not open a
+ * PR) and a PR-number (the issues endpoint returns PRs too). Does NOT enforce isUnassigned — assignment is
+ * a candidate-discovery filter, not a safety property, and the operator has already made the targeting
+ * call. Read-only + trust-ZERO: title/body from the response are control-stripped + byte-bounded ONLY
+ * inside buildPublicRecord; gh errors are rethrown TYPED + value-redacted (the raw execFileSync stderr can
+ * carry ambient-token context). The caller (CLI) converts a throw into a clean non-zero exit.
+ * @param {object} opts
+ * @param {string} opts.owner
+ * @param {string} opts.repo
+ * @param {number} opts.number  a positive safe-integer issue number
+ * @param {(args:string[])=>string} [opts.ghRunner]  injectable gh runner (default defaultGhRunner)
+ * @returns {object} the PUBLIC record { id, repo, base_sha, problem_statement }
+ */
+function fetchOneIssueRecord({ owner, repo, number, ghRunner = defaultGhRunner } = {}) {
+  // (1) slug guard FIRST, on the rejoined caller string; use the returned {owner,repo} EXCLUSIVELY
+  // downstream (architect HIGH — never re-split, never trust the raw args past this point).
+  const { owner: o, repo: r } = assertSafeOwnerRepo(`${owner}/${repo}`);
+  // (2) validate the number BEFORE it reaches the endpoint path (the ENDPOINT_RE [0-9]{1,15} is the belt;
+  // this is the suspenders). Non-positive / float / oversized is refused here.
+  if (!Number.isInteger(number) || number <= 0 || number > Number.MAX_SAFE_INTEGER) {
+    throw new Error(`fetchOneIssueRecord: issue number must be a positive safe integer (got ${JSON.stringify(number)})`);
+  }
+  // a redacting GET: route through ghApiReadArgs (the -X GET pin + ENDPOINT_RE re-assertion) and NEVER
+  // surface the raw gh stderr (it can echo ambient-token context) — rethrow a typed, value-free reason.
+  const get = (suffix, cls) => {
+    try { return ghJson(ghRunner, ghApiReadArgs(o, r, suffix)); }
+    catch { throw new Error(`fetchOneIssueRecord: ${cls} for ${o}/${r}${suffix} failed (network / auth / rate-limit / not-found)`); }
+  };
+  // (3) the issue (title + body). Refuse a PR-number: the REST issues endpoint returns pull requests too
+  // (they carry a `pull_request` field) and solving a PR-as-issue is nonsensical.
+  const issue = get(`/issues/${number}`, 'issue-fetch');
+  if (issue && issue.pull_request) throw new Error(`fetchOneIssueRecord: ${o}/${r}#${number} is a pull request, not an issue`);
+  // (4) SAFETY gates (hard-refuse, reused BY IMPORT so the fail-closed / exact-set semantics can't drift).
+  const meta = get('', 'repo-meta');
+  if (!isPrCapable(meta)) throw new Error(`fetchOneIssueRecord: refuse — ${o}/${r} is not PR-capable (archived / disabled / forks-off)`);
+  if (!isLicenseCompatible(meta && meta.license && meta.license.spdx_id)) {
+    throw new Error(`fetchOneIssueRecord: refuse — ${o}/${r} license is not in the permissive allowlist`);
+  }
+  // (5) base_sha — the gh `.sha` is untrusted; assertSafeSha rejects a non-40-hex / missing. (Pinned at
+  // fetch time: the draft clones this exact sha; upstream HEAD may advance — a Part-B/emit staleness
+  // concern, inert in SHADOW.)
+  const shaResp = get('/commits/HEAD', 'sha-fetch');
+  const base_sha = assertSafeSha(shaResp && shaResp.sha);
+  // (6) build + round-trip through the canonical-URL guard + the public-shape validator. Returns EXACTLY
+  // the 4 PUBLIC_FIELDS; `id` is end-anchored `-issue-N` (a repo literally named `*-issue-*` is safe —
+  // parseRecordRef extracts from the END).
+  const record = buildPublicRecord({ owner: o, repo: r, number, title: issue && issue.title, body: issue && issue.body, base_sha });
+  assertSafeRepo(record.repo);
+  validatePublicRecord(record);
+  return record;
+}
+
 module.exports = {
   assertSafeOwnerRepo, parseRepoSlug, isLicenseCompatible, isPrCapable, isUnassigned,
-  boundProblemStatement, buildPublicRecord, pullLiveCorpus,
+  boundProblemStatement, buildPublicRecord, pullLiveCorpus, fetchOneIssueRecord,
   defaultGhRunner, assertReadOnlyGhArgs, ghApiEndpoint, ghApiReadArgs, buildSearchArgs,
   MAX_PROBLEM_BYTES, LICENSE_ALLOWLIST,
 };
