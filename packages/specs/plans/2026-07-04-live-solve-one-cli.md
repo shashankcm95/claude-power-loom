@@ -17,8 +17,8 @@ The substrate had no single entry point for "one git issue in → draft PR out" 
 ### Change 1 — `packages/lab/issue-corpus/live-puller.js`
 
 1. Extend the guard regex to allow a digit-only issue suffix:
-   `ENDPOINT_RE = /^repos\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(\/commits\/HEAD|\/issues\/[0-9]+)?$/`
-   (`[0-9]+` is digit-only + anchored — no `..`/`/`/traversal; a re-assertion on top of the caller's own number validation.)
+   `ENDPOINT_RE = /^repos\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(\/commits\/HEAD|\/issues\/[0-9]{1,15})?$/`
+   (`[0-9]{1,15}` is digit-only + anchored + length-capped below 2^53's 16 digits — no `..`/`/`/traversal; a true re-assertion of the caller's own safe-integer validation, never weaker. The 15-cap folds architect finding F1.2.)
 2. Add + export `fetchOneIssueRecord({ owner, repo, number, ghRunner = defaultGhRunner })` — the single-issue populator, reusing the identical guard sequence:
    - `assertSafeOwnerRepo(`${owner}/${repo}`)`; validate `number` is a positive safe integer BEFORE it reaches the endpoint.
    - GET `/issues/${number}` → `{title, body}` (now permitted by ENDPOINT_RE).
@@ -28,7 +28,7 @@ The substrate had no single entry point for "one git issue in → draft PR out" 
 
 ### Change 2 — `packages/lab/persona-experiment/live-solve-one.js` (NEW CLI)
 
-- Args: `<owner>/<repo>#<N>` (or `--repo owner/repo --issue N`), `--model`, `--max-budget-usd <n>`, `--json`. `--materialize` maps to `LOOM_PERSONA_MATERIALIZE` for the run (default off = the SHADOW default).
+- Args: `<owner>/<repo>#<N>` (a single positional target), `--model`, `--max-budget-usd <n>`, `--json`. `--materialize` maps to `LOOM_PERSONA_MATERIALIZE` for the run (default off = the SHADOW default).
 - `fetchOneIssueRecord(...)` → `runLiveDraftLoop({records:[record], artifactsDir, ledgerPath, capUsd, model})`, artifacts default `~/.claude/checkpoints/live-solve-*`.
 - Prints a per-stage summary (persona, verdict, cost, draft-artifact path = the "PR" output) + `--json` for the raw report. Exit 0 on draft-written; non-zero on fatal/usage.
 - SHADOW/dry by construction: threads NO egress custody → `emitted:false`. Injectable `fetchFn`/`draftFn` seams for tests (no network).
