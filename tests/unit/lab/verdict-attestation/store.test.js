@@ -96,6 +96,19 @@ test('★ field-length cap: an over-long agentId/verifier/subject is rejected, n
   assert.doesNotThrow(() => store.recordVerdict(vin({ verifier: { identity: 'a'.repeat(store.MAX_FIELD_LEN), kind: 'structural' }, now: T0 })));
 });
 
+// ── 4c. ★ item-6 follow-up (VERIFY/VALIDATE MEDIUM-1 — the load-bearing normalize-then-cap ordering): the
+//        persona field cap runs on the NORMALIZED value, not the raw. U+0130 (dotted-I) grows 1 -> 2 chars
+//        under .toLowerCase(), so 257 of them (raw len 257 <= 512) lowercase to 514 > 512 -> MUST reject. A
+//        raw-length check would store a 514-char field (the cap-bypass the VERIFY hacker flagged). Pins the
+//        ordering so a future refactor cannot silently swap normalize-then-cap for cap-then-normalize.
+test('★ 4c (item-6 follow-up): a persona that GROWS past the cap under lowercase is rejected (normalize-then-cap)', () => {
+  const grows = String.fromCharCode(0x130).repeat(257); // raw 257; lowercases to 514 > MAX_FIELD_LEN
+  assert.strictEqual(grows.length, 257, 'raw length is within the cap');
+  assert.ok(grows.toLowerCase().length > store.MAX_FIELD_LEN, 'but the NORMALIZED length exceeds the cap');
+  assert.throws(() => store.recordVerdict(vin({ subject: { persona: grows }, now: T0 })), /cap|exceed/i, 'rejected on the normalized length (fail-closed)');
+  assert.strictEqual(store.listVerdicts({ now: T0 }).length, 0, 'nothing stored');
+});
+
 // ── 5. ★ MEDIUM-3: dedup keys on [agentId, verifier.identity, verifier.kind, verdict]. A true replay
 //       dedups; DISTINCT VERIFIERS about one spawn ACCUMULATE (two reviewers agreeing is stronger
 //       evidence — must not collapse — the 3-lens VALIDATE is exactly this case).
@@ -264,6 +277,60 @@ test('★ 13d (F1): node-backend vs ml-engineer for one agentId → STILL throws
     'two distinct canonical personas under one agentId is still a mislabel',
   );
   assert.strictEqual(store.listVerdicts({ now: T0 }).length, 1, 'the mislabel wrote nothing');
+});
+
+// ── 13e. ★ item-6 follow-up (case-mismatch WRITE-side, task_93e9c55c): a MIXED-CASE persona is CASE-FOLDED
+//         at the write boundary → STORED under the canonical lowercase key (`Node-Backend` → `node-backend`),
+//         so every reputation consumer's `canonicalPersonaKey(raw)||raw` read hits its canonical row (the
+//         complementary half of narrow.js:canonToken's query-side fold). attestation_id excludes persona,
+//         so the id is casing-invariant (a re-record under the bare spelling dedups).
+test('★ 13e (item-6 follow-up): a mixed-case persona is STORED lowercased (Node-Backend → node-backend)', () => {
+  const rec = store.recordVerdict(vin({ subject: { persona: 'Node-Backend' }, now: T0 }));
+  assert.strictEqual(rec.subject.persona, 'node-backend', 'the returned record carries the canonical lowercase key');
+  const rows = store.listVerdicts({ now: T0 });
+  assert.strictEqual(rows.length, 1, 'one row stored');
+  assert.strictEqual(rows[0].subject.persona, 'node-backend', 'the PERSISTED value is lowercased (not the raw Node-Backend)');
+  // attestation_id excludes persona → the bare-`node-backend` spelling of the same tuple dedups (id-stable).
+  const bare = store.recordVerdict(vin({ subject: { persona: 'node-backend' }, now: T0 }));
+  assert.strictEqual(bare.deduped, true, 'same (agentId, verifier, verdict) tuple dedups regardless of persona casing');
+});
+
+// ── 13f. ★ item-6 follow-up: `Node-Backend` then `node-backend` (DISTINCT verifiers) for ONE agentId are the
+//         SAME canonical persona → they COEXIST (no false mislabel), both PERSISTED lowercased. Pre-fix (the
+//         raw-verbatim store) this false-threw on the case difference; the write-boundary fold closes it.
+test('★ 13f (item-6 follow-up): Node-Backend + node-backend (distinct verifiers) for one agentId → coexist, both stored node-backend', () => {
+  store.recordVerdict(vin({ subject: { persona: 'Node-Backend' }, now: T0 }));
+  assert.doesNotThrow(
+    () => store.recordVerdict(vin({ subject: { persona: 'node-backend' }, verifier: { identity: '07-honesty-auditor.sol', kind: 'claim-vs-evidence' }, now: T0 })),
+    'a case-only difference for one agentId is the SAME persona → no false mislabel',
+  );
+  const personas = store.listVerdicts({ now: T0 }).map((r) => r.subject.persona).sort();
+  assert.deepStrictEqual(personas, ['node-backend', 'node-backend'], 'both rows persisted, both lowercased');
+});
+
+// ── 13g. ★ item-6 follow-up (ACCEPTED RESIDUAL — architect VERIFY finding 3): a LEGACY hand-written
+//         mixed-case ledger row (bypassing recordVerdict's write-boundary fold) + a new lowercase input for
+//         the SAME agentId FALSE-throws the H-1 mislabel guard. The guard normalizes numbered/bare but NOT
+//         case, and an uppercase legacy key (off-roster-shaped → canonicalPersonaKey null → raw) ≠ the
+//         canonical lowercase input. This residual is DOCUMENTED, fail-CLOSED (rejects, corrupts nothing),
+//         and has NO live occurrence (the live store is all-canonical). Pinned so a future reader does not
+//         silently "fix" the guard; the total close is record-time on-disk-ledger enforcement (out of scope —
+//         the store is not a sandbox). If the guard is ever made case-insensitive, update this residual test.
+test('★ 13g (item-6 follow-up): a LEGACY mixed-case ROW + new lowercase input for one agentId → fail-closed throw (accepted residual)', () => {
+  fs.mkdirSync(store.STORE_DIR, { recursive: true });
+  const legacy = {
+    attestation_id: 'legacy', schema_version: 'v3.4', verdict: 'pass',
+    subject: { persona: 'Node-Backend' }, verifier: { identity: 'r.legacy', kind: 'structural' },
+    evidence_refs: { agent_id: AGENT, run_id: null, transaction_id: null, record_status: null },
+    recorded_at: T0, expires_after_days: 30,
+  };
+  fs.writeFileSync(store.LEDGER_PATH, JSON.stringify(legacy) + '\n');
+  assert.throws(
+    () => store.recordVerdict(vin({ subject: { persona: 'node-backend' }, now: T0 })),
+    /mislabel|already attested|one spawn/i,
+    'the guard does NOT case-normalize a legacy stored row → fail-closed false-throw (documented residual)',
+  );
+  assert.strictEqual(store.listVerdicts({ now: T0 }).length, 1, 'the false-mislabel wrote nothing (only the legacy row remains)');
 });
 
 // ── 14. ★ M-1 (VALIDATE hacker): control chars (NUL/newline/CR/tab) in any string field corrupt the
