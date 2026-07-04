@@ -36,8 +36,14 @@ const { canonicalPersonaKey } = require('../persona-experiment/canonical-persona
 // (1a) even for a record made under the numbered form, so a --persona/--personas filter token is
 // canonicalized too — a `--persona 13-node-backend` query still matches the now-canonical emitted
 // rows. `|| raw` (NOT 'unknown') keeps an off-roster token raw (it then matches only a raw-keyed row).
+// CASE-FOLD (item-6 follow-up, mirror narrow.js canonToken): canonicalPersonaKey's BARE_SHAPE is
+// lowercase-only, so a mixed-case token (`Node-Backend`) else falls back to RAW and misses its
+// canonical `node-backend` row — lowercase FIRST so a mixed-case query resolves to the canonical
+// persona. (The complementary mixed-case-RECORD half is the verdict-attestation write-boundary
+// normalization, a NAMED follow-up.)
 function canonToken(tok) {
-  return canonicalPersonaKey(tok) || tok;
+  const s = (typeof tok === 'string' ? tok : String(tok)).toLowerCase();
+  return canonicalPersonaKey(s) || s;
 }
 
 function parseArgs(argv) {

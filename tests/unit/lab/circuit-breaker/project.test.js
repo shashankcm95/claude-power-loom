@@ -179,5 +179,24 @@ test('16. right-edge: a denial at exactly now (ts === nowMs) is IN-window (half-
   assert.strictEqual(personaOf(projectBreaker({ now: NOW }), 'node-backend').denials_in_window, 1, 'ts===now counts');
 });
 
+test('17. ★ query case-fold: a mixed-case persona query resolves to the canonical row (mirror narrow.js)', () => {
+  for (let i = 0; i < 5; i += 1) seed('node-backend', NOW - 1000); // persona tripped (5 >= 5)
+  // Without the fold, evaluate({persona:'Node-Backend'}) → canonicalPersonaKey('Node-Backend') is null
+  // (uppercase fails BARE_SHAPE) → stays 'Node-Backend' → misses the 'node-backend' row → false clear.
+  const e = evaluate({ persona: 'Node-Backend', now: NOW });
+  assert.strictEqual(e.tripped, true, 'the mixed-case query folds to node-backend → sees its trip');
+  assert.strictEqual(e.scope, 'persona');
+  assert.strictEqual(e.persona_tripped, true);
+});
+
+test('18. ★ query case-fold preserves off-roster distinctness: 13-Foo does NOT collapse onto foo (W4d invariant)', () => {
+  for (let i = 0; i < 5; i += 1) seed('foo', NOW - 1000); // off-roster 'foo' tripped (5 >= 5)
+  // '13-Foo' folds to '13-foo'; canonicalPersonaKey strips the numbered prefix → 'foo' is OFF-ROSTER →
+  // null → the token stays '13-foo' (raw), which must NOT match the seeded 'foo' row. Case-fold
+  // normalizes CASING only; it never strips the numbered prefix onto a bare row.
+  const e = evaluate({ persona: '13-Foo', now: NOW });
+  assert.strictEqual(e.tripped, false, '13-Foo must NOT collapse onto the foo row (numbered-prefix distinctness holds)');
+});
+
 process.stdout.write(`\nproject.test.js (E11 circuit-breaker): ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
