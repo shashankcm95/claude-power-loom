@@ -118,7 +118,9 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/kernel/hooks/pre/fact-force-gate.js` - PreToolUse hook: fact-forcing gate
 - `packages/kernel/hooks/_lib/file-path-pattern.js` - Shared file-path extraction primitive for hook scripts that scan response
 - `packages/kernel/hooks/lifecycle/ghost-heartbeat-stop.js` - Ghost Heartbeat W2-PR2 — the Stop-hook CARRIER.
+- `packages/kernel/hooks/_lib/kb-citation-check.js` - Shared KB-citation compliance SEMANTIC — the single source of truth for
 - `packages/kernel/hooks/post/kb-citation-gate.js` - PostToolUse:Agent|Task hook — enforces KB citation contract on sub-agent results.
+- `packages/kernel/hooks/lifecycle/kb-citation-subagent-stop.js` - SubagentStop hook — SELF-CORRECTING KB-citation enforcement.
 - `packages/kernel/hooks/_lib/marketplace-state-reader.js` - H.7.22 + H.7.23 — DRY shared marketplace-state reader.
 - `packages/kernel/hooks/post/observe-noverify-push.js` - observe-noverify-push.js — PostToolUse:Bash observer (logs-only, never blocks).
 - `packages/kernel/hooks/lifecycle/pre-compact-save.js` - PreCompact hook: deterministically saves a checkpoint of the conversation

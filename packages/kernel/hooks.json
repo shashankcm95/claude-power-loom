@@ -322,6 +322,19 @@
           }
         ]
       }
+    ],
+    "SubagentStop": [
+      {
+        "_comment": "kb-citation-subagent-stop: SELF-CORRECTING KB-citation enforcement (follow-up 1 of #508). The complement to the PostToolUse kb-citation-gate: that gate can only see the async-launch STUB for a background spawn (so #508 made it SKIP async), leaving async architect responses unenforced. SubagentStop fires for BOTH sync AND async subagents and its payload carries the final message as top-level `last_assistant_message` + the persona as top-level `agent_type` (firsthand-probed 2026-07-04). On a KB-less architect response the hook emits {decision:'block', reason} — which makes the SUBAGENT continue and append the '## KB Sources Consulted' section IN-PLACE (self-correction at source; corrected text reaches the parent). LOOP GUARD: it blocks only when `stop_hook_active` is not-true, giving exactly ONE forced retry (the harness 8-block cap is the backstop). Stop-CLASS output schema: allow-stop = {} (NOT {decision:'approve'}); block = {decision:'block',reason}. Observed to fire BEFORE PostToolUse:Agent (probe 1: 53ms, single sync sample; ordering is observed behavior, not a guaranteed contract), so it self-corrects first and the PostToolUse gate then sees the corrected response (sync) / skips the stub (async) — additive, no double-block. If self-correction is exhausted (stop_hook_active cap) and the response is still KB-less, PostToolUse's sync block is the backstop. matcher '*' + in-code agent_type filter (robust across sync/async + plugin-prefix shapes). Fail-soft per ADR-0001.",
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/packages/kernel/hooks/lifecycle/kb-citation-subagent-stop.js",
+            "timeout": 5
+          }
+        ]
+      }
     ]
   }
 }
