@@ -202,6 +202,27 @@ function extractResultText(toolResponse) {
   return String(toolResponse);
 }
 
+/**
+ * Detect the ASYNC-LAUNCH STUB the harness returns as the IMMEDIATE tool_response
+ * for a background/async spawn: `{isAsync:true, status:'async_launched', agentId,
+ * prompt:<echoed>, …}`, no `.text`/`.content`. It is the launch ACK, not the
+ * sub-agent response — the real completion arrives out-of-band via a
+ * task-notification and never re-fires PostToolUse (#508). Recording the stub's
+ * stringified form (dominated by the echoed prompt) as `completion_sha256`/
+ * excerpt would mis-label the ack as the completion, so buildEnvelope records
+ * honestly when this is true.
+ *
+ * Format-shape detector — deliberately DUPLICATED (not shared) per this file's
+ * `extractResultText` convention (each hook independently auditable/restartable).
+ * Canonical definition + rationale: `hooks/post/kb-citation-gate.js:isAsyncLaunchStub`.
+ */
+function isAsyncLaunchStub(toolResponse) {
+  if (!toolResponse || typeof toolResponse !== 'object' || Array.isArray(toolResponse)) {
+    return false;
+  }
+  return toolResponse.status === 'async_launched' || toolResponse.isAsync === true;
+}
+
 function normalizeSubagentType(rawSubagentType) {
   if (!rawSubagentType) return '';
   const lower = String(rawSubagentType).toLowerCase();
@@ -312,7 +333,12 @@ function buildEnvelope({ input, toolName, toolInput, toolResponse, evolutionSnap
   );
   const description = String(toolInput.description || '').slice(0, 200);
 
-  const completionRaw = extractResultText(toolResponse);
+  // Async-launch stub (follow-up 2 of #508): PostToolUse fired at LAUNCH, so
+  // toolResponse is the launch ACK, not the response. Do NOT extract/scrub/excerpt
+  // it — capturing the stringified ack (dominated by the echoed prompt) would
+  // record the ACK as the completion fingerprint. Honest bounded_output below.
+  const asyncLaunch = isAsyncLaunchStub(toolResponse);
+  const completionRaw = asyncLaunch ? '' : extractResultText(toolResponse);
   // Compute sha256 on UNSCRUBBED text so the fingerprint stays honest;
   // scrub before excerpt capture so leaked secrets don't land on disk.
   const completionScrubbed = scrubSecrets(completionRaw);
@@ -366,13 +392,44 @@ function buildEnvelope({ input, toolName, toolInput, toolResponse, evolutionSnap
     samples: [],
     attestations: {
       status: 'ok',
-      bounded_output: {
-        completion_sha256: completionRaw ? sha256(completionRaw) : null,
-        completion_chars: completionRaw.length,
-        excerpt_head: excerpt.head,
-        excerpt_tail: excerpt.tail,
-        scrubbed: completionRaw !== completionScrubbed,
-      },
+      // `completion_captured` + `capture_phase` are additive markers (new fields —
+      // SCHEMA_VERSION stays v1; old walkers ignore them) giving consumers a uniform
+      // flag for whether the excerpt/sha describe a REAL completion. For an async
+      // launch the completion is NOT here (see asyncLaunch above); we record that
+      // honestly with null fields (not 0/'' alone, which would read as "captured an
+      // empty completion") + the stub's agentId as the correlation key for a FUTURE
+      // SubagentStop-based capture. Correlation basis: the SubagentStop payload
+      // carries a top-level `agent_id` equal to the spawn's launch `agentId`
+      // (firsthand-verified in the #509 SubagentStop probes — the sync spike showed
+      // SubagentStop.agent_id === the PostToolUse tool_response.agentId; it is the
+      // subagent's own id). The consumer that would join on it is NOT yet wired
+      // (deferred), so this stores the key optimistically, it does not assert a live join.
+      bounded_output: asyncLaunch
+        ? {
+          completion_sha256: null,
+          completion_chars: null,
+          excerpt_head: '',
+          excerpt_tail: '',
+          scrubbed: false,
+          completion_captured: false,
+          capture_phase: 'async-launch',
+          agent_id: (toolResponse && typeof toolResponse.agentId === 'string')
+            ? toolResponse.agentId
+            : null,
+        }
+        : {
+          completion_sha256: completionRaw ? sha256(completionRaw) : null,
+          completion_chars: completionRaw.length,
+          excerpt_head: excerpt.head,
+          excerpt_tail: excerpt.tail,
+          scrubbed: completionRaw !== completionScrubbed,
+          // Honest even for an EMPTY sync response: completion_captured reflects
+          // whether real text was actually captured, not merely "not an async
+          // launch". An empty completed close → captured:false + 'completed-empty'
+          // so a consumer keying on captured:true never sees a 0-char "completion".
+          completion_captured: completionRaw.length > 0,
+          capture_phase: completionRaw.length > 0 ? 'completed' : 'completed-empty',
+        },
       delta_capture_mode: 'none-in-phase-1-prototype',
       delta_sha: null,
       delta_bytes: null,
@@ -483,6 +540,7 @@ module.exports = {
     buildEnvelope,
     normalizeSubagentType,
     extractResultText,
+    isAsyncLaunchStub,
     resolveRunId,
     sha256,
     safeExcerpt,
