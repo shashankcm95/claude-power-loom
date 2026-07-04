@@ -40,6 +40,11 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { log } = require('../_lib/_log.js');
+// Shared compliance SEMANTIC (single source of truth) — imported by both this
+// PostToolUse gate and the SubagentStop gate so the two enforcers can never
+// diverge on what "compliant" means. Only the semantic is shared; this hook
+// keeps its own I/O (extractResultText, emit, log path, async-stub logic).
+const { KB_REQUIRED_SUBAGENTS, normalizeSubagentType, isKbCompliant } = require('../_lib/kb-citation-check.js');
 const logger = log('kb-citation-gate');
 
 // Overridable log path (mirrors the LOOM_<THING>_PATH override convention of the
@@ -47,11 +52,6 @@ const logger = log('kb-citation-gate');
 // hermetic instead of polluting the real ~/.claude/checkpoints log.
 const LOG_FILE = process.env.LOOM_KB_CITATION_LOG_PATH
   || path.join(os.homedir(), '.claude/checkpoints/kb-citation-log.jsonl');
-
-// Subagents that MUST include `## KB Sources Consulted` section per their
-// definition's output contract. Plugin-prefixed names (power-loom:architect)
-// are normalized via the `:` split before lookup.
-const KB_REQUIRED_SUBAGENTS = new Set(['architect']);
 
 function readStdin() {
   let raw = '';
@@ -157,10 +157,9 @@ function main() {
   }
 
   const rawSubagentType = (toolInput.subagent_type || toolInput.subagent || toolInput.type || '').toLowerCase();
-  // Normalize plugin-prefixed names: "power-loom:architect" → "architect"
-  const subagentBase = rawSubagentType.includes(':')
-    ? rawSubagentType.split(':').pop()
-    : rawSubagentType;
+  // Normalize plugin-prefixed names ("power-loom:architect" → "architect") via
+  // the shared helper so both gates strip the prefix identically.
+  const subagentBase = normalizeSubagentType(rawSubagentType);
 
   if (!KB_REQUIRED_SUBAGENTS.has(subagentBase)) {
     emit({ decision: 'approve' });
@@ -196,16 +195,11 @@ function main() {
   }
 
   const resultText = extractResultText(toolResponse);
-  // v2.7.1 regex update: accept an optional numbered structural prefix
-  // (`## 7. KB Sources Consulted`) — observed three times in 2026-05-21
-  // architect dispatches (v2.6.0 ship + GAP-H + SynthId design) where
-  // canonical kb refs WERE produced but the heading carried a numbered
-  // prefix. Also tightens the line anchor: `^##\s+` rejects `### KB Sources
-  // Consulted` (h3) which the prior unanchored pattern accidentally matched
-  // via substring (pre-existing bug surfaced by T4).
-  const hasKbSection = /^##\s+(?:\d+\.\s*)?KB Sources Consulted/im.test(resultText);
-  const kbRefs = resultText.match(/kb:[a-z][a-z0-9\-/]+/gi) || [];
-  const compliant = hasKbSection && kbRefs.length >= 1;
+  // Compliance semantic via the shared module (single source of truth): a
+  // `## KB Sources Consulted` h2 heading (optionally numbered) + ≥1 `kb:` ref.
+  // The numbered-prefix tolerance + `^##\s+` h3-rejection live in the shared
+  // isKbCompliant() so this gate and the SubagentStop gate can never diverge.
+  const { hasKbSection, kbRefsCount, compliant } = isKbCompliant(resultText);
 
   appendLog({
     timestamp: new Date().toISOString(),
@@ -214,7 +208,7 @@ function main() {
     subagent_type: rawSubagentType,
     subagent_base: subagentBase,
     has_kb_section: hasKbSection,
-    kb_refs_count: kbRefs.length,
+    kb_refs_count: kbRefsCount,
     result_length: resultText.length,
     compliant,
   });
@@ -229,7 +223,7 @@ function main() {
   // KB reminder, OR proceed treating this analysis as incomplete.
   emit({
     decision: 'block',
-    reason: `[KB-CITATION-MISSING] The ${subagentBase} sub-agent response did not include the required '## KB Sources Consulted' section with at least 1 'kb:' reference (found section=${hasKbSection ? 'yes' : 'no'}, kb_refs=${kbRefs.length}). Per agents/${subagentBase}.md Output Contract (H.9.20.0), every ${subagentBase} response MUST end with this section. EITHER: (a) re-spawn the ${subagentBase} agent with explicit instruction "your response MUST include the ## KB Sources Consulted section per H.9.20.0", OR (b) proceed but note in your reasoning that this analysis is INCOMPLETE — kb grounding was not verified.`,
+    reason: `[KB-CITATION-MISSING] The ${subagentBase} sub-agent response did not include the required '## KB Sources Consulted' section with at least 1 'kb:' reference (found section=${hasKbSection ? 'yes' : 'no'}, kb_refs=${kbRefsCount}). Per agents/${subagentBase}.md Output Contract (H.9.20.0), every ${subagentBase} response MUST end with this section. EITHER: (a) re-spawn the ${subagentBase} agent with explicit instruction "your response MUST include the ## KB Sources Consulted section per H.9.20.0", OR (b) proceed but note in your reasoning that this analysis is INCOMPLETE — kb grounding was not verified.`,
   });
 }
 
