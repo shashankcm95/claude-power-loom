@@ -51,11 +51,13 @@ const LICENSE_ALLOWLIST = new Set(['MIT', 'Apache-2.0', 'BSD-2-Clause', 'BSD-3-C
 // dot, no `?`, no whitespace, no control). The leading-`-` + dot-only-segment rejects are below.
 const OWNER_REPO_RE = /^[A-Za-z0-9_.-]{1,39}\/[A-Za-z0-9_.-]{1,100}$/;
 // The constructed gh-api endpoint shape (the belt-and-suspenders re-assertion right before the call).
-// The optional suffix is a CLOSED set: `/commits/HEAD` (base_sha) or `/issues/<digits>` (a single-issue
-// fetch). `[0-9]{1,15}` is digit-only + anchored (no `..`/`/`/traversal) AND length-capped below 2^53's
-// 16 digits, so the regex is a true re-assertion of — never weaker than — the caller's own
+// The optional suffix is a CLOSED set: `/commits/HEAD` (base_sha), `/issues/<digits>` (a single-issue
+// fetch), or `/pulls` (the intake acceptance signal — a TERMINAL literal, no id/sub-resource, so the
+// write forms `/pulls/N/merge` [PUT] + `/pulls/N/reviews` cannot pass; query params ride as `-f` GET, never
+// in the path). `[0-9]{1,15}` is digit-only + anchored (no `..`/`/`/traversal) AND length-capped below
+// 2^53's 16 digits, so the regex is a true re-assertion of — never weaker than — the caller's own
 // positive-safe-integer validation of the number before it reaches the path.
-const ENDPOINT_RE = /^repos\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(\/commits\/HEAD|\/issues\/[0-9]{1,15})?$/;
+const ENDPOINT_RE = /^repos\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(\/commits\/HEAD|\/issues\/[0-9]{1,15}|\/pulls)?$/;
 // A caller-supplied search term (label/language) is OUR config, not attacker data — but guard it anyway
 // so it cannot break the `q=` string (no quotes/newlines/control).
 const SEARCH_TERM_RE = /^[A-Za-z0-9 _.-]{1,60}$/;
@@ -193,6 +195,45 @@ function ghApiEndpoint(owner, repo, suffix = '') {
 function ghApiReadArgs(owner, repo, suffix = '') {
   return ['api', '-X', 'GET', ghApiEndpoint(owner, repo, suffix)];
 }
+// A read-only GET for a repo's CLOSED pull requests (the intake acceptance signal). state/per_page/sort
+// ride as `-f` GET query params — the explicit `-X GET` keeps them a GET (never gh's auto-POST) and the
+// endpoint is the `/pulls` literal re-asserted by ghApiEndpoint (no id/sub-resource, so no write path).
+function ghApiClosedPullsArgs(owner, repo, perPage = 30) {
+  const n = Number.isInteger(perPage) && perPage > 0 && perPage <= 100 ? perPage : 30;
+  return ['api', '-X', 'GET', ghApiEndpoint(owner, repo, '/pulls'),
+    '-f', 'state=closed', '-f', `per_page=${n}`, '-f', 'sort=updated', '-f', 'direction=desc'];
+}
+
+// A merged PR by one of these author associations does NOT prove the repo accepts OUTSIDER PRs (an owner /
+// org member / added collaborator is an insider). Everyone else — CONTRIBUTOR, FIRST_TIME_CONTRIBUTOR, an
+// unknown string — is an outsider whose merged PR proves the repo takes external contributions.
+const PR_INSIDER_ASSOCIATIONS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
+
+// Intake PR-acceptance signal (Gap 7 / Part A): has this repo ever MERGED a PR from a non-insider? A repo
+// that restricts PR creation to collaborators (e.g. schmug/colophon) never can, so its apex-merge signal is
+// structurally unreachable and it is not worth an autonomous solve. READ-ONLY (the GET-pinned /pulls list).
+// TRI-STATE so a transient error is NOT read as a structural block (hacker VALIDATE MEDIUM):
+//   true  — a merged PR from a non-insider was found;
+//   false — a VALID read showed NONE (a confirmed "never merged an external PR");
+//   null  — could NOT assess (network / rate-limit / non-JSON / a non-array/malformed body).
+// Callers act ONLY on an explicit `false` (drop / warn); `null` (unknown) triggers nothing — a flaky /pulls
+// read must never drop a good candidate or emit a false "no-external-merge" reason. The whole body is still
+// wrapped so no crafted response throws out. A merge counts as external only when author_association is a
+// STRING not in the insider set: a non-string (a crafted object/array/number) is skipped, never KEEP-forcing
+// (hacker VERIFY); an unknown STRING counts as external (lenient — a false-KEEP is only a wasted solve,
+// which the FUTURE submit-time Part-B fail-fast will recover; a false-DROP would silently lose a good
+// candidate). Inspects the most-recent `perPage` closed PRs (deeper pagination is a deferred follow-up — a
+// repo whose sole external merge is older than the page reads false).
+function hasExternalMergeHistory(owner, repo, ghRunner = defaultGhRunner, { perPage = 30 } = {}) {
+  try {
+    const pulls = ghJson(ghRunner, ghApiClosedPullsArgs(owner, repo, perPage));
+    if (!Array.isArray(pulls)) return null; // malformed body — unknown, not a confirmed "no external merge"
+    return pulls.some((pr) => pr && typeof pr === 'object' && pr.merged_at
+      && typeof pr.author_association === 'string' && !PR_INSIDER_ASSOCIATIONS.has(pr.author_association));
+  } catch {
+    return null; // could not assess — transient (network / rate-limit / non-JSON); NOT a structural block
+  }
+}
 function assertSearchTerm(v, name) {
   if (typeof v !== 'string' || !SEARCH_TERM_RE.test(v)) throw new Error(`${name}: must match [A-Za-z0-9 _.-]{1,60}`);
 }
@@ -211,11 +252,14 @@ function buildSearchArgs({ label, language, limit }) {
  * @param {string}   [opts.label]          the issue label (default 'good first issue').
  * @param {string}   [opts.language]       the repo language (default 'python').
  * @param {(e:object)=>void} [opts.logger] optional drop/observe logger.
+ * @param {boolean} [opts.dropOnNoExternalMerge] SHADOW arm (default false): when true, drop a repo the intake
+ *                                  guard CONFIRMS has never merged an external-contributor PR. Default OFF =
+ *                                  the guard is not invoked (no extra /pulls call, no behavior change).
  * @returns {Promise<{records: object[], stats: {searched, eligible, dropped, dropReasons}}>}
  */
 async function pullLiveCorpus({
   ghRunner = defaultGhRunner, limit = 30, licenseAllowlist,
-  label = 'good first issue', language = 'python', logger,
+  label = 'good first issue', language = 'python', logger, dropOnNoExternalMerge = false,
 } = {}) {
   if (!Number.isInteger(limit) || limit <= 0 || limit > 100) throw new Error('limit: must be an integer in [1,100]');
   assertSearchTerm(label, 'label');
@@ -240,6 +284,14 @@ async function pullLiveCorpus({
       const meta = ghJson(ghRunner, ghApiReadArgs(owner, repo));
       if (!isPrCapable(meta)) throw new Error('drop: repo not PR-capable');
       if (!licOk(meta && meta.license && meta.license.spdx_id)) throw new Error('drop: license not compatible');
+      // (3b) intake acceptance (Gap 7 / Part A) — SHADOW-gated OFF by default: the guard (an extra /pulls GET)
+      // fires ONLY when armed. Drop ONLY on an explicit `false` (a CONFIRMED "never merged an external PR" —
+      // the colophon shape, whose apex-merge signal is structurally unreachable); a `null` (couldn't assess —
+      // a transient /pulls error) keeps the candidate, so a network blip never silently loses a good repo.
+      // Runs AFTER the cheap metadata guards so the extra read only hits otherwise-eligible repos.
+      if (dropOnNoExternalMerge && hasExternalMergeHistory(owner, repo, ghRunner) === false) {
+        throw new Error('drop: no external PR ever merged');
+      }
       // (4) resolve base_sha — the gh `.sha` field is untrusted; assertSafeSha drops a non-40-hex/missing.
       const shaResp = ghJson(ghRunner, ghApiReadArgs(owner, repo, '/commits/HEAD'));
       const base_sha = assertSafeSha(shaResp && shaResp.sha);
@@ -273,9 +325,12 @@ async function pullLiveCorpus({
  * @param {string} opts.repo
  * @param {number} opts.number  a positive safe-integer issue number
  * @param {(args:string[])=>string} [opts.ghRunner]  injectable gh runner (default defaultGhRunner)
+ * @param {(e:object)=>void} [opts.logger]  optional advisory sink. When provided, the intake guard runs and,
+ *                                  on a CONFIRMED no-external-merge repo, emits {level:'warn',reason,repo} —
+ *                                  a WARN only, never a drop; the call is fail-soft. Absent = guard not invoked.
  * @returns {object} the PUBLIC record { id, repo, base_sha, problem_statement }
  */
-function fetchOneIssueRecord({ owner, repo, number, ghRunner = defaultGhRunner } = {}) {
+function fetchOneIssueRecord({ owner, repo, number, ghRunner = defaultGhRunner, logger } = {}) {
   // (1) slug guard FIRST, on the rejoined caller string; use the returned {owner,repo} EXCLUSIVELY
   // downstream (architect HIGH — never re-split, never trust the raw args past this point).
   const { owner: o, repo: r } = assertSafeOwnerRepo(`${owner}/${repo}`);
@@ -300,6 +355,15 @@ function fetchOneIssueRecord({ owner, repo, number, ghRunner = defaultGhRunner }
   if (!isLicenseCompatible(meta && meta.license && meta.license.spdx_id)) {
     throw new Error(`fetchOneIssueRecord: refuse — ${o}/${r} license is not in the permissive allowlist`);
   }
+  // (4b) intake acceptance ADVISORY (Gap 7 / Part A) — opt-in via `logger` (the guard, an extra /pulls GET,
+  // fires ONLY when a logger is provided). The operator explicitly targeted this issue, so this WARNS, never
+  // drops: a repo that has never merged an external PR may block ours (the colophon shape). Warns ONLY on an
+  // explicit `false` (not on a `null` couldn't-assess). The logger call is fail-soft: an advisory logging
+  // side-effect must NEVER abort an otherwise-valid fetch (VALIDATE MEDIUM). Record unchanged.
+  if (typeof logger === 'function' && hasExternalMergeHistory(o, r, ghRunner) === false) {
+    try { logger({ level: 'warn', reason: 'no-external-merge-history', repo: `${o}/${r}` }); }
+    catch { /* swallow — the record is valid; a broken logger must not convert a warn into a hard failure */ }
+  }
   // (5) base_sha — the gh `.sha` is untrusted; assertSafeSha rejects a non-40-hex / missing. (Pinned at
   // fetch time: the draft clones this exact sha; upstream HEAD may advance — a Part-B/emit staleness
   // concern, inert in SHADOW.)
@@ -318,5 +382,6 @@ module.exports = {
   assertSafeOwnerRepo, parseRepoSlug, isLicenseCompatible, isPrCapable, isUnassigned,
   boundProblemStatement, buildPublicRecord, pullLiveCorpus, fetchOneIssueRecord,
   defaultGhRunner, assertReadOnlyGhArgs, ghApiEndpoint, ghApiReadArgs, buildSearchArgs,
+  ghApiClosedPullsArgs, hasExternalMergeHistory,
   MAX_PROBLEM_BYTES, LICENSE_ALLOWLIST,
 };
