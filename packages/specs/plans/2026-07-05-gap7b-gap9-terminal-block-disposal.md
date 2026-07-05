@@ -50,22 +50,27 @@ call). Verbatim route-decide JSON:
 
 ## Files To Modify
 
-- **NEW** `packages/lab/issue-corpus/terminal-block.js` — the pure classifier `classifyEmitTerminalBlock(emitResult)`
-  → `{ terminal: boolean, block_reason: 'pr-creation-restricted' | null }` (reads emitPR's existing `{ok,reason}`;
-  ZERO kernel change) + a candidate-keyed SHADOW terminal-block outcome store (append + list; observable).
-- **NEW** `packages/lab/causal-edge/live-disposal.js` — `disposeCandidate({ record_id, reason, pendingNodeId?, artifactPath?, ... })`
-  → writes an observable immutable disposal tombstone + marks the pending lesson dead (sidecar tombstone, NOT an
-  in-place mutation) + optionally reaps the draft artifact (logged). Fail-soft; never throws into the caller.
-- **MOD** `packages/lab/causal-edge/live-pending-store.js` — add a READ-side `tombstonePendingLesson(node_id, reason)`
-  (writes a `.tombstone` sidecar; the node file is immutable) + `isPendingTombstoned(node_id)` for listers to skip.
-  No mutation of the content-addressed node; uid/O_NOFOLLOW parity with the existing read path.
-- **MOD** `packages/lab/persona-experiment/live-draft-run.js` — after `emitFn` returns/throws, classify the result;
-  on a terminal block, record the terminal-block outcome + invoke `disposeCandidate` (fail-soft, behind a default-off
-  `disposeOnTerminalBlock` dep so the shipped dry pipeline is byte-inert).
-- **MOD** `packages/lab/persona-experiment/live-solve-one.js` — thread the (default-off) disposal dep + surface the
-  terminal-block/disposition in the run report. No new user-facing flag armed by default.
-- **NEW** `tests/unit/lab/issue-corpus/terminal-block.test.js` and `tests/unit/lab/causal-edge/live-disposal.test.js`,
-  plus extensions to the pending-store and live-draft-run suites.
+> Reconciled to the AS-BUILT surface (this section was refined during VERIFY; the authoritative post-VERIFY
+> summary is "Revised file list (post-VERIFY)" under Pre-Approval Verification, and the VALIDATE result).
+
+- **NEW** `packages/lab/issue-corpus/terminal-block.js` — the pure classifier `classifyEmitTerminalBlock(emitRes)`
+  → `{ terminal: boolean, block_reason: 'pr-creation-restricted' | null, unclassified: boolean }` (reads emitPR's
+  existing `{ok,reason}`; ZERO kernel change). Classifier ONLY — the disposal-outcome store lives in `live-disposal.js`.
+- **NEW** `packages/lab/causal-edge/live-disposal.js` — `disposeCandidate({ repo, issueRef, candidatePatchSha, blockReason, pendingNodeId })`,
+  plus the content-addressed disposal-outcome store (`recordDisposalOutcome` / `listDisposalOutcomes`). Records an
+  observable disposal-outcome, then tombstones the pending lesson (via an injected/default `tombstoneFn`).
+  **Tombstone-only — NO physical artifact reap this wave** (evidence-preserving). Fail-soft; never throws.
+- **MOD** `packages/lab/causal-edge/live-pending-store.js` — add `tombstonePendingLesson(node_id, reason)` (writes a
+  content-address-sealed `.tombstone` sidecar; the node file is immutable) + `isPendingTombstoned(node_id)` +
+  `listLivePendingLessons({ includeTombstoned })` (default skips tombstoned; the audit path sees them). uid/O_NOFOLLOW
+  parity with the existing read path.
+- **MOD** `packages/lab/persona-experiment/live-draft-run.js` — thread `lesson_node_id` out of `captureLiveLesson`;
+  after `emitFn` returns/throws, classify the result in its OWN try/catch; on a terminal block, invoke `disposeFn`
+  (default-off no-op unless `deps.disposeOnTerminalBlock`, an operator-arming knob) so the shipped dry pipeline is byte-inert.
+- `packages/lab/persona-experiment/live-solve-one.js` is **UNCHANGED** — the `terminal-block:*` reason flows onto the
+  existing outcome/report surface automatically + conditionally, so no report-surface edit is needed (preserves byte-inertness).
+- **NEW** `tests/unit/lab/issue-corpus/terminal-block.test.js` and `tests/unit/lab/causal-edge/live-disposal.test.js`
+  (+ `live-disposal-shadow.test.js` + `live-pending-tombstone.test.js`), plus extensions to the live-draft-run suite.
 
 ## Runtime Probes (verify the premises before building)
 
@@ -87,16 +92,20 @@ call). Verbatim route-decide JSON:
 
 ### Build
 
-1. `terminal-block.js`: pure `classifyEmitTerminalBlock({ ok, emitted, reason })` — terminal iff `ok===false` AND the
-   reason matches BOTH an HTTP-403/404 permission signal AND the `/pulls` create endpoint (a 403 on an earlier
-   tree/commit/ref step is NOT a PR-acceptance block — do not misclassify). Tri-state safe: an ambiguous/absent
-   reason → `{terminal:false}` (never over-claim a block). Plus a candidate-keyed append-only terminal-block store
-   (`{repo, issue_ref, candidate_patch_sha, block_reason, at}`) — observable, SHADOW, gates nothing.
-2. `live-pending-store.js`: `tombstonePendingLesson(node_id, reason)` writes a `<node_id>.tombstone` sidecar
-   (immutable node untouched); `isPendingTombstoned` + list-skip. uid/O_NOFOLLOW parity; observable alert.
-3. `live-disposal.js`: `disposeCandidate(...)` — observable disposal tombstone record + pending tombstone + optional
-   logged artifact reap. Fail-soft (returns `{disposed, reason}`, never throws). Never a silent unlink.
-4. Wire into `live-draft-run.js` (default-off `disposeOnTerminalBlock`) + `live-solve-one.js` report surface.
+1. `terminal-block.js` (classifier ONLY): pure `classifyEmitTerminalBlock({ ok, reason })` — terminal iff `ok===false`
+   AND the reason ANCHOR-matches BOTH an HTTP-403/404 permission signal AND the EXACT `/pulls` create endpoint (a 403
+   on the dedup GET `pulls?head=...` or an earlier tree/commit/ref step is NOT a PR-acceptance block — do not
+   misclassify). Tri-state: an ambiguous/absent reason → `{terminal:false}`; a 403/404 on the `/pulls` family that is
+   NOT the create → `{unclassified:true}` (the caller emits a drift-canary). Never over-claim a block.
+2. `live-pending-store.js`: `tombstonePendingLesson(node_id, reason)` writes a content-address-sealed
+   `<node_id>.tombstone` sidecar (immutable node untouched); `isPendingTombstoned` + `listLivePendingLessons({ includeTombstoned })`.
+   uid/O_NOFOLLOW parity; observable alerts.
+3. `live-disposal.js`: the content-addressed disposal-outcome store (`recordDisposalOutcome` / `listDisposalOutcomes`)
+   plus `disposeCandidate(...)` = record the observable disposal-outcome, then tombstone the pending lesson.
+   **Tombstone-only — no physical artifact reap this wave.** Fail-soft (returns `{disposed, recorded, tombstoned}`, never throws).
+4. Wire into `live-draft-run.js`: thread `lesson_node_id` out of `captureLiveLesson`; classify+dispose in its own
+   try/catch behind the default-off `disposeOnTerminalBlock` dep. (`live-solve-one.js` needs no edit — the reason
+   flows onto the existing outcome surface.)
 
 ### Test (TDD — write first, expect red)
 
@@ -128,8 +137,8 @@ call). Verbatim route-decide JSON:
 - A **kernel structured `block_reason`** on emitPR (vs the lab classifier reading `err.message`) — deferred until
   arming; the string carries the endpoint + status today, and touching the crown-jewel egress is not warranted for a
   dormant classifier.
-- **Physical artifact deletion policy** — the stub reaps only when an `artifactPath` is passed + logs it; the default
-  is tombstone-only (retain the evidence). A retention/GC policy is a follow-up.
+- **Physical artifact reap** — NOT in this wave. `disposeCandidate` is tombstone-only (record + tombstone; the node +
+  draft bytes are retained, evidence-preserving). An `artifactPath`-driven reap + a retention/GC policy is a follow-up.
 - **Gap-8 review-loop** (the bigger rung) — unchanged; still design-sketched.
 - Calibration hardening (using terminal-block records to HARD-gate Part-A) — needs an authenticated minter (#273)
   before a forgeable record can gate; this store is observability-only.
