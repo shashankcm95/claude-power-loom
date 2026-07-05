@@ -328,5 +328,24 @@ test('s24. verify-preserved requires a WHOLE-LINE match (a substring of a longer
   assert.strictEqual(okr.rc, 0, 'a real whole-line match IS preserved');
 });
 
+// -- CommonMark fence-length rule (CodeRabbit Minor on the hardening push) --
+test('s25. a 4-backtick fence is NOT closed by a nested 3-backtick fence (CommonMark length rule)', () => {
+  const t = [
+    '### B1 - outer',
+    '````markdown', // 4-backtick opener
+    'a nested sample:',
+    '```', // 3-backtick -- must NOT close the 4-backtick fence
+    '### looks like a heading but is inside the fence',
+    '```', // still inside
+    '````', // 4-backtick -- THIS closes it
+    'after the fence, still B1',
+    '### B2 - second', 'b2 body',
+  ].join('\n');
+  const { blocks } = M.parseBlocks(t, { level: 3 });
+  assert.strictEqual(blocks.length, 2, 'the nested 3-backtick fence did not split the block');
+  assert.deepStrictEqual(blocks.map((b) => b.shortAnchor), ['b1', 'b2']);
+  assert.ok(blocks[0].body.includes('after the fence, still B1'), 'content after the true close stays in B1');
+});
+
 process.stdout.write(`\nmemory-cli: ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);

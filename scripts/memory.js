@@ -85,14 +85,17 @@ function parseBlocks(text, { level = 3 } = {}) {
   const blocks = [];
   let preambleEnd = lines.length;
   let cur = null;
-  let fence = null; // the open fence marker char ('`' or '~'), or null when outside a fence
+  let fence = null; // { marker, len } of the open fence, or null when outside a fence
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i];
     const fenceM = fenceRe.exec(line);
     if (fenceM) {
       const marker = fenceM[1][0];
-      if (fence === null) fence = marker; // open
-      else if (fence === marker) fence = null; // close on a matching fence
+      const len = fenceM[1].length;
+      // CommonMark: the closing fence uses the SAME char and is at LEAST as long as the opener, so a
+      // nested shorter fence (e.g. ``` inside a ````-opened block) does NOT close it.
+      if (fence === null) fence = { marker, len };
+      else if (marker === fence.marker && len >= fence.len) fence = null;
       if (cur) cur.lines.push(line); // a fence line is content, never a heading
       continue;
     }
