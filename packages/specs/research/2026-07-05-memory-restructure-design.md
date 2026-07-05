@@ -75,16 +75,23 @@ REFRESHED (2026-07-05) on the new angles:
   Pure LRU (recency only) is the simple form; **recency+importance+relevance** (already in our rules) is the richer form
   that *pins* high-importance blocks against eviction — the correct variant for scars (a load-bearing scar must not age out).
 
-## 3. Target architecture — three tiers + a router
+## 3. Target architecture — a router over episodic + two semantic sub-tiers
 
 ```
 TIER 0  ROUTER      MEMORY.md            thin, ≤200 lines / ≤~18 KB, ALWAYS loaded (harness)
-                                         → scope-partitioned pointers only, NO session prose
-TIER 1  EPISODIC    library snapshots    per-session, per-workstream, time-scoped, verbatim
-                    (already exist!)      → referenced BY the router, one pointer per live workstream
-TIER 2  SEMANTIC    topic + scar files   durable, consolidated, block-addressable
-                    + ~/.claude/rules     → invariants/canonical/scars/rules; reconcile-not-append
+                                         → scope-partitioned pointers only; DEFERS phase status to docs/
+TIER 1  EPISODIC    library snapshots    per-SESSION, per-workstream, time-scoped, verbatim
+                    (already exist!)      → referenced BY the router; one pointer per live workstream
+TIER 2a DURABLE     docs/ (PRD/phases/    per-PHASE, git-tracked, ANTI-DRIFT-looped ANCHOR — the single
+        ANCHOR      ADRs) + specs/        source of truth for what/why/decisions/PHASE-status
+TIER 2b LESSONS     topic + scar files    operating-discipline semantic memory; block-addressable;
+                    + ~/.claude/rules     invariants/canonical/scars/rules; reconcile-not-append
 ```
+
+The split of Tier 2 is the load-bearing fold (§3.6): the **durable anchor** (`docs/`) already exists per-repo with
+its own **anti-drift loop**, and today FOUR surfaces each claim "where are we" (PRD §5, `docs/ROADMAP.md`,
+`docs/phases/` status board, and MEMORY's START-HERE) — which is exactly how they drift. The redesign makes each
+concern have ONE home and bridges them with ONE reflection loop.
 
 ### 3.1 TIER 0 — the ROUTER (`MEMORY.md`, ≤200 lines)
 
@@ -126,14 +133,60 @@ The durable tier: invariant/canonical topic files, the rules, and the **scars fi
   a graduate-candidate scar against eviction (the recency+importance protector). A tiny sidecar
   (`scars-heat.json`: `{scar-33: {last_ref: <iso>, refs: N}}`) tracks the heat; the cache = top-N by recency, minus pinned.
 
-### 3.4 Consolidation — the missing discipline (episodic → semantic)
+### 3.4 Consolidation — the missing discipline (episodic → semantic), folded to the anti-drift loop
 
-At **session-close / pre-compact** (a REFLECTION pass, not continuous): (1) write/append the session's **episodic**
-snapshot (verbatim, Tier-1); (2) **consolidate** durable learnings into the **semantic** topic files —
-**reconcile, don't append** (update/invalidate a stale rule; keep a `[[link]]` back to the originating episode for
-provenance); (3) **roll the router** — update each workstream's one-line pointer, refresh the scar LRU cache, and demote
-anything that fell out of the hot set to its topic file (the already-shipped demote-by-score policy, now *enforced* by
-the helper in §4). This pass is what stops the accretion the prior design left unaddressed.
+Consolidation is a REFLECTION pass (not continuous), run at **two grains** that are the SAME loop (§3.6):
+
+- **Session-close (every session, frequent):** (1) write the session's **episodic** snapshot (verbatim, Tier-1);
+  (2) **consolidate** durable learnings into the Tier-2b **lessons** (scars/topic) — **reconcile, don't append**
+  (update/invalidate a stale rule; keep a `[[link]]` back to the episode for provenance); (3) **roll the router** —
+  update each workstream's one-line pointer, refresh the scar LRU cache, demote what fell out of the hot set (the
+  demote-by-score policy, now *enforced* by the §4 helper).
+- **Phase-close (at a phase boundary, coarse):** the EXISTING `/phase-close` reconciliation — the integrated phase vs
+  the PRD exit criteria — updates the Tier-2a **durable anchor** (`docs/phases/` + `ROADMAP.md` + a dated accretion in
+  `PRD §5` if reality diverged; record/fold an ADR).
+
+The two grains are **one loop**: session consolidations *accumulate the evidence* that phase-close reconciles against
+the anchor. So the episodic → lessons → durable-anchor chain is unbroken — nothing becomes a second source of truth,
+and accretion is bounded at both grains (the gap the prior design left).
+
+### 3.5 ARC-file decomposition (the 179 KB problem)
+
+Each ARC → a **CHARTER** (the ratified design, immutable once merged, with a `#charter` anchor the router targets) +
+per-wave **episodic snapshots** (dated, frozen after the wave). The router points to the charter + names the latest
+wave. Version-lockdown: **freeze an ARC section after its wave merges** (no retroactive edits; new state → a new dated
+block or a snapshot). This is the riskiest / largest surgery → **phased last, and optional** (§5).
+
+### 3.6 Folding the `docs/` anchor + the anti-drift loop into the resume cycle (per-repo continuity)
+
+Each repo (toolkit, PACT, Embers) now carries the **project-docs convention** — `docs/PRD.md` (anchor → north-star
+RFC), `docs/phases/` (implementation hub + the 4-step anti-drift loop: Scope → Work → Close+reconcile → Re-evaluate),
+`docs/ADRs/` (decisions, bridging `specs/adrs` + `rfcs` + `research`). The resume memory system must **defer to and
+feed** this layer, not duplicate it — that is how continuity is preserved.
+
+**One source of truth per concern (this ends the four-surfaces drift):**
+
+| Concern | Home (single source of truth) | The router does |
+|---|---|---|
+| what / why / principles / phase-order | `docs/PRD.md` → north-star RFC | POINT (never duplicate) |
+| PHASE status (durable, phase-grain) | `docs/ROADMAP.md` + `docs/phases/` | POINT (never inline the phase board) |
+| decisions | `docs/ADRs/` + `specs/adrs` | POINT |
+| SESSION status (operating, session-grain) | the router + Tier-1 episodic snapshots | HOLD (a thin per-workstream pointer) |
+| lessons | Tier-2b scars/topic (block-addressable) | HOT-CACHE (LRU) + POINT |
+
+**The router line resolves THROUGH `docs/`** — it carries the *session* grain and defers the *phase* grain:
+
+```markdown
+- **Toolkit** → phase [[docs/ROADMAP#current]] · session [[episodic/2026-07-05-gap7b-gap9]] · decisions [[docs/ADRs]]
+```
+
+**Per-repo wiring:** each repo's in-repo RESUME references ITS OWN `docs/` (toolkit RESUME → toolkit `docs/`; PACT's
+`_SESSION-RESUME.md` → PACT `docs/` + `PACT-NORTH-STAR.md`; Embers RESUME → Embers `docs/phases/`). The toolkit
+`MEMORY.md` router's per-workstream lines are the **cross-repo bridge** — one line per repo, each pointing at that
+repo's RESUME + `docs/` anchor. Continuity is preserved because: (a) the router never holds phase status that could
+drift from `ROADMAP`/`phases`; (b) the session-close consolidation feeds the phase-close reconciliation that updates
+the anchor; (c) every episodic snapshot links forward to the `docs/` phase it advanced, and a phase-close links back
+to the episodes it integrated — a bidirectional provenance chain across the two grains.
 
 ### 3.5 ARC-file decomposition (the 179 KB problem)
 
@@ -164,10 +217,16 @@ Each phase is a separate reviewable PR; nothing is deleted (content MOVES to a t
 - **Phase 0 — tooling + doc (non-destructive).** Build `scripts/memory.js` (check/recall/demote + the `[[file#anchor]]`
   resolver). Write the memory-architecture doc + update `rules/core/self-improvement.md` with the tier model +
   consolidation discipline. Nothing in the memory dir moves yet. *Validates the mechanism before touching data.*
-- **Phase 1 — de-mash the router (the USER's core ask).** Rewrite `MEMORY.md` into the ≤200-line scope-partitioned
-  router (§3.1). MOVE each mashed workstream's START-HERE prose into its episodic file (reuse the latest library
-  snapshot; add the `workstream:` tag). PACT's line becomes a pure pointer to `_SESSION-RESUME.md` (PACT owns its scope).
-  *Verify: every claim in the old START-HERE is preserved in an episodic file the router points to (a diff-audit).*
+- **Phase 1 — de-mash the router + fold in `docs/` (the USER's core ask + the continuity fold, §3.6).** Rewrite
+  `MEMORY.md` into the ≤200-line scope-partitioned router. Each per-workstream line resolves THROUGH the repo's
+  `docs/` anchor — `phase [[docs/ROADMAP#current]] · session [[episodic/…]] · decisions [[docs/ADRs]]` — so the router
+  holds the SESSION grain only and DEFERS the PHASE grain to `docs/` (ends the four-surfaces drift). MOVE each mashed
+  workstream's START-HERE prose into its episodic file (reuse the latest library snapshot; add the `workstream:` tag);
+  create the toolkit in-repo RESUME that links its episodic snapshots to `docs/phases/`. PACT's line becomes a pure
+  pointer to `_SESSION-RESUME.md` + PACT `docs/`. Add the reciprocal wiring: each episodic snapshot links forward to
+  the `docs/` phase it advanced; `docs/phases/` "Status at a glance" points back to the router (bidirectional
+  provenance). *Verify: every claim in the old START-HERE is preserved in an episodic file the router points to, and no
+  phase status is duplicated between the router and `docs/ROADMAP` (a diff-audit).*
 - **Phase 2 — scar block-cache.** Add `### SCAR-NN` anchors; fix the dup #24; split by origin (toolkit/pact/embers);
   build the `scars-heat.json` LRU sidecar; wire the ~5-item hot-cache into the router. *Verify: every existing scar
   survives with a unique anchor; the origin split loses none.*
@@ -181,7 +240,10 @@ Each phase is a separate reviewable PR; nothing is deleted (content MOVES to a t
   hybrid summary-in-index + verbatim-in-store; **protect-invariant from staleness eviction**; demote-never-delete.
 - **NEW (the gaps the prior design left):** session-scoping (episodic tier *wired* to the router); block-addressing +
   the LRU scar hot-cache with exact-pointer cold-fetch; the ≤200-line router ceiling as a forcing function; ARC
-  decomposition + version-lockdown; the **episodic→semantic consolidation reflection pass**; the deterministic helper built.
+  decomposition + version-lockdown; the **episodic→semantic consolidation reflection pass**; the deterministic helper built;
+  and (§3.6) the **fold of the per-repo `docs/` anchor + its anti-drift loop into the resume cycle** — one source of
+  truth per concern, the router deferring PHASE status to `docs/`, session-close consolidation feeding phase-close
+  reconciliation (the continuity the USER asked to preserve).
 
 ## 7. Open questions (for the USER before build)
 
