@@ -78,6 +78,30 @@ const MAX = Object.freeze({ repo: 256, candidate_patch_sha: 64, lesson_signature
 // A fully-populated node is < 8KB; 64KB is generous. NON-OVERRIDABLE - a module const, never an opts knob.
 const MAX_RECORD_BYTES = 64 * 1024;
 
+// Gap-9 disposal — the TOMBSTONE sidecar. A `<node_id>.tombstone` file records that this pending node is
+// DEAD (a never-merged / terminal-blocked candidate), WITHOUT touching the immutable content-addressed
+// `<node_id>.json` node (the node bytes are RETAINED — evidence preserved; VERIFY hacker "disposal must not
+// be an evidence-erasure lever"). The sidecar is itself content-address-sealed (content_hash over
+// {node_id, reason, tombstoned_at}) + O_NOFOLLOW/uid-verified on read, so a foreign/forged tombstone is
+// REJECTED and can never suppress a legitimate node. A tombstoned node is skipped by the DEFAULT lister but
+// remains discoverable via the audit lister (`listLivePendingLessons({ includeTombstoned: true })`).
+//
+// #273 FORWARD-CONTRACT (VALIDATE hacker MEDIUM — the tombstone lane inherits the NODE's co-forge residual):
+// content-address sealing proves the tombstone's INTEGRITY, not its PROVENANCE. A same-uid writer can
+// co-forge a byte-valid tombstone (the node_id basis is public + deriveLivePendingNodeId is exported), and
+// even PRE-PLANT one before the node is minted, to CENSOR a legitimate captured-floor node from the DEFAULT
+// lister (which the sole floor reader, world-anchor-mint, uses). This is a SUPPRESSION lever, NOT
+// evidence-destruction (bytes retained + recoverable via includeTombstoned:true), and it is INERT while
+// world-anchor-mint is SHADOW/weight-inert (nothing gates a weight on the floor). BEFORE the mint gates a
+// weight, the tombstone read MUST gain AUTHENTICATED provenance at the SAME arming point as the node minter
+// (item 5, the signed/kernel-writer edge minter) — a same-uid tombstone must never silently drop a floor
+// node once a weight is at stake. Immediate observability (below): mintLivePendingLesson emits a
+// `minted-already-tombstoned` canary when a fresh node is born already-tombstoned (the pre-plant shape).
+const TOMBSTONE_SUFFIX = '.tombstone';
+const MAX_TOMBSTONE_REASON = 64;                 // 'pr-creation-restricted' is 21 chars; 64 is generous
+const MAX_TOMBSTONE_BYTES = 4 * 1024;            // the sidecar is a few hundred bytes; 4KB is a generous DoS cap
+const TOMBSTONE_KEYS = Object.freeze(['node_id', 'reason', 'tombstoned_at', 'content_hash']);
+
 function storeDir(opts) { return (opts && opts.dir) || LIVE_PENDING_DEFAULT_DIR; }
 function isForeign(st, selfUid) { return selfUid !== null && st.uid !== selfUid; }
 function sha256hex(s) { return crypto.createHash('sha256').update(s).digest('hex'); }
@@ -231,6 +255,14 @@ function mintLivePendingLesson(block, opts = {}) {
     alert('write-failed', { code: (err && err.code) || 'error' });
     return { ok: false, reason: 'write-failed' };
   }
+  // Gap-9 born-dead canary (VALIDATE hacker MEDIUM): a FRESH node (this is the non-dedup write path) that
+  // ALREADY carries a valid tombstone is attack-shaped — tombstonePendingLesson refuses to tombstone an
+  // absent node, so an orphan tombstone at this predictable node_id can only be a same-uid PRE-PLANT to
+  // censor this node from the mint's default floor read (the #273 forward-contract in the header). Observable,
+  // never silent; does NOT fail the mint (the node IS written — the alert is the signal, the fix is auth).
+  if (readTombstoneRaw(body.node_id, dir, selfUid) !== null) {
+    alert('minted-already-tombstoned', { node_id: body.node_id });
+  }
   return { ok: true, deduped: false, node_id: body.node_id };
 }
 
@@ -346,18 +378,145 @@ function listLivePendingLessons(opts = {}) {
   }
   let entries;
   try { entries = fs.readdirSync(dir); } catch { return []; }
+  // Gap-9: by DEFAULT skip tombstoned (dead) nodes — a disposed candidate must not resurface to a future
+  // floor-builder reader. `includeTombstoned:true` is the AUDIT path (a tombstoned/forged node stays
+  // discoverable, never vanishes with no recovery — VERIFY hacker). On the current store (zero tombstones)
+  // the default is behavior-identical to pre-Gap-9.
+  const includeTombstoned = opts.includeTombstoned === true;
+  // Only nodes that have a `.tombstone` entry in THIS listing need the (verifying) tombstone read — so the
+  // common dormant case (no tombstones) does ZERO extra opens (VALIDATE code-reviewer LOW). A `.tombstone`
+  // file merely being PRESENT is not trusted: readTombstoneRaw still verifies it (a forged one -> null ->
+  // NOT skipped -> the node stays listed), so this is a pure fast-path, not a weakening of the check.
+  const tombstonedNames = includeTombstoned ? null : new Set(
+    entries.filter((n) => n.endsWith(TOMBSTONE_SUFFIX)).map((n) => n.slice(0, -TOMBSTONE_SUFFIX.length)),
+  );
   const out = [];
   for (const name of entries) {
     if (!name.endsWith(NODE_SUFFIX)) continue;
     const node_id = name.slice(0, -NODE_SUFFIX.length);
     if (!HEX64.test(node_id)) continue;
     const body = readNodeRaw(node_id, dir, selfUid, MAX_RECORD_BYTES);   // a corrupt/forged file -> null -> skipped (TOTAL)
-    if (body) out.push(deepFreeze({ ...body }));
+    if (!body) continue;
+    // skip a VALIDLY-tombstoned node (verified); a forged `.tombstone` fails readTombstoneRaw -> not skipped.
+    if (tombstonedNames && tombstonedNames.has(node_id) && readTombstoneRaw(node_id, dir, selfUid) !== null) continue;
+    out.push(deepFreeze({ ...body }));
   }
   return out;
 }
 
+// --------------------------------------------------------------------------
+// Gap-9 disposal — the TOMBSTONE lane (sidecar; the node bytes are never touched).
+// --------------------------------------------------------------------------
+
+// The raw tombstone read: O_NOFOLLOW open, fstat the SAME fd, reject non-regular / foreign-owned / oversize
+// (each OBSERVABLE) BEFORE the bounded read, closed-shape + node_id + content_hash verify. Returns the
+// verified sidecar body or null. Templated on readNodeRaw so a foreign/symlinked/forged `.tombstone` can
+// never suppress a node (it verifies as null → treated as NOT tombstoned). A per-store helper (the
+// deliberate-duplication discipline — each read path audited independently).
+function readTombstoneRaw(node_id, dir, selfUid) {
+  if (typeof node_id !== 'string' || !HEX64.test(node_id)) return null;
+  const file = path.join(dir, node_id + TOMBSTONE_SUFFIX);
+  let fd = null;
+  try {
+    fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
+    const st = fs.fstatSync(fd);
+    if (!st.isFile()) { alert('tombstone-verify-mismatch', { node_id, kind: 'non-regular-file' }); return null; }
+    if (isForeign(st, selfUid)) { alert('tombstone-verify-mismatch', { node_id, kind: 'foreign-owned' }); return null; }
+    if (st.size > MAX_TOMBSTONE_BYTES) { alert('tombstone-verify-mismatch', { node_id, kind: 'oversize', size: st.size }); return null; }
+    const text = readBoundedText(fd, MAX_TOMBSTONE_BYTES);
+    if (text === null) { alert('tombstone-verify-mismatch', { node_id, kind: 'oversize-race' }); return null; }
+    const parsed = JSON.parse(text);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) { alert('tombstone-verify-mismatch', { node_id, kind: 'not-an-object' }); return null; }
+    // Closed-shape exact-set: reject any missing OR extra key (a forged sidecar with an injected field can
+    // never ride inside the content_hash seal of a "verified" tombstone — the #273 exact-set discipline).
+    const keys = Object.keys(parsed);
+    if (keys.length !== TOMBSTONE_KEYS.length || !TOMBSTONE_KEYS.every((k) => keys.includes(k))) {
+      alert('tombstone-verify-mismatch', { node_id, kind: 'shape' }); return null;
+    }
+    if (parsed.node_id !== node_id) { alert('tombstone-verify-mismatch', { node_id, kind: 'node-id' }); return null; }
+    if (typeof parsed.reason !== 'string' || parsed.reason.length < 1 || parsed.reason.length > MAX_TOMBSTONE_REASON) {
+      alert('tombstone-verify-mismatch', { node_id, kind: 'reason' }); return null;
+    }
+    const seal = sha256hex(canonicalJsonSerialize({ node_id: parsed.node_id, reason: parsed.reason, tombstoned_at: parsed.tombstoned_at }));
+    if (parsed.content_hash !== seal) { alert('tombstone-verify-mismatch', { node_id, kind: 'content-hash' }); return null; }
+    return parsed;
+  } catch (err) {
+    if (err && err.code === 'ENOENT') return null;                     // no tombstone — benign, not an alert
+    alert('tombstone-verify-mismatch', { node_id, io_code: err && err.code });
+    return null;
+  } finally {
+    if (fd !== null) { try { fs.closeSync(fd); } catch { /* best-effort */ } }
+  }
+}
+
+/**
+ * Tombstone (mark DEAD) a pending lesson node — Gap-9 disposal. Writes a content-address-sealed
+ * `<node_id>.tombstone` SIDECAR; the immutable `<node_id>.json` node is NEVER touched (evidence retained).
+ * Only a REAL, verified, uid-owned node is tombstoned (no orphan tombstone for an absent/foreign/forged
+ * node). `{flag:'wx'}` exclusive create; an EEXIST on double-dispose is idempotent (a prior valid tombstone
+ * for the same node). Every refuse path is OBSERVABLE (fail-soft ≠ fail-silent). NEVER throws.
+ * @param {string} node_id  a 64-hex live_pending node id
+ * @param {string} reason   a bounded disposal reason (e.g. 'pr-creation-restricted')
+ * @returns {{ok: boolean, deduped?: boolean, node_id?: string, reason?: string}}
+ */
+function tombstonePendingLesson(node_id, reason, opts = {}) {
+  if (typeof node_id !== 'string' || !HEX64.test(node_id)) { alert('tombstone-bad-id', {}); return { ok: false, reason: 'bad-node-id' }; }
+  if (typeof reason !== 'string' || reason.length < 1 || reason.length > MAX_TOMBSTONE_REASON) {
+    alert('tombstone-bad-reason', { node_id }); return { ok: false, reason: 'bad-reason' };
+  }
+  const selfUid = opts.selfUid === undefined ? currentUid() : opts.selfUid;
+  let dir;
+  try { dir = storeDir(opts); } catch { return { ok: false, reason: 'store-dir' }; }
+  const dirReason = validateReadDir(dir, selfUid);                     // the store dir must exist + be uid-owned + non-symlink
+  if (dirReason) {
+    if (dirReason !== 'absent') alert('tombstone-dir', { dir_reason: dirReason });
+    return { ok: false, reason: `store-dir:${dirReason}` };
+  }
+  // Only tombstone a node that VERIFIES + is uid-owned — never plant an orphan tombstone for an
+  // absent/foreign/forged node (which could otherwise be used to pre-suppress a future node).
+  if (readNodeRaw(node_id, dir, selfUid, MAX_RECORD_BYTES) === null) {
+    alert('tombstone-no-node', { node_id }); return { ok: false, reason: 'node-absent-or-invalid' };
+  }
+  const tombstoned_at = new Date(typeof opts.now === 'number' ? opts.now : Date.now()).toISOString();
+  const body = { node_id, reason, tombstoned_at };
+  body.content_hash = sha256hex(canonicalJsonSerialize({ node_id, reason, tombstoned_at }));
+  const file = path.join(dir, node_id + TOMBSTONE_SUFFIX);
+  try {
+    fs.writeFileSync(file, JSON.stringify(body), { flag: 'wx', mode: 0o600 });   // exclusive create; no symlink-follow
+  } catch (err) {
+    if (err && err.code === 'EEXIST') {
+      // A prior tombstone for this node. A VALID existing tombstone => idempotent ok (the node is already
+      // dead; the reason may differ — first-dispose-wins, harmless). An INVALID existing sidecar
+      // (foreign/forged/corrupt) => observable refuse (do not clobber it under wx; it is an attack shape).
+      if (readTombstoneRaw(node_id, dir, selfUid) !== null) return { ok: true, deduped: true, node_id };
+      alert('tombstone-collision', { node_id }); return { ok: false, reason: 'tombstone-invalid-existing' };
+    }
+    alert('tombstone-write-failed', { node_id, code: (err && err.code) || 'error' }); return { ok: false, reason: 'write-failed' };
+  }
+  alert('tombstoned', { node_id, reason });                            // observable disposal event (not a refuse)
+  return { ok: true, deduped: false, node_id };
+}
+
+/**
+ * Is this pending node tombstoned (dead)? Verifies the sidecar with the SAME O_NOFOLLOW/uid/content-hash
+ * discipline as the node read, so a foreign/symlinked/forged `.tombstone` reads as NOT tombstoned (it can
+ * never suppress a legitimate node). Returns false on an absent/foreign/invalid store dir (observable).
+ * @returns {boolean}
+ */
+function isPendingTombstoned(node_id, opts = {}) {
+  const selfUid = opts.selfUid === undefined ? currentUid() : opts.selfUid;
+  let dir;
+  try { dir = storeDir(opts); } catch { return false; }
+  const dirReason = validateReadDir(dir, selfUid);
+  if (dirReason) {
+    if (dirReason !== 'absent') alert('read-dir', { dir_reason: dirReason });
+    return false;
+  }
+  return readTombstoneRaw(node_id, dir, selfUid) !== null;
+}
+
 module.exports = {
   mintLivePendingLesson, readLivePendingLesson, listLivePendingLessons, deriveLivePendingNodeId,
+  tombstonePendingLesson, isPendingTombstoned,
   LIVE_PENDING, LIVE_PENDING_DEFAULT_DIR,
 };

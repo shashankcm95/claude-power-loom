@@ -382,7 +382,7 @@ test('capture: captureLiveLesson NEVER throws on a throwing eligibleFn (direct u
   const { captureLiveLesson } = M;
   let r;
   await assert.doesNotReject(async () => { r = await captureLiveLesson({ record: REC, candidate: BENIGN_DIFF, verdict: {}, ref: { issueRef: 42 }, eligibleFn: () => { throw new Error('boom'); }, deriveFn: async () => null, writeFn: () => ({ ok: true }) }); });
-  assert.deepStrictEqual(r, { lesson_captured: false, lesson_reason: 'ineligible', lesson_commitment: '' }, 'a throwing eligibleFn yields the ineligible shape with an empty commitment (no throw)');
+  assert.deepStrictEqual(r, { lesson_captured: false, lesson_reason: 'ineligible', lesson_commitment: '', lesson_node_id: '' }, 'a throwing eligibleFn yields the ineligible shape with an empty commitment (no throw)');
 });
 
 test('capture: an OFF-FLOOR deriver (returns null) writes NO lesson; lesson_reason:off-floor (no egress alert)', async () => {
@@ -504,22 +504,22 @@ test('OQ3: captureLiveLesson returns lesson_commitment:"" on each fail-soft bran
   const { captureLiveLesson } = M;
   // no-candidate
   const noCand = await captureLiveLesson({ record: REC, candidate: '   ', verdict: {}, ref: { issueRef: 42 }, eligibleFn: () => true, deriveFn: async () => null, writeFn: () => ({ ok: true }) });
-  assert.deepStrictEqual(noCand, { lesson_captured: false, lesson_reason: 'no-candidate', lesson_commitment: '' });
+  assert.deepStrictEqual(noCand, { lesson_captured: false, lesson_reason: 'no-candidate', lesson_commitment: '', lesson_node_id: '' });
   // ineligible (eligibleFn returns false)
   const ineligible = await captureLiveLesson({ record: REC, candidate: BENIGN_DIFF, verdict: {}, ref: { issueRef: 42 }, eligibleFn: () => false, deriveFn: async () => null, writeFn: () => ({ ok: true }) });
-  assert.deepStrictEqual(ineligible, { lesson_captured: false, lesson_reason: 'ineligible', lesson_commitment: '' });
+  assert.deepStrictEqual(ineligible, { lesson_captured: false, lesson_reason: 'ineligible', lesson_commitment: '', lesson_node_id: '' });
   // off-floor (deriveFn returns null)
   const offFloor = await captureLiveLesson({ record: REC, candidate: BENIGN_DIFF, verdict: {}, ref: { issueRef: 42 }, eligibleFn: () => true, deriveFn: async () => null, writeFn: () => ({ ok: true }) });
-  assert.deepStrictEqual(offFloor, { lesson_captured: false, lesson_reason: 'off-floor', lesson_commitment: '' });
+  assert.deepStrictEqual(offFloor, { lesson_captured: false, lesson_reason: 'off-floor', lesson_commitment: '', lesson_node_id: '' });
   // derive-threw
   const deriveThrew = await captureLiveLesson({ record: REC, candidate: BENIGN_DIFF, verdict: {}, ref: { issueRef: 42 }, eligibleFn: () => true, deriveFn: async () => { throw new Error('boom'); }, writeFn: () => ({ ok: true }) });
-  assert.deepStrictEqual(deriveThrew, { lesson_captured: false, lesson_reason: 'derive-threw', lesson_commitment: '' });
+  assert.deepStrictEqual(deriveThrew, { lesson_captured: false, lesson_reason: 'derive-threw', lesson_commitment: '', lesson_node_id: '' });
   // store-refused (writeFn returns ok:false)
   const refused = await captureLiveLesson({ record: REC, candidate: BENIGN_DIFF, verdict: {}, ref: { issueRef: 42 }, eligibleFn: () => true, deriveFn: async () => ({ lesson_signature: 'lesson:x', lesson_body: 'b' }), writeFn: () => ({ ok: false, reason: 'collision' }) });
-  assert.deepStrictEqual(refused, { lesson_captured: false, lesson_reason: 'store-refused', lesson_commitment: '' });
+  assert.deepStrictEqual(refused, { lesson_captured: false, lesson_reason: 'store-refused', lesson_commitment: '', lesson_node_id: '' });
   // store-threw (writeFn throws)
   const storeThrew = await captureLiveLesson({ record: REC, candidate: BENIGN_DIFF, verdict: {}, ref: { issueRef: 42 }, eligibleFn: () => true, deriveFn: async () => ({ lesson_signature: 'lesson:x', lesson_body: 'b' }), writeFn: () => { throw new Error('write boom'); } });
-  assert.deepStrictEqual(storeThrew, { lesson_captured: false, lesson_reason: 'store-refused', lesson_commitment: '' });
+  assert.deepStrictEqual(storeThrew, { lesson_captured: false, lesson_reason: 'store-refused', lesson_commitment: '', lesson_node_id: '' });
 });
 
 test('OQ3: captureLiveLesson returns a 64-hex lesson_commitment on the CAPTURED branch', async () => {
@@ -655,6 +655,135 @@ test('OQ3: lesson_commitment is NOT a key of the SUCCESS-terminus outcome (emit-
   assert.ok(!Object.prototype.hasOwnProperty.call(art, 'lesson_commitment'), 'lesson_commitment is NOT an artifact key');
   // the additive observable fields are still present
   assert.strictEqual(o.lesson_reason, 'captured');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// ---- Gap-7 Part-B + Gap-9: terminal-block classify + (default-off) dispose wiring ----------------------
+// emitFn returns a terminal-block-shaped result (403 on the bare /pulls create endpoint - REC's slug is
+// octocat/hello-world). SHADOW/dormant in prod (emitPR returns ok:true dry), but the wiring is exercised
+// here by INJECTING an armed-shaped emit result + disposeOnTerminalBlock.
+const TERMINAL_EMIT = { ok: false, emitted: false, reason: 'runGh: gh api repos/octocat/hello-world/pulls failed (HTTP 403)' };
+const DEDUP_GET_EMIT = { ok: false, emitted: false, reason: 'runGh: gh api repos/octocat/hello-world/pulls?head=bot:loom/x&state=open failed (HTTP 403)' };
+function termCaptureDeps(node_id) {
+  return { lessonEligibleFn: () => true, lessonDeriveFn: async () => ({ lesson_signature: 'lesson:x', lesson_body: 'b' }), lessonWriteFn: () => ({ ok: true, node_id }) };
+}
+
+test('Gap7B/9: a terminal /pulls-create 403 WITH a captured lesson => disposeFn called with the node_id; reason=terminal-block:*; fields preserved', async () => {
+  const dir = mkArtifacts();
+  const NODE = 'd'.repeat(64);
+  const disposeCalls = [];
+  const deps = loopDeps(Object.assign({
+    solveFn: async () => ({ ok: true, candidate: BENIGN_DIFF, costUsd: 0.01 }),
+    emitFn: async () => TERMINAL_EMIT,
+    disposeOnTerminalBlock: true,
+    disposeFn: (c) => { disposeCalls.push(c); return { disposed: true, recorded: true, tombstoned: true }; },
+  }, termCaptureDeps(NODE)));
+  const report = await runLiveDraftLoop({ records: [REC], artifactsDir: dir, now: 1, deps });
+  const o = report.outcomes[0];
+  assert.strictEqual(o.ok, false);
+  assert.strictEqual(o.reason, 'terminal-block:pr-creation-restricted');
+  assert.strictEqual(disposeCalls.length, 1, 'disposeFn called exactly once');
+  assert.strictEqual(disposeCalls[0].blockReason, 'pr-creation-restricted');
+  assert.strictEqual(disposeCalls[0].pendingNodeId, NODE, 'the RIGHT captured node id is threaded to disposal');
+  assert.strictEqual(disposeCalls[0].repo, 'octocat/hello-world');
+  assert.strictEqual(disposeCalls[0].issueRef, 42);
+  assert.ok(/^[0-9a-f]{64}$/.test(disposeCalls[0].candidatePatchSha), 'a scrubbed candidate_patch_sha is passed');
+  // F4: the persona/verdict/capture fields are PRESERVED on the terminal outcome (not discarded).
+  assert.strictEqual(o.lesson_captured, true);
+  assert.ok(o.verdict && o.verdict.behavioral === 'UNAVAILABLE', 'verdict preserved');
+  assert.ok(Object.prototype.hasOwnProperty.call(o, 'persona'), 'classify fields preserved');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('Gap7B/9: a terminal block with NO captured lesson => disposeFn called with pendingNodeId undefined', async () => {
+  const dir = mkArtifacts();
+  const disposeCalls = [];
+  const deps = loopDeps({
+    solveFn: async () => ({ ok: true, candidate: BENIGN_DIFF, costUsd: 0.01 }),
+    emitFn: async () => TERMINAL_EMIT,
+    disposeOnTerminalBlock: true,
+    disposeFn: (c) => { disposeCalls.push(c); return { disposed: true }; },
+    lessonEligibleFn: () => false,   // ineligible => no capture => capNodeId ''
+  });
+  const report = await runLiveDraftLoop({ records: [REC], artifactsDir: dir, now: 1, deps });
+  assert.strictEqual(report.outcomes[0].reason, 'terminal-block:pr-creation-restricted');
+  assert.strictEqual(disposeCalls.length, 1);
+  assert.strictEqual(disposeCalls[0].pendingNodeId, undefined, 'no lesson => no node to tombstone');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('Gap7B/9: an UNCLASSIFIED /pulls 403 (the dedup GET) => NO dispose, reason stays emit:*, drift-canary alert fires', async () => {
+  const dir = mkArtifacts();
+  const disposeCalls = [];
+  const deps = loopDeps({
+    solveFn: async () => ({ ok: true, candidate: BENIGN_DIFF, costUsd: 0.01 }),
+    emitFn: async () => DEDUP_GET_EMIT,
+    disposeOnTerminalBlock: true,
+    disposeFn: (c) => { disposeCalls.push(c); return { disposed: true }; },
+  });
+  const origWrite = process.stderr.write.bind(process.stderr);
+  let captured = '';
+  process.stderr.write = (s) => { captured += s; return true; };
+  let report;
+  try { report = await runLiveDraftLoop({ records: [REC], artifactsDir: dir, now: 1, deps }); }
+  finally { process.stderr.write = origWrite; }
+  assert.match(report.outcomes[0].reason, /^emit:/, 'an unclassified permission error is NOT stamped terminal-block');
+  assert.strictEqual(disposeCalls.length, 0, 'the dedup-GET 403 does NOT trigger disposal (never over-claim a block)');
+  assert.ok(captured.includes('terminal-block-unclassified'), 'the drift-canary alert fired (fail-silent close)');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('Gap7B/9 (F4): a THROWING disposeFn never aborts the loop and preserves the outcome fields', async () => {
+  const dir = mkArtifacts();
+  const deps = loopDeps(Object.assign({
+    solveFn: async () => ({ ok: true, candidate: BENIGN_DIFF, costUsd: 0.01 }),
+    emitFn: async () => TERMINAL_EMIT,
+    disposeOnTerminalBlock: true,
+    disposeFn: () => { throw new Error('dispose boom'); },
+  }, termCaptureDeps('e'.repeat(64))));
+  const report = await runLiveDraftLoop({ records: [REC], artifactsDir: dir, now: 1, deps });
+  const o = report.outcomes[0];
+  assert.strictEqual(report.fatal, null, 'the loop did not abort');
+  assert.strictEqual(o.reason, 'terminal-block:pr-creation-restricted', 'reason stamped despite the dispose throw');
+  assert.strictEqual(o.lesson_captured, true, 'capture fields NOT discarded to classify-threw (the F4 guarantee)');
+  assert.notStrictEqual(o.classify_signal, 'classify-threw', 'the loop-level catch did NOT swallow the record');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('Gap7B/9 (byte-inert): with disposal DEFAULT-OFF, an injected disposeFn is IGNORED and the outcome has no new keys', async () => {
+  const dir = mkArtifacts();
+  const disposeCalls = [];
+  // disposeOnTerminalBlock UNSET => the no-op gate wins => deps.disposeFn is never used.
+  const deps = loopDeps({
+    solveFn: async () => ({ ok: true, candidate: BENIGN_DIFF, costUsd: 0.01 }),
+    emitFn: async () => TERMINAL_EMIT,
+    disposeFn: (c) => { disposeCalls.push(c); return { disposed: true }; },
+  });
+  const report = await runLiveDraftLoop({ records: [REC], artifactsDir: dir, now: 1, deps });
+  assert.strictEqual(disposeCalls.length, 0, 'default-off: the injected disposeFn is NOT called (operator-arming gate)');
+  // the classify still stamps the reason (accurate observability), but NO disposition key leaks onto the outcome.
+  const o = report.outcomes[0];
+  assert.ok(!Object.prototype.hasOwnProperty.call(o, 'disposition'), 'no disposition key on the outcome');
+  assert.ok(!Object.prototype.hasOwnProperty.call(o, 'lesson_node_id'), 'lesson_node_id is NOT an outcome key (internal only)');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('Gap7B/9 (output-inert): a REAL dry ok:false with a NON-gh reason (lock/etiquette) stays reason=emit:* and NEVER disposes, even armed', async () => {
+  // The classify block IS entered on any ok:false (VALIDATE honesty LOW), so prove OUTPUT-inertness on the
+  // actually-reachable shipped dry ok:false path (a non-runGh reason), not just the synthetic armed shape.
+  const dir = mkArtifacts();
+  const disposeCalls = [];
+  for (const reason of ['lock-unavailable:busy', 'etiquette-already-emitted', 'cap-exceeded']) {
+    const deps = loopDeps({
+      solveFn: async () => ({ ok: true, candidate: BENIGN_DIFF, costUsd: 0.01 }),
+      emitFn: async () => ({ ok: false, emitted: false, reason }),
+      disposeOnTerminalBlock: true,   // armed, yet a non-gh reason must NOT classify terminal
+      disposeFn: (c) => { disposeCalls.push(c); return { disposed: true }; },
+    });
+    const report = await runLiveDraftLoop({ records: [REC], artifactsDir: dir, now: 1, deps });
+    assert.strictEqual(report.outcomes[0].reason, `emit:${reason}`, `a non-gh dry reason stays emit:* (${reason})`);
+  }
+  assert.strictEqual(disposeCalls.length, 0, 'no real dry ok:false reason ever triggers disposal (never over-claims a block)');
   fs.rmSync(dir, { recursive: true, force: true });
 });
 

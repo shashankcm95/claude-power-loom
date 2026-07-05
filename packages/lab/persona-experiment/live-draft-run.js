@@ -34,6 +34,13 @@ const { computeLessonCommitment } = require('../../kernel/_lib/lesson-commitment
 const { sidecarSha } = require('../attribution/candidate-sidecar');
 const { scrubLabSecrets } = require('../_lib/scrub-lab-secrets');
 const { emitEgressAlert } = require('../../kernel/egress/alert');
+// Gap-7 Part-B + Gap-9 - the submit-time terminal-block classifier + the (default-OFF) disposal of a dead
+// candidate. classifyEmitTerminalBlock reads the FAILED emit result only (pure); disposeCandidate records the
+// observable "why" + tombstones the pending lesson. SHADOW/dormant: the terminal branch is unreachable in the
+// dry pipeline (emitPR returns ok:true), and disposal is gated OFF unless deps.disposeOnTerminalBlock is set
+// (an operator-arming knob) - so both are byte-inert here.
+const { classifyEmitTerminalBlock } = require('../issue-corpus/terminal-block');
+const { disposeCandidate } = require('../causal-edge/live-disposal');
 
 // item 4 (D5) - the SHADOW flag that gates the PROMPT change ONLY (default OFF keeps the prompt
 // byte-identical). The classify FIELDS ride on the outcome + artifact UNCONDITIONALLY (shadow
@@ -191,7 +198,7 @@ async function captureLiveLesson({ record, candidate, verdict, ref, eligibleFn, 
   // + a too-large one, so this branch is unreachable from solveGradeDraftOne. KEPT as defense-in-depth (the
   // helper is also called directly in tests + may be reused), so a future caller can never reach the deriver
   // with an empty candidate. The `no-candidate` enum is therefore live-unreachable but contract-meaningful.
-  if (typeof candidate !== 'string' || !candidate.trim()) return { lesson_captured: false, lesson_reason: 'no-candidate', lesson_commitment: '' };
+  if (typeof candidate !== 'string' || !candidate.trim()) return { lesson_captured: false, lesson_reason: 'no-candidate', lesson_commitment: '', lesson_node_id: '' };
   // eligibleFn is an injectable seam; a future/injected eligibility check that THROWS must NOT escape (the
   // "captureLiveLesson NEVER throws" contract - an escape would convert a written draft into a loop failure).
   // A thrown eligibility is fail-closed to ineligible (no capture) + observable.
@@ -199,9 +206,9 @@ async function captureLiveLesson({ record, candidate, verdict, ref, eligibleFn, 
   try { eligible = typeof eligibleFn === 'function' && eligibleFn(verdict) === true; }
   catch (e) {
     emitEgressAlert('live-pending-capture-eligible-threw', { detail: (e && e.message) || 'error' });
-    return { lesson_captured: false, lesson_reason: 'ineligible', lesson_commitment: '' };
+    return { lesson_captured: false, lesson_reason: 'ineligible', lesson_commitment: '', lesson_node_id: '' };
   }
-  if (!eligible) return { lesson_captured: false, lesson_reason: 'ineligible', lesson_commitment: '' };
+  if (!eligible) return { lesson_captured: false, lesson_reason: 'ineligible', lesson_commitment: '', lesson_node_id: '' };
 
   const scrubbedCandidate = scrubLabSecrets(candidate);
   const candidate_patch_sha = sidecarSha(scrubbedCandidate);
@@ -211,9 +218,9 @@ async function captureLiveLesson({ record, candidate, verdict, ref, eligibleFn, 
   try { lesson = await deriveFn({ verdict, candidate_patch_sha, problem_statement_digest }); }
   catch (e) {
     emitEgressAlert('live-pending-capture-derive-threw', { detail: (e && e.message) || 'error' });
-    return { lesson_captured: false, lesson_reason: 'derive-threw', lesson_commitment: '' };
+    return { lesson_captured: false, lesson_reason: 'derive-threw', lesson_commitment: '', lesson_node_id: '' };
   }
-  if (!lesson) return { lesson_captured: false, lesson_reason: 'off-floor', lesson_commitment: '' };  // benign coverage-narrowing (no alert)
+  if (!lesson) return { lesson_captured: false, lesson_reason: 'off-floor', lesson_commitment: '', lesson_node_id: '' };  // benign coverage-narrowing (no alert)
 
   let res;
   try {
@@ -223,11 +230,11 @@ async function captureLiveLesson({ record, candidate, verdict, ref, eligibleFn, 
     });
   } catch (e) {
     emitEgressAlert('live-pending-capture-store-threw', { detail: (e && e.message) || 'error' });
-    return { lesson_captured: false, lesson_reason: 'store-refused', lesson_commitment: '' };
+    return { lesson_captured: false, lesson_reason: 'store-refused', lesson_commitment: '', lesson_node_id: '' };
   }
   if (!res || res.ok !== true) {
     emitEgressAlert('live-pending-capture-store-refused', { store_reason: (res && res.reason) || 'unknown' });
-    return { lesson_captured: false, lesson_reason: 'store-refused', lesson_commitment: '' };
+    return { lesson_captured: false, lesson_reason: 'store-refused', lesson_commitment: '', lesson_node_id: '' };
   }
   // OQ-3 W1 - the node was written; compute the commitment over the SAME lesson fields that were passed to
   // writeFn (byte-identical round-trip with what the store persists via buildBody). Wrapped in try/catch to
@@ -240,9 +247,11 @@ async function captureLiveLesson({ record, candidate, verdict, ref, eligibleFn, 
     lesson_commitment = computeLessonCommitment({ lesson_signature: lesson.lesson_signature, lesson_body: lesson.lesson_body });
   } catch (e) {
     emitEgressAlert('live-pending-capture-commitment-threw', { detail: (e && e.message) || 'error' });
-    return { lesson_captured: true, lesson_reason: 'captured', lesson_commitment: '' };
+    return { lesson_captured: true, lesson_reason: 'captured', lesson_commitment: '', lesson_node_id: res.node_id };
   }
-  return { lesson_captured: true, lesson_reason: 'captured', lesson_commitment };
+  // Gap-9: thread the minted node_id out (additive; '' on every non-mint branch above) so a terminal block
+  // downstream can tombstone the RIGHT pending node. res.node_id is set on both the fresh-mint + dedup paths.
+  return { lesson_captured: true, lesson_reason: 'captured', lesson_commitment, lesson_node_id: res.node_id };
 }
 
 // --------------------------------------------------------------------------
@@ -261,6 +270,12 @@ async function solveGradeDraftOne(ctx) {
   const lessonDeriveFn = (ctx.deps && ctx.deps.lessonDeriveFn)
     || ((input) => deriveLiveLesson(input, lessonLegFn));
   const lessonWriteFn = (ctx.deps && ctx.deps.lessonWriteFn) || mintLivePendingLesson;
+  // Gap-9 disposal is default-OFF (dormant): a no-op unless the operator-arming knob deps.disposeOnTerminalBlock
+  // is set, in which case the real disposeCandidate (or an injected test double) runs. Default no-op => the
+  // shipped dry pipeline writes NO disposal record + NO tombstone (byte-inert).
+  const disposeFn = (ctx.deps && ctx.deps.disposeOnTerminalBlock)
+    ? ((ctx.deps && ctx.deps.disposeFn) || disposeCandidate)
+    : (() => {});
 
   // item 4 (D5) - classify ALWAYS (it is total). The classifyFn dep defaults to classifyIssue;
   // a dep that throws is degraded to the total fail shape so the wire NEVER aborts the record.
@@ -310,7 +325,7 @@ async function solveGradeDraftOne(ctx) {
   const capture = await captureLiveLesson({
     record, candidate: solveRes.candidate, verdict, ref, eligibleFn: lessonEligibleFn, deriveFn: lessonDeriveFn, writeFn: lessonWriteFn,
   });
-  const { lesson_commitment: capCommit, lesson_captured, lesson_reason } = capture;
+  const { lesson_commitment: capCommit, lesson_captured, lesson_reason, lesson_node_id: capNodeId } = capture;
   const captureFields = { lesson_captured, lesson_reason };
 
   // fold #4 — emitPR dry-run is NOT guaranteed ok:true (lock / empty / .github -> ok:false). Fail-soft.
@@ -325,7 +340,34 @@ async function solveGradeDraftOne(ctx) {
     return recordOutcome(record, { stage: 'draft', ok: false, reason: 'emit-threw:' + ((e && e.message) || 'error'), verdict, cost_usd: solveRes.costUsd, ...classifyFields, ...captureFields });
   }
   if (!emitRes || emitRes.ok !== true) {
-    return recordOutcome(record, { stage: 'draft', ok: false, reason: 'emit:' + ((emitRes && emitRes.reason) || 'unknown'), verdict, cost_usd: solveRes.costUsd, ...classifyFields, ...captureFields });
+    // Gap-7 Part-B + Gap-9 - classify a FAILED emit as a terminal PR-acceptance block, and (default-OFF)
+    // dispose the dead candidate. OWN try/catch (mirrors the emitFn / artifact-write pattern) so a
+    // classify/dispose throw becomes ONE observable field on THIS outcome, NEVER escaping to the loop-level
+    // catch that would re-stamp classify-threw and DISCARD the persona/verdict fields (the fixed F4 bug
+    // class). SHADOW/dormant: emitRes.ok===false only on the armed emit path (the dry pipeline returns
+    // ok:true), and disposeFn is a no-op unless armed - so this whole block is byte-inert in the shipped run.
+    let reason = 'emit:' + ((emitRes && emitRes.reason) || 'unknown');
+    try {
+      const cls = classifyEmitTerminalBlock(emitRes);
+      if (cls.terminal) {
+        reason = `terminal-block:${cls.block_reason}`;
+        // candidate_patch_sha over the SCRUBBED candidate (matches captureLiveLesson's convention) - computed
+        // here so it is available even when no lesson was captured (capNodeId === '').
+        const candidatePatchSha = sidecarSha(scrubLabSecrets(solveRes.candidate));
+        disposeFn({
+          repo: ref.slug, issueRef: ref.issueRef, candidatePatchSha, blockReason: cls.block_reason,
+          pendingNodeId: capNodeId || undefined,
+        });
+      } else if (cls.unclassified) {
+        // drift-canary (fail-silent close): a 403/404 permission error on the /pulls family we could NOT
+        // attribute to PR-creation (a gh-output drift, or the dedup GET). Bounded, value-redacted - never the
+        // raw reason. The operator re-tunes the classifier rather than silently missing a real terminal block.
+        emitEgressAlert('terminal-block-unclassified', { repo: ref.slug, issue_ref: ref.issueRef, shape: 'permission-error-non-create-pulls' });
+      }
+    } catch (e) {
+      emitEgressAlert('terminal-block-classify-threw', { detail: (e && e.message) || 'error' });
+    }
+    return recordOutcome(record, { stage: 'draft', ok: false, reason, verdict, cost_usd: solveRes.costUsd, ...classifyFields, ...captureFields });
   }
   if (emitRes.emitted !== false) { // defense-in-depth: a dry-run MUST never emit
     return recordOutcome(record, { stage: 'draft', ok: false, reason: 'UNEXPECTED-EMISSION', verdict, cost_usd: solveRes.costUsd, ...classifyFields, ...captureFields });
