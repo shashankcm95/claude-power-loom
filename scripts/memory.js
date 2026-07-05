@@ -277,8 +277,13 @@ function importanceOf(sectionTitle) {
 
 /** The memory root (live env read so tests can scope it per-run). */
 function memDir() {
-  return process.env.LOOM_MEMORY_DIR
-    || path.join(process.env.HOME || '', '.claude', 'projects', '-Users-shashankchandrashekarmurigappa-Documents-claude-toolkit', 'memory');
+  if (process.env.LOOM_MEMORY_DIR) return process.env.LOOM_MEMORY_DIR;
+  // Derive the Claude Code project memory dir from THIS repo's absolute path ('/' -> '-', the project-dir
+  // convention), so it is correct for any contributor's checkout instead of a hardcoded personal path.
+  // LOOM_MEMORY_DIR always overrides (tests + explicit use).
+  const repoRoot = path.resolve(__dirname, '..');
+  const projectHash = repoRoot.replace(/\//g, '-');
+  return path.join(process.env.HOME || '', '.claude', 'projects', projectHash, 'memory');
 }
 
 /**
