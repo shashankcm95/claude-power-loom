@@ -20,11 +20,11 @@ The memory dir is **38 files / ~3,015 lines / ~319 KB**. Three structural failur
    markers with **no scope headers**. A stale 2026-07-02 PACT claim sits three lines below a fresh 2026-07-05 toolkit
    claim; lineage is implicit and a reader must infer date→stream. This is the "mix of all session content" the USER named.
 2. **Unbounded ARC accretion.** Four "arc" topic files are multi-month, multi-wave accretion logs with no version-lock:
-   `weight-gate-rfc-arc` **108 KB (~1,500 lines)**, `gin-lessons-ledger-design-arc` 38 KB, `phase-3.2-live-beta-arc`
+   `weight-gate-rfc-arc` **108 KB (772 lines)**, `gin-lessons-ledger-design-arc` 38 KB, `phase-3.2-live-beta-arc`
    33 KB, `ghost-heartbeat-arc` 25 KB = **~179 KB (56 % of the whole memory system)**. Stale inline claims shadow fresh
    ones (`phase-3.2-live-beta-arc` opens with a "read this first, 3.2.4+ merged" CORRECTION because its body is stale).
 3. **The scars file is a flat, un-scoped, un-addressable blob.** `scars-graduate-candidates.md` (33 KB) mixes
-   Toolkit, PACT, and Embers scars with **no origin field**, has a **duplicate ID `#24`** (two distinct scars), no block
+   Toolkit, PACT, and Embers scars with **no origin field**, has a **duplicate ID `24.`** (two list entries both numbered `24.`) (two distinct scars), no block
    anchors, and no cache: the router *claims* "freshest two stay in Current-status" but #34/#35 are omitted — the
    surface pointer already **skews** from the backing file. A toolkit `/self-improve` triage can't tell a PACT-method
    scar (#31/#32) from a toolkit rule.
@@ -150,6 +150,13 @@ The two grains are **one loop**: session consolidations *accumulate the evidence
 the anchor. So the episodic → lessons → durable-anchor chain is unbroken — nothing becomes a second source of truth,
 and accretion is bounded at both grains (the gap the prior design left).
 
+**Honest framing (2026-07-05 review board):** §3.4 is a curator-run DISCIPLINE, not an enforced mechanism. The ONLY
+automatic forcing function is the router ceiling (`memory check` back-pressures the session-close roll); nothing detects
+a session that writes an episodic snapshot but skips the Tier-2b consolidation, so the scar/topic files CAN re-accrete
+(PACT `_SESSION-RESUME.md` reached 841 lines under exactly this gap). Minimal viable detector, deferred as YAGNI for a
+single-curator system: a `memory check` over the episodic/scar files too (not just the router), mirroring
+`scan-stale-artifacts.js`.
+
 ### 3.5 ARC-file decomposition (the 179 KB problem)
 
 Each ARC → a **CHARTER** (the ratified design, immutable once merged, with a `#charter` anchor the router targets) +
@@ -183,29 +190,38 @@ feed** this layer, not duplicate it — that is how continuity is preserved.
 **Per-repo wiring:** each repo's in-repo RESUME references ITS OWN `docs/` (toolkit RESUME → toolkit `docs/`; PACT's
 `_SESSION-RESUME.md` → PACT `docs/` + `PACT-NORTH-STAR.md`; Embers RESUME → Embers `docs/phases/`). The toolkit
 `MEMORY.md` router's per-workstream lines are the **cross-repo bridge** — one line per repo, each pointing at that
-repo's RESUME + `docs/` anchor. Continuity is preserved because: (a) the router never holds phase status that could
-drift from `ROADMAP`/`phases`; (b) the session-close consolidation feeds the phase-close reconciliation that updates
+repo's RESUME + `docs/` anchor. Continuity is preserved because: (a) by CONVENTION the router holds only a session-grain pointer + verb, never phase-status words
+(SHIPPED/RELEASED/HISTORICAL live in `docs/ROADMAP`), so it never restates a drifting slice of the phase board; (b) the session-close consolidation feeds the phase-close reconciliation that updates
 the anchor; (c) every episodic snapshot links forward to the `docs/` phase it advanced, and a phase-close links back
 to the episodes it integrated — a bidirectional provenance chain across the two grains.
 
-### 3.5 ARC-file decomposition (the 179 KB problem)
-
-Each ARC → a **CHARTER** (the ratified design, immutable once merged, with a `#charter` anchor the router targets) +
-per-wave **episodic snapshots** (dated, frozen after the wave). The router points to the charter + names the latest
-wave. Version-lockdown: **freeze an ARC section after its wave merges** (no retroactive edits; new state → a new dated
-block or a snapshot). This is the riskiest / largest surgery → **phased last, and optional** (§5).
+**Honest framing (2026-07-05 review board):** (a) and (c) are DISCIPLINES, not enforced mechanisms — nothing yet
+checks that a router line is pointer-only or that the forward/back links exist. The §3.1 example lines that carry
+phase adjectives (`SHIPPED #514`, `LIVE-BETA`, `HELD`) are the ANTIPATTERN being removed; the enforced shape is the
+§3.6 line (`phase [[docs/ROADMAP#current]] · session [[episodic/...]]`). A `memory check` warn on a phase-token in a
+router line is a noted follow-up. Do not read the four-surfaces drift as eliminated by construction — it is reduced to
+a convention plus the ceiling forcing function.
 
 ## 4. Tooling — build the deferred helper (deterministic, human-in-the-loop)
 
-The prior design's deferred `memory` helper, finally built as `scripts/memory.js` (mirrors `scan-stale-artifacts.js`):
+The prior design's deferred `memory` helper, built + hardened (2026-07-05 review board) as `scripts/memory.js`
+(mirrors `scan-stale-artifacts.js`). AS-BUILT surface (all file args are WITHIN-ROOT contained — the kernel's
+symlink-resolving `checkWithinRoot`; recall cannot read and demote cannot write outside the memory root):
 
 - `memory check` — read `MEMORY.md`, report byte/line count vs the ≤200-line/≤18 KB ceiling + the **lowest-score
-  demote-candidates** (recency+importance+relevance, section-inferred importance, invariant-protected). Deterministic;
+  demote-candidates** (importance-class THEN byte-size, section-inferred; invariant-protected). Deterministic;
   the curator confirms the move. Wired into the pre-compact hook + a `--check` for session-close.
 - `memory recall '[[file#anchor]]'` — the **block resolver** (parse `[[file#anchor]]`, extract the `### anchor` block,
   bump its heat in the sidecar). This is the exact-pointer cold-fetch the USER asked for; it also unblocks the
   demote-to-topical pattern (currently a human convention with no resolver).
-- `memory demote --id <slug>` — move a block to its topic file, leave the one-line pointer, re-check the budget.
+- `memory demote --file S --anchor A --to D [--level N]` — ATOMIC block MOVE (stage both files, temp-file + fsync +
+  rename, roll the dest back on a src-write fault; a COLLISION guard refuses a duplicate anchor in dest). Leaves a
+  one-line pointer; never deletes; never duplicates.
+- `memory blocks <file> [--check-unique]` — list a file's blocks / assert every anchor is unique (Phase-2 gate).
+- `memory verify-preserved --backup B --against f1,f2 [--section H]` — the Phase-1 data-safety GATE: assert every
+  substantive line of the pre-migration source appears verbatim in the after-set; exit 2 (and name each unaccounted
+  line) otherwise. This is the diff-audit, made runnable.
+- Fence-aware parsing: a heading-shaped line inside a ``` code fence is content, not a block boundary.
 
 No embeddings, no vector DB — the structured-linked file store is a consensus-valid modality (token-level retrieval) and
 better for a curated, human-auditable substrate.
@@ -225,11 +241,14 @@ Each phase is a separate reviewable PR; nothing is deleted (content MOVES to a t
   create the toolkit in-repo RESUME that links its episodic snapshots to `docs/phases/`. PACT's line becomes a pure
   pointer to `_SESSION-RESUME.md` + PACT `docs/`. Add the reciprocal wiring: each episodic snapshot links forward to
   the `docs/` phase it advanced; `docs/phases/` "Status at a glance" points back to the router (bidirectional
-  provenance). *Verify: every claim in the old START-HERE is preserved in an episodic file the router points to, and no
-  phase status is duplicated between the router and `docs/ROADMAP` (a diff-audit).*
-- **Phase 2 — scar block-cache.** Add `### SCAR-NN` anchors; fix the dup #24; split by origin (toolkit/pact/embers);
-  build the `scars-heat.json` LRU sidecar; wire the ~5-item hot-cache into the router. *Verify: every existing scar
-  survives with a unique anchor; the origin split loses none.*
+  provenance). *Verify (RUNNABLE gate, not prose): the byte-identical `memory-backup-2026-07-05/` is the rollback; run
+  `memory verify-preserved --backup <pre-migration MEMORY.md> --against <episodic files> --section "Current status"`
+  and resolve every surfaced line (reworded/intentionally-dropped is fine; a silent drop is NOT) before the PR merges.*
+- **Phase 2 — scar block-cache.** Add `### SCAR-NN` anchors; fix the dup `24.`; split by origin (toolkit/pact/embers);
+  build the `scars-heat.json` LRU sidecar; wire the ~5-item hot-cache into the router. *Verify: `memory blocks <scars-file> --check-unique` passes on each origin file (every anchor unique, the dup `24.`
+  renumbered); `memory verify-preserved` accounts for every line across the split. Heat hygiene: `demote` drops the
+  moved anchor's stale heat key and `heat` filters the hot-set to anchors that still resolve, so the cache never
+  surfaces a dead pointer.*
 - **Phase 3 — ARC decomposition (optional / deferred).** Charter + wave-snapshots for the 108 KB weight-gate arc first
   (highest leverage), then the others. Version-lockdown convention. *Highest risk → do last, or defer if Phases 0-2
   suffice.* This one is a candidate to leave as a follow-up.
@@ -256,6 +275,59 @@ Each phase is a separate reviewable PR; nothing is deleted (content MOVES to a t
    conventions + the ceiling as the only forcing function? (Recommended: build the CLI — enforcement is the gap.)
 4. **Scope of the first pass:** Phases 0-2 now (router + scars + tooling), defer Phase 3 (ARC decomposition)? (Recommended:
    yes — Phases 0-2 deliver the USER's asks; Phase 3 is the risky 179 KB surgery, best as a follow-up.)
+
+## 8. Review-board verification (2026-07-05) — before Phase 1
+
+A 4-lens read-only board (architect / code-reviewer / hacker / honesty-auditor) reviewed this plan and the Phase-0 CLI
+before any live-memory surgery. Consensus: the **design direction is sound** (all four confirmed the diagnosis + the
+3-tier model), but the **Phase-0 CLI had to be hardened before it runs over the live memory dir** — which is exactly the
+USER's stated fear. Verdicts: architect `CLOSEABLE-WITH-NITS`; code-reviewer / hacker / honesty-auditor `NEEDS-REVISION`.
+All blocking findings were resolved in the same session (tests s12-s19 lock each as a regression).
+
+| # | Lens | Severity | Finding | Resolution |
+|---|---|---|---|---|
+| 1 | hacker | CRITICAL | `demote` wrote dest BEFORE rewriting src -> a src-write fault DUPLICATES the block (inverts never-delete) | Two-phase atomic move: stage both, temp-file + fsync + rename, roll the dest back on a src fault (test s14) |
+| 2 | hacker | HIGH | `resolveFile` had no containment -> recall READ / demote WRITE any file via `..`, absolute, or symlink-escape | Reuse the kernel `checkWithinRoot` (symlink-resolving CWE-22) + `isSafePathSegment` for bare slugs (test s13) |
+| 3 | hacker | HIGH | symlink write-through on `--to` | Closed by the same containment gate (realpath rejects an escaping link) + rename-not-write on the final component |
+| 4 | code-reviewer | HIGH | `parseBlocks` split on a `###`-shaped line inside a code fence -> block corruption | Fence-tracking in `parseBlocks` (test s12) |
+| 5 | code-reviewer | HIGH | `demote` had no collision guard -> a duplicate anchor in dest is unreachable via recall | Refuse a colliding anchor before the move (test s15) |
+| 6 | honesty-auditor + architect | HIGH | the Phase-1 "diff-audit" preservation promise was asserted, not tooled | Built `memory verify-preserved` (a runnable gate) + wired the byte-identical backup as rollback (test s18; §4/§5) |
+| 7 | honesty-auditor | MEDIUM | figures off: weight-gate "~1,500 lines" (actual 772); `#24` token shape is a bare `24.` | Corrected in §1/§3.3/§5 (verified via `wc`); the "38 files" figure was CORRECT (the auditor's 37 was the miscount) |
+| 8 | code-reviewer | MEDIUM | `check` line count off-by-one (trailing newline) | `countLines` = `wc -l` for newline-terminated files, logical count otherwise (test s16) |
+| 9 | code-reviewer | MEDIUM | recall / blocks / heat wrappers untested | Coverage added (test s17) |
+| 10 | architect | MEDIUM | §3.4 / §3.6 anti-drift claims are convention, not enforced mechanism | Reframed honestly in §3.4 / §3.6 (named as disciplines; the router ceiling is the only forcing function) |
+| 11 | hacker LOW / architect NIT | LOW | slugify anchor collisions; heat sidecar orphan keys | `blocks --check-unique` (test s19); `demote` drops the moved anchor's heat key + `heat` filters to live anchors (test s22) |
+| 12 | code-reviewer | LOW | `demote --to` into a missing parent dir threw a raw ENOENT | Clean `fail()` on a missing dest directory |
+
+Not changed (accepted as-is): the LRU heat sidecar is warranted (35 churning scars, not ~5 — a static pin list would
+not suffice); Phase 3 (ARC decomposition) stays deferred (highest-risk 179 KB surgery); the `memory` CLI reuses the
+kernel path guard rather than re-rolling containment (DRY, already hardened for the #215 raw-segment trap).
+
+
+### 8.1 VALIDATE board (2026-07-05) — adversarial re-probe of the BUILT hardening
+
+The hardened CLI is a security + data-mutation change over the live memory dir, so a second board re-probed the
+BUILT code (a green suite is a hypothesis, not proof). All three lenses FAIL-ed on the first hardening pass and found
+real gaps the 19 tests could not see. All were fixed; tests s20-s24 (and strengthened s11/s16/s18) lock them.
+
+| # | Lens | Severity | Finding (firsthand-probed) | Resolution |
+|---|---|---|---|---|
+| V1 | hacker | HIGH | heat-sidecar write-through: `bumpHeat`/`dropHeat` wrote a DERIVED path (`file+.heat.json`) never re-gated -> a symlinked sidecar clobbers a file outside root (the original attack I wrongly claimed closed) | `writeHeatSafe` lstat-refuses a symlinked sidecar + emits an observable stderr refusal (test re-probed CLOSED) |
+| V2 | hacker | HIGH | TOCTOU: `resolveFile` canonicalizes at check-time, the read/write follows the path STRING later (CWE-367) | `withinRootPlain` adds a final-component symlink refusal (closes the pre-planted symlink); the pure timing-race by a local in-root writer is a DOCUMENTED residual (that writer can corrupt memory directly) |
+| V3 | code-reviewer | HIGH | sequential-demote pointer absorption: the in-place pointer is absorbed into the PRECEDING block's body; a later demote carries it into a third file (corrupts recall; Phase 1 does sequential demotes) | pointers now go to a dedicated `## Demoted` section, a hard boundary no sibling block can absorb (test s20) |
+| V4 | honesty + code-reviewer | HIGH | `verify-preserved` over-claimed: a >12-char filter silently skipped terse lines (`K3 dropped`) and `.includes()` substring-matched | shape-based filter (>=3 chars, not length) + WHOLE-LINE set membership; honest docstring on what it does/does not guarantee (tests s18, s24) |
+| V5 | hacker | MEDIUM | the first dest-write sat OUTSIDE the rollback try/catch -> a leftover `.tmp` (EEXIST) crashed with a raw stack | wrap the dest-write in a clean `fail()`; `atomicWrite` unlinks a stale temp and retries once (still `wx`, never follows) |
+| V6 | hacker | MEDIUM | "never duplicate" was FALSE on a double I/O fault (loud reconcile, block in both files) | corrected the docstring/comments to "never duplicate SILENTLY; a rare double-fault is reported loudly for manual reconcile" |
+| V7 | honesty | HIGH | s14 tested only the new-dest (unlink) rollback, not the restore-existing-dest branch | added s21 (pre-populated dest, forced src fault, asserts dest restored to original bytes) |
+| V8 | honesty | MEDIUM | `check` ranking claimed recency+importance+relevance but implements importance+bytes | corrected the scoring comment + §4 to "importance-class then byte-size" |
+| V9 | honesty | LOW | §8 row 8/11 + "matches wc -l" over-cited / over-claimed | corrected rows 8/11 above; s16 renamed to the conditional claim |
+| V10 | code-reviewer | LOW | an indented (4+ space) fence could swallow a following heading (no live file triggers it) | fence regex restricted to CommonMark's 0-3 leading spaces |
+| V11 | hacker | LOW | `demote --to MEMORY.md` appends INTO the hot index (in-root, not an escape) | refuse unless `--force` (test s23) |
+
+Residual, documented (not closed): the pure check->use TOCTOU timing race (V2) by a concurrent local writer already
+inside the memory root. Accepted for a single-user, human-in-the-loop curation CLI — such a writer can corrupt the
+memory directly, so the race grants no additional capability. The lstat-reject closes the realistic pre-planted case.
+
 
 ## Citations
 
