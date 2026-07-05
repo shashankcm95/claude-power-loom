@@ -456,9 +456,13 @@ function withPulls(baseMk) {
   return function (fixtures, seen) {
     const base = baseMk(fixtures, seen);
     return function ghRunner(args) {
-      if (Array.isArray(seen)) seen.push(args.join(' '));
       const ep = args.find((a) => typeof a === 'string' && /^repos\/[^/]+\/[^/]+\/pulls$/.test(a));
-      if (ep) { const key = ep.replace(/^repos\//, '').replace(/\/pulls$/, ''); return JSON.stringify((fixtures.pulls && fixtures.pulls[key]) || []); }
+      if (ep) {
+        // record ONLY the /pulls calls this wrapper handles directly; `base` records the rest (no double-count).
+        if (Array.isArray(seen)) seen.push(args.join(' '));
+        const key = ep.replace(/^repos\//, '').replace(/\/pulls$/, '');
+        return JSON.stringify((fixtures.pulls && fixtures.pulls[key]) || []);
+      }
       return base(args);
     };
   };

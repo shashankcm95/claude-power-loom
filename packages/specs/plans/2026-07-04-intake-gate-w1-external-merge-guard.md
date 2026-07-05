@@ -1,6 +1,6 @@
 # Intake Gate — Wave 1: the `hasExternalMergeHistory` populator guard
 
-Status: PLANNED (2026-07-04). Realizes Gap 7 / Part A (`packages/specs/research/2026-07-04-intake-pr-acceptance-gate-design.md`).
+Status: BUILT + VALIDATED (2026-07-04; PR #513). Realizes Gap 7 / Part A (`packages/specs/research/2026-07-04-intake-pr-acceptance-gate-design.md`).
 Mode: SHADOW-first (default OFF — log-only advisory; no production behavior change until the drop-flag is armed).
 
 ## Context
@@ -77,7 +77,7 @@ is admin-only/unreadable.) Wave 1 is Part A only — the guard + its wiring. Par
 
 - [ ] guard TRUE: a merged PR with `author_association:'CONTRIBUTOR'` → true (spec-kitty shape).
 - [ ] guard FALSE: all merged PRs `OWNER` → false (colophon shape); and no merged PRs → false; and open-only → false.
-- [ ] guard FAIL-CLOSED: gh throws / non-JSON / non-array → false (never throws out).
+- [ ] guard TRI-STATE: gh throws / non-JSON / non-array → `null` (could-not-assess, never throws out); a VALID junk array → false.
 - [ ] `INSIDER` exactness: `MEMBER`/`COLLABORATOR` merges → false; unknown assoc merge → true.
 - [ ] ENDPOINT_RE regression: `/pulls` now passes `ghApiEndpoint`; `/pulls/../x`, `/pulls?x`, `/pullsX` still reject.
 - [ ] pullLiveCorpus: flag OFF → risky repo KEPT + an observe log; flag ARMED → risky repo DROPPED with the reason.
