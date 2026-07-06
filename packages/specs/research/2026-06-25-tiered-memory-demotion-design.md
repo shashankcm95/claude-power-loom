@@ -1,5 +1,9 @@
 # Design: Tiered Memory with Demote-by-Score (replacing compress-to-budget)
 
+> **Folded into [ADR-0018 — the canonical memory architecture](../adrs/0018-memory-architecture.md) (2026-07-06).**
+> This is a superseded design note; its demote-by-score / demote-never-delete model is part of the ADR's shared
+> pattern-kernel. Per the supersede-not-fork discipline, a memory-design change supersedes that ADR, never this note.
+
 Status: DESIGN / proposal. Grounded in a cited web-research pass (2026-06-25, deep-research workflow). Author intent:
 replace the current "compress `MEMORY.md` to fit a byte budget" curation with a principled tiered-demotion scheme so
 nothing is lost and the hot set stays lean.
