@@ -62,6 +62,10 @@ Mechanics (mirroring PACT's mature instance):
   **revisit-trigger**), and any **REJECTED** branches. Newest fork on top.
 - **DEFERRED vs REJECTED** is a first-class distinction. DEFERRED = a live leaf with a trigger. REJECTED = pruned;
   do not revive without amending the anchor (the relevant ADR or north-star).
+- **Grep-auditable revisit-triggers** — every trigger carries at least one **searchable token** (an issue/PR ref
+  `#NNN`, a phase tag `Phase-3.2 F-W4`, a gap/item id `Gap-8`, or `USER-decision`), so a plain `grep` — or a future
+  `memory fork audit` — can flag a trigger whose event has fired but whose branch was never re-evaluated, *before*
+  any CLI exists. Prefer the most specific, stable token (an issue number over a prose phrase).
 - **Rebase-on-return** — re-evaluating a deferred branch against the advanced trunk is a dated `UPDATE` / `RE-CONFIRM`
   block appended to the fork, never a blind resume and never a silent delete. This is demote-never-delete (ADR-0018's
   kernel discipline) applied to *decisions* rather than to memory blocks.
@@ -90,7 +94,8 @@ library-as-one-memory, lossy index-compression, vendor-exfil review).
   841-line `_SESSION-RESUME.md` is standing proof that an unenforced curation discipline erodes; the ledger relies on
   author discipline + the pre-compact review, not on a gate.
 - **Revisit-triggers can go stale** — a trigger may reference an event that has already fired without the branch being
-  re-evaluated. The dated `RE-CONFIRM` convention mitigates but does not enforce this.
+  re-evaluated. Mitigated (not enforced) by two conventions: the dated `RE-CONFIRM` block, and the searchable-token
+  requirement that makes a fired-but-unaddressed trigger `grep`-auditable even before a `memory fork` CLI is built.
 
 **Open questions:**
 

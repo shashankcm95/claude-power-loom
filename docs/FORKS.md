@@ -26,6 +26,11 @@
 > **REJECTED** branch. Re-evaluating a deferred branch against the advanced trunk = a dated `▶ UPDATE` /
 > `▶ RE-CONFIRM` block appended to the fork (demote-never-delete for decisions — never blind-resume; never
 > silent-delete). **Newest fork on top.**
+>
+> **Revisit-trigger discipline (grep-auditable).** Every `Revisit when:` carries at least one **searchable
+> token** — an issue/PR ref (`#NNN`), a phase tag (`Phase-3.2 F-W4`), a gap/item id (`Gap-8`, `item-8`), or
+> `USER-decision` — so a plain `grep` (or a future `memory fork audit`) can flag a fired-but-unaddressed
+> trigger *before* the CLI exists. Prefer the most specific, stable token (an issue number over a prose phrase).
 
 ---
 
@@ -43,14 +48,15 @@ is being actively built while the memory-restructure trunk (FORK-2) is deep.
   **Revisit when:** the deployed + attested cross-uid broker arms (Phase-3.2 F-W4), i.e. the moment a weight
   actually *gates* an action rather than staying advisory.
 - **DEFERRED → Gap-8 review-loop.** Today only the merge boolean flows back; the richer review-outcome signal
-  (what a human/reviewer actually said) does not. **Revisit when:** a world-anchored review surface exists to
-  populate the loop AND a concrete consumer would measure something real from it.
+  (what a human/reviewer actually said) does not. **Revisit when:** a world-anchored review surface exists that
+  could populate `Gap-8`'s review-loop AND a concrete consumer would measure something real from it.
 - **DEFERRED → Gap-9 background expiry** (disposal is tombstone-only today; no background reaper).
   **Revisit when:** the tombstone lane accumulates enough dead nodes that manual disposal is insufficient, OR
   the `#273` co-forge residual on the auth-tombstone lane needs closing before the mint gates.
 - **DEFERRED → persona-depth / instinct** (`0/18` `agents/*.md` carry a depth/instinct layer;
   `packages/specs/research/2026-06-02-archetype-persona-skillvector-model.md`). **Revisit when:** a spawn's
-  output quality is empirically bottlenecked on persona shallowness rather than on the shared discipline files.
+  output quality is empirically bottlenecked on `persona-depth` (shallowness) rather than on the shared
+  discipline files (see `research/2026-06-02-archetype-persona-skillvector-model.md`).
 
 ## FORK-2 (2026-07-06) — post-ADR-0018 memory sequencing: what to build after the linear anchor?
 
@@ -62,7 +68,7 @@ merged, several warranted next-steps exist and only one can be the active DFS tr
   "still-planned" pile; cheap (two docs, no code); and it makes the deferrals below honest rather than lossy.
 - **DEFERRED → one-time lifecycle extraction (port, don't reinvent).** Extract the graduate/retire lifecycle as a
   shared library both memory substrates consume (the exact reinvention ADR-0018 diagnosed). **Revisit when:** this
-  ledger merges — it is the immediate next build.
+  ledger (`PR #518`) merges — it is the immediate next build.
 - **DEFERRED → Phase 2: scars block-cache + weight-aware scored hot-set.** Wire `importance` into `hotSet`
   (it is orphaned in `check` today — recency to refs only), fix the duplicate `24.`, split-by-origin. The
   scored hot-set = `recency-decay x importance x log(refs)` with invariant-class PINNED (GDSF / Generative-Agents
@@ -82,8 +88,8 @@ an *exit state*; the two substrates exit differently, and whether that split is 
   machine-minted SHADOW lane).
 - **DEFERRED → unify the exits: a high-confidence lab lesson ALSO graduates to a hard RULE.** **Revisit when:**
   a causal-edge lesson demonstrably recurs at high confidence AND a human ratifies promoting a machine-minted
-  lesson to always-on. **Needs a USER decision** — this is the one deferred branch gated on human judgment, not a
-  code event.
+  lesson to always-on. **Needs a `USER-decision`** — this is the one deferred branch gated on human judgment, not
+  a code event.
 
 ---
 
