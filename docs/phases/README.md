@@ -20,6 +20,15 @@ intent is caught at every phase boundary instead of accumulating silently.
 | **Implementation** | `docs/phases/phase-N-*.md` (+ the existing [`plans/`](../../packages/specs/plans/) + live [`ROADMAP.md`](../ROADMAP.md)) | The task list for one phase — a living checklist. | Living; checked off, closed with a reconciliation. |
 | **Decisions** | [`docs/ADRs/`](../ADRs/) (bridging [`packages/specs/adrs/`](../../packages/specs/adrs/)) | Why we chose X over Y, per wave. | Immutable; a new ADR supersedes. |
 
+> **Session grain — the finer companion to the phase grain.** Below the phase grain sits the SESSION grain
+> (what happened in a working session, per workstream). It lives in the operating-memory ROUTER (`MEMORY.md`)
+> plus the in-repo resume anchor [`_SESSION-RESUME.md`](../../_SESSION-RESUME.md), which point UP to this phase
+> board (they defer PHASE status to [`ROADMAP.md`](../ROADMAP.md), never inline it) and forward to the
+> per-session library snapshots. The link is bidirectional: session-close consolidation accumulates the
+> evidence that phase-close reconciles against the anchor here — one anti-drift loop at two grains (see
+> [`2026-07-05-memory-restructure-design.md`](../../packages/specs/research/2026-07-05-memory-restructure-design.md)
+> §3.6).
+
 ## The loop (how we don't drift)
 
 1. **Scope** — a phase doc's *Objective* + *Scope* are lifted from [`docs/PRD.md`](../PRD.md) §6. If the PRD (or
