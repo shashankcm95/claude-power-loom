@@ -7,6 +7,11 @@ supersedes-intent: reframes the recall-graph CONTENT model from the v3.9 bootcam
 
 # The recall graph as a DERIVED EXPERIENCE LAYER (converged 2026-06-15; a v3.11+ phase)
 
+> **Folded into [ADR-0018 — the canonical memory architecture](../adrs/0018-memory-architecture.md) (2026-07-06).**
+> This is a superseded design note. The canonical structure — two substrates on one pattern-kernel — plus the resolved
+> forks live in ADR-0018; this note's "port, don't invent" insight is the reason it exists. Per the supersede-not-fork
+> discipline, a memory-design change supersedes that ADR, never this note.
+
 **Status:** USER-converged design EXPECTATION from a deep 2-chat discussion. NOT in-flight. v3.10-W3 (reputation)
 runs FIRST on the current node shape as a diagnostic of the mechanism; THIS is the separate content-model
 pivot that follows. Captured so the convergence survives compaction.

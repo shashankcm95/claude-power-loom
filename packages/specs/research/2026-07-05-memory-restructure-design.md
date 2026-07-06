@@ -1,5 +1,10 @@
 # Design: Session-Scoped, Hierarchical, Block-Addressable Memory (v2 of the memory system)
 
+> **Folded into [ADR-0018 — the canonical memory architecture](../adrs/0018-memory-architecture.md) (2026-07-06).**
+> This is a superseded design note; its router / episodic / semantic tiers are Substrate 1 in the ADR. Per the
+> supersede-not-fork discipline, a memory-design change supersedes that ADR, never this note. (Its Phases 0-2 remain the
+> live migration checklist until complete.)
+
 Status: DESIGN / proposal — awaiting USER approval before any migration. Supersedes the curation-policy half of
 `2026-06-25-tiered-memory-demotion-design.md` (which shipped the demote-by-score *policy* but deferred session-scoping,
 block-addressing, arc-size management, and the deterministic helper — the exact gaps this design closes).
