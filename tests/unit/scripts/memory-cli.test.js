@@ -347,5 +347,119 @@ test('s25. a 4-backtick fence is NOT closed by a nested 3-backtick fence (Common
   assert.ok(blocks[0].body.includes('after the fence, still B1'), 'content after the true close stays in B1');
 });
 
+// -- weight-aware scored hot-set (Phase 2 slice 1) --
+// A tree with one H3 block under each importance-class H2 section. shortAnchors: inv-1/cur-1/hist-1/ref-1.
+const MEMTREE = [
+  '# Memory Index', '', 'preamble', '',
+  '## Load-bearing invariants', '',
+  '### INV-1 — kernel record store', 'inv body', '',
+  '## Current status — START HERE', '',
+  '### CUR-1 — active work', 'cur body', '',
+  '## Still planned (deferred)', '',
+  '### HIST-1 — someday maybe', 'hist body', '',
+  '## Reference notes', '',
+  '### REF-1 — a plain note', 'ref body', '',
+].join('\n');
+// NOTE: heat last_ref is an ISO string built from the injected `now` (epoch ms). Scored tests inject `now`
+// NEAR the fixture epoch (~1970) so recency-decay does not underflow to 0 (a real Date.now() -> exp(-693)=0).
+const isoAt = (ms) => new Date(ms).toISOString();
+
+test('s26. blockImportances maps H3 blocks to the enclosing H2 importance; no-H2 -> reference', () => {
+  const imp = M.blockImportances(MEMTREE, { level: 3 });
+  assert.strictEqual(imp.get('inv-1').cls, 'invariant');
+  assert.strictEqual(imp.get('inv-1').protected, true);
+  assert.strictEqual(imp.get('cur-1').cls, 'project');
+  assert.strictEqual(imp.get('hist-1').cls, 'historical');
+  assert.strictEqual(imp.get('ref-1').cls, 'reference');
+  // SCARS has an H1 + H3s but NO H2 sections -> every block falls through importanceOf('') to reference.
+  assert.strictEqual(M.blockImportances(SCARS, { level: 3 }).get('scar-33').cls, 'reference');
+});
+
+test('s27. scoredHotSet pins invariant blocks (even at 0 heat) ADDITIVELY beyond n', () => {
+  const entries = [
+    { anchor: 'ref-1',  last_ref: isoAt(2000), refs: 5, weight: 1, protected: false },
+    { anchor: 'inv-1',  last_ref: null,        refs: 0, weight: 3, protected: true },  // 0-heat invariant
+    { anchor: 'hist-1', last_ref: isoAt(1500), refs: 2, weight: 0, protected: false }, // weight 0 -> score 0
+  ];
+  const hot = M.scoredHotSet(entries, 1, { now: 3000 });
+  assert.strictEqual(hot[0], 'inv-1', 'pins come first, present even with zero heat');
+  assert.ok(hot.includes('ref-1'), 'the single top-scored non-pin fills the n=1 scored tier');
+  assert.ok(!hot.includes('hist-1'), 'weight-0 historical loses the n=1 budget to ref-1');
+  assert.strictEqual(hot.length, 2, 'additive-beyond-n: |pins|(1) + min(n,|scored|)(1)');
+});
+
+test('s28. weight x refs lifts a block above a more-recent low-value one (catches a recency-only regression)', () => {
+  // recency is ~tied here (both near-epoch); the point is that weight x refs decides -> a pure recency-only
+  // ordering (the old hotSet) would put the more-recent ref-1 at hot[0] and FAIL this. Recency is genuinely
+  // exercised by s31 (a multi-week gap); this test guards against reverting to recency-only.
+  const entries = [
+    { anchor: 'ref-1', last_ref: isoAt(2900), refs: 1, weight: 1, protected: false }, // more recent, low value
+    { anchor: 'cur-1', last_ref: isoAt(2000), refs: 7, weight: 2, protected: false }, // older, higher w + refs
+  ];
+  const hot = M.scoredHotSet(entries, 5, { now: 3000 });
+  assert.strictEqual(hot[0], 'cur-1', 'weight x log2(refs) lifts cur-1 above the more-recent ref-1');
+});
+
+test('s29. scoredHotSet only surfaces anchors present in entries (a demoted/absent block cannot resurrect)', () => {
+  const entries = [
+    { anchor: 'cur-1', last_ref: isoAt(2000), refs: 3, weight: 2, protected: false },
+    { anchor: 'ref-1', last_ref: isoAt(2500), refs: 1, weight: 1, protected: false },
+  ];
+  const hot = M.scoredHotSet(entries, 5, { now: 3000 });
+  assert.ok(!hot.includes('inv-1'), 'a block absent from entries never appears (no stale pin ghost)');
+});
+
+test('s30. cmdHeat --scored surfaces the scored+pinned hot-set (deterministic now; entries from fresh parse)', () => {
+  const dir = tmp('mem-heat-scored-'); process.env.LOOM_MEMORY_DIR = dir;
+  const f = path.join(dir, 'mem.md');
+  fs.writeFileSync(f, MEMTREE);
+  M.bumpHeat(f, 'ref-1', { now: 2000 });
+  M.bumpHeat(f, 'cur-1', { now: 2500 });
+  M.bumpHeat(f, 'cur-1', { now: 2900 });  // cur-1: 2 refs, w2 (project); inv-1 has NO heat but is invariant.
+  const { rc, out } = capture(() => M.cmdHeat({ _: [f], scored: true, top: 2 }, { now: 3000 }));
+  assert.strictEqual(rc, 0);
+  assert.ok(/inv-1/.test(out), 'invariant pinned even with no heat');
+  assert.ok(/cur-1/.test(out) && /ref-1/.test(out), 'heated blocks appear in the scored tier');
+  assert.ok(!/hist-1/.test(out), 'weight-0 historical (no heat) is pushed out of the top-2 scored tier');
+});
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+test('s31. recency is LOAD-BEARING: a recent-weak block outranks an old-strong one (over a multi-week gap)', () => {
+  // The one test where recency actually VARIES (ages 2d vs 50d over a 30-day tau), so a recency regression flips
+  // the order. WITH recency: new-weak (~0.94*log2(4)=1.87) beats old-strong (~0.19*log2(16)=0.76). WITHOUT recency
+  // (weight*refs only): old-strong (1*4=4) beats new-weak (1*2=2). So hot[0]==='new-weak' can ONLY hold if the
+  // recency factor is genuinely scored -- deleting OR inverting it fails this test.
+  const now = 60 * DAY_MS;
+  const entries = [
+    { anchor: 'old-strong', last_ref: isoAt(10 * DAY_MS), refs: 15, weight: 1, protected: false }, // 50d old, many refs
+    { anchor: 'new-weak',   last_ref: isoAt(58 * DAY_MS), refs: 3,  weight: 1, protected: false }, //  2d old, few refs
+  ];
+  const hot = M.scoredHotSet(entries, 5, { now });
+  assert.strictEqual(hot[0], 'new-weak', 'recency decay must lift the recent block above the older high-refs one');
+  assert.ok(M.scoreOfEntry(entries[1], now) > M.scoreOfEntry(entries[0], now), 'and its score is genuinely higher');
+});
+
+test('s32. weight-0 (historical) is shed by its ZERO score, not the n budget (multiplicative, not sum)', () => {
+  // hist-hot has huge heat but weight 0. n=1 with only 2 non-pins -> the budget alone would keep both; the
+  // multiplicative zero is what sheds it. Under a SUM formula (weight + log2(1+refs)) hist-hot (0+log2(51)=5.67)
+  // would OUTRANK ref-a (1+1=2) and take the single slot -> this asserts the MULTIPLICATIVE zeroing.
+  const now = 10 * DAY_MS;
+  const entries = [
+    { anchor: 'hist-hot', last_ref: isoAt(10 * DAY_MS - 1000), refs: 50, weight: 0, protected: false }, // hot but w0
+    { anchor: 'ref-a',    last_ref: isoAt(9 * DAY_MS),         refs: 1,  weight: 1, protected: false }, // modest, w1
+  ];
+  const hot = M.scoredHotSet(entries, 1, { now });
+  assert.deepStrictEqual(hot, ['ref-a'], 'weight-0 is zeroed out despite huge heat (a sum formula would admit it)');
+  assert.strictEqual(M.scoreOfEntry(entries[0], now), 0, 'weight-0 zeroes the score regardless of heat/refs');
+});
+
+test('s33. scoreOfEntry coerces refs (quoted-numeric scores like numeric; negative -> no NaN)', () => {
+  const now = 3000;
+  const q = M.scoreOfEntry({ last_ref: isoAt(2000), refs: '10', weight: 1 }, now);
+  const num = M.scoreOfEntry({ last_ref: isoAt(2000), refs: 10, weight: 1 }, now);
+  assert.strictEqual(q, num, 'a quoted "10" coerces to numeric 10 (not string-concat log2(110))');
+  assert.ok(Number.isFinite(M.scoreOfEntry({ last_ref: null, refs: -1, weight: 3 }, now)), 'negative refs -> finite, never NaN');
+});
+
 process.stdout.write(`\nmemory-cli: ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);

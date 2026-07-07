@@ -33,6 +33,9 @@
 const fs = require('fs');
 const path = require('path');
 const { checkWithinRoot, isSafePathSegment } = require('../packages/kernel/_lib/path-canonicalize');
+// The recency term of the weight-aware scored hot-set REUSES the existing pure decay leaf (ADR-0016: a
+// genuine 2nd consumer of recency-decay). The scoring itself stays LOCAL below (one consumer -> no new leaf).
+const { computeRecencyDecayAt } = require('../packages/kernel/_lib/recency-decay');
 
 // The hot-index ceiling (Claude Code official memory guidance: keep the always-loaded index under ~200
 // lines; longer files reduce adherence). Bytes is a proxy for the harness read-limit.
@@ -275,6 +278,62 @@ function importanceOf(sectionTitle) {
 }
 
 // --------------------------------------------------------------------------
+// Weight-aware scored hot-set (Phase 2). `hotSet` above (recency-only) is UNTOUCHED for back-compat; this is
+// a SEPARATE scored tier. `blockImportances` + `scoredHotSet` are LOCAL (one consumer: `cmdHeat --scored`,
+// ADR-0016 gate); only the recency term reuses the shared `recency-decay` leaf.
+// --------------------------------------------------------------------------
+
+/**
+ * Map each block's shortAnchor -> its enclosing H2 section's `importanceOf` ({cls, weight, protected}). PURE.
+ * Composes two `parseBlocks` passes (level-2 sections + level-`level` targets) by line-range containment, so
+ * `parseBlocks` itself is untouched. A target with no enclosing H2 (a preamble block, or a file with zero H2
+ * sections) -> `importanceOf('')` = reference/w1.
+ */
+function blockImportances(text, { level = 3 } = {}) {
+  const sections = parseBlocks(text, { level: 2 }).blocks; // non-overlapping H2 ranges
+  const targets = parseBlocks(text, { level }).blocks;
+  const m = new Map();
+  for (const b of targets) {
+    const s = sections.find((sec) => sec.startLine <= b.startLine && b.startLine <= sec.endLine);
+    m.set(b.shortAnchor, importanceOf(s ? s.title : ''));
+  }
+  return m;
+}
+
+/**
+ * Score one entry = recencyDecay(last_ref, now) x importance-weight x log2(1 + refs). PURE. A null/absent
+ * `last_ref` (a 0-heat pin) or an unparseable timestamp -> recency 0 (explicit `?? 0`, no silent coercion).
+ * `refs` is coerced to a non-negative finite number FIRST (a hand-edited sidecar can quote it as `"10"` --
+ * `1 + "10"` would string-concat to `log2(110)` -- or make it negative -- `log2(1 + -1)` = -Infinity ->
+ * NaN, which would break the total-order comparator). So the score is ALWAYS a finite non-negative number.
+ */
+function scoreOfEntry(e, now) {
+  const recency = e && e.last_ref ? (computeRecencyDecayAt([{ ts: e.last_ref }], now) ?? 0) : 0;
+  const refsRaw = Number((e && e.refs) ?? 0);
+  const refs = Number.isFinite(refsRaw) && refsRaw >= 0 ? refsRaw : 0;
+  return recency * ((e && e.weight) || 0) * Math.log2(1 + refs);
+}
+
+/**
+ * The weight-aware hot-set. `entries` = [{anchor, last_ref|null, refs, weight, protected}] built from the
+ * BLOCK-LIST (so 0-heat invariant pins are present). Invariant-class (protected) blocks are ALWAYS resident
+ * -- a separate tier, ADDITIVE beyond `n`; `n` budgets the scored non-pinned tier on top. Total, deterministic
+ * comparator (score desc -> last_ref desc -> refs desc -> anchor asc). PURE; `now` injectable. Returns anchors[].
+ */
+function scoredHotSet(entries, n = 5, { now = Date.now() } = {}) {
+  const cmp = (a, b) => (
+    b.score - a.score
+    || (b.last_ref < a.last_ref ? -1 : b.last_ref > a.last_ref ? 1 : 0)
+    || ((b.refs || 0) - (a.refs || 0))
+    || (a.anchor < b.anchor ? -1 : a.anchor > b.anchor ? 1 : 0)
+  );
+  const scored = (Array.isArray(entries) ? entries : []).map((e) => ({ ...e, score: scoreOfEntry(e, now) }));
+  const pinned = scored.filter((e) => e.protected).sort(cmp).map((e) => e.anchor);
+  const hot = scored.filter((e) => !e.protected).sort(cmp).slice(0, Math.max(0, n)).map((e) => e.anchor);
+  return [...pinned, ...hot]; // ADDITIVE beyond n: |pins| + min(n, |scored non-pins|)
+}
+
+// --------------------------------------------------------------------------
 // File resolution (within-root contained) + the commands.
 // --------------------------------------------------------------------------
 
@@ -349,6 +408,23 @@ function cmdHeat(args, deps = {}) {
   if (args.bump) { bumpHeat(abs, args.bump, { now: deps.now }); process.stdout.write(`bumped #${slugify(args.bump)}\n`); return 0; }
   const n = Number(args.top) || 5;
   const level = Number(args.level) || 3;
+  if (args.scored) {
+    // Weight-aware path: candidates come from the BLOCK-LIST (a fresh parse), so a 0-heat invariant is a pin
+    // candidate and a demoted/absent block cannot resurrect. Default (recency-only) path below is unchanged.
+    const text = fs.readFileSync(abs, 'utf8');
+    const { blocks } = parseBlocks(text, { level });
+    const heat = readHeat(abs);
+    const imp = blockImportances(text, { level });
+    const entries = blocks.map((b) => {
+      const h = (heat[b.shortAnchor] && typeof heat[b.shortAnchor] === 'object') ? heat[b.shortAnchor] : {};
+      const w = imp.get(b.shortAnchor) || importanceOf('');
+      return { anchor: b.shortAnchor, last_ref: h.last_ref || null, refs: h.refs || 0, weight: w.weight, protected: w.protected };
+    });
+    const hot = scoredHotSet(entries, n, { now: deps.now });
+    process.stdout.write(`scored hot-set (weighted top-${n} + pinned invariants) of ${path.basename(abs)}:\n`);
+    hot.forEach((a, i) => process.stdout.write(`  ${i + 1}. #${a}\n`));
+    return 0;
+  }
   const live = new Set(parseBlocks(fs.readFileSync(abs, 'utf8'), { level }).blocks.map((b) => b.shortAnchor));
   const hot = hotSet(abs, n, { liveAnchors: live });
   process.stdout.write(`hot-set (LRU top-${n}) of ${path.basename(abs)}:\n`);
@@ -544,6 +620,7 @@ if (require.main === module) process.exit(main(process.argv.slice(2)));
 module.exports = {
   slugify, shortAnchorOf, countLines, parseBlocks, resolveBlock, findDuplicateAnchors, parsePointer,
   safe, withinRootPlain, atomicWrite, readHeat, writeHeatSafe, bumpHeat, dropHeat, hotSet, importanceOf,
+  blockImportances, scoreOfEntry, scoredHotSet,
   substantiveLines, appendDemotePointer, DEMOTED_HEADING, memDir, resolveFile,
   cmdRecall, cmdBlocks, cmdHeat, cmdCheck, cmdDemote, cmdVerifyPreserved, main,
   DEFAULT_MAX_LINES, DEFAULT_MAX_BYTES,
