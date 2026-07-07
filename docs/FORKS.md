@@ -77,6 +77,18 @@ merged, several warranted next-steps exist and only one can be the active DFS tr
   copy, computed/relative paths, and a `memory init` that scaffolds the structure (including a `FORKS.md`) in any repo.
   **Revisit when:** the structure is proven on the toolkit repo, then generalize to PACT + Embers.
 
+> **▶ UPDATE 2026-07-07 (lifecycle-extraction branch trigger fired → rebase-on-return):** `PR #518` merged,
+> firing this branch's `Revisit when`. On return, a read-only recon (5 mappers + architect + honesty-auditor,
+> firsthand-verified) **FALSIFIED the branch's premise**: the graduate/retire lifecycle is built ONCE (kernel
+> `self-improve-store.js`), NOT twice — the lab causal-edge organ is a *different mechanism* (tally + cross-run
+> confirmation + Wilson gate + tombstone), zero shared code; scars are discipline-only. So "a shared library
+> both substrates consume" would be false-DRY (ADR-0016's 2nd-consumer gate unmet). **RESHAPED** (USER chose
+> docs + kernel cleanup) to: extract the pure DETECTION leaf (`packages/kernel/_lib/recurrence-lifecycle.js`)
+> for the ONE real consumer, plus **ADR-0020** correcting ADR-0018 invariant #1. This is the ledger working
+> as intended — a deferred branch re-evaluated against the advanced trunk (the recon evidence), not
+> blind-resumed. **Branch RESOLVED** as the single-consumer leaf, NOT the originally-scoped dedup. The Phase-2
+> branch's trigger ("lifecycle extraction lands") now fires on the leaf PR's merge.
+
 ## FORK-1 (2026-07-06) — the lesson-exit trust-ceiling (ADR-0018's deferred fork #3)
 
 PARENT: ADR-0018 (the two-substrate / one-pattern-kernel decision). The shared kernel's lifecycle terminates in
