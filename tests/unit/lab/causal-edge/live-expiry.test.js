@@ -283,5 +283,22 @@ test('e14. a node whose repo does not normalize is skipped (fail-safe), the swee
   assert.strictEqual(res.results.find((r) => r.node_id === 'x'.repeat(64)).reason, 'bad-repo-slug');
 });
 
+test('e17. under a cap, the OLDEST-overdue nodes are disposed first (readdir order does not decide the blast radius)', () => {
+  const pendingDir = tmp('exp-e17-pend-'); const disposalDir = tmp('exp-e17-disp-');
+  const oldest = mintPending(pendingDir, { candidate_patch_sha: 'b'.repeat(64) });
+  const middle = mintPending(pendingDir, { candidate_patch_sha: 'c'.repeat(64) });
+  const youngest = mintPending(pendingDir, { candidate_patch_sha: 'e'.repeat(64) });
+  setMtimeSeconds(pendingDir, oldest, 1000);                        // mtimeMs 1_000_000 (most overdue)
+  setMtimeSeconds(pendingDir, middle, 2000);                        // mtimeMs 2_000_000
+  setMtimeSeconds(pendingDir, youngest, 3000);                      // mtimeMs 3_000_000 (least overdue; still stale)
+  // all three are stale vs now=9_000_000 / maxAgeMs=100; cap at 2 -> the two OLDEST disposed, youngest survives.
+  const res = expirePendingLessons({ maxAgeMs: 100, now: 9_000_000, pendingDir, disposalDir }, { selfUid: SELF, maxPerSweep: 2 });
+  assert.strictEqual(res.capped, true);
+  assert.strictEqual(res.disposed, 2);
+  const survivors = listLivePendingLessons({ dir: pendingDir, selfUid: SELF });
+  assert.strictEqual(survivors.length, 1, 'exactly one node left unswept');
+  assert.strictEqual(survivors[0].candidate_patch_sha, 'e'.repeat(64), 'the YOUNGEST (least overdue) is the survivor — the cap disposed the two oldest');
+});
+
 process.stdout.write(`\nlive-expiry: ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);

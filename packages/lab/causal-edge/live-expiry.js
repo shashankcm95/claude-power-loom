@@ -125,9 +125,20 @@ function expirePendingLessons(args = {}, opts = {}) {
   catch (e) { alert('list-threw', { detail: (e && e.message) || 'error' }); return { ok: false, reason: 'list-threw' }; }
   if (!Array.isArray(nodes)) nodes = [];
 
+  // OLDEST-first (CodeRabbit): listLivePendingAges yields readdir order, so a maxPerSweep cap would otherwise
+  // bound an ARBITRARY subset — possibly leaving nodes MORE overdue than ones it disposed. Sort by mtime
+  // ascending (immutably) so the cap bounds the blast radius among the MOST overdue candidates first, which
+  // is the honest "dispose the stalest" semantic. A non-finite mtime sorts LAST (it is skipped in the loop
+  // anyway via Number.isFinite). No-op when uncapped (every eligible node is processed regardless of order).
+  const ordered = nodes.slice().sort((x, y) => {
+    const ax = x && Number.isFinite(x.mtimeMs) ? x.mtimeMs : Infinity;
+    const ay = y && Number.isFinite(y.mtimeMs) ? y.mtimeMs : Infinity;
+    return ax - ay;
+  });
+
   const results = [];
   let disposed = 0; let tombstoned = 0; let capped = false;
-  for (const entry of nodes) {
+  for (const entry of ordered) {
     const node = entry && entry.node;
     const mtimeMs = entry && entry.mtimeMs;
     // Number.isFinite (NOT typeof === 'number') — a NaN mtimeMs is `typeof number` but `now - NaN <= max` is
