@@ -278,6 +278,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/lab/causal-edge/lesson-merge-lift.js` - v-next MV-W1 — the FORK-6 `lesson_merge_lift` HARDEN-gate.
 - `packages/lab/causal-edge/lesson-signature.js` - v3.11 W1 — the FROZEN lesson signature + the lesson-key machinery.
 - `packages/lab/causal-edge/live-disposal.js` - Gap-9 disposal — the DISPOSAL-OUTCOME store + the `disposeCandidate` orchestrator.
+- `packages/lab/causal-edge/live-expiry.js` - Gap-9 background-expiry — the DORMANT, SHADOW sweep that disposes stale, never-landed live_pending lesson
 - `packages/lab/causal-edge/live-grade.js` - ③.2.2c — gradeLiveIssueSemantic: a SHADOW verdict for a LIVE (public-only) GitHub issue.
 - `packages/lab/causal-edge/live-lesson-derive-run.js` - item-3-live leg 1 - the IMPURE real `claude -p` live-lesson deriver leg.
 - `packages/lab/causal-edge/live-lesson-derive.js` - Autonomous-SDE ladder item-3-live, PR-1 - the ORACLE-FREE live-lesson deriver.
