@@ -162,9 +162,6 @@ toolkit-operated cold storage. Moving them breaks the harness load path.
 
 ## Related work
 
-- **ADR-0019 (extends this ADR on the branching axis):** the fork-ledger (`docs/FORKS.md`). This ADR pins the LINEAR
-  supersede-not-fork continuity; ADR-0019 adds the orthogonal BRANCHING continuity (not-taken-but-warranted sibling
-  branches with revisit-triggers + rebase-on-return). `superseded_by` stays null — 0019 extends, it does not supersede.
 - Folded-in design notes (now carry a pointer to this ADR): `2026-06-15-recall-graph-experience-layer.md`,
   `2026-06-25-tiered-memory-demotion-design.md`, `2026-07-05-memory-restructure-design.md`.
 - `2026-06-25-autonomous-sde-lifecycle-gap.md` (the *"do not conflate"* decision, `:214`).
