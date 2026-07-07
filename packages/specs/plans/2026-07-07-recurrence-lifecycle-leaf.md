@@ -81,8 +81,10 @@ Store refactor (`self-improve-store.js`):
 - NEW `packages/kernel/_lib/recurrence-lifecycle.js` (~70 LoC)
 - NEW `tests/unit/kernel/recurrence-lifecycle.test.js` (~150 LoC)
 - EDIT `packages/kernel/spawn-state/self-improve-store.js` (~40 LoC net — delegate)
-- NEW `packages/specs/adrs/0020-*.md` (correct ADR-0018 invariant #1)
-- EDIT `packages/specs/adrs/0018-memory-architecture.md` (status-note + pointer to 0020)
+- NEW `packages/specs/adrs/0020-*.md` (corrects ADR-0018 invariant #1; self-contained)
+- (NOT edited) `packages/specs/adrs/0018-memory-architecture.md` — immutable historical record. The correction is
+  self-contained in ADR-0020, which NAMES ADR-0018 (supersede-not-fork: the NEW ADR points back; the old stays frozen).
+  [CodeRabbit Major, folded 2026-07-07 — an earlier draft edited 0018 in place; reverted per the `adrs/**`-immutable path rule.]
 - EDIT `docs/FORKS.md` (FORK-2 dated UPDATE — rebase-on-return)
 - (post-PR, not in repo) MEMORY.md canonical line -> "ADR-0018 + ADR-0020"
 
