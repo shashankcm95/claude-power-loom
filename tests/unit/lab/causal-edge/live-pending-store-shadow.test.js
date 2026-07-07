@@ -38,6 +38,13 @@ const WRITER_FULLPATH = path.join(PACKAGES, 'lab', 'persona-experiment', 'live-d
 // floor-builder. It calls listLivePendingLessons. A full-path === allowlist (the LOW-1 exact-set
 // relaxation), NOT a basename / blanket dir skip (so a same-named file elsewhere cannot masquerade as it).
 const READER_FULLPATH = path.join(PACKAGES, 'lab', 'world-anchor', 'world-anchor-mint.js');
+// Gap-9: the SECOND admitted reader — the DORMANT/SHADOW background-expiry sweep. It calls the NEW
+// mtime-aware reader listLivePendingAges to age-dispose stale nodes. It is a causal-edge SIBLING, so it is
+// exempt from the IMPORTER scan (siblings may import), BUT the reader-CALLER scan does NOT skip siblings
+// (the #451 C2 hole), so it must be full-path allowlisted here — otherwise the new reader surface onto the
+// lane would go UNGOVERNED and a future weight/ranking consumer could call listLivePendingAges undetected
+// (VERIFY architect HIGH). Its own consumers are dammed by live-expiry-shadow.test.js.
+const EXPIRY_READER_FULLPATH = path.join(CAUSAL_EDGE_DIR, 'live-expiry.js');
 
 // Async-collector harness (matches every sibling causal-edge suite, e.g. weight-source-gate.test.js): a
 // failure reports a count + names the failing test, never throws out at the first assertion.
@@ -66,10 +73,12 @@ function walkJs(dir) {
 // four-form matcher the world-anchor shadow test uses; the distinctive basename is `live-pending-store`.
 const IMPORT_RE = /(?:require\(\s*|import\s+(?:[^;'"]*\sfrom\s+)?|import\(\s*)['"][^'"]*live-pending-store(?:\.js)?['"]/;
 
-// Does this file CALL a reader of the lane (readLivePendingLesson / listLivePendingLessons)? PR-2 admits
-// EXACTLY ONE production reader (world-anchor-mint.js's floor-builder). The mint writer is exempt by name
-// (it calls mintLivePendingLesson, NOT a reader).
-const READER_CALL_RE = /\b(?:readLivePendingLesson|listLivePendingLessons)\s*\(/;
+// Does this file CALL a reader of the lane? PR-2 admitted ONE reader (world-anchor-mint's floor-builder, via
+// listLivePendingLessons); Gap-9 adds listLivePendingAges (the mtime-aware reader) + a SECOND admitted caller
+// (live-expiry). The mint WRITER is exempt by name (it calls mintLivePendingLesson, NOT a reader). The regex
+// MUST list listLivePendingAges — omitting it (the original bug F4 closes) would make the expiry's reader call
+// invisible to the scan, silently weakening the exactly-N-named-readers invariant.
+const READER_CALL_RE = /\b(?:readLivePendingLesson|listLivePendingLessons|listLivePendingAges)\s*\(/;
 
 test('SHADOW matcher catches the .js + ESM + dynamic-import forms; no false-positive on an adjacent name', () => {
   const samples = [
@@ -118,15 +127,16 @@ test('SHADOW import-graph: the admitted reader ACTUALLY imports the store (the P
 // causal-edge skip makes a same-dir sibling reader invisible. The reader scan must NOT skip the dir.)
 const STORE_DEFINER_FULLPATH = path.join(CAUSAL_EDGE_DIR, 'live-pending-store.js');
 
-test('SHADOW import-graph: EXACTLY ONE reader-CALLER of the lane in PR-2 (scan covers causal-edge SIBLINGS too, #451 C2)', () => {
+test('SHADOW import-graph: EXACTLY the TWO named reader-CALLERS of the lane (scan covers causal-edge SIBLINGS too, #451 C2)', () => {
   const offenders = [];
   for (const file of walkJs(PACKAGES)) {
     if (file === STORE_DEFINER_FULLPATH) continue;   // the definer is exempt (it defines the readers, not calls them)
-    if (file === READER_FULLPATH) continue;          // the ONE admitted reader-caller, PR-2 (full-path ===)
+    if (file === READER_FULLPATH) continue;          // admitted reader (world-anchor-mint, via listLivePendingLessons)
+    if (file === EXPIRY_READER_FULLPATH) continue;   // Gap-9 admitted reader (live-expiry, via listLivePendingAges)
     const src = fs.readFileSync(file, 'utf8');
     if (READER_CALL_RE.test(src)) offenders.push(path.relative(REPO, file));
   }
-  assert.deepStrictEqual(offenders, [], `PR-2 admits ONLY world-anchor-mint.js as a reader (siblings included) - these also call a reader: ${offenders.join(', ')}`);
+  assert.deepStrictEqual(offenders, [], `only world-anchor-mint.js + live-expiry.js may call a reader (siblings included) - these also do: ${offenders.join(', ')}`);
 });
 
 test('SHADOW reader allowlist is NON-VACUOUS: world-anchor-mint.js ACTUALLY calls listLivePendingLessons', () => {
@@ -135,6 +145,22 @@ test('SHADOW reader allowlist is NON-VACUOUS: world-anchor-mint.js ACTUALLY call
   // reader relaxation passes vacuously and would not notice if the floor-builder's reader call were dropped.
   const src = fs.readFileSync(READER_FULLPATH, 'utf8');
   assert.ok(READER_CALL_RE.test(src), 'world-anchor-mint.js calls a reader (listLivePendingLessons) - the reader allowlist is real');
+});
+
+test('Gap-9 F4: the reader matcher CATCHES listLivePendingAges (the new mtime-aware reader) with no false-positive', () => {
+  // Guard the regex extension itself: if listLivePendingAges were dropped from READER_CALL_RE, the expiry's
+  // reader call would go invisible and the exactly-N-readers invariant would silently weaken.
+  assert.ok(READER_CALL_RE.test('const x = listLivePendingAges({ dir })'), 'catches the new reader call');
+  assert.ok(READER_CALL_RE.test('listLivePendingLessons()'), 'still catches the original reader');
+  assert.ok(!READER_CALL_RE.test('listLivePendingAgesHelper'), 'no false-positive on an adjacent name (no call paren)');
+});
+
+test('Gap-9 F4 NON-VACUOUS: live-expiry (the 2nd admitted reader) ACTUALLY imports the store + calls listLivePendingAges', () => {
+  // Prove the EXPIRY_READER_FULLPATH exemption exempts a REAL reader, not a hypothetical one - otherwise the
+  // Gap-9 relaxation passes vacuously and would not notice if the expiry's reader wire were dropped.
+  const src = fs.readFileSync(EXPIRY_READER_FULLPATH, 'utf8');
+  assert.ok(IMPORT_RE.test(src), 'live-expiry imports live-pending-store (the sibling-import exemption is real)');
+  assert.ok(/\blistLivePendingAges\s*\(/.test(src), 'live-expiry calls listLivePendingAges (the reader allowlist is real)');
 });
 
 test('SHADOW reader-scan is NON-VACUOUS: a planted SIBLING reader (in causal-edge/) is DETECTED', () => {

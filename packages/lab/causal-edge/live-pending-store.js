@@ -281,11 +281,19 @@ function readBoundedText(fd, cap) {
   return buf.toString('utf8', 0, n);
 }
 
-// The raw read: open no-follow, fstat the SAME fd, reject non-regular / foreign / oversize (each
+// The raw verified read: open no-follow, fstat the SAME fd, reject non-regular / foreign / oversize (each
 // OBSERVABLE) BEFORE the bounded read, re-derive BOTH node_id (identity seal) and content_hash (full-body
-// seal), reject a mismatch. Returns the verified body or null. cap is ALWAYS MAX_RECORD_BYTES (passed
+// seal), reject a mismatch. Returns `{ body, mtimeMs }` or null. cap is ALWAYS MAX_RECORD_BYTES (passed
 // positionally from the public entry points; never a caller knob).
-function readNodeRaw(node_id, dir, selfUid, cap) {
+//
+// Gap-9 (F2): mtimeMs is projected from the SAME `st = fs.fstatSync(fd)` already used for the security
+// checks — NO second `fs.statSync(file)` (a second stat re-resolves the path and FOLLOWS a symlink swapped
+// after the O_NOFOLLOW open, reintroducing the exact TOCTOU the fstat-same-fd discipline closes). The node
+// is write-once ({flag:'wx'}, immutable), so mtimeMs ~= capture time; it is the age input for the Gap-9
+// expiry sweep. mtime is NOT content-sealed (a same-uid touch / a benign rsync-without-times shifts it) — an
+// INERT, LOWER-BAR residual while the lane is weight-inert; the arming-time close is a content-sealed
+// captured_at (a store-schema migration, not this wave).
+function readNodeVerified(node_id, dir, selfUid, cap) {
   if (typeof node_id !== 'string' || !HEX64.test(node_id)) return null;
   const file = path.join(dir, node_id + NODE_SUFFIX);
   let fd = null;
@@ -324,7 +332,7 @@ function readNodeRaw(node_id, dir, selfUid, cap) {
       alert('verify-mismatch', { node_id, kind: 'content-hash' });
       return null;
     }
-    return parsed;
+    return { body: parsed, mtimeMs: st.mtimeMs };                      // mtimeMs off the SAME fstat'd fd (F2)
   } catch (err) {
     // ENOENT (absent) is benign - do not alert. Any OTHER io error (ELOOP from a planted symlink under
     // O_NOFOLLOW, EACCES, a malformed-body JSON.parse throw, ...) silently removes a node from the recall
@@ -335,6 +343,14 @@ function readNodeRaw(node_id, dir, selfUid, cap) {
   } finally {
     if (fd !== null) { try { fs.closeSync(fd); } catch { /* best-effort */ } }
   }
+}
+
+// Back-compat projection: the existing callers want only the verified BODY (or null). A pure projection of
+// readNodeVerified — every refuse path + its OBSERVABLE alert live inside readNodeVerified (F10: the alerts
+// are load-bearing telemetry and must NOT move to this wrapper, which no longer sees the failure cause).
+function readNodeRaw(node_id, dir, selfUid, cap) {
+  const r = readNodeVerified(node_id, dir, selfUid, cap);
+  return r ? r.body : null;
 }
 
 /**
@@ -360,11 +376,15 @@ function readLivePendingLesson(node_id, opts = {}) {
 }
 
 /**
- * List every verified live_pending node (tampered/foreign/oversize/corrupt files are skipped, never throw
- * the read - TOTAL, load-bearing for PR-2's runtime floor). Each result is deep-frozen.
- * @returns {object[]}
+ * The ONE verified-node enumerator (Gap-9 F1). readdir + the tombstone-skip anti-resurrection guard applied
+ * EXACTLY ONCE, so `listLivePendingLessons` and `listLivePendingAges` cannot drift on the visibility set (a
+ * fix to what counts as "dead" lands in one place). TOTAL: a symlink/foreign/non-dir root is observable then
+ * []; a corrupt/forged/tampered node file -> null -> skipped. Each returned node body is DEEP-FROZEN; the
+ * `{ node, mtimeMs }` tuple is frozen too (read-path immutability). mtimeMs comes off the SAME fstat'd fd
+ * inside readNodeVerified (F2 — never a second stat).
+ * @returns {{node: object, mtimeMs: number}[]}
  */
-function listLivePendingLessons(opts = {}) {
+function enumerateVerifiedPendingNodes(opts, includeTombstoned) {
   const selfUid = opts.selfUid === undefined ? currentUid() : opts.selfUid;
   let dir;
   try { dir = storeDir(opts); } catch { return []; }
@@ -379,10 +399,9 @@ function listLivePendingLessons(opts = {}) {
   let entries;
   try { entries = fs.readdirSync(dir); } catch { return []; }
   // Gap-9: by DEFAULT skip tombstoned (dead) nodes — a disposed candidate must not resurface to a future
-  // floor-builder reader. `includeTombstoned:true` is the AUDIT path (a tombstoned/forged node stays
-  // discoverable, never vanishes with no recovery — VERIFY hacker). On the current store (zero tombstones)
-  // the default is behavior-identical to pre-Gap-9.
-  const includeTombstoned = opts.includeTombstoned === true;
+  // floor-builder reader (nor be re-disposed by the expiry sweep). `includeTombstoned:true` is the AUDIT
+  // path (a tombstoned/forged node stays discoverable, never vanishes with no recovery — VERIFY hacker). On
+  // the current store (zero tombstones) the default is behavior-identical to pre-Gap-9.
   // Only nodes that have a `.tombstone` entry in THIS listing need the (verifying) tombstone read — so the
   // common dormant case (no tombstones) does ZERO extra opens (VALIDATE code-reviewer LOW). A `.tombstone`
   // file merely being PRESENT is not trusted: readTombstoneRaw still verifies it (a forged one -> null ->
@@ -395,13 +414,34 @@ function listLivePendingLessons(opts = {}) {
     if (!name.endsWith(NODE_SUFFIX)) continue;
     const node_id = name.slice(0, -NODE_SUFFIX.length);
     if (!HEX64.test(node_id)) continue;
-    const body = readNodeRaw(node_id, dir, selfUid, MAX_RECORD_BYTES);   // a corrupt/forged file -> null -> skipped (TOTAL)
-    if (!body) continue;
+    const r = readNodeVerified(node_id, dir, selfUid, MAX_RECORD_BYTES);   // a corrupt/forged file -> null -> skipped (TOTAL)
+    if (!r) continue;
     // skip a VALIDLY-tombstoned node (verified); a forged `.tombstone` fails readTombstoneRaw -> not skipped.
     if (tombstonedNames && tombstonedNames.has(node_id) && readTombstoneRaw(node_id, dir, selfUid) !== null) continue;
-    out.push(deepFreeze({ ...body }));
+    out.push(Object.freeze({ node: deepFreeze({ ...r.body }), mtimeMs: r.mtimeMs }));
   }
   return out;
+}
+
+/**
+ * List every verified live_pending node (tampered/foreign/oversize/corrupt files are skipped, never throw
+ * the read - TOTAL, load-bearing for PR-2's runtime floor). Each result is deep-frozen. A projection of the
+ * shared enumerator (F1).
+ * @returns {object[]}
+ */
+function listLivePendingLessons(opts = {}) {
+  return enumerateVerifiedPendingNodes(opts, opts.includeTombstoned === true).map((e) => e.node);
+}
+
+/**
+ * Gap-9 (background-expiry, F1): list every verified live_pending node WITH its file mtime (the age input).
+ * Same TOTAL, tombstone-skipping, deep-frozen semantics as listLivePendingLessons — it IS the same
+ * enumerator, projected to keep the `{ node, mtimeMs }` tuple. The ONLY admitted reader is the (dormant,
+ * SHADOW) expiry sweep (live-expiry.js), governed by the lane's reader dam.
+ * @returns {{node: object, mtimeMs: number}[]}
+ */
+function listLivePendingAges(opts = {}) {
+  return enumerateVerifiedPendingNodes(opts, opts.includeTombstoned === true);
 }
 
 // --------------------------------------------------------------------------
@@ -516,7 +556,7 @@ function isPendingTombstoned(node_id, opts = {}) {
 }
 
 module.exports = {
-  mintLivePendingLesson, readLivePendingLesson, listLivePendingLessons, deriveLivePendingNodeId,
-  tombstonePendingLesson, isPendingTombstoned,
+  mintLivePendingLesson, readLivePendingLesson, listLivePendingLessons, listLivePendingAges,
+  deriveLivePendingNodeId, tombstonePendingLesson, isPendingTombstoned,
   LIVE_PENDING, LIVE_PENDING_DEFAULT_DIR,
 };
