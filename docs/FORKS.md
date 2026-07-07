@@ -89,6 +89,20 @@ merged, several warranted next-steps exist and only one can be the active DFS tr
 > blind-resumed. **Branch RESOLVED** as the single-consumer leaf, NOT the originally-scoped dedup. The Phase-2
 > branch's trigger ("lifecycle extraction lands") now fires on the leaf PR's merge.
 
+> **▶ UPDATE 2026-07-07 (Phase-2 branch RESOLVED — the data half shipped):** The Phase-2 branch ("scars
+> block-cache + weight-aware scored hot-set") is COMPLETE. Slice-1 = `scoredHotSet` (`#521`, the weight-aware
+> hot-cache). Slice-2 = the DATA materialization that a 3-lens re-scope surfaced as the *real* remaining half:
+> `#521` shipped the TOOLING but was BUILT-BUT-DARK — the live scars file had zero `### SCAR-N` anchors, so the
+> scored tier had never scored a real block. Slice-2 anchored the 36 scars (one GLOBAL non-padded number space,
+> so by-number cross-refs resolve across files), fixed the LIVE `dup 24.` (the arc's THIRD decayed premise — a
+> `MEMORY.md` note had relabeled it "stale/dropped"; it was a live data defect, exactly what `blocks
+> --check-unique` exists to catch), and split by origin into `scars-{toolkit,pact,embers}.md` (28/5/3) with the
+> well-known name kept as a thin index. USER ratified Open-Question-#2 = three origin files (not one file with an
+> `origin:` field). A 2-lens VERIFY board (both PROCEED-WITH-FOLDS) caught the comma-`--against` gate-signature
+> bug before the build; a scripted per-scar content gate confirmed 36/36 bodies preserved. **Branch RESOLVED.**
+> The next FORK-2 branch (portability + `memory init`, Q2/Q3) is now unblocked — the structure is proven on the
+> toolkit repo. **Revisit-trigger for the next slice:** `grep 'Q2/Q3' docs/FORKS.md`.
+
 ## FORK-1 (2026-07-06) — the lesson-exit trust-ceiling (ADR-0018's deferred fork #3)
 
 PARENT: ADR-0018 (the two-substrate / one-pattern-kernel decision). The shared kernel's lifecycle terminates in
