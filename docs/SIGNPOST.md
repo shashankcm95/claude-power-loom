@@ -53,6 +53,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/kernel/_lib/record-locate.js` - v3.6 Wave 2a — findRecordRun: the content-addressed run locator (the run-scoping seam).
 - `packages/kernel/_lib/record-scan.js` - The cross-run, mtime-windowed read-only scans backing the circuit-breaker's kernel-store denial sources.
 - `packages/kernel/_lib/record-store.js` - The provenance state-chain store (origin: PR-P1, where it shipped dormant).
+- `packages/kernel/_lib/recurrence-lifecycle.js` - Pure recurrence-classification leaf — the DETECTION half of the graduate/retire lifecycle,
 - `packages/kernel/_lib/reject-event-store.js` - v3.7 W1 — the REJECT-event ledger (the trust-system's DENIAL-SOURCE producer).
 - `packages/kernel/_lib/route-decide-export.js` - route-decide-export.js — H.7.0 helper module.
 - `packages/kernel/_lib/runState.js` - Shared run-state path resolution.

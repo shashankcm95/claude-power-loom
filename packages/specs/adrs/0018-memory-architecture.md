@@ -93,6 +93,13 @@ minter). Exit state of a lesson: a **soft, weighted, provenance-gated RECALL.** 
    (`2026-06-25-autonomous-sde-lifecycle-gap.md:214`). Merging would force the trusted human-authored lane to adopt the
    integrity≠provenance machinery it does not need. **But** the graduate/retire lifecycle is the same shape built twice —
    extract it as a shared library both substrates consume, so recurrence-counting + graduate/retire is defined once.
+
+   **Corrected by [ADR-0020](0020-lifecycle-built-once-extract-detection-leaf.md) (2026-07-07):** the "same
+   shape built twice" clause is an OVERCLAIM. A firsthand-verified recon found the lifecycle is built ONCE
+   (kernel `self-improve-store.js`); the lab causal-edge organ is a *different mechanism*, not a second copy
+   (zero shared code), and scars are discipline-only. ADR-0020 corrects the extraction to: the pure DETECTION
+   leaf for the one real consumer only, keeping the two mechanisms SEPARATE (no unified lifecycle). The "keep
+   the substrates SEPARATE" half of this fork STANDS — it is the correction's foundation.
 2. **Tier-2b (scars/topic) home = the project-memory dir**, harness-loaded, operated by `scripts/memory.js` — NOT the
    library tree. The library holds Tier-1 episodic + checkpoints. Two physical stores by design, bridged by `[[wikilink]]`.
 
@@ -159,9 +166,15 @@ toolkit-operated cold storage. Moving them breaks the harness load path.
 ## Status notes
 
 - 2026-07-06 — proposed (memory-design synthesis + human ratification).
+- 2026-07-07 — invariant #1 (the "extracted ONCE" lifecycle-dedup clause) CORRECTED by ADR-0020: a firsthand recon found
+  the lifecycle is built ONCE (not twice), so the correction extracts only the pure DETECTION leaf for the single
+  consumer and keeps the two substrates' mechanisms separate. The structure, supersede-not-fork, store-separation, and
+  Tier-2b invariants STAND. `superseded_by` stays null — ADR-0020 corrects one invariant, it does not supersede the ADR.
 
 ## Related work
 
+- **ADR-0020 (corrects invariant #1):** the "built more than once" premise was overclaimed; ADR-0020 reshapes the
+  lifecycle extraction to a single-consumer pure DETECTION leaf and keeps the two mechanisms separate.
 - **ADR-0019 (extends this ADR on the branching axis):** the fork-ledger (`docs/FORKS.md`). This ADR pins the LINEAR
   supersede-not-fork continuity; ADR-0019 adds the orthogonal BRANCHING continuity (not-taken-but-warranted sibling
   branches with revisit-triggers + rebase-on-return). `superseded_by` stays null — 0019 extends, it does not supersede.

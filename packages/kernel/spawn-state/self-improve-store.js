@@ -168,6 +168,10 @@ const { writeAtomic } = require('../_lib/atomic-write');
 // (strip/replace) for the evidence quote; hasControlChars REJECTS for the sid key.
 const { sanitizeForJsonl } = require('../_lib/sanitize');
 const { hasControlChars } = require('../_lib/free-string-checks');
+// The DETECTION half of the graduate/retire lifecycle lives in a pure kernel leaf (ADR-0020) so the
+// organ (threshold -> cross-window defer -> graduate-eligible) is named ONCE; the store keeps its
+// queue mutation + observations.log EXIT here (fork #3: this substrate owns its exit, not the leaf).
+const { STAGE, hasConverged, isGraduateEligible, classifyRecurrence } = require('../_lib/recurrence-lifecycle');
 
 // --- Drift-evidence triage (2026-06-23) -------------------------------------
 // A per-occurrence evidence ring on a counter signal entry + a cross-window
@@ -312,10 +316,12 @@ function appendSample(prevSamples, sample) {
 // human /self-improve triage). If this gate ever drives an ACTION, the timestamps must come
 // from a kernel-owned/authenticated writer the actor cannot set.
 function hasConvergenceSpan(entry) {
-  const a = Date.parse(entry && entry.firstSeen);
-  const b = Date.parse(entry && entry.lastSeen);
-  if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
-  return (b - a) > MIN_CONVERGENCE_SPAN_MS;
+  // Delegates to the pure leaf (ADR-0020) so the span gate has ONE definition. Kept exported for
+  // back-compat + external unit-testing; the ISO-string entry is adapted to the leaf's {ms} tally.
+  return hasConverged(
+    { firstSeenMs: Date.parse(entry && entry.firstSeen), lastSeenMs: Date.parse(entry && entry.lastSeen) },
+    { crossWindowSpanMs: MIN_CONVERGENCE_SPAN_MS }
+  );
 }
 
 // Ghost Heartbeat W1 (2026-06-19): the SINGLE classification + convergence-
@@ -498,7 +504,22 @@ function _runScan(counters, pending) {
     // Ghost W1: one signalPolicy lookup drives BOTH the per-class candidate
     // threshold (drift-family converges at 3) and the classification below.
     const policy = signalPolicy(signal);
-    if (entry.count < policy.candidateThreshold) continue;
+    // Derive the substrate-agnostic policy/tally the pure detection leaf consumes (ADR-0020).
+    // signalPolicy's own return shape is UNCHANGED (exported + T23-tested); this only adapts it.
+    const leafPolicy = {
+      candidateThreshold: policy.candidateThreshold,
+      autoGraduateThreshold: THRESHOLDS.autoGraduate,
+      lowRisk: policy.risk === 'low',
+      requiresCrossWindow: policy.requiresCrossWindow,
+      crossWindowSpanMs: MIN_CONVERGENCE_SPAN_MS,
+    };
+    const tally = {
+      count: entry.count,
+      firstSeenMs: Date.parse(entry.firstSeen),
+      lastSeenMs: Date.parse(entry.lastSeen),
+    };
+    const stage = classifyRecurrence(tally, leafPolicy);
+    if (stage === STAGE.BELOW_THRESHOLD) continue;
 
     const existing = knownBySignal.get(signal);
 
@@ -526,7 +547,9 @@ function _runScan(counters, pending) {
         existing.proposedAction = signalToProposedAction(signal, policy.kind);
       }
       existing.risk = policy.risk;
-      if (policy.risk === 'low' && entry.count >= THRESHOLDS.autoGraduate) {
+      // Existing candidates are NEVER re-gated by the cross-window check (an admitted candidate is
+      // not un-converged) — so this uses isGraduateEligible directly, not the staged classify.
+      if (isGraduateEligible(tally, leafPolicy)) {
         existing.status = 'auto-graduated';
         existing.autoGraduatedAt = now;
         executeGraduation(existing);
@@ -540,7 +563,7 @@ function _runScan(counters, pending) {
     // re-evaluates on a later scan once it recurs across a day boundary — DEFERRED, not
     // dropped (the evidence ring is preserved). Only NEW candidates are gated; an
     // already-pending candidate took the `existing` branch above and is never un-converged.
-    if (policy.requiresCrossWindow && !hasConvergenceSpan(entry)) continue;
+    if (stage === STAGE.DEFERRED_CROSS_WINDOW) continue;
 
     // Unknown signal at >= its candidate threshold — new candidate.
     const candidate = {
@@ -559,7 +582,7 @@ function _runScan(counters, pending) {
       status: 'pending',
       createdAt: now,
     };
-    if (policy.risk === 'low' && entry.count >= THRESHOLDS.autoGraduate) {
+    if (stage === STAGE.GRADUATE_ELIGIBLE) {
       candidate.status = 'auto-graduated';
       candidate.autoGraduatedAt = now;
       executeGraduation(candidate);
