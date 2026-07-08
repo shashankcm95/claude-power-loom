@@ -320,11 +320,13 @@ function resolveSelfImproveScript() {
 }
 
 /**
- * Trigger a self-improve consolidation scan at compaction time. Per-signal
- * counter bumps already happen turn-by-turn in the Stop hook; this is the
- * heavier consolidation pass that applies thresholds + queues candidates.
- * Best-effort: returns null on missing script, non-zero exit, or parse
- * failure — never throws.
+ * Trigger a self-improve consolidation scan at compaction time. This is the
+ * PRIMARY live consolidation trigger: the turn-by-turn frequency-counter bump
+ * in the Stop hook was RETIRED at source (2026-05-30), and the only remaining
+ * turn-by-turn producer (the opt-in, default-off ghost-heartbeat drift-audit
+ * carrier) does not run by default — so compaction is where the threshold +
+ * queue pass reliably applies. Best-effort: returns null on missing script,
+ * non-zero exit, or parse failure — never throws.
  *
  * @returns {object|null} Parsed scan result JSON, or null on any failure
  */
@@ -332,9 +334,9 @@ function runSelfImproveScan() {
   const script = resolveSelfImproveScript();
   if (!script) return null;
   const { spawnSync } = require('child_process');
-  // Compaction is a natural moment for a heavier scan. Per-signal bumps
-  // already happened turn-by-turn in the Stop hook; here we just trigger
-  // the consolidation pass that applies thresholds + queues candidates.
+  // Compaction is the primary live moment for the consolidation pass that
+  // applies thresholds + queues candidates (the turn-by-turn Stop-hook
+  // frequency bump was retired 2026-05-30; the drift-audit carrier is opt-in).
   const res = spawnSync(process.execPath, [script, 'scan'], {
     encoding: 'utf8', timeout: 10000, stdio: ['pipe', 'pipe', 'pipe'],
   });
