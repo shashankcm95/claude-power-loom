@@ -28,6 +28,7 @@ const path = require('path');
 const os = require('os');
 const { withRegularFileFd } = require('../_lib/safe-read');
 const { writeAtomic } = require('../_lib/atomic-write');
+const { envInt } = require('../_lib/env-int');
 const { auditTranscript } = require('./drift-audit');
 const { pruneEmittedState, DEFAULT_STATE_PATH: DEFAULT_EMITTED_STATE_PATH } = require('./ghost-heartbeat-state');
 const { markerDir } = require('../hooks/lifecycle/ghost-heartbeat-stop');
@@ -54,13 +55,12 @@ const MAX_KEYSET_PER_PATH = 256;
 const DEFAULT_KILLSWITCH_FILE = path.join(HOME, '.claude', 'checkpoints', 'ghost-heartbeat.disabled');
 const RUN_STATE_VERSION = 1;
 
-// Whole-digit env int, clamped to [min, max]. Rejects '', 'garbage', '0x10', '-1',
-// '1e9' -> default; clamps an in-range parse so a huge value cannot remove the cap
-// and a tiny one cannot zero it (use the killswitch to disable, not a 0 cap).
+// Whole-digit env int, clamped to [min, max]. The impl is now the canonical `_lib/env-int` (this is a
+// thin arg-shape adapter kept for the local 4-arg call sites + the exported test surface): rejects '',
+// 'garbage', '0x10', '-1', '1e9' -> default; clamps an in-range parse so a huge value cannot remove the
+// cap and a tiny one cannot zero it (use the killswitch to disable, not a 0 cap).
 function envIntClamped(name, def, min, max) {
-  const s = (process.env[name] || '').trim();
-  if (!/^\d+$/.test(s)) return def;
-  return Math.min(max, Math.max(min, parseInt(s, 10)));
+  return envInt(name, def, { min, max });
 }
 
 // FIFO-safe + numeric-validated run-state read. withRegularFileFd opens O_NONBLOCK +
@@ -214,7 +214,9 @@ function sweepMarkers({ dir, keepNewest, ttlMs, floorMs, now = Date.now } = {}) 
 
 // The drain. killswitch + opt-in FIRST. Sequential audits, bounded by a clamped count
 // cap AND a wall-clock budget (the budget gates LAUNCH; a synchronous in-flight audit
-// runs to its own 60s timeout). Per-session fail-open. Always returns; never throws.
+// runs to its own judge timeout — GHOST_HEARTBEAT_JUDGE_TIMEOUT_MS, default 120s, clamped
+// <=300s, so worst-case wall-clock is budget + one judge timeout). Per-session fail-open.
+// Always returns; never throws.
 // Presence-only check (lstat NO-FOLLOW, never opens -> can't block on a FIFO): ANY
 // node at the path (file / symlink / dir) means "disabled". A stat error means absent.
 function killswitchFilePresent(p) {
@@ -247,6 +249,7 @@ function runHeartbeat({ projectsDir, statePath, emittedStatePath, auditFn, now =
   const start = now();
   const done = [];
   let attempts = 0; // cap counts ATTEMPTS (cost), so a failing session can't be retried unboundedly within a run
+  let malformed = 0; // count judge-malformed audits so the fail-silent is OBSERVABLE on the durable run-result (VALIDATE hacker M1)
   const nextAudited = { ...state.audited };
   const nextFailures = { ...state.captureFailures };
 
@@ -274,6 +277,9 @@ function runHeartbeat({ projectsDir, statePath, emittedStatePath, auditFn, now =
       nextAudited[c.path] = { mtimeMs: c.mtimeMs, sessionIds }; // object form -> RESOLVED
       delete nextFailures[c.path];
       done.push(c.path);
+      // A malformed / continuation judge response is captured (above) but must NOT vanish silently — the
+      // whole point of the fix is that it is distinguishable from a genuine no-drift. Surface it.
+      if (res && res.reason === 'judge-malformed') { malformed += 1; log('judge-malformed', { path: c.path }); }
     } catch (e) {
       // A throwing audit does NOT advance audited (so it RETRIES next run) but DOES count a
       // capture-failure -> a permanently-throwing present path stops BLOCKING prune-
@@ -318,7 +324,7 @@ function runHeartbeat({ projectsDir, statePath, emittedStatePath, auditFn, now =
     log('marker-sweep-error', { msg: e && e.message }); // fail-open
   }
 
-  return { ok: true, audited: done, scanned: cands.length };
+  return { ok: true, audited: done, scanned: cands.length, malformed };
 }
 
 module.exports = {
