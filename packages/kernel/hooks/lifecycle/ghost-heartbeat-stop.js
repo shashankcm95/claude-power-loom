@@ -31,6 +31,7 @@ const crypto = require('crypto');
 const { spawn } = require('child_process');
 const { writeAtomic } = require('../../_lib/atomic-write');
 const { withRegularFileFd } = require('../../_lib/safe-read');
+const { envInt } = require('../../_lib/env-int');
 const { log } = require('../_lib/_log.js');
 
 const logger = log('ghost-heartbeat-stop');
@@ -42,16 +43,10 @@ const DRIFT_AUDIT = path.join(__dirname, '../../spawn-state/drift-audit.js');
 const DEFAULT_MIN_BYTES = 16384;     // coarse "skip trivial sessions" pre-filter
 const DEFAULT_DEBOUNCE_MS = 900000;  // 15 min — the real per-session rate control
 
-// NaN/neg-guarded env int. A garbage value MUST fall back to the default: parseInt
-// 'garbage' is NaN, and `size < NaN` is false — which would SILENTLY DISABLE a
-// size throttle. The guard prevents that footgun.
-function envInt(name, def) {
-  const s = (process.env[name] || '').trim();
-  // Whole-string digits only -> default. Rejects '', 'garbage', AND the radix-10
-  // footguns parseInt would silently truncate: '0x10' -> 0 (disables a throttle),
-  // '1e9' -> 1, '-1' -> a negative size. A pure-digit string parses finite.
-  return /^\d+$/.test(s) ? parseInt(s, 10) : def;
-}
+// envInt: the whole-digit env-int guard is now the canonical `_lib/env-int` (a garbage value MUST fall
+// back to the default — parseInt 'garbage' is NaN and `size < NaN` is false, which would SILENTLY DISABLE
+// a size throttle). Called unclamped here (no min/max) — same behavior as the former local copy. Re-exported
+// below for the existing test surface.
 
 // Marker dir resolved LIVE (like _log's logDir) so a test/operator can redirect it.
 function markerDir() {

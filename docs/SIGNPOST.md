@@ -17,6 +17,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/kernel/_lib/deep-freeze.js` - _lib/deep-freeze.js — pure recursive Object.freeze.
 - `packages/kernel/_lib/edge-attestation.js` - v-next Carry C W1 — the ed25519 EDGE-ATTESTATION primitive.
 - `packages/kernel/_lib/enum-validate.js` - Shared R4 closed-enum validation with an NFC/homoglyph defense.
+- `packages/kernel/_lib/env-int.js` - Canonical whole-digit env-int reader.
 - `packages/kernel/_lib/env-placeholder.js` - _lib/env-placeholder.js — v2.9.0 Phase C.2 (FIX-I7)
 - `packages/kernel/_lib/evolution-snapshot-read.js` - v3.4 Wave 3 — the A6 hot-path snapshot reader (the 4th extract-to-leaf; canonical-json W0 ·
 - `packages/kernel/_lib/free-string-checks.js` - Shared free-string FIELD CHECKS for the Lab JSONL stores (an extract-to-kernel/_lib alongside

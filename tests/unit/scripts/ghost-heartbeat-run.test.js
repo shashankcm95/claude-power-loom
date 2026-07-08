@@ -326,6 +326,33 @@ test('R-real: two files sharing a CONTENT sessionId emit once; a grown file re-a
   } finally { fs.rmSync(pdir, { recursive: true, force: true }); rmrf(emittedSet); rmrf(runState); }
 });
 
+// R-real-malformed: a REAL auditTranscript whose judge CONTINUES the conversation (malformed ->
+// ok:false judge-malformed) must NOT throw and must still mark the path captured (object cost-map +
+// sessionIds), so the drain's retention keep-set stays correct. Pins the fix's "ok:false is tolerated"
+// contract with a test, not just source-reading. Rule-2a-corollary.
+test('R-real-malformed: a continuation-shaped judge -> path still captured (sessionIds), no emit, no throw', () => {
+  const D = require(DRIFT);
+  const emittedSet = tmpState();
+  const runState = tmpState();
+  const content = `${JSON.stringify({ type: 'user', sessionId: 'MZ', message: { role: 'user', content: 'did planning' } })}\n`;
+  const pdir = mkProjects([{ proj: 'p', sid: 'fileM', mtimeMs: 150, content }]);
+  try {
+    const emits = [];
+    // The judge role-plays the assistant instead of auditing (no JSON array) -> malformed.
+    const judgeFn = () => ({ ok: true, text: 'Got it — let me start the build. Ready?' });
+    const auditFn = (o) => D.auditTranscript({ transcriptPath: o.transcriptPath, judgeFn, emitFn: (c) => emits.push(c), statePath: emittedSet });
+    withEnv({ GHOST_HEARTBEAT_EMIT: '1' }, () => {
+      const r = R.runHeartbeat({ projectsDir: pdir, statePath: runState, emittedStatePath: emittedSet, auditFn });
+      assert.strictEqual(r.ok, true, 'the drain run itself succeeds despite a malformed audit');
+      assert.deepStrictEqual(emits, [], 'a malformed judge response emits nothing');
+      assert.strictEqual(r.malformed, 1, 'the malformed count is SURFACED on the run result (observable, not theater)');
+    });
+    const persisted = JSON.parse(fs.readFileSync(runState, 'utf8'));
+    const key = Object.keys(persisted.audited)[0];
+    assert.deepStrictEqual(persisted.audited[key], { mtimeMs: 150, sessionIds: ['MZ'] }, 'malformed audit still captures the sid keyset (ok:false tolerated, not a throw-failure)');
+  } finally { fs.rmSync(pdir, { recursive: true, force: true }); rmrf(emittedSet); rmrf(runState); }
+});
+
 // =========================== PR-B retention bound ===========================
 
 test('R17: a successful audit records the OBJECT cost-map { mtimeMs, sessionIds }', () => {
