@@ -50,6 +50,7 @@ const liveStore = require('./live-recall-store');
 const { buildWorldAnchorLesson, LESSON_2137 } = require('./lesson');
 const { parsePrUrl } = require('./parse-pr-url');
 const { runMergeObserve } = require('./merge-observer');
+const { runReviewObserve } = require('./review-observer');   // Gap-8 A-1: SHADOW review ingestion (records; gates nothing)
 const { mintFromMergeOutcome, resolveCapturedSignatureForAttest } = require('./world-anchor-mint');
 const { emitEgressAlert } = require('../../kernel/egress/alert');
 const { resolveEdgeSignerLaunch, isEdgeUidSepArmed } = require('./edge-signer-resolve');
@@ -301,7 +302,7 @@ function parseArgs(argv) {
 // gh html_url; the mint's resolveAnchorForPr joins on the EXACT pr_url, so a trailing-slash / case variant
 // never joins). diff_hash is RE-DERIVED from --diff bytes; there is NO --diff-hash arg. --candidate-patch-sha
 // is REQUIRED (a multi-solve issue must never silently pick the wrong captured lesson).
-const USAGE = 'Usage: cli.js <observe-merge --pr <url> [--merge-sha <sha>] (gh-verified; the SOLE mint path; isolate via LOOM_LAB_STATE_DIR) | record-merge --pr <url> --outcome merged|closed|stale [--merge-sha <sha>] [--dir <store>] (confirmation-only; mints nothing) | list-live [--live-dir <dir>] | backfill-2137 [--diff <path>] [--dir <store>] [--allow-placeholder] | attest-from-capture --pr-url <url> --issue-ref <n> --candidate-patch-sha <hex64> --diff <path> --approval-hash <hex64> --base-sha <hex40|hex64> --branch <b> --built-by <who> --emitted-at <iso> (--pr-url MUST be byte-identical to the emitted PR URL; diff_hash re-derived from --diff; SHADOW/production-inert)>\n';
+const USAGE = 'Usage: cli.js <observe-merge --pr <url> [--merge-sha <sha>] (gh-verified; the SOLE mint path; isolate via LOOM_LAB_STATE_DIR) | record-merge --pr <url> --outcome merged|closed|stale [--merge-sha <sha>] [--dir <store>] (confirmation-only; mints nothing) | list-live [--live-dir <dir>] | backfill-2137 [--diff <path>] [--dir <store>] [--allow-placeholder] | attest-from-capture --pr-url <url> --issue-ref <n> --candidate-patch-sha <hex64> --diff <path> --approval-hash <hex64> --base-sha <hex40|hex64> --branch <b> --built-by <who> --emitted-at <iso> (--pr-url MUST be byte-identical to the emitted PR URL; diff_hash re-derived from --diff; SHADOW/production-inert) | observe-reviews --pr <url> (Gap-8 A-1; SHADOW: records INSIDER review verdicts on the PR, gates nothing; isolate via LOOM_LAB_STATE_DIR)>\n';
 
 function emit(obj) { process.stdout.write(`${JSON.stringify(obj, null, 2)}\n`); }
 
@@ -375,11 +376,24 @@ async function mainObserveMerge(args, opts = {}) {
   return { code: r.ok ? 0 : 1, payload };
 }
 
+// Gap-8 A-1 — observe-reviews: SHADOW review ingestion. Reads a PR's INSIDER reviews (read-only GET) and
+// records each verdict snapshot to the review-outcome store. Gates NOTHING (the changes-requested breaker
+// source is a deferred Wave A-2). Async (it gh-reads in-process); NO join-key read (dam-safe). opts is a
+// TEST seam (an injected runner + isolated dir); production passes none.
+async function mainObserveReviews(args, opts = {}) {
+  const r = await runReviewObserve({ pr: args.pr }, { runner: opts.runner, dir: opts.dir, now: opts.now, selfUid: opts.selfUid });
+  emit(r);
+  return { code: r.ok ? 0 : 1, payload: r };
+}
+
 function main(argv) {
   const sub = argv[0];
   const args = parseArgs(argv.slice(1));
   if (sub === 'observe-merge') {
     return mainObserveMerge(args).then((res) => res.code);   // a Promise<number> (the only async arm)
+  }
+  if (sub === 'observe-reviews') {
+    return mainObserveReviews(args).then((res) => res.code); // Promise<number> (SHADOW review ingestion)
   }
   if (sub === 'record-merge') {
     // CONFIRMATION-ONLY (PR-3): record-merge mints nothing, so no live/edge dir is threaded.
@@ -423,4 +437,4 @@ if (require.main === module) {
 // The mint logic lives in world-anchor-mint.js (the SOLE mint path is observe-merge). cli.js exports the
 // gated entry points; mainObserveMerge is exported so a test can drive the gh-verified auto-mint arm with
 // an injected gh runner + store dirs (production passes no opts).
-module.exports = { parsePrUrl, runRecordMerge, mainObserveMerge, listLive, backfill2137, runAttestFromCapture, main, SPEC_KITTY_2137, PLACEHOLDER_DIFF_HASH };
+module.exports = { parsePrUrl, runRecordMerge, mainObserveMerge, mainObserveReviews, listLive, backfill2137, runAttestFromCapture, main, SPEC_KITTY_2137, PLACEHOLDER_DIFF_HASH };
