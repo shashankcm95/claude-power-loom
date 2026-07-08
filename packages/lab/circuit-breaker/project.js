@@ -41,6 +41,10 @@
 // requireLive -> a THROW (fail-closed-LOUD; a probe-dead tier must never read as a benign field a
 // careless consumer ignores). Bypass (exact '1') wins over requireLive — the operator's explicit
 // override of ALL trip logic, source-health included.
+// Gap-8 Wave A-2: `starved` now encodes TWO reasons -- negative-attestation's probe-dead producer AND
+// changes-requested's dormant-until-armed + provenance-unestablished; both mean "not yet safe to GATE",
+// same required behavior (requireLive fail-closes-LOUD). The throw message is source-agnostic; see
+// SOURCES['changes-requested'].
 //
 // Layer discipline (K12, by PATH): `lab`. Imports the sibling E1 + verdict-attestation stores
 // (lab->lab, no cycle — neither store imports the breaker). No kernel/_lib leaf is extracted — there
@@ -58,6 +62,11 @@ const { canonicalPersonaKey } = require('../persona-experiment/canonical-persona
 // windowed on FS mtime (the kernel scan; see record-scan.js for the C1/H1/H2 rationale).
 // v3.8 W1: scanRejectEvents — the reject-event source's cross-run, mtime-windowed read.
 const { scanCommittedOps, scanRejectEvents } = require('../../kernel/_lib/record-scan');
+// Gap-8 Wave A-2: the review-outcome store -- the changes-requested source's input. UNCONDITIONAL
+// module-load require like the two stores above (ENV-BEFORE-REQUIRE: it resolves LOOM_LAB_STATE_DIR at
+// load; a lazy require would resolve the dir too late). lab->lab, acyclic (the store does not import the
+// breaker -- the review-outcome-shadow dam enforces this source is the store's ONLY reader).
+const reviewOutcomeStore = require('../world-anchor/review-outcome-store');
 
 // "stateless windowed" carried in the runtime label (W4 honesty nit): this is a sliding-window denial
 // COUNTER, not a stateful open/half-open/closed breaker — a consumer must not assume hysteresis. It
@@ -120,6 +129,59 @@ function dedupBySubject(records, nowMs) {
   const deduped = [];
   for (const v of byKey.values()) deduped.push(v.r);
   return deduped.concat(passThrough);
+}
+
+// Gap-8 Wave A-2 -- the HALT-authorization narrow (C1-narrowed). The review-outcome STORE admits
+// {OWNER,MEMBER,COLLABORATOR} for display/Wave-B, but the BREAKER narrows the halt authority to
+// {OWNER,COLLABORATOR} (drop MEMBER -- org-wide, a coarse merge-block proxy). Its OWN frozen constant: a
+// 3rd deliberate duplication alongside live-puller's PR_INSIDER_ASSOCIATIONS + the store's
+// INSIDER_ASSOCIATIONS (independently auditable; a future edit to one list cannot silently widen another),
+// NOT a derived filter.
+const CR_HALT_ASSOCIATIONS = Object.freeze(['OWNER', 'COLLABORATOR']);
+
+// Gap-8 Wave A-2 -- the changes-requested STATE projection: which of OUR PRs are currently BLOCKED by an
+// insider {OWNER,COLLABORATOR} changes-requested review. A review_id is ACTIVE iff it has a CHANGES_REQUESTED
+// record and NO DISMISSED record FOR THE SAME (repo, pr_number, review_id). GitHub review-state is ASSUMED
+// monotonic (CR then maybe DISMISSED, never a cycle; a re-request is a NEW review_id) -- an unexecuted
+// external-API assumption, and its failure direction is UNDER-halt (§0a.3.1-safe). So the pairing is
+// presence-based, no time ordering. Both states are narrowed to CR_HALT_ASSOCIATIONS BEFORE pairing (H2: a
+// non-{OWNER,COLLABORATOR} DISMISSED must NOT cancel an insider CHANGES_REQUESTED). Collapse ACTIVE tuples to
+// one denial per (repo, pr_number). STATE not RATE (VERIFY board CR-1): recorded_at = nowMs -- a currently-
+// blocked PR is always in the counting window; an mtime-window would silently age out a still-blocking review
+// whose file mtime froze at first-observation under the store's first-write-wins dedup. new Map() + composite
+// STRING keys throughout (the store admits a __proto__-bearing repo segment -- H3). Halt-only NARROWS
+// (§0a.3.1): counting a non-ours review over-halts (integrity-safe, never grants); the forged-DISMISSED
+// under-halt is the symmetric same-uid residual -- both back-to-baseline while SHADOW+same-uid, re-examined at
+// arming (cross-uid foreign-write refusal + the is-this-ours join are the gate).
+function activeChangesRequestedDenials(records, nowMs) {
+  // Pair by the store's FULL identity (repo, pr_number, review_id), NOT review_id alone (VALIDATE board HIGH,
+  // live-probed): review_id is unique-per-PR on GitHub but the STORE does not enforce it (node_id =
+  // hash(repo,pr_number,review_id,state)), so a DISMISSED for an UNRELATED (repo,pr) sharing a review_id would
+  // otherwise cancel a real block, and two active PRs sharing a review_id would collapse to one denial. repo
+  // is case-folded (GitHub slugs are case-insensitive-unique) so a case-variant record does not inflate the
+  // count (VALIDATE board LOW).
+  const byReview = new Map();
+  for (const r of records) {
+    if (!r || !CR_HALT_ASSOCIATIONS.includes(r.author_association)) continue; // narrow BOTH states
+    if (r.state !== 'CHANGES_REQUESTED' && r.state !== 'DISMISSED') continue;
+    const key = JSON.stringify([String(r.repo).toLowerCase(), r.pr_number, r.review_id]);
+    const slot = byReview.get(key) || { cr: null, dismissed: false };
+    if (r.state === 'CHANGES_REQUESTED') { if (!slot.cr) slot.cr = r; } else { slot.dismissed = true; }
+    byReview.set(key, slot);
+  }
+  const blockedPrs = new Map(); // key: JSON.stringify([repo(lowercased), pr_number]) -- composite string
+  for (const slot of byReview.values()) {
+    if (!slot.cr || slot.dismissed) continue; // ACTIVE = a CHANGES_REQUESTED present and not dismissed
+    blockedPrs.set(JSON.stringify([String(slot.cr.repo).toLowerCase(), slot.cr.pr_number]), true);
+  }
+  // recorded_at = nowMs (STATE not RATE). NOTE the hysteresis latch is DEGENERATE for a state source
+  // (latched === tripped): there is no past threshold-crossing to hold, so the halt clears the instant the
+  // block clears (no LATCH_MS grace) -- CORRECT for a live-state signal, unlike the rate sources (VALIDATE
+  // board MEDIUM, accepted).
+  const recordedAt = new Date(nowMs).toISOString();
+  const out = [];
+  for (let i = 0; i < blockedPrs.size; i += 1) out.push({ persona: 'changes-requested', recorded_at: recordedAt });
+  return out;
 }
 
 const SOURCES = {
@@ -190,6 +252,22 @@ const SOURCES = {
       sinceMs: nowMs - (windowMs() + latchMs()),
       stateDir: srcOpts && srcOpts.stateDir,
     }).map((r) => ({ persona: 'reject-event', recorded_at: new Date(r.mtime_ms).toISOString() })),
+  },
+  // Gap-8 Wave A-2: the changes-requested review-block source (SHADOW / OPT-IN). A "denial" is one of OUR
+  // PRs currently BLOCKED by an insider {OWNER,COLLABORATOR} changes-requested review (dismissal-aware,
+  // STATE-count via activeChangesRequestedDenials). Constant persona = the bare id 'changes-requested' --
+  // deliberately NOT a `kernel:` shape (the v3.6 W2a IDOR class); per-persona is degenerate, the GLOBAL cap
+  // gates (like reject-event / manage-promote). STARVED: the producer (the A-1 review-observer) is
+  // dormant-until-armed AND provenance ("is-this-ours") is unestablished (a Wave-B/arming join) -- so a clear
+  // read is NOT a safety signal; a requireLive GATING consumer fail-closes-LOUD (G2). Halt-only NARROWS
+  // (§0a.3.1). srcOpts.stateDir is the review-outcome store dir (per-call, like manage-promote passes the
+  // kernel store dir); default -> the store's own LAB dir.
+  'changes-requested': {
+    id: 'changes-requested',
+    starved: true,
+    list: (nowMs, srcOpts) => activeChangesRequestedDenials(
+      reviewOutcomeStore.listReviewOutcomes({ dir: srcOpts && srcOpts.stateDir }), nowMs,
+    ),
   },
 };
 const DEFAULT_SOURCE = 'verdict-fail';
@@ -408,7 +486,7 @@ function evaluate(opts) {
   // fail-closed direction. A strict === true silently disabled the arm on requireLive:'x'/1 (and via
   // the CLI's `--require-live <stray-token>`, which parses the token as the flag VALUE).
   if (o.requireLive && view.source_starved) {
-    throw new Error(`circuit-breaker: source '${view.source}' is STARVED (its producer is probe-dead) — a clear read is NOT a safety signal; requireLive refuses it. Use the live default (${DEFAULT_SOURCE}) or drop requireLive for an advisory read.`);
+    throw new Error(`circuit-breaker: source '${view.source}' is STARVED (its producer is not a live safety signal) — a clear read is NOT a safety signal; requireLive refuses it. Use the live default (${DEFAULT_SOURCE}) or drop requireLive for an advisory read.`);
   }
   const globalTripped = view.global.tripped;
   const latchedGlobal = view.global.latched === true;
@@ -425,7 +503,7 @@ function evaluate(opts) {
   return {
     tripped: globalEffective || personaEffective,
     scope,
-    source: view.source, // which denial source the decision is based on (verdict-fail | negative-attestation | manage-promote | reject-event)
+    source: view.source, // which denial source the decision is based on (verdict-fail | negative-attestation | manage-promote | reject-event | changes-requested)
     source_starved: view.source_starved,
     global_tripped: globalTripped,
     persona_tripped: personaTripped,
