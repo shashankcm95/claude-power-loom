@@ -54,9 +54,14 @@ exists to earn.
 
 **Design sketch (deferred; not this wave).** A review-observer (fetch review state/comments) + a `reviewContext`
 threaded through `runLiveDraftLoop` -> the persona materializer + an `emitPR` UPDATE path (push a commit to the
-existing PR branch). **Security invariant:** reviewer prose is untrusted external text; it must pass the same
-kernel-constant envelope / scrubbing the egress path already enforces before it can reach a re-solve prompt (the
-`#273` / actor-injection discipline). The safe first landing spot for a review-derived signal is the
+existing PR branch). **Security invariant (CORRECTED 2026-07-07; authority: `research/2026-07-07-gap8-review-loop-scope.md`
+§Correction-to-the-sketch):** reviewer prose is untrusted external text. The containing control is **inbound
+tool-inertness**: prose enters ONLY the tool-less, network-isolated contained actor (`verifyToollessRuntime`,
+fail-closed), labeled untrusted-not-instruction, behind the human approval gate. It is NOT the outbound
+secret-scrub (`scrub.js`), a DLP no-op against inbound instruction-smuggling (the original "same kernel-constant
+envelope / scrubbing" wording named the wrong control). Prefer the structured verdict + changed line-ranges over
+prose; a re-push mints a FRESH approval, never reusing the one-shot create approval (`#273` integrity-not-provenance).
+The safe first landing spot for a review-derived signal is the
 circuit-breaker denial-source registry (a `changes-requested` source halts, and halt-only NARROWS -> OQ-NS-6-safe).
 
 ## Gap 9 — DISPOSAL: "only merged is retained" is non-promotion, not disposal
