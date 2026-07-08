@@ -156,8 +156,9 @@ wanted, the fix is a bundle, then a re-measure:
    and (with the current prompt) had WORSE recall. No model upgrade is indicated.
 6. **RE-RUN this eval** on the fixed config (a wider labeled-drift set) before any flip.
 
-This is a kernel change to `drift-audit.js` (+ `capability-free-claude.js` timeout) -> a real build wave
-with the 3-lens VALIDATE, gated on user approval. It is NOT an ops flip.
+This is a kernel change to `drift-audit.js` (the judge timeout threads from there;
+`capability-free-claude.js` stays untouched) -> a real build wave with the 3-lens VALIDATE, gated on user
+approval. It is NOT an ops flip.
 
 ## Confidence / caveats
 

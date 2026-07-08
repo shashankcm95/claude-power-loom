@@ -5,9 +5,12 @@
 **Route-decide:** `borderline` (0.30) — under-scored on the `stakes`/`infra` lexicon; genuinely a small,
 well-scoped kernel fix, so the altitude is the focused per-wave workflow (architect VERIFY + 3-lens
 VALIDATE + eval re-run), NOT a HETS team spawn.
-**Blast radius:** `packages/kernel/spawn-state/drift-audit.js` + `tests/unit/scripts/drift-audit.test.js`
-ONLY. Grep confirms no non-test caller of `buildJudgePrompt` / `parseJudgeJson` outside drift-audit.js;
-`capability-free-claude.js` (regression-frozen flags) is left untouched — the timeout is passed as a param.
+**Blast radius (WIDENED by the VERIFY board — see "Revised blast radius" below; the original plan scoped
+this to drift-audit.js + its test):** `packages/kernel/spawn-state/drift-audit.js` (the fix) + the NEW
+`packages/kernel/_lib/env-int.js` and the two rewired ghost-heartbeat siblings (`ghost-heartbeat-stop.js`
+/ `ghost-heartbeat-run.js`) + their tests. Grep confirms no non-test caller of `buildJudgePrompt` /
+`parseJudgeJson` outside drift-audit.js; `capability-free-claude.js` (regression-frozen flags) stays
+untouched — the timeout is passed as a param.
 
 ## Problem (Condition → Failure mode → Resolution)
 
