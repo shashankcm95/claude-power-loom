@@ -2,12 +2,12 @@
 
 // tests/unit/lab/world-anchor/review-outcome-shadow.test.js
 //
-// Gap-8 Wave A-1 — the SHADOW / OBSERVABILITY-ONLY dam for the review-outcome store. This slice RECORDS
-// insider review verdicts but NOTHING consumes them (the changes-requested circuit-breaker source is a
-// deferred Wave A-2). The dam enforces: (a) the ONLY external importer of review-outcome-store is the WRITER
-// (review-observer.js); (b) ZERO production caller reads the store (no listReviewOutcomes caller). When A-2
-// lands its breaker source, it will be admitted here as the one reader WITH its is-this-ours join — never
-// silently. Mirrors live-disposal-shadow / live-pending-store-shadow.
+// Gap-8 Wave A-1/A-2 -- the SHADOW / OBSERVABILITY-ONLY dam for the review-outcome store. The store RECORDS
+// insider review verdicts; the ONLY consumer is the Wave A-2 `changes-requested` breaker SOURCE, which is
+// STARVED (non-gating under requireLive) and halt-only. The dam enforces: (a) EXACTLY TWO importers of
+// review-outcome-store -- the WRITER (review-observer.js) + the READER (circuit-breaker/project.js); (b)
+// EXACTLY ONE production reader (the breaker source). A-2 was admitted here EXPLICITLY (never silently); the
+// is-this-ours join remains a named arming-gate. Mirrors live-disposal-shadow / live-pending-store-shadow.
 
 'use strict';
 
@@ -24,6 +24,10 @@ const STORE_DEFINER = path.join(WORLD_ANCHOR_DIR, 'review-outcome-store.js');
 // #451-C2 hole: a blanket sibling-dir skip makes a same-dir sibling importer invisible; the scan must cover
 // siblings, exempting ONLY the definer + the writer by full-path).
 const WRITER_FULLPATH = path.join(WORLD_ANCHOR_DIR, 'review-observer.js');
+// Gap-8 Wave A-2: the ONE admitted READER of the store -- the circuit-breaker's `changes-requested` source
+// (a starved, non-gating SOURCES entry). It is BOTH an importer (require) and a reader (listReviewOutcomes),
+// admitted here by full-path in both scans. The dam thus evolves from "zero readers" to "exactly one".
+const BREAKER_READER_FULLPATH = path.join(PACKAGES, 'lab', 'circuit-breaker', 'project.js');
 
 let passed = 0; let failed = 0;
 function test(name, fn) {
@@ -57,19 +61,21 @@ test('SHADOW matcher catches the require/.js/ESM/dynamic-import forms; no false-
   assert.ok(!IMPORT_RE.test("require('./review-outcome-store-cli')"), 'no false-positive on an adjacent name');
 });
 
-test('SHADOW import-graph: EXACTLY ONE importer of review-outcome-store — the WRITER (scan covers world-anchor SIBLINGS too, #451-C2)', () => {
+test('SHADOW import-graph: EXACTLY TWO importers of review-outcome-store — the WRITER + the Wave A-2 breaker READER (scan covers world-anchor SIBLINGS too, #451-C2)', () => {
   const offenders = [];
   for (const file of walkJs(PACKAGES)) {
     if (file === STORE_DEFINER) continue;                        // the module itself
-    if (file === WRITER_FULLPATH) continue;                      // the ONE admitted importer (full-path ===)
+    if (file === WRITER_FULLPATH) continue;                      // the WRITER (review-observer.js)
+    if (file === BREAKER_READER_FULLPATH) continue;              // the READER (the changes-requested source)
     const src = fs.readFileSync(file, 'utf8');
     if (IMPORT_RE.test(src)) offenders.push(path.relative(REPO, file));
   }
-  assert.deepStrictEqual(offenders, [], `only review-observer.js (writer) may import review-outcome-store (siblings included) - these also do: ${offenders.join(', ')}`);
+  assert.deepStrictEqual(offenders, [], `only review-observer.js (writer) + circuit-breaker/project.js (the Wave A-2 breaker source) may import review-outcome-store (siblings included) - these also do: ${offenders.join(', ')}`);
 });
 
-test('SHADOW import-graph: the admitted writer ACTUALLY imports the store (allowlist is non-vacuous)', () => {
-  assert.ok(IMPORT_RE.test(fs.readFileSync(WRITER_FULLPATH, 'utf8')), 'the observer imports review-outcome-store');
+test('SHADOW import-graph: BOTH admitted modules ACTUALLY import the store (allowlist is non-vacuous)', () => {
+  assert.ok(IMPORT_RE.test(fs.readFileSync(WRITER_FULLPATH, 'utf8')), 'the observer (writer) imports review-outcome-store');
+  assert.ok(IMPORT_RE.test(fs.readFileSync(BREAKER_READER_FULLPATH, 'utf8')), 'the breaker source (reader) imports review-outcome-store');
 });
 
 test('SHADOW importer-scan is NON-VACUOUS: a planted SIBLING importer (in world-anchor/) is DETECTED (#451-C2)', () => {
@@ -88,14 +94,19 @@ test('SHADOW importer-scan is NON-VACUOUS: a planted SIBLING importer (in world-
   } finally { fs.rmSync(planted, { force: true }); }
 });
 
-test('SHADOW: ZERO production consumer READS the store (no listReviewOutcomes caller; scan covers world-anchor siblings)', () => {
+test('SHADOW: EXACTLY ONE production consumer READS the store — the Wave A-2 breaker source (scan covers world-anchor siblings)', () => {
   const offenders = [];
   for (const file of walkJs(PACKAGES)) {
     if (file === STORE_DEFINER) continue;                         // the definer defines the reader, not calls it
+    if (file === BREAKER_READER_FULLPATH) continue;               // the ONE admitted reader (the changes-requested source)
     const src = fs.readFileSync(file, 'utf8');
     if (READER_CALL_RE.test(src)) offenders.push(path.relative(REPO, file));
   }
-  assert.deepStrictEqual(offenders, [], `NOTHING may read the store this slice (Wave A-2's source is the first reader) - these call listReviewOutcomes: ${offenders.join(', ')}`);
+  assert.deepStrictEqual(offenders, [], `only circuit-breaker/project.js (the Wave A-2 breaker source) may read the store - these also call listReviewOutcomes: ${offenders.join(', ')}`);
+});
+
+test('SHADOW reader-allowlist is NON-VACUOUS: the admitted breaker source ACTUALLY reads the store', () => {
+  assert.ok(READER_CALL_RE.test(fs.readFileSync(BREAKER_READER_FULLPATH, 'utf8')), 'the changes-requested source calls listReviewOutcomes (else the allowlist entry is dead)');
 });
 
 test('SHADOW reader-scan is NON-VACUOUS: a planted sibling reader is DETECTED', () => {
