@@ -51,6 +51,7 @@ const { buildWorldAnchorLesson, LESSON_2137 } = require('./lesson');
 const { parsePrUrl } = require('./parse-pr-url');
 const { runMergeObserve } = require('./merge-observer');
 const { runReviewObserve } = require('./review-observer');   // Gap-8 A-1: SHADOW review ingestion (records; gates nothing)
+const personaStore = require('./persona-attribution-store'); // Gap-8 A0: the PR->persona map producer surface (SHADOW)
 const { mintFromMergeOutcome, resolveCapturedSignatureForAttest } = require('./world-anchor-mint');
 const { emitEgressAlert } = require('../../kernel/egress/alert');
 const { resolveEdgeSignerLaunch, isEdgeUidSepArmed } = require('./edge-signer-resolve');
@@ -114,6 +115,31 @@ function runRecordMerge(args, opts = {}) {
  */
 function listLive(opts = {}) {
   return liveStore.listLiveNodes(opts.dir ? { dir: opts.dir } : {});
+}
+
+/**
+ * Gap-8 A0 — the record-persona producer surface: attach a building persona to a (repo, pr_number) in the
+ * PR->persona map so the changes-requested breaker can attribute a halt per-persona. INVOCABLE NOW (it feeds
+ * only the SHADOW starved breaker; gates nothing). The armed orchestrator's live call site (which passes the
+ * real emitRes.pr.number + classifyFields.persona) is arming-time wiring; this cli arm is the operator/test
+ * surface. --pr is validated as a canonical decimal HERE (a bare `--pr` -> true -> Number(true)===1 would
+ * record against the WRONG PR — the same guard the attest arm applies to --issue-ref). The store re-validates
+ * (folds repo, roster-checks persona, one-per-PR conflict-reject); every refuse is OBSERVABLE. NEVER throws.
+ * @param {{repo:string, pr:string, persona:string}} args
+ * @param {{dir?:string, now?:number}} [opts]
+ * @returns {{ok:boolean, node_id?:string, reason?:string, deduped?:boolean}}
+ */
+function runRecordPersona(args, opts = {}) {
+  const a = args && typeof args === 'object' && !Array.isArray(args) ? args : {};
+  if (typeof a.repo !== 'string') return { ok: false, reason: 'bad-repo' };
+  if (typeof a.pr !== 'string' || !/^[1-9][0-9]*$/.test(a.pr)) return { ok: false, reason: 'bad-pr-number' };
+  const pr_number = Number(a.pr);
+  if (!Number.isSafeInteger(pr_number)) return { ok: false, reason: 'bad-pr-number' };
+  if (typeof a.persona !== 'string') return { ok: false, reason: 'bad-persona' };
+  return personaStore.recordPersonaForPr(
+    { repo: a.repo, pr_number, persona: a.persona },
+    { dir: opts.dir, now: opts.now },
+  );
 }
 
 /**
@@ -302,7 +328,7 @@ function parseArgs(argv) {
 // gh html_url; the mint's resolveAnchorForPr joins on the EXACT pr_url, so a trailing-slash / case variant
 // never joins). diff_hash is RE-DERIVED from --diff bytes; there is NO --diff-hash arg. --candidate-patch-sha
 // is REQUIRED (a multi-solve issue must never silently pick the wrong captured lesson).
-const USAGE = 'Usage: cli.js <observe-merge --pr <url> [--merge-sha <sha>] (gh-verified; the SOLE mint path; isolate via LOOM_LAB_STATE_DIR) | record-merge --pr <url> --outcome merged|closed|stale [--merge-sha <sha>] [--dir <store>] (confirmation-only; mints nothing) | list-live [--live-dir <dir>] | backfill-2137 [--diff <path>] [--dir <store>] [--allow-placeholder] | attest-from-capture --pr-url <url> --issue-ref <n> --candidate-patch-sha <hex64> --diff <path> --approval-hash <hex64> --base-sha <hex40|hex64> --branch <b> --built-by <who> --emitted-at <iso> (--pr-url MUST be byte-identical to the emitted PR URL; diff_hash re-derived from --diff; SHADOW/production-inert) | observe-reviews --pr <url> (Gap-8 A-1; SHADOW: records INSIDER review verdicts on the PR, gates nothing; isolate via LOOM_LAB_STATE_DIR)>\n';
+const USAGE = 'Usage: cli.js <observe-merge --pr <url> [--merge-sha <sha>] (gh-verified; the SOLE mint path; isolate via LOOM_LAB_STATE_DIR) | record-merge --pr <url> --outcome merged|closed|stale [--merge-sha <sha>] [--dir <store>] (confirmation-only; mints nothing) | list-live [--live-dir <dir>] | backfill-2137 [--diff <path>] [--dir <store>] [--allow-placeholder] | attest-from-capture --pr-url <url> --issue-ref <n> --candidate-patch-sha <hex64> --diff <path> --approval-hash <hex64> --base-sha <hex40|hex64> --branch <b> --built-by <who> --emitted-at <iso> (--pr-url MUST be byte-identical to the emitted PR URL; diff_hash re-derived from --diff; SHADOW/production-inert) | observe-reviews --pr <url> (Gap-8 A-1; SHADOW: records INSIDER review verdicts on the PR, gates nothing; isolate via LOOM_LAB_STATE_DIR) | record-persona --repo <slug> --pr <n> --persona <bare-agentType> [--dir <store>] (Gap-8 A0; SHADOW: attach a builder persona to a PR for per-persona halting)>\n';
 
 function emit(obj) { process.stdout.write(`${JSON.stringify(obj, null, 2)}\n`); }
 
@@ -409,6 +435,12 @@ function main(argv) {
     emit({ ok: true, count: nodes.length, nodes });
     return 0;
   }
+  if (sub === 'record-persona') {
+    // Gap-8 A0: attach a builder persona to a PR (SHADOW; feeds only the starved changes-requested breaker).
+    const r = runRecordPersona({ repo: args.repo, pr: args.pr, persona: args.persona }, { dir: args.dir });
+    emit(r);
+    return r.ok ? 0 : 1;
+  }
   if (sub === 'backfill-2137') {
     const r = backfill2137({ dir: args.dir, diffPath: args.diff, allowPlaceholder: args['allow-placeholder'] === true });
     emit(r);
@@ -437,4 +469,4 @@ if (require.main === module) {
 // The mint logic lives in world-anchor-mint.js (the SOLE mint path is observe-merge). cli.js exports the
 // gated entry points; mainObserveMerge is exported so a test can drive the gh-verified auto-mint arm with
 // an injected gh runner + store dirs (production passes no opts).
-module.exports = { parsePrUrl, runRecordMerge, mainObserveMerge, mainObserveReviews, listLive, backfill2137, runAttestFromCapture, main, SPEC_KITTY_2137, PLACEHOLDER_DIFF_HASH };
+module.exports = { parsePrUrl, runRecordMerge, mainObserveMerge, mainObserveReviews, listLive, runRecordPersona, backfill2137, runAttestFromCapture, main, SPEC_KITTY_2137, PLACEHOLDER_DIFF_HASH };
