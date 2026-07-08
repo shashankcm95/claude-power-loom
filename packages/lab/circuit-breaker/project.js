@@ -67,6 +67,10 @@ const { scanCommittedOps, scanRejectEvents } = require('../../kernel/_lib/record
 // load; a lazy require would resolve the dir too late). lab->lab, acyclic (the store does not import the
 // breaker -- the review-outcome-shadow dam enforces this source is the store's ONLY reader).
 const reviewOutcomeStore = require('../world-anchor/review-outcome-store');
+// Gap-8 Wave A0: the PR->persona attribution map -- the changes-requested source's per-persona JOIN input.
+// Same module-load require discipline (resolves LOOM_LAB_STATE_DIR at load). lab->lab, acyclic (the map store
+// does not import the breaker -- the persona-attribution-shadow dam enforces this source is its ONLY reader).
+const personaAttributionStore = require('../world-anchor/persona-attribution-store');
 
 // "stateless windowed" carried in the runtime label (W4 honesty nit): this is a sliding-window denial
 // COUNTER, not a stateful open/half-open/closed breaker — a consumer must not assume hysteresis. It
@@ -153,7 +157,17 @@ const CR_HALT_ASSOCIATIONS = Object.freeze(['OWNER', 'COLLABORATOR']);
 // (§0a.3.1): counting a non-ours review over-halts (integrity-safe, never grants); the forged-DISMISSED
 // under-halt is the symmetric same-uid residual -- both back-to-baseline while SHADOW+same-uid, re-examined at
 // arming (cross-uid foreign-write refusal + the is-this-ours join are the gate).
-function activeChangesRequestedDenials(records, nowMs) {
+//
+// Gap-8 Wave A0 -- the PER-PERSONA JOIN: for each blocked (repo, pr_number) we look up the building persona in
+// the persona-attribution map (keyed by the SAME folded (repo, pr_number)) and emit the denial under THAT
+// persona; an un-mapped block falls to the global sentinel 'changes-requested' (dam-preserving -- it still
+// counts globally, never mis-attributed). NO relocate-dedup (VERIFY board F2): blockedPrs already collapses to
+// one denial per (repo, pr), so dedupBySubject's agent_id multiplicity does not exist here and a (persona,id)
+// guard would be vacuous; the store's one-per-PR + wx + explicit-field conflict-reject IS the relocate defense.
+// The GLOBAL count is a persona-agnostic SUM (one event per blocked PR) -> INVARIANT to the split (F7): an empty
+// map is byte-identical to the pre-A0 global-only behavior. lookupPersonaForPr is FAIL-SOFT (never throws) so a
+// poisoned map record relocates that PR to the sentinel, never aborting the projection (F6).
+function activeChangesRequestedDenials(records, nowMs, personaMapDir) {
   // Pair by the store's FULL identity (repo, pr_number, review_id), NOT review_id alone (VALIDATE board HIGH,
   // live-probed): review_id is unique-per-PR on GitHub but the STORE does not enforce it (node_id =
   // hash(repo,pr_number,review_id,state)), so a DISMISSED for an UNRELATED (repo,pr) sharing a review_id would
@@ -169,18 +183,23 @@ function activeChangesRequestedDenials(records, nowMs) {
     if (r.state === 'CHANGES_REQUESTED') { if (!slot.cr) slot.cr = r; } else { slot.dismissed = true; }
     byReview.set(key, slot);
   }
-  const blockedPrs = new Map(); // key: JSON.stringify([repo(lowercased), pr_number]) -- composite string
+  const blockedPrs = new Map(); // key: JSON.stringify([repo(folded), pr_number]); value: {repo(folded), pr_number}
   for (const slot of byReview.values()) {
     if (!slot.cr || slot.dismissed) continue; // ACTIVE = a CHANGES_REQUESTED present and not dismissed
-    blockedPrs.set(JSON.stringify([String(slot.cr.repo).toLowerCase(), slot.cr.pr_number]), true);
+    const repo = String(slot.cr.repo).toLowerCase();
+    blockedPrs.set(JSON.stringify([repo, slot.cr.pr_number]), { repo, pr_number: slot.cr.pr_number });
   }
   // recorded_at = nowMs (STATE not RATE). NOTE the hysteresis latch is DEGENERATE for a state source
   // (latched === tripped): there is no past threshold-crossing to hold, so the halt clears the instant the
   // block clears (no LATCH_MS grace) -- CORRECT for a live-state signal, unlike the rate sources (VALIDATE
-  // board MEDIUM, accepted).
+  // board MEDIUM, accepted). Per blocked PR, join to the builder persona (folded repo -> the map's node_id);
+  // an un-mapped PR (or a poisoned/unverifiable map record -> null) falls to the global sentinel.
   const recordedAt = new Date(nowMs).toISOString();
   const out = [];
-  for (let i = 0; i < blockedPrs.size; i += 1) out.push({ persona: 'changes-requested', recorded_at: recordedAt });
+  for (const { repo, pr_number } of blockedPrs.values()) {
+    const mapped = personaAttributionStore.lookupPersonaForPr(repo, pr_number, { dir: personaMapDir });
+    out.push({ persona: mapped || 'changes-requested', recorded_at: recordedAt });
+  }
   return out;
 }
 
@@ -253,20 +272,28 @@ const SOURCES = {
       stateDir: srcOpts && srcOpts.stateDir,
     }).map((r) => ({ persona: 'reject-event', recorded_at: new Date(r.mtime_ms).toISOString() })),
   },
-  // Gap-8 Wave A-2: the changes-requested review-block source (SHADOW / OPT-IN). A "denial" is one of OUR
+  // Gap-8 Wave A-2/A0: the changes-requested review-block source (SHADOW / OPT-IN). A "denial" is one of OUR
   // PRs currently BLOCKED by an insider {OWNER,COLLABORATOR} changes-requested review (dismissal-aware,
-  // STATE-count via activeChangesRequestedDenials). Constant persona = the bare id 'changes-requested' --
-  // deliberately NOT a `kernel:` shape (the v3.6 W2a IDOR class); per-persona is degenerate, the GLOBAL cap
-  // gates (like reject-event / manage-promote). STARVED: the producer (the A-1 review-observer) is
-  // dormant-until-armed AND provenance ("is-this-ours") is unestablished (a Wave-B/arming join) -- so a clear
-  // read is NOT a safety signal; a requireLive GATING consumer fail-closes-LOUD (G2). Halt-only NARROWS
-  // (§0a.3.1). srcOpts.stateDir is the review-outcome store dir (per-call, like manage-promote passes the
-  // kernel store dir); default -> the store's own LAB dir.
+  // STATE-count via activeChangesRequestedDenials). Wave A0 makes the persona the MAPPED builder plane:
+  // activeChangesRequestedDenials joins each blocked PR to its persona-attribution record and emits
+  // (mapped-persona || the bare sentinel 'changes-requested') -- the persona is NO LONGER constant, and
+  // per-persona attribution is meaningful (never a `kernel:` shape -- the v3.6 W2a IDOR class -- since the map
+  // roster-gates). The SAFE GATING PLANE STAYS GLOBAL (the persona-agnostic sum, invariant to the split);
+  // per-persona is COMPUTED-but-attacker-influenceable via the map's NAMED residuals (co-forge / first-write
+  // pre-seed -> a per-persona UNDER-halt, halt-only NARROWS, §0a.3.1) and is NOT a gating plane while SHADOW.
+  // STARVED: the producer (the A-1 review-observer) is dormant-until-armed AND provenance ("is-this-ours") is
+  // unestablished (a Wave-B/arming join) -- so a clear read is NOT a safety signal; a requireLive GATING
+  // consumer fail-closes-LOUD (G2). srcOpts.stateDir is the review-outcome store dir; srcOpts.personaMapDir is
+  // the A0 map dir (both per-call, like manage-promote passes the kernel store dir); default -> the LAB dir.
   'changes-requested': {
     id: 'changes-requested',
     starved: true,
+    // Wave A0: srcOpts.personaMapDir is the SECOND injectable store dir (the PR->persona map), passed alongside
+    // srcOpts.stateDir (the review-outcome store). undefined -> the map store's own DEFAULT_DIR (empty in a
+    // fresh env -> every lookup null -> the global sentinel; byte-identical to pre-A0 behavior).
     list: (nowMs, srcOpts) => activeChangesRequestedDenials(
       reviewOutcomeStore.listReviewOutcomes({ dir: srcOpts && srcOpts.stateDir }), nowMs,
+      srcOpts && srcOpts.personaMapDir,
     ),
   },
 };
@@ -385,8 +412,9 @@ function projectBreaker(opts) {
   const globalMaxD = globalMaxDenials();
   // Normalized denial-events {persona, recorded_at}; pass the RESOLVED nowMs so the source's expiry
   // filter uses the identical clock (full determinism). srcOpts carries opts.stateDir for the
-  // manage-promote source (the kernel store it scans); the lab-store sources ignore it.
-  const records = SOURCES[sourceId].list(nowMs, { stateDir: o.stateDir });
+  // manage-promote / reject-event / changes-requested sources (the store they scan); the verdict/neg sources
+  // ignore it. opts.personaMapDir (Wave A0) is the changes-requested source's SECOND store dir (the persona map).
+  const records = SOURCES[sourceId].list(nowMs, { stateDir: o.stateDir, personaMapDir: o.personaMapDir });
 
   const byPersona = new Map(); // Map → a __proto__/toString persona name can't poison the accumulator
   // v3.8b latch input: per-plane COUNTABLE timestamps within the look-back horizon. Same exclusions
@@ -474,7 +502,7 @@ function evaluate(opts) {
   const rawPersona = (typeof o.persona === 'string' && o.persona) || null;
   const folded = rawPersona ? rawPersona.toLowerCase() : null;
   const persona = folded ? (canonicalPersonaKey(folded) || folded) : null;
-  const view = projectBreaker({ now: o.now, source: o.source, stateDir: o.stateDir });
+  const view = projectBreaker({ now: o.now, source: o.source, stateDir: o.stateDir, personaMapDir: o.personaMapDir });
   if (view.bypassed) {
     // Bypass is checked BEFORE the requireLive guard (CR-F3): the operator's exact-'1' override
     // beats source-health refusal, like every other trip axis.

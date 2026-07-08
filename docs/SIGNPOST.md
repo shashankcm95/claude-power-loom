@@ -422,6 +422,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/lab/world-anchor/merge-observer.js` - Autonomous-SDE ladder gap-map item 2, PR-2 - the merge OBSERVER (SHADOW).
 - `packages/lab/world-anchor/merge-outcome-store.js` - Autonomous-SDE ladder gap-map item 2, PR-2 - the gh-verified MERGE-OUTCOME record store (SHADOW).
 - `packages/lab/world-anchor/parse-pr-url.js` - Autonomous-SDE ladder gap-map item 2, PR-2 - the shared GitHub PR-URL parser.
+- `packages/lab/world-anchor/persona-attribution-store.js` - Gap-8 review-loop, Wave A0 — the content-addressed PR->PERSONA attribution map (SHADOW).
 - `packages/lab/world-anchor/review-observer.js` - Gap-8 review-loop, Wave A-1 — the REVIEW OBSERVER (SHADOW).
 - `packages/lab/world-anchor/review-outcome-store.js` - Gap-8 review-loop, Wave A-1 — the content-addressed REVIEW-OUTCOME store (SHADOW).
 - `packages/lab/world-anchor/world-anchor-edge-store.js` - Autonomous-SDE ladder item 5, PR-A.1 - the SIGNABLE `world-anchored-by` edge lane (SHADOW).
