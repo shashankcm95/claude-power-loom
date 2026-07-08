@@ -162,5 +162,24 @@ test('r12. exports the insider + state enums for the observer/source to reuse', 
   assert.ok(REVIEW_STATES.includes('CHANGES_REQUESTED') && !REVIEW_STATES.includes('PENDING'));
 });
 
+test('r13. CR1: a malformed-JSON file at a valid node_id path is rejected on read (distinct token, skipped)', () => {
+  const dir = tmp('rev-r13-');
+  const r = recordReviewOutcome(REC, { dir, now: 1000, selfUid: SELF });
+  fs.writeFileSync(path.join(dir, r.node_id + '.json'), 'not valid json {{{');  // parse-tamper
+  const orig = process.stderr.write.bind(process.stderr); const lines = [];
+  process.stderr.write = (c) => { lines.push(String(c)); return true; };
+  try { assert.deepStrictEqual(listReviewOutcomes({ dir, selfUid: SELF }), [], 'malformed record skipped'); }
+  finally { process.stderr.write = orig; }
+  assert.ok(lines.some((l) => l.includes('"ro_reason":"malformed-json"')), 'a distinct malformed-json token (not lumped into io)');
+});
+
+test('r14. CR4: recordReviewOutcome refuses to clobber an UNVERIFIABLE existing file (existing-record-unverifiable)', () => {
+  const dir = tmp('rev-r14-');
+  const r = recordReviewOutcome(REC, { dir, now: 1000, selfUid: SELF });
+  fs.writeFileSync(path.join(dir, r.node_id + '.json'), 'garbage');            // pre-existing file fails verify-on-read
+  const again = recordReviewOutcome(REC, { dir, now: 2000, selfUid: SELF });
+  assert.deepStrictEqual({ ok: again.ok, reason: again.reason }, { ok: false, reason: 'existing-record-unverifiable' });
+});
+
 process.stdout.write(`\nreview-outcome-store: ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);

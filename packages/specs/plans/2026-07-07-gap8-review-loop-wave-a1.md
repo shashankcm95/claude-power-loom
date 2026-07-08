@@ -113,3 +113,12 @@ Board tokens ~378K, 49 tool calls, 3/3 done. Full findings: workflow `wf_904d21f
 | V7 | Store header "proves" over-runs the integrity-not-provenance model (a same-uid co-forge fabricates a record for a review GitHub never returned). | LOW (honesty, CONFIRMED) | **FOLDED** — "ASSERTS (does not prove)" |
 
 **Board endorsed** (CONFIRMED, no change): all 16 F-folds present; the store is SHADOW (zero reader, dam holds); no kernel join-key read (dam-safe); the accepted same-uid co-forge is inert-while-SHADOW + named; the A-2 forward-contract (re-establish is-this-ours before gating) is recorded in the store header. Board tokens ~379K, 56 tool calls, 13 live probes, 3/3 done. Full findings: workflow `wf_61b4b0dd-24f`.
+
+### CodeRabbit (async bot, real review — no rate-limit; 2 inline + 2 nitpicks)
+
+| Finding | Disposition |
+|---|---|
+| **Major** (shadow-test): the importer-scan blanket-skipped world-anchor siblings → a sibling importing the store was invisible (#451-C2 hole on the importer axis); `CLI_FULLPATH` was a dead/vacuous const | **FOLDED** — scan now covers siblings (exempt only definer+writer full-path) + a planted-sibling-importer non-vacuity probe; dead const removed |
+| **Minor** (store): a malformed-JSON tamper was swallowed as `alert('io', io_code:undefined)`, conflating a parse-tamper with an FS I/O fault | **FOLDED** — distinct `malformed-json` token (test r13) |
+| **Nitpick**: add coverage for the defensive branches | **FOLDED** — test r14 covers the `existing-record-unverifiable` refuse (reachable via a planted tamper) |
+| **Nitpick**: "trim the board transcript from the plan; link out (DRY)" | **DECLINED** (documented) — contradicts the repo's OWN canonical convention: living per-wave plans **accrete** `## Pre-Approval Verification` / `## VALIDATE result` inline (CLAUDE.md + `plans/README.md`: "in-place updates ARE the workflow"). The SCAR #29(b) class — a valid-looking bot nitpick that is an anti-pattern for THIS repo. |

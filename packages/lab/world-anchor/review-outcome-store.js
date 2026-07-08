@@ -198,6 +198,11 @@ function readReviewOutcomeRaw(node_id, dir, selfUid) {
     return parsed;
   } catch (err) {
     if (err && err.code === 'ENOENT') return null;
+    // A JSON.parse tamper (a corrupted body) is a DISTINCT reason token from a genuine FS I/O fault
+    // (CodeRabbit): the broad catch otherwise lumped a SyntaxError into `io` with an undefined io_code,
+    // conflating a tamper with a filesystem error and breaking the "every refuse path has a distinct
+    // observable token" invariant.
+    if (err instanceof SyntaxError) { alert('malformed-json', { node_id }); return null; }
     alert('io', { node_id, io_code: err && err.code });
     return null;
   } finally {

@@ -19,10 +19,11 @@ const REPO = path.join(__dirname, '..', '..', '..', '..');
 const PACKAGES = path.join(REPO, 'packages');
 const WORLD_ANCHOR_DIR = path.join(PACKAGES, 'lab', 'world-anchor');
 const STORE_DEFINER = path.join(WORLD_ANCHOR_DIR, 'review-outcome-store.js');
-// The ONE external module admitted as the WRITER: the observer imports recordReviewOutcome (+ the enums).
+// The ONE module admitted as the WRITER: the observer imports recordReviewOutcome (+ the enums). Every OTHER
+// module — INCLUDING world-anchor siblings (cli.js, gh-verify.js, ...) — must NOT import the store (the
+// #451-C2 hole: a blanket sibling-dir skip makes a same-dir sibling importer invisible; the scan must cover
+// siblings, exempting ONLY the definer + the writer by full-path).
 const WRITER_FULLPATH = path.join(WORLD_ANCHOR_DIR, 'review-observer.js');
-// The cli is a thin operator entry that dispatches to the observer; it may reference the observer, not the store.
-const CLI_FULLPATH = path.join(WORLD_ANCHOR_DIR, 'cli.js');
 
 let passed = 0; let failed = 0;
 function test(name, fn) {
@@ -56,19 +57,35 @@ test('SHADOW matcher catches the require/.js/ESM/dynamic-import forms; no false-
   assert.ok(!IMPORT_RE.test("require('./review-outcome-store-cli')"), 'no false-positive on an adjacent name');
 });
 
-test('SHADOW import-graph: the ONLY external importer of review-outcome-store is the WRITER (review-observer)', () => {
+test('SHADOW import-graph: EXACTLY ONE importer of review-outcome-store — the WRITER (scan covers world-anchor SIBLINGS too, #451-C2)', () => {
   const offenders = [];
   for (const file of walkJs(PACKAGES)) {
-    if (file.startsWith(WORLD_ANCHOR_DIR + path.sep)) continue;   // the module + world-anchor siblings may import it
-    if (file === WRITER_FULLPATH) continue;
+    if (file === STORE_DEFINER) continue;                        // the module itself
+    if (file === WRITER_FULLPATH) continue;                      // the ONE admitted importer (full-path ===)
     const src = fs.readFileSync(file, 'utf8');
     if (IMPORT_RE.test(src)) offenders.push(path.relative(REPO, file));
   }
-  assert.deepStrictEqual(offenders, [], `only review-observer.js (writer) may import review-outcome-store - these also do: ${offenders.join(', ')}`);
+  assert.deepStrictEqual(offenders, [], `only review-observer.js (writer) may import review-outcome-store (siblings included) - these also do: ${offenders.join(', ')}`);
 });
 
 test('SHADOW import-graph: the admitted writer ACTUALLY imports the store (allowlist is non-vacuous)', () => {
   assert.ok(IMPORT_RE.test(fs.readFileSync(WRITER_FULLPATH, 'utf8')), 'the observer imports review-outcome-store');
+});
+
+test('SHADOW importer-scan is NON-VACUOUS: a planted SIBLING importer (in world-anchor/) is DETECTED (#451-C2)', () => {
+  // Prove the scan covers world-anchor siblings: plant a throwaway sibling that imports the store, confirm the
+  // scan flags it (attributable to the plant, not the writer), then remove it. Without the fix (a blanket
+  // sibling-dir skip) this would pass vacuously.
+  const planted = path.join(WORLD_ANCHOR_DIR, '_review-importer-nonvacuity-probe.js');
+  fs.writeFileSync(planted, "'use strict';\nconst { recordReviewOutcome } = require('./review-outcome-store');\nmodule.exports = recordReviewOutcome;\n");
+  try {
+    let detected = false;
+    for (const file of walkJs(PACKAGES)) {
+      if (file === STORE_DEFINER || file === WRITER_FULLPATH) continue;
+      if (IMPORT_RE.test(fs.readFileSync(file, 'utf8')) && file === planted) detected = true;
+    }
+    assert.strictEqual(detected, true, 'a planted SIBLING importer MUST be detected (scan covers siblings)');
+  } finally { fs.rmSync(planted, { force: true }); }
 });
 
 test('SHADOW: ZERO production consumer READS the store (no listReviewOutcomes caller; scan covers world-anchor siblings)', () => {
@@ -94,7 +111,6 @@ test('SHADOW reader-scan is NON-VACUOUS: a planted sibling reader is DETECTED', 
 test('the observer does NOT read the kernel join-key (the kernel 2-reader allowlist stays intact)', () => {
   const src = fs.readFileSync(WRITER_FULLPATH, 'utf8');
   assert.ok(!/resolveJoinKeyForPr|loadJoinKey|join-key-store/.test(src), 'the review-observer must not read the kernel join-key (dam-safe)');
-  void CLI_FULLPATH;
 });
 
 test('SHADOW header invariant: review-outcome-store names its SHADOW / #273-residual / C1 posture', () => {
