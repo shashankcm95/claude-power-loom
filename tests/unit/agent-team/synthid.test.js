@@ -458,6 +458,46 @@ test('VS7: compute-error is caught and surfaces gracefully', () => {
   if (!r.error) throw new Error(`expected error message, got ${r.error}`);
 });
 
+// ============================================================================
+// Group 6: ReDoS hardening — parseSynthId runs on the actor-authored
+// `frontmatter.identity` field (contract-verifier.js), so a hostile identity
+// must never hand the regex engine catastrophic backtracking. The prior persona
+// group `[^.~/]+(?:-[^.~/]+)*` was the ambiguous `(X+)(-X+)*` shape (X included
+// the `-` delimiter); the de-ambiguated `[^.~/-]+(?:-[^.~/-]+)*` backtracks
+// linearly. A length cap is defense-in-depth.
+// ============================================================================
+
+test('RD1: pathological hyphen run (no dot) → null, in linear time', () => {
+  const { parseSynthId } = loadSynthid();
+  // A long hyphen-separated run with no `.` forces the persona group to fail the
+  // overall match. Against the old ambiguous regex this backtracks exponentially
+  // (~hours by ~40 tokens); the fixed regex returns immediately. A generous 500ms
+  // bound cleanly separates "fixed" (sub-ms) from "vulnerable" (seconds+).
+  const evil = 'a' + '-a'.repeat(80);
+  const t0 = process.hrtime.bigint();
+  const r = parseSynthId(evil);
+  const ms = Number(process.hrtime.bigint() - t0) / 1e6;
+  if (r !== null) throw new Error(`expected null for hyphen-run-without-dot, got ${JSON.stringify(r)}`);
+  if (ms > 500) throw new Error(`parseSynthId took ${ms.toFixed(1)}ms — catastrophic backtracking not fixed`);
+});
+
+test('RD2: over-length identity → null (defense-in-depth cap)', () => {
+  const { parseSynthId } = loadSynthid();
+  const tooLong = 'x'.repeat(600) + '.y';
+  if (parseSynthId(tooLong) !== null) throw new Error('over-length identity must return null');
+  // A realistic full id (well under the cap) must still parse.
+  const ok = parseSynthId('04-architect.mira~a3f192c8/r:01H8X9KQ:d2:p=nova#9d7e');
+  if (!ok || ok.persona !== '04-architect') throw new Error('realistic-length id must still parse');
+});
+
+test('RD3: de-ambiguated persona group still parses every real persona shape', () => {
+  const { parseSynthId } = loadSynthid();
+  for (const id of ['04-architect.mira', '02-confused-user.alex~deadbeef', '13-node-backend.zed']) {
+    const r = parseSynthId(id);
+    if (!r) throw new Error(`real persona id failed to parse: ${id}`);
+  }
+});
+
 process.stdout.write(`\n=== Summary ===\n`);
 process.stdout.write(`  Passed: ${passed}\n`);
 process.stdout.write(`  Failed: ${failed}\n`);
