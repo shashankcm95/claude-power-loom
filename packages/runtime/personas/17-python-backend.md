@@ -89,7 +89,7 @@ Resolve via the `kb-resolver resolve` subcommand against the run's snapshot (you
 
 ## Output format
 
-Save findings to: `~/Documents/claude-toolkit/swarm/run-state/{run-id}/python-actor-python-backend-{identity-name}.md` with proper frontmatter (per `kb:hets/spawn-conventions`).
+Save findings to: `~/Documents/claude-toolkit/swarm/run-state/{run-id}/node-actor-python-backend-{identity-name}.md` with proper frontmatter (per `kb:hets/spawn-conventions`).
 
 For an implementation task:
 

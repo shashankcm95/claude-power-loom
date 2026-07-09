@@ -230,18 +230,41 @@ and "endorsed" claims honestly; (f) explicit 18/19 roster-merge assertion.
 
 ## Deferred follow-ups (out of scope — a separate PR)
 
-- **M1 (MEDIUM) — `generate-persona-agents --check` is content-blind.** It validates frontmatter
-  presence only, so a hand-edit of a committed thin stub (e.g. flipping `model:` back to `opus`, or
-  the pre-existing 407-byte hand-curation drift in `agents/hacker.md` + 6 siblings) is caught by NO
-  gate. The fix (a `stub-matches-generator` content-equality arm) COLLIDES with those 7 legitimately
-  hand-curated stubs — it needs the generator `PERSONAS[]` table reconciled with the curated stubs (or
-  the curation relocated to the Layer-2 briefs) FIRST, or the gate fails on them. Genuinely out of scope
-  for the orphans wave.
+- **M1 (MEDIUM) — `generate-persona-agents --check` is content-blind.** ✅ **ADDRESSED** (follow-up
+  PR, branch `feat/persona-w1-followup-stub-gate`). It validated frontmatter presence only, so a
+  hand-edit of a committed thin stub (e.g. flipping `model:` back to `opus`, or the pre-existing
+  407-byte hand-curation drift in `agents/hacker.md` + 6 siblings) was caught by NO gate. Resolved by
+  (a) reconciling the 7 hand-curated stubs INTO the generator via new `kbExtra`/`broaderScope` fields
+  (SSOT — `renderAgentMd(p)` now reproduces each byte-identically) + reverting `python-backend`'s
+  anomalous `python-actor-` save-path prefix (both layers) to `node-actor-`, and (b) a
+  `collectCheckProblems()` content-equality arm in `--check`. See `## Follow-up (M1 + L1) VALIDATE` below.
 - **L1 (LOW) — the still-fat `sonnet` agents (`code-reviewer`, `security-auditor`) are unprotected by
-  the model guard** (they're not in `PERSONAS[]`). If a future change adds either to the table without a
-  `model` field, the silent-upgrade CRITICAL recurs. Latent, not live. A `stub-matches-generator` gate
-  (M1) that asserts every `agents/*.md` `model:` equals its intended tier would also close this.
+  the model guard** (they're not in `PERSONAS[]`). ✅ **ADDRESSED** (same follow-up PR). A `FAT_AGENTS`
+  map pins each fat agent's tier in `--check`, asserts each stays fat (`fatBody` fires on a thin-template
+  paste OR a body-size collapse below a floor — catches a drastic in-place gutting by any method), and a
+  roster-conflict / directory-orphan arm makes the gate govern EVERY `agents/*.md` (not an allowlist) —
+  so a future add-to-table or a new ungoverned stub can't silently recur the CRITICAL.
 - **L3 (context) — `worktree_writable` ≠ security sandbox** (`p-writescope`): `18-optimizer`'s
   `Edit`+`worktree_writable` can escape the worktree via an absolute path; "never weaken a safety hook"
   is advisory prose the harness does not enforce. Pre-existing capability model (shared with
   `13-node-backend` / `12-security-engineer`), NOT a W1 regression — recorded as trust-boundary context.
+  Still deferred (unchanged by the M1/L1 follow-up).
+
+## Follow-up (M1 + L1) VALIDATE
+
+The M1 + L1 follow-up (separate PR, branch `feat/persona-w1-followup-stub-gate`, off #533-merged main)
+was VERIFY-boarded before build (architect + code-reviewer + hacker, all NEEDS-REVISION → every HIGH/MED
+folded): the decisive catch was that a naive allowlist gate was instance-not-class — a future ungoverned
+`agents/*.md` would silently reopen the CRITICAL — so the gate governs the whole directory (`orphaned`
+arm) + pins the fat roster; the python-backend revert was extended to the Layer-2 brief (its authoritative
+`node-actor-` counter consumer is `pre-compact-save.js:135`); the `--force` write path got a pre-write
+roster-conflict bail; and kb-id resolvability + a roster pin were added as tests. `--check` proven
+non-vacuous by a live tamper-and-run probe on every arm. The one intended stub content change is the
+python-backend `node-actor-` revert; the other 6 previously-drifting stubs are now generator-reproducible
+with zero content change. A post-build VALIDATE code-reviewer lens then caught a real HIGH — `fatBody`
+initially detected only the thin-template-sentinel method, so a sentinel-free in-place gutting passed
+clean — fixed by adding a method-agnostic body-size floor (+ a non-vacuous test for that path). Delivery
+still soft-read (ADR-0012) — this buys drift-prevention, not new depth.
+CHANGELOG left untouched by design (this repo batches changelog at release/phase-close, not per-PR — W1
+itself added no entry). The **W2 citation-hub seam**: this PR *inlines* `kbExtra` into `PERSONAS[]`; the
+future W2 citation-hub wave will need to migrate that catalog out to the shared hub.
