@@ -83,6 +83,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/kernel/egress/approval-store.js` - ③.2.4 — the per-emission approval STORE: the fail-closed filesystem I/O over the PURE approval.js axiom (the
 - `packages/kernel/egress/approval.js` - ③.2.4 — the PER-EMISSION approval AXIOM (PURE; no I/O).
 - `packages/kernel/egress/approve-cli.js` - Power Loom egress — approve-cli.js  (③.2.5b.2)
+- `packages/kernel/egress/emit-cli.js` - emit-cli — the OPERATOR armed-emit runner.
 - `packages/kernel/egress/emit-pr.js` - ③.2.1b — the PR-egress kernel: the SINGLE in-process `emitPR` chokepoint that is the SOLE holder of
 - `packages/kernel/egress/gh-emit.js` - ③.2.5c — the gh-REST emission MECHANISM: the live network seam behind the now-complete signed approval gate
 - `packages/kernel/egress/join-key-store.js` - Autonomous-SDE ladder gap-map item 1, PR-1 - the kernel egress JOIN-KEY store (SHADOW).

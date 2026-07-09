@@ -315,4 +315,7 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { validateDraft, freezeScrubbed, confirmTokenFor, checkConfirmation, reviewText, verifyKeyOwnerOk, readVerifyKeySafe, runApprove };
+// readDraftFile + MAX_DRAFT_FILE_BYTES are exported so the sibling emit-cli reads the shared draft
+// artifact byte-identically (same statSync-content-gate + same 8 MiB cap). DRY on a security-critical
+// read: a size-cap divergence would mint an approval the emit side refuses (VERIFY-architect F4).
+module.exports = { validateDraft, freezeScrubbed, confirmTokenFor, checkConfirmation, reviewText, verifyKeyOwnerOk, readVerifyKeySafe, readDraftFile, MAX_DRAFT_FILE_BYTES, runApprove };
