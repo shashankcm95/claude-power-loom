@@ -39,8 +39,13 @@ test('resolveBriefBasename: python-backend maps to 17-python-backend', () => {
 test('resolveBriefBasename: react-frontend maps to 09-react-frontend', () => {
   assert.strictEqual(resolveBriefBasename('react-frontend'), '09-react-frontend');
 });
-test('resolveBriefBasename: a non-builder reviewer persona (optimizer) resolves to null', () => {
-  assert.strictEqual(resolveBriefBasename('optimizer'), null);
+test('resolveBriefBasename: optimizer/planner now resolve to their briefs (W1 orphans got 18/19); materializer exclusion is enforced separately via BUILDER_PERSONAS, not brief-absence', () => {
+  // resolveBriefBasename is brief-EXISTENCE based (not builder-scoped). Before the
+  // 2026-07-08 persona-depth W1 these two had no numbered brief so they resolved to
+  // null; now they do. They remain NON-materializable because they are not in
+  // BUILDER_PERSONAS — asserted by "materializablePersonas excludes non-builder ..." below.
+  assert.strictEqual(resolveBriefBasename('optimizer'), '18-optimizer');
+  assert.strictEqual(resolveBriefBasename('planner'), '19-planner');
 });
 test('resolveBriefBasename: a totally unknown agentType resolves to null (no guess)', () => {
   assert.strictEqual(resolveBriefBasename('definitely-not-a-real-persona'), null);

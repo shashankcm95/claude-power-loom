@@ -23,12 +23,14 @@ function assert(cond, msg) {
 
 process.stdout.write('\n[FIX-H4] persona-id validation\n');
 
-// VALID — all 16 production personas
+// VALID — all 19 production personas (adds 17-python-backend, previously
+// omitted, plus the 18-optimizer / 19-planner orphans thin-standardized 2026-07-08)
 const VALID = [
   '01-hacker', '02-confused-user', '03-code-reviewer', '04-architect',
   '05-honesty-auditor', '06-ios-developer', '07-java-backend', '08-ml-engineer',
   '09-react-frontend', '10-devops-sre', '11-data-engineer', '12-security-engineer',
   '13-node-backend', '14-codebase-locator', '15-codebase-analyzer', '16-codebase-pattern-finder',
+  '17-python-backend', '18-optimizer', '19-planner',
 ];
 
 for (const p of VALID) {

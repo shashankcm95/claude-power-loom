@@ -1,0 +1,160 @@
+{
+  "agentId": "actor-planner",
+  "persona": "19-planner",
+  "role": "actor",
+  "skills": {
+    "required": [
+      "plan"
+    ],
+    "recommended": [
+      "research-mode"
+    ],
+    "skill_status": {
+      "plan": "available",
+      "research-mode": "available"
+    }
+  },
+  "kb_scope": {
+    "default": [
+      "kb:hets/spawn-conventions",
+      "kb:architecture/discipline/trade-off-articulation"
+    ]
+  },
+  "budget": {
+    "tokens": 30000,
+    "extensible": true,
+    "maxExtensions": 1,
+    "extensionAmount": 15000
+  },
+  "interface": {
+    "traits": [
+      "read_repo"
+    ],
+    "declared_capabilities": {
+      "read": [
+        "repo://**"
+      ]
+    },
+    "declared_scope": [
+      "requirements analysis",
+      "codebase reconnaissance",
+      "architecture impact",
+      "phased breakdown + step detail"
+    ],
+    "output_schema": {
+      "type": "implementation_plan",
+      "required": [
+        "phases",
+        "risks"
+      ]
+    },
+    "decomposition_discipline": {
+      "primary": "spec-driven",
+      "fallback_when_code_producing": "tdd"
+    },
+    "instincts": [
+      "never-plan-blind",
+      "phase-independence",
+      "smallest-meaningful-increment",
+      "reuse-existing-primitives",
+      "defer-non-load-bearing",
+      "surface-assumptions",
+      "failure-path-per-phase",
+      "trade-off-articulation",
+      "file-path-specificity",
+      "breaking-change-flagging",
+      "principle-audit"
+    ]
+  },
+  "defaults": {
+    "timeout": 1800,
+    "retention": {
+      "pre_snapshot_lifetime_hours": 24,
+      "delta_lifetime_days": 30
+    },
+    "budget": {
+      "tokens": 30000,
+      "extensible": true,
+      "maxExtensions": 1,
+      "extensionAmount": 15000
+    }
+  },
+  "functional": [
+    {
+      "id": "F1",
+      "check": "outputContainsFrontmatter",
+      "required": true
+    },
+    {
+      "id": "F2",
+      "check": "frontmatterHasFields",
+      "args": {
+        "fields": [
+          "id",
+          "role",
+          "depth",
+          "parent",
+          "persona"
+        ]
+      },
+      "required": true
+    },
+    {
+      "id": "F3",
+      "check": "outputLengthMin",
+      "args": {
+        "min": 2000
+      },
+      "required": true
+    },
+    {
+      "id": "F4",
+      "check": "containsKeywords",
+      "args": {
+        "keywords": [
+          "Phase"
+        ]
+      },
+      "required": false
+    },
+    {
+      "id": "F5",
+      "check": "kb_scope_consumed",
+      "required": true
+    },
+    {
+      "id": "F6",
+      "check": "containsKeywords",
+      "args": {
+        "keywords": [
+          "Principle Audit"
+        ]
+      },
+      "required": true
+    }
+  ],
+  "antiPattern": [
+    {
+      "id": "A1",
+      "check": "noTextSimilarityToPriorRun",
+      "args": {
+        "threshold": 0.6
+      },
+      "severity": "warn"
+    },
+    {
+      "id": "A2",
+      "check": "noPaddingPhrases",
+      "severity": "fail"
+    },
+    {
+      "id": "A3",
+      "check": "acknowledgesFallback",
+      "severity": "warn"
+    }
+  ],
+  "fallbackAcceptable": [
+    "No code execution needed → planning is reasoning-based"
+  ],
+  "_format": "Findings format + frontmatter contract: see packages/runtime/schema/_format-spec.md (v2.9.0 Phase B.1)"
+}

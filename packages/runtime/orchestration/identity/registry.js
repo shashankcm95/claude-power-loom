@@ -112,6 +112,12 @@ const DEFAULT_ROSTERS = {
   '14-codebase-locator': ['scout', 'nav', 'atlas'],
   '15-codebase-analyzer': ['lex', 'dex', 'kit'],
   '16-codebase-pattern-finder': ['vega', 'nori', 'pip'],
+  // Meta family (harness + planning). Thin-standardized orphans 18/19 — the
+  // 2026-07-08 persona-depth scoped-core gave optimizer + planner their Layer-2
+  // briefs + contracts, so they need roster identities like every other persona
+  // (else `assign --persona 18-optimizer` dies "No roster for persona").
+  '18-optimizer': ['toby', 'gwen', 'gil'],
+  '19-planner': ['iva', 'roz', 'hale'],
 };
 
 // H.6.6 — lifecycle thresholds (prune defaults).
