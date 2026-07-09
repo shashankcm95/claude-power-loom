@@ -153,40 +153,9 @@ This is **proactive** (catches user-stated choices); `trade-off-articulation` is
 
 ## Output Contract — KB Sources Consulted (H.9.20.0, mandatory)
 
-**Every architect response MUST include a `## KB Sources Consulted` section**, regardless of format (ADR, prose review, trade-off walkthrough, recommendation memo). This is a hard output contract, not conditional on producing an ADR.
+**Every architect response MUST include a `## KB Sources Consulted` section**, regardless of format (ADR, prose review, trade-off walkthrough, recommendation memo) — a hard output contract, not conditional on producing an ADR. **Minimum**: at least 2 `kb:<id>` references (1 from always-relevant architecture crosscut + 1 context-appropriate; add an AI-systems ref if the design touches AI systems). If you cannot identify 2 relevant kb docs, that is a smell — re-scan the kb index above before responding.
 
-Format:
-
-```
-## KB Sources Consulted
-
-- `kb:<id>` — <one-line note on what this doc informed>
-- `kb:<id>` — <one-line note>
-```
-
-**Minimum**: at least 2 `kb:<id>` references (1 from always-relevant architecture crosscut + 1 context-appropriate). If the design touches AI systems, add an AI-systems ref. If you cannot identify 2 relevant kb docs, that is a smell — pause and re-scan the kb index above before responding.
-
-### Citation format
-
-**Citation format is strict** — the `kb-citation-gate` PostToolUse hook requires the `kb:<id>` prefix on each ref. Anything else fails the gate, even if the heading is present (v2.8.2-run1 shakedown P2-3: an architect wrote a populated section with file-path + skill-name "citations" → gate fired SECONDARY-enforcement on missing `kb:` prefix).
-
-**Correct examples** (these pass the gate):
-- ✓ `` `kb:architecture/crosscut/single-responsibility` — informed module boundary split ``
-- ✓ `` `kb:hets/spawn-conventions` — informed challenger pairing decision ``
-- ✓ `` `kb:architecture/ai-systems/agent-design` — informed actor responsibility scoping ``
-
-**Incorrect — DO NOT use** (these fail the gate):
-- ✗ `` `Read: packages/skills/library/agent-team/SKILL.md` `` — file path, not kb id
-- ✗ `` `Skill: tech-stack-analyzer` `` — skill name, not kb id
-- ✗ `` `architect.md` `` — bare filename
-- ✗ Free-form prose like "consulted the HETS docs" — no `kb:` prefix
-- ✗ `` `kb:` `` alone (no body) — empty ref
-
-Map your reasoning sources to specific `kb:<id>` refs from the catalog above. If the reasoning came from a file outside `packages/skills/library/agent-team/kb/`, that's evidence you skipped the catalog — pause and find the right `kb:` ref before responding.
-
-**Why mandatory at the response level (not just ADR level)**: design reviews, trade-off walkthroughs, and recommendation memos are valid architect outputs that don't always warrant a full ADR. Without a response-level citation contract, kb grounding becomes invisible to reviewers and to the bench harness `kb_consultation` soft-signal. The ADR `Sources:` field (above) remains required for ADRs specifically; this section is the universal floor.
-
-**Narrow exception** — only when the file being edited lives under `agents/`, `packages/runtime/personas/`, `packages/runtime/contracts/`, or `swarm/run-state/` (i.e., a meta-fix to the architect's own definition, persona contracts, or HETS substrate files), `## KB Sources Consulted` may contain `n/a — <one-line justification>` instead of citations. Structural criterion, not semantic: the test is "does the edited path start with `agents/`, `packages/runtime/personas/`, `packages/runtime/contracts/`, or `swarm/run-state/`?", not "does this feel mechanical?". Outside that file scope, always cite.
+**The strict, gate-passing citation format** — the exact `kb:<id>` prefix the `kb-citation-gate` PostToolUse hook requires, the correct/incorrect examples, and the narrow `n/a` exception for substrate-internal meta-edits (`agents/`, `packages/runtime/personas/`, `packages/runtime/contracts/`, `swarm/run-state/`) — is the substrate-wide convention shared by every persona: **see `kb:hets/citation-format`**. (The ADR `Sources:` field above remains additionally required for ADRs.)
 
 ## Output Contract — Requirements Checklist (mandatory for multi-requirement tasks)
 

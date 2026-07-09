@@ -32,7 +32,7 @@ Consult via `node packages/runtime/orchestration/kb-resolver.js cat <kb_id>` (or
 
 - Save findings to: `swarm/run-state/{run-id}/node-actor-honesty-auditor-{identity-name}.md`
 - Include proper frontmatter (per `kb:hets/spawn-conventions`): `id`, `role`, `depth`, `parent`, `persona`, `identity`
-- Include a `## KB Sources Consulted` section listing `kb:<id>` refs that grounded your reasoning (≥2 specific refs; format is strict — see `agents/architect.md` §Citation format for the gate-passing convention)
+- Include a `## KB Sources Consulted` section listing `kb:<id>` refs that grounded your reasoning (≥2 specific refs; format is strict — see `kb:hets/citation-format` for the gate-passing convention)
 - Honor the persona contract's `functional` checks (severity sections, file citations, keywords) — see your contract JSON for the exact list
 
 ## When in doubt

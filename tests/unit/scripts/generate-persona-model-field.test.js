@@ -34,6 +34,21 @@ test('renderAgentMd honors an explicit model (no silent upgrade)', () => {
   assert.strictEqual(modelLine(md), 'sonnet');
 });
 
+// Non-vacuous: the VALID_MODELS guard (W2, CodeRabbit W1 nitpick #4) must FIRE on a
+// typo'd tier — proven by injecting the violation, not asserted. A falsy model
+// ('' / null) is validated at its EFFECTIVE value (defaults to opus) so it renders,
+// not throws (hacker VALIDATE L2).
+test('renderAgentMd throws on an unknown model tier (guard is non-vacuous)', () => {
+  assert.throws(
+    () => renderAgentMd({ ...baseEntry, model: 'sonet' }),
+    /unknown model tier "sonet"/,
+  );
+});
+
+test('renderAgentMd validates the EFFECTIVE tier — a falsy model renders opus, does not throw', () => {
+  assert.strictEqual(modelLine(renderAgentMd({ ...baseEntry, model: '' })), 'opus');
+});
+
 test('optimizer roster entry stays sonnet; planner is opus', () => {
   const opt = PERSONAS.find((p) => p.agent === 'optimizer');
   const plan = PERSONAS.find((p) => p.agent === 'planner');

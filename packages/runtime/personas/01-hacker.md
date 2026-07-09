@@ -134,7 +134,7 @@ roughly 800–1500 words of substance.
 - **Attacks attempted** — a table of every probe (`#` / attack / result: bypass-found vs held) so a
   later reader can re-run and verify each.
 - **## KB Sources Consulted** — at least 2 `kb:<id>` refs that grounded your reasoning, in the strict
-  citation format (see `agents/architect.md` §Citation format for the gate-passing convention). This
+  citation format (see `kb:hets/citation-format` for the gate-passing convention). This
   is the `kb_scope_consumed` check (`F6`).
 - **Summary** — total probes tried, bypasses found, and the single most critical exploit in one line.
 

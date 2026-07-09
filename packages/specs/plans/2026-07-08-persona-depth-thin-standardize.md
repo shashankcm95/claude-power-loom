@@ -176,7 +176,8 @@ USER chose **Scoped core**: do the two pieces above, stop, leave the fat agents 
 - [ ] `grep -rn "architect.md §Citation"` → 0 hits; `kb:hets/citation-format` is the sole home.
 - [ ] `18-optimizer` + `19-planner` briefs + contracts exist; all cross-layer validators green.
 - [ ] `agents/optimizer.md` `model: sonnet`, `agents/planner.md` `model: opus` after regeneration.
-- [ ] `persona-pointer-resolves` present + a wrong-pointer fixture fails it (non-vacuous).
+- [x] ~~`persona-pointer-resolves` present + a wrong-pointer fixture fails it~~ — DROPPED as
+      redundant post-#534 (its content-equality `--check` covers the wrong-pointer threat); see W2 result.
 - [ ] Full pre-push gate green; agents suite green; `system-report` section current.
 
 ## Pre-Approval Verification
@@ -249,6 +250,38 @@ and "endorsed" claims honestly; (f) explicit 18/19 roster-merge assertion.
   is advisory prose the harness does not enforce. Pre-existing capability model (shared with
   `13-node-backend` / `12-security-engineer`), NOT a W1 regression — recorded as trust-boundary context.
   Still deferred (unchanged by the M1/L1 follow-up).
+
+## W2 result (citation-hub extraction — post-#534 re-probe + build)
+
+**Post-#534 re-probe (the plan's original W2 probes decayed — #534 reworked the generator):**
+the citation line moved `:175`→`:239`; `--check` is now a CONTENT-EQUALITY gate, so W2 regenerates
+all 16 stubs after the template change (a stub hand-edited back to the old ref now FAILS `--check`),
+and the regeneration is LOSS-FREE (the 7 hand-curated stubs' `kbExtra`/`broaderScope` reproduce
+byte-identically). Precise citer set = **25**: 16 `agents/` stubs, 7 Layer-2 briefs
+(01/02/03/04/05/18/19), the generator template, and `system-report`. (Two grep misses, both caught by
+the VALIDATE board: the citers use backticks `` `agents/architect.md` §Citation format ``, AND
+`04-architect.md` phrased its ref as "§Output Contract — KB Sources Consulted" not "§Citation
+format", so my first pattern skipped it — repointed after the board flagged it.)
+
+**`persona-pointer-resolves` validator (Req 5) DROPPED as redundant (YAGNI, probe-the-premise):**
+Req 5 was written pre-#534. #534's `collectCheckProblems()` content-equality `--check` already fails
+a wrong delegation pointer on a generated stub (it won't match `renderAgentMd`), so the planned
+validator adds nothing for the drift threat we model. (Residual, accepted: content-equality is
+generator-self-referential — an exotic diff-visible `PERSONAS[]` `agent→id` mislabel would render a
+matching stub and pass; only a roster-derived pointer validator would catch that.)
+
+**Shipped:** NEW `kb:hets/citation-format` (the gate-passing convention — content-complete,
+generalized architect→actor, NOT byte-verbatim); `agents/architect.md` trimmed to the mandate, the
+minimum, and a pointer (KEPT the `## Output Contract — KB Sources Consulted` heading so
+`kb-citation-gate` and `architect.test.js` stay green; the `n/a`-exception OPTION and its 4 paths
+stay named inline, only the "structural-not-semantic" DETAIL moves to soft-read — a small
+guaranteed-depth trim for the one gated persona); generator template repointed, 16 stubs regenerated,
+7 briefs repointed (04-architect added post-board), `system-report` updated. Folded 2 CodeRabbit W1
+nitpicks: a `VALID_MODELS` guard (`renderAgentMd` throws on a typo'd tier — non-vacuous, throw-path
+test added; validates the EFFECTIVE tier so a falsy model can't slip past) plus a planner `A3` callout. **Gates:** `architect.test` 10/0; `kb-resolver` resolves
+`hets/citation-format`; doc-path clean (338 docs); contracts-validate clean (`kb-scope-resolves` 0);
+`--check` content-equality green; 0 residual live citers; kernel 120/0 + lab 150/0 + hooks 13/0 +
+runtime/scripts/agents 52/0; eslint + markdownlint + release-surface + signpost clean.
 
 ## Follow-up (M1 + L1) VALIDATE
 

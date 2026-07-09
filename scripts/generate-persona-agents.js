@@ -191,7 +191,23 @@ const PERSONAS = [
   },
 ];
 
+// Accepted model tiers. A per-persona `model` typo (e.g. 'sonet') must fail at
+// generation, not silently render an unsupported frontmatter value (CodeRabbit
+// W1 nitpick #4). 'inherit' lets a persona defer to the session model.
+const VALID_MODELS = new Set(['opus', 'sonnet', 'haiku', 'inherit']);
+
 function renderAgentMd(p) {
+  // Validate the EFFECTIVE tier (what actually renders), not just an explicit
+  // p.model — otherwise a falsy model ('' / null) skips the guard and would ship
+  // whatever the `|| 'opus'` default resolves to if that default ever changes
+  // (hacker VALIDATE L2). Compute once, validate, then render the same value.
+  const model = p.model || 'opus';
+  if (!VALID_MODELS.has(model)) {
+    throw new Error(
+      `generate-persona-agents: unknown model tier "${p.model}" for persona ${p.id} ` +
+      `(allowed: ${[...VALID_MODELS].join(', ')})`,
+    );
+  }
   const toolsJson = JSON.stringify(p.tools);
   const kbList = p.kbDefaults.map((k) => `- \`${k}\``).join('\n');
   // Optional per-persona extras — the SSOT home for the hand-curated stubs (see PERSONAS
@@ -207,7 +223,7 @@ function renderAgentMd(p) {
 name: ${p.agent}
 description: ${p.description}
 tools: ${toolsJson}
-model: ${p.model || 'opus'}
+model: ${model}
 color: ${p.color}
 ---
 
@@ -236,7 +252,7 @@ Consult via \`node packages/runtime/orchestration/kb-resolver.js cat <kb_id>\` (
 
 - Save findings to: \`swarm/run-state/{run-id}/node-actor-${p.agent}-{identity-name}.md\`
 - Include proper frontmatter (per \`kb:hets/spawn-conventions\`): \`id\`, \`role\`, \`depth\`, \`parent\`, \`persona\`, \`identity\`
-- Include a \`## KB Sources Consulted\` section listing \`kb:<id>\` refs that grounded your reasoning (≥2 specific refs; format is strict — see \`agents/architect.md\` §Citation format for the gate-passing convention)
+- Include a \`## KB Sources Consulted\` section listing \`kb:<id>\` refs that grounded your reasoning (≥2 specific refs; format is strict — see \`kb:hets/citation-format\` for the gate-passing convention)
 - Honor the persona contract's \`functional\` checks (severity sections, file citations, keywords) — see your contract JSON for the exact list
 
 ## When in doubt

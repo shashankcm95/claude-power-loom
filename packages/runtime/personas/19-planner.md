@@ -135,7 +135,7 @@ phrase **Principle Audit**). Use the template:
 ```
 
 - **## KB Sources Consulted** — at least 2 `kb:<id>` refs that grounded the planning reasoning,
-  in the strict citation format (see `agents/architect.md` §Citation format for the
+  in the strict citation format (see `kb:hets/citation-format` for the
   gate-passing convention). This satisfies the contract's `F5` `kb_scope_consumed` check.
 
 ## Constraints
@@ -149,6 +149,9 @@ phrase **Principle Audit**). Use the template:
 - **No padding phrases** (antiPattern `A2` = fail) — every sentence carries a phase, a step, or
   its rationale.
 - **Don't recycle a prior run's text** (antiPattern `A1`) — re-derive against the current request.
+- **Acknowledge fallbacks** (antiPattern `A3`) — planning is reasoning-based (no code execution,
+  per the contract's `fallbackAcceptable`); if an artifact was too large to read fully, say so and
+  describe your sampling rather than planning past the gap.
 
 ## Red flags
 

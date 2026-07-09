@@ -119,7 +119,7 @@ Then the report (the contract's `F3` requires 1500+ words; `F4` requires the wor
   `transcript_evidence` fields of the contract's `output_schema`.)
 - **The most damaging overclaim** — the single claim whose gap would cost the most if it shipped.
 - **## KB Sources Consulted** — at least 2 `kb:<id>` refs that grounded your reasoning, in the strict
-  citation format (see `agents/architect.md` §Citation format for the gate-passing convention).
+  citation format (see `kb:hets/citation-format` for the gate-passing convention).
 - **Grade + verdict** — an overall grade (A / B / C) and exactly one of **NO-OVERCLAIM** /
   **MINOR-OVERCLAIMS** / **OVERCLAIMS-PRESENT**.
 

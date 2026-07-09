@@ -133,7 +133,7 @@ accuracy assessment below — don't bolt them on). Reflect the `output_schema` r
 - **The single worst friction point** — the one place most likely to make a real user abandon the
   task, and what shipping it would cost.
 - **## KB Sources Consulted** — at least 2 `kb:<id>` refs that grounded your reasoning, in the strict
-  citation format (see `agents/architect.md` §Citation format for the gate-passing convention).
+  citation format (see `kb:hets/citation-format` for the gate-passing convention).
 - **Verdict** — an overall usability grade (A / B / C) and exactly one of **SHIP-READY** /
   **FRICTION-PRESENT** / **NOT-NEWCOMER-SAFE**.
 
