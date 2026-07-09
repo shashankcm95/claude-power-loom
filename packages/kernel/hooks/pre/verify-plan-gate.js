@@ -124,18 +124,21 @@ function findActivePlan() {
  * @returns {string}
  */
 function buildBlockReason(planPath) {
+  const planRef = planPath ? `Plan ${planPath}` : 'The plan you are exiting with';
+  const verifyArg = planPath || '<path to the plan file>';
   return [
     '',
     '[PRE-APPROVAL-VERIFICATION-NEEDED]',
     '',
-    `Plan ${planPath} is HETS-routed but missing`,
+    `${planRef} is HETS-routed but missing`,
     `\`## ${PRE_APPROVAL_VERIFICATION_SECTION}\` section.`,
     '',
     'To proceed: run /verify-plan FIRST. This spawns architect + code-reviewer',
     'agents in parallel, catches design issues + concrete bugs in proposed',
-    'changes, and appends the required section to the plan file.',
+    'changes, and appends the required section to the plan file. Ensure the plan',
+    'you exit with (the ExitPlanMode `plan`) carries the section.',
     '',
-    `  /verify-plan ${planPath}`,
+    `  /verify-plan ${verifyArg}`,
     '',
     'After /verify-plan completes, retry ExitPlanMode and this hook will',
     'approve (idempotent — section presence is the only check).',
@@ -173,32 +176,58 @@ process.stdin.on('end', () => {
       return;
     }
 
-    const activePlan = findActivePlan();
-    if (!activePlan) {
-      // No plan file found — approve (likely an ad-hoc ExitPlanMode without
-      // a plan file ever being written; we don't gate that).
-      logger('approve', { reason: 'no_plan_found', planDir: PLAN_DIR });
+    // Authoritative source: the plan being approved for THIS ExitPlanMode call.
+    // Empirically (real transcripts) ExitPlanMode's tool_input carries the FULL
+    // plan markdown as `plan` and the exact file as `planFilePath`. Reading these
+    // is session/task-scoped by construction — it closes the two bypasses of the
+    // old newest-mtime PLAN_DIR glob: (a) never persisting a plan file no longer
+    // yields a free pass, and (b) a concurrent session's newer .md can no longer
+    // win the sort and mask the real plan. findActivePlan() remains ONLY as a
+    // fallback for a harness that omits these fields (degrades to prior behaviour).
+    const toolInput = data.tool_input || {};
+    const argPlan = (typeof toolInput.plan === 'string' && toolInput.plan.trim().length > 0)
+      ? toolInput.plan : null;
+    const argPlanPath = (typeof toolInput.planFilePath === 'string' && toolInput.planFilePath.trim().length > 0)
+      ? toolInput.planFilePath : null;
+
+    // Read the EXACT plan file the harness named; else fall back to the legacy
+    // mtime scan. The file is a SECOND source for the verification section, so
+    // the /verify-plan file-append workflow still satisfies the gate.
+    let fileContent = null;
+    let fileRef = null;
+    if (argPlanPath) {
+      fileRef = argPlanPath;
+      try { fileContent = fs.readFileSync(argPlanPath, 'utf8'); }
+      catch (err) { logger('file_unreadable', { path: argPlanPath, error: err.message }); }
+    } else {
+      const activePlan = findActivePlan();
+      if (activePlan) {
+        fileRef = activePlan.path;
+        try { fileContent = fs.readFileSync(activePlan.path, 'utf8'); }
+        catch (err) { logger('file_unreadable', { path: activePlan.path, error: err.message }); }
+      }
+    }
+
+    // Routing is decided from the authoritative plan (the arg), falling back to
+    // the file only when the harness omits tool_input.plan.
+    const routingContent = argPlan || fileContent;
+    if (!routingContent) {
+      logger('approve', { reason: 'no_plan_content', hadArgPlan: false, planDir: PLAN_DIR });
       process.stdout.write(JSON.stringify({ decision: 'approve' }));
       return;
     }
 
-    let content;
-    try {
-      content = fs.readFileSync(activePlan.path, 'utf8');
-    } catch (err) {
-      logger('approve', { reason: 'plan_unreadable', error: err.message });
+    if (!requiresPrincipleAudit(routingContent)) {
+      logger('approve', { reason: 'not_hets_routed', source: argPlan ? 'tool_input' : 'file' });
       process.stdout.write(JSON.stringify({ decision: 'approve' }));
       return;
     }
 
-    if (!requiresPrincipleAudit(content)) {
-      logger('approve', { reason: 'not_hets_routed', plan: activePlan.path });
-      process.stdout.write(JSON.stringify({ decision: 'approve' }));
-      return;
-    }
-
-    if (hasH2Heading(content, PRE_APPROVAL_VERIFICATION_SECTION)) {
-      logger('approve', { reason: 'verification_section_present', plan: activePlan.path });
+    // The verification section counts if it is in the approved plan OR its file.
+    const sectionInArg = !!(argPlan && hasH2Heading(argPlan, PRE_APPROVAL_VERIFICATION_SECTION));
+    const sectionInFile = !!(fileContent && hasH2Heading(fileContent, PRE_APPROVAL_VERIFICATION_SECTION));
+    if (sectionInArg || sectionInFile) {
+      logger('approve', { reason: 'verification_section_present', source: sectionInArg ? 'tool_input' : 'file' });
       process.stdout.write(JSON.stringify({ decision: 'approve' }));
       return;
     }
@@ -206,12 +235,13 @@ process.stdin.on('end', () => {
     // BLOCK — Claude reads forcing-instruction-shaped reason, complies.
     logger('block', {
       reason: 'verification_section_missing',
-      plan: activePlan.path,
+      plan: fileRef || '(tool_input.plan)',
       hetsRouted: true,
+      hadArgPlan: !!argPlan,
     });
     process.stdout.write(JSON.stringify({
       decision: 'block',
-      reason: buildBlockReason(activePlan.path),
+      reason: buildBlockReason(fileRef),
     }));
   } catch (err) {
     // Fail-open: never crash a session over the gate logic.
