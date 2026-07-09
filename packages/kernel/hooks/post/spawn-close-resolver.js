@@ -252,8 +252,18 @@ function buildEnvelopeFromToolResponse(toolResponse) {
   // agentId is the per-spawn journal key + harness correlation id — required.
   // A Task close or a future harness shape that omits it -> silent no-op (no
   // journal filename collision on a synthesized id).
+  //
+  // agentId flows straight into journalPathFor / stagePromote / stageCandidate
+  // (envelope.spawn_id, path.join(stateDir, runId, `resolver-journal-${agentId}...`))
+  // with no downstream containment check, so ENFORCE it is a single safe path
+  // segment here — the same discipline resolveRunId already applies to runId. An
+  // agentId carrying traversal (a future harness change or a misbehaving tool
+  // response) would otherwise be a mkdir-and-write primitive outside the state
+  // dir (CWE-22). Unlike runId, agentId is the join key and cannot be
+  // fabricated, so an unsafe one no-ops the spawn rather than being replaced.
   const agentId = toolResponse.agentId;
   if (typeof agentId !== 'string' || agentId.length === 0) return null;
+  if (!isSafePathSegment(agentId)) return null;
 
   const status = toolResponse.status;
   const commitOutcome = status === 'completed' ? 'COMMITTED' : 'PENDING';
