@@ -1,0 +1,173 @@
+{
+  "agentId": "actor-optimizer",
+  "persona": "18-optimizer",
+  "role": "actor",
+  "skills": {
+    "required": [
+      "research-mode"
+    ],
+    "recommended": [
+      "review"
+    ],
+    "skill_status": {
+      "research-mode": "available",
+      "review": "available"
+    }
+  },
+  "kb_scope": {
+    "default": [
+      "kb:hets/spawn-conventions",
+      "kb:infra-dev/observability-basics"
+    ]
+  },
+  "budget": {
+    "tokens": 30000,
+    "extensible": true,
+    "maxExtensions": 1,
+    "extensionAmount": 15000
+  },
+  "interface": {
+    "traits": [
+      "read_repo",
+      "worktree_writable",
+      "bash_test_runner"
+    ],
+    "declared_capabilities": {
+      "read": [
+        "repo://**"
+      ],
+      "isolation": "worktree",
+      "write": [
+        "sandbox://**"
+      ],
+      "subprocess": [
+        "npm test",
+        "vitest",
+        "pytest",
+        "tsc --noEmit"
+      ]
+    },
+    "declared_scope": [
+      "hook efficiency",
+      "context budget",
+      "agent routing + model tier",
+      "MCP health + safety"
+    ],
+    "output_schema": {
+      "type": "optimization_report",
+      "required": [
+        "baseline",
+        "changes_applied"
+      ]
+    },
+    "decomposition_discipline": {
+      "primary": "spec-driven",
+      "fallback_when_code_producing": "tdd"
+    },
+    "instincts": [
+      "measure-before-tuning",
+      "bottleneck-first",
+      "smallest-reversible-change",
+      "no-speculative-tuning",
+      "never-weaken-safety",
+      "additive-over-modify",
+      "extract-shared-primitive",
+      "cross-platform-preservation",
+      "model-tier-fit",
+      "rollback-documented",
+      "verify-before-ship"
+    ]
+  },
+  "defaults": {
+    "timeout": 1800,
+    "retention": {
+      "pre_snapshot_lifetime_hours": 24,
+      "delta_lifetime_days": 30
+    },
+    "budget": {
+      "tokens": 30000,
+      "extensible": true,
+      "maxExtensions": 1,
+      "extensionAmount": 15000
+    }
+  },
+  "functional": [
+    {
+      "id": "F1",
+      "check": "outputContainsFrontmatter",
+      "required": true
+    },
+    {
+      "id": "F2",
+      "check": "frontmatterHasFields",
+      "args": {
+        "fields": [
+          "id",
+          "role",
+          "depth",
+          "parent",
+          "persona"
+        ]
+      },
+      "required": true
+    },
+    {
+      "id": "F3",
+      "check": "outputLengthMin",
+      "args": {
+        "min": 1500
+      },
+      "required": true
+    },
+    {
+      "id": "F4",
+      "check": "containsKeywords",
+      "args": {
+        "keywords": [
+          "baseline",
+          "rollback"
+        ]
+      },
+      "required": false
+    },
+    {
+      "id": "F5",
+      "check": "kb_scope_consumed",
+      "required": true
+    },
+    {
+      "id": "F6",
+      "check": "containsKeywords",
+      "args": {
+        "keywords": [
+          "Principle Adherence"
+        ]
+      },
+      "required": true
+    }
+  ],
+  "antiPattern": [
+    {
+      "id": "A1",
+      "check": "noTextSimilarityToPriorRun",
+      "args": {
+        "threshold": 0.6
+      },
+      "severity": "warn"
+    },
+    {
+      "id": "A2",
+      "check": "noPaddingPhrases",
+      "severity": "fail"
+    },
+    {
+      "id": "A3",
+      "check": "acknowledgesFallback",
+      "severity": "warn"
+    }
+  ],
+  "fallbackAcceptable": [
+    "No measurable baseline available → tuning is reasoning-based, stated as such"
+  ],
+  "_format": "Findings format + frontmatter contract: see packages/runtime/schema/_format-spec.md (v2.9.0 Phase B.1)"
+}

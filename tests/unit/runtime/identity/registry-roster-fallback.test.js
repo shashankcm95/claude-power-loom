@@ -92,6 +92,9 @@ test('legacy mode: readStore merges missing default personas; stored entries win
     // (a) missing default personas filled
     assert.deepStrictEqual(out.rosters['14-codebase-locator'], ['scout', 'nav', 'atlas'], 'persona 14 roster filled from defaults');
     assert.ok(out.rosters['15-codebase-analyzer'] && out.rosters['16-codebase-pattern-finder'], 'personas 15+16 filled');
+    // W1 orphans 18/19 also fill from defaults (else `assign --persona 18-optimizer` throws "No roster")
+    assert.deepStrictEqual(out.rosters['18-optimizer'], ['toby', 'gwen', 'gil'], 'persona 18-optimizer roster filled from defaults');
+    assert.deepStrictEqual(out.rosters['19-planner'], ['iva', 'roz', 'hale'], 'persona 19-planner roster filled from defaults');
     assert.strictEqual(out.nextIndex['14-codebase-locator'], 0, 'new persona nextIndex seeded 0');
     // (c) stored roster entry wins wholesale per key
     assert.deepStrictEqual(out.rosters['01-hacker'], ['custom1', 'custom2'], 'stored custom roster preserved');

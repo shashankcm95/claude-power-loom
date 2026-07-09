@@ -30,11 +30,19 @@ const AGENTS_DIR = path.join(REPO_ROOT, 'agents');
 const PERSONAS_DIR = path.join(REPO_ROOT, 'packages', 'runtime', 'personas');
 const CONTRACTS_DIR = path.join(REPO_ROOT, 'packages', 'runtime', 'contracts');
 
-// Persona definition table. The 5 existing agents (architect, code-reviewer,
-// optimizer, planner, security-auditor) are SKIPPED — they have bespoke
-// definitions and shouldn't be overwritten.
+// Persona definition table. 3 agents (architect, code-reviewer,
+// security-auditor) remain SKIPPED — they keep bespoke FAT definitions because
+// their Layer-1 output-contracts (## KB Sources Consulted / ## Principle Audit /
+// ## Requirements Checklist) are enforced on actor output — the kb-citation-gate
+// kernel hook is architect-scoped; the contract F-checks (F6/F7/F10) apply via the
+// orchestration-tier verifier — so the instructions must stay guaranteed-in-prompt,
+// not soft-read. See packages/specs/plans/2026-07-08-persona-depth-thin-standardize.md.
+// optimizer (18) + planner (19) ARE thin-standardized here.
 //
-// Each entry: persona-id → { agentName, description, tools, color, summary }
+// Each entry: persona-id → { agentName, description, tools, color, summary,
+// kbDefaults, [model] }. `model` is optional and defaults to 'opus'; set it
+// only when the persona runs on a different tier (e.g. optimizer = sonnet) so a
+// regeneration never silently upgrades the tier.
 const PERSONAS = [
   {
     id: '01-hacker', agent: 'hacker', color: 'red',
@@ -134,6 +142,20 @@ const PERSONAS = [
     summary: 'You see patterns across files. Where is logic duplicated? Where do conventions diverge? Where would a shared helper close a recurring smell? Cite ≥3 instances before naming a pattern.',
     kbDefaults: ['kb:architecture/crosscut/single-responsibility', 'kb:architecture/crosscut/deep-modules'],
   },
+  {
+    id: '18-optimizer', agent: 'optimizer', color: 'teal', model: 'sonnet',
+    tools: ['Read', 'Grep', 'Glob', 'Bash', 'Edit'],
+    description: 'Harness and configuration optimizer. Invoke to audit and improve agent performance, hook efficiency, context budget, and MCP server health — without rewriting product code.',
+    summary: 'You improve how the agent operates, not what the code does. Measure before tuning; make the smallest reversible change with a measured effect; never weaken a safety hook; tune by adding alongside, not by modifying load-bearing config.',
+    kbDefaults: ['kb:infra-dev/observability-basics', 'kb:architecture/discipline/reliability-scalability-maintainability'],
+  },
+  {
+    id: '19-planner', agent: 'planner', color: 'blue', model: 'opus',
+    tools: ['Read', 'Grep', 'Glob'],
+    description: 'Planning specialist for complex features and refactoring. Invoke proactively when users request multi-file implementation, architectural changes, or phased rollouts.',
+    summary: 'Never plan blind: read the code first. Break work into independently-mergeable phases, smallest meaningful increment first. Reuse existing primitives; defer non-load-bearing items; every step names a concrete file and action.',
+    kbDefaults: ['kb:architecture/discipline/trade-off-articulation', 'kb:architecture/crosscut/single-responsibility'],
+  },
 ];
 
 function renderAgentMd(p) {
@@ -143,7 +165,7 @@ function renderAgentMd(p) {
 name: ${p.agent}
 description: ${p.description}
 tools: ${toolsJson}
-model: opus
+model: ${p.model || 'opus'}
 color: ${p.color}
 ---
 
@@ -248,4 +270,11 @@ function main() {
   }
 }
 
-main();
+// Run only when invoked directly (CLI + CI). Guarding behind require.main lets
+// the unit test import PERSONAS + renderAgentMd without triggering a real
+// regeneration (main() writes to agents/ as a side effect).
+if (require.main === module) {
+  main();
+}
+
+module.exports = { PERSONAS, renderAgentMd };
