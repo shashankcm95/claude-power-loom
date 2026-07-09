@@ -58,9 +58,25 @@ const MAX_LEDGER_RECORDS = 10000; // M3: a count cap (time-expiry alone is unbou
 // single-string ceiling can't throw → the witness ledger can't silently blank). Env-overridable for tests.
 const MAX_LEDGER_BYTES = Number(process.env.LOOM_LAB_MAX_LEDGER_BYTES) > 0
   ? Number(process.env.LOOM_LAB_MAX_LEDGER_BYTES) : 64 * 1024 * 1024;
+// Bug-bounty (field-cap): each caller-supplied free-string field is BYTE-bounded
+// (Buffer.byteLength, not char length — a multibyte string under the char cap can
+// still blow the byte budget), mirroring the sibling advisory stores
+// (causal-edge/store.js + manage-proposal/store.js, both MAX_FIELD_LEN=512 bytes).
+// Without it a single record-from-decompose leaf can embed a multi-MB persona/task
+// string, ballooning the ledger past MAX_LEDGER_BYTES — after which the READ path
+// (readJsonlBounded) silently drops the OLDEST attestations (witness loss).
+const MAX_FIELD_LEN = 512; // bytes, per free-string field
+const MAX_TAGS = 64;       // bound the tags array length (any-size array was accepted verbatim)
 
 function sha256(s) {
   return crypto.createHash('sha256').update(s).digest('hex');
+}
+
+// Byte-length cap for a caller-supplied free string (see MAX_FIELD_LEN).
+function validateFieldLen(v, fieldName) {
+  if (Buffer.byteLength(v, 'utf8') > MAX_FIELD_LEN) {
+    throw new Error(`recordAttestation: ${fieldName} exceeds the ${MAX_FIELD_LEN}-byte length cap`);
+  }
 }
 
 // canonical-basis (v3.4 Wave 0, design-input b): hash the failure_signature with SORTED keys so the
@@ -160,6 +176,25 @@ function recordAttestation(input) {
   }
   if (typeof o.runId !== 'string' || o.runId.length === 0) {
     throw new Error('recordAttestation: runId (a non-empty string) is required');
+  }
+  // Byte-cap the caller-supplied free-string fields at this store's own boundary
+  // (the producer is not trusted to bound them). subagentType + taskSignature are
+  // the multi-MB vectors the record-from-decompose ingest can carry; tags is an
+  // unbounded array of unbounded strings.
+  validateFieldLen(identity.subagentType, 'identity.subagentType');
+  if (typeof identity.taskSignature === 'string' && identity.taskSignature.length > 0) {
+    validateFieldLen(identity.taskSignature, 'identity.taskSignature');
+  }
+  if (Array.isArray(identity.tags)) {
+    if (identity.tags.length > MAX_TAGS) {
+      throw new Error(`recordAttestation: identity.tags exceeds the ${MAX_TAGS}-entry cap`);
+    }
+    for (const t of identity.tags) {
+      if (typeof t !== 'string') {
+        throw new Error('recordAttestation: identity.tags entries must be strings');
+      }
+      validateFieldLen(t, 'identity.tags[]');
+    }
   }
   const leafRef = (typeof o.leafRef === 'string' && o.leafRef.length > 0) ? o.leafRef : null;
   const nowMs = nowMsFrom(o);
