@@ -155,6 +155,13 @@ function cmdRecord(args) {
     console.error('--tokens-input and --tokens-output must be integers');
     process.exit(1);
   }
+  // Token usage is monotonic — a negative delta would let a caller silently
+  // deflate recorded usage below the true total and mask an over-budget spawn.
+  // Reject it at the boundary (usage only ever accumulates).
+  if (ti < 0 || to < 0) {
+    console.error('--tokens-input and --tokens-output must be non-negative');
+    process.exit(1);
+  }
   // H.3.2 (CS-1 hacker.zoe CRIT-4 + code-reviewer H-2; own-validation probe 3):
   // Lock the WHOLE read-modify-write cycle. Wrapping only writeBudgetsAtomic
   // is insufficient — concurrent loaders all read pre-increment state, then
@@ -269,10 +276,26 @@ function cmdExtend(args) {
   // pre-check; the authoritative read+increment+write must be atomic across
   // processes, else a concurrent extender's increment is clobbered (last
   // writer wins, the other's extension lost).
+  // The extensible/maxExtensions checks above are an advisory FAST-PATH only —
+  // both are computed from the PRE-lock `entry`, so two concurrent extenders can
+  // each observe the pre-increment state and both pass them. The BINDING decision
+  // (and the increment) must be made against the authoritative fresh read INSIDE
+  // the lock; otherwise the cap is bypassable via a race (both approve, so
+  // extensionsUsed climbs past maxExtensions while every call reports "approve").
+  let approved = false;
+  let denyReason = null;
   let extensionsUsed, maxExtensions, extensionAmount, newAllowance, totalTokens;
   withBudgetLock(runId, () => {
     const fresh = loadBudgets(runId);
     const freshEntry = (fresh && fresh.spawns[args.identity]) || entry;
+    if (!freshEntry.extensible) {
+      denyReason = 'contract.budget.extensible is false';
+      return;
+    }
+    if (freshEntry.extensionsUsed >= freshEntry.maxExtensions) {
+      denyReason = `extensions exhausted (${freshEntry.extensionsUsed}/${freshEntry.maxExtensions})`;
+      return;
+    }
     freshEntry.extensionsUsed += 1;
     freshEntry.extensionsLog.push({
       extendedAt: new Date().toISOString(),
@@ -280,12 +303,23 @@ function cmdExtend(args) {
       extensionAmount: freshEntry.extensionAmount,
     });
     writeBudgetsAtomic(runId, fresh || budgets);
+    approved = true;
     extensionsUsed = freshEntry.extensionsUsed;
     maxExtensions = freshEntry.maxExtensions;
     extensionAmount = freshEntry.extensionAmount;
     totalTokens = freshEntry.totalTokens;
     newAllowance = (freshEntry.budgetTokens || 0) + freshEntry.extensionsUsed * freshEntry.extensionAmount;
   });
+  if (!approved) {
+    console.log(JSON.stringify({
+      action: 'extend',
+      decision: 'deny',
+      identity: args.identity,
+      reason: denyReason || 'extension denied',
+      requestReason: reason,
+    }, null, 2));
+    process.exit(1);
+  }
   console.log(JSON.stringify({
     action: 'extend',
     decision: 'approve',
