@@ -105,6 +105,18 @@ merged, several warranted next-steps exist and only one can be the active DFS tr
 
 ## FORK-1 (2026-07-06) — the lesson-exit trust-ceiling (ADR-0018's deferred fork #3)
 
+> **▶ UPDATE 2026-07-08 (FORK-1 RESOLVED — KEEP SEPARATE, USER-ratified):** the CHOSEN branch is now FINAL.
+> The two substrates keep PERMANENTLY separate lesson-exit trust ceilings: a lab causal-edge lesson tops out at
+> the soft weighted gated-RECALL; only a human-authored scar reaches the hard always-on `rules/core/*.md` lane.
+> A lab lesson may still INSPIRE a rule — but only via a human authoring a NEW scar (the lesson `[[link]]`-cited
+> as evidence); the lesson-artifact never auto-crosses the boundary, so the rule lane stays 100% human-authored.
+> Grounding: the substrate's own **integrity ≠ provenance** principle (the #273 family / arming / north-star) —
+> the highest-trust artifact (an always-on rule) keeps a human as author-of-record, never a confidence threshold
+> over machine-minted edges. The DEFERRED **unify** branch is now **REJECTED-unless-superseded** (its
+> revisit-trigger never fired; the escape hatch covers the only real need). Canonical resolution:
+> **[ADR-0021](../packages/specs/adrs/0021-lesson-exit-trust-ceiling-stays-separate.md)** (supersedes ADR-0018's
+> open-question fork #3; ADR-0018 + ADR-0020 STAND). **Branch RESOLVED.**
+
 PARENT: ADR-0018 (the two-substrate / one-pattern-kernel decision). The shared kernel's lifecycle terminates in
 an *exit state*; the two substrates exit differently, and whether that split is deliberate is genuinely open.
 
