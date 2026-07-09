@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://www.coderabbit.ai/integrations/schema.v2.json
 #
-# CodeRabbit configuration. The single purpose of this file (so far) is to encode the
+# CodeRabbit configuration. The FIRST purpose of this file is to encode the
 # repo's design-record lifecycle policy so CodeRabbit stops a recurring false positive:
 # flagging in-place edits to files under packages/specs/plans/** as "editing an
 # immutable/canonical path." That FP recurred on PRs #269, #270, and #293 (escalating
@@ -16,6 +16,13 @@
 # incremental re-reviews early AND open dev PRs as DRAFT (un-draft when the diff is final = one
 # review on the complete state, not one per push). See docs/coderabbit-options.md "rate-limit
 # conservation". Defaults: auto_incremental_review true, auto_pause_after_reviewed_commits 5.
+#
+# The reviews.pre_merge_checks.docstrings block is the THIRD purpose: disable CodeRabbit's
+# docstring-coverage check. That check counts FORMAL docstrings (JSDoc `/** */`); this repo
+# documents with inline `//` comments by convention, so the metric reports a low coverage the
+# codebase never set out to satisfy (it fired a 20%-vs-80% warning on #534). `mode: "off"` stops
+# the noise without forcing a repo-wide JSDoc migration. ("off" is quoted because YAML 1.1 parses
+# a bare off as the boolean false — the schema wants the string "off".)
 language: en-US
 reviews:
   auto_review:
@@ -24,6 +31,9 @@ reviews:
       - "WIP"
       - "DO NOT MERGE"
     # drafts stays false (the default): open dev PRs as DRAFT, un-draft when final.
+  pre_merge_checks:
+    docstrings:
+      mode: "off"   # repo documents with // comments, not JSDoc — see header note (THIRD purpose)
   path_instructions:
     - path: "packages/specs/plans/**"
       instructions: >-
