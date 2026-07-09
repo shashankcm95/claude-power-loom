@@ -217,6 +217,24 @@ function appendRecord(record, opts = {}) {
     return { ok: false, reason: 'transaction-id-mismatch' };
   }
 
+  // (2a) Read-back stability. JSON.stringify (the write path) DROPS undefined-valued
+  // object keys (and coerces NaN/Infinity to null), so a record carrying such a field
+  // hashes one way in memory (the S5 check above passes) but a DIFFERENT way once
+  // parsed back from disk — loadRecordFile's S5-on-read re-hash then rejects it as
+  // tampered, making a just-written {ok:true} record PERMANENTLY UNREADABLE (silent
+  // data loss). Enforce that the id survives the exact serialize->parse round-trip the
+  // store performs on write->read, so a producer bug (an optional field left
+  // `undefined` instead of `null`) is a LOUD reject here, not silent corruption on read.
+  let roundTripId;
+  try {
+    roundTripId = computeTransactionId(JSON.parse(JSON.stringify(record)));
+  } catch {
+    return { ok: false, reason: 'record-not-round-trip-serializable' };
+  }
+  if (id !== roundTripId) {
+    return { ok: false, reason: 'record-not-round-trip-stable' };
+  }
+
   // (2b) Idempotency-key content-address integrity (PR-4 hardening; hacker-lens HIGH).
   // The dedup gate keys on idempotency_key, so the key MUST be a verifiable content-address
   // of THIS record's body — never a self-asserted label. Re-derive it; reject a mismatch.
