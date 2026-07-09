@@ -64,9 +64,10 @@ jobs:
           grep -qE '^Total violations: 0$' /tmp/contracts.log
 
       - name: Persona-agent roster check
-        # v3.4 stabilization: guard against the "missing agents/*.md stub → general-purpose
-        # fallback" drift that originally motivated generate-persona-agents.js. --check exits
-        # non-zero if any roster persona lacks its agents/<name>.md stub (it writes nothing).
+        # v3.4 stabilization + persona-depth W1 follow-up (M1/L1): a directory-integrity gate,
+        # not just presence. --check exits non-zero (writing nothing) if any managed agents/*.md
+        # drifts from renderAgentMd (incl. a hand-flipped model:), a fat agent is off its pinned
+        # tier or thinned in place, an agents/*.md is in neither roster, or the rosters conflict.
         run: node scripts/generate-persona-agents.js --check
 
       - name: Signpost drift check

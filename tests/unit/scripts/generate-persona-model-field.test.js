@@ -14,12 +14,9 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const { PERSONAS, renderAgentMd } = require('../../../scripts/generate-persona-agents');
-
-function modelLine(md) {
-  const m = md.match(/^model:\s*(.+)$/m);
-  return m ? m[1].trim() : null;
-}
+// modelLine is imported (not redefined) so this tier oracle and the --check gate
+// read the model line through the exact same helper.
+const { PERSONAS, renderAgentMd, modelLine } = require('../../../scripts/generate-persona-agents');
 
 const baseEntry = {
   id: '01-hacker', agent: 'hacker', color: 'red',

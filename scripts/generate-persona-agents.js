@@ -15,8 +15,14 @@
  *
  * Usage:
  *   node scripts/generate-persona-agents.js          # generate missing
- *   node scripts/generate-persona-agents.js --force  # regenerate all
- *   node scripts/generate-persona-agents.js --check  # exit 1 if missing
+ *   node scripts/generate-persona-agents.js --force  # regenerate all managed stubs
+ *   node scripts/generate-persona-agents.js --check  # exit 1 on ANY drift
+ *
+ * `--check` is a directory-integrity gate (not just presence): it fails on a
+ * missing/malformed stub, a managed stub that no longer matches renderAgentMd
+ * (content drift, incl. a hand-flipped `model:`), a fat agent off its pinned
+ * tier or thinned in place, a name in both rosters, or an ungoverned agents/*.md
+ * in neither PERSONAS nor FAT_AGENTS. See collectCheckProblems().
  */
 
 'use strict';
@@ -50,6 +56,11 @@ const PERSONAS = [
     description: 'Offensive-security persona. Probes for SSRF, IDOR, injection, auth bypass, and protocol-level abuse. Invoke for adversarial review of new endpoints or before shipping security-sensitive features.',
     summary: 'You think like an attacker. Every input is hostile; every assumption is a bypass surface. Focus on exploitability — proof-of-concept over theoretical risk.',
     kbDefaults: ['kb:security-dev/threat-modeling-essentials', 'kb:security-dev/auth-patterns'],
+    kbExtra: [
+      { id: 'kb:security/sql-injection-prevention', desc: 'parameterized queries / injection defense' },
+      { id: 'kb:security/web-security-controls', desc: 'CSRF, security headers, session, transport' },
+    ],
+    broaderScope: '`security/`',
   },
   {
     id: '02-confused-user', agent: 'confused-user', color: 'yellow',
@@ -78,6 +89,11 @@ const PERSONAS = [
     description: 'JVM service developer (Spring Boot focus). Builds REST/gRPC services, JPA persistence, and Kafka integrations. Invoke for Java/Kotlin backend work.',
     summary: 'JVM service patterns. Spring Boot conventions, JPA fetch strategies, GC tuning awareness. Async via reactive when latency matters; blocking when simplicity matters.',
     kbDefaults: ['kb:backend-dev/spring-boot-essentials', 'kb:backend-dev/jvm-runtime-basics'],
+    kbExtra: [
+      { id: 'kb:spring-boot/auto-configuration', desc: 'classpath-driven conditional bean registration' },
+      { id: 'kb:spring-core/ioc-container-di', desc: 'Spring IoC / dependency-injection core' },
+    ],
+    broaderScope: '`spring-boot/` · `spring-core/` · `persistence/` · `messaging/` · `microservices/` · `reactive/` · `serialization/` · `testing/`',
   },
   {
     id: '08-ml-engineer', agent: 'ml-engineer', color: 'cyan',
@@ -85,6 +101,11 @@ const PERSONAS = [
     description: 'ML pipelines + LLM integration specialist. Builds training pipelines, inference services, prompt engineering, and evaluation harnesses. Invoke for Claude/OpenAI integration, embedding work, model evaluation.',
     summary: 'Training and inference are different beasts. For inference: prompt design, structured outputs, caching, cost-awareness. For training: data prep, validation splits, eval rigor.',
     kbDefaults: ['kb:ml-dev/training-vs-inference', 'kb:architecture/ai-systems/inference-cost-management'],
+    kbExtra: [
+      { id: 'kb:bigdata-ml-cloud/jvm-machine-learning', desc: 'JVM ML (DL4J / Tribuo / etc.)' },
+      { id: 'kb:bigdata-ml-cloud/apache-spark', desc: 'Spark for data / feature pipelines' },
+    ],
+    broaderScope: '`bigdata-ml-cloud/`',
   },
   {
     id: '09-react-frontend', agent: 'react-frontend', color: 'cyan',
@@ -99,6 +120,11 @@ const PERSONAS = [
     description: 'Kubernetes + observability + incident-response specialist. Builds Helm charts, Terraform modules, Prometheus dashboards, runbooks. Invoke for production-readiness review or deploy-pipeline work.',
     summary: 'Production-readiness = observability + rollback + capacity. Declarative infra; least-privilege; graceful degradation. SLOs before features.',
     kbDefaults: ['kb:infra-dev/kubernetes-essentials', 'kb:infra-dev/observability-basics'],
+    kbExtra: [
+      { id: 'kb:build-devops/docker-packaging', desc: 'container image build & packaging' },
+      { id: 'kb:build-devops/kubernetes-iac', desc: 'K8s manifests & infra-as-code' },
+    ],
+    broaderScope: '`build-devops/`',
   },
   {
     id: '11-data-engineer', agent: 'data-engineer', color: 'green',
@@ -106,6 +132,11 @@ const PERSONAS = [
     description: 'ETL + warehouse + orchestration specialist. Builds Airflow DAGs, dbt models, schema designs, data validation. Invoke for pipeline work, warehouse modeling, data quality.',
     summary: 'Idempotent transforms. Normalized writes, denormalized reads. Schema migrations have rollback. Data quality is enforced, not assumed.',
     kbDefaults: ['kb:data-dev/data-modeling-basics', 'kb:data-dev/orchestration-essentials'],
+    kbExtra: [
+      { id: 'kb:persistence/jdbc-fundamentals', desc: 'JDBC connection & query basics' },
+      { id: 'kb:bigdata-ml-cloud/apache-spark', desc: 'Spark batch / stream processing' },
+    ],
+    broaderScope: '`bigdata-ml-cloud/` · `persistence/`',
   },
   {
     id: '13-node-backend', agent: 'node-backend', color: 'green',
@@ -126,7 +157,9 @@ const PERSONAS = [
     tools: ['Read', 'Grep', 'Glob'],
     description: 'File + symbol + reference finder. Answers "where is X?" / "which files touch Y?" Read-only. Invoke for fast targeted lookups in unfamiliar codebases.',
     summary: 'You locate, you don\'t analyze. Return paths + line numbers. Cite multiple candidates if ambiguous. Do not read past your search window — defer interpretation to the analyzer persona.',
-    kbDefaults: ['kb:hets/spawn-conventions'],
+    // code-search-heuristics (not the generic spawn-conventions default) — the locator's
+    // task-specific KB; the template already appends the spawn-conventions line separately.
+    kbDefaults: ['kb:hets/code-search-heuristics'],
   },
   {
     id: '15-codebase-analyzer', agent: 'codebase-analyzer', color: 'gray',
@@ -161,6 +194,15 @@ const PERSONAS = [
 function renderAgentMd(p) {
   const toolsJson = JSON.stringify(p.tools);
   const kbList = p.kbDefaults.map((k) => `- \`${k}\``).join('\n');
+  // Optional per-persona extras — the SSOT home for the hand-curated stubs (see PERSONAS
+  // entries below). `kbExtra` renders described KB refs directly after the spawn-conventions
+  // line; `broaderScope` renders a "Broader scope" paragraph (its value is only the variable
+  // KB-section list — the fixed prose is templated here so it stays DRY). Both collapse to ''
+  // when the entry omits them, so a plain persona renders byte-identically to the base template.
+  const kbExtra = (p.kbExtra || []).map((e) => `\n- \`${e.id}\` — ${e.desc}`).join('');
+  const broaderScope = p.broaderScope
+    ? `\n\n**Broader scope (select per task, do not preload):** the ${p.broaderScope} KB section(s). Find task-relevant docs via \`kb-resolver list --tag <topic>\` + each doc's \`related[]\`; load at Summary tier first, drill deeper only for docs you act on.`
+    : '';
   return `---
 name: ${p.agent}
 description: ${p.description}
@@ -186,7 +228,7 @@ ${p.summary}
 Default kb_scope for this persona (override in spawn prompt if needed):
 
 ${kbList}
-- \`kb:hets/spawn-conventions\` — output-format requirements for HETS spawns
+- \`kb:hets/spawn-conventions\` — output-format requirements for HETS spawns${kbExtra}${broaderScope}
 
 Consult via \`node packages/runtime/orchestration/kb-resolver.js cat <kb_id>\` (or \`Read packages/skills/library/agent-team/kb/<kb_id>.md\` if Bash isn't in your tool inventory).
 
@@ -201,6 +243,90 @@ Consult via \`node packages/runtime/orchestration/kb-resolver.js cat <kb_id>\` (
 
 Read the full persona brief at \`packages/runtime/personas/${p.id}.md\`. This file is intentionally minimal — it exists so the Agent tool can spawn you by name. The brief is where the wisdom lives.
 `;
+}
+
+// ---------------------------------------------------------------------------
+// Directory-integrity gate (--check). Governs EVERY agents/*.md via a TOTAL
+// partition of the directory: generator-managed PERSONAS + the pinned-fat
+// FAT_AGENTS below. Follow-up to #533 W1 — closes M1 (--check was content-blind:
+// a hand-edit of a committed stub, incl. a model flip, went uncaught) + L1 (the
+// fat sonnet agents were unguarded). The `orphaned` arm is the completeness
+// prerequisite the VERIFY board required: without it the gate is allowlist-driven
+// and a NEW ungoverned stub silently reopens the silent-model-upgrade CRITICAL.
+// ---------------------------------------------------------------------------
+
+// The 3 agents deliberately NOT generator-managed: they keep bespoke FAT bodies
+// (their Layer-1 output-contracts are enforced on actor output — see the PERSONAS
+// header). Their model tier is PINNED here so a hand-flip can't silently upgrade
+// it; `tableConflicts` fires if one is ever also added to PERSONAS. The committed
+// test pins this exact key set, so a deliberate fat->thin demotion is a
+// diff-visible, reviewed act — not a silent slip.
+const FAT_AGENTS = { architect: 'opus', 'code-reviewer': 'sonnet', 'security-auditor': 'sonnet' };
+
+// In-place fat->thin gutting is caught two ways (either fires `fatBody`):
+//   1. THIN_SENTINEL — the sentence a generated thin stub carries (renderAgentMd
+//      "When in doubt"); a fat agent must NOT contain it (catches a paste of the
+//      thin template over the fat body, with a clear message).
+//   2. FAT_BODY_FLOOR — a method-agnostic body-size floor. The fat agents are
+//      5.9KB+ (security-auditor is the smallest); a thin stub is ~2.6KB. A fat
+//      agent whose body collapses below this floor was gutted by SOME method
+//      (not just the sentinel paste) — e.g. its Layer-1 output-contract sections
+//      replaced by a throwaway line. The floor sits well above the largest thin
+//      stub and well below the smallest fat body, so it flags drastic gutting
+//      without policing gradual legitimate edits.
+const THIN_SENTINEL = 'This file is intentionally minimal';
+const FAT_BODY_FLOOR = 3500;
+
+// A well-formed stub opens with a `---` frontmatter block (closing `---` on its
+// own line) and has a non-trivial body.
+const FRONTMATTER_RE = /^\uFEFF?---\r?\n[\s\S]*?\r?\n---\s*(\r?\n|$)/;
+
+function modelLine(md) {
+  const m = md.match(/^model:\s*(.+)$/m);
+  return m ? m[1].trim() : null;
+}
+
+// Pure, injectable check over the whole agents/ directory — no writes, no
+// process.exit. Both `main()` (--check) and the unit test consume it. Params are
+// injectable so the test can point at a tampered fixture tree.
+function collectCheckProblems({ agentsDir = AGENTS_DIR, personas = PERSONAS, fatAgents = FAT_AGENTS } = {}) {
+  const missing = [];
+  const malformed = [];
+  const drifted = [];
+  const fatModel = [];
+  const fatBody = [];
+  const tableConflicts = [];
+
+  const fatNames = Object.keys(fatAgents);
+  const governed = new Set([...personas.map((p) => p.agent), ...fatNames]);
+
+  // Managed personas: present, well-formed, byte-identical to the generator.
+  for (const p of personas) {
+    const target = path.join(agentsDir, `${p.agent}.md`);
+    if (!fs.existsSync(target)) { missing.push(p.agent); continue; }
+    const content = fs.readFileSync(target, 'utf8');
+    if (!FRONTMATTER_RE.test(content) || content.trim().length < 20) { malformed.push(p.agent); continue; }
+    if (content !== renderAgentMd(p)) drifted.push(p.agent);
+  }
+
+  // Fat agents: present, at the pinned tier, still fat, and not ALSO in the table.
+  for (const name of fatNames) {
+    if (personas.some((p) => p.agent === name)) tableConflicts.push(name);
+    const target = path.join(agentsDir, `${name}.md`);
+    if (!fs.existsSync(target)) { missing.push(name); continue; }
+    const content = fs.readFileSync(target, 'utf8');
+    const tier = modelLine(content);
+    if (tier !== fatAgents[name]) fatModel.push(`${name}: model:${tier} (want ${fatAgents[name]})`);
+    if (content.includes(THIN_SENTINEL) || content.length < FAT_BODY_FLOOR) fatBody.push(name);
+  }
+
+  // Directory completeness: no agents/*.md outside the governed partition.
+  const orphaned = fs.readdirSync(agentsDir)
+    .filter((f) => f.endsWith('.md'))
+    .map((f) => f.slice(0, -3))
+    .filter((name) => !governed.has(name));
+
+  return { missing, malformed, drifted, fatModel, fatBody, tableConflicts, orphaned };
 }
 
 function main() {
@@ -226,39 +352,41 @@ function main() {
     process.exit(2);
   }
 
-  const created = [];
-  const skipped = [];
-  const malformed = []; // M1 (VALIDATE hacker): exists-but-broken (no frontmatter / empty body)
-  for (const p of PERSONAS) {
-    const target = path.join(AGENTS_DIR, `${p.agent}.md`);
-    if (fs.existsSync(target) && !isForce) {
-      // M1: `--check` must catch a stub that EXISTS but lost its frontmatter / is empty (an unspawnable
-      // persona that would otherwise pass CI green on existsSync alone). A well-formed stub opens with a
-      // `---` frontmatter block (closing `---` on its own line) and has a non-trivial body.
-      if (isCheck) {
-        const content = fs.readFileSync(target, 'utf8');
-        const hasFm = /^\uFEFF?---\r?\n[\s\S]*?\r?\n---\s*(\r?\n|$)/.test(content);
-        if (!hasFm || content.trim().length < 20) malformed.push(p.agent);
-      }
-      skipped.push(p.agent);
-      continue;
-    }
-    if (!isCheck) {
-      fs.writeFileSync(target, renderAgentMd(p));
-    }
-    created.push(p.agent);
-  }
-
+  // --check: integrity-audit the whole agents/ directory, never write.
   if (isCheck) {
+    const { missing, malformed, drifted, fatModel, fatBody, tableConflicts, orphaned } = collectCheckProblems();
     const problems = [];
-    if (created.length > 0) problems.push(`${created.length} missing (${created.join(', ')})`);
+    if (missing.length > 0) problems.push(`${missing.length} missing (${missing.join(', ')})`);
     if (malformed.length > 0) problems.push(`${malformed.length} malformed/no-frontmatter (${malformed.join(', ')})`);
+    if (drifted.length > 0) problems.push(`${drifted.length} content-drift vs generator (${drifted.join(', ')}) — run \`node scripts/generate-persona-agents.js --force\`, or fold the hand-curation into PERSONAS[] (kbExtra/broaderScope); byte-equality is line-ending sensitive (keep core.autocrlf=false)`);
+    if (orphaned.length > 0) problems.push(`${orphaned.length} ungoverned agents/*.md not in PERSONAS or FAT_AGENTS (${orphaned.join(', ')}) — add to the roster with an explicit model tier so it can't silently drift`);
+    if (tableConflicts.length > 0) problems.push(`${tableConflicts.length} in BOTH PERSONAS + FAT_AGENTS (${tableConflicts.join(', ')}) — a fat agent moved into the table must be removed from FAT_AGENTS + given an explicit model field`);
+    if (fatModel.length > 0) problems.push(`${fatModel.length} fat-agent model-tier drift (${fatModel.join('; ')})`);
+    if (fatBody.length > 0) problems.push(`${fatBody.length} fat-agent thinned in place (${fatBody.join(', ')}) — carries the thin sentinel or its body fell below the fat-body floor; a deliberate demotion must update FAT_AGENTS + its pin test`);
     if (problems.length > 0) {
       process.stdout.write(`generate-persona-agents: ${problems.join('; ')}\n`);
       process.exit(1);
     }
-    process.stdout.write(`generate-persona-agents: clean — all ${PERSONAS.length} persona agents present + well-formed\n`);
+    process.stdout.write(`generate-persona-agents: clean — all ${PERSONAS.length} persona agents present + match generator; ${Object.keys(FAT_AGENTS).length} fat agents at pinned tiers\n`);
     return;
+  }
+
+  // Write path (default = create missing; --force = regenerate all managed stubs).
+  // Prevent, don't just detect: a fat agent added to PERSONAS must never be
+  // clobbered by --force before CI's --check runs (mirrors the missingSource bail above).
+  const conflicts = PERSONAS.filter((p) => Object.prototype.hasOwnProperty.call(FAT_AGENTS, p.agent)).map((p) => p.agent);
+  if (conflicts.length > 0) {
+    process.stderr.write(`Refusing to write: ${conflicts.join(', ')} in BOTH PERSONAS and FAT_AGENTS — resolve the roster before (re)generating.\n`);
+    process.exit(2);
+  }
+
+  const created = [];
+  const skipped = [];
+  for (const p of PERSONAS) {
+    const target = path.join(AGENTS_DIR, `${p.agent}.md`);
+    if (fs.existsSync(target) && !isForce) { skipped.push(p.agent); continue; }
+    fs.writeFileSync(target, renderAgentMd(p));
+    created.push(p.agent);
   }
 
   process.stdout.write(`generate-persona-agents: ${isForce ? 'regenerated' : 'created'} ${created.length}, skipped ${skipped.length}\n`);
@@ -277,4 +405,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { PERSONAS, renderAgentMd };
+module.exports = { PERSONAS, FAT_AGENTS, renderAgentMd, modelLine, collectCheckProblems };
