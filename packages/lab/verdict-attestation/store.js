@@ -189,9 +189,14 @@ function validateRecordVerdictInput(o) {
   const persona = subject.persona.toLowerCase();
   // M2 — bound each field so a multi-MB value can't bloat the re-serialized ledger. Persona is bounded on the
   // NORMALIZED value (VERIFY hacker MEDIUM-1: a raw-length check would let `"I-dot".repeat(257)` grow past the cap).
-  if (o.agentId.length > MAX_FIELD_LEN || verifier.identity.length > MAX_FIELD_LEN
-      || verifier.kind.length > MAX_FIELD_LEN || persona.length > MAX_FIELD_LEN) {
-    throw new Error(`recordVerdict: a field exceeds the ${MAX_FIELD_LEN}-char cap (agentId/verifier.identity/verifier.kind/subject.persona must be bounded)`);
+  // BYTE length (Buffer.byteLength), NOT char count: a multibyte string under MAX_FIELD_LEN chars can
+  // still exceed the byte budget the ledger bound assumes (a 3-byte-per-char field reaches ~1.5KB at a
+  // 512-char cap). Matches the constant's own "byte cap" intent and the sibling causal-edge /
+  // manage-proposal stores. Persona is checked on the NORMALIZED value.
+  const overCap = [o.agentId, verifier.identity, verifier.kind, persona]
+    .some((v) => Buffer.byteLength(v, 'utf8') > MAX_FIELD_LEN);
+  if (overCap) {
+    throw new Error(`recordVerdict: a field exceeds the ${MAX_FIELD_LEN}-byte cap (agentId/verifier.identity/verifier.kind/subject.persona must be bounded)`);
   }
   // M-1 — agentId is later path-joined by the enricher (resolver-journal-<agentId>.jsonl), so it MUST be
   // a safe single path segment (#215 trap-class; isSafePathSegment rejects separators / '..' / NUL). The
