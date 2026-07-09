@@ -191,6 +191,15 @@ const PERSONAS = [
   },
 ];
 
+/**
+ * Render the thin delegation stub for one persona entry. The optional
+ * `kbExtra`/`broaderScope` fields collapse to '' when absent, so a plain persona
+ * renders byte-identically to the base template — the invariant the `--check`
+ * content-equality gate depends on.
+ * @param {object} p A `PERSONAS[]` entry (`id`, `agent`, `tools`, `color`,
+ *   `description`, `summary`, `kbDefaults`, and optional `kbExtra`/`broaderScope`/`model`).
+ * @returns {string} The full `agents/<name>.md` contents.
+ */
 function renderAgentMd(p) {
   const toolsJson = JSON.stringify(p.tools);
   const kbList = p.kbDefaults.map((k) => `- \`${k}\``).join('\n');
@@ -281,14 +290,27 @@ const FAT_BODY_FLOOR = 3500;
 // own line) and has a non-trivial body.
 const FRONTMATTER_RE = /^\uFEFF?---\r?\n[\s\S]*?\r?\n---\s*(\r?\n|$)/;
 
+/**
+ * Extract the frontmatter `model:` tier from an agent stub.
+ * @param {string} md The stub file contents.
+ * @returns {string|null} The trimmed tier (e.g. `'opus'`), or null when no `model:` line exists.
+ */
 function modelLine(md) {
   const m = md.match(/^model:\s*(.+)$/m);
   return m ? m[1].trim() : null;
 }
 
-// Pure, injectable check over the whole agents/ directory — no writes, no
-// process.exit. Both `main()` (--check) and the unit test consume it. Params are
-// injectable so the test can point at a tampered fixture tree.
+/**
+ * Integrity-audit the whole `agents/` directory. Pure: no writes, no `process.exit`.
+ * Both `main()` (`--check`) and the unit test consume it; the params are injectable
+ * so the test can point at a tampered fixture tree.
+ * @param {object} [opts]
+ * @param {string} [opts.agentsDir] Directory of `agents/*.md` to audit (defaults to AGENTS_DIR).
+ * @param {object[]} [opts.personas] Generator-managed roster (defaults to PERSONAS).
+ * @param {Object<string,string>} [opts.fatAgents] Pinned fat-agent -> model-tier map (defaults to FAT_AGENTS).
+ * @returns {{missing:string[],malformed:string[],drifted:string[],fatModel:string[],fatBody:string[],tableConflicts:string[],orphaned:string[]}}
+ *   Problem buckets; every bucket empty means the directory is clean.
+ */
 function collectCheckProblems({ agentsDir = AGENTS_DIR, personas = PERSONAS, fatAgents = FAT_AGENTS } = {}) {
   const missing = [];
   const malformed = [];
@@ -333,6 +355,13 @@ function collectCheckProblems({ agentsDir = AGENTS_DIR, personas = PERSONAS, fat
   return { missing, malformed, drifted, fatModel, fatBody, tableConflicts, orphaned };
 }
 
+/**
+ * CLI entry point. `--check` audits the tree (never writes) and exits 1 on any
+ * problem; `--force` regenerates every managed stub; the default creates only
+ * missing stubs. Bails with exit 2 on a missing source brief/contract or a
+ * PERSONAS/FAT_AGENTS roster conflict.
+ * @returns {void}
+ */
 function main() {
   const isCheck = process.argv.includes('--check');
   const isForce = process.argv.includes('--force');
