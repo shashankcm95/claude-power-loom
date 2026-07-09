@@ -315,6 +315,10 @@ function collectCheckProblems({ agentsDir = AGENTS_DIR, personas = PERSONAS, fat
     const target = path.join(agentsDir, `${name}.md`);
     if (!fs.existsSync(target)) { missing.push(name); continue; }
     const content = fs.readFileSync(target, 'utf8');
+    // Same frontmatter sanity as the managed personas above — modelLine's `/m` regex
+    // matches a stray `model:` line ANYWHERE, so a de-framed (frontmatter-stripped) fat
+    // stub with a leftover `model:` line + enough body bytes would otherwise report clean.
+    if (!FRONTMATTER_RE.test(content) || content.trim().length < 20) { malformed.push(name); continue; }
     const tier = modelLine(content);
     if (tier !== fatAgents[name]) fatModel.push(`${name}: model:${tier} (want ${fatAgents[name]})`);
     if (content.includes(THIN_SENTINEL) || content.length < FAT_BODY_FLOOR) fatBody.push(name);
@@ -405,4 +409,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { PERSONAS, FAT_AGENTS, renderAgentMd, modelLine, collectCheckProblems };
+module.exports = { PERSONAS, FAT_AGENTS, THIN_SENTINEL, renderAgentMd, modelLine, collectCheckProblems };

@@ -17,13 +17,12 @@ const os = require('node:os');
 const path = require('node:path');
 
 const {
-  PERSONAS, FAT_AGENTS, renderAgentMd, modelLine, collectCheckProblems,
+  PERSONAS, FAT_AGENTS, THIN_SENTINEL, renderAgentMd, modelLine, collectCheckProblems,
 } = require('../../../scripts/generate-persona-agents');
 
 const REPO_ROOT = path.resolve(__dirname, '../../..');
 const AGENTS_DIR = path.join(REPO_ROOT, 'agents');
 const KB_DIR = path.join(REPO_ROOT, 'packages/skills/library/agent-team/kb');
-const THIN_SENTINEL = 'This file is intentionally minimal';
 
 function tmpAgentsCopy() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'persona-agents-'));
@@ -161,5 +160,21 @@ test('missing fires when a managed stub is absent', () => {
   try {
     fs.rmSync(path.join(dir, 'hacker.md'));
     assert.ok(collectCheckProblems({ agentsDir: dir }).missing.includes('hacker'));
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('malformed fires when a fat agent loses its frontmatter (stray model: line does not launder it)', () => {
+  const dir = tmpAgentsCopy();
+  try {
+    // De-frame the fat stub: no `---` block, but keep a stray `model: sonnet` line and enough
+    // body bytes to clear the fat-body floor and omit the sentinel. Without the fat-loop
+    // frontmatter gate this unspawnable file would report clean (modelLine's /m regex matches
+    // the stray line). It must land in `malformed`, not slip through fatModel/fatBody.
+    const deframed = `# security-auditor\n\nmodel: sonnet\n\n${'filler body. '.repeat(400)}`;
+    fs.writeFileSync(path.join(dir, 'security-auditor.md'), deframed);
+    const r = collectCheckProblems({ agentsDir: dir });
+    assert.ok(r.malformed.includes('security-auditor'), 'de-framed fat stub is malformed');
+    assert.ok(!r.fatModel.some((m) => m.startsWith('security-auditor:')), 'frontmatter gate short-circuits before fatModel');
+    assert.ok(!r.fatBody.includes('security-auditor'), 'frontmatter gate short-circuits before fatBody');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
