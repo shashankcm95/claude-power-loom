@@ -98,7 +98,7 @@ The "K1–K14" numbering spans the **whole kernel roadmap**. Phase 1-alpha (v3.0
 | **K8** | Capability injection at spawn-init (`PreToolUse(Agent).updatedInput`). | **Dropped** ([ADR-0012](../packages/specs/adrs/0012-capability-enforcement-is-static-not-runtime-injected.md) — `updatedInput` is inert on Agent/Task spawns; enforcement is static: agent.md `tools:` + the reconciliation validator) | — |
 | **K9** | Promote-deltas — cherry-pick + path-rewrite + atomicity + reverse-cherry-pick journal for rollback. Went live in 4b via the resolver. | Live | `_lib/k9-promote-deltas.js`, `k9-path-guard.js`, `k9-journal.js` |
 | **K10** | `LOOM_DISABLE_WORKTREE` operator escape hatch. | Live | `enforcement/k10-escape-hatch.js` |
-| **K11** | Kernel algorithm library (makes A4 binding). | **Deferred → v3.2** | — |
+| **K11** | Kernel algorithm library (makes A4 binding). | Live (shipped v3.2) | `algorithms/route-decide.js`, `_lib/route-decide-export.js` |
 | **K12** | Layer-boundary lint — `// @loom-layer:` markers + cross-layer / production→tests import detection. | **Advisory** (non-blocking CI) | `_lib/layer-boundary-lint.js` |
 | **K13** | Serial-only spawn enforcer — one spawn at a time via a lock marker + age-reaping + crash-orphan recovery. Exercised only via the shadow spawn-close resolver (marker *release* at close); there is no PreToolUse admission gate, so it does not block a live spawn — see §6. | Live | `enforcement/k13-serial-enforcer.js` |
 | **K14** | Write-scope enforcer — post-hoc filesystem detection of out-of-scope writes; the write-scope *producer* that K9 consumes. | Live | `_lib/k14-write-scope.js` + leaves (`k14-snapshot`, `k14-tail-window`, `k14-symlink-guard`) |
