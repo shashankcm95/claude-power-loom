@@ -19,6 +19,9 @@ const { log: makeLogger } = require('../_lib/_log.js');
 // chip task_d068048a — symlink/owner-hardened candidate resolution for the
 // prompt-pattern-store CLI before it is spawnSync-executed.
 const { resolveExecCandidate, isSafeExecCandidate } = require('../../_lib/safe-resolve');
+// Stop-hook stdin is a JSON envelope { transcript_path, ... }, not the response
+// text — the produced enrichment lives in the transcript's last assistant turn.
+const { parseEnvelope, readTranscriptText, lastAssistantText } = require('../_lib/transcript-read');
 const log = makeLogger('auto-store-enrichment');
 
 // Phase-F3: prompt-pattern-store.js was relocated to scripts/; Phase 0: moved
@@ -236,9 +239,16 @@ if (require.main === module) {
     process.stdout.write(input);
 
     try {
-      const enrichments = extractEnrichments(input);
+      // stdin is the Stop envelope, NOT the response. The produced enrichment
+      // lives in the LAST assistant message of the transcript; scan that (the
+      // injected instruction attachment is excluded, and last-message-only
+      // keeps capture per-turn + dedup-safe).
+      const envelope = parseEnvelope(input);
+      const transcriptText = envelope ? readTranscriptText(envelope.transcript_path) : '';
+      const responseText = lastAssistantText(transcriptText);
+      const enrichments = responseText ? extractEnrichments(responseText) : [];
       if (enrichments.length === 0) {
-        log('no_enrichment', { inputLen: input.length });
+        log('no_enrichment', { inputLen: input.length, hadTranscript: transcriptText.length > 0 });
       } else {
         log('detected', { count: enrichments.length });
         for (const enrichment of enrichments) {
