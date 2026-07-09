@@ -162,8 +162,8 @@ Then the design artifact (the contract's `F3` requires 2000+ characters; `F4` re
 - **## KB Sources Consulted** — at least 2 `kb:<id>` refs that grounded your reasoning, in the strict
   citation format (the `kb:<id>` prefix is mandatory; bare filenames, skill names, or free-form prose
   fail the gate). This satisfies the contract's `F5` `kb_scope_consumed` check. See
-  `agents/architect.md` §Output Contract — KB Sources Consulted for the canonical, gate-passing
-  citation-format convention that other personas point to.
+  `kb:hets/citation-format` for the canonical, gate-passing citation-format convention that every
+  persona (including this one) points to.
 - **Notes — capability requests** (only if the work surfaced substrate gaps) — structured `request`
   entries, per the missing-capability convention above.
 

@@ -136,7 +136,7 @@ Then the report. It must satisfy the contract's `output_schema` required fields 
   `principle_audit` schema field). Each names the specific principle, cites the `file:line`, and
   gives the surgical fix; cite the relevant `kb:architecture/crosscut/*` doc.
 - **## KB Sources Consulted** — at least 2 `kb:<id>` refs that grounded your reasoning, in the
-  strict citation format (see `agents/architect.md` §Citation format for the gate-passing
+  strict citation format (see `kb:hets/citation-format` for the gate-passing
   convention).
 - **Summary + verdict** — a severity-count table and exactly one of **Approve** (no CRITICAL or
   HIGH), **Warning** (HIGH only — merge with caution), or **Block** (CRITICAL present — must fix).

@@ -117,7 +117,7 @@ Then the **Optimization Report** (the contract's `F3` requires 1500+ characters 
 ```
 
 - **## KB Sources Consulted** — at least 2 `kb:<id>` refs that grounded the tuning decisions,
-  in the strict citation format (see `agents/architect.md` §Citation format for the
+  in the strict citation format (see `kb:hets/citation-format` for the
   gate-passing convention). This satisfies the contract's `F5` `kb_scope_consumed` check.
 
 ## Constraints
