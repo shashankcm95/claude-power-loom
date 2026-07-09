@@ -16,6 +16,9 @@ const logger = log('pre-compact-save');
 // `_lib/file-path-pattern.js` (de-duped from auto-store-enrichment.js). New
 // extractor adds Windows + quoted-paths-with-spaces coverage.
 const { extractFilePaths } = require('../_lib/file-path-pattern');
+// PreCompact stdin is a JSON envelope { transcript_path, ... }, not the
+// conversation — read the transcript so the checkpoint reflects the real context.
+const { parseEnvelope, readTranscriptText } = require('../_lib/transcript-read');
 
 // chip task_d068048a — symlink/owner-hardened candidate resolution for the
 // self-improve-store CLI before it is spawnSync-executed at compaction.
@@ -348,7 +351,7 @@ function runSelfImproveScan() {
 // resolver internals WITHOUT attaching the stdin runner — the hook path
 // (require.main === module, as hooks.json invokes it) is unchanged. Same
 // positive-guard shape as self-improve-store.js + the other kernel CLIs.
-module.exports = { resolveSelfImproveScript, runSelfImproveScan };
+module.exports = { resolveSelfImproveScript, runSelfImproveScan, extractCheckpoint };
 
 if (require.main === module) {
   let input = '';
@@ -357,11 +360,17 @@ if (require.main === module) {
   process.stdin.on('end', () => {
     let checkpointOk = false;
     try {
-      const checkpoint = extractCheckpoint(input);
+      // stdin is the PreCompact envelope, NOT the conversation. Read
+      // transcript_path so mentionedFiles + contextLength reflect the actual
+      // context being compacted. Unreadable/absent -> '' (checkpoint still
+      // writes, just with no file mentions — no worse than before).
+      const envelope = parseEnvelope(input);
+      const transcriptText = envelope ? readTranscriptText(envelope.transcript_path) : '';
+      const checkpoint = extractCheckpoint(transcriptText);
       writeCheckpoint(checkpoint);
       checkpointOk = true;
       logger('checkpoint_saved', {
-        contextLength: input.length,
+        contextLength: checkpoint.contextLength,
         mentionedFiles: checkpoint.mentionedFiles.length,
         cwd: checkpoint.cwd,
       });

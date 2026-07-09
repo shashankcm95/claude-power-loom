@@ -134,6 +134,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/kernel/hooks/lifecycle/session-self-improve-prompt.js` - UserPromptSubmit hook (H.4.1): on the first user prompt of each session,
 - `packages/kernel/hooks/_lib/settings-reader.js` - H.7.22 — DRY shared settings.json reader.
 - `packages/kernel/hooks/post/spawn-close-resolver.js` - PR-3b — the SHADOW spawn-close resolver.
+- `packages/kernel/hooks/_lib/transcript-read.js` - Shared bounded, FIFO/symlink-safe transcript reader for Stop / PreCompact
 - `packages/kernel/hooks/pre/verify-plan-gate.js` - PreToolUse:ExitPlanMode hook (H.7.23.1): blocks ExitPlanMode if the active
 
 ### `kernel/observability/`
