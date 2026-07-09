@@ -87,9 +87,12 @@ adjudication was re-run.
 
 **Outcome:** the calibration eliminated ALL soft-class false positives; the single remaining noise is a
 `fail-silent`-vs-`recon-depth` CLASS-MISLABEL (a real drift under the wrong class), not a spurious emit.
-Single-class-per-issue is now enforced (the baseline's double-emits collapsed to one). The tradeoff is lower
-recall (7 vs 18 emissions) - partly the calibration, partly single-run LLM variance (the exact recall delta
-is not cleanly separable without repeated runs). For a `converge@3` advisory counter this high-precision /
+Single-class-per-issue is a PROMPT-LEVEL goal (the directive "emit each issue under ONE best-fitting class"),
+NOT a deterministic guarantee: the calibrated run's double-emits happened to collapse to one, but
+`verifyJudgeOutputDetailed` only dedupes EXACT same-class duplicates, so a semantic duplicate under two
+DIFFERENT classes can still slip through (parser-side enforcement would be a separate change). The tradeoff
+is lower recall (7 vs 18 emissions) - partly the calibration, partly single-run LLM variance (the exact
+recall delta is not cleanly separable without repeated runs). For a `converge@3` advisory counter this high-precision /
 moderate-recall profile is the correct one: it surfaces fewer but higher-confidence candidates, and a
 genuinely recurring drift still reaches the threshold.
 
