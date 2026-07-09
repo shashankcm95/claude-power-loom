@@ -190,7 +190,21 @@ function formatSynthId({ persona, name, contentHash, lineage } = {}) {
 // Parser regex per architect design. Personas may contain hyphens
 // (`02-confused-user`); names are anchored after the last `.` before
 // any `~` or `/`. Hash is 8 lowercase hex; lineage suffix is optional.
-const PARSE_RE = /^(?<persona>[^.~/]+(?:-[^.~/]+)*)\.(?<name>[^~/]+)(?:~(?<contentHash>[0-9a-f]{8}))?(?:\/r:(?<runId>[A-Za-z0-9]+)(?::d(?<depth>\d+))?(?::p=(?<parent>[^#]+)#(?<parentHash>[0-9a-f]+))?)?$/;
+//
+// The persona group excludes `-` from its sub-token class (`[^.~/-]+`, not
+// `[^.~/]+`) so the outer run and the inner `(?:-...)*` alternation cannot both
+// claim a hyphen. The prior `[^.~/]+(?:-[^.~/]+)*` was the classic ambiguous
+// `(X+)(-X+)*` where X's class already contained the `-` delimiter: on a hyphen
+// run that never reaches a valid `.` (so the overall match fails), the engine
+// explores an exponential number of partitions before giving up (ReDoS). The
+// de-ambiguated form matches every real persona id identically but backtracks
+// linearly. `identity` is actor-authored (frontmatter), so this must be safe.
+const PARSE_RE = /^(?<persona>[^.~/-]+(?:-[^.~/-]+)*)\.(?<name>[^~/]+)(?:~(?<contentHash>[0-9a-f]{8}))?(?:\/r:(?<runId>[A-Za-z0-9]+)(?::d(?<depth>\d+))?(?::p=(?<parent>[^#]+)#(?<parentHash>[0-9a-f]+))?)?$/;
+
+// A real SynthId (persona.name[~hash][/r:runId:dN:p=parent#hash]) is well under
+// this; the cap is defense-in-depth so an adversarial identity can never hand
+// the regex engine an unbounded string to chew on.
+const MAX_SYNTHID_LEN = 512;
 
 /**
  * Parse a SynthId string into its component parts.
@@ -200,6 +214,7 @@ const PARSE_RE = /^(?<persona>[^.~/]+(?:-[^.~/]+)*)\.(?<name>[^~/]+)(?:~(?<conte
  */
 function parseSynthId(synthId) {
   if (typeof synthId !== 'string' || synthId.length === 0) return null;
+  if (synthId.length > MAX_SYNTHID_LEN) return null;
   const m = PARSE_RE.exec(synthId);
   if (!m || !m.groups) return null;
   const { persona, name, contentHash, runId, depth, parent, parentHash } = m.groups;
