@@ -748,6 +748,71 @@ function cmdPrune(args) {
     }
   }
 
+  // BULKHEAD lost-update fix (apply mode only): mutate each persona's volume
+  // under ITS OWN lock, not the whole store under the metadata lock. The old
+  // path rewrote EVERY persona's volume from a lock-free snapshot, clobbering a
+  // concurrent hot-path verdict recorded under a per-persona lock. Advisory mode
+  // never writes (no clobber) and legacy/pre-bulkhead share one lock, so both
+  // stay on the existing whole-store path below.
+  if (_isBulkheadActive() && apply) {
+    const out = {
+      action: 'prune', mode: 'auto-apply', thresholds,
+      retired: [], tagged: [], skipped: [],
+    };
+    let total = 0;
+    // Enumerate personas from a lock-free read; prune only mutates existing
+    // identities, so a persona added after this read is simply skipped this run.
+    const personas = [...new Set(
+      Object.entries(readStore().identities).map(([fid, d]) => (d && d.persona) || fid.split('.')[0]),
+    )].filter(Boolean);
+    for (const persona of personas) {
+      withPersonaLock(persona, () => {
+        const vol = readPersona(persona);
+        let dirty = false;
+        for (const [name, identity] of Object.entries(vol.identities)) {
+          total += 1;
+          _backfillSchema(identity);
+          const result = _computeRecommendation(identity, thresholds);
+          if (result.skip) continue;
+          const id = `${persona}.${name}`;
+          for (const rec of result.recommendations) {
+            if (rec.action === 'retire') {
+              out.retired.push({
+                identity: id, verdicts: identity.verdicts, passRate: result.passRate,
+                reason: rec.reason, applied: true,
+              });
+              identity.retired = true;
+              identity.retiredAt = new Date().toISOString();
+              identity.retiredReason = rec.reason;
+              dirty = true;
+            }
+            if (rec.action === 'tag-specialist') {
+              out.tagged.push({
+                identity: id, skill: rec.skill, invocations: rec.invocations,
+                reason: rec.reason, applied: true,
+              });
+              if (!identity.specializations.includes(rec.skill)) {
+                identity.specializations.push(rec.skill);
+              }
+              identity.traits = identity.traits || { skillFocus: null, kbFocus: [], taskDomain: null };
+              identity.traits.skillFocus = rec.skill;
+              dirty = true;
+            }
+          }
+        }
+        // Only rewrite a persona whose volume actually changed — an untouched
+        // persona's volume is never written, so a concurrent hot-path verdict on
+        // it cannot be clobbered.
+        if (dirty) writePersona(persona, vol);
+      });
+    }
+    out.totalIdentities = total;
+    out.retireCount = out.retired.length;
+    out.tagCount = out.tagged.length;
+    console.log(JSON.stringify(out, null, 2));
+    return;
+  }
+
   let summary;
   withLock(() => {
     const store = readStore();
@@ -814,9 +879,40 @@ function cmdUnretire(args) {
     console.error('Usage: unretire --identity <persona.name>');
     process.exit(1);
   }
+  const id = args.identity;
+
+  // BULKHEAD lost-update fix: unretire touches ONE identity, so in bulkhead mode
+  // route it through that persona's OWN lock + volume (readPersona/writePersona)
+  // rather than the metadata lock + whole-store rewrite. The old path took the
+  // _metadata.json lock, then writeStore() rewrote EVERY persona's volume from a
+  // lock-free snapshot — clobbering a concurrent hot-path verdict recorded under
+  // a DIFFERENT (per-persona) lock. Legacy/pre-bulkhead keep the whole-store path
+  // (there withPersonaLock == withLock and writePersona does a full-store RMW, so
+  // behaviour is identical and no clobber exists).
+  if (_isBulkheadActive()) {
+    const persona = id.split('.')[0];
+    const name = id.split('.').slice(1).join('.');
+    let result = null;
+    let notFound = false;
+    withPersonaLock(persona, () => {
+      const vol = readPersona(persona);
+      const identity = vol.identities[name];
+      if (!identity) { notFound = true; return; }
+      _backfillSchema(identity);
+      const before = !!identity.retired;
+      identity.retired = false;
+      identity.retiredAt = null;
+      identity.retiredReason = null;
+      writePersona(persona, vol);
+      result = { action: 'unretire', identity: id, wasRetired: before };
+    });
+    if (notFound) { console.error(`Unknown identity: ${id}`); process.exit(1); }
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
   withLock(() => {
     const store = readStore();
-    const id = args.identity;
     if (!store.identities[id]) {
       console.error(`Unknown identity: ${id}`);
       process.exit(1);
