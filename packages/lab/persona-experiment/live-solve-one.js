@@ -149,10 +149,16 @@ async function run(argv, deps = {}) {
   }
 
   // durable, failure-inclusive observability — append BEFORE the json/text output + the ok/fail exit.
+  // A RUN-LEVEL fatal (preflight-threw / actor-key-absent / containment-unattested / tool-inertness) sets
+  // report.fatal + outcomes:[] — the loop never starts — so synthesize ONE fatal record; otherwise the
+  // ledger stays silent on exactly the "couldn't even start" failure it exists to surface (code-review HIGH).
+  const ledgerOutcomes = (report && Array.isArray(report.outcomes) && report.outcomes.length)
+    ? report.outcomes
+    : (report && report.fatal ? [{ record_id: record.id, stage: 'fatal', ok: false, reason: report.fatal }] : []);
   appendOutcomeLedger(
     deps.outcomeLedgerPath || DEFAULT_OUTCOME_LEDGER_PATH,
     `live-solve-${owner}__${repo}-issue-${number}`,
-    (report && report.outcomes) || [], new Date().toISOString(),
+    ledgerOutcomes, new Date().toISOString(),
   );
 
   if (flags.json) { logFn(JSON.stringify(report, null, 2)); return report; }

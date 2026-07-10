@@ -108,10 +108,10 @@ function summarize(runs) {
   const reasons = runs.filter((r) => r.ok === false).reduce((m, r) => { const k = r.reason || 'unknown'; m[k] = (m[k] || 0) + 1; return m; }, {});
   return Object.freeze({
     count: n,
-    outcomes: { solved, failed, other: n - solved - failed },
+    outcomes: Object.freeze({ solved, failed, other: n - solved - failed }),
     failure_reasons: Object.freeze(reasons),
-    classify: { hit: classifyHit, miss: n - classifyHit, rate: n ? Number((classifyHit / n).toFixed(2)) : 0 },
-    grade: { available: gradeAvail, unavailable: n - gradeAvail },
+    classify: Object.freeze({ hit: classifyHit, miss: n - classifyHit, rate: n ? Number((classifyHit / n).toFixed(2)) : 0 }),
+    grade: Object.freeze({ available: gradeAvail, unavailable: n - gradeAvail }),
     total_cost_usd: Number(totalCost.toFixed(4)),
     personas: Object.freeze(tally('persona', '(none)')),
     repos: Object.freeze(tally('slug', '(unknown)')),

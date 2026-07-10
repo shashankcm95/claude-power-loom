@@ -15,7 +15,8 @@ const fs = require('fs');
 const path = require('path');
 
 const REPO = path.join(__dirname, '..', '..', '..', '..');
-const { run, parseTarget, parseFlags } = require(path.join(REPO, 'packages', 'lab', 'persona-experiment', 'live-solve-one.js'));
+const os = require('os');
+const { run, parseTarget, parseFlags, appendOutcomeLedger } = require(path.join(REPO, 'packages', 'lab', 'persona-experiment', 'live-solve-one.js'));
 
 let passed = 0; let failed = 0;
 const pending = [];
@@ -149,6 +150,44 @@ test('r8. live-solve-one imports NO egress-arming module + sets ONLY LOOM_PERSON
   // set + restore — which is fine; the invariant is that no OTHER env var is ever touched).
   const envSets = [...new Set([...src.matchAll(/process\.env\.(LOOM_[A-Za-z_]+)\s*=/g)].map((m) => m[1]))];
   assert.deepStrictEqual(envSets, ['LOOM_PERSONA_MATERIALIZE'], 'the CLI must touch ONLY LOOM_PERSONA_MATERIALIZE');
+});
+
+// ── --timeout (observability tunability) ──
+test('r12. parseFlags --timeout: valid seconds -> ms; 0 / negative / non-integer rejected; unset -> undefined', () => {
+  assert.strictEqual(parseFlags(['o/r#7', '--timeout', '480']).flags.timeoutMs, 480000);
+  assert.strictEqual(parseFlags(['o/r#7']).flags.timeoutMs, undefined, 'unset -> undefined (the 180s default stands downstream)');
+  for (const bad of ['0', '-5', '1.5', 'abc']) {
+    assert.throws(() => parseFlags(['o/r#7', '--timeout', bad]), /positive integer/i, bad);
+  }
+});
+
+// ── the durable outcome ledger (failure-inclusive observability) ──
+test('r13. run() appends a SUCCESS outcome to the durable outcome ledger', async () => {
+  const record = { id: 'octo__widget-issue-7', repo: 'https://github.com/octo/widget', base_sha: 'a'.repeat(40), problem_statement: 'x' };
+  const ledger = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'lso-led-')), 'outcomes.jsonl');
+  await run(['octo/widget#7', '--json'], { fetchFn: () => record, draftFn: () => okReport(record), logFn: () => {}, outcomeLedgerPath: ledger });
+  const lines = fs.readFileSync(ledger, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  assert.strictEqual(lines.length, 1);
+  assert.strictEqual(lines[0].record_id, record.id);
+  assert.strictEqual(lines[0].ok, true);
+  assert.strictEqual(lines[0].stage, 'draft');
+});
+
+test('r14. run() synthesizes a FATAL ledger record when the run never starts (report.fatal + outcomes:[]) — HIGH fix', async () => {
+  const record = { id: 'octo__widget-issue-7', repo: 'https://github.com/octo/widget', base_sha: 'a'.repeat(40), problem_statement: 'x' };
+  const ledger = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'lso-fatal-')), 'outcomes.jsonl');
+  const fatalReport = { runId: 'x', total: 1, fatal: 'containment-unattested:image-absent', outcomes: [] };
+  await run(['octo/widget#7', '--json'], { fetchFn: () => record, draftFn: () => fatalReport, logFn: () => {}, outcomeLedgerPath: ledger });
+  const lines = fs.readFileSync(ledger, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  assert.strictEqual(lines.length, 1, 'a run-level fatal must NOT vanish from the ledger (the failure it exists to surface)');
+  assert.strictEqual(lines[0].ok, false);
+  assert.strictEqual(lines[0].stage, 'fatal');
+  assert.strictEqual(lines[0].reason, 'containment-unattested:image-absent');
+  assert.strictEqual(lines[0].record_id, record.id);
+});
+
+test('r15. appendOutcomeLedger is best-effort: a bad path never throws', () => {
+  assert.doesNotThrow(() => appendOutcomeLedger('/no/such/dir/x.jsonl', 'r', [{ record_id: 'a', ok: false }], 't'));
 });
 
 Promise.all(pending).then(() => {
