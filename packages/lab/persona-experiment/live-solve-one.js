@@ -108,7 +108,13 @@ function appendOutcomeLedger(outcomeLedgerPath, runId, outcomes, nowIso) {
     behavioral: (o.verdict && o.verdict.behavioral) || null,
   }));
   if (!lines.length) return;
-  try { fs.appendFileSync(outcomeLedgerPath, `${lines.join('\n')}\n`); } catch { /* best-effort */ }
+  // mkdir first: on a run-level fatal the artifact/cost writers that would have created the checkpoints
+  // dir never ran, so on a FRESH env the append would ENOENT and the catch would silently drop the very
+  // failure this ledger exists to record (CodeRabbit #556). mkdir + append both stay best-effort.
+  try {
+    fs.mkdirSync(path.dirname(outcomeLedgerPath), { recursive: true, mode: 0o700 });
+    fs.appendFileSync(outcomeLedgerPath, `${lines.join('\n')}\n`);
+  } catch { /* best-effort */ }
 }
 
 // deps.fetchFn / deps.draftFn / deps.logFn / deps.artifactsDir / deps.ledgerPath are TEST-ONLY seams — NOT

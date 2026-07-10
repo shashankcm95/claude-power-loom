@@ -190,6 +190,13 @@ test('r15. appendOutcomeLedger is best-effort: a bad path never throws', () => {
   assert.doesNotThrow(() => appendOutcomeLedger('/no/such/dir/x.jsonl', 'r', [{ record_id: 'a', ok: false }], 't'));
 });
 
+test('r16. appendOutcomeLedger creates a missing parent dir (fresh env -> the fatal record is NOT dropped) — CR #556', () => {
+  const ledger = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'lso-fresh-')), 'absent', 'checkpoints', 'outcomes.jsonl');
+  appendOutcomeLedger(ledger, 'r', [{ record_id: 'a', stage: 'fatal', ok: false, reason: 'containment-unattested' }], 't');
+  assert.ok(fs.existsSync(ledger), 'the ledger is written even when the parent dir did not exist');
+  assert.strictEqual(JSON.parse(fs.readFileSync(ledger, 'utf8').trim()).reason, 'containment-unattested');
+});
+
 Promise.all(pending).then(() => {
   process.stdout.write(`\nlive-solve-one.test.js: ${passed} passed, ${failed} failed\n`);
   process.exit(failed === 0 ? 0 : 1);
