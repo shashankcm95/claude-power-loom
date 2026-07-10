@@ -18,16 +18,25 @@ Opens a real (draft) GitHub PR from an approved `draft.json`, through the kernel
 
 1. **Broker deployed.** Follow [`loom-broker.md`](loom-broker.md) (`scripts/loom-broker-deploy-macos.sh`):
    a distinct broker user, sudo caller-auth, the signing key.
-2. **Verify-key pinned root-owned (load-bearing — the sole mitigation for the bare verify-key read).**
-   `emitPR`'s `resolveVerifyKey` is a plain `readFileSync` that **follows symlinks with no owner check**
-   (`emit-pr.js:428-434`). If the `--verify-key` path (or its parent dir) is writable by the actor uid, a
-   same-uid attacker can symlink-swap it to their own pubkey and self-mint a "valid" approval. So:
-   - `/etc/loom/verify.pem` (broker) and `/etc/loom/edge-verify.pem` MUST be **root-owned, mode `0644`
-     or stricter, inside a root-owned `/etc/loom`** — check:
-     `stat -f '%Su %Sp' /etc/loom /etc/loom/verify.pem` (both owner `root`, dir not group/world-writable).
-   - This is a **checked precondition**, not a soft suggestion. Do not emit if it fails.
-   - Follow-up (tracked): harden `resolveVerifyKey` with `O_NOFOLLOW` + `fstat` + owner check (parity
-     with the mint side's `readVerifyKeySafe`) so the pin is defense-in-depth, not the sole guard.
+2. **The entire custody directory root-owned + not attacker-writable (load-bearing — the actual boundary).**
+   `emitPR` reads the disposition, token, killswitch, AND verify-key with **plain `readFileSync` that
+   follows symlinks with no owner check** — `resolveVerifyKey`/`resolveToken`/`resolveDisposition`/
+   `isKillswitchOn` are bare reads *by deliberate parity* (`emit-pr.js:423-434`): "the custody root's
+   provenance is the host-setup contract, not a per-file `O_NOFOLLOW` guard." So the boundary is the
+   **directory**, not any one file — a same-uid attacker who can symlink-swap `verify.pem` can equally
+   swap the token or the killswitch. Therefore:
+   - Every custody path (`--verify-key`, `--token`, `--disposition`, `--killswitch`, `--approvals-dir`,
+     `--gh-config-dir`) MUST live inside a **root-owned (or dedicated-operator-owned) directory that is
+     NOT group/world-writable, with each file root/operator-owned**. For the broker keys specifically,
+     `/etc/loom/verify.pem` + `/etc/loom/edge-verify.pem` root-owned inside a root-owned `/etc/loom`.
+     Check EVERY custody path you point a flag at (not just the keys — a copied check that omits a
+     sibling is the gap): `stat -f '%Su %Sp' /etc/loom /etc/loom/verify.pem <token-file> <disposition-file>
+     <arm-file> <approvals-dir> <gh-config-dir>` — every owner `root`/operator, no dir group/world-writable.
+   - This is a **checked precondition**, not a soft suggestion. Do not emit if any custody path fails it.
+   - Follow-up (tracked, the "③.2.5b arming decision" `emit-pr.js:425` names): close it in CODE — either
+     give ALL custody reads the `.approved` path's `O_NOFOLLOW`+`fstat`+uid treatment, OR add a
+     custody-root ownership gate (mirroring `assertCustodyApprovalsDir`). Hardening only `verify.pem`
+     would just shift the symlink attack to a sibling custody file — do it consistently or at the dir.
 3. **Arm flags set** per the broker deploy (`LOOM_EDGE_REQUIRE_UID_SEP` and any world-anchor arm the
    deploy specifies). Typos fail CLOSED by design; confirm the intended value.
 4. **Custody GitHub token** with write access to the target repo, in the custody token file.
@@ -93,6 +102,11 @@ All custody paths are OPERATOR-owned. `emit-cli` takes them ONLY from argv — n
 
 ## Security posture
 
-Claude never performs prereqs 1-4, minting, or the emit. The `resolveVerifyKey` symlink+owner hardening
-is a tracked follow-up; until it lands, the root-owned `/etc/loom/verify.pem` pin (prereq 2) is
-load-bearing, not optional.
+Claude never performs prereqs 1-4, minting, or the emit. The **emit-side** custody reads (`emit-pr`'s
+verify-key + the token/disposition/killswitch reads) follow symlinks with no owner check by deliberate
+parity. (The **approve-cli** side is the exception — its verify-key read is already hardened with
+`O_NOFOLLOW` + owner validation; this posture is about the emit-side reads only.) The "③.2.5b arming
+decision" to close the emit-side reads in code (all-reads-safe or a custody-root gate) is a tracked
+follow-up; until
+it lands, the **root/operator-owned, non-attacker-writable custody directory** (prereq 2) is the
+load-bearing boundary, not optional, and not reducible to any single file.
