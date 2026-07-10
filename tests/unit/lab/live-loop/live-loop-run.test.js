@@ -155,13 +155,18 @@ const oneRecordPull = () => async () => ({ records: [FIXTURE_RECORD], stats: {} 
     });
   });
 
-  // === 4. the VACUITY-TRAP guard (VERIFY code-reviewer HIGH): omit the preflight stubs -> the loop never
-  // reaches emit. Proves the full deps set is NECESSARY (a naive mock set would assert on a never-called spy). ===
-  await test('vacuity-trap: NO resolveKeyFn/attestFn -> preflight early-returns, emit NEVER reached', async () => {
+  // === 4. the VACUITY-TRAP guard (VERIFY code-reviewer HIGH): a FAILING preflight dep -> the loop never
+  // reaches emit. Proves the full deps set is NECESSARY (a naive mock set would assert on a never-called spy).
+  // INJECT a null-returning resolveKeyFn - do NOT delete-and-fall-back to the real `resolveActorApiKey` /
+  // `attestActorContainment` defaults: those SUCCEED on an armed/docker box, so a deletion made this test
+  // host-dependent (green where no key/docker resolves, red on a provisioned box). A stub returning null
+  // exercises the `actor-key-absent` early-return deterministically on every host - which is exactly the
+  // no-key state the real default returns anyway. ===
+  await test('vacuity-trap: a FAILING resolveKeyFn -> preflight early-returns, emit NEVER reached', async () => {
     const w = ws();
     const emitCalls = [];
     const spyEmitPR = async (data, opts) => { emitCalls.push({ data, opts }); return emitPR(data, opts); };
-    const partial = mockLoopDeps(spyEmitPR); delete partial.resolveKeyFn; delete partial.attestFn;
+    const partial = mockLoopDeps(spyEmitPR); partial.resolveKeyFn = () => null;
     await withEnv({ LOOM_LIVE_LOOP_ENABLED: '1' }, async () => {
       const r = await runLiveLoop({ ...w, deps: { pullFn: oneRecordPull(), loopDeps: partial } });
       assert.ok(r.fatal && /actor-key-absent|containment/.test(String(r.fatal)), 'preflight early-return is the fatal reason');
