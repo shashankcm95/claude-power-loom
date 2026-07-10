@@ -17,6 +17,7 @@
 
 'use strict';
 
+const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { fetchOneIssueRecord } = require('../issue-corpus/live-puller');
@@ -25,6 +26,10 @@ const { runLiveDraftLoop } = require('./live-draft-run');
 const CHECKPOINTS = path.join(os.homedir(), '.claude', 'checkpoints');
 const DEFAULT_ARTIFACTS_DIR = path.join(CHECKPOINTS, 'live-solve-artifacts');
 const DEFAULT_LEDGER_PATH = path.join(CHECKPOINTS, 'live-solve-ledger.json');
+// The durable OUTCOME ledger (observability, dogfood-surfaced): a failed/timed-out solve writes NO
+// draft artifact and (if it spent $0) NO cost-ledger line, so without this the pipeline is BLIND to
+// failures. Every run appends its outcome (success OR failure) here as one JSONL line.
+const DEFAULT_OUTCOME_LEDGER_PATH = path.join(CHECKPOINTS, 'live-solve-outcomes.jsonl');
 const DEFAULT_MODEL = 'claude-sonnet-4-6';
 const DEFAULT_CAP_USD = 12;
 
@@ -38,6 +43,7 @@ const USAGE = [
   '  --materialize          inject the classified persona (KB/skills/instincts) into the actor prompt',
   '                         (sets LOOM_PERSONA_MATERIALIZE for this run; SHADOW, never arms egress)',
   '  --max-budget-usd <n>   per-run cost cap (default 12)',
+  '  --timeout <seconds>    contained-solve wall-clock (default 180; raise for deep substrate issues)',
   '  --model <m>            actor model (default claude-sonnet-4-6)',
   '  --json                 print the raw runLiveDraftLoop report as JSON',
 ].join('\n');
@@ -78,12 +84,31 @@ function parseFlags(argv) {
       const v = Number(argv[i + 1]); i += 1;
       if (!Number.isFinite(v) || v <= 0) throw new Error('usage: --max-budget-usd must be a positive number');
       flags.maxBudgetUsd = v;
+    } else if (a === '--timeout') {
+      // the contained-solve wall-clock in SECONDS (default 180s in docker-actor-backend). Substrate-audit
+      // issues need deep context and blow the 3-min default -> operator-tunable (dogfood-surfaced).
+      const v = Number(argv[i + 1]); i += 1;
+      if (!Number.isInteger(v) || v <= 0) throw new Error('usage: --timeout must be a positive integer (seconds)');
+      flags.timeoutMs = v * 1000;
     } else if (a.startsWith('--')) throw new Error(`usage: unknown flag ${a}`);
     else if (target === null) target = a;
     else throw new Error(`usage: unexpected extra argument ${JSON.stringify(a)}`);
   }
   if (target === null) throw new Error('usage: a <owner>/<repo>#<issue> target is required');
   return { target, flags };
+}
+
+/** Append each run outcome (success OR failure) to the durable JSONL outcome ledger. Best-effort:
+ *  a ledger-write failure NEVER fails the run — observability must not break the pipeline. */
+function appendOutcomeLedger(outcomeLedgerPath, runId, outcomes, nowIso) {
+  const lines = (Array.isArray(outcomes) ? outcomes : []).map((o) => JSON.stringify({
+    ts: nowIso, runId, record_id: o.record_id || null, stage: o.stage || null, ok: o.ok === true,
+    reason: o.reason || null, persona: o.persona || null, classify_signal: o.classify_signal || null,
+    cost_usd: typeof o.cost_usd === 'number' ? o.cost_usd : null,
+    behavioral: (o.verdict && o.verdict.behavioral) || null,
+  }));
+  if (!lines.length) return;
+  try { fs.appendFileSync(outcomeLedgerPath, `${lines.join('\n')}\n`); } catch { /* best-effort */ }
 }
 
 // deps.fetchFn / deps.draftFn / deps.logFn / deps.artifactsDir / deps.ledgerPath are TEST-ONLY seams — NOT
@@ -113,6 +138,7 @@ async function run(argv, deps = {}) {
       // pre-flight --estimated-usd is a future precision knob, not a safety gate (code-review MED).
       capUsd: flags.maxBudgetUsd,
       model: flags.model,
+      timeout: flags.timeoutMs,   // undefined when unset -> runActorInContainer's DEFAULT_ACTOR_TIMEOUT_MS
       runId: `live-solve-${owner}__${repo}-issue-${number}`,
     });
   } finally {
@@ -121,6 +147,13 @@ async function run(argv, deps = {}) {
       else process.env.LOOM_PERSONA_MATERIALIZE = prevMaterialize;
     }
   }
+
+  // durable, failure-inclusive observability — append BEFORE the json/text output + the ok/fail exit.
+  appendOutcomeLedger(
+    deps.outcomeLedgerPath || DEFAULT_OUTCOME_LEDGER_PATH,
+    `live-solve-${owner}__${repo}-issue-${number}`,
+    (report && report.outcomes) || [], new Date().toISOString(),
+  );
 
   if (flags.json) { logFn(JSON.stringify(report, null, 2)); return report; }
 
@@ -153,4 +186,4 @@ async function main(argv) {
 
 if (require.main === module) main(process.argv.slice(2));
 
-module.exports = { run, parseTarget, parseFlags, USAGE };
+module.exports = { run, parseTarget, parseFlags, appendOutcomeLedger, USAGE };
