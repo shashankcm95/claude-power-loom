@@ -2,7 +2,7 @@
 adr_id: 0019
 title: "Track branching decision continuity in a fork-ledger (extends ADR-0018)"
 tier: editorial
-status: proposed
+status: accepted
 created: 2026-07-06
 author: memory-design synthesis (branching-continuity extension, USER-raised) — human-ratified
 superseded_by: null

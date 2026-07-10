@@ -2,7 +2,7 @@
 adr_id: 0020
 title: "Correct ADR-0018: the lifecycle was built once — extract the detection leaf, not a unified lifecycle"
 tier: technical
-status: proposed
+status: accepted
 created: 2026-07-07
 author: lifecycle-extraction recon (architect + honesty-auditor lenses, firsthand-verified) — human-ratified
 superseded_by: null

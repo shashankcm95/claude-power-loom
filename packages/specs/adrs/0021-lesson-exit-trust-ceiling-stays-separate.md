@@ -2,7 +2,7 @@
 adr_id: 0021
 title: "Resolve ADR-0018 fork #3: the two memory substrates keep SEPARATE lesson-exit trust ceilings"
 tier: technical
-status: proposed
+status: accepted
 created: 2026-07-08
 author: fork#3 resolution — USER-ratified (keep-separate), 2026-07-08
 superseded_by: null

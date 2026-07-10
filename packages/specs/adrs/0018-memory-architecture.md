@@ -2,7 +2,7 @@
 adr_id: 0018
 title: "Adopt the two-substrate / one-pattern-kernel memory architecture"
 tier: technical
-status: proposed
+status: accepted
 created: 2026-07-06
 author: memory-design synthesis (architect + honesty-auditor lenses) — human-ratified
 superseded_by: null
