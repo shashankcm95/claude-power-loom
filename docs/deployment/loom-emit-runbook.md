@@ -29,8 +29,9 @@ Opens a real (draft) GitHub PR from an approved `draft.json`, through the kernel
      `--gh-config-dir`) MUST live inside a **root-owned (or dedicated-operator-owned) directory that is
      NOT group/world-writable, with each file root/operator-owned**. For the broker keys specifically,
      `/etc/loom/verify.pem` + `/etc/loom/edge-verify.pem` root-owned inside a root-owned `/etc/loom`.
-     Check: `stat -f '%Su %Sp' /etc/loom /etc/loom/verify.pem <token-file> <arm-file>` — every owner
-     `root`/operator, no dir group/world-writable.
+     Check EVERY custody path you point a flag at (not just the keys — a copied check that omits a
+     sibling is the gap): `stat -f '%Su %Sp' /etc/loom /etc/loom/verify.pem <token-file> <disposition-file>
+     <arm-file> <approvals-dir> <gh-config-dir>` — every owner `root`/operator, no dir group/world-writable.
    - This is a **checked precondition**, not a soft suggestion. Do not emit if any custody path fails it.
    - Follow-up (tracked, the "③.2.5b arming decision" `emit-pr.js:425` names): close it in CODE — either
      give ALL custody reads the `.approved` path's `O_NOFOLLOW`+`fstat`+uid treatment, OR add a
@@ -101,8 +102,11 @@ All custody paths are OPERATOR-owned. `emit-cli` takes them ONLY from argv — n
 
 ## Security posture
 
-Claude never performs prereqs 1-4, minting, or the emit. The custody reads (verify-key/token/
-disposition/killswitch) follow symlinks with no owner check by deliberate parity — the "③.2.5b arming
-decision" to close them in code (all-reads-safe or a custody-root gate) is a tracked follow-up; until
+Claude never performs prereqs 1-4, minting, or the emit. The **emit-side** custody reads (`emit-pr`'s
+verify-key + the token/disposition/killswitch reads) follow symlinks with no owner check by deliberate
+parity. (The **approve-cli** side is the exception — its verify-key read is already hardened with
+`O_NOFOLLOW` + owner validation; this posture is about the emit-side reads only.) The "③.2.5b arming
+decision" to close the emit-side reads in code (all-reads-safe or a custody-root gate) is a tracked
+follow-up; until
 it lands, the **root/operator-owned, non-attacker-writable custody directory** (prereq 2) is the
 load-bearing boundary, not optional, and not reducible to any single file.
