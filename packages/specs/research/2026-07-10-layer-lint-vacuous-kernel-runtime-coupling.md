@@ -227,3 +227,56 @@ violation. The require-graph is genuinely acyclic across #2/#3.
 On approval of a direction, the implementation is a single small PR (the kernel
 validator, the detector, and the baseline-test update), TDD-first, with the detector
 proven to fire RED on the pre-fix tree before Option A turns it GREEN.
+
+## Implementation (shipped in this PR)
+
+Direction chosen: **Option A (relocate) + D1 (detector), bundled**, relocation home =
+a new `packages/kernel/_lib/persona-md-reader.js` (kept separate from `synthid.js` so
+that module stays side-effect-free / no `fs` — SRP; open-question 3).
+
+What shipped:
+
+- **Relocation.** `_readPersonaMd` moved to `packages/kernel/_lib/persona-md-reader.js`
+  (exports `readPersonaMd`). `contract-verifier.js` imports it same-layer (the one real
+  kernel to runtime import edge is gone); `lifecycle-spawn.js` imports it back inward
+  (runtime to kernel, legal), aliased to the old name so its callsite + export are
+  unchanged. Read logic is identical, plus two deliberate kernel-hardening deltas (see
+  below) — so this is a hardened relocation, not a byte-for-byte "behavior-invariant"
+  one.
+- **Detector.** `layer-boundary-lint.js` now detects dynamically-composed absolute
+  cross-layer requires (`DYN_ASSIGN_RE` assign-then-require within a bounded forward
+  window + `DYN_INLINE_RE` inline), split or combined `packages/<layer>` segment,
+  single- or multi-line. Subprocess builds (`spawn`/`execFileSync`) are not flagged.
+- **Empirical RED-before-GREEN.** The extended detector flags the exact pre-relocation
+  edge in `origin/main`'s `contract-verifier.js` (RED), and reports 0 on the relocated
+  tree (GREEN). A durable synthetic test proves the dynamic-detection path is
+  non-vacuous.
+
+### VALIDATE (3-lens on the built diff) — findings addressed
+
+A `code-reviewer` + `hacker` (live probes) + `honesty-auditor` pass on the built code
+surfaced, and this PR fixes:
+
+- **`isRequiredIdentifier` scope-blindness** (reviewer, probe-confirmed false positive):
+  the assign-then-require confirmation is now bounded to a forward window
+  (`REQUIRE_WINDOW`), so an unrelated same-named `require` elsewhere in the file no
+  longer satisfies it.
+- **Evasion via multi-line `path.join` and combined `'packages/runtime'` segment**
+  (reviewer + hacker + honesty): the regexes now handle both.
+- **Unescaped `$` in the identifier regex** (hacker, probe-confirmed): a `$`-bearing
+  identifier no longer defeats require-confirmation.
+- **Path traversal in the reader** (hacker, probe-confirmed): `persona` is gated by
+  `isSafePathSegment` (hardening delta 1) — a `../secret` persona no longer reads a
+  `.md` outside the personas dir.
+- **Dropped fail-soft envelope** (reviewer): the reader wraps its whole body in
+  try/catch (hardening delta 2), so `findToolkitRoot()` throwing (e.g. `HOME` unset in
+  a minimal container) degrades to null instead of crashing the validator.
+- **Overclaim in the HONESTY NOTE** (hacker + honesty): the header no longer claims
+  completeness. It states the blind spot was NARROWED (not closed), discloses the
+  KNOWN LIMITATIONS (computed layer name, string-concat layer, helper-returned path,
+  a require beyond the window — all needing AST, YAGNI for an advisory tripwire), and
+  qualifies "acyclic" to the REQUIRE graph (the two process edges remain a separate
+  class). `ReDoS` re-probed clean (linear, sub-3ms on 100KB+ adversarial inputs).
+
+Residual by design: this lint is an advisory tripwire for accidental cross-layer drift
+in ordinary code shapes, not a security boundary against a determined author.

@@ -6,17 +6,30 @@
 //
 // K12 — Layer-boundary ADVISORY lint (v3.0-alpha, Phase-1-alpha PR 5 — final sub-PR).
 //
-// v6 spec anchor §2.4 (v5.1 DOWNGRADE from mandatory): 6 months on the
-// verification-spike branch produced ZERO observed cross-layer drift; the
-// codebase is acyclic-by-construction via the _lib/ extraction pattern
-// (kb:architecture/crosscut/acyclic-dependencies — "a DAG can be topologically
-// sorted"; the kernel _lib/ sinks have high fan-in, zero outward fan). K12 is
-// therefore convention + advisory (~50-120 LoC), NOT a blocking gate. The
-// upgrade-to-mandatory trigger is OQ-19 (>=3 cross-layer drift events across
-// v3.1-v3.3) — at which point the ONLY change is deleting `continue-on-error`
-// from the CI job; this script already exits non-zero on findings, so no rework
-// here (mechanism/policy separation — the script reports ground truth, the CI
-// job sets severity).
+// v6 spec anchor §2.4 (v5.1 DOWNGRADE from mandatory): the codebase is intended
+// acyclic via the _lib/ extraction pattern (kb:architecture/crosscut/
+// acyclic-dependencies — "a DAG can be topologically sorted"; the kernel _lib/
+// sinks have high fan-in, zero outward fan). K12 is convention + advisory
+// (~50-120 LoC), NOT a blocking gate. The upgrade-to-mandatory trigger is OQ-19
+// (>=3 cross-layer drift events across v3.1-v3.3) — at which point the ONLY change
+// is deleting `continue-on-error` from the CI job; this script already exits
+// non-zero on findings, so no rework here (mechanism/policy separation — the script
+// reports ground truth, the CI job sets severity).
+//
+// HONESTY NOTE (RFC 2026-07-10): the earlier "6 months produced ZERO observed
+// cross-layer drift / acyclic-by-construction" framing was a FALSE NEGATIVE — the
+// original IMPORT_RE saw only static RELATIVE requires, so it was blind to the one
+// real kernel->runtime edge (a dynamically-composed absolute require in
+// contract-verifier). That edge is now relocated (Option A) AND the detector was
+// extended to SEE the common dynamic-absolute shapes (below). So the 0-on-main
+// baseline is much better earned than before: the detector now CAN fail on the shape
+// that actually occurred (proven by the dynamic-detection test) rather than being
+// structurally blind to it. It is NOT a completeness claim — the blind spot was
+// NARROWED, not closed (see KNOWN LIMITATIONS). And "acyclic" here scopes to the
+// REQUIRE graph only: two live kernel->runtime PROCESS edges remain by design
+// (contract-verifier spawns pattern-recorder; validate-adr-drift execFileSyncs
+// adr.js), a separate, lower-severity coupling class the lint intentionally does not
+// count.
 //
 // WHAT IT CHECKS (a "finding" counts toward the 0-on-main baseline):
 //   1. inner-imports-outer — an INNER layer importing an OUTER layer violates the
@@ -24,7 +37,10 @@
 //      dependencies can only point inward; nothing in an inner circle can know
 //      anything about an outer circle"). RANK kernel<runtime<lab<adapter;
 //      src<dst = bad. OUTER->INNER (runtime->kernel) and SAME-layer imports are
-//      LEGAL (no finding).
+//      LEGAL (no finding). Covers BOTH static relative requires (IMPORT_RE) AND
+//      dynamically-composed absolute requires (DYN_ASSIGN_RE / DYN_INLINE_RE) —
+//      RFC 2026-07-10. A subprocess build of a cross-layer path (spawn /
+//      execFileSync) is a process boundary, NOT an import, and is not flagged.
 //   2. prod-imports-tests — F23 defense-layer (b): any production file (under
 //      packages/** but NOT inside a tests/ dir) importing a tests/ path. This
 //      guards validateTestRecord (tests/unit/kernel/_lib/_test-validate.js) from
@@ -92,6 +108,50 @@ const DIR_TO_LAYER = Object.freeze({
 // with a fixed {0,512} upper bound, no nested quantifier, the class excludes the
 // quote + newline so it cannot run away across lines.
 const IMPORT_RE = /(?:require\(\s*|from\s+)(['"])(\.[^'"\n]{0,512})\1/g;
+
+// --- Dynamic cross-layer require detection (RFC 2026-07-10) -------------------
+// IMPORT_RE above sees only static RELATIVE string-literal specifiers. A file that
+// reaches another layer via a DYNAMICALLY-composed ABSOLUTE path was invisible,
+// which made the 0-on-main baseline a false negative (the one real kernel->runtime
+// import was a require of path-dot-join(findToolkitRoot(), 'packages', 'runtime', ...)).
+// These two bounded heuristics restore detection with no AST and no new dependency:
+//   Form 1 (assign-then-require): const IDENT = path.join|resolve(...,'packages',
+//     '<layer>',...) with an uncommented require(IDENT) within REQUIRE_WINDOW chars.
+//   Form 2 (inline): require(path.join|resolve(...,'packages','<layer>',...)).
+// The <layer> may be split ('packages','runtime') or combined ('packages/runtime'),
+// and the call may span multiple lines. The captured <layer> literal is the dst
+// layer; the SAME LAYER_RANK[src] < LAYER_RANK[dst] gate as the static path decides a
+// finding. A subprocess build of the same path (child_process.spawn / execFileSync)
+// is NOT a require and is deliberately NOT flagged: a process boundary is a
+// control-flow edge, not a source-import edge (a distinct, lower-severity coupling
+// class; RFC scope-guard). ReDoS-safe: bounded lazy spans ({0,200}?) terminated by a
+// literal, single char-classes, no nested quantifiers.
+//
+// KNOWN LIMITATIONS (this is an ADVISORY tripwire for ACCIDENTAL cross-layer drift in
+// ordinary code shapes, NOT a security boundary — a determined author can evade any
+// non-AST detector). Not covered, by design (would need data-flow / AST, YAGNI here):
+// a COMPUTED layer name (path.join(root,'packages',layerVar)); a layer assembled by
+// STRING CONCATENATION ('run'+'time'); a path returned by a HELPER function; a require
+// whose confirming call is >REQUIRE_WINDOW chars from the path assignment. These are
+// disclosed rather than silently missed; the honest posture is "covers the shapes that
+// occur in ordinary code", not "sees every possible cross-layer require".
+// A cross-layer path segment, in either the split form ('packages', 'runtime') or
+// the combined form ('packages/runtime'). Group 1 is the dst layer.
+const _PKG_LAYER = "['\"]packages(?:['\"]\\s*,\\s*['\"]|/)(kernel|runtime|lab|adapters)";
+// [^;]{0,200}? (not [^;\\n]) so a MULTI-LINE path.join(...) call is still seen; the
+// bound + the ; exclusion keep the span inside a single statement's arguments.
+const DYN_ASSIGN_RE = new RegExp(
+  `(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*path\\.(?:join|resolve)\\(\\s*[^;]{0,200}?${_PKG_LAYER}`,
+  'g',
+);
+const DYN_INLINE_RE = new RegExp(
+  `require\\(\\s*path\\.(?:join|resolve)\\(\\s*[^;]{0,200}?${_PKG_LAYER}`,
+  'g',
+);
+// Forward window (chars after the assignment) within which the built identifier must
+// be require'd for Form 1 to count it — bounds the assign-then-require confirmation so
+// an unrelated same-named identifier require'd far away in the file cannot satisfy it.
+const REQUIRE_WINDOW = 300;
 
 /**
  * Recursively enumerate source files (.js/.mjs/.cjs) under `root`, skipping
@@ -222,6 +282,63 @@ function extractImportSpecifiers(fileText) {
 }
 
 /**
+ * True iff `ident` is passed to an uncommented `require(<ident>)` somewhere in
+ * `fileText`. Confirms that a dynamically-built path is actually IMPORTED, vs fed
+ * to a subprocess builder (spawn / execFileSync) — which is not a source edge.
+ *
+ * @param {string} fileText
+ * @param {string} ident identifier (captured by [A-Za-z_$][\w$]*; only `$` is
+ *   regex-special, so it is escaped before interpolation).
+ * @param {number} [fromIndex] start of the search range (default 0).
+ * @param {number} [toIndex] end of the search range (default end of file).
+ * @returns {boolean}
+ */
+function isRequiredIdentifier(fileText, ident, fromIndex, toIndex) {
+  const safeIdent = ident.replace(/\$/g, '\\$'); // `$` is a regex anchor, not a literal.
+  const re = new RegExp(`require\\(\\s*${safeIdent}\\s*\\)`, 'g');
+  re.lastIndex = fromIndex || 0;
+  const end = toIndex == null ? fileText.length : toIndex;
+  let m;
+  while ((m = re.exec(fileText)) !== null) {
+    if (m.index >= end) break;
+    if (!isCommentedMatch(fileText, m.index)) return true;
+  }
+  return false;
+}
+
+/**
+ * Extract the dst layer names reached by a DYNAMICALLY-composed absolute
+ * cross-layer require (DYN_ASSIGN_RE + DYN_INLINE_RE; see the header note near
+ * IMPORT_RE). Returns layer names only — the caller applies the inner<outer rank
+ * gate. Comment matches are suppressed via isCommentedMatch, so this only ever
+ * ADDS a real dynamic edge, never a doc-comment example.
+ *
+ * @param {string} fileText
+ * @returns {string[]} dst layer names (may repeat).
+ */
+function extractDynamicCrossLayerTargets(fileText) {
+  const dstLayers = [];
+  DYN_ASSIGN_RE.lastIndex = 0;
+  let m;
+  while ((m = DYN_ASSIGN_RE.exec(fileText)) !== null) {
+    if (isCommentedMatch(fileText, m.index)) continue;
+    const dst = DIR_TO_LAYER[m[2]];
+    // Confirm the built path is REQUIRE'd (not fed to a subprocess) within a bounded
+    // FORWARD window — the real shape is assign-then-require on the next lines.
+    const from = m.index;
+    const to = m.index + m[0].length + REQUIRE_WINDOW;
+    if (dst && isRequiredIdentifier(fileText, m[1], from, to)) dstLayers.push(dst);
+  }
+  DYN_INLINE_RE.lastIndex = 0;
+  while ((m = DYN_INLINE_RE.exec(fileText)) !== null) {
+    if (isCommentedMatch(fileText, m.index)) continue;
+    const dst = DIR_TO_LAYER[m[1]];
+    if (dst) dstLayers.push(dst);
+  }
+  return dstLayers;
+}
+
+/**
  * Read + classify one file's import edges into Findings. Pure path-string
  * resolution (path.resolve) — no fs.realpath / require.resolve (no disk touch, no
  * symlink follow, no module execution). Fail-soft on an unreadable file.
@@ -255,6 +372,20 @@ function analyzeFile(absPath, root) {
         kind: 'inner-imports-outer',
         file: relFile, specifier: spec, srcLayer, dstLayer,
       });
+    }
+  }
+  // Dynamically-composed absolute cross-layer require edges — the class the static
+  // IMPORT_RE cannot see (RFC 2026-07-10). Same inner<outer rank gate.
+  if (srcLayer) {
+    for (const dstLayer of extractDynamicCrossLayerTargets(text)) {
+      if (LAYER_RANK[srcLayer] < LAYER_RANK[dstLayer]) {
+        findings.push({
+          kind: 'inner-imports-outer',
+          file: relFile,
+          specifier: `(dynamic require -> packages/${dstLayer}/...)`,
+          srcLayer, dstLayer,
+        });
+      }
     }
   }
   return findings;

@@ -28,6 +28,10 @@ const { parseFrontmatter } = require('../_lib/frontmatter');
 // suffixed identity into bare-form (--identity, store-key) + full-form
 // (--synthid, forensic record).
 const { validateSuffix, parseSynthId } = require('../_lib/synthid');
+// Persona .md reader — kernel-side same-layer import (RFC 2026-07-10, Option A).
+// Was a dynamically-composed absolute require into runtime/lifecycle-spawn (the one
+// real kernel->runtime import edge); relocated to _lib so this stays inside kernel.
+const { readPersonaMd } = require('../_lib/persona-md-reader');
 
 // v2.8.0.x — plugin version reader, mirrors lifecycle-spawn.js. Falls
 // back to '0.0.0' if plugin.json is unreadable (dev-without-install).
@@ -761,19 +765,12 @@ if (frontmatter.identity && args.identity && frontmatter.identity !== args.ident
 // (verification-policy.js's priority-2.5 trigger consumes it).
 // agentMd wired through post-pair-run MEDIUM-1: persona .md changes now
 // participate in drift detection. Best-effort read — falls back to null.
-// Phase 0 (ADR-0008) moved this validator kernel-side while lifecycle-spawn
-// stays runtime-side; resolve via toolkit-root to span the cross-layer hop
-// (same pattern as pattern-recorder below). The prior sibling-relative
-// require('./identity/lifecycle-spawn') always threw MODULE_NOT_FOUND, leaving
-// _agentMd permanently null and silently dead-coding the persona-.md drift signal.
-const _agentMd = (() => {
-  try {
-    const { findToolkitRoot: _findRoot } = require('../_lib/toolkit-root');
-    const _lifecyclePath = path.join(_findRoot(), 'packages', 'runtime', 'orchestration', 'identity', 'lifecycle-spawn.js');
-    const { _readPersonaMd } = require(_lifecyclePath);
-    return _readPersonaMd(contract.persona);
-  } catch { return null; }
-})();
+// Persona .md content feeds the SynthId content-hash. The reader now lives
+// kernel-side (_lib/persona-md-reader), so this is a same-layer call — no more
+// cross-layer require into runtime (RFC 2026-07-10, Option A). readPersonaMd is
+// FULLY fail-soft (any throw, incl. findToolkitRoot when HOME is unset, -> null),
+// so it needs no outer try/catch here.
+const _agentMd = readPersonaMd(contract.persona);
 result.synthIdValidation = validateSuffix({
   identity: _resolvedIdentity,
   contract,
