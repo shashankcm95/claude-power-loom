@@ -60,5 +60,72 @@ test('transaction-record re-exports the identical function object (byte-identity
     're-export must be the same reference so kernel hashing bytes are unchanged');
 });
 
+// --- #550 (mirror of PACT F1): the JSON-ABSENT scalar class matches native JSON.stringify ---
+
+test('#550 NO-OP: a JSON-absent-free value is byte-stable (== native round-trip) — INV-22 preserved', () => {
+  const v = { z: 1, a: [1, 2, { k: 'v' }], m: { b: true, a: null } };
+  assert.strictEqual(canonicalJsonSerialize(v), '{"a":[1,2,{"k":"v"}],"m":{"a":null,"b":true},"z":1}');
+  // the content-address invariant: canonical(x) === canonical(JSON.parse(JSON.stringify(x))) for clean x
+  assert.strictEqual(canonicalJsonSerialize(v), canonicalJsonSerialize(JSON.parse(JSON.stringify(v))));
+});
+
+test('#550: a nested undefined OBJECT value is DROPPED (matches native), not a bareword', () => {
+  assert.strictEqual(canonicalJsonSerialize({ a: 1, b: undefined }), '{"a":1}');
+  assert.strictEqual(
+    canonicalJsonSerialize({ a: 1, b: undefined }),
+    canonicalJsonSerialize(JSON.parse(JSON.stringify({ a: 1, b: undefined }))),
+  );
+});
+
+test('#550: a nested undefined ARRAY element becomes null (matches native), not an empty slot', () => {
+  assert.strictEqual(canonicalJsonSerialize([1, undefined, 2]), '[1,null,2]');
+  assert.strictEqual(canonicalJsonSerialize([1, undefined, 2]), JSON.stringify([1, undefined, 2]));
+});
+
+test('#550: a DEEP nested absent value is dropped/nulled at its own level', () => {
+  assert.strictEqual(canonicalJsonSerialize({ a: { b: undefined, c: 2 } }), '{"a":{"c":2}}');
+  assert.strictEqual(canonicalJsonSerialize({ a: [1, { d: undefined, e: 3 }] }), '{"a":[1,{"e":3}]}');
+});
+
+test('#550: function + symbol values (same JSON-absent class) are dropped in objects, null in arrays', () => {
+  assert.strictEqual(canonicalJsonSerialize({ a: 1, f: function () {} }), '{"a":1}');
+  assert.strictEqual(canonicalJsonSerialize([1, function () {}, 2]), '[1,null,2]');
+  assert.strictEqual(canonicalJsonSerialize({ a: 1, s: Symbol('x') }), '{"a":1}');
+  assert.strictEqual(canonicalJsonSerialize([1, Symbol('x'), 2]), '[1,null,2]');
+});
+
+test('#550: a getter returning undefined is read ONCE and dropped (deterministic, not a bareword)', () => {
+  const o = { a: 1 };
+  Object.defineProperty(o, 'b', { enumerable: true, get() { return undefined; } });
+  assert.strictEqual(canonicalJsonSerialize(o), '{"a":1}');
+});
+
+test('#550: {a,b:undefined} and {a} hash identically — the native write path always collapsed them', () => {
+  assert.strictEqual(canonicalJsonSerialize({ a: 1, b: undefined }), canonicalJsonSerialize({ a: 1 }));
+});
+
+test('#550: a SPARSE array hole serializes as null (matches native), not an invalid empty slot', () => {
+  // Build the hole via index assignment (not a literal 2-comma array) so there is no
+  // no-sparse-arrays lint to suppress (ADR-0006: zero lint suppressions). Index 1 stays a hole.
+  const sparse = [1];
+  sparse[2] = 2;
+  assert.strictEqual(sparse.length, 3);
+  assert.strictEqual(canonicalJsonSerialize(sparse), '[1,null,2]');
+  assert.strictEqual(canonicalJsonSerialize(sparse), JSON.stringify(sparse));
+});
+
+test('#550: an array with a custom Symbol.iterator hashes BY INDEX (matches native), not via the iterator', () => {
+  const a = [1, 2, 3];
+  a[Symbol.iterator] = function* () { yield 9; yield 9; };
+  assert.strictEqual(canonicalJsonSerialize(a), '[1,2,3]');
+  assert.strictEqual(canonicalJsonSerialize(a), JSON.stringify(a));
+});
+
+test('#550: DoS guard intact — a wide all-ABSENT-key object STILL trips the node budget', () => {
+  const wide = {};
+  for (let i = 0; i < MAX_CANONICAL_NODES + 5; i++) wide['k' + i] = undefined;
+  assert.throws(() => canonicalJsonSerialize(wide), /node budget|max/i);
+});
+
 process.stdout.write(`\ncanonical-json.test.js: ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
