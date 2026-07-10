@@ -38,6 +38,12 @@ const { deriveNodeId, computeContentHash, PROVENANCE, classifyLessonLayer } = re
 const LAB_STATE_BASE = process.env.LOOM_LAB_STATE_DIR || path.join(os.homedir(), '.claude', 'lab-state');
 const DEFAULT_DIR = path.join(LAB_STATE_BASE, 'recall-graph-backtest');
 const HEX64 = /^[0-9a-f]{64}$/;
+// #536 (VALIDATE-hacker MEDIUM) — a per-node-file READ cap. A single node is a few KB; this
+// bounds a hostile planted file BEFORE readFileSync slurps it (a 200MB file -> ~200MB RSS;
+// listNodes/retire iterate EVERY file). Generous vs a legit node, far below an OOM.
+// Env-overridable (mirrors negative-attestation's LOOM_LAB_MAX_LEDGER_BYTES convention).
+const MAX_NODE_FILE_BYTES = Number(process.env.LOOM_LAB_MAX_NODE_BYTES) > 0
+  ? Number(process.env.LOOM_LAB_MAX_NODE_BYTES) : 1024 * 1024;
 
 function storeDir(opts) { return (opts && opts.dir) || DEFAULT_DIR; }
 
@@ -78,7 +84,13 @@ function writeNode(node, opts = {}) {
   // Verify-on-WRITE too (VALIDATE-hacker LOW): the write side must not deposit a node
   // whose basis/body do not derive its node_id/content_hash — symmetric with loadNode
   // (the #273 "verify content not key" discipline applied write-side, not just read-side).
-  if (!verifyNode(node, node.node_id)) return { ok: false, reason: 'self-inconsistent' };
+  // #536 sibling (VALIDATE-reviewer MEDIUM): verifyNode re-hashes worked_example_ref and can
+  // THROW on a pathological deep/wide body. A DIRECT caller (spike/dogfood scripts call the
+  // exported writeNode) must get the {ok:false} reject convention, not an uncaught crash.
+  let selfConsistent;
+  try { selfConsistent = verifyNode(node, node.node_id); }
+  catch { return { ok: false, reason: 'unverifiable' }; }
+  if (!selfConsistent) return { ok: false, reason: 'self-inconsistent' };
   const dir = storeDir(opts);
   const file = path.join(dir, `${node.node_id}.json`);
   // W4d Item 2d (+ CodeRabbit Major): tighten the lab-state dir on EVERY write path (dedup + repair +
@@ -158,10 +170,21 @@ function retireBacktestNodes({ dir, before } = {}) {
 
 function loadNode(node_id, opts = {}) {
   const file = path.join(storeDir(opts), `${node_id}.json`);
-  let parsed;
-  try { parsed = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; }
-  const verified = verifyNode(parsed, node_id);
-  return verified ? deepFreeze(verified) : null;
+  // never-throws (the section contract): a tampered / foreign / HOSTILE file fail-softs
+  // to null. #536: verifyNode re-hashes the UNTRUSTED body — computeContentHash /
+  // deriveNodeId -> canonicalJsonSerialize THROWS a controlled TypeError on a
+  // pathological deep/wide worked_example_ref (the depth/node-budget guards) — so it
+  // must sit INSIDE the try, not after it, or a single planted file crashes the read
+  // (and listNodes, and the backtest consumer).
+  try {
+    // Bound the read: reject a non-regular file (a planted fifo/device/dir would hang or
+    // mislead readFileSync) or one over the size cap, BEFORE slurping it into memory.
+    const st = fs.statSync(file);
+    if (!st.isFile() || st.size > MAX_NODE_FILE_BYTES) return null;
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const verified = verifyNode(parsed, node_id);
+    return verified ? deepFreeze(verified) : null;
+  } catch { return null; }
 }
 
 function listNodes(opts = {}) {
