@@ -325,6 +325,53 @@ test('EC1b.5a3 armed + an UNSIGNED or WRONG-KEY approval planted in custody => a
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+test('EC1b.5a4 #538: a tamper reject emits [LOOM-EGRESS-ALERT]; the benign ENOENT pending state does NOT', () => {
+  const dir = scratch('loom-custody-');
+  const realWrite = process.stderr.write.bind(process.stderr);
+  let captured = '';
+  process.stderr.write = (chunk) => { captured += String(chunk); return true; };
+  try {
+    withKillswitchEnvCleared(() => {
+      const opts = armedCustody(dir);
+      // (1) NO approval file yet => reason io:ENOENT (the human simply has not approved) => NO alert.
+      const before = captured.length;
+      const r0 = E.emitPR(goodData(), opts);
+      assert.strictEqual(r0.reason, 'awaiting-approval');
+      assert.strictEqual(r0.approvalReason, 'io:ENOENT', `the pending reason is ENOENT (got ${r0.approvalReason})`);
+      assert.ok(!captured.slice(before).includes('[LOOM-EGRESS-ALERT]'), 'the benign ENOENT pending state must NOT alert');
+
+      // (2) plant a WRONG-KEY signed approval (present-but-invalid = tamper) => a non-ENOENT reason => ALERT.
+      const approvalHash = r0.approvalHash;
+      const file = path.join(opts.custodyApprovalsDir, approvalHash + '.approved');
+      const attacker = generateEdgeKeypair();
+      const basis = require(path.join(REPO, 'packages', 'kernel', 'egress', 'approval.js'))
+        .approvalSigBasis({ hash: approvalHash, approvedAt: opts.now, nonce: 'n', key_id: 'v0' });
+      const sig = signRecordId(basis, { privateKeyPem: attacker.privateKeyPem });
+      fs.writeFileSync(file, JSON.stringify({
+        hash: approvalHash, emission: { repo: 'owner/repo', issueRef: 42, diff: GOOD_DIFF },
+        approvedAt: opts.now, nonce: 'n', sig, key_id: 'v0',
+      }), { flag: 'wx' });
+      const mark = captured.length;
+      const r1 = E.emitPR(goodData(), opts);
+      assert.strictEqual(r1.reason, 'awaiting-approval', 'a present-but-invalid approval still fail-closes (gate unchanged)');
+      assert.ok(r1.approvalReason && r1.approvalReason !== 'io:ENOENT', `a present-but-invalid approval yields a non-ENOENT reason (got ${r1.approvalReason})`);
+      const alertLine = captured.slice(mark);
+      assert.ok(alertLine.includes('[LOOM-EGRESS-ALERT]'), 'a tamper/present-but-invalid approval MUST alert');
+      assert.ok(alertLine.includes('approval-verify-failed'), 'the alert carries the fixed reason token');
+      assert.ok(alertLine.includes(r1.approvalReason), 'the specific approvalReason is surfaced in the alert detail');
+
+      // (3) a legit-but-EXPIRED approval => reason stale-or-future => benign aging => NO alert
+      // (VALIDATE-hacker LOW: avoid per-poll alert-fatigue on an unconsumed, TTL-expired approval).
+      fs.unlinkSync(file);
+      mintApprovalFor(opts);                                            // a genuinely signed approval
+      const mark2 = captured.length;
+      const r2 = E.emitPR(goodData(), Object.assign({}, opts, { now: opts.now + opts.ttlMs + 1 }));
+      assert.strictEqual(r2.approvalReason, 'stale-or-future', `an expired approval yields stale-or-future (got ${r2.approvalReason})`);
+      assert.ok(!captured.slice(mark2).includes('[LOOM-EGRESS-ALERT]'), 'a benign expired (stale-or-future) approval must NOT alert');
+    });
+  } finally { process.stderr.write = realWrite; fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('EC1b.5b armed + a VALID approval but a THROWING seam => fail-closed; cap+ledger+approval UNCHANGED (I2 reservation-fold)', () => {
   const dir = scratch('loom-custody-');
   try {
