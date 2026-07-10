@@ -22,6 +22,10 @@ const { makeFrictionLabeler, buildActorPrompt, resolveClaude } = require('../cau
 const { verifyToollessRuntime } = require('../_lib/claude-headless');
 const { classifyIssue } = require('./issue-classifier');
 const { materialize: materializePersona } = require('./persona-prompt-materializer');
+// Track A W1 - the cross-uid recall-inject bridge. SHADOW-inert (returns '' on every un-deployed box)
+// until an operator deploys the cross-uid launcher; it is the ONLY seam by which recall reaches the
+// drafter (subprocess-only, never a static require of the recall lane - the disjointness dam holds).
+const { retrieveRecallBlock } = require('./recall-inject-boundary');
 // item-3-live PR-1 - the draft-time live-solve lesson CAPTURE branch (D3). A LIVE solve produces a lesson
 // HYPOTHESIS captured weight-INERT into the live_pending lane (NO merge wire; PR-2 connects the merge). The
 // capture is FAIL-SOFT + OUTCOME-PURE: a derive/write/throw never aborts the record (the draft still
@@ -118,17 +122,22 @@ async function solveLiveIssueContained({
   const recordCostFn = deps.recordCostFn || recordCost;
   const safeDiscardFn = deps.safeDiscardFn || safeDiscard;
   const materializeFn = deps.materializeFn || materializePersona;
+  const retrieveRecallFn = deps.retrieveRecallBlockFn || retrieveRecallBlock;
   let clone = null;
   try {
     clone = await prepareCloneFn({ repo: record.repo, base_sha: record.base_sha });
-    // item 4 (D5) - SHADOW persona-prompt injection. ONLY when the flag is on AND a persona was
-    // classified does the materialized block ride into the prompt; a null/falsy materialize
-    // result FALLS THROUGH to the bare prompt (no throw). Flag-off -> byte-identical bare prompt.
-    let extraContext = null;
+    // item 4 (D5) SHADOW persona-prompt injection + Track A W1 SHADOW recall-inject. Both are
+    // flag-gated and fail-soft to null; extraContext combines whichever blocks are present. Both flags
+    // off (or SHADOW-empty recall) -> extraContext null -> byte-identical bare prompt.
+    let personaBlock = null;
     if (persona && personaMaterializeEnabled()) {
       const m = materializeFn(persona);
-      extraContext = m && m.block ? m.block : null;
+      personaBlock = m && m.block ? m.block : null;
     }
+    // recall is advisory DATA via the audited cross-uid boundary; '' on every un-deployed box (SHADOW)
+    // -> no recall block. trigger_class scoping (1a) is deferred; Wave 1 recall is sort-preference only.
+    const recallBlock = retrieveRecallFn({ triggerClass: null }) || null;
+    const extraContext = [personaBlock, recallBlock].filter(Boolean).join('\n\n') || null;
     const prompt = extraContext ? buildActorPrompt(record, extraContext) : buildActorPrompt(record);
     const result = await runActorFn({
       workDir: clone.workDir, prompt, apiKey, model, maxBudgetUsd, timeout, dockerBin, image,

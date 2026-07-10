@@ -48,6 +48,10 @@ const nodeStore = require('../attribution/recall-graph-store');
 const edgeStore = require('../attribution/recall-edge-store');
 const { confirmedNodeIds, canEnterPredictorLane } = require('../causal-edge/lesson-confirm');
 const { canonicalPersonaKey } = require('./canonical-persona-key');
+// Track A W1: the single-line body sanitizer + renderer, extracted to a shared leaf so arm C here
+// and the recall-inject boundary render a lesson through ONE hardened path (control + Unicode-format
+// strip, bound, ellipsis). The H7 Cf-guard rides in for arm C too (a bidi body no longer leaks here).
+const { renderLessonLine } = require('./_lib/strip-and-render-lesson');
 
 // Defaults (code-reviewer F3: COUNT + BYTE bounded). A derived lesson body is 1-2 sentences;
 // a slice of a handful of confirmed lessons is the "earned" signal, not a dump. DEFAULT_MAX_BYTES
@@ -77,33 +81,16 @@ function recencyMs(node) {
   return Number.isNaN(t) ? -Infinity : t;
 }
 
-// Strip C0 control chars + DEL by CODE POINT (a regex literal carrying control chars trips
-// eslint no-control-regex). Whitespace is collapsed to spaces BEFORE this, so any remaining
-// sub-0x20 / 0x7f code unit is a non-printable to drop (NUL/BEL/ESC/ANSI etc).
-function stripControlChars(s) {
-  let out = '';
-  for (let i = 0; i < s.length; i += 1) {
-    const c = s.charCodeAt(i);
-    if (c >= 0x20 && c !== 0x7f) out += s.charAt(i);
-  }
-  return out;
-}
-
-// Render one lesson line: deterministic, single-line, printable, bounded. lesson_body is the
-// human-legible prose; fall back to the closed-enum signature when a node has no body.
-// (1) collapse whitespace, (2) STRIP non-printable control chars (NUL/BEL/ESC/ANSI -- a
-// malicious or garbled body must not inject terminal/log escapes into the slice or any trace
-// that later prints it; hacker MEDIUM fold), (3) truncate to LESSON_LINE_MAX (a complete,
-// bounded line with an ellipsis -- never a partial byte-cut) so one oversize body cannot zero
-// the slice. The byte cap then truncates the BLOCK at whole-line boundaries.
+// Render one lesson line via the shared sanitizer leaf: extract the human-legible body (fall back to
+// the closed-enum signature when a node has no body), then sanitize + bound through renderLessonLine
+// (collapse whitespace, strip control + Unicode-format chars, truncate to LESSON_LINE_MAX with an
+// ellipsis -- never a partial byte-cut, so one oversize body cannot zero the slice). The byte cap
+// then truncates the BLOCK at whole-line boundaries.
 function renderLesson(node) {
   const raw = typeof node.lesson_body === 'string' && node.lesson_body.length > 0
     ? node.lesson_body
     : (typeof node.lesson_signature === 'string' ? node.lesson_signature : '(lesson)');
-  let body = stripControlChars(raw.replace(/\s+/g, ' ')).trim();
-  if (body.length === 0) body = '(lesson)';
-  if (body.length > LESSON_LINE_MAX) body = `${body.slice(0, LESSON_LINE_MAX - 4).trimEnd()} ...`;
-  return `- ${body}`;
+  return renderLessonLine(raw, { lineMax: LESSON_LINE_MAX });
 }
 
 /**

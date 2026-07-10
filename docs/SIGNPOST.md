@@ -382,7 +382,9 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/lab/persona-experiment/persona-prompt-materializer.js` - item 4 (D4, D6, D8) - the persona prompt MATERIALIZER.
 - `packages/lab/persona-experiment/_spike/real-solve-spike.js` - 3.1-W4b SPIKE (_spike, OUTSIDE tests/unit/**) -- the Rule-2a-corollary REAL-PATH proof for the
 - `packages/lab/persona-experiment/real-solve.js` - 3.1-W4b -- the REAL `claude -p` solve+grade driver: the injectable async `solveFn` the arm-loop
+- `packages/lab/persona-experiment/recall-inject-boundary.js` - Track A, Wave 1 (the SHADOW half) - the SINGLE audited bridge between the drafter lane
 - `packages/lab/persona-experiment/_lib/render-fenced-bounded-block.js` - item 4 (D4 / fold D-2) - the PURE fenced-bounded-block primitive, extracted from
+- `packages/lab/persona-experiment/_lib/strip-and-render-lesson.js` - Track A W1 (fold: verify-board HIGH) - the PURE lesson-line sanitizer, extracted from
 
 ### `lab/reputation/`
 
