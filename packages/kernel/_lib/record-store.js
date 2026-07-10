@@ -220,14 +220,16 @@ function appendRecord(record, opts = {}) {
     return { ok: false, reason: 'transaction-id-mismatch' };
   }
 
-  // (2a) Read-back stability. JSON.stringify (the write path) DROPS undefined-valued
-  // object keys (and coerces NaN/Infinity to null), so a record carrying such a field
-  // hashes one way in memory (the S5 check above passes) but a DIFFERENT way once
-  // parsed back from disk — loadRecordFile's S5-on-read re-hash then rejects it as
-  // tampered, making a just-written {ok:true} record PERMANENTLY UNREADABLE (silent
-  // data loss). Enforce that the id survives the exact serialize->parse round-trip the
-  // store performs on write->read, so a producer bug (an optional field left
-  // `undefined` instead of `null`) is a LOUD reject here, not silent corruption on read.
+  // (2a) Read-back stability. Post-#550 canonicalJsonSerialize matches native JSON.stringify for
+  // the JSON-absent scalar class (undefined/function/symbol), so an undefined-valued field is now
+  // round-trip-stable and readable — #550 fixed that class. The gap #550 DEFERRED is a value
+  // TRANSFORM: a `toJSON` field (e.g. a Date) canonicalizes one way in memory (an own-key walk ->
+  // `{}`) but serializes a DIFFERENT way on the write path (JSON.stringify calls toJSON() -> an ISO
+  // string), so it hashes one way in memory (the S5 check above passes) but a DIFFERENT way once
+  // parsed back from disk — loadRecordFile's S5-on-read re-hash then rejects it as tampered, making
+  // a just-written {ok:true} record PERMANENTLY UNREADABLE (silent data loss). Enforce that the id
+  // survives the exact serialize->parse round-trip the store performs on write->read, so a producer
+  // bug (a non-JSON-stable field) is a LOUD reject here, not silent corruption on read.
   let roundTripId;
   try {
     roundTripId = computeTransactionId(JSON.parse(JSON.stringify(record)));

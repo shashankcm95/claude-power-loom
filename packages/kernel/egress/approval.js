@@ -87,10 +87,11 @@ function computeEmissionHash(draft) {
  *
  * OQ-3 — the 5th field `lesson_commitment` (RFC §5.3) binds WHICH captured lesson rode this approval (a 64-hex
  * computeLessonCommitment digest, or '' for a no-lesson emission). ALWAYS-A-STRING (RFC §5.1, the canonical-hash
- * footgun): canonicalJsonSerialize emits the LITERAL token `undefined` for an undefined-valued key, so undefined,
- * '', and key-absent would be THREE distinct bases — the broker would sign a different string than the human
- * approved. So an undefined / absent value is COERCED to '' here, and a non-string value THROWS (never silently
- * hashed). The lesson is NOT emitted in the PR (computeEmissionHash is untouched, §4); only this basis grows.
+ * footgun): post-#550 canonicalJsonSerialize matches native JSON.stringify — an undefined-valued key is DROPPED,
+ * so undefined and key-absent COLLAPSE to the same basis while '' stays distinct; leaning on that would let a
+ * missing lesson silently sign as the no-lesson basis. So an undefined / absent value is COERCED to '' here (an
+ * EXPLICIT no-lesson sentinel), and a non-string value THROWS (never silently hashed). The lesson is NOT emitted
+ * in the PR (computeEmissionHash is untouched, §4); only this basis grows.
  *
  * F-W2b — the 6th field `requestedBaseSha` (the approver-INTENDED base commit) binds moved-base invalidation into
  * the SIGNED basis (a basis-only field, NEVER in the emission hash — the live base does not EXIST at approval time,
