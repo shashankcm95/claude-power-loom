@@ -111,6 +111,18 @@ their VERIFY/VALIDATE folds live under [`packages/specs/plans/`](../packages/spe
 - **Disposal:** a candidate that never merges is retained only as an inert pending artifact; an explicit
   disposal/GC policy for dead-ends is unbuilt.
 
+**Accretion 2026-07-10 — the learning-wire rung + the external-readiness checkpoint.** Two additions the
+rung table above did not name. (1) The recall->solve LEARNING WIRE (retrieve a CONFIRMED lesson INTO the
+next solve) is the consume side of the ladder, distinct from rung-8's recall-HARDEN gate, and today it is
+MISSING (`research/2026-07-10-plugin-learning-wire-blueprint.md`; grep `recall` in the live-solve path = 0).
+(2) The **external-readiness checkpoint** (`docs/phases/phase-external-readiness.md`) is the ③.2
+internal-validation gate that SCHEDULES the three unscheduled rungs above (intake / review-feedback /
+disposal) + the learning wire, and validates the substrate END-TO-END across three layers - the memory
+architecture (ADR-0018 chain), the plugin substrate (the learning wire + persona-context), and the minted
+lessons (persona-tied metadata) - BEFORE the first external PR (#406). It gates the ③.2 apex: a stranger
+repo is ingested only after the checkpoint PASSES **and** the operator arming (`#404`/`#412` broker+uid, the
+item-5 signer, F-W4) **and** the USER's `#273` sign-off. Per OQ-NS-6, only the external merge HARDENS.
+
 ## 7. Success criteria
 
 - An autonomously-delivered PR is merged by an external maintainer, world-anchored, with the whole lab track honest
