@@ -127,5 +127,24 @@ test('#550: DoS guard intact — a wide all-ABSENT-key object STILL trips the no
   assert.throws(() => canonicalJsonSerialize(wide), /node budget|max/i);
 });
 
+test('getter-read bound: a wide all-absent getter object reads at most ~budget getters, not all N', () => {
+  // The object branch reads each value in a SINGLE sorted pass, so a value's getter is invoked at
+  // most once and processing aborts at ~MAX_CANONICAL_NODES — the getter READS are bounded, not just
+  // the final reject (the prior .map()-then-.filter() read every getter before it could abort).
+  let reads = 0;
+  const wide = {};
+  const N = MAX_CANONICAL_NODES * 5; // far past budget
+  for (let i = 0; i < N; i++) {
+    // zero-pad so the sort order matches insertion — the pass hits budget on the first ~budget keys
+    Object.defineProperty(wide, 'k' + String(i).padStart(7, '0'), {
+      enumerable: true,
+      get() { reads += 1; return undefined; },
+    });
+  }
+  assert.throws(() => canonicalJsonSerialize(wide), /node budget|max/i);
+  assert.ok(reads <= MAX_CANONICAL_NODES + 10,
+    `expected <= ~${MAX_CANONICAL_NODES} getter reads, got ${reads} (getter cost must be budget-bounded)`);
+});
+
 process.stdout.write(`\ncanonical-json.test.js: ${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);

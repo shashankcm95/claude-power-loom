@@ -45,8 +45,9 @@ function sha256hex(s) { return crypto.createHash('sha256').update(s).digest('hex
  * diff_hash} basis shape; the redundancy is harmless (a re-emit yields the same id).
  *
  * OQ-3 W3 (RFC §5.4) — `lesson_commitment` is the 5th hashed element, SEALED: '' (no-lesson) and a 64-hex
- * commitment are distinct bases. The `== null ? ''` coercion mirrors the other positional elements - a
- * missing value never becomes the literal token `undefined` in the canonical basis.
+ * commitment are distinct bases. The `== null ? ''` coercion mirrors the other positional elements - it pins a
+ * missing value to the '' sentinel. (Post-#550 an undefined ARRAY element canonicalizes to `null`, matching
+ * native; the coercion keeps a missing value an explicit '' rather than a positional `null`.)
  * @param {{repo, issueRef, pr_number, approval_hash, lesson_commitment}} rec
  * @returns {string} 64-hex join_key id
  */

@@ -72,21 +72,30 @@ function canonicalJsonSerialize(value) {
       }
       return '[' + parts.join(',') + ']';
     }
-    // Native: a JSON-absent object VALUE omits the key. Read each value ONCE into an entry tuple (a
-    // hash primitive must be deterministic — a getter that flips defined<->undefined must not be
-    // re-read). A DROPPED key is counted toward the node budget IN the filter, so a wide all-absent
-    // object still trips MAX_CANONICAL_NODES — the DoS guard is not bypassed.
-    const entries = Object.keys(v)
-      .map((k) => [k, v[k]])
-      .filter((entry) => {
-        if (!isJsonAbsent(entry[1])) return true;
+    // Native: a JSON-absent object VALUE omits the key. Sort the keys FIRST, then a SINGLE pass reads
+    // each value EXACTLY once (a hash primitive must be deterministic — a getter that flips
+    // defined<->undefined must not be re-read) that both drops a JSON-absent key and recurses on a
+    // present one. Every key — dropped OR walked — costs one node-budget increment (a dropped key is
+    // counted HERE; a present key is counted at its `walk` entry), so processing aborts at ~budget in
+    // BOTH the all-absent AND all-present cases: the getter READS are bounded, not just the final
+    // reject. `Object.keys(v).sort()` (default comparator) compares the key strings by the SAME UTF-16
+    // code-unit order as the prior explicit `a[0] < b[0]` key comparator (both sort by KEY, never by a
+    // tuple), so the key order — and thus the byte output — is unchanged (INV-22 / idempotency dedup
+    // preserved; empirically re-verified byte-identical across a 20k-key fuzz incl. surrogate pairs).
+    const sortedKeys = Object.keys(v).sort();
+    const parts = [];
+    for (let i = 0; i < sortedKeys.length; i += 1) {
+      const k = sortedKeys[i];
+      const val = v[k];
+      if (isJsonAbsent(val)) {
         if (++nodeCount > MAX_CANONICAL_NODES) {
           throw new TypeError('canonicalJsonSerialize: max node budget exceeded (' + MAX_CANONICAL_NODES + ')');
         }
-        return false;
-      })
-      .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
-    return '{' + entries.map((entry) => JSON.stringify(entry[0]) + ':' + walk(entry[1], depth + 1)).join(',') + '}';
+        continue;
+      }
+      parts.push(JSON.stringify(k) + ':' + walk(val, depth + 1));
+    }
+    return '{' + parts.join(',') + '}';
   }
   return walk(value, 0);
 }

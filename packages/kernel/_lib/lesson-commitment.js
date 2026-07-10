@@ -10,12 +10,13 @@
 // between a lab copy and a kernel copy). SHADOW / production-inert until the loop is armed: nothing reads this
 // digest into a weight yet.
 //
-// STRICT inputs by design: the undefined / empty-string / key-absent forms are three DISTINCT canonical bases
-// (canonicalJsonSerialize emits the LITERAL token `undefined` for an undefined-valued key), so a silent hash of a
-// bad input would corrupt the future seal. The helper THROWS unless BOTH fields are non-empty strings - it NEVER
-// hashes `undefined`. The empty-string no-lesson sentinel is the CALLER's concern (captureLiveLesson returns '' on
-// its fail-soft branches; the approval layer coerces a missing value to '' BEFORE this helper is ever reached),
-// never produced HERE.
+// STRICT inputs by design. Post-#550 canonicalJsonSerialize matches native JSON.stringify: an undefined-valued
+// object key is DROPPED (it now COLLAPSES with key-absent - so {lesson_body: undefined} and {} hash identically),
+// while '' stays a distinct basis. A bad input therefore does NOT throw a canonical error - it silently hashes to
+// a WRONG-but-valid seal. The helper THROWS unless BOTH fields are non-empty strings - it NEVER hashes a missing /
+// empty / undefined field into the seal. The empty-string no-lesson sentinel is the CALLER's concern
+// (captureLiveLesson returns '' on its fail-soft branches; the approval layer coerces a missing value to '' BEFORE
+// this helper is ever reached), never produced HERE.
 //
 // Tiny + pure (no fs, no I/O). M1 forward-coupling: a drift in canonicalJsonSerialize's bytes changes this digest,
 // so the known-vector test in tests/unit/kernel/_lib/lesson-commitment.test.js guards the seal against a silent
