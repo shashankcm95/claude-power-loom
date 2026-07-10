@@ -8,7 +8,7 @@ const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { buildWorkedExampleNode } = require('../../../../packages/lab/attribution/recall-graph');
+const { buildWorkedExampleNode, deriveNodeId, PROVENANCE } = require('../../../../packages/lab/attribution/recall-graph');
 const { writeNode, loadNode, listNodes, retireBacktestNodes } = require('../../../../packages/lab/attribution/recall-graph-store');
 
 let passed = 0;
@@ -183,6 +183,75 @@ test('persona-collision: SAME built_by re-write is plain dedup, NOT a collision 
   const w = writeNode(noor, { dir });
   assert.strictEqual(w.deduped, true);
   assert.ok(!w.persona_collision, 'identical built_by re-write -> no collision flag');
+});
+
+// #536 — the read path must honor its documented never-throws contract even for a
+// HOSTILE body. verifyNode re-hashes the untrusted worked_example_ref via
+// computeContentHash -> canonicalJsonSerialize, which throws a controlled TypeError on
+// a pathological deep/wide body. A file that PASSES the node_id gate (deriveNodeId reads
+// only 4 shallow scalars) but has a deep body used to propagate that throw out of
+// loadNode. Planted directly (writeNode can't deposit it — it verifies on write too).
+function plantDeepBodyNode(dir, seed) {
+  let deep = { leaf: true };
+  for (let i = 0; i < 150; i += 1) deep = { n: deep }; // > MAX_CANONICAL_DEPTH (100)
+  const wer = { issue_id: `evil-${seed}`, candidate_patch_ref: `cafe${seed}`, repo: `e/v${seed}`, deep };
+  const node_id = deriveNodeId(wer, PROVENANCE); // deep field is ignored here (4 scalars only)
+  fs.writeFileSync(
+    path.join(dir, `${node_id}.json`),
+    JSON.stringify({ node_id, provenance: PROVENANCE, worked_example_ref: wer, content_hash: 'a'.repeat(64) }),
+  );
+  return node_id;
+}
+
+test('#536 never-throws: loadNode on a planted deep-body file returns null, never throws', () => {
+  const dir = tmp();
+  const node_id = plantDeepBodyNode(dir, 1);
+  let out;
+  assert.doesNotThrow(() => { out = loadNode(node_id, { dir }); }, 'loadNode must never throw on a hostile body');
+  assert.strictEqual(out, null, 'a body that throws during verify reads back as null (fail-soft)');
+});
+
+test('#536 never-throws: listNodes SKIPS a hostile node and still returns the valid ones', () => {
+  const dir = tmp();
+  const good = buildWorkedExampleNode(attempt());
+  writeNode(good, { dir });
+  plantDeepBodyNode(dir, 2);
+  let nodes;
+  assert.doesNotThrow(() => { nodes = listNodes({ dir }); }, 'listNodes must not crash on a hostile file');
+  assert.strictEqual(nodes.length, 1, 'the valid node survives; the hostile one is skipped');
+  assert.strictEqual(nodes[0].node_id, good.node_id);
+});
+
+// #536 (VALIDATE-hacker MEDIUM) — bound the READ before slurping a hostile file into memory.
+test('#536 read cap: an oversized planted file returns null, not a full-memory slurp', () => {
+  const dir = tmp();
+  const id = 'a'.repeat(64);
+  fs.writeFileSync(path.join(dir, `${id}.json`), 'x'.repeat(1200 * 1024)); // > the 1MB default cap
+  let out;
+  assert.doesNotThrow(() => { out = loadNode(id, { dir }); });
+  assert.strictEqual(out, null, 'a file over MAX_NODE_FILE_BYTES is rejected before the read');
+});
+
+test('#536 read cap: a non-regular file (a directory named <id>.json) returns null', () => {
+  const dir = tmp();
+  const id = 'b'.repeat(64);
+  fs.mkdirSync(path.join(dir, `${id}.json`));
+  let out;
+  assert.doesNotThrow(() => { out = loadNode(id, { dir }); });
+  assert.strictEqual(out, null, 'a non-regular file (dir/fifo/device) is rejected');
+});
+
+// #536 sibling (VALIDATE-reviewer MEDIUM) — the write side must also reject, not throw.
+test('#536 write side: a deep-body node rejects with {ok:false, reason:unverifiable}, does not throw', () => {
+  const dir = tmp();
+  let deep = { leaf: true };
+  for (let i = 0; i < 150; i += 1) deep = { n: deep };
+  const wer = { issue_id: 'evil-w', candidate_patch_ref: 'cafe', repo: 'e/vw', deep };
+  const node = { node_id: deriveNodeId(wer, PROVENANCE), provenance: PROVENANCE, worked_example_ref: wer, content_hash: 'a'.repeat(64) };
+  let r;
+  assert.doesNotThrow(() => { r = writeNode(node, { dir }); }, 'writeNode must not throw on a pathological body');
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(r.reason, 'unverifiable');
 });
 
 console.log(`recall-graph-store.test.js: ${passed} passed`);

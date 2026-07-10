@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": false,
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "baseUrl": ".",
+    "resolveJsonModule": true
+  },
+  "include": [
+    "packages/**/*.js",
+    "tests/**/*.js",
+    "scripts/**/*.js",
+    "*.js"
+  ],
+  "exclude": [
+    "node_modules",
+    "**/node_modules",
+    "**/dist"
+  ]
+}
