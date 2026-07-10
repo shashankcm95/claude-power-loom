@@ -142,7 +142,138 @@ test('lint() on a tmp workspace detects both inner→outer AND prod→tests', ()
   }
 });
 
+// ── 4b. dynamic (absolute, dynamically-composed) cross-layer requires ─────────
+// The class the static IMPORT_RE cannot see (RFC 2026-07-10). These make the
+// detector's dynamic-detection path NON-VACUOUS: they fail on the pre-RFC lint.
+
+test('lint() detects a dynamically-composed absolute cross-layer require (both forms)', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'k12-dyn-'));
+  try {
+    const write = (rel, body) => {
+      const p = path.join(root, rel);
+      fs.mkdirSync(path.dirname(p), { recursive: true });
+      fs.writeFileSync(p, body);
+    };
+    // Form 1 (assign-then-require) — the exact shape of the real contract-verifier edge.
+    write('packages/kernel/_lib/assign.js',
+      "const p = path.join(findToolkitRoot(), 'packages', 'runtime', 'svc.js');\nmodule.exports = require(p);\n");
+    // Form 2 (inline).
+    write('packages/kernel/_lib/inline.js',
+      "module.exports = require(path.join(root, 'packages', 'lab', 'y.js'));\n");
+    const { findings } = lint(root);
+    const dyn = findings.filter((f) => /dynamic require/.test(f.specifier));
+    assert.strictEqual(dyn.length, 2, `expected 2 dynamic findings, got ${JSON.stringify(findings)}`);
+    assert.deepStrictEqual(
+      dyn.map((f) => `${f.srcLayer}->${f.dstLayer}`).sort(),
+      ['kernel->lab', 'kernel->runtime'],
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('lint() does NOT flag a subprocess build of a cross-layer path (process boundary, not an import)', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'k12-subproc-'));
+  try {
+    const write = (rel, body) => {
+      const p = path.join(root, rel);
+      fs.mkdirSync(path.dirname(p), { recursive: true });
+      fs.writeFileSync(p, body);
+    };
+    // Path built to runtime, but fed to spawn (not require). Mirrors the real
+    // pattern-recorder + adr.js edges the RFC classifies as a separate, legal class.
+    write('packages/kernel/validators/subproc.js',
+      "const q = path.join(root, 'packages', 'runtime', 'adr.js');\nspawn(process.execPath, [q, 'x']);\n");
+    const { findings } = lint(root);
+    assert.strictEqual(findings.length, 0, `subprocess build must not flag, got ${JSON.stringify(findings)}`);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('lint() counts static AND dynamic cross-layer requires together', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'k12-mix-'));
+  try {
+    const write = (rel, body) => {
+      const p = path.join(root, rel);
+      fs.mkdirSync(path.dirname(p), { recursive: true });
+      fs.writeFileSync(p, body);
+    };
+    write('packages/kernel/a.js', "module.exports = require('../runtime/svc');\n");
+    write('packages/kernel/b.js', "const p = path.join(x, 'packages', 'runtime', 'z.js');\nrequire(p);\n");
+    const { findings } = lint(root);
+    assert.strictEqual(findings.length, 2, `expected 1 static + 1 dynamic, got ${JSON.stringify(findings)}`);
+    assert.ok(findings.every((f) => f.kind === 'inner-imports-outer'
+      && f.srcLayer === 'kernel' && f.dstLayer === 'runtime'));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// ── 4c. dynamic-detection precision (VALIDATE 3-lens hardening) ───────────────
+
+const mkWorkspace = () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'k12-prec-'));
+  const write = (rel, body) => {
+    const p = path.join(root, rel);
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, body);
+  };
+  return { root, write };
+};
+
+test('detects a MULTI-LINE path.join cross-layer require', () => {
+  const { root, write } = mkWorkspace();
+  try {
+    write('packages/kernel/_lib/ml.js',
+      "const p = path.join(\n  findToolkitRoot(),\n  'packages',\n  'runtime',\n  'x.js',\n);\nmodule.exports = require(p);\n");
+    const { findings } = lint(root);
+    assert.strictEqual(findings.filter((f) => /dynamic require/.test(f.specifier)).length, 1,
+      `multi-line evaded: ${JSON.stringify(findings)}`);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('detects a COMBINED-segment path.join ("packages/runtime")', () => {
+  const { root, write } = mkWorkspace();
+  try {
+    write('packages/kernel/_lib/cs.js',
+      "const p = path.join(root, 'packages/runtime', 'x.js');\nmodule.exports = require(p);\n");
+    const { findings } = lint(root);
+    assert.strictEqual(findings.filter((f) => f.dstLayer === 'runtime').length, 1,
+      `combined-segment evaded: ${JSON.stringify(findings)}`);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('detects a require of a $-bearing identifier (regex-escape fix)', () => {
+  const { root, write } = mkWorkspace();
+  try {
+    write('packages/kernel/_lib/dollar.js',
+      "const p$x = path.join(root, 'packages', 'runtime', 'a.js');\nmodule.exports = require(p$x);\n");
+    const { findings } = lint(root);
+    assert.strictEqual(findings.filter((f) => /dynamic require/.test(f.specifier)).length, 1,
+      `$-ident evaded: ${JSON.stringify(findings)}`);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('does NOT false-positive when an unrelated same-named require is far from the assignment (forward-window)', () => {
+  const { root, write } = mkWorkspace();
+  try {
+    // `p` is a subprocess-fed cross-layer path; a DIFFERENT function require's a
+    // same-named `p` >REQUIRE_WINDOW chars later. The window must exclude it.
+    const filler = `// ${'x'.repeat(400)}\n`;
+    write('packages/kernel/validators/scope.js',
+      "const p = path.join(root, 'packages', 'runtime', 'x.js');\nspawn(node, [p]);\n"
+      + filler + 'function unrelated(p) { return require(p); }\n');
+    const { findings } = lint(root);
+    assert.strictEqual(findings.length, 0, `scope-blind false positive: ${JSON.stringify(findings)}`);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
 // ── 5. empirical-zero baseline guard (fixtures must not break it) ─────────────
+// Now HONEST: the one real kernel->runtime edge (contract-verifier -> _readPersonaMd)
+// was relocated kernel-side (RFC 2026-07-10, Option A), and the detector above CAN
+// see the common dynamic shapes, so 0 means the require-graph is acyclic for those
+// shapes — not blind to the mechanism the tree actually used.
 
 test('lint(REPO_ROOT) returns 0 findings even with the intentional-violation fixtures committed', () => {
   const { findings } = lint(REPO_ROOT);

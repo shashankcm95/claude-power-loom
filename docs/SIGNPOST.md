@@ -46,6 +46,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/kernel/_lib/memory-root.js` - Memory Root Pointer reader per v6 §5a.9 + Round-3d trust policy.
 - `packages/kernel/_lib/network-egress-detect.js` - Pure network-egress detection helpers for the PostToolUse:Bash audit
 - `packages/kernel/_lib/path-canonicalize.js` - K7 — Path canonicalization + CWE-22 traversal guard (v3.0-alpha, PR 2).
+- `packages/kernel/_lib/persona-md-reader.js` - Persona .md reader — relocated kernel-side from
 - `packages/kernel/_lib/persona-store.js` - packages/kernel/_lib/persona-store.js — H.9.21.1 v2.1.1 per-persona bulkhead primitive.
 - `packages/kernel/_lib/provenance-projections.js` - W0.2 (deterministic-manage PROJECTIONS: mark-stale + retention-archive) + W0.3
 - `packages/kernel/_lib/provenance-walk.js` - W0.0 — bounded provenance chain-walk leaf (v3.5 Memory Manage-Layer, Wave 0).

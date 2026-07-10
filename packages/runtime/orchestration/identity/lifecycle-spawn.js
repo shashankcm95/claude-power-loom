@@ -37,6 +37,11 @@ const {
 // v2.8.0 — HETS-SynthId content-hash. computed at assign time + persisted
 // to identity.synthid_history for drift detection across sessions.
 const { computeContentHash, formatSynthId } = require('../../../kernel/_lib/synthid');
+// Persona .md reader now lives kernel-side (_lib/persona-md-reader) so the kernel
+// contract-verifier can import it same-layer; runtime imports it back INWARD (a
+// legal runtime->kernel edge). Aliased to the historical `_readPersonaMd` name to
+// keep the callsite + export stable. RFC 2026-07-10, Option A.
+const { readPersonaMd: _readPersonaMd } = require('../../../kernel/_lib/persona-md-reader');
 
 // v2.8.0 — read plugin version once at module load. Falls back to '0.0.0'
 // if plugin.json is unreadable (e.g., dev-without-install); the SynthId
@@ -65,21 +70,11 @@ function _readPersonaContract(persona) {
   try { return JSON.parse(fs.readFileSync(fp, 'utf8')); } catch { return null; }
 }
 
-// v2.8.0.x — persona .md reader (post-pair-run MEDIUM-1 fix). The
-// SynthId design (per synthid.js header) includes `agent_md_hash` in
-// the content-hash input. Previously every callsite passed
-// `agentMd: undefined`, leaving the .md hash branch dead. This helper
-// loads `packages/runtime/personas/<persona>.md` so persona behavior changes
-// trigger drift detection. Returns null gracefully if file absent
-// (the hash falls back to `agent_md_hash: null`, preserving existing
-// SynthId values for personas without a .md file).
-function _readPersonaMd(persona) {
-  const { findToolkitRoot } = require('../../../kernel/_lib/toolkit-root');
-  const personasBase = process.env.HETS_PERSONAS_DIR ||
-    path.join(findToolkitRoot(), 'packages', 'runtime', 'personas');
-  const fp = path.join(personasBase, `${persona}.md`);
-  try { return fs.readFileSync(fp, 'utf8'); } catch { return null; }
-}
+// _readPersonaMd (the persona .md reader that feeds the SynthId `agent_md_hash`)
+// was relocated to packages/kernel/_lib/persona-md-reader.js and is imported as an
+// alias above. It loads packages/runtime/personas/<persona>.md, returning null when
+// absent (the hash then falls back to `agent_md_hash: null`, preserving SynthId
+// values for personas without a .md file). RFC 2026-07-10, Option A.
 
 function _scanSkillGaps(contract) {
   if (!contract || !contract.skills) return { required: [], recommended: [] };
