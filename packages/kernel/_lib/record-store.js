@@ -67,6 +67,9 @@ const os = require('os');
 const path = require('path');
 
 const { writeAtomicString } = require('./atomic-write');
+// withLockSoft (NOT withLock): a lock-acquire timeout returns {ok:false} instead
+// of process.exit(2), preserving appendRecord's never-throws / never-exit contract.
+const { withLockSoft } = require('./lock');
 const { deepFreeze } = require('./deep-freeze');
 const {
   computeTransactionId,
@@ -247,24 +250,59 @@ function appendRecord(record, opts = {}) {
   // records (genesis-via-buildGenesisRecord, PENDING intent, pre-PR-4) keep current
   // behavior (Open/Closed; INV-K2-SchemaForwardCompat). This SUBSUMES the F-01 re-fire
   // that P3 tolerated-on-read; tolerate-on-read now only earns its keep for keyless records.
-  if (record.idempotency_key) {
-    const existing = readByIdempotencyKey(record.idempotency_key, opts);
-    if (existing) {
-      return { ok: true, transaction_id: existing.transaction_id, deduped: true, file: recordFilePath(existing.transaction_id, opts) };
+  // Keyed record: the dedup-check + write must be ATOMIC across processes. The bare
+  // check-then-write below is a TOCTOU — two racing appends of the SAME
+  // idempotency_key (a re-fire whose transaction_id is time-salted, so it is a
+  // DIFFERENT file) both read "no existing" and both write, producing two records
+  // for one transaction (violating INV-22 uniqueness; readByIdempotencyKey then
+  // returns a nondeterministic first-by-scan match). Serialize on a per-
+  // idempotency-key lock so ONLY same-key appends contend — keyless and distinct-key
+  // appends stay fully concurrent (writeAtomicString is already per-id atomic).
+  const writeRecord = () => {
+    try {
+      // writeAtomicString auto-creates the parent dir (recursive) + is tmp+rename
+      // atomic, so a concurrent reader never observes a half-written record. It does
+      // NOT set DIR_MODE on the created dir, so pre-create the dir hardened first.
+      fs.mkdirSync(dir, { recursive: true, mode: DIR_MODE });
+      writeAtomicString(file, JSON.stringify(record, null, 2));
+    } catch (err) {
+      return { ok: false, reason: 'write-failed: ' + (err && err.message ? err.message : String(err)) };
     }
+    return { ok: true, file, transaction_id: id };
+  };
+
+  if (record.idempotency_key) {
+    fs.mkdirSync(dir, { recursive: true, mode: DIR_MODE }); // the lock lives in the records dir
+    const idemLock = path.join(dir, '.idem-' + record.idempotency_key + '.lock');
+    // The dedup-check + write, run once under the lock and — on a lock timeout —
+    // AGAIN without it (see the fail-OPEN note). It re-reads first, so a record a
+    // peer already committed comes back as a dedup, never a false failure.
+    const dedupAndWrite = () => {
+      const existing = readByIdempotencyKey(record.idempotency_key, opts);
+      if (existing) {
+        return { ok: true, transaction_id: existing.transaction_id, deduped: true, file: recordFilePath(existing.transaction_id, opts) };
+      }
+      return writeRecord();
+    };
+    const lockOpts = opts.idempotencyLockMaxWaitMs ? { maxWaitMs: opts.idempotencyLockMaxWaitMs } : undefined;
+    const locked = withLockSoft(idemLock, dedupAndWrite, lockOpts);
+    if (locked.ok) return locked.value;
+    // FAIL-OPEN on a lock timeout. The lock is a best-effort race REDUCER, never a
+    // write GATE. acquireLock refuses to steal a lock whose content is empty / non-
+    // numeric, so a same-uid actor could plant an un-reclaimable `.idem-<key>.lock`
+    // (the key is a deterministic content-address any same-uid reader can compute)
+    // and, under a hard fail-closed, PERMANENTLY suppress a targeted transaction's
+    // provenance record — a write-suppression DoS the old unlocked code could not
+    // produce. Falling back to the unlocked dedup+write bounds the worst case to the
+    // ORIGINAL benign race (a possible duplicate under true concurrency), never
+    // suppression; a duplicate is tolerable (consumers dedup on read), a silent
+    // suppression is not. (hacker VALIDATE HIGH — attack the lock, not the record.)
+    return dedupAndWrite();
   }
 
-  try {
-    // writeAtomicString auto-creates the parent dir (recursive) + is tmp+rename
-    // atomic, so a concurrent reader never observes a half-written record and two
-    // appends for distinct ids never clobber (one file per id). It does NOT set
-    // DIR_MODE on the created dir, so pre-create the dir hardened first (idempotent).
-    fs.mkdirSync(dir, { recursive: true, mode: DIR_MODE });
-    writeAtomicString(file, JSON.stringify(record, null, 2));
-  } catch (err) {
-    return { ok: false, reason: 'write-failed: ' + (err && err.message ? err.message : String(err)) };
-  }
-  return { ok: true, file, transaction_id: id };
+  // Keyless record: no dedup possible, and writeAtomicString is atomic per
+  // transaction_id, so no lock is needed.
+  return writeRecord();
 }
 
 /**
