@@ -582,6 +582,20 @@ function emitPR(data, opts = {}) {
         // human/broker did not approve fail-closes with appr.reason === 'lesson-commitment-mismatch').
         const appr = readVerifiedApproval(opts.custodyApprovalsDir, approvalHash, { now, ttlMs: opts.ttlMs, selfUid: opts.selfUid, verifyKeyPem, requestedLessonCommitment: lessonCommitment });
         if (!appr.ok) {
+          // #538 — a fail-closed approval reject must be OBSERVABLE (security.md: "a fail-CLOSED
+          // security decision must be OBSERVABLE, not a silent {ok:false}"). Alert on every reason
+          // EXCEPT the two BENIGN states: io:ENOENT (no approval file/dir yet — the human simply has
+          // not approved) and stale-or-future (a legit-but-expired approval — benign aging, not
+          // tamper/misconfig; exempting it avoids per-poll alert-fatigue for an approval left
+          // unconsumed past its TTL). Everything else is a PRESENT-but-invalid approval — tamper (a
+          // forged/mismatched sig, a body-hash-mismatch, a lesson-commitment swap, a foreign-owned or
+          // symlinked slot) — OR a misconfig (no-verify-key: a trust anchor silently rejecting every
+          // legitimate approval). Deny-list (not allow-list) so a NEW reason fails LOUD by default.
+          // The gate decision + return shape are UNCHANGED (consumers still key on 'awaiting-approval');
+          // this only adds the high-signal `[LOOM-EGRESS-ALERT]`. emitEgressAlert never throws.
+          if (appr.reason !== 'io:ENOENT' && appr.reason !== 'stale-or-future') {
+            emitEgressAlert('approval-verify-failed', { approvalReason: appr.reason });
+          }
           // the EXPECTED pending state (NOT an error): the human has not approved THIS exact content yet. OQ-3 (fold
           // F3): surface the underlying gate reason (e.g. lesson-commitment-mismatch) so the emit layer is debuggable
           // — a plain reason token, no payload. The outer `reason: 'awaiting-approval'` value is unchanged (consumers key on it).
