@@ -43,15 +43,24 @@ function parseArgs(argv) {
   const FLAG_KEYS = { '--ref': 'ref', '--root': 'root', '--run-id': 'runId', '--state-dir': 'stateDir' };
   const opt = {};
   for (let i = 0; i < argv.length; i++) {
-    const key = FLAG_KEYS[argv[i]];
+    const tok = argv[i];
+    const key = FLAG_KEYS[tok];
     if (key) {
       const val = argv[i + 1];
       // Reject a missing value or the next flag eaten as a value (a mistyped --run-id
       // must NOT silently mint against the wrong store — review-on-diff CR LOW).
-      if (val == null || val.startsWith('--')) return { error: `${argv[i]} requires a value` };
+      if (val == null || val.startsWith('--')) return { error: `${tok} requires a value` };
       opt[key] = val;
       i += 1;
-    } else ids.push(argv[i]);
+    } else if (tok.startsWith('--')) {
+      // An unrecognized --flag is a typo (e.g. --reff for --ref). Reject it rather
+      // than silently absorbing it (and the value meant to follow it) as bogus
+      // candidate ids — which would run against the DEFAULT ref with no warning
+      // that the intended --ref was ignored. Candidate ids never start with '--'.
+      return { error: `unknown flag ${tok} (valid: ${Object.keys(FLAG_KEYS).join(', ')})` };
+    } else {
+      ids.push(tok);
+    }
   }
   return { ids, ref: opt.ref, root: opt.root, runId: opt.runId, stateDir: opt.stateDir };
 }
@@ -83,6 +92,27 @@ function resolveStateDir(stateDir) {
   return stateDir || process.env.LOOM_SPAWN_STATE_DIR || path.join(os.homedir(), '.claude', 'spawn-state');
 }
 
+/**
+ * Resolve the git dir that hosts the integration lock. `<root>/.git` is a
+ * DIRECTORY in a normal checkout but a regular FILE (`gitdir: ...`) in a linked
+ * worktree — path.join(root, '.git', lock) then resolves its dirname to that FILE,
+ * and acquireLock's mkdirSync EEXIST-fails, surfacing an opaque 'lock-error' for
+ * the CLI's own documented worktree use. Ask git for the COMMON git dir (shared by
+ * every worktree of the repo, always a real directory) so the integration lock is
+ * one-per-repo (correct — loom/integration is a shared ref) and valid from any
+ * worktree. Falls back to the legacy `<root>/.git` if git can't be consulted.
+ *
+ * @param {string} parentRoot the resolved repo root.
+ * @returns {string} an existing directory to place the lock in.
+ */
+function resolveGitDir(parentRoot) {
+  try {
+    const out = execFileSync('git', ['rev-parse', '--git-common-dir'], { cwd: parentRoot, encoding: 'utf8' }).trim();
+    if (out) return path.resolve(parentRoot, out);
+  } catch { /* fall through to the legacy assumption */ }
+  return path.join(parentRoot, '.git');
+}
+
 function main() {
   const parsed = parseArgs(process.argv.slice(2));
   if (parsed.error) {
@@ -95,7 +125,7 @@ function main() {
     process.exit(2);
   }
   const parentRoot = resolveRoot(root);
-  const lockPath = path.join(parentRoot, '.git', 'loom-integration.lock');
+  const lockPath = path.join(resolveGitDir(parentRoot), 'loom-integration.lock');
   // Minting is ON iff --run-id is passed (the producer's runId). Absent -> a pure stacker.
   const opts = { orderedIds: ids, parentRoot, lockPath, integrationRef: ref };
   if (runId) { opts.runId = runId; opts.stateDir = resolveStateDir(stateDir); }
@@ -106,4 +136,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { parseArgs, resolveRoot, resolveStateDir };
+module.exports = { parseArgs, resolveRoot, resolveStateDir, resolveGitDir };
