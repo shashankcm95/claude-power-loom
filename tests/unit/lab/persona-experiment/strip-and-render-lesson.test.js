@@ -65,5 +65,27 @@ test('renderLessonLine prefixes "- ", falls back to (lesson) on empty, truncates
   assert.ok(renderLessonLine('y'.repeat(DEFAULT_LESSON_LINE_MAX + 100), {}).endsWith(' ...'), 'default lineMax truncates');
 });
 
+// --- surrogate-safe truncation (CodeRabbit): a cut mid-emoji must not leave a LONE surrogate ---------
+function hasLoneSurrogate(s) {
+  for (let i = 0; i < s.length; i += 1) {
+    const c = s.charCodeAt(i);
+    if (c >= 0xd800 && c <= 0xdbff) { const n = s.charCodeAt(i + 1); if (!(n >= 0xdc00 && n <= 0xdfff)) return true; }
+    else if (c >= 0xdc00 && c <= 0xdfff) { const p = s.charCodeAt(i - 1); if (!(p >= 0xd800 && p <= 0xdbff)) return true; }
+  }
+  return false;
+}
+test('renderLessonLine truncation never splits a surrogate pair (no lone surrogate)', () => {
+  const emoji = String.fromCodePoint(0x1f600); // astral codepoint = a surrogate pair
+  // slide the emoji across the cut boundary (lineMax - 4) for a range of caps
+  for (let max = 6; max <= 20; max += 1) {
+    for (let padLeft = 0; padLeft <= max; padLeft += 1) {
+      const line = renderLessonLine(`${'x'.repeat(padLeft)}${emoji}${'y'.repeat(30)}`, { lineMax: max });
+      assert.ok(!hasLoneSurrogate(line), `lone surrogate at lineMax=${max}, pad=${padLeft}: ${JSON.stringify(line)}`);
+    }
+  }
+  // a complete emoji that fits is preserved intact
+  assert.ok(renderLessonLine(`ab${emoji}cd`, { lineMax: 100 }).includes(emoji), 'a fitting emoji must survive');
+});
+
 process.stdout.write(`\n=== strip-and-render-lesson: ${passed} passed, ${failed} failed ===\n`);
 process.exit(failed === 0 ? 0 : 1);

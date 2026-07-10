@@ -70,7 +70,15 @@ function renderLessonLine(raw, opts = {}) {
   const lineMax = Number.isInteger(opts.lineMax) && opts.lineMax > 0 ? opts.lineMax : DEFAULT_LESSON_LINE_MAX;
   let body = sanitizeLessonText(raw);
   if (body.length === 0) body = '(lesson)';
-  if (body.length > lineMax) body = `${body.slice(0, lineMax - 4).trimEnd()} ...`;
+  if (body.length > lineMax) {
+    let end = lineMax - 4;
+    // Never split a surrogate PAIR: `.slice` is code-unit based, so a cut landing between the two halves of
+    // an astral codepoint (an emoji) would emit a LONE high surrogate. If the last kept unit is a high
+    // surrogate, back off one unit (CodeRabbit; keeps the "never a partial cut" contract true).
+    const last = body.charCodeAt(end - 1);
+    if (last >= 0xd800 && last <= 0xdbff) end -= 1;
+    body = `${body.slice(0, end).trimEnd()} ...`;
+  }
   return `- ${body}`;
 }
 
