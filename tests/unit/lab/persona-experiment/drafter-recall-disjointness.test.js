@@ -79,19 +79,28 @@ function stripComments(src) {
 function relativeRequires(src) {
   const code = stripComments(src);
   const out = [];
-  const re = /require\(\s*['"](\.[^'"]+)['"]\s*\)/g;
+  // Backtick-aware (VALIDATE #hacker C1): a static `require(`./x`)` must enter the closure walk too, or a
+  // backtick relative require would launder a lane file past the resolved-path check. Also tolerate a space
+  // before the paren (`require (...)`). Interpolated backticks are not static -> caught as computed below.
+  const re = /require\s*\(\s*['"`](\.[^'"`]+)['"`]\s*\)/g;
   let m;
   while ((m = re.exec(code)) !== null) out.push(m[1]);
   return out;
 }
 
-// A COMPUTED require: `require(` whose first non-space argument char is NOT a quote (so `require(path.join(...))`
-// and `require(x)` match; `require('./x')` and a bare multi-line `require(\n './x')` do not). Comments stripped
-// first so a prose "...forget to require(...)" or a documented `require(path.join(...))` does not false-trip.
-const COMPUTED_REQUIRE_RE = /require\(\s*[^'"`)\s]/;
+// A COMPUTED require is one whose argument is NOT a single plain STATIC string literal: require(path.join(..)),
+// require('a' + b), require(`${x}`). A static backtick (`./x` with no ${}) is allowed (a lane one is caught by
+// relativeRequires / boundaryLaneRequire). VALIDATE #hacker H1: a first-char heuristic missed require('a'+b)
+// (starts with a quote) and require(`..`) (backtick excluded); extract the whole arg and classify it instead.
 function firstComputedRequire(src) {
-  for (const line of stripComments(src).split('\n')) {
-    if (COMPUTED_REQUIRE_RE.test(line)) return line.trim().slice(0, 100);
+  const code = stripComments(src);
+  const re = /require\s*\(\s*([^)]*?)\s*\)/g;
+  let m;
+  while ((m = re.exec(code)) !== null) {
+    const arg = m[1].trim();
+    if (arg === '') continue;
+    const staticSingle = /^'[^']*'$/.test(arg) || /^"[^"]*"$/.test(arg) || /^`[^`$]*`$/.test(arg);
+    if (!staticSingle) return arg.slice(0, 100);
   }
   return null;
 }
@@ -105,6 +114,65 @@ function stringLiterals(src) {
   let m;
   while ((m = re.exec(src)) !== null) out.push(m[2]);
   return out;
+}
+
+// Track A W1 - the ONE audited cross-uid bridge (recall-inject-boundary.js). It is PERMITTED in the
+// drafter closure AND permitted to NAME the recall CLI as a subprocess SPAWN path (the
+// `world-anchored-recall` marker) - subprocess-only, never a static import. Everything else still trips
+// on it: a lane REQUIRE of ANY specifier (relative/absolute/bare) and every OTHER forbidden marker. The
+// exemption is by EXACT relative path (not basename) so ONLY this file earns it (mirrors the exact-path
+// + "earns it" discipline of shadow-import-graph's isB3RecallConsumer).
+const BOUNDARY_REL = path.join('packages', 'lab', 'persona-experiment', 'recall-inject-boundary.js');
+const EXEMPT_BOUNDARY_SPAWN = 'world-anchored-recall';
+function isBoundaryFile(abs) {
+  return path.relative(REPO, abs) === BOUNDARY_REL;
+}
+
+// The first forbidden lane marker present in a string literal in src, or null. For the audited boundary
+// (boundary=true) ONLY the recall-CLI SPAWN-path literal (.../world-anchored-recall-cli.js) is exempt - the
+// exemption is scoped to the exact CLI-path SHAPE (VALIDATE #hacker: not any string containing the marker),
+// so a recall-MODULE literal (world-anchored-recall.js, no -cli) still trips even in the boundary. Every
+// OTHER marker still hits, in the boundary as anywhere else. Pure -> directly unit-tested below.
+const RECALL_CLI_SPAWN_RE = /world-anchored-recall-cli(\.js)?$/;
+function laneLiteralHit(src, { boundary = false } = {}) {
+  // Strip comments FIRST (like the require scanners): a real execFileSync spawn PATH is code; a marker
+  // named inside a `backtick` in a doc comment is not a spawn and must not trip (VALIDATE: the boundary's
+  // own header documents the exempt marker in backticks - that is prose, not an execFileSync argument).
+  for (const lit of stringLiterals(stripComments(src))) {
+    for (const tok of FORBIDDEN_LITERAL_TOKENS) {
+      if (!lit.includes(tok)) continue;
+      if (boundary && tok === EXEMPT_BOUNDARY_SPAWN && RECALL_CLI_SPAWN_RE.test(lit)) continue;
+      return tok;
+    }
+  }
+  return null;
+}
+
+// The exempted file must be IMPORT-TRANSPARENT: it may SPAWN the recall CLI (a path literal) but must never
+// IMPORT the lane by ANY require form. Two teeth: (1) a string-literal require of ANY quote (', ", or
+// BACKTICK - VALIDATE #hacker C1) naming a lane basename/marker; (2) ANY require whose arg is NOT a single
+// plain static literal (concat `require('a'+b)`, interpolation `require(`${x}`)`, computed require(x) -
+// #hacker H1) - the boundary has a small fixed set of plain static requires, so a non-plain require is
+// unauditable here and is refused outright. relativeRequires + firstComputedRequire only caught the
+// quote+first-char forms, so an absolute/bare/backtick/concat lane require evaded both (the V4 residual).
+function boundaryLaneRequire(src) {
+  const code = stripComments(src);
+  const reLit = /require\s*\(\s*(['"`])([^'"`]*)\1\s*\)/g;
+  let m;
+  while ((m = reLit.exec(code)) !== null) {
+    const spec = m[2];
+    const base = spec.split('/').pop();
+    if (FORBIDDEN_BASENAMES.has(base) || FORBIDDEN_BASENAMES.has(`${base}.js`)
+      || FORBIDDEN_LITERAL_TOKENS.some((t) => spec.includes(t))) return spec;
+  }
+  const reAny = /require\s*\(\s*([^)]*?)\s*\)/g;
+  while ((m = reAny.exec(code)) !== null) {
+    const arg = m[1].trim();
+    if (arg === '') continue;
+    const staticSingle = /^'[^']*'$/.test(arg) || /^"[^"]*"$/.test(arg) || /^`[^`$]*`$/.test(arg);
+    if (!staticSingle) return `computed:${arg.slice(0, 60)}`;
+  }
+  return null;
 }
 
 function resolveRel(fromFile, rel) {
@@ -142,11 +210,15 @@ function findLaneReference(closure) {
   for (const f of closure) {
     let src;
     try { src = fs.readFileSync(f, 'utf8'); } catch { continue; }
-    for (const lit of stringLiterals(src)) {
-      for (const tok of FORBIDDEN_LITERAL_TOKENS) {
-        if (lit.includes(tok)) return { file: path.relative(REPO, f), kind: 'literal-spawn-path', detail: tok };
-      }
+    const boundary = isBoundaryFile(f);
+    // The audited boundary may SPAWN the recall CLI (a path literal), but must never IMPORT the lane by
+    // ANY specifier form (absolute/bare evade the relative walk + computed-require ban - V4 residual).
+    if (boundary) {
+      const req = boundaryLaneRequire(src);
+      if (req) return { file: path.relative(REPO, f), kind: 'boundary-lane-require', detail: req };
     }
+    const tok = laneLiteralHit(src, { boundary });
+    if (tok) return { file: path.relative(REPO, f), kind: 'literal-spawn-path', detail: tok };
   }
   return null;
 }
@@ -218,6 +290,71 @@ test('non-vacuity: the lane + computed-require detectors fire on real wiring, no
   assert.deepStrictEqual(relativeRequires("// const x = require('../causal-edge/world-anchored-recall');"), [], 'relativeRequires followed a commented-out require');
   assert.strictEqual(firstComputedRequire('// historically we would require(path.join(dir, seg)) here'), null, 'computed-require detector tripped on a comment');
   assert.strictEqual(firstComputedRequire('/* require(x) */ const y = 1;'), null, 'computed-require detector tripped on a block comment');
+});
+
+// === 6. Track A W1 - the recall-inject boundary IS in the drafter closure. If the walk never reached it,
+// its exemption would be a vacuous free pass; this proves the boundary is actually scanned. ===
+test('the recall-inject boundary is in the drafter closure (wired + scanned)', () => {
+  const rels = new Set([...transitiveClosure(DRAFTER_ENTRY)].map((f) => path.relative(REPO, f)));
+  assert.ok(rels.has(BOUNDARY_REL), `the drafter closure does not reach ${BOUNDARY_REL} - the boundary is not wired, so its exemption is untested (vacuous)`);
+});
+
+// === 7. The boundary is SUBPROCESS-ONLY: it NAMES the recall CLI as a spawn path (the exempt marker IS
+// present, so the exemption does real work), but IMPORTS no lane by any require, and its own transitive
+// closure resolves onto no lane file. ===
+test('the boundary spawns (not imports) the recall lane - exemption is non-vacuous', () => {
+  const abs = path.join(REPO, BOUNDARY_REL);
+  const src = fs.readFileSync(abs, 'utf8');
+  // the exempt marker IS present (a spawn path) - without the exemption the dam would trip on it, so the
+  // exemption is load-bearing, not dead code.
+  assert.strictEqual(laneLiteralHit(src, { boundary: false }), EXEMPT_BOUNDARY_SPAWN, 'the boundary does not name the recall CLI - the exemption would be vacuous (nothing to exempt)');
+  // with the exemption it is clean: only the recall spawn marker is present, no OTHER forbidden marker.
+  assert.strictEqual(laneLiteralHit(src, { boundary: true }), null, 'the boundary carries a NON-recall forbidden marker - the exemption must not cover it');
+  // it imports no lane by any specifier, and its full closure resolves onto no lane file.
+  assert.strictEqual(boundaryLaneRequire(src), null, 'the boundary statically requires the recall lane - it must SPAWN only');
+  assert.strictEqual(findLaneReference(transitiveClosure(abs)), null, "the boundary's own closure resolves onto a lane file");
+});
+
+// === 8. The exemption is TIGHT: only the recall SPAWN marker, only in the boundary. Every OTHER marker
+// still trips on the boundary; a lane REQUIRE of any specifier (absolute/bare - the V4 residual) is
+// caught even in the exempted file; and the exemption does NOT leak to a non-boundary file. ===
+test('the boundary exemption is scoped to the recall spawn marker only', () => {
+  // other forbidden markers still trip ON the boundary
+  assert.strictEqual(laneLiteralHit("const p = 'weight-source-gate.js';", { boundary: true }), 'weight-source-gate', 'exemption leaked to weight-source-gate');
+  assert.strictEqual(laneLiteralHit("const p = 'admit-world-anchor-node';", { boundary: true }), 'admit-world-anchor-node', 'exemption leaked to admit-world-anchor-node');
+  // the recall SPAWN marker is exempt ON the boundary, but NOT for a non-boundary file
+  assert.strictEqual(laneLiteralHit("const p = 'world-anchored-recall-cli.js';", { boundary: true }), null, 'the recall spawn marker should be exempt on the boundary');
+  assert.strictEqual(laneLiteralHit("const p = 'world-anchored-recall-cli.js';", { boundary: false }), EXEMPT_BOUNDARY_SPAWN, 'a NON-boundary file must still trip on the recall marker');
+  // a lane REQUIRE (absolute / bare - the V4 evasion) is caught even in the exempted file
+  assert.ok(boundaryLaneRequire("const x = require('/abs/packages/lab/causal-edge/world-anchored-recall.js');"), 'absolute lane require not caught (V4 laundering hole)');
+  assert.ok(boundaryLaneRequire("const x = require('world-anchored-recall-cli');"), 'bare lane require not caught (V4 laundering hole)');
+  // a benign require and a non-require spawn STRING are NOT caught
+  assert.strictEqual(boundaryLaneRequire("const x = require('./_lib/strip-and-render-lesson');"), null, 'benign require false-tripped');
+  assert.strictEqual(boundaryLaneRequire("const CLI = path.resolve(__dirname, '../causal-edge/world-anchored-recall-cli.js');"), null, 'a non-require spawn PATH must not be treated as a require');
+});
+
+// === 9. VALIDATE folds (#hacker C1 + H1): the require-scanners are NOT quote/first-char-only - a BACKTICK,
+// STRING-CONCAT, INTERPOLATED, or space-before-paren lane require is caught (the forms that empirically
+// slipped a green suite while statically importing the lane). ===
+test('the boundary require-gate catches backtick / concat / interpolated / spaced lane requires', () => {
+  // (C1) a static BACKTICK require of the lane -> caught
+  assert.ok(boundaryLaneRequire('const x = require(`/abs/packages/lab/causal-edge/world-anchored-recall.js`);'), 'backtick lane require not caught');
+  // (H1) a STRING-CONCAT require -> caught (not a single plain literal)
+  assert.ok(boundaryLaneRequire("const x = require('safe' + evil);"), 'concat require not caught');
+  assert.ok(boundaryLaneRequire("const x = require('./world-anchored' + '-recall');"), 'split-token concat require not caught');
+  // an INTERPOLATED backtick require -> caught (computed)
+  assert.ok(boundaryLaneRequire('const x = require(`${dir}/world-anchored-recall.js`);'), 'interpolated require not caught');
+  // a space before the paren -> still caught
+  assert.ok(boundaryLaneRequire('const x = require (`../causal-edge/world-anchored-recall.js`);'), 'spaced backtick require not caught');
+  // the recall MODULE literal (no -cli) still trips even in the boundary - the exemption is CLI-only
+  assert.strictEqual(laneLiteralHit("const p = 'world-anchored-recall.js';", { boundary: true }), EXEMPT_BOUNDARY_SPAWN, 'the recall MODULE (non-CLI) must not be exempt on the boundary');
+  // the closure-wide computed-require ban now catches concat + interpolated backtick too (both closures)
+  assert.ok(firstComputedRequire("const x = require('a' + b);"), 'concat require must classify as computed');
+  assert.ok(firstComputedRequire('const x = require(`${p}`);'), 'interpolated require must classify as computed');
+  assert.strictEqual(firstComputedRequire("const x = require('./_lib/strip-and-render-lesson');"), null, 'a plain static require must NOT classify as computed');
+  assert.strictEqual(firstComputedRequire('const x = require(`./static-backtick`);'), null, 'a static backtick require (no interpolation) is allowed');
+  // relativeRequires now follows a backtick relative require (so a lane one enters the closure walk)
+  assert.deepStrictEqual(relativeRequires('const x = require(`./neighbor`);'), ['./neighbor'], 'relativeRequires must follow a backtick relative require');
 });
 
 process.stdout.write(`\n=== drafter-recall-disjointness: ${passed} passed, ${failed} failed ===\n`);
