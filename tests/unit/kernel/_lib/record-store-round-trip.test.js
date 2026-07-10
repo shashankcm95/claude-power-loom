@@ -3,15 +3,19 @@
 // tests/unit/kernel/_lib/record-store-round-trip.test.js
 //
 // Regression: appendRecord validated + hashed the in-memory record (S5), but the
-// write is JSON.stringify, which DROPS undefined-valued object keys (and coerces
-// NaN/Infinity to null). computeTransactionId (via canonicalJsonSerialize /
-// Object.keys) INCLUDES such a key, so the in-memory id != the id of the parsed
-// on-disk body. loadRecordFile's S5-on-read re-hash then rejects the file, making
-// a just-written {ok:true} record PERMANENTLY UNREADABLE (silent data loss).
+// write is JSON.stringify. When canonicalJsonSerialize DIVERGED from native
+// JSON.stringify, the in-memory id != the id of the parsed on-disk body, so
+// loadRecordFile's S5-on-read re-hash rejected the file — a just-written {ok:true}
+// record PERMANENTLY UNREADABLE (silent data loss). The #555 fix rejects such a
+// record at append (a loud {ok:false, reason:'record-not-round-trip-stable'}).
 //
-// Probed real: computeTransactionId({...,k:undefined}) != computeTransactionId({...})
-// while JSON.stringify drops k. The fix rejects such a record at append (a loud
-// {ok:false, reason:'record-not-round-trip-stable'}) instead of storing a ghost.
+// #550 UPDATE: the undefined/function/symbol ("JSON-absent") class that originally
+// triggered this is now fixed at the ROOT — canonicalJsonSerialize matches native
+// (drops the key), so an undefined-bearing record ROUND-TRIPS CLEANLY (accepted +
+// readable), no divergence, no ghost. The round-trip guard is still LOAD-BEARING for
+// the class #550 did NOT fix — the `toJSON` sibling (e.g. a Date value: canonical
+// serializes the empty object shape {}, native emits the ISO string), which still
+// diverges and is still rejected. Both cases are asserted below.
 
 'use strict';
 
@@ -64,18 +68,34 @@ test('clean record appends AND reads back (baseline unchanged)', () => {
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('an undefined-valued field is REJECTED at append (no silent-unreadable ghost)', () => {
+test('#550: an undefined-valued field now ROUND-TRIPS CLEANLY (accepted + reads back, no ghost)', () => {
   const dir = tmpStateDir();
   try {
-    // transaction_id is computed WITH forward_note:undefined present (Object.keys
-    // includes it); JSON.stringify then drops it on write. The old code returned
-    // {ok:true} and the record was permanently unreadable; the fix rejects here.
+    // transaction_id is computed WITH forward_note:undefined present. Post-#550,
+    // canonicalJsonSerialize drops it (matching native JSON.stringify), so the id is
+    // computed over the undefined-free form and the on-disk read-back re-hashes to
+    // the SAME id — round-trip-stable. The record is accepted and reads back.
     const rec = buildRecord({ forward_note: undefined });
-    assert.ok('forward_note' in rec, 'precondition: the undefined key is present on the record');
+    assert.ok('forward_note' in rec, 'precondition: the undefined key is present on the in-memory record');
     const r = store.appendRecord(rec, { runId: RUN_ID, stateDir: dir });
-    assert.strictEqual(r.ok, false, `expected reject, got ${JSON.stringify(r)}`);
+    assert.strictEqual(r.ok, true, `expected accept (undefined now canonical-clean), got ${JSON.stringify(r)}`);
+    const back = store.readById(rec.transaction_id, { runId: RUN_ID, stateDir: dir });
+    assert.ok(back && back.transaction_id === rec.transaction_id, 'the undefined-bearing record must read back');
+    assert.ok(!('forward_note' in back), 'the undefined key is dropped consistently (write + hash agree)');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('the round-trip guard is still NON-VACUOUS: a toJSON/Date field is REJECTED (#550 did not fix this class)', () => {
+  const dir = tmpStateDir();
+  try {
+    // A Date value: canonicalJsonSerialize walks the empty own-key object shape ({}),
+    // but the write path (JSON.stringify) calls toJSON() -> an ISO string. The two
+    // diverge, so the on-disk body would re-hash to a different id (silent-unreadable)
+    // — the guard rejects it loudly instead of storing a ghost.
+    const rec = buildRecord({ when: new Date('2026-01-01T00:00:00.000Z') });
+    const r = store.appendRecord(rec, { runId: RUN_ID, stateDir: dir });
+    assert.strictEqual(r.ok, false, `expected reject for the toJSON class, got ${JSON.stringify(r)}`);
     assert.ok(/round-trip/.test(r.reason || ''), `expected a round-trip reason, got '${r.reason}'`);
-    // And no ghost record was created (readById returns null; nothing to be lost).
     assert.strictEqual(store.readById(rec.transaction_id, { runId: RUN_ID, stateDir: dir }), null, 'no ghost record');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
