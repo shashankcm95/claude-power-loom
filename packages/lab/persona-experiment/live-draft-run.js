@@ -12,7 +12,9 @@ const path = require('path');
 const {
   resolveActorApiKey, assertWithinBudget, recordCost, DEFAULT_COST_CAP_USD,
 } = require('../issue-corpus/cost-ledger');
-const { runActorInContainer, attestActorContainment } = require('../issue-corpus/docker-actor-backend');
+const {
+  runActorInContainer, attestActorContainment, ACTOR_TOOLS, DEFAULT_MODEL, DEFAULT_ACTOR_TIMEOUT_MS,
+} = require('../issue-corpus/docker-actor-backend');
 const { prepareClone, captureActorDiff, safeDiscard } = require('../issue-corpus/_clone-lifecycle');
 const { MAX_PATCH_BYTES } = require('./real-solve');
 const { emitPR } = require('../../kernel/egress/emit-pr');
@@ -34,6 +36,11 @@ const { retrieveRecallBlock } = require('./recall-inject-boundary');
 const { isLiveLessonEligible, deriveLiveLesson } = require('../causal-edge/live-lesson-derive');
 const { makeLiveLessonDeriver } = require('../causal-edge/live-lesson-derive-run');   // item-3-live leg 1 - the real claude -p deriveFn producer
 const { mintLivePendingLesson } = require('../causal-edge/live-pending-store');
+// Track A W2 - the persona-context pins onto the live_pending node. The runtime pin is a canonical-json
+// string of the EFFECTIVE {model,tools,timeout}; recall_graph_root is the empty-set constant in SHADOW
+// (the Wave-1 boundary exposes no node ids yet, so the real root is arming-gated). SEALED metadata, no reader.
+const { canonicalJsonSerialize } = require('../../kernel/_lib/canonical-json');
+const { EMPTY_RECALL_GRAPH_ROOT } = require('../causal-edge/recall-graph-root');
 const { computeLessonCommitment } = require('../../kernel/_lib/lesson-commitment');   // OQ-3 - the single-source lesson commitment (moved kernel-ward in W2, fold F2)
 const { sidecarSha } = require('../attribution/candidate-sidecar');
 const { scrubLabSecrets } = require('../_lib/scrub-lab-secrets');
@@ -123,6 +130,7 @@ async function solveLiveIssueContained({
   const safeDiscardFn = deps.safeDiscardFn || safeDiscard;
   const materializeFn = deps.materializeFn || materializePersona;
   const retrieveRecallFn = deps.retrieveRecallBlockFn || retrieveRecallBlock;
+  const serializeRuntimeFn = deps.serializeFn || canonicalJsonSerialize;   // W2 - seam so the runtime-pin throw path is testable
   let clone = null;
   try {
     clone = await prepareCloneFn({ repo: record.repo, base_sha: record.base_sha });
@@ -130,9 +138,36 @@ async function solveLiveIssueContained({
     // flag-gated and fail-soft to null; extraContext combines whichever blocks are present. Both flags
     // off (or SHADOW-empty recall) -> extraContext null -> byte-identical bare prompt.
     let personaBlock = null;
+    let personaDefRef = '';
+    let contextCommonsRef = '';
     if (persona && personaMaterializeEnabled()) {
       const m = materializeFn(persona);
       personaBlock = m && m.block ? m.block : null;
+      // Track A W2 - the two persona pins the materializer computed. Null-guarded: an injected/minimal
+      // materializeFn that omits them (or returns null) leaves the '' sentinel (VERIFY code-reviewer HIGH-2).
+      if (m && typeof m.persona_def_ref === 'string') personaDefRef = m.persona_def_ref;
+      if (m && typeof m.context_commons_ref === 'string') contextCommonsRef = m.context_commons_ref;
+      // A DEFEATED persona-pin capture: a persona WAS requested (flag on) but the materializer failed closed
+      // (null / no valid ref), so the refs fall to '' - OBSERVABLY distinct from a by-design flag-off '' (the
+      // fail-silent close; THIS is the real silent-fail path, the runtime canary below cannot realistically
+      // fire) (VALIDATE hacker LOW-3 / honesty LOW-1).
+      if (!personaDefRef) emitEgressAlert('live-pending-pin-compute-failed', { pin: 'persona', persona: String(persona) });
+    }
+    // Track A W2 - the runtime pin: the EFFECTIVE {model,tools,timeout} CONFIG resolved here - a pre-run
+    // config value that mirrors runActorInContainer's OWN default-param resolution (undefined-only, NOT a
+    // falsy `||`, so a `timeout:0` / `model:''` override is pinned HONESTLY, not silently defaulted - architect
+    // M2 + VALIDATE code-reviewer MED-1). It is a config value, NOT a post-run observation of the actor
+    // process. FAULT-ISOLATED in its own try (via a deps seam so the throw path is testable): a serialize
+    // throw falls to '' + an OBSERVABLE canary, never discarding a real solve (VERIFY code-reviewer HIGH-2).
+    let runtimePin = '';
+    try {
+      runtimePin = serializeRuntimeFn({
+        model: model === undefined ? DEFAULT_MODEL : model,
+        tools: ACTOR_TOOLS,
+        timeout: timeout === undefined ? DEFAULT_ACTOR_TIMEOUT_MS : timeout,
+      });
+    } catch (e) {
+      emitEgressAlert('live-pending-pin-compute-failed', { pin: 'runtime', detail: (e && e.message) || 'error' });
     }
     // recall is advisory DATA via the audited cross-uid boundary; '' on every un-deployed box (SHADOW)
     // -> no recall block. trigger_class scoping (1a) is deferred; Wave 1 recall is sort-preference only.
@@ -150,7 +185,15 @@ async function solveLiveIssueContained({
     const candidate = String(captureFn({ workDir: clone.workDir, configSnapshot: clone.configSnapshot }) || '');
     if (!candidate.trim()) return { ok: false, reason: 'empty-candidate', costUsd };
     if (Buffer.byteLength(candidate, 'utf8') > MAX_PATCH_BYTES) return { ok: false, reason: 'candidate-too-large', costUsd };
-    return { ok: true, candidate, costUsd, redacted: !!(result && result.redacted) };
+    // Track A W2 - the four persona-context pins ride on the OK solveRes so solveGradeDraftOne can thread
+    // them into the live_pending mint block. recall_graph_root is the empty-set constant in SHADOW.
+    return {
+      ok: true, candidate, costUsd, redacted: !!(result && result.redacted),
+      pins: {
+        persona_def_ref: personaDefRef, context_commons_ref: contextCommonsRef,
+        runtime: runtimePin, recall_graph_root: EMPTY_RECALL_GRAPH_ROOT,
+      },
+    };
   } catch (e) {
     return { ok: false, reason: 'solve-threw:' + ((e && e.message) || 'error') };
   } finally {
@@ -201,7 +244,7 @@ function finalizeReport(report, artifactsDir) {
 // emitEgressAlert on a NON-`reason` key (the positional reason is clobbered by alert.js - use lesson_reason).
 //
 // lesson_reason closed-enum: captured | ineligible | off-floor | derive-threw | store-refused | no-candidate.
-async function captureLiveLesson({ record, candidate, verdict, ref, eligibleFn, deriveFn, writeFn }) {
+async function captureLiveLesson({ record, candidate, verdict, ref, eligibleFn, deriveFn, writeFn, pins = {} }) {
   // DEFENSIVE-REDUNDANT / caller-precluded (mirrors isLiveLessonEligible's friction re-validation note): on
   // the live path solveLiveIssueContained already rejects an empty/whitespace candidate (`!candidate.trim()`)
   // + a too-large one, so this branch is unreachable from solveGradeDraftOne. KEPT as defense-in-depth (the
@@ -236,6 +279,10 @@ async function captureLiveLesson({ record, candidate, verdict, ref, eligibleFn, 
     res = writeFn({
       repo: record.repo, issue_ref: ref.issueRef, candidate_patch_sha,
       lesson_signature: lesson.lesson_signature, lesson_body: lesson.lesson_body,
+      // Track A W2 - the persona-context pins (sealed into the v2 node's content_hash; '' sentinels when no
+      // persona / SHADOW). buildBody defaults any absent pin, so a direct test caller without `pins` is safe.
+      persona_def_ref: pins.persona_def_ref, context_commons_ref: pins.context_commons_ref,
+      runtime: pins.runtime, recall_graph_root: pins.recall_graph_root,
     });
   } catch (e) {
     emitEgressAlert('live-pending-capture-store-threw', { detail: (e && e.message) || 'error' });
@@ -333,6 +380,7 @@ async function solveGradeDraftOne(ctx) {
   // observable fields (captureFields) ride onto the post-capture termini.
   const capture = await captureLiveLesson({
     record, candidate: solveRes.candidate, verdict, ref, eligibleFn: lessonEligibleFn, deriveFn: lessonDeriveFn, writeFn: lessonWriteFn,
+    pins: solveRes.pins,   // Track A W2 - the persona-context pins computed in solveLiveIssueContained
   });
   const { lesson_commitment: capCommit, lesson_captured, lesson_reason, lesson_node_id: capNodeId } = capture;
   const captureFields = { lesson_captured, lesson_reason };

@@ -51,6 +51,40 @@ test('the materialized block names the output schema required fields and the ski
   assert.ok(/PERSONA ACTIVATION/i.test(r.block), 'the block must be a labeled advisory activation section');
 });
 
+// --- Track A W2: the two persona pins (persona_def_ref = definition-version identity; context_commons_ref
+//     = the received-block digest). Both 64-hex, deterministic, content-dependent, canonical-structure. ---
+const HEX64 = /^[0-9a-f]{64}$/;
+test('materialize returns persona_def_ref + context_commons_ref: both 64-hex, deterministic, and DISTINCT', () => {
+  const a = materialize('node-backend');
+  const b = materialize('node-backend');
+  assert.ok(HEX64.test(a.persona_def_ref), 'persona_def_ref is a 64-hex content-address');
+  assert.ok(HEX64.test(a.context_commons_ref), 'context_commons_ref is a 64-hex content-address');
+  assert.strictEqual(a.persona_def_ref, b.persona_def_ref, 'persona_def_ref is deterministic for identical inputs');
+  assert.strictEqual(a.context_commons_ref, b.context_commons_ref, 'context_commons_ref is deterministic');
+  assert.notStrictEqual(a.persona_def_ref, a.context_commons_ref, 'the definition ref and the received-block ref hash different things');
+});
+test('persona_def_ref DIFFERS across personas (it binds the brief + contract bytes)', () => {
+  const nb = materialize('node-backend');
+  const sa = materialize('security-auditor');
+  assert.notStrictEqual(nb.persona_def_ref, sa.persona_def_ref, 'a different persona definition -> a different ref');
+  assert.notStrictEqual(nb.context_commons_ref, sa.context_commons_ref, 'a different rendered block -> a different received ref');
+});
+test('persona_def_ref uses a canonical STRUCTURE, not a raw concat (a brief/contract boundary shift changes it)', () => {
+  // VERIFY architect L1 / hacker M2: sha256(brief || contract) collides across a boundary shift; the
+  // structured sha256(canonicalJsonSerialize([brief, contract])) does not. Move a char from the brief tail
+  // into the contract via the deps seam; the ref MUST change (a bare concat would keep it identical).
+  const mindset = '\n## Mindset\n1. **F** - body.\n';
+  const mk = (briefTail, contractName) => _materializeWithDeps('node-backend', {
+    readFileFn: (p) => (String(p).endsWith('.json')
+      ? JSON.stringify({ persona: contractName, skills: { required: ['x'] }, interface: { output_schema: { required: ['findings'] } } })
+      : `## Identity\nid${briefTail}${mindset}`),
+  });
+  const a = mk('AB', '13-node-backend');
+  const b = mk('A', 'B13-node-backend');   // one char moved brief->contract; a flat concat would collide
+  assert.ok(a && b, 'both materialize');
+  assert.notStrictEqual(a.persona_def_ref, b.persona_def_ref, 'a boundary shift must change the structured ref');
+});
+
 // --- non-builder / unknown -> null ---
 test('materialize(optimizer) -> null (not a builder)', () => {
   assert.strictEqual(materialize('optimizer'), null);

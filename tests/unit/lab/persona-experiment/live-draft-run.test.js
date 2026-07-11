@@ -19,6 +19,7 @@ const MODULE_SRC = fs.readFileSync(path.join(__dirname, '..', '..', '..', '..', 
 const REPO = path.join(__dirname, '..', '..', '..', '..');
 const M = require(path.join(REPO, 'packages', 'lab', 'persona-experiment', 'live-draft-run.js'));
 const { parseRecordRef, hasSymlinkEntry, preflightEnv, solveLiveIssueContained, runLiveDraftLoop } = M;
+const { EMPTY_RECALL_GRAPH_ROOT } = require(path.join(REPO, 'packages', 'lab', 'causal-edge', 'recall-graph-root'));
 
 const _tests = [];
 let passed = 0; let failed = 0;
@@ -127,6 +128,142 @@ test('solveLiveIssueContained: empty / oversize candidate => fail-soft reasons',
   const big = solveDeps({ captureFn: () => 'x'.repeat(3 * 1024 * 1024) });
   assert.match((await solveLiveIssueContained({ record: REC, apiKey: 'sk', deps: big.deps })).reason, /candidate-too-large/);
 });
+// ---- Track A W2: the four persona-context pins ride on the OK solveRes -----------------------------
+test('W2 pins: the OK solveRes carries pins (persona OFF -> refs are "" sentinels; runtime effective; recall_graph_root the empty constant)', async () => {
+  const { deps } = solveDeps();
+  const r = await solveLiveIssueContained({ record: REC, apiKey: 'sk', deps });   // no LOOM_PERSONA_MATERIALIZE
+  assert.strictEqual(r.ok, true);
+  assert.ok(r.pins && typeof r.pins === 'object', 'the OK solveRes carries a pins object');
+  assert.strictEqual(r.pins.persona_def_ref, '', 'persona off -> "" (the actor received the bare prompt)');
+  assert.strictEqual(r.pins.context_commons_ref, '', 'persona off -> "" received ref');
+  assert.strictEqual(r.pins.recall_graph_root, EMPTY_RECALL_GRAPH_ROOT, 'recall_graph_root is the SHADOW empty-set constant');
+  assert.ok(typeof r.pins.runtime === 'string' && r.pins.runtime.length > 0, 'runtime is a canonical-json string');
+  const rt = JSON.parse(r.pins.runtime);
+  assert.strictEqual(rt.model, 'claude-sonnet-4-6', 'runtime pins the EFFECTIVE default model when none passed (architect M2)');
+  assert.strictEqual(rt.timeout, 180000, 'runtime pins the EFFECTIVE default timeout');
+  assert.ok(Array.isArray(rt.tools) && rt.tools.includes('Read'), 'runtime pins the frozen ACTOR_TOOLS');
+});
+test('W2 pins: persona ON (LOOM_PERSONA_MATERIALIZE) -> the materializer refs are threaded onto solveRes.pins', async () => {
+  const prev = process.env.LOOM_PERSONA_MATERIALIZE;
+  process.env.LOOM_PERSONA_MATERIALIZE = '1';
+  try {
+    const { deps } = solveDeps({ materializeFn: () => ({ block: 'PERSONA BLOCK', bytes: 12, truncated: false, persona_def_ref: 'a'.repeat(64), context_commons_ref: 'b'.repeat(64) }) });
+    const r = await solveLiveIssueContained({ record: REC, apiKey: 'sk', persona: 'node-backend', deps });
+    assert.strictEqual(r.ok, true);
+    assert.strictEqual(r.pins.persona_def_ref, 'a'.repeat(64), 'the materializer persona_def_ref is threaded');
+    assert.strictEqual(r.pins.context_commons_ref, 'b'.repeat(64), 'the materializer context_commons_ref is threaded');
+  } finally {
+    if (prev === undefined) delete process.env.LOOM_PERSONA_MATERIALIZE; else process.env.LOOM_PERSONA_MATERIALIZE = prev;
+  }
+});
+test('W2 pins: persona ON but a MINIMAL materializeFn (no pin keys) -> "" sentinels, never a throw (null-guard)', async () => {
+  const prev = process.env.LOOM_PERSONA_MATERIALIZE;
+  process.env.LOOM_PERSONA_MATERIALIZE = '1';
+  try {
+    const { deps } = solveDeps({ materializeFn: () => ({ block: 'ONLY A BLOCK', bytes: 12 }) });   // no pin keys
+    const r = await solveLiveIssueContained({ record: REC, apiKey: 'sk', persona: 'node-backend', deps });
+    assert.strictEqual(r.ok, true, 'a minimal materializeFn must not break the solve (CR-2 collateral)');
+    assert.strictEqual(r.pins.persona_def_ref, '', 'a missing pin key -> "" sentinel, not undefined/throw');
+    assert.strictEqual(r.pins.context_commons_ref, '');
+  } finally {
+    if (prev === undefined) delete process.env.LOOM_PERSONA_MATERIALIZE; else process.env.LOOM_PERSONA_MATERIALIZE = prev;
+  }
+});
+test('W2 pins: captureLiveLesson THREADS pins into the mint block (end-to-end into writeFn)', async () => {
+  const { captureLiveLesson } = M;
+  const writes = [];
+  const pins = { persona_def_ref: 'a'.repeat(64), context_commons_ref: 'b'.repeat(64), runtime: '{"model":"m"}', recall_graph_root: 'c'.repeat(64) };
+  const r = await captureLiveLesson({
+    record: REC, candidate: BENIGN_DIFF, verdict: {}, ref: { issueRef: 42 },
+    eligibleFn: () => true,
+    deriveFn: async () => ({ lesson_signature: 'lesson:a|b|c', lesson_body: 'a body' }),
+    writeFn: (b) => { writes.push(b); return { ok: true, node_id: 'n'.repeat(64) }; },
+    pins,
+  });
+  assert.strictEqual(r.lesson_captured, true, 'the lesson is captured');
+  assert.strictEqual(writes.length, 1, 'writeFn called once');
+  assert.strictEqual(writes[0].persona_def_ref, 'a'.repeat(64), 'the mint block carries persona_def_ref');
+  assert.strictEqual(writes[0].context_commons_ref, 'b'.repeat(64));
+  assert.strictEqual(writes[0].runtime, '{"model":"m"}');
+  assert.strictEqual(writes[0].recall_graph_root, 'c'.repeat(64));
+});
+test('W2 pins: captureLiveLesson WITHOUT pins is safe (a direct caller omitting pins -> buildBody defaults)', async () => {
+  const { captureLiveLesson } = M;
+  const writes = [];
+  const r = await captureLiveLesson({
+    record: REC, candidate: BENIGN_DIFF, verdict: {}, ref: { issueRef: 42 },
+    eligibleFn: () => true,
+    deriveFn: async () => ({ lesson_signature: 'lesson:a|b|c', lesson_body: 'a body' }),
+    writeFn: (b) => { writes.push(b); return { ok: true, node_id: 'n'.repeat(64) }; },
+    // no `pins`
+  });
+  assert.strictEqual(r.lesson_captured, true, 'the never-throws contract holds without pins');
+  assert.strictEqual(writes[0].persona_def_ref, undefined, 'an omitted pin is undefined at the block (buildBody defaults it to "")');
+});
+
+// ---- Track A W2 VALIDATE folds (non-vacuous guards) ------------------------------------------------
+test('W2 fold MED-1: runtime pins a FALSY-but-defined override HONESTLY (timeout:0 -> 0, not the default)', async () => {
+  const { deps } = solveDeps();
+  const r = await solveLiveIssueContained({ record: REC, apiKey: 'sk', timeout: 0, model: 'custom-model', deps });
+  assert.strictEqual(r.ok, true);
+  const rt = JSON.parse(r.pins.runtime);
+  assert.strictEqual(rt.timeout, 0, 'timeout:0 is pinned as 0, not silently defaulted (=== undefined, not ||)');
+  assert.strictEqual(rt.model, 'custom-model', 'a defined model is pinned as-is');
+});
+test('W2 fold MED-3/hacker-LOW-3: a DEFEATED persona capture (materializeFn -> null, flag ON) emits the canary + refs ""', async () => {
+  const prev = process.env.LOOM_PERSONA_MATERIALIZE;
+  process.env.LOOM_PERSONA_MATERIALIZE = '1';
+  const origErr = process.stderr.write; let alerted = false;
+  process.stderr.write = (c) => { if (String(c).includes('live-pending-pin-compute-failed')) alerted = true; return true; };
+  try {
+    const { deps } = solveDeps({ materializeFn: () => null });                 // a fail-closed materialize
+    const r = await solveLiveIssueContained({ record: REC, apiKey: 'sk', persona: 'node-backend', deps });
+    process.stderr.write = origErr;
+    assert.strictEqual(r.ok, true, 'a defeated capture must not break the solve');
+    assert.strictEqual(r.pins.persona_def_ref, '', 'the refs fall to the "" sentinel');
+    assert.strictEqual(r.pins.context_commons_ref, '');
+    assert.ok(alerted, 'a defeated persona-pin capture emits the pin-compute-failed canary (the real fail-silent close)');
+  } finally {
+    process.stderr.write = origErr;
+    if (prev === undefined) delete process.env.LOOM_PERSONA_MATERIALIZE; else process.env.LOOM_PERSONA_MATERIALIZE = prev;
+  }
+});
+test('W2 fold MED-3: a THROWING runtime serializer is fault-isolated -> runtime "" + canary, the solve still succeeds', async () => {
+  const origErr = process.stderr.write; let runtimeCanary = false;
+  process.stderr.write = (c) => { const s = String(c); if (s.includes('live-pending-pin-compute-failed') && s.includes('runtime')) runtimeCanary = true; return true; };
+  try {
+    const { deps } = solveDeps({ serializeFn: () => { throw new Error('serialize boom'); } });
+    const r = await solveLiveIssueContained({ record: REC, apiKey: 'sk', deps });
+    process.stderr.write = origErr;
+    assert.strictEqual(r.ok, true, 'a runtime-serialize throw must NOT discard the solve (fault isolation, non-vacuous)');
+    assert.strictEqual(r.pins.runtime, '', 'the runtime pin falls to the "" sentinel on a throw');
+    assert.ok(runtimeCanary, 'the runtime throw emits the pin-compute-failed canary');
+  } finally {
+    process.stderr.write = origErr;
+  }
+});
+test('W2 fold honesty-LOW-2: end-to-end - captureLiveLesson -> REAL mintLivePendingLesson -> readback with the pins SEALED', async () => {
+  const store = require(path.join(REPO, 'packages', 'lab', 'causal-edge', 'live-pending-store'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loom-w2-e2e-'));
+  const { captureLiveLesson } = M;
+  const pins = { persona_def_ref: 'a'.repeat(64), context_commons_ref: 'b'.repeat(64), runtime: '{"model":"m"}', recall_graph_root: 'c'.repeat(64) };
+  const cap = await captureLiveLesson({
+    record: REC, candidate: BENIGN_DIFF, verdict: {}, ref: { issueRef: 42 },
+    eligibleFn: () => true,
+    deriveFn: async () => ({ lesson_signature: 'lesson:e2e|x|y', lesson_body: 'an e2e body' }),
+    writeFn: (b) => store.mintLivePendingLesson(b, { dir }),                    // the REAL store, no mock
+    pins,
+  });
+  assert.strictEqual(cap.lesson_captured, true, 'the lesson mints through the real store');
+  const back = store.readLivePendingLesson(cap.lesson_node_id, { dir });
+  assert.ok(back, 'the persisted node reads back');
+  assert.strictEqual(back.schema_version, 2);
+  assert.strictEqual(back.persona_def_ref, 'a'.repeat(64), 'the solver-supplied pins are SEALED into the persisted node');
+  assert.strictEqual(back.context_commons_ref, 'b'.repeat(64));
+  assert.strictEqual(back.runtime, '{"model":"m"}');
+  assert.strictEqual(back.recall_graph_root, 'c'.repeat(64));
+});
+
 test('solveLiveIssueContained: a thrown prepareClone => solve-threw, no discard needed (no clone yet)', async () => {
   const { deps, calls } = solveDeps({ prepareCloneFn: async () => { throw new Error('clone failed'); } });
   const r = await solveLiveIssueContained({ record: REC, apiKey: 'sk', deps });

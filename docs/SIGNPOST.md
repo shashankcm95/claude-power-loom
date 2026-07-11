@@ -289,6 +289,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/lab/causal-edge/live-pending-store.js` - Autonomous-SDE ladder item-3-live, PR-1 - the `live_pending` lane store.
 - `packages/lab/causal-edge/manage-ops.js` - v3.5 Wave 3a - the Manage-Layer's first WRITE op: flag-conflict (the SECOND producer->consumer loop of
 - `packages/lab/causal-edge/projections.js` - v3.5 Wave 3a - the `conflicted` projection (D2): a PURE Lab projection over the causal-edge set.
+- `packages/lab/causal-edge/recall-graph-root.js` - Track A W2 (blueprint 3b) - the PURE recall-graph root: a content-addressed digest over the SET of
 - `packages/lab/causal-edge/store.js` - v3.5 Wave 2 - Causal-edge store (the semantic-edge PRODUCER of the graph loop).
 - `packages/lab/causal-edge/_spike/trajectory-friction-dogfood.js` - v3.9 W3 — trajectory + friction end-to-end dogfood (a verification probe, NOT a
 - `packages/lab/causal-edge/trajectory-friction-run.js` - v3.9 W3 — the IMPURE real-capture + friction-label runner.
