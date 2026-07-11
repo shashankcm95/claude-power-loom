@@ -206,4 +206,7 @@ async function attestActorContainment({ dockerBin = 'docker', image = DEFAULT_AC
 module.exports = {
   buildActorRunArgs, mapActorResult, parseStreamJson, runActorInContainer, attestActorContainment,
   dockerClaudeVersionOk, ACTOR_TOOLS, ACTOR_ALLOWED_NETWORKS, DEFAULT_ACTOR_IMAGE, ATTEST_NODE_PAYLOAD,
+  // Track A W2 - the runtime-pin defaults, exported so the live_pending `runtime` pin captures the
+  // EFFECTIVE model/timeout the actor ran with (resolved at the single source, not re-declared - architect M2).
+  DEFAULT_MODEL, DEFAULT_ACTOR_TIMEOUT_MS,
 };

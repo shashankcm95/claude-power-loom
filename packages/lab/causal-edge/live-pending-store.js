@@ -65,13 +65,35 @@ const GH_REPO_RE = /^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 // The identity basis fields, in a fixed shape. node_id seals these; content_hash seals the full body.
 // lesson_body is DELIBERATELY excluded from the basis (a model-unstable reword must collide, not dup).
 const BASIS_FIELDS = Object.freeze(['provenance', 'repo', 'issue_ref', 'candidate_patch_sha', 'lesson_signature']);
-// The EXACT stored shape (buildBody emits precisely these keys). The read path rejects any body whose
-// key-set is not exactly this set (exact-set, NOT subset), so an injected extra key can never ride inside
-// the content_hash seal of a "verified" node (#273 exact-set-not-subset, applied to object keys).
-const STORED_KEYS = Object.freeze([...BASIS_FIELDS, 'lesson_body', 'node_id', 'content_hash']);
 
-// Hard field-length caps (DoS bound; a malformed/forged giant field cannot write an unbounded file).
-const MAX = Object.freeze({ repo: 256, candidate_patch_sha: 64, lesson_signature: 512, lesson_body: 4096 });
+// Track A W2 - the persona-context PINS: content_hash-SEALED but NON-identity (NOT in BASIS_FIELDS, so a
+// per-attempt pin never mints a distinct node_id). Added as a VERSIONED v2 body shape gated on a sealed
+// schema_version, so a pre-migration v1 grandfather node (no pins) still reads. The pins are INTEGRITY-
+// sealed, NOT provenance-authenticated (a same-uid process can co-forge a byte-consistent node - the #273
+// residual stands until the authenticated cross-uid minter arms); NO consumer reads a pin this wave.
+//
+// #273 GRANDFATHER RESIDUAL (VALIDATE hacker MED): schema_version + the pins are non-identity, so a v1 body
+// and a v2 body for the SAME solve basis share a node_id. A same-uid writer can therefore OVERWRITE a v2
+// node with a re-sealed v1 body at the same <node_id>.json; it reads back as a clean grandfather with the
+// pins SILENTLY gone (a pin-strip downgrade, no alert). The discriminated exact-set below closes the
+// marker-RETAINED variant (schema_version:2 + pins stripped -> missing-field reject); it does NOT close the
+// marker-STRIPPED-too variant, which is byte-indistinguishable from a genuine v1 node. This is one instance
+// of the accepted same-uid co-forge residual (INERT here: 0 readers, weight-inert). FORWARD-HAZARD: once a
+// pin gates anything (the Wave-3a reader / arming), "no pins" MUST be proven by an AUTHENTICATED v2 marker,
+// never inferred from mere pin-absence.
+const SCHEMA_VERSION_V2 = 2;
+const PIN_FIELDS = Object.freeze(['persona_def_ref', 'context_commons_ref', 'runtime', 'recall_graph_root']);
+// The two EXACT stored shapes. The read path requires a body's key-set to equal EXACTLY one of these - a
+// DISCRIMINATED exact-set (VERIFY hacker H1 / architect M4): a partial-pin / injected-pin / stripped-pin
+// body matches NEITHER and is rejected. A naive "accept the superset" filter would degrade this to
+// subset-tolerance (a partial-pin body would read back "verified"), reopening the #273 exact-set hole.
+const V1_KEYS = Object.freeze([...BASIS_FIELDS, 'lesson_body', 'node_id', 'content_hash']);
+const V2_KEYS = Object.freeze([...BASIS_FIELDS, 'lesson_body', 'schema_version', ...PIN_FIELDS, 'node_id', 'content_hash']);
+
+// Hard field-length caps (DoS bound; a malformed/forged giant field cannot write an unbounded file). The
+// ref pins are self-bounded by HEX64 (exactly 64 chars); `runtime` is a free canonical-json string, so it
+// needs an explicit cap - REJECT-not-truncate on read (store-is-not-a-sandbox, VERIFY architect L3).
+const MAX = Object.freeze({ repo: 256, candidate_patch_sha: 64, lesson_signature: 512, lesson_body: 4096, runtime: 2048 });
 // Total on-disk record cap, enforced on the READ path via st.size BEFORE the read. The field caps bound a
 // record WRITTEN through the validator, but a same-uid process can plant a multi-GB file directly at a
 // valid <64-hex>.json name; reading it fully into memory before the hash check is the #439 DoS this closes.
@@ -148,11 +170,35 @@ function validateBlock(block) {
   if (typeof block.candidate_patch_sha !== 'string' || !HEX64.test(block.candidate_patch_sha)) return 'bad-candidate-sha';
   if (!isBoundedString(block.lesson_signature, MAX.lesson_signature)) return 'bad-lesson-signature';
   if (!isBoundedString(block.lesson_body, MAX.lesson_body)) return 'bad-lesson-body';
+  // Track A W2 - the v2 pins + schema_version, typed TOLERANTLY (absent -> ok: buildBody defaults on write,
+  // a v1 grandfather has none on read; PRESENT -> strictly typed), mirroring the `provenance != null` idiom
+  // above. The all-or-nothing per-version enforcement is the DISCRIMINATED exact-set in readNodeVerified;
+  // here we only bound the VALUE of a present field (store-is-not-a-sandbox: type on BOTH paths).
+  if (block.schema_version != null && block.schema_version !== SCHEMA_VERSION_V2) return 'bad-schema-version';
+  if (block.persona_def_ref != null && !isValidPinRefValue(block.persona_def_ref)) return 'bad-persona-def-ref';
+  if (block.context_commons_ref != null && !isValidPinRefValue(block.context_commons_ref)) return 'bad-context-commons-ref';
+  if (block.recall_graph_root != null && !isValidPinRefValue(block.recall_graph_root)) return 'bad-recall-graph-root';
+  if (block.runtime != null && !(typeof block.runtime === 'string' && block.runtime.length <= MAX.runtime)) return 'bad-runtime';
   return null;
 }
 
-// Build the canonical stored body (only the known fields, fixed shape) + the node_id + the content_hash
-// seal. Immutable: a fresh object, never a mutation of the caller's input.
+// A pin ref value is either the '' sentinel (no persona / not recorded) or a 64-hex content-address.
+function isValidPinRefValue(v) { return v === '' || (typeof v === 'string' && HEX64.test(v)); }
+
+// Coerce a pin ref to a valid sentinel-or-hex value for the write path. validateBlock has already rejected
+// a PRESENT-invalid pin before buildBody runs, so this only defaults an ABSENT pin to '' (defense-in-depth).
+function pinRefValue(v) { return (typeof v === 'string' && HEX64.test(v)) ? v : ''; }
+// Runtime is a bounded canonical-json string; an absent value defaults to the '' sentinel. NOTE (VALIDATE
+// hacker LOW): a PRESENT over-bound runtime is rejected by validateBlock FIRST (bad-runtime, reject-not-
+// truncate - the store-is-not-a-sandbox DoS bound), so this length-check is defense-in-depth for a direct
+// buildBody caller; the real writer's runtime is a small fixed object well under the cap.
+function pinRuntimeValue(v) { return (typeof v === 'string' && v.length >= 1 && v.length <= MAX.runtime) ? v : ''; }
+
+// Build the canonical stored body (fixed v2 shape) + the node_id + the content_hash seal. Immutable: a
+// fresh object, never a mutation of the caller's input. buildBody CENTRALIZES the v2 defaulting (VERIFY
+// architect DRY caveat): it always emits schema_version:2 + all four pins (each absent pin -> '' sentinel),
+// so a caller that omits a pin still writes a well-formed v2 body. The pins seal into content_hash (they
+// are body keys) but NOT into node_id (deriveLivePendingNodeId reads BASIS_FIELDS only) - sealed, not identity.
 function buildBody(block) {
   const body = {
     provenance: LIVE_PENDING,
@@ -161,6 +207,11 @@ function buildBody(block) {
     candidate_patch_sha: block.candidate_patch_sha,
     lesson_signature: block.lesson_signature,
     lesson_body: block.lesson_body,
+    schema_version: SCHEMA_VERSION_V2,
+    persona_def_ref: pinRefValue(block.persona_def_ref),
+    context_commons_ref: pinRefValue(block.context_commons_ref),
+    runtime: pinRuntimeValue(block.runtime),
+    recall_graph_root: pinRefValue(block.recall_graph_root),
   };
   body.node_id = deriveLivePendingNodeId(body);
   body.content_hash = computeContentHash(body);
@@ -317,12 +368,18 @@ function readNodeVerified(node_id, dir, selfUid, cap) {
     // and content_hash. Reuse validateBlock so a malformed node never reads back as "verified".
     const bad = validateBlock(parsed);
     if (bad) { alert('verify-mismatch', { node_id, kind: bad }); return null; }
-    // Closed-shape (exact-set, not subset): validateBlock checks the REQUIRED fields but ignores extra
-    // keys. computeContentHash seals ALL keys, so an injected source/weight/trusted field is inside the
-    // seal and self-consistent. Reject any key outside the stored shape so a future consumer can never
-    // read an injected field off a "verified" node (#273 exact-set).
-    const unexpected = Object.keys(parsed).filter((k) => !STORED_KEYS.includes(k));
+    // Closed-shape DISCRIMINATED exact-set (VERIFY hacker H1 / architect M4): the key-set must equal
+    // EXACTLY V1 (a pre-migration grandfather, no pins) OR EXACTLY V2 (schema_version:2 + all four pins).
+    // validateBlock has already bounded schema_version to absent|2, so a PRESENT schema_version here is 2.
+    // A body matching NEITHER - a partial-pin, an injected key, a v1+pin, a stripped-pin v2 downgrade -
+    // is rejected. A naive "reject-unknown-only" superset filter would ACCEPT the partial-pin shape,
+    // degrading the seal to subset-tolerance and reopening the #273 exact-set hole for a future reader.
+    const expected = parsed.schema_version === SCHEMA_VERSION_V2 ? V2_KEYS : V1_KEYS;
+    const keys = Object.keys(parsed);
+    const unexpected = keys.filter((k) => !expected.includes(k));
     if (unexpected.length > 0) { alert('verify-mismatch', { node_id, kind: 'unexpected-field', unexpected }); return null; }
+    const missing = expected.filter((k) => !keys.includes(k));
+    if (missing.length > 0) { alert('verify-mismatch', { node_id, kind: 'missing-field', missing }); return null; }
     const reId = deriveLivePendingNodeId(parsed);
     if (reId !== node_id || parsed.node_id !== node_id) {              // basis must derive the filename id
       alert('verify-mismatch', { node_id, kind: 'node-id', derived: reId });

@@ -29,12 +29,20 @@
 
 'use strict';
 
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
+const { canonicalJsonSerialize } = require('../../kernel/_lib/canonical-json');
 const { canonicalPersonaKey } = require('./canonical-persona-key');
 const { resolveBriefBasename, materializablePersonas } = require('./persona-brief-map');
 const { renderFencedBoundedBlock } = require('./_lib/render-fenced-bounded-block');
+
+// Track A W2: the content-address idiom for the two persona pins (K12-legal - kernel/_lib is not banned;
+// the brief+contract are still read as DATA, no runtime module is required). A pin hashes a canonical
+// STRUCTURE, never a raw `a || b` concat (VERIFY architect L1 / hacker M2: a bare concat is preimage-
+// ambiguous - two distinct (brief, contract) pairs whose bytes concatenate identically would collide).
+function sha256hex(s) { return crypto.createHash('sha256').update(s).digest('hex'); }
 
 // __dirname-relative CONSTANT roots (packages/lab/persona-experiment/ -> repo root -> runtime/).
 const PERSONAS_DIR = path.join(__dirname, '..', '..', 'runtime', 'personas');
@@ -132,6 +140,12 @@ function _materializeWithDeps(persona, deps = {}) {
     const contractRaw = readFileFn(contractPath);
     const contract = JSON.parse(contractRaw); // SyntaxError -> caught below -> null
 
+    // Track A W2 - `persona_def_ref`: the persona-DEFINITION-version identity (the raw brief + contract
+    // bytes, pre-parse), hashed as a canonical STRUCTURE. This is what the persona IS (version identity),
+    // NOT what the actor received (that is context_commons_ref below). Computed INSIDE this try so a hash
+    // throw fails closed to null like every other source failure (VERIFY code-reviewer HIGH-2).
+    const personaDefRef = sha256hex(canonicalJsonSerialize([briefMd, contractRaw]));
+
     const identity = extractSection(briefMd, 'Identity');
     const mindset = extractSection(briefMd, 'Mindset');
     if (mindset == null) return null; // a brief with no instincts is not materializable (fold M2)
@@ -144,7 +158,14 @@ function _materializeWithDeps(persona, deps = {}) {
     // Compose the fenced block ONLY after every source is in hand (never a partial fence).
     const { block, bytes, truncated } = renderFencedBoundedBlock({ header: HEADER, lines, maxBytes: MATERIALIZE_MAX_BYTES });
     if (!block) return null; // could not fit even the empty frame -> nothing
-    return { block, bytes, truncated }; // truncated surfaced (advisory tail-loss signal, honesty-F1)
+    // Track A W2 - `context_commons_ref`: a digest over what the actor TRULY received from persona-context
+    // (the rendered block + its truncation flag), as a canonical STRUCTURE. Distinct from persona_def_ref
+    // (the definition) - this is the RECEIVED surface. KB bodies are NOT inlined today, so this honestly
+    // captures the persona block only (no smuggled behavioral change; recall is pinned separately).
+    const contextCommonsRef = sha256hex(canonicalJsonSerialize({ block, truncated }));
+    // Pins ride alongside the existing keys; every consumer uses property access (m.block), so the wider
+    // return is additive-safe (VERIFY code-reviewer, confirmed no destructuring caller).
+    return { block, bytes, truncated, persona_def_ref: personaDefRef, context_commons_ref: contextCommonsRef };
   } catch {
     return null; // ANY read/parse/extract failure -> fail closed (fold M2)
   }

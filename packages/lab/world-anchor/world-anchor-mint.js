@@ -247,8 +247,10 @@ function collectStaticCandidates(att, buildLesson) {
 /**
  * BRANCH B (captured): collect the candidate lesson(s) from the content-verified live_pending floor. A
  * captured record is consumed VERBATIM - the store already content-address-verified it on read, and the
- * captured body carries NO enum axes on disk (live-pending buildBody persists only lesson_signature +
- * lesson_body), so buildWorldAnchorLesson is impossible on it; the verified store body IS the lesson. The
+ * captured body carries NO enum axes on disk (live-pending buildBody persists the solve-identity + lesson
+ * fields + the Track-A-W2 persona-context pins, but NO trigger_class/gotcha/corrective enum), so
+ * buildWorldAnchorLesson is impossible on it; the verified store body IS the lesson. The pins are NOT
+ * carried forward here - the forward-carry into the world_anchored node is a later wave (blueprint 3a). The
  * join is the exact-set (repo-slug, issue_ref, lesson_signature) - listLivePendingLessons is TOTAL (never
  * throws). The node body comes from the content-verified record, NEVER from the open-writable att.
  * @returns {{lesson_signature: string, lesson_body: string, origin: 'captured'}[]}

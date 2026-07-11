@@ -370,6 +370,172 @@ test('returned nodes are deep-frozen (read-path immutability)', () => {
   assert.ok(Object.isFrozen(back));
 });
 
+// ================================================================================================
+// Track A W2 - the persona-context pin v2 schema: schema_version:2 + four content_hash-SEALED,
+// NON-identity pins (persona_def_ref, context_commons_ref, runtime, recall_graph_root). The read path
+// DISCRIMINATES the exact-set by version (VERIFY hacker H1 / architect M4): a body's key-set must equal
+// EXACTLY V1 (grandfather, no pins) OR EXACTLY V2 (all four pins) - a partial-pin / injected-pin /
+// stripped-pin body matches NEITHER and is rejected. validateBlock TYPES each pin on both paths.
+// ================================================================================================
+
+// A faithful replica of buildBody's v2 output (schema_version:2 + all four pins), to plant v2 attack
+// shapes. `omit` strips keys AFTER defaulting so a self-consistent-but-partial body can be built.
+function selfConsistentNodeV2(over = {}, omit = []) {
+  const body = {
+    provenance: store.LIVE_PENDING, repo: 'https://github.com/octocat/hello-world', issue_ref: 42,
+    candidate_patch_sha: 'a'.repeat(64),
+    lesson_signature: 'lesson:boundary-contract|unguarded-edge-case|handle-edge-explicitly',
+    lesson_body: 'a captured live-solve lesson hypothesis',
+    schema_version: 2,
+    persona_def_ref: '', context_commons_ref: '', runtime: '', recall_graph_root: '',
+    ...over,
+  };
+  for (const k of omit) delete body[k];
+  body.node_id = sha256hex(canonicalJsonSerialize(BASIS.map((f) => (body[f] == null ? '' : String(body[f])))));
+  const seal = {};
+  for (const k of Object.keys(body)) { if (k !== 'content_hash') seal[k] = body[k]; }
+  body.content_hash = sha256hex(canonicalJsonSerialize(seal));
+  return body;
+}
+
+const HEX = (c) => c.repeat(64);
+
+test('v2: mint writes schema_version:2 + the four pins; the node round-trips with the pins intact', () => {
+  const dir = tmp();
+  const m = store.mintLivePendingLesson(block({
+    persona_def_ref: HEX('c'), context_commons_ref: HEX('d'), runtime: '{"model":"claude-opus-4-8"}', recall_graph_root: HEX('e'),
+  }), { dir });
+  assert.strictEqual(m.ok, true, 'a v2 block mints');
+  const back = store.readLivePendingLesson(m.node_id, { dir });
+  assert.ok(back, 'the v2 node reads back');
+  assert.strictEqual(back.schema_version, 2, 'schema_version is sealed at 2');
+  assert.strictEqual(back.persona_def_ref, HEX('c'));
+  assert.strictEqual(back.context_commons_ref, HEX('d'));
+  assert.strictEqual(back.runtime, '{"model":"claude-opus-4-8"}');
+  assert.strictEqual(back.recall_graph_root, HEX('e'));
+});
+
+test('v2: a no-persona mint (pins omitted) still succeeds - buildBody defaults each pin to the "" sentinel', () => {
+  const dir = tmp();
+  const m = store.mintLivePendingLesson(block(), { dir });                 // no pins in the block at all
+  assert.strictEqual(m.ok, true, 'the common no-persona mint must NOT fail (nullable-pin sentinel)');
+  const back = store.readLivePendingLesson(m.node_id, { dir });
+  assert.strictEqual(back.schema_version, 2, 'still a v2 node');
+  assert.strictEqual(back.persona_def_ref, '', 'absent pin -> "" sentinel');
+  assert.strictEqual(back.context_commons_ref, '');
+  assert.strictEqual(back.runtime, '');
+  assert.strictEqual(back.recall_graph_root, '');
+});
+
+test('v2: the pins are content_hash-SEALED - an in-place pin edit fails verify-on-read', () => {
+  const dir = tmp();
+  const m = store.mintLivePendingLesson(block({ persona_def_ref: HEX('c') }), { dir });
+  const file = path.join(dir, `${m.node_id}.json`);
+  const onDisk = JSON.parse(fs.readFileSync(file, 'utf8'));
+  onDisk.persona_def_ref = HEX('f');                                        // tamper a pin; keep the stale content_hash
+  fs.writeFileSync(file, JSON.stringify(onDisk));
+  const { r, alerted } = captureAlert(() => store.readLivePendingLesson(m.node_id, { dir }));
+  assert.strictEqual(r, null, 'a pin edit fails the full-body content_hash seal');
+  assert.ok(alerted, 'the pin-tamper is OBSERVABLE');
+});
+
+test('v2: the pins are NON-identity - two nodes differing ONLY in a pin share node_id -> COLLISION-reject', () => {
+  const dir = tmp();
+  store.mintLivePendingLesson(block({ persona_def_ref: HEX('c') }), { dir });
+  const { r, alerted } = captureAlert(() => store.mintLivePendingLesson(block({ persona_def_ref: HEX('d') }), { dir }));
+  assert.strictEqual(r.ok, false, 'a pin-only change on the same basis collides (pins are outside node_id)');
+  assert.ok(/collision/.test(r.reason || ''), 'the reason names the collision');
+  assert.ok(alerted, 'the collision is OBSERVABLE');
+  assert.strictEqual(fs.readdirSync(dir).filter((n) => n.endsWith('.json')).length, 1, 'no duplicate node file');
+});
+
+test('v2 discriminated exact-set: a self-consistent body MISSING a pin (partial-pin) is REJECTED', () => {
+  const dir = tmp();
+  const partial = selfConsistentNodeV2({}, ['recall_graph_root']);          // schema_version:2 but only 3 pins
+  fs.writeFileSync(path.join(dir, `${partial.node_id}.json`), JSON.stringify(partial));
+  const { r, alerted } = captureAlert(() => store.readLivePendingLesson(partial.node_id, { dir }));
+  assert.strictEqual(r, null, 'a v2 body missing a pin is not a valid v2 (subset-tolerance closed)');
+  assert.ok(alerted, 'the missing-field reject is OBSERVABLE');
+});
+
+test('v2 discriminated exact-set: a v1-shaped body with ONE injected pin is REJECTED', () => {
+  const dir = tmp();
+  const injected = selfConsistentNode({ persona_def_ref: HEX('c') });        // no schema_version -> v1 shape + 1 pin
+  fs.writeFileSync(path.join(dir, `${injected.node_id}.json`), JSON.stringify(injected));
+  const { r, alerted } = captureAlert(() => store.readLivePendingLesson(injected.node_id, { dir }));
+  assert.strictEqual(r, null, 'a v1 body carrying a pin matches neither exact-set');
+  assert.ok(alerted, 'the unexpected-field reject is OBSERVABLE');
+});
+
+test('v2 discriminated exact-set: a schema_version:2 body with ALL pins STRIPPED (downgrade) is REJECTED', () => {
+  const dir = tmp();
+  const stripped = selfConsistentNodeV2({}, ['persona_def_ref', 'context_commons_ref', 'runtime', 'recall_graph_root']);
+  fs.writeFileSync(path.join(dir, `${stripped.node_id}.json`), JSON.stringify(stripped));
+  const { r, alerted } = captureAlert(() => store.readLivePendingLesson(stripped.node_id, { dir }));
+  assert.strictEqual(r, null, 'a v2 node with pins stripped + re-sealed is not a valid grandfather (downgrade closed)');
+  assert.ok(alerted, 'the reject is OBSERVABLE');
+});
+
+test('v2 grandfather: a genuine pre-migration v1 body (no schema_version, no pins) STILL reads back', () => {
+  const dir = tmp();
+  const v1 = selfConsistentNode({});                                         // exactly the v1 key-set
+  fs.writeFileSync(path.join(dir, `${v1.node_id}.json`), JSON.stringify(v1));
+  const back = store.readLivePendingLesson(v1.node_id, { dir });
+  assert.ok(back, 'a v1 grandfather node still reads (backward-compat)');
+  assert.strictEqual(back.schema_version, undefined, 'a v1 node carries no schema_version');
+});
+
+test('v2 grandfather RESIDUAL (documented #273): a same-uid v2->v1 pin-strip downgrade reads back as a v1 grandfather', () => {
+  // VALIDATE hacker MED: schema_version + pins are non-identity, so a v1 body shares the v2 node_id. A
+  // same-uid writer can overwrite a v2 node with a re-sealed v1 body at the SAME file; it reads back as a
+  // clean grandfather with the pins SILENTLY gone. This is one instance of the ACCEPTED same-uid co-forge
+  // residual (INERT: weight-inert, 0 readers). Encoded here so the behavior is a KNOWN residual, not a surprise.
+  const dir = tmp();
+  const m = store.mintLivePendingLesson(block({ persona_def_ref: HEX('c') }), { dir });   // a real v2 node with a pin
+  const v1 = selfConsistentNode({});                                                        // same basis -> same node_id
+  assert.strictEqual(v1.node_id, m.node_id, 'precondition: the v1 body shares the v2 node_id (pins are non-identity)');
+  fs.writeFileSync(path.join(dir, `${m.node_id}.json`), JSON.stringify(v1));                // the downgrade overwrite
+  const back = store.readLivePendingLesson(m.node_id, { dir });
+  assert.ok(back, 'the downgraded body reads back as a clean grandfather (the known residual)');
+  assert.strictEqual(back.schema_version, undefined, 'the pins are silently gone - the accepted same-uid residual; the Wave-3a reader must NOT infer "no pins" from absence');
+});
+
+test('v2 typing: a mistyped pin (non-hex ref) is REJECTED on read (store-is-not-a-sandbox, symmetric)', () => {
+  const dir = tmp();
+  const bad = selfConsistentNodeV2({ persona_def_ref: 'not-a-64-hex-ref' });
+  fs.writeFileSync(path.join(dir, `${bad.node_id}.json`), JSON.stringify(bad));
+  const { r, alerted } = captureAlert(() => store.readLivePendingLesson(bad.node_id, { dir }));
+  assert.strictEqual(r, null, 'a self-consistent node with a mistyped pin reads back as rejected');
+  assert.ok(alerted, 'the mistyped-pin reject is OBSERVABLE');
+});
+
+test('v2 typing: an OVER-BOUND runtime pin is REJECTED (reject-not-truncate, MAX.runtime DoS cap)', () => {
+  const dir = tmp();
+  const bad = selfConsistentNodeV2({ runtime: 'x'.repeat(5000) });
+  fs.writeFileSync(path.join(dir, `${bad.node_id}.json`), JSON.stringify(bad));
+  const { r, alerted } = captureAlert(() => store.readLivePendingLesson(bad.node_id, { dir }));
+  assert.strictEqual(r, null, 'an over-bound runtime pin is rejected on read');
+  assert.ok(alerted, 'the over-bound reject is OBSERVABLE');
+});
+
+test('v2 typing: a bad schema_version (not 2) is REJECTED', () => {
+  const dir = tmp();
+  const bad = selfConsistentNodeV2({ schema_version: 3 });
+  fs.writeFileSync(path.join(dir, `${bad.node_id}.json`), JSON.stringify(bad));
+  const { r, alerted } = captureAlert(() => store.readLivePendingLesson(bad.node_id, { dir }));
+  assert.strictEqual(r, null, 'an unknown schema_version is rejected');
+  assert.ok(alerted, 'the reject is OBSERVABLE');
+});
+
+test('v2: an injected EXTRA key on a v2 node (beyond the four pins) is still REJECTED (exact-set holds)', () => {
+  const dir = tmp();
+  const injected = selfConsistentNodeV2({ source: 'live_pending', weight: 999 });
+  fs.writeFileSync(path.join(dir, `${injected.node_id}.json`), JSON.stringify(injected));
+  const { r, alerted } = captureAlert(() => store.readLivePendingLesson(injected.node_id, { dir }));
+  assert.strictEqual(r, null, 'a v2 node with an injected non-pin key is rejected');
+  assert.ok(alerted, 'the unexpected-field reject is OBSERVABLE');
+});
+
 (async () => {
   for (const t of _tests) {
     try { await t.fn(); passed += 1; }
