@@ -120,9 +120,12 @@ must be ADDED as first-class ADVISORY/legibility fields, never trust inputs):
 
 ## 7. Access-control model (2 classes x 3 modes) - PROPOSED (presupposes the multi-party commons)
 
-NOTE: Embers today is single-user / receiver-private (its multi-party "shared witnessed commons" is a
-deferred/future phase). This access model is a `confirm/add` PROPOSAL for that phase, not a present-tense
-Embers capability.
+NOTE: Embers today is single-user / receiver-private. Its multi-party "shared witnessed commons" is a
+deferred phase, but NOT unbuilt: Embers has already shipped the CLIENT half (P6 ADRs 0009-0011 - a persistent
+transparency log + K_root-signed persona-binding + client-side fork/equivocation detection, all SHADOW,
+un-consumed). What remains is (i) the operator-run witness-network half and (ii) toolkit-side gap8-a0b. This
+access model is a `confirm/add` PROPOSAL for that phase, not a present-tense Embers capability. **(Update
+2026-07-11: the single-user posture is RATIFIED - see §10; multi-party is a later-horizon product bet.)**
 
 | Data class | public | inherited (container's audience) | private |
 |---|---|---|---|
@@ -168,8 +171,12 @@ Confirm / add (Embers decides the internals):
 ## 10. Open items to co-decide
 
 - Confirm `inherited` semantics = follow-the-container's-audience.
-- Single-user LEDGER vs multi-party commons (shapes the `persona_id` namespace, ties to the opaque-id
-  decision, AND determines whether the attribution boundary below needs gap8-a0b).
+- **Single-user LEDGER vs multi-party commons — RATIFIED single-user (2026-07-11).** The commons's
+  party-count is ORTHOGONAL to the trust ladder (single-minter at every rung); single-user is sufficient for
+  Rung-1 AND Rung-2, so gap8-a0b + the opaque-id split + the v2 predicate DEFER behind the
+  `arming_class:"pre-arm"` discriminator (zero migration debt). Flip only when a SECOND independent
+  `human_root` AND a pin-consumer both exist. Decision record:
+  `packages/specs/plans/2026-07-10-external-readiness-checklist.md` § Decision.
 - `persona_id` opaque + friendly-name-as-content (we lean this way; confirm).
 - Persona identity continuity across KEY ROTATION: the binding is first-writer-immutable and rotation = a
   NEW `persona_id`, which orphans the grouping/anchor. Decide whether accumulated trust survives via a

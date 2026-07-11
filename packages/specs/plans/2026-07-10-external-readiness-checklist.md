@@ -33,13 +33,43 @@ checkpoint proves the mechanism internally; it does not (and cannot) harden anyt
 
 | # | Track / item | Layer | Severity | Issue | Status |
 |---|---|---|---|---|---|
-| A1 | `recall-inject-boundary.js` (cross-uid subprocess boundary) + updated disjointness dam + fail-closed tests | L2 | BLOCKER | to be issued | ▶ blueprint Wave 1 (fork RESOLVED) |
-| A2 | persona-context pins on the lesson + persona INTO the signed basis (gap8-a0b) + `recall_graph_root` | L2/L3 | BLOCKER | to be issued | ▶ blueprint Waves 2-3 (name the mint edit sites) |
-| A3 | toolkit->Embers export seam (`bank --node --meta --key`) + byte-parity handshake | L3 | BLOCKER | to be issued | ▶ blueprint Wave 4 (byte-parity = OPEN cross-repo confirm) |
-| B1 | memory-architecture coherence CONFIRM (ADR chain + both suites + separation) | L1 | MAJOR | to be issued | ▶ mostly a regression assertion (L1 BUILT) |
-| B2 | fix the 4 canonical memory ADRs' `status: proposed` -> `accepted` | L1 | MINOR | to be issued | ▶ docs-consistency (3b) |
+| A1 | `recall-inject-boundary.js` (cross-uid subprocess boundary) + updated disjointness dam + fail-closed tests | L2 | BLOCKER | [#566](https://github.com/shashankcm95/claude-power-loom/pull/566) | ✅ DONE (blueprint Wave 1, SHADOW half) |
+| A2 | persona-context pins on the `live_pending` node + `recall_graph_root` | L2/L3 | BLOCKER | [#568](https://github.com/shashankcm95/claude-power-loom/pull/568) | ✅ DONE (blueprint Wave 2; 4 pins sealed into the `live_pending` basis, SHADOW). **gap8-a0b (persona INTO the `world_anchored` SIGNED basis) → DEFERRED** per the single-user ratification (§ Decision): the node stays frozen/meta-only; gap8-a0b is required only at multi-party |
+| A3 | toolkit->Embers export seam (`bank --node --meta --key`) + byte-parity handshake | L3 | BLOCKER | to be issued | ▶ closes on **v1** (frozen 7-key node + `meta.minter`) per the single-user ratification; the v2 advisory pins are DEFERRED (no pin-consumer) |
+| B1 | memory-architecture coherence CONFIRM (ADR chain + both suites + separation) | L1 | MAJOR | [#565](https://github.com/shashankcm95/claude-power-loom/pull/565) | ✅ DONE |
+| B2 | fix the 4 canonical memory ADRs' `status: proposed` -> `accepted` | L1 | MINOR | [#565](https://github.com/shashankcm95/claude-power-loom/pull/565) | ✅ DONE |
 | C1 | establish `tests/integration/` as a real tier + a CI job | all | BLOCKER | to be issued | ▶ the structural e2e gap |
 | C2 | promote `_spike/real-e2e-actor-dogfood.js` into a gated internal end-to-end dogfood (real `claude -p` + `gh`, SHADOW-dry) | all | BLOCKER | to be issued | ▶ the "validated end-to-end" bar |
+
+## Decision — single-user commons posture (RATIFIED 2026-07-11)
+
+The USER RATIFIED the **single-user LEDGER** posture (from an architect-synthesized decision brief this
+session): Embers stays single-user / operator-vouched / meta-only as the correct steady state for the current
+ladder. This is **ORTHOGONAL to the trust ladder** — single-vs-multi-party is the commons's *party-count*
+(how many independent minter roots bank into one Embers), a horizontal ADOPTION axis, NOT the vertical trust
+axis. Rung-1 → apex is single-minter at every rung; the "external" in Rung-2 is the forge/merge being
+anchored elsewhere, NOT a second minter inside Embers. **Single-user is sufficient for Rung-1 AND Rung-2**
+(the Embers board: "at single-user Rung-1 the entire v2 bump delivers zero trust or behavioral value").
+
+**DEFERS a named bundle** (behind the in-band signed `arming_class:"pre-arm"` discriminator → zero migration
+debt; deferral is a two-way door):
+
+- **gap8-a0b** — binding persona into the `world_anchored` node's SIGNED basis at mint. The Embers `ember/v2`
+  contract froze the node (`embers/docs/ember-v2-contract.md` §2: pins are META-ONLY, the node is UNCHANGED
+  for v2); gap8-a0b is required only for a multi-party commons (single-user: the operator vouches).
+- The **v2 predicate build** + the toolkit v2 advisory-pin export — no pin-consumer exists (the Trust Explorer
+  UI is deferred; YAGNI).
+- The **`persona_id` opaque-id split**, the **witness-network arming** (Embers' P6 CLIENT half is
+  shipped-dormant, ADRs 0009-0011; the operator network/witness half is deferred), the **`inherited`** mode.
+
+**UNBLOCKS:** A3 closes on **v1** — the frozen 7-key node + `meta.minter` + the byte-parity handshake — with
+NO cross-repo v2 coordination.
+
+**Flip conditions (BOTH must hold to build multi-party):** (a) a concrete SECOND independent `human_root`
+wanting to bank/consume in the SAME commons (real adoption — NOT the operator's own multi-uid broker, which is
+one `human_root`), AND (b) a shipping pin-consumer (the Trust Explorer UI or a cross-receiver confirmation
+loop). Until both fire, single-user is the steady state, not a stopgap — Embers' PRD frames multi-party as a
+demand-side product bet, not a ladder rung.
 
 ## Operator preconditions for the CROSSING (TRACKED, not this checkpoint's build - Claude never runs these)
 
