@@ -50,7 +50,7 @@ Grounded in the 2026-07-10 recon (`_SESSION` workflow `w4g72rwx9` + `w32qxsn3n`)
 - Probe: `weight-source-gate.js:55` -> `LIVE_SOURCES = Object.freeze(isWorldAnchorArmed() ? [WORLD_ANCHOR_SOURCE] : [])` (the SHADOW dam is a two-gate AND: arming flag AND absent custody keys, NOT a hard `[]`).
 - Probe: `drafter-recall-disjointness.test.js` -> GREEN + forbids `world-anchor/` in `live-draft-run.js`'s import closure (the dam the boundary module must satisfy).
 - Probe: memory architecture BUILT - ADR-0018/19/20/21 merged (#517-531); `kernel/_lib/recurrence-lifecycle.js` green (19/0); operating-memory (`scripts/memory.js` 33/0) + lab lesson stores present.
-- Probe: `find tests -name '*.test.js' -path '*integration*'` -> `0` runnable tests (355 unit, 0 integration/e2e; the only real-boundary exercise is `_spike/real-e2e-actor-dogfood.js`, out of CI).
+- Probe (2026-07-12): `tests/integration/` is now a CI-run tier (C1 #571, the `integration-tests` job) + the real-boundary e2e is promoted to the gated `tests/e2e/real-e2e-actor-dogfood.e2e.js` (C2). [Originally: 0 integration/e2e, the only exercise was `_spike/real-e2e-actor-dogfood.js`, out of CI.]
 - Probe: the 4 canonical memory ADRs still read `status: proposed` despite being merged (a 3b docs-consistency fix).
 
 ## Tasks
@@ -61,7 +61,7 @@ Grounded in the 2026-07-10 recon (`_SESSION` workflow `w4g72rwx9` + `w32qxsn3n`)
 - [ ] Track A: the persona-context pins on the `live_pending` node + carry-forward to `world_anchored` (name the edit sites: `collectCapturedCandidates` + the `mintWorldAnchoredNode` call); persona INTO the signed basis (gap8-a0b); `recall_graph_root`. [blueprint Waves 2-3]
 - [ ] Track A: the toolkit->Embers export seam (`bank --node --meta --key`, `--key` = operator/cross-uid custody) + the byte-parity handshake with the Embers session. [blueprint Wave 4]
 - [ ] Track B: a memory-architecture coherence assertion (ADR chain + both suites + the disjointness dam + no-auto-promotion) + fix the 4 ADRs' `status: proposed` -> `accepted`.
-- [ ] Track C: establish `tests/integration/` as a real tier + a CI job; promote `_spike/real-e2e-actor-dogfood.js` into a gated internal dogfood harness.
+- [x] Track C: establish `tests/integration/` as a real tier + a CI job (C1 #571); promote the spike into a gated internal dogfood harness at `tests/e2e/real-e2e-actor-dogfood.e2e.js` (C2).
 
 ### Test
 

@@ -10,7 +10,7 @@
 | `docker-containment-spike.js` | `_spike/` | Docker-backend containment proof (12 cases incl. OOM/pids/reap) |
 | `docker-dogfood.js` | `_spike/` | Docker-backend full-lifecycle happy-path probe on a pytest fixture |
 | `dogfood.js` | `_spike/` | macOS-sandbox full-lifecycle happy-path probe on a JS fixture |
-| `real-e2e-actor-dogfood.js` | `_spike/` | Real `claude -p` actor recreates a real OSS fix; grades it through the 3-leg scorer |
+| `real-e2e-actor-dogfood.js` | **PROMOTED → `tests/e2e/real-e2e-actor-dogfood.e2e.js` (C2)** | Real `claude -p` actor recreates a real OSS fix; grades it through the 3-leg scorer. Promoted into the gated e2e tier (RUN_E2E gate + exit-2 clean skip + exit-1/0/2 contract + a pure unit-tested `decideGate`); the MEDIUM (world-readable tmpdir) + LOW (always-exit-0) findings below are RESOLVED in the promotion. |
 | `real-e2e-dogfood.js` | `_spike/` | Deterministic real-OSS-issue grading (known fix flips; no-fix fails) |
 | `corpus-build/add-to-manifest.js` | `_spike/corpus-build/` | Accrete a VERIFIED staged record into `bootcamp-manifest.json` (verified-only invariant) |
 | `corpus-build/bootcamp-capture.js` | `_spike/corpus-build/` | Real-`claude -p` derive leg over the manifest → mint lesson nodes |
