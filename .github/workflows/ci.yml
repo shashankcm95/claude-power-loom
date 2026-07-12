@@ -335,6 +335,50 @@ jobs:
           fi
           exit $failed
 
+  integration-tests:
+    # Track C1 (external-readiness): the real-component INTEGRATION tier. Gates tests/integration/*.integration.js
+    # — self-contained cross-module flows driven with NO mocks (e.g. world-anchor-export-seam: the A3
+    # toolkit->Embers seam end-to-end via a REAL `node cli.js export-bank-pair` subprocess + an independent
+    # Embers-side seal re-derivation). Mirrors the lab-tests/aux-unit shape EXACTLY: per-file `node "$f"` runner
+    # (never `node --test` — it false-greens on imperative-assert files), null-delimited find -print0 + read
+    # -d '', explicit working dir, and a count==0 vacuous-pass guard. The `.integration.sh` members (which need
+    # external tools like npx eslint) stay MANUAL and are NOT matched here; a future GATED e2e is `*.e2e.js` /
+    # tests/e2e/ (C2), deliberately outside this find so it is never swept onto every push.
+    name: Integration tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run integration tests (tests/integration/*.integration.js)
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        run: |
+          set +e  # explicit; the loop manages exit code via $failed accumulator
+          failed=0
+          count=0
+          while IFS= read -r -d '' f; do
+            count=$((count+1))
+            echo "::group::$f"
+            node "$f"
+            rc=$?
+            echo "::endgroup::"
+            [ $rc -ne 0 ] && failed=1
+          done < <(find "$GITHUB_WORKSPACE/tests/integration" -name '*.integration.js' -type f -print0)
+          echo "Ran $count integration files; failures: $failed"
+          # Vacuous-pass guard: if find matched zero *.integration.js files (cwd mismatch, path rename, or the
+          # last member deleted without removing this job), fail rather than pass vacuously — same defense as
+          # the kernel/runtime/lab/aux jobs.
+          if [ "$count" -eq 0 ]; then
+            echo "::error::Zero integration files matched at $GITHUB_WORKSPACE/tests/integration — vacuous-pass guard failing the job."
+            exit 2
+          fi
+          exit $failed
+
   dormancy-assertion-k3b:
     # Phase 1-alpha K3.b context-envelope ships DORMANT — the validator module +
     # its JSON schema land in PR 1, but NO production code imports the module
