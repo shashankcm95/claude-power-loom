@@ -1,6 +1,6 @@
 # Phase ③.2-XR — External-readiness checkpoint
 
-**Status:** ▶ Planned (defined 2026-07-10; the first `docs/phases/` doc — the overlay's first real use).
+**Status:** ✅ CLOSEABLE (phase-closed 2026-07-12). The 3-lens `/phase-close` (PM=honesty-auditor + Principal-SDE=code-reviewer + Architect) returned all-CLOSEABLE against integrated `main` @ `14b0d95`; sign-off in `docs/ROADMAP.md` + the `toolkit/phase-close/external-readiness-close` library volume. Defined 2026-07-10 (the first `docs/phases/` doc). Mode SHADOW: this certifies the mechanism INTERNALLY across three layers with recall INERT; per OQ-NS-6 it hardens nothing (only an external merge does).
 **Realizes:** PRD §6 (the autonomous-SDE rungs + the 2026-07-10 accretion: the learning-wire rung + this checkpoint).
 **Depends on:** the ③.2 delivery mechanism (SHADOW-complete, `docs/ROADMAP.md:724`); the reconciled pipeline anchor (`research/2026-07-10-external-sde-pipeline-anchor.md`); the plugin learning-wire blueprint (`research/2026-07-10-plugin-learning-wire-blueprint.md`, board-reviewed, the recall-wiring fork RESOLVED to the cross-uid boundary module).
 **Mode:** SHADOW. The internal-validation gate is entirely SHADOW/weight-inert; the LIVE crossing (recall influencing a solve, a weight hardening, a stranger-repo ingest) is operator-armed and OUT of this phase.
@@ -57,20 +57,20 @@ Grounded in the 2026-07-10 recon (`_SESSION` workflow `w4g72rwx9` + `w32qxsn3n`)
 
 ### Build
 
-- [ ] Track A: `recall-inject-boundary.js` (cross-uid subprocess boundary) + the updated disjointness dam + tests (fail-closed-to-empty). [blueprint Wave 1, the RESOLVED fork]
-- [ ] Track A: the persona-context pins on the `live_pending` node + carry-forward to `world_anchored` (name the edit sites: `collectCapturedCandidates` + the `mintWorldAnchoredNode` call); persona INTO the signed basis (gap8-a0b); `recall_graph_root`. [blueprint Waves 2-3]
-- [ ] Track A: the toolkit->Embers export seam (`bank --node --meta --key`, `--key` = operator/cross-uid custody) + the byte-parity handshake with the Embers session. [blueprint Wave 4]
-- [ ] Track B: a memory-architecture coherence assertion (ADR chain + both suites + the disjointness dam + no-auto-promotion) + fix the 4 ADRs' `status: proposed` -> `accepted`.
+- [x] Track A: `recall-inject-boundary.js` (cross-uid subprocess boundary) + the updated disjointness dam + tests (fail-closed-to-empty). [blueprint Wave 1, the RESOLVED fork] -- #566
+- [x] Track A: the persona-context pins on the `live_pending` node (`persona_def_ref` / `context_commons_ref` / `runtime` / `recall_graph_root`, sealed into the v2 body via a discriminated exact-set). [blueprint Wave 2] -- #568. NOTE: carry-forward INTO the `world_anchored` SIGNED basis (gap8-a0b) is RATIFIED-DEFERRED to a multi-party commons (#569); the node stays the frozen 7-key basis, persona is a self-asserted meta-only export label (integrity != provenance, #273).
+- [x] Track A: the toolkit->Embers export seam (`export-bank-pair`: the frozen 7-key node VERBATIM + the exact 3-key `meta.minter`) + the byte-parity handshake (a vendored Embers golden vector re-derived byte-for-byte). [blueprint Wave 4] -- #570. (`--key` custody banking is operator-side, not this SHADOW half.)
+- [x] Track B: a memory-architecture coherence assertion (ADR chain + both suites + the disjointness dam + no-auto-promotion) + fix the 4 ADRs' `status: proposed` -> `accepted`. -- #565
 - [x] Track C: establish `tests/integration/` as a real tier + a CI job (C1 #571); promote the spike into a gated internal dogfood harness at `tests/e2e/real-e2e-actor-dogfood.e2e.js` (C2).
 
 ### Test
 
-- [ ] Real-component integration tests for each cross-layer flow (a green mock suite is a HYPOTHESIS - prefer the real store + the real `claude -p`/`gh` path over a mocked seam).
-- [ ] The internal end-to-end dogfood green on the real path (known issue -> solve -> mint-with-persona-metadata -> export -> recall), SHADOW-dry.
+- [x] Real-component integration tests for the cross-layer flows: the mint->export seam (`world-anchor-export-seam.integration.js`, real CLI subprocess + an independent Embers-parity seal re-derivation, #571) + the recall-boundary->real-recall-CLI wire (`recall-inject-boundary.integration.js`, real subprocess + the fail-closed-observable path, added at close). The A1 cross-uid + non-empty recall path is inherent-SHADOW (the operator `spawnArgsFn` does not exist pre-deploy) = a NAMED residual.
+- [x] The internal end-to-end dogfood harness on the real path: the harness runs END-TO-END + `decideGate` is unit-proven (8/8); a real run FIRED and the host-claude-guard fail-CLOSED the actor on this deployed box (`deployed-unconfigured`, never bypassed). SHADOW-dry (0 nodes, 0700 store). PARTIAL-by-design: the actor-solve + the real-`gh` half are NAMED operator-armed residuals, NOT a captured green run (#573).
 
 ### Validate
 
-- [ ] 3-lens tier on the learning-wire diffs (kernel/security-adjacent): `code-reviewer` (correctness) + `hacker` (re-probe the BUILT boundary module + the injection channel + the cross-uid gate) + `honesty-auditor` (claim-vs-evidence); findings folded before close.
+- [x] 3-lens tier on the learning-wire diffs (kernel/security-adjacent): `code-reviewer` (correctness) + `hacker` (re-probe the BUILT boundary module + the injection channel + the cross-uid gate) + `honesty-auditor` (claim-vs-evidence); findings folded before close. Per-wave VERIFY+VALIDATE on each PR; the phase-level 3-lens `/phase-close` re-ran against integrated `main` (all three CLOSEABLE).
 
 ### Operator / external - TRACKED here, executed by the operator (not the build session)
 
@@ -80,35 +80,37 @@ Grounded in the 2026-07-10 recon (`_SESSION` workflow `w4g72rwx9` + `w32qxsn3n`)
 
 **Per-layer (the checkpoint's reason to exist):**
 
-- [ ] **L1 memory:** architecture coherent (the ADR-0020-corrected invariant, not 0018's superseded prose); both substrate suites green; separation ENFORCED (the disjointness dam green + no-auto-promotion); the 4-ADR `status` docs fix landed.
-- [ ] **L2 plugin wire:** the boundary module built + the dam updated + fail-closed-to-empty; the persona pins built; the materializer returns hashes. The live round-trip is a NAMED arming-gated residual (NOT required to pass).
-- [ ] **L3 minted lessons:** the 4 pins on the lesson; persona bound INTO the signed basis (gap8-a0b - today it is only an unauthenticated label); the Embers export seam built + byte-parity CONFIRMED (the cross-substrate handshake, a Wave-4 precondition).
-- [ ] **e2e:** a real integration test tier + CI job exists; the internal end-to-end dogfood runs green on the real path.
+- [x] **L1 memory:** architecture coherent (the ADR-0020-corrected invariant, not 0018's superseded prose); both substrate suites green; separation ENFORCED (the disjointness dam green + no-auto-promotion); the 4-ADR `status` docs fix landed. [#565]
+- [x] **L2 plugin wire:** the boundary module built + the dam updated + fail-closed-to-empty [#566]; the persona pins built (sealed on `live_pending`, the refs are HEX64 hashes) [#568]. The live round-trip is a NAMED arming-gated residual (NOT required to pass) -- held INERT.
+- [x] **L3 minted lessons:** the 4 persona-context pins sealed on `live_pending` (A2/#568); the Embers export seam built + byte-parity PROVEN (a vendored Embers golden vector re-derived byte-for-byte + an independent CI re-derivation) [A3/#570]. Persona is a SELF-ASSERTED, meta-only export label at receiver-weight 0 (integrity != provenance, #273); binding persona INTO the `world_anchored` SIGNED basis (gap8-a0b) is RATIFIED-DEFERRED to a multi-party commons (#569) -- NOT claimed done.
+- [x] **e2e:** a real integration test tier + CI job exists (C1 #571). The internal end-to-end dogfood harness is built + its gate is unit-proven (C2 #573); a real run is operator-gated / SHADOW / N=1, and the actor-solve + the real-`gh` half are NAMED residuals (NOT a captured green run).
 
 **Standard gates (template):**
 
-- [ ] Build + Test complete; `bash install.sh --hooks --test` + the kernel suite green; linters + signpost + release-surface clean.
-- [ ] Validate run and findings folded (3-lens for the learning-wire class).
-- [ ] `/verify-plan` run before approval (this is HETS-routed multi-file work); `/phase-close` run at the boundary.
-- [ ] ADR recorded if the checkpoint locks a trade-off (candidate: "external-readiness = exactly these gates; the live round-trip stays arming-gated").
-- [ ] Committed + PR'd; the merge is the USER's gate (never auto-merge).
-- [ ] Reconciliation with the PRD done (below); the crossing (operator arming + `#406`) scoped as the next step.
-- [ ] The operator preconditions are ENUMERATED + owned (they gate the crossing, NOT this checkpoint - the checkpoint passing does not arm anything).
+- [x] Build + Test complete; `bash install.sh --hooks --test` + the kernel suite green; linters + signpost + release-surface clean. (release-surface `--check` clean at v3.11 -- a SHADOW lab arc, correctly unbumped; signpost up to date.)
+- [x] Validate run and findings folded (3-lens for the learning-wire class) -- per-wave on each PR + the phase-level `/phase-close`.
+- [x] `/verify-plan` run before approval (per-wave, HETS-routed); `/phase-close` run at the boundary (this sign-off).
+- [x] ADR recorded: `packages/specs/adrs/0022-external-readiness-gates-arming-gated.md` locks "external-readiness = exactly these gates; the live round-trip stays arming-gated".
+- [x] Committed + PR'd; the merge is the USER's gate (never auto-merge). [the close PR]
+- [x] Reconciliation with the PRD done (below); the crossing (operator arming + `#406`) scoped as the next step.
+- [x] The operator preconditions are ENUMERATED + owned (checklist O1-O6) -- they gate the crossing, NOT this checkpoint.
 
 ## Reconciliation with the PRD (filled at close)
 
-- **Implemented vs PRD intent:** <!-- does the built three-layer validation match the §6 accretion? -->
-- **Drift / deviations:** <!-- any + how resolved -->
-- **PRD updates made:** <!-- dated-accretion links -->
-- **Next-phase readiness:** <!-- the crossing: operator arming + #406 -->
+- **Implemented vs PRD intent:** YES -- the built three-layer validation matches the §6 accretion (the learning-wire rung + this checkpoint). L1 memory coherent (the ADR-0018 chain); L2 the cross-uid recall boundary + persona-context pins (SHADOW, fail-closed-to-empty); L3 the persona-tied lesson metadata + the toolkit->Embers export seam (byte-parity proven); + the e2e tier (an integration CI job + the gated real-`claude -p` dogfood).
+- **Drift / deviations:** ONE ratified deviation -- persona binding INTO the `world_anchored` SIGNED basis (gap8-a0b) was DEFERRED to a multi-party commons (#569, the single-user ratification), behind the in-band `arming_class:"pre-arm"` discriminator (zero migration debt, a two-way door). A3 closes on v1 (the frozen node + `meta.minter` + byte-parity), with NO cross-repo v2 coordination. Persona stays a self-asserted, weight-0 label (integrity != provenance, #273) until an authenticated minter arms.
+- **PRD updates made:** none required; this phase realizes the existing §6 accretion. The single-user commons posture is recorded in the checklist's `## Decision` section (RATIFIED 2026-07-11) + ADR-0022.
+- **Next-phase readiness:** the crossing (operator arming O1-O6 + `#406`) is READY-WITH-PRECONDITIONS, all named in the checklist. Design debt handed forward (the architect lens): (1) persona-into-`world_anchored`-basis is a BREAKING store-schema migration -- plan it as a discriminated v2 (the `live_pending` v2 is the proven template), not an additive pin; (2) consolidate the diffuse 4-axis arming lattice into one all-or-none `resolveArmedContext` preflight before O6; (3) the two-sided cross-repo byte-parity needs a shared golden-vector owned on BOTH sides; (4) the persona dual-lane (the `live_pending` pin vs the export-time `minter` labels) must be reconciled by the authenticated minter. None gate THIS close (all are arming-crossing concerns).
 
-## Open questions (resolve during the phase / escalate)
+## Open questions (resolved at close)
 
-- Carried from the blueprint's review board: KB-body inlining (v1 honest-thin vs inline-then-pin); the
-  `LOOM_PERSONA_MATERIALIZE` default flip (a named behavioral change); the attested-pin honesty
-  (self-reported until a kernel signer arms); the Embers byte-parity handshake shape.
-- Is this a sub-phase of ③.2 (as authored) or its own phase number? Authored as a ③.2 internal gate; escalate
-  if the crossing warrants a ③.3.
-- Should the checkpoint's "external-readiness = these gates" be locked in an ADR (the one meaningful
-  trade-off is: the live round-trip stays arming-gated, so "validated end-to-end" means the mechanism is
-  proven internally, not that recall is live).
+- Blueprint-board carries: KB-body inlining stays v1 honest-thin (inline-then-pin DEFERRED, YAGNI -- no
+  pin-consumer); the `LOOM_PERSONA_MATERIALIZE` default stays OFF (no behavioral flip this phase);
+  attested-pin honesty is self-reported until a kernel signer arms (integrity != provenance, #273, tracked to
+  the item-5 minter); the Embers byte-parity handshake shape is SETTLED -- the frozen 7-key node emitted
+  VERBATIM + a vendored golden vector re-derived byte-for-byte (A3/#570).
+- Sub-phase vs own number: RESOLVED -- a ③.2 internal gate (③.2-XR), NOT a new phase number. The crossing
+  (O1-O6 + #406) is the next step under ③.2, not a ③.3.
+- ADR lock: RESOLVED -- RECORDED as `packages/specs/adrs/0022-external-readiness-gates-arming-gated.md`. The
+  durable trade-off ("validated end-to-end" = the mechanism proven INTERNALLY with recall INERT, NOT that
+  recall is live; the live round-trip + hardening stay arming-gated, OQ-NS-6) is locked there.
