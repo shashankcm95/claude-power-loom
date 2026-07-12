@@ -38,7 +38,7 @@ checkpoint proves the mechanism internally; it does not (and cannot) harden anyt
 | A3 | toolkit->Embers export seam (`bank --node --meta --key`) + byte-parity handshake | L3 | BLOCKER | [#570](https://github.com/shashankcm95/claude-power-loom/pull/570) | ✅ DONE (v1: `export-bank-pair` emits the frozen 7-key node VERBATIM + the exact 3-key Embers meta `{minter, prUrl, repoSlug}`; byte-parity PROVEN against both Embers golden fixtures; SHADOW/weight-0. The v2 advisory pins DEFERRED — no pin-consumer, single-user ratified) |
 | B1 | memory-architecture coherence CONFIRM (ADR chain + both suites + separation) | L1 | MAJOR | [#565](https://github.com/shashankcm95/claude-power-loom/pull/565) | ✅ DONE |
 | B2 | fix the 4 canonical memory ADRs' `status: proposed` -> `accepted` | L1 | MINOR | [#565](https://github.com/shashankcm95/claude-power-loom/pull/565) | ✅ DONE |
-| C1 | establish `tests/integration/` as a real tier + a CI job | all | BLOCKER | to be issued | ▶ the structural e2e gap |
+| C1 | establish `tests/integration/` as a real tier + a CI job | all | BLOCKER | [#571](https://github.com/shashankcm95/claude-power-loom/pull/571) | ✅ DONE (the `integration-tests` CI job runs `tests/integration/*.integration.js` w/ the vacuous-pass guard; first member = the A3 export-seam e2e via a REAL CLI subprocess + an INDEPENDENT Embers-side seal re-derivation; `*.e2e.js` reserved for C2's gated e2e) |
 | C2 | promote `_spike/real-e2e-actor-dogfood.js` into a gated internal end-to-end dogfood (real `claude -p` + `gh`, SHADOW-dry) | all | BLOCKER | to be issued | ▶ the "validated end-to-end" bar |
 
 ## Decision — single-user commons posture (RATIFIED 2026-07-11)
