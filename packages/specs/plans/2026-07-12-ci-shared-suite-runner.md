@@ -127,7 +127,8 @@ Load-bearing: `ci.yml` (CI-time-only; H.7.15 clean-checkout dogfood mandatory) a
    vs run-suite.sh's find. Must be identical.
 5. **Green/red parity**: run-suite.sh green on each real root; vacuous-pass path (`--root`
    at an empty/absent dir) exits 2; a planted failing test file makes it exit 1.
-6. **Clean-checkout dogfood**: the worktree is a fresh `origin/main` checkout; the CI test
+6. **Clean-checkout dogfood**: the worktree is a fresh PR-branch checkout based on `origin/main`
+   (so it carries the new runner) but with no author-box state; the CI test
    jobs have NO install step, so these files run via bare `node` with zero node_modules —
    the worktree run mirrors CI exactly. Then **push the branch and confirm all 5 test jobs
    (+ smoke/markdown/json) go green on real CI** — the gold-standard H.7.15 signal.
@@ -173,7 +174,7 @@ Load-bearing: `ci.yml` (CI-time-only; H.7.15 clean-checkout dogfood mandatory) a
   these strings (the anchored greps are in the smoke + contracts jobs, not the per-file
   jobs), so this is log-cosmetic, not behavior.
 
-## VERIFY + VALIDATE result
+## Pre-Approval Verification (VERIFY + VALIDATE)
 
 Two read-only lenses reviewed the built diff (CI plumbing — no kernel/security/auth path,
 so 1 architect + 1 code-reviewer, not the 3-lens tier).
@@ -200,8 +201,9 @@ so 1 architect + 1 code-reviewer, not the 3-lens tier).
 
 ## VALIDATE dogfood evidence (H.7.15)
 
-Run in the fresh `origin/main` worktree (no `node_modules` — identical to a clean CI runner;
-CI test jobs have no install step):
+Run in the fresh PR-branch worktree (based on `origin/main`, so it carries the new runner;
+no `node_modules` and no author-box state — identical to a clean CI runner; the CI test jobs
+have no install step):
 
 - **File-set equivalence** (real run-suite find+loop, `node` stubbed to no-op, processed set
   diffed vs each original inlined `find`): kernel 125 / runtime 30 / lab 159 / aux 49 /
