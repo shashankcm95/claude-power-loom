@@ -148,8 +148,15 @@ function verifyNodeBody(parsed) {
   if (parsed.provenance !== WORLD_ANCHORED) return 'provenance';
   const bad = validateBlock(parsed);
   if (bad) return bad;
-  const unexpected = Object.keys(parsed).filter((k) => !STORED_KEYS.includes(k));
+  const ownKeys = Object.keys(parsed);                                       // OWN enumerable keys only
+  const unexpected = ownKeys.filter((k) => !STORED_KEYS.includes(k));
   if (unexpected.length > 0) return 'unexpected-field';
+  // Every stored field must be an OWN property. deriveLiveNodeId + validateBlock read `b[f]` via the
+  // prototype chain, and computeContentHash / Object.keys seal only OWN keys - so a crafted object that
+  // INHERITS the basis fields and OWNS only {node_id, content_hash} would derive a matching id, seal just
+  // its 2 own keys, and pass. Requiring the OWN key-set to be the full 7 (length, given the subset check
+  // above => exactly STORED_KEYS) closes that prototype-inheritance bypass (#273 exact-set, own-vs-inherited).
+  if (ownKeys.length !== STORED_KEYS.length) return 'unexpected-field';
   if (deriveLiveNodeId(parsed) !== parsed.node_id) return 'node-id';        // basis must derive the FIELD id (self-consistent)
   if (parsed.content_hash !== computeContentHash(parsed)) return 'content-hash'; // full-body seal (launder close)
   return null;

@@ -423,6 +423,16 @@ test('verifyNodeBody: an injected 8th key -> unexpected-field (exact-set BEFORE 
   assert.strictEqual(store.verifyNodeBody({ ...validBody(), weight: 1 }), 'unexpected-field');
 });
 
+test('verifyNodeBody: a node INHERITING its basis fields (own keys < 7) -> unexpected-field (own-property gate)', () => {
+  // deriveLiveNodeId/validateBlock read via the prototype chain; computeContentHash/Object.keys seal only OWN
+  // keys. A crafted object that inherits the basis + owns only {node_id, content_hash} must NOT read as valid.
+  const proto = { anchor_id: 'a'.repeat(64), provenance: store.WORLD_ANCHORED, merge_sha: 'd91785ea', lesson_signature: 'lesson:a|b|c', lesson_body: 'inherited body' };
+  const crafted = Object.create(proto);
+  crafted.node_id = 'a'.repeat(64);
+  crafted.content_hash = 'b'.repeat(64);
+  assert.strictEqual(store.verifyNodeBody(crafted), 'unexpected-field', 'own-key-set must equal exactly the 7 stored keys');
+});
+
 test('verifyNodeBody: a basis edit that no longer derives node_id -> node-id (self-inconsistent)', () => {
   const b = validBody();
   assert.strictEqual(store.verifyNodeBody({ ...b, lesson_body: 'edited, node_id now stale' }), 'node-id');

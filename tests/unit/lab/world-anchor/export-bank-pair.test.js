@@ -136,6 +136,28 @@ test('fail-closed: a null / non-object node is rejected', () => {
   assert.strictEqual(buildBankPair({ ...OK_INPUT, node: null }).reason, 'node-not-an-object');
 });
 
+test('fail-closed: a hostile THROWING getter node returns {ok:false}, never throws (CodeRabbit F1)', () => {
+  const hostile = {};
+  Object.defineProperty(hostile, 'anchor_id', { enumerable: true, get() { throw new Error('boom'); } });
+  let res;
+  assert.doesNotThrow(() => { res = buildBankPair({ ...OK_INPUT, node: hostile }); }, 'the snapshot spread must not escape');
+  assert.strictEqual(res.ok, false);
+  assert.strictEqual(res.reason, 'node-not-an-object');
+});
+
+test('fail-closed: a node that INHERITS its basis fields (owns only node_id/content_hash) is rejected (CodeRabbit F2)', () => {
+  // buildBankPair snapshots {...node}, which copies only OWN keys -> the inherited basis (incl. provenance)
+  // is stripped, so provenance-missing fails first. Either way FAIL-CLOSED. (The own-key gate itself is tested
+  // directly against verifyNodeBody in live-recall-store.test.js, where no snapshot intervenes.)
+  const proto = { anchor_id: 'a'.repeat(64), provenance: 'world_anchored', merge_sha: 'd91785ea', lesson_signature: 'lesson:a|b|c', lesson_body: 'inherited body' };
+  const crafted = Object.create(proto);
+  crafted.node_id = 'a'.repeat(64);
+  crafted.content_hash = 'b'.repeat(64);
+  const res = buildBankPair({ ...OK_INPUT, node: crafted });
+  assert.strictEqual(res.ok, false);
+  assert.strictEqual(res.reason, 'node-provenance', 'the snapshot strips inheritance -> provenance vanishes -> fail-closed');
+});
+
 // ---- operator labels (bounded, non-empty, control-char-free) ----
 
 for (const [field, key] of [['personaId', 'bad-persona-id'], ['humanRoot', 'bad-human-root']]) {

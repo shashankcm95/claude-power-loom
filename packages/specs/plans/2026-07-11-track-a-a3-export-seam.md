@@ -1,7 +1,10 @@
 # Track A A3-on-v1 — toolkit→Embers export seam (`bank`-ready node + meta pair)
 
-**Status:** planned 2026-07-11. Closes **A3** of the external-readiness checklist
-(`2026-07-10-external-readiness-checklist.md`) on **v1** per the single-user ratification (#569).
+**Status:** A3 BUILT + at merge gate ([#570](https://github.com/shashankcm95/claude-power-loom/pull/570)),
+2026-07-11 — this LIVING plan records the completed VERIFY + VALIDATE boards below (accreted per the
+living-plan convention). Closes **A3** of the external-readiness checklist
+(`2026-07-10-external-readiness-checklist.md`) on **v1** per the single-user ratification (#569). The broader
+external-readiness PHASE remains OPEN on **C1/C2** (the e2e tier) before the `/phase-close`.
 
 ## Context
 

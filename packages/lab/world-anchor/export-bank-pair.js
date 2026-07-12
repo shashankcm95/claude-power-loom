@@ -98,7 +98,14 @@ function buildBankPair(input) {
   // unverified call path" - a hand-crafted node with getters could otherwise return honest values through
   // verifyNodeBody and a tampered value on the later reconstructNode read. The single spread evaluates any
   // getter ONCE, so verify + reconstruct read identical bytes (node values are all strings; shallow is enough).
-  const node = (rawNode && typeof rawNode === 'object' && !Array.isArray(rawNode)) ? { ...rawNode } : rawNode;
+  // The spread itself can THROW on a hostile throwing getter / Proxy trap - catch it and fail CLOSED, since
+  // buildBankPair's public contract returns {ok:false}, never throws.
+  let node;
+  try {
+    node = (rawNode && typeof rawNode === 'object' && !Array.isArray(rawNode)) ? { ...rawNode } : rawNode;
+  } catch {
+    return { ok: false, reason: 'node-not-an-object' };
+  }
 
   // 1. Node integrity (verify-on-emit): reuse the store's EXACT self-consistency chain. A tampered body, an
   //    injected extra key (exact-set beats a resealed launder), or a broken seal fails here.
