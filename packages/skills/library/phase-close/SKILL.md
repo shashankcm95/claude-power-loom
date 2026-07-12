@@ -37,6 +37,17 @@ the contracts that span PRs, the deferred items, the deployment state.
 
 ### 2. Spawn THREE lenses IN PARALLEL (single message, three Agent calls)
 
+**Working-tree precondition (do this FIRST, before spawning):** ensure the working tree is checked out at
+the INTEGRATED ref being closed — the merged `main` (or a worktree cut from it), NOT a stale composing
+feature branch. The two read-only lenses (`honesty-auditor` + `architect`, whose `tools:` are Read/Grep/Glob
+with NO Bash) audit the working tree AS-IS and **cannot switch refs**: a tree still on a composing branch
+makes them audit a partial, wrong-ref phase and return NEEDS-WORK-on-the-wrong-ref, wasting a full lens
+round-trip. Note the asymmetry — only the Bash-capable `code-reviewer` can self-correct (cut its own worktree
+from `origin/main`); the other two structurally cannot, so the orchestrator MUST fast-forward / check out the
+integrated ref itself before the spawn. (external-readiness close, PR #574: the tree was still on
+`feat/track-a-wave1-recall-boundary` — only 2 of the 8 composing PRs — so both read-only lenses flagged the ref
+mismatch and had to be re-run after the tree was fast-forwarded to integrated `main`.)
+
 All three are **read-only** personas (per the read-only-verify-persona rule) and read the ACTUAL repo /
 specs (full context — this is why they don't hallucinate, unlike an external review). The framing for all
 three: **"what is true ACROSS these PRs that no single PR's review could have verified?"** — NOT a
