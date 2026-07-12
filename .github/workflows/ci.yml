@@ -167,27 +167,10 @@ jobs:
       - name: Run kernel property tests
         working-directory: ${{ github.workspace }}
         shell: bash
-        run: |
-          set +e  # explicit; the loop manages exit code via $failed accumulator
-          failed=0
-          count=0
-          while IFS= read -r -d '' f; do
-            count=$((count+1))
-            echo "::group::$f"
-            node "$f"
-            rc=$?
-            echo "::endgroup::"
-            [ $rc -ne 0 ] && failed=1
-          done < <(find "$GITHUB_WORKSPACE/tests/unit/kernel" -name '*.test.js' -type f -print0)
-          echo "Ran $count test files; failures: $failed"
-          # Vacuous-pass guard: if find matched zero files (cwd mismatch, path
-          # rename, or globbing failure), fail the job. Without this, a CI
-          # config error would silently mark the gate green per nova FAIL.
-          if [ "$count" -eq 0 ]; then
-            echo "::error::Zero test files matched at $GITHUB_WORKSPACE/tests/unit/kernel — vacuous-pass guard failing the job."
-            exit 2
-          fi
-          exit $failed
+        # The per-file `node "$f"` loop + count==0 vacuous-pass guard (never
+        # `node --test` — it false-greens on imperative-assert files) lives in
+        # the shared tests/run-suite.sh, the single owned abstraction.
+        run: bash tests/run-suite.sh --root "$GITHUB_WORKSPACE/tests/unit/kernel" --label tests/unit/kernel
 
   runtime-contracts-tests:
     # v3.1 PR-1 (runtime persona contracts + capability-trait registry). Closes
@@ -227,26 +210,8 @@ jobs:
       - name: Run runtime unit tests (contracts + test-runners + …)
         working-directory: ${{ github.workspace }}
         shell: bash
-        run: |
-          set +e  # explicit; the loop manages exit code via $failed accumulator
-          failed=0
-          count=0
-          while IFS= read -r -d '' f; do
-            count=$((count+1))
-            echo "::group::$f"
-            node "$f"
-            rc=$?
-            echo "::endgroup::"
-            [ $rc -ne 0 ] && failed=1
-          done < <(find "$GITHUB_WORKSPACE/tests/unit/runtime" -name '*.test.js' -type f -print0)
-          echo "Ran $count test files; failures: $failed"
-          # Vacuous-pass guard: if find matched zero files (cwd mismatch, path
-          # rename, or globbing failure), fail the job rather than pass vacuously.
-          if [ "$count" -eq 0 ]; then
-            echo "::error::Zero test files matched at $GITHUB_WORKSPACE/tests/unit/runtime — vacuous-pass guard failing the job."
-            exit 2
-          fi
-          exit $failed
+        # Loop + vacuous-pass guard live in the shared tests/run-suite.sh.
+        run: bash tests/run-suite.sh --root "$GITHUB_WORKSPACE/tests/unit/runtime" --label tests/unit/runtime
 
   lab-tests:
     # v3.3 Wave 0/1 (Evolution Lab foundation — E1 negative-attestation). Gates the lab unit tests
@@ -268,26 +233,8 @@ jobs:
       - name: Run lab unit tests (negative-attestation + …)
         working-directory: ${{ github.workspace }}
         shell: bash
-        run: |
-          set +e  # explicit; the loop manages exit code via $failed accumulator
-          failed=0
-          count=0
-          while IFS= read -r -d '' f; do
-            count=$((count+1))
-            echo "::group::$f"
-            node "$f"
-            rc=$?
-            echo "::endgroup::"
-            [ $rc -ne 0 ] && failed=1
-          done < <(find "$GITHUB_WORKSPACE/tests/unit/lab" -name '*.test.js' -type f -print0)
-          echo "Ran $count test files; failures: $failed"
-          # Vacuous-pass guard: if find matched zero files (cwd mismatch, path rename, or globbing
-          # failure), fail the job rather than pass vacuously.
-          if [ "$count" -eq 0 ]; then
-            echo "::error::Zero test files matched at $GITHUB_WORKSPACE/tests/unit/lab — vacuous-pass guard failing the job."
-            exit 2
-          fi
-          exit $failed
+        # Loop + vacuous-pass guard live in the shared tests/run-suite.sh.
+        run: bash tests/run-suite.sh --root "$GITHUB_WORKSPACE/tests/unit/lab" --label tests/unit/lab
 
   aux-unit-tests:
     # v3.4 post-release (CI-coverage gap closed). The kernel/runtime/lab jobs above each gate ONLY
@@ -311,29 +258,16 @@ jobs:
       - name: Run auxiliary unit tests (scripts/hooks/agents/agent-team/kb + future dirs)
         working-directory: ${{ github.workspace }}
         shell: bash
-        run: |
-          set +e  # explicit; the loop manages exit code via $failed accumulator
-          failed=0
-          count=0
-          while IFS= read -r -d '' f; do
-            count=$((count+1))
-            echo "::group::$f"
-            node "$f"
-            rc=$?
-            echo "::endgroup::"
-            [ $rc -ne 0 ] && failed=1
-          done < <(find "$GITHUB_WORKSPACE/tests/unit" -name '*.test.js' -type f \
-            -not -path '*/tests/unit/kernel/*' \
-            -not -path '*/tests/unit/runtime/*' \
-            -not -path '*/tests/unit/lab/*' -print0)
-          echo "Ran $count test files; failures: $failed"
-          # Vacuous-pass guard: if find matched zero files (cwd mismatch, all roots renamed, or globbing
-          # failure), fail rather than pass vacuously — same defense as the kernel/runtime/lab jobs.
-          if [ "$count" -eq 0 ]; then
-            echo "::error::Zero auxiliary test files matched outside kernel/runtime/lab — vacuous-pass guard failing the job."
-            exit 2
-          fi
-          exit $failed
+        # Loop + vacuous-pass guard live in the shared tests/run-suite.sh; the
+        # kernel/runtime/lab roots (which have their own jobs above) are excluded
+        # to avoid double-running. Add a new dedicated job's root here likewise.
+        run: >-
+          bash tests/run-suite.sh
+          --root "$GITHUB_WORKSPACE/tests/unit"
+          --exclude '*/tests/unit/kernel/*'
+          --exclude '*/tests/unit/runtime/*'
+          --exclude '*/tests/unit/lab/*'
+          --label "tests/unit (outside kernel/runtime/lab)"
 
   integration-tests:
     # Track C1 (external-readiness): the real-component INTEGRATION tier. Gates tests/integration/*.integration.js
@@ -357,27 +291,14 @@ jobs:
       - name: Run integration tests (tests/integration/*.integration.js)
         working-directory: ${{ github.workspace }}
         shell: bash
-        run: |
-          set +e  # explicit; the loop manages exit code via $failed accumulator
-          failed=0
-          count=0
-          while IFS= read -r -d '' f; do
-            count=$((count+1))
-            echo "::group::$f"
-            node "$f"
-            rc=$?
-            echo "::endgroup::"
-            [ $rc -ne 0 ] && failed=1
-          done < <(find "$GITHUB_WORKSPACE/tests/integration" -name '*.integration.js' -type f -print0)
-          echo "Ran $count integration files; failures: $failed"
-          # Vacuous-pass guard: if find matched zero *.integration.js files (cwd mismatch, path rename, or the
-          # last member deleted without removing this job), fail rather than pass vacuously — same defense as
-          # the kernel/runtime/lab/aux jobs.
-          if [ "$count" -eq 0 ]; then
-            echo "::error::Zero integration files matched at $GITHUB_WORKSPACE/tests/integration — vacuous-pass guard failing the job."
-            exit 2
-          fi
-          exit $failed
+        # Loop + vacuous-pass guard live in the shared tests/run-suite.sh; only the
+        # glob differs (*.integration.js). The `.integration.sh` members that need
+        # external tools stay MANUAL and are not matched by this glob.
+        run: >-
+          bash tests/run-suite.sh
+          --root "$GITHUB_WORKSPACE/tests/integration"
+          --glob '*.integration.js'
+          --label tests/integration
 
   dormancy-assertion-k3b:
     # Phase 1-alpha K3.b context-envelope ships DORMANT — the validator module +
