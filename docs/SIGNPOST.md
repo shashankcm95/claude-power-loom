@@ -325,7 +325,6 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/lab/issue-corpus/_spike/live-draft-dogfood.js` - _spike/live-draft-dogfood.js — ③.2.2c EC.c7 (Rule 2a-corollary: a green mock suite is a HYPOTHESIS;
 - `packages/lab/issue-corpus/live-puller.js` - ③.2.2a — the READ-ONLY good-first-issue live puller.
 - `packages/lab/issue-corpus/pytest-runner.js` - v3.9.x (real-E2E spike) — the pytest test-runner adapter.
-- `packages/lab/issue-corpus/_spike/real-e2e-actor-dogfood.js` - v3.9.x real-E2E spike — STEP B: the REAL attempt.
 - `packages/lab/issue-corpus/_spike/real-e2e-dogfood.js` - v3.9.x real-E2E spike — STEP A: prove the DETERMINISTIC grading path on a REAL
 - `packages/lab/issue-corpus/sandbox-exec-backend.js` - v3.9 W1 — the impure macOS sandbox-exec containment backend (ContainerAdapter).
 - `packages/lab/issue-corpus/_spike/corpus-build/stage-from-pr.js` - v3.11 bootcamp Phase 1 — the per-issue STAGER.

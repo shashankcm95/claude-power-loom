@@ -10,7 +10,7 @@ external-readiness checkpoint.
 |---|---|---|---|
 | `*.integration.js` | **Yes** — the `integration-tests` CI job | **Self-contained + CI-safe**: only Node built-ins + repo source. No network, no LLM, no `npx`/downloads. Imperative-assert (`assert.*` throws → non-zero exit); no swallowing `try/catch`. | `world-anchor-export-seam.integration.js` |
 | `*.integration.sh` | No — **manual** | May need external tools (e.g. `npx eslint@9`). Run on demand / pre-push. | `lint-gate-prepush.integration.sh` |
-| `*.e2e.js` / `tests/e2e/` | No — **gated** (RESERVED for C2) | Real external boundaries (`claude -p`, network, sandbox). Opt-in only; must NOT run on every push. Deliberately OUTSIDE the `integration-tests` find so it is never swept. | _(C2: promoted from `_spike/real-e2e-actor-dogfood.js`)_ |
+| `*.e2e.js` / `tests/e2e/` | No — **gated** (LIVE, C2) | Real external boundaries (`claude -p`, network, sandbox). Opt-in only (`RUN_E2E=1`); must NOT run on every push. Deliberately OUTSIDE the `integration-tests` find so it is never swept. | `tests/e2e/real-e2e-actor-dogfood.e2e.js` (see `tests/e2e/README.md`) |
 
 **Why `*.e2e.js` is reserved separately:** the `integration-tests` job runs
 `find tests/integration -name '*.integration.js'` on **every push**. A gated real-actor e2e that named itself

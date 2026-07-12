@@ -133,7 +133,7 @@ There is no `_lib/` subfolder here; the shared helper (`_clone-lifecycle.js`) si
 
 - **Purpose** — v3.9.x pytest test-runner adapter: builds the `python3 -c <WRAPPER>` command that runs `pytest.main` in-process with a result-collector plugin, hardened for the network-denied write-scoped sandbox (no bytecode, cleared addopts, no cache, TMPDIR redirected under `.loom-out`).
 - **Imports / consumes** — `execFileSync` from `child_process`; `LOOM_TEST_RESULT_PREFIX` from `./container-adapter`.
-- **Consumers** — `docker-backend.js` (`buildPytestCommand`); `_spike/corpus-build/verify-record.js`, `_spike/real-e2e-actor-dogfood.js`, `_spike/real-e2e-dogfood.js`, `attribution/_spike/recall-retrieval-test.js`, `persona-experiment/_spike/real-solve-spike.js` (`makePytestResolver`); `tests/unit/lab/issue-corpus/pytest-runner.test.js`.
+- **Consumers** — `docker-backend.js` (`buildPytestCommand`); `_spike/corpus-build/verify-record.js`, `tests/e2e/real-e2e-actor-dogfood.e2e.js` (promoted from `_spike/` in C2), `_spike/real-e2e-dogfood.js`, `attribution/_spike/recall-retrieval-test.js`, `persona-experiment/_spike/real-solve-spike.js` (`makePytestResolver`); `tests/unit/lab/issue-corpus/pytest-runner.test.js`.
 
 | name | kind | purpose | consumes | writes | state changes / side effects |
 | --- | --- | --- | --- | --- | --- |

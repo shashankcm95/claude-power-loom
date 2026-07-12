@@ -243,7 +243,7 @@ Nesting: there is one `_spike/` subfolder (`causal-edge/_spike/`) holding out-of
 
 - **Purpose** — The v3.9 W3 IMPURE real-capture runner. Invokes a top-level `claude -p --output-format stream-json --verbose` actor over the BLIND public problem, observes the tool log, and runs the LLM friction labeler. Lives outside `tests/unit/**` so CI never globs it.
 - **Imports / consumes** — `fs`, `os`, `path`, `child_process` (`spawnSync`); `./trajectory-friction` (the pure core fns); `../issue-corpus/corpus` (`splitRecord`).
-- **Consumers** — `persona-experiment/real-solve.js` (`runActorTrajectory`); `persona-experiment/_spike/real-solve-spike.js` (`resolveClaude`); `issue-corpus/_spike/real-e2e-actor-dogfood.js`; `attribution/_spike/recall-retrieval-test.js`; `causal-edge/calibration-issue-run.js`; `causal-edge/_spike/trajectory-friction-dogfood.js`; `tests/unit/lab/causal-edge/build-actor-prompt.test.js` (`buildActorPrompt` only).
+- **Consumers** — `persona-experiment/real-solve.js` (`runActorTrajectory`); `persona-experiment/_spike/real-solve-spike.js` (`resolveClaude`); `tests/e2e/real-e2e-actor-dogfood.e2e.js` (promoted from `_spike/` in C2); `attribution/_spike/recall-retrieval-test.js`; `causal-edge/calibration-issue-run.js`; `causal-edge/_spike/trajectory-friction-dogfood.js`; `tests/unit/lab/causal-edge/build-actor-prompt.test.js` (`buildActorPrompt` only).
 - **Functions**
 
 | name | kind | purpose | consumes | writes | state changes / side effects |
