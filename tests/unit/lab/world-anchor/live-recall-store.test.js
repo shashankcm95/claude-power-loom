@@ -392,4 +392,61 @@ test('readLiveNode / listLiveNodes: an ABSENT read root -> empty SILENTLY, no mk
   assert.strictEqual(fs.existsSync(missing), false, 'a READ must NEVER create the store dir');
 });
 
+// ---- verifyNodeBody: the pure self-consistency verifier (extracted from readNodeRaw; shared with the
+//      export seam). BODY-only - no fd, no dir, no external filename - so it can re-verify an in-memory
+//      node at the emit boundary. readNodeRaw keeps its OWN filename-tie check (tested at line ~129).
+function validBody() {
+  const dir = tmp();
+  const m = store.mintWorldAnchoredNode(block(), { dir });
+  return store.readLiveNode(m.node_id, { dir });  // a full, self-consistent 7-key body
+}
+
+test('verifyNodeBody: a self-consistent node body -> null', () => {
+  assert.strictEqual(store.verifyNodeBody(validBody()), null, 'a valid body passes');
+});
+
+test('verifyNodeBody: a non-object -> not-an-object', () => {
+  assert.strictEqual(store.verifyNodeBody(null), 'not-an-object');
+  assert.strictEqual(store.verifyNodeBody([1, 2]), 'not-an-object');
+});
+
+test('verifyNodeBody: a non-world_anchored provenance -> provenance', () => {
+  assert.strictEqual(store.verifyNodeBody({ ...validBody(), provenance: 'live' }), 'provenance');
+});
+
+test('verifyNodeBody: a malformed field (bad merge_sha) -> the validateBlock reason', () => {
+  assert.strictEqual(store.verifyNodeBody({ ...validBody(), merge_sha: 42 }), 'bad-merge-sha');
+});
+
+test('verifyNodeBody: an injected 8th key -> unexpected-field (exact-set BEFORE the seals)', () => {
+  // even if content_hash were recomputed over the 8-key body, the exact-set reject fires first
+  assert.strictEqual(store.verifyNodeBody({ ...validBody(), weight: 1 }), 'unexpected-field');
+});
+
+test('verifyNodeBody: a node INHERITING its basis fields (own keys < 7) -> unexpected-field (own-property gate)', () => {
+  // deriveLiveNodeId/validateBlock read via the prototype chain; computeContentHash/Object.keys seal only OWN
+  // keys. A crafted object that inherits the basis + owns only {node_id, content_hash} must NOT read as valid.
+  const proto = { anchor_id: 'a'.repeat(64), provenance: store.WORLD_ANCHORED, merge_sha: 'd91785ea', lesson_signature: 'lesson:a|b|c', lesson_body: 'inherited body' };
+  const crafted = Object.create(proto);
+  crafted.node_id = 'a'.repeat(64);
+  crafted.content_hash = 'b'.repeat(64);
+  assert.strictEqual(store.verifyNodeBody(crafted), 'unexpected-field', 'own-key-set must equal exactly the 7 stored keys');
+});
+
+test('verifyNodeBody: a basis edit that no longer derives node_id -> node-id (self-inconsistent)', () => {
+  const b = validBody();
+  assert.strictEqual(store.verifyNodeBody({ ...b, lesson_body: 'edited, node_id now stale' }), 'node-id');
+});
+
+test('verifyNodeBody: a basis edit with a RECOMPUTED node_id but stale content_hash -> content-hash', () => {
+  const b = { ...validBody(), lesson_body: 'edited' };
+  b.node_id = store.deriveLiveNodeId(b);  // fix the identity seal; content_hash left stale
+  assert.strictEqual(store.verifyNodeBody(b), 'content-hash');
+});
+
+test('verifyNodeBody: BODY-only - it accepts a self-consistent body REGARDLESS of any external filename', () => {
+  // readNodeRaw adds the filename tie; verifyNodeBody itself must not care what id was requested
+  assert.strictEqual(store.verifyNodeBody(validBody()), null, 'no filename dependency in the pure verifier');
+});
+
 console.log(`live-recall-store.test.js: ${passed} passed`);

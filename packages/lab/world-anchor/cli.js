@@ -45,10 +45,12 @@
 
 const crypto = require('crypto');
 const fs = require('fs');
+const path = require('path');
 const store = require('./world-anchor-store');
 const liveStore = require('./live-recall-store');
 const { buildWorldAnchorLesson, LESSON_2137 } = require('./lesson');
 const { parsePrUrl } = require('./parse-pr-url');
+const { buildBankPair } = require('./export-bank-pair'); // A3-on-v1: assemble the Embers `bank`-ready (node, meta) pair
 const { runMergeObserve } = require('./merge-observer');
 const { runReviewObserve } = require('./review-observer');   // Gap-8 A-1: SHADOW review ingestion (records; gates nothing)
 const personaStore = require('./persona-attribution-store'); // Gap-8 A0: the PR->persona map producer surface (SHADOW)
@@ -328,7 +330,99 @@ function parseArgs(argv) {
 // gh html_url; the mint's resolveAnchorForPr joins on the EXACT pr_url, so a trailing-slash / case variant
 // never joins). diff_hash is RE-DERIVED from --diff bytes; there is NO --diff-hash arg. --candidate-patch-sha
 // is REQUIRED (a multi-solve issue must never silently pick the wrong captured lesson).
-const USAGE = 'Usage: cli.js <observe-merge --pr <url> [--merge-sha <sha>] (gh-verified; the SOLE mint path; isolate via LOOM_LAB_STATE_DIR) | record-merge --pr <url> --outcome merged|closed|stale [--merge-sha <sha>] [--dir <store>] (confirmation-only; mints nothing) | list-live [--live-dir <dir>] | backfill-2137 [--diff <path>] [--dir <store>] [--allow-placeholder] | attest-from-capture --pr-url <url> --issue-ref <n> --candidate-patch-sha <hex64> --diff <path> --approval-hash <hex64> --base-sha <hex40|hex64> --branch <b> --built-by <who> --emitted-at <iso> (--pr-url MUST be byte-identical to the emitted PR URL; diff_hash re-derived from --diff; SHADOW/production-inert) | observe-reviews --pr <url> (Gap-8 A-1; SHADOW: records INSIDER review verdicts on the PR, gates nothing; isolate via LOOM_LAB_STATE_DIR) | record-persona --repo <slug> --pr <n> --persona <bare-agentType> [--dir <store>] (Gap-8 A0; SHADOW: attach a builder persona to a PR for per-persona halting)>\n';
+// A3-on-v1 (external-readiness Track A): the honest provenance disclaimer that rides EVERY export result.
+// meta.minter is a self-asserted operator label; Embers banks the pair at receiver-weight 0. The export
+// proves INTEGRITY + well-formedness, NOT provenance (#273). It HARDENS nothing (OQ-NS-6).
+const PROVENANCE_NOTE = 'meta.minter is a SELF-ASSERTED operator label; Embers banks this pair at receiver-weight 0 (integrity != provenance, #273). This export HARDENS nothing (OQ-NS-6); do NOT treat meta.minter as authenticated.';
+
+/**
+ * Write the (node, meta) pair as node.json + meta.json under outDir. EXCLUSIVE-create (pre-check + `wx`) so
+ * a re-run never silently clobbers a prior pair; node.json is pretty-printed but Embers re-parses it, so
+ * whitespace is irrelevant to the seals (byte-parity is over the re-derived canonical form, not the file).
+ * @returns {{ok:true, nodePath:string, metaPath:string}|{ok:false, reason:string, detail?:string}}
+ */
+function writePair(outDir, node, meta) {
+  const nodePath = path.join(outDir, 'node.json');
+  const metaPath = path.join(outDir, 'meta.json');
+  // mkdir failure (e.g. --out-dir is an existing plain FILE) gets its OWN reason - distinct from a pair-file
+  // clobber, so the operator message is accurate.
+  try { fs.mkdirSync(outDir, { recursive: true }); }
+  catch (err) { return { ok: false, reason: 'out-dir-unusable', detail: (err && err.message) || 'cannot create out-dir' }; }
+  if (fs.existsSync(nodePath) || fs.existsSync(metaPath)) {
+    return { ok: false, reason: 'out-dir-occupied', detail: 'node.json / meta.json already exist (refusing to clobber)' };
+  }
+  try { fs.writeFileSync(nodePath, `${JSON.stringify(node, null, 2)}\n`, { flag: 'wx' }); }
+  catch (err) {
+    if (err && err.code === 'EEXIST') return { ok: false, reason: 'out-dir-occupied', detail: 'node.json already exists (refusing to clobber)' };
+    return { ok: false, reason: 'write-failed', detail: (err && err.message) || 'error' };
+  }
+  try { fs.writeFileSync(metaPath, `${JSON.stringify(meta, null, 2)}\n`, { flag: 'wx' }); }
+  catch (err) {
+    // ROLLBACK: unlink the node.json we just wrote so a partial pair never bricks the out-dir (a re-run would
+    // otherwise hit out-dir-occupied on the orphan even though no clobber ever happened). Best-effort.
+    try { fs.unlinkSync(nodePath); } catch { /* best-effort rollback */ }
+    if (err && err.code === 'EEXIST') return { ok: false, reason: 'out-dir-occupied', detail: 'meta.json already exists (refusing to clobber)' };
+    return { ok: false, reason: 'write-failed', detail: (err && err.message) || 'error' };
+  }
+  return { ok: true, nodePath, metaPath };
+}
+
+/**
+ * A3-on-v1 - the toolkit->Embers export seam. Read a VERIFIED world_anchored node by --node-id, join its
+ * attestation (on node.anchor_id) for the PR facts, assemble a `bank`-ready (node, meta) pair, and write it
+ * (--out-dir) or emit it to stdout. persona_id + human_root are OPERATOR-supplied (self-asserted labels; no
+ * store holds a human_root; persona_id is deliberately NOT read from the persona-attribution map - that map's
+ * exactly-one-reader dam stays intact and its first-write-wins pre-seed surface never egresses here). SHADOW:
+ * banks nothing, no network; the actual `embers bank ... --key <pem>` is operator-side.
+ *
+ * Store isolation is via LOOM_LAB_STATE_DIR ONLY (both the live-recall + world-anchor store defaults derive
+ * from it) - NO per-store --dir flag, so the two reads isolate ATOMICALLY (no partial-isolation footgun).
+ * @param {{['node-id']:string, ['persona-id']:string, ['human-root']:string, ['out-dir']?:string}} args
+ * @returns {{ok:boolean, ...}}
+ */
+function runExportBankPair(args) {
+  const a = args && typeof args === 'object' && !Array.isArray(args) ? args : {};
+  // A bare `--node-id` (etc.) parses to `true`; fail-closed on the operator mistake rather than coercing it.
+  for (const flag of ['node-id', 'persona-id', 'human-root']) {
+    if (typeof a[flag] !== 'string' || a[flag].length === 0) {
+      return { ok: false, reason: 'bad-args', detail: `--${flag} requires a value` };
+    }
+  }
+  // --out-dir is optional (absent -> stdout), but a PRESENT --out-dir must be a non-empty string: a bare
+  // `--out-dir` parses to `true`, and an explicit `--out-dir ''` is falsy - both must fail-closed here rather
+  // than silently fall through to the stdout branch (which `if (a['out-dir'])` would otherwise do).
+  if (a['out-dir'] !== undefined && (typeof a['out-dir'] !== 'string' || a['out-dir'].length === 0)) {
+    return { ok: false, reason: 'bad-args', detail: '--out-dir requires a non-empty value' };
+  }
+  // 1. read the verified node (verify-on-read: tampered/foreign/absent -> null). Isolated via LOOM_LAB_STATE_DIR.
+  const node = liveStore.readLiveNode(a['node-id']);
+  if (!node) return { ok: false, reason: 'node-unreadable', detail: 'no verified world_anchored node for that node_id' };
+  // 2. join the attestation on the node's anchor_id (the sole mint path binds node.anchor_id === att.anchor_id).
+  const att = store.readAnchor(node.anchor_id);
+  if (!att) return { ok: false, reason: 'attestation-unreadable', detail: 'no verified attestation for the node anchor_id' };
+  // 3. node<->attestation binding cross-check (integrity, not provenance: a coordinated co-forge sets both
+  //    equal, but an honest join-to-the-wrong-attestation / uncoordinated divergence fails closed here).
+  if (node.lesson_signature !== att.lesson_signature) {
+    emitEgressAlert('export-bank-pair-refused', { reason: 'lesson-signature-mismatch', node_id: a['node-id'] });
+    return { ok: false, reason: 'lesson-signature-mismatch' };
+  }
+  // 4. assemble + validate the pair (the pure core re-verifies the node + validates the meta shape).
+  const built = buildBankPair({ node, prUrl: att.pr_url, repo: att.repo, prNumber: att.pr_number, personaId: a['persona-id'], humanRoot: a['human-root'] });
+  if (!built.ok) {
+    emitEgressAlert('export-bank-pair-refused', { reason: built.reason, node_id: a['node-id'] });
+    return built;
+  }
+  // 5. output: a file pair (--out-dir) or stdout. Every result carries the integrity!=provenance note.
+  if (a['out-dir']) {
+    const written = writePair(a['out-dir'], built.node, built.meta);
+    // The note rides ONLY a produced pair - a write refuse emits no pair, so it carries no disclaimer.
+    if (!written.ok) { emitEgressAlert('export-bank-pair-refused', { reason: written.reason, node_id: a['node-id'] }); return written; }
+    return { ok: true, node_id: node.node_id, out_dir: a['out-dir'], node_path: written.nodePath, meta_path: written.metaPath, note: PROVENANCE_NOTE };
+  }
+  return { ok: true, node: built.node, meta: built.meta, note: PROVENANCE_NOTE };
+}
+
+const USAGE = 'Usage: cli.js <observe-merge --pr <url> [--merge-sha <sha>] (gh-verified; the SOLE mint path; isolate via LOOM_LAB_STATE_DIR) | record-merge --pr <url> --outcome merged|closed|stale [--merge-sha <sha>] [--dir <store>] (confirmation-only; mints nothing) | list-live [--live-dir <dir>] | backfill-2137 [--diff <path>] [--dir <store>] [--allow-placeholder] | attest-from-capture --pr-url <url> --issue-ref <n> --candidate-patch-sha <hex64> --diff <path> --approval-hash <hex64> --base-sha <hex40|hex64> --branch <b> --built-by <who> --emitted-at <iso> (--pr-url MUST be byte-identical to the emitted PR URL; diff_hash re-derived from --diff; SHADOW/production-inert) | observe-reviews --pr <url> (Gap-8 A-1; SHADOW: records INSIDER review verdicts on the PR, gates nothing; isolate via LOOM_LAB_STATE_DIR) | record-persona --repo <slug> --pr <n> --persona <bare-agentType> [--dir <store>] (Gap-8 A0; SHADOW: attach a builder persona to a PR for per-persona halting) | export-bank-pair --node-id <hex64> --persona-id <label> --human-root <label> [--out-dir <dir>] (A3-on-v1: emit the Embers bank-ready node.json+meta.json for a verified node; persona_id+human_root are SELF-ASSERTED operator labels, weight-0; isolate via LOOM_LAB_STATE_DIR; SHADOW - banks nothing)>\n';
 
 function emit(obj) { process.stdout.write(`${JSON.stringify(obj, null, 2)}\n`); }
 
@@ -453,6 +547,12 @@ function main(argv) {
     emit(r);
     return r.ok ? 0 : 1;
   }
+  if (sub === 'export-bank-pair') {
+    // A3-on-v1: emit the Embers `bank`-ready (node, meta) pair for a verified node. SHADOW; banks nothing.
+    const r = runExportBankPair(args);
+    emit(r);
+    return r.ok ? 0 : 1;
+  }
   process.stderr.write(USAGE);
   return 1;
 }
@@ -469,4 +569,4 @@ if (require.main === module) {
 // The mint logic lives in world-anchor-mint.js (the SOLE mint path is observe-merge). cli.js exports the
 // gated entry points; mainObserveMerge is exported so a test can drive the gh-verified auto-mint arm with
 // an injected gh runner + store dirs (production passes no opts).
-module.exports = { parsePrUrl, runRecordMerge, mainObserveMerge, mainObserveReviews, listLive, runRecordPersona, backfill2137, runAttestFromCapture, main, SPEC_KITTY_2137, PLACEHOLDER_DIFF_HASH };
+module.exports = { parsePrUrl, runRecordMerge, mainObserveMerge, mainObserveReviews, listLive, runRecordPersona, runExportBankPair, backfill2137, runAttestFromCapture, main, SPEC_KITTY_2137, PLACEHOLDER_DIFF_HASH };
