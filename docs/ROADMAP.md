@@ -737,6 +737,31 @@ Since the 2026-06-29 sign-off, the remaining autonomous-SDE ladder rungs reached
 
 **Current gate to a first LIVE external PR (all named; none is more SHADOW wiring):** the delivery mechanism is complete and correctly fail-closed; what remains is **operator/deploy plus one USER decision**: the F-W4 operator arming (a throwaway classic `public_repo` PAT, the object-sharing probe, populating `forkRepo`, and flipping the strict-truthy arm flag; steps O1-O5), the item-5 signer **deploy** (the #273 close / Part-B R2), and the USER's #273 trust sign-off (Part-B R3). Tracked in the beta-readiness checklist ([`2026-06-23-beta-readiness-checklist.md`](../packages/specs/plans/2026-06-23-beta-readiness-checklist.md)) and the Part-B scope ([`2026-07-01-item8-part-b-live-crossing-scope.md`](../packages/specs/research/2026-07-01-item8-part-b-live-crossing-scope.md)); the hard broker-deploy and actor-uid-separation blockers have since closed, leaving **#406** (the first real external PR — the launch gate) as the anchor open item. Per OQ-NS-6, only an external maintainer-merge HARDENS trust.
 
+## Phase-close sign-off (external-readiness / ③.2-XR, 2026-07-12)
+
+`/phase-close external-readiness` — three independent full-context lenses (PM=honesty-auditor + Principal-SDE=code-reviewer-at-phase-altitude + Architect) reviewed the INTEGRATED external-readiness checkpoint (8 PRs: #565 memory-coherence + ADR-status · #566 the recall boundary · #568 the persona-context pins · #569 the single-user commons ratification · #570 the Embers export seam · #571 the integration CI tier · #572 the shared test-runner · #573 the gated real-`claude -p` dogfood) against `docs/phases/phase-external-readiness.md`'s per-layer exit criteria, at integrated `main` @ `14b0d95`. **Verdict: CLOSEABLE (all three; 0 code gates).** A ③.2 internal sub-phase, SHADOW/weight-inert, no version bump (the release surface correctly holds at v3.11). The one durable trade-off is locked in [ADR-0022](../packages/specs/adrs/0022-external-readiness-gates-arming-gated.md).
+
+| Exit criterion | Verdict |
+|---|---|
+| L1 memory — the ADR-0018 chain coherent + both suites green + separation enforced + the 4-ADR status fix | MET (#565) |
+| L2 wire — recall boundary built + fail-closed-to-empty + the dam updated; persona pins sealed on `live_pending` | MET (#566/#568) |
+| L3 lessons — the Embers export seam built + byte-parity PROVEN (a vendored golden vector + an independent CI re-derivation) | MET (#570) |
+| L3 gap8-a0b — persona INTO the `world_anchored` signed basis | DEFERRED-and-named (ratified multi-party-only, #569; the node stays the frozen 7-key basis; persona = a self-asserted weight-0 label, integrity != provenance #273) |
+| e2e — an integration CI tier + a gated real-`claude -p` dogfood harness | MET (#571/#573); the actor-solve + the real-`gh` half are NAMED operator-armed residuals, NOT a captured green run |
+
+**Closing inputs:** 3a release-surface `--check` PASS (all surfaces at v3.11; SHADOW lab arc, correctly unbumped). 3b docs brought current: the phase doc's DoD checkboxes + the Reconciliation-with-PRD filled, the self-contradictory L3 criterion rewritten, the e2e "runs green" verb softened to harness-proven + named-residuals, Status flipped off "Planned"; this ROADMAP sign-off added; the checklist byte-parity wording made precise. 3c test-tier: added `tests/integration/recall-inject-boundary.integration.js` (the A1 recall-boundary real-subprocess wire — the code-reviewer's named unit-only gap), driving the real recall CLI + the fail-closed-observable path; the non-empty armed recall + the true external e2e (a real actor-solve + a real `gh` merge) are NAMED residuals (inherent-SHADOW / external boundary, not faked).
+
+**Cross-PR + forward-contract the per-wave VALIDATE structurally could not see (the gate's catch):**
+
+1. **(process, HIGH) the read-only lenses first audited a STALE branch.** honesty-auditor + architect (Read-only, no Bash) audited the orchestrator's working tree, still on `feat/track-a-wave1-recall-boundary` (only #565+#566) — both correctly flagged the ref mismatch and returned NEEDS-WORK-on-this-ref. Fixed by fast-forwarding the tree to integrated `main` and re-running both lenses (both then CLOSEABLE). Lesson: point read-only verify lenses at the integrated ref BEFORE spawning; the Bash-capable code-reviewer self-corrected via a worktree, the read-only lenses cannot.
+2. **(honesty, MEDIUM) the phase doc lagged the merged substrate** — every DoD checkbox unchecked, the Reconciliation empty, the L3 criterion self-contradictory, Status "Planned"; a sign-off over an unchecked DoD would launder "reviewed" into "delivered." Applied at close (3b).
+3. **(code-reviewer, 3c) the A1 recall-boundary real-subprocess path was unit-only** (the unit tier mocks `execFn`). Added the integration test at close.
+4. **(architect, forward) persona travels two unbound lanes** — the pin sealed on `live_pending` vs the operator-supplied `minter` labels re-asserted at export; the authenticated minter must reconcile which is authoritative. Named for the crossing.
+
+**Carry-forward (design debt the operator crossing inherits — NOT this close):** (1) persona-into-`world_anchored`-basis is a BREAKING store-schema migration — plan it as a discriminated v2 (the `live_pending` v2 is the proven template); (2) consolidate the diffuse 4-axis arming lattice into one all-or-none `resolveArmedContext` preflight before O6 (PACT #117 `arming-manifest.js` is the template); (3) the two-sided cross-repo byte-parity needs a shared golden-vector owned on BOTH repos; (4) the persona dual-lane reconciliation; (5) the #273 authenticated minter (item-5) is the standing close. All are arming-crossing concerns; none gate this checkpoint.
+
+The gate earned its keep: it caught the stale-ref process gap, the lagging phase doc, a unit-only integration seam, and a persona dual-lane forward-contract no per-PR review could see. Durable record: the `toolkit/phase-close/external-readiness-close` library volume.
+
 ---
 
 ## ⬜ Deferred / field-survey debt (v3.5+)
