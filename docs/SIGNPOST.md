@@ -424,6 +424,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/lab/world-anchor/admit-world-anchor-node.js` - Autonomous-SDE ladder item 5, PR-B B2 - the COMMITMENT-GATED world-anchor ADMISSION TAG (SHADOW).
 - `packages/lab/world-anchor/cli.js` - Wave 1, autonomous-SDE ingress.
 - `packages/lab/world-anchor/edge-signer-resolve.js` - PR-B B1 - the edge signer-routing resolver (SHADOW).
+- `packages/lab/world-anchor/export-bank-pair.js` - Autonomous-SDE external-readiness Track A, A3-on-v1: the toolkit->Embers export seam.
 - `packages/lab/world-anchor/gh-verify.js` - Autonomous-SDE ladder gap-map item 2, PR-2 - the gh merge-outcome verifier (SHADOW, read-only GET).
 - `packages/lab/world-anchor/lesson.js` - Wave 1, autonomous-SDE ingress.
 - `packages/lab/world-anchor/live-recall-store.js` - Autonomous-SDE ladder item 3 (packages/specs/plans/2026-06-25-live-lesson-minting-item3.md).

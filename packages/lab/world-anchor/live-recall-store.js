@@ -132,6 +132,30 @@ function buildBody(block) {
 }
 
 /**
+ * The pure body-verification chain: SELF-CONSISTENCY only (no fd, no dir, no external filename). Returns
+ * a reason token or null. Does NOT alert - the caller maps the reason to its own telemetry (readNodeRaw
+ * alerts; the export seam fails-closed). Extracted from readNodeRaw so the toolkit->Embers export can
+ * re-verify a node body at the emit boundary by REUSING this #273-critical sequence, never by
+ * re-implementing (and silently drifting from) it. Ordering is load-bearing: the exact-set reject runs
+ * BEFORE the two seal re-derivations, because an injected 8th key + a recomputed content_hash passes a
+ * seals-only check (an extra field would ride inside a self-consistent seal).
+ * @param {object} parsed  a candidate node body (already JSON-parsed)
+ * @returns {string|null} a reason token ('not-an-object'|'provenance'|<validateBlock reason>|
+ *   'unexpected-field'|'node-id'|'content-hash'), or null when the body is self-consistent.
+ */
+function verifyNodeBody(parsed) {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return 'not-an-object';
+  if (parsed.provenance !== WORLD_ANCHORED) return 'provenance';
+  const bad = validateBlock(parsed);
+  if (bad) return bad;
+  const unexpected = Object.keys(parsed).filter((k) => !STORED_KEYS.includes(k));
+  if (unexpected.length > 0) return 'unexpected-field';
+  if (deriveLiveNodeId(parsed) !== parsed.node_id) return 'node-id';        // basis must derive the FIELD id (self-consistent)
+  if (parsed.content_hash !== computeContentHash(parsed)) return 'content-hash'; // full-body seal (launder close)
+  return null;
+}
+
+/**
  * Throws unless `dir` exists, is a real (non-symlink) directory owned by selfUid. VALIDATE BEFORE
  * MUTATE: mkdir is best-effort (its `mode` applies only on create + does NOT follow an existing
  * symlink's target), but `chmod` FOLLOWS a symlink, so it runs ONLY AFTER the lstat symlink/non-dir/
@@ -259,28 +283,26 @@ function readNodeRaw(node_id, dir, selfUid) {
     const text = readBoundedText(fd, MAX_RECORD_BYTES);
     if (text === null) { alert('verify-mismatch', { node_id, kind: 'oversize-race' }); return null; }
     const parsed = JSON.parse(text);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) { alert('verify-mismatch', { node_id, kind: 'not-an-object' }); return null; }
-    if (parsed.provenance !== WORLD_ANCHORED) { alert('verify-mismatch', { node_id, kind: 'provenance' }); return null; }
-    // Schema validation on READ, symmetric with the write path: node_id + content_hash seal a body's
-    // self-CONSISTENCY, not its schema-validity. A same-uid writer can plant a self-consistent record
-    // with a missing/wrong-typed merge_sha / lesson_signature / lesson_body that derives a matching
-    // node_id (deriveLiveNodeId maps null -> '') and content_hash. Reuse validateBlock so a malformed
-    // node never reads back as "verified" (the immutability-of-read-paths / verify-content discipline).
-    const bad = validateBlock(parsed);
-    if (bad) { alert('verify-mismatch', { node_id, kind: bad }); return null; }
-    // Closed-shape (exact-set, not subset): validateBlock checks the REQUIRED fields but ignores extra
-    // keys. computeContentHash seals ALL keys, so an injected source/weight/trusted field is inside the
-    // seal and self-consistent. Reject any key outside the stored 7-field shape so a future consumer can
-    // never read an injected field off a "verified" node (Rule-2a re-probe finding; #273 exact-set).
-    const unexpected = Object.keys(parsed).filter((k) => !STORED_KEYS.includes(k));
-    if (unexpected.length > 0) { alert('verify-mismatch', { node_id, kind: 'unexpected-field', unexpected }); return null; }
-    const reId = deriveLiveNodeId(parsed);
-    if (reId !== node_id || parsed.node_id !== node_id) {              // basis must derive the filename id
-      alert('verify-mismatch', { node_id, kind: 'node-id', derived: reId });
+    // The pure SELF-CONSISTENCY chain (schema + exact-set + both seals) lives in verifyNodeBody, shared
+    // with the export seam so the #273-critical sequence is defined ONCE. Schema-validate on READ,
+    // symmetric with the write path: node_id + content_hash seal a body's self-CONSISTENCY, not its
+    // schema-validity - a same-uid writer can plant a self-consistent record with a missing/wrong-typed
+    // field that still derives a matching node_id (maps null -> '') + content_hash; the exact-set reject
+    // (inside verifyNodeBody, BEFORE the seals) closes the injected-extra-key ride (#273 exact-set).
+    const bodyReason = verifyNodeBody(parsed);
+    if (bodyReason) {
+      const detail = { node_id, kind: bodyReason };
+      if (bodyReason === 'unexpected-field') detail.unexpected = Object.keys(parsed).filter((k) => !STORED_KEYS.includes(k));
+      else if (bodyReason === 'node-id') detail.derived = deriveLiveNodeId(parsed);
+      alert('verify-mismatch', detail);
       return null;
     }
-    if (parsed.content_hash !== computeContentHash(parsed)) {          // full-body seal must hold (launder close)
-      alert('verify-mismatch', { node_id, kind: 'content-hash' });
+    // The FILENAME tie (external to verifyNodeBody, which has no filename in scope): a self-consistent
+    // body planted at a DIFFERENT valid-hex filename re-derives its OWN id, not the requested one. This
+    // is the "filename forge" reject - verifyNodeBody proved the body derives parsed.node_id; this proves
+    // parsed.node_id is the id we were asked for.
+    if (parsed.node_id !== node_id) {
+      alert('verify-mismatch', { node_id, kind: 'node-id', derived: deriveLiveNodeId(parsed) });
       return null;
     }
     return parsed;
@@ -349,6 +371,9 @@ function listLiveNodes(opts = {}) {
 
 module.exports = {
   mintWorldAnchoredNode, readLiveNode, listLiveNodes, deriveLiveNodeId,
+  // verifyNodeBody: the pure self-consistency verifier, shared with the export seam (export-bank-pair.js)
+  // so a node re-verified at the emit boundary reuses the store's exact #273 chain, never re-implements it.
+  verifyNodeBody, STORED_KEYS,
   WORLD_ANCHORED, LIVE_DEFAULT_DIR,
   // Exported for the C3 bounded-read unit test (drive the helper DIRECTLY on a >cap fd, bypassing the
   // st.size pre-check that would otherwise shadow it). MAX_RECORD_BYTES is the cap the read path enforces.
