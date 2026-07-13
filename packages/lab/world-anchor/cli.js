@@ -55,6 +55,7 @@ const { runMergeObserve } = require('./merge-observer');
 const { runReviewObserve } = require('./review-observer');   // Gap-8 A-1: SHADOW review ingestion (records; gates nothing)
 const personaStore = require('./persona-attribution-store'); // Gap-8 A0: the PR->persona map producer surface (SHADOW)
 const { mintFromMergeOutcome, resolveCapturedSignatureForAttest } = require('./world-anchor-mint');
+const { verifyMerge, fetchPrMergeMeta, fetchMergeCommitDiff } = require('./gh-verify'); // Phase-1 record-manual-merge: the gh gate + the two metadata/diff fetch siblings
 const { emitEgressAlert } = require('../../kernel/egress/alert');
 const { resolveEdgeSignerLaunch, isEdgeUidSepArmed } = require('./edge-signer-resolve');
 const { resolveArmedBrokerVerifyKey } = require('../_lib/custody-arming');
@@ -422,7 +423,132 @@ function runExportBankPair(args) {
   return { ok: true, node: built.node, meta: built.meta, note: PROVENANCE_NOTE };
 }
 
-const USAGE = 'Usage: cli.js <observe-merge --pr <url> [--merge-sha <sha>] (gh-verified; the SOLE mint path; isolate via LOOM_LAB_STATE_DIR) | record-merge --pr <url> --outcome merged|closed|stale [--merge-sha <sha>] [--dir <store>] (confirmation-only; mints nothing) | list-live [--live-dir <dir>] | backfill-2137 [--diff <path>] [--dir <store>] [--allow-placeholder] | attest-from-capture --pr-url <url> --issue-ref <n> --candidate-patch-sha <hex64> --diff <path> --approval-hash <hex64> --base-sha <hex40|hex64> --branch <b> --built-by <who> --emitted-at <iso> (--pr-url MUST be byte-identical to the emitted PR URL; diff_hash re-derived from --diff; SHADOW/production-inert) | observe-reviews --pr <url> (Gap-8 A-1; SHADOW: records INSIDER review verdicts on the PR, gates nothing; isolate via LOOM_LAB_STATE_DIR) | record-persona --repo <slug> --pr <n> --persona <bare-agentType> [--dir <store>] (Gap-8 A0; SHADOW: attach a builder persona to a PR for per-persona halting) | export-bank-pair --node-id <hex64> --persona-id <label> --human-root <label> [--out-dir <dir>] (A3-on-v1: emit the Embers bank-ready node.json+meta.json for a verified node; persona_id+human_root are SELF-ASSERTED operator labels, weight-0; isolate via LOOM_LAB_STATE_DIR; SHADOW - banks nothing)>\n';
+// --------------------------------------------------------------------------
+// record-manual-merge (Phase-1: the stable-5-lesson SHADOW bundle) - the join-key-FREE, gh-verified,
+// operator-vouched, NODE-ONLY producer. A manual `gh pr create` mints no kernel join-key, so observe-merge
+// fail-closes (no-join-key); this arm lets an operator turn a gh-verified MERGED PR + an authored lesson
+// into an exportable weight-0 node WITHOUT arming. It composes EXISTING primitives (parsePrUrl -> verifyMerge
+// -> fetchPrMergeMeta -> fetchMergeCommitDiff -> buildWorldAnchorLesson -> recordAttestation ->
+// mintWorldAnchoredNode) + one new gh metadata/diff fetch. It NEVER mints a signed world-anchored-by EDGE,
+// so admitWorldAnchorNode refuses it (no-authenticated-edge) -> weight 0 BY CONSTRUCTION: it can never feed
+// LIVE_SOURCES (the boundary holds via the admission gate, NOT any marker).
+//
+// PROVENANCE (R1'/R4', integrity != provenance #273): the trust basis is the gh-re-verifiable merge
+// (merged===true) + the captured author - NEVER a stored field (the lab store is open-writable). The
+// synthetic approval_hash = sha256('operator-vouched:'+anchor_id) is publicly derivable, so it is a
+// SELF-LABEL, NOT a security tell (the arming trust tell is ALWAYS the signed edge + broker_sig). The
+// advisory provenance markers ride the CLI RESULT only - never the attestation/node/export-meta (a persisted
+// forgeable marker would be #273 theater; the frozen ATT_FIELDS/7-key stores drop/reject extras anyway).
+// --------------------------------------------------------------------------
+
+const OPERATOR_VOUCHED_PREFIX = 'operator-vouched:';
+const DEFAULT_BUILT_BY = 'operator-vouched';
+// Advisory audit metadata for the CLI RESULT ONLY (gates nothing; weight-0-inert). provenance_basis is a
+// NEUTRAL 'github-merge-verified' - the authored-vs-third-party distinction is DEFERRED to a consume-time gh
+// author re-verify (R4'), never a stored/exported marker read.
+const MANUAL_MERGE_MARKERS = Object.freeze({ minter_kind: 'operator-vouched', arming_class: 'pre-arm', provenance_basis: 'github-merge-verified' });
+
+/** Emit a namespaced, observable record-manual-merge refuse (classifier rides the NON-`reason` rmm_reason key). */
+function manualMergeRefuse(reason, detail) {
+  emitEgressAlert('record-manual-merge-refused', Object.assign({}, detail || {}, { rmm_reason: reason }));
+  return { ok: false, reason };
+}
+
+// Validate + assemble the non-network args (extracted for the 50-line ceiling). issueRef defaults to
+// pr_number (documented convention for a gh-only-sourced lesson); the lesson is taxonomy-validated by
+// buildWorldAnchorLesson (which THROWS -> a clean observable refuse). Returns
+// {ok:true, parsed, issueRef, built_by, lesson}|{ok:false, reason} (each refuse already emitted).
+function validateManualMergeArgs(a) {
+  let parsed;
+  try { parsed = parsePrUrl(a['pr-url']); } catch (err) { return manualMergeRefuse('bad-pr-url', { detail: (err && err.message) || 'error' }); }
+  let issueRef;
+  if (a['issue-ref'] !== undefined) {
+    // Canonical decimal BEFORE Number() (a bare flag -> true -> Number(true)===1; '1e3'->1000 both pass isSafeInteger).
+    if (typeof a['issue-ref'] !== 'string' || !/^[1-9][0-9]*$/.test(a['issue-ref'])) return manualMergeRefuse('bad-issue-ref', {});
+    issueRef = Number(a['issue-ref']);
+    if (!Number.isSafeInteger(issueRef)) return manualMergeRefuse('bad-issue-ref', {});
+  } else { issueRef = parsed.pr_number; }
+  const built_by = a['built-by'] !== undefined ? a['built-by'] : DEFAULT_BUILT_BY;
+  if (!isBoundedPlainString(built_by, MAX_BUILT_BY)) return manualMergeRefuse('bad-built-by', {});
+  let lesson;
+  try { lesson = buildWorldAnchorLesson({ trigger_class: a['trigger-class'], gotcha_class: a['gotcha-class'], corrective_class: a['corrective-class'], lesson_body: a['lesson-body'] }); }
+  catch (err) { return manualMergeRefuse('bad-lesson', { detail: (err && err.message) || 'error' }); }
+  return { ok: true, parsed, issueRef, built_by, lesson };
+}
+
+// Fetch the gh MERGE EVIDENCE: gate on verifyMerge (merged===true), then the metadata + the merge-commit
+// diff -> diff_hash (over the immutable LANDED patch). Extracted for the 50-line ceiling. Every gh helper
+// already emits its own fail-closed alert; a non-ok here re-labels + re-emits at the arm level.
+async function fetchManualMergeEvidence(parsed, runner) {
+  const vm = await verifyMerge({ repo: parsed.repo, pr_number: parsed.pr_number }, { runner });
+  if (!vm.ok) return manualMergeRefuse('merge-unverifiable', { reason_detail: vm.reason });
+  if (!vm.merged) return manualMergeRefuse('not-merged', { repo: parsed.repo, pr_number: parsed.pr_number });
+  const meta = await fetchPrMergeMeta({ repo: parsed.repo, pr_number: parsed.pr_number }, { runner });
+  if (!meta.ok) return manualMergeRefuse('meta-unavailable', { reason_detail: meta.reason });
+  const diffRes = await fetchMergeCommitDiff({ repo: parsed.repo, merge_commit_sha: vm.merge_commit_sha }, { runner });
+  if (!diffRes.ok) return manualMergeRefuse('diff-unavailable', { reason_detail: diffRes.reason });
+  const diff_hash = crypto.createHash('sha256').update(diffRes.diff).digest('hex');
+  return { ok: true, merge_sha: vm.merge_commit_sha, meta, diff_hash };
+}
+
+/**
+ * record-manual-merge - compose the primitives into a weight-0, pre-arm, gh-anchored node. TOTAL (never
+ * throws): every refuse returns {ok:false, reason} + an observable emit (R5': recordAttestation's silent
+ * bad-attestation/self-inconsistent/write-failed trio is wrapped here). Async (it gh-reads in-process).
+ * @param {object} args parsed argv: --pr-url (REQUIRED), --trigger-class/--gotcha-class/--corrective-class/
+ *   --lesson-body (the operator-authored, taxonomy-validated lesson), [--issue-ref] (default pr_number),
+ *   [--built-by] (default 'operator-vouched').
+ * @param {{anchorDir?:string, liveDir?:string, ghRunner?:Function}} [opts] TEST seam (injected gh runner
+ *   + isolated store dirs); PRODUCTION passes none (real gh + real stores). NO `now` seam: emitted_at is the
+ *   gh-reported merged_at (retry-stable), so idempotency holds on the REAL path, not just under an injected clock.
+ * @returns {Promise<object>}
+ */
+async function runRecordManualMerge(args, opts = {}) {
+  const a = args && typeof args === 'object' && !Array.isArray(args) ? args : {};
+  const o = opts && typeof opts === 'object' && !Array.isArray(opts) ? opts : {};
+  const v = validateManualMergeArgs(a);
+  if (!v.ok) return { ok: false, reason: v.reason };
+  const ev = await fetchManualMergeEvidence(v.parsed, o.ghRunner);
+  if (!ev.ok) return { ok: false, reason: ev.reason };
+  // The shared anchor_id (identity basis {repo, issueRef, diff_hash}) + the synthetic, self-labelling
+  // approval_hash. deriveAnchorId is called ONCE; recordAttestation re-derives + must match (self-consistent).
+  const anchor_id = store.deriveAnchorId({ repo: v.parsed.repo, issueRef: v.issueRef, diff_hash: ev.diff_hash });
+  const approval_hash = crypto.createHash('sha256').update(OPERATOR_VOUCHED_PREFIX + anchor_id).digest('hex');
+  // emitted_at is the gh-reported MERGE timestamp (ev.meta.merged_at), NOT wall-clock: emitted_at is in
+  // ATT_FIELDS -> content_hash, so a wall-clock value differs on every retry of the SAME PR -> a collision
+  // reject instead of idempotent dedup (VALIDATE code-reviewer FAIL). merged_at is retry-stable + gh-anchored
+  // (the R2' ethos). A merged PR always carries it; a null is anomalous -> fail-closed.
+  const emitted_at = ev.meta.merged_at;
+  if (typeof emitted_at !== 'string') return manualMergeRefuse('no-merged-at', { repo: v.parsed.repo, pr_number: v.parsed.pr_number });
+  const attestation = {
+    repo: v.parsed.repo, issueRef: v.issueRef, pr_url: v.parsed.pr_url, pr_number: v.parsed.pr_number,
+    branch: ev.meta.branch, base_sha: ev.meta.base_sha, diff_hash: ev.diff_hash,
+    lesson_signature: v.lesson.lesson_signature, built_by: v.built_by, approval_hash, emitted_at,
+  };
+  // R5': recordAttestation's bad-attestation/self-inconsistent/write-failed returns are SILENT -> wrap.
+  const w = store.recordAttestation(attestation, { dir: o.anchorDir });
+  if (!w.ok) return manualMergeRefuse('attestation-failed', { reason_detail: w.reason, detail: w.detail });
+  // Node-only mint (NO signed edge -> admitWorldAnchorNode refuses -> weight 0). mintWorldAnchoredNode
+  // self-emits every refuse. node.anchor_id === att.anchor_id + matching lesson_signature => export-bank-pair joins.
+  const mint = liveStore.mintWorldAnchoredNode(
+    { anchor_id: w.anchor_id, merge_sha: ev.merge_sha, lesson_signature: v.lesson.lesson_signature, lesson_body: v.lesson.lesson_body },
+    { dir: o.liveDir },
+  );
+  if (!mint.ok) {
+    // R5'/L2: emit the arm's OWN namespaced classifier (the mint self-emits too, but an operator filtering on
+    // record-manual-merge-refused must see this refuse) + surface that the attestation ALREADY persisted (partial state).
+    emitEgressAlert('record-manual-merge-refused', { reason_detail: mint.reason, anchor_id: w.anchor_id, rmm_reason: 'mint-failed' });
+    return { ok: false, reason: 'mint-failed', mint_reason: mint.reason, anchor_id: w.anchor_id };
+  }
+  return {
+    ok: true, anchor_id: w.anchor_id, node_id: mint.node_id, deduped: !!(w.deduped && mint.deduped),
+    pr_url: v.parsed.pr_url, merge_sha: ev.merge_sha,
+    github_evidence: { repo: v.parsed.repo, pr_number: v.parsed.pr_number, author: ev.meta.author, merged_by: ev.meta.merged_by, merged_at: ev.meta.merged_at, merge_sha: ev.merge_sha },
+    markers: MANUAL_MERGE_MARKERS, note: PROVENANCE_NOTE, shadow: true, production_inert: true,
+  };
+}
+
+const USAGE = 'Usage: cli.js <observe-merge --pr <url> [--merge-sha <sha>] (gh-verified; the SOLE mint path; isolate via LOOM_LAB_STATE_DIR) | record-merge --pr <url> --outcome merged|closed|stale [--merge-sha <sha>] [--dir <store>] (confirmation-only; mints nothing) | list-live [--live-dir <dir>] | backfill-2137 [--diff <path>] [--dir <store>] [--allow-placeholder] | attest-from-capture --pr-url <url> --issue-ref <n> --candidate-patch-sha <hex64> --diff <path> --approval-hash <hex64> --base-sha <hex40|hex64> --branch <b> --built-by <who> --emitted-at <iso> (--pr-url MUST be byte-identical to the emitted PR URL; diff_hash re-derived from --diff; SHADOW/production-inert) | observe-reviews --pr <url> (Gap-8 A-1; SHADOW: records INSIDER review verdicts on the PR, gates nothing; isolate via LOOM_LAB_STATE_DIR) | record-persona --repo <slug> --pr <n> --persona <bare-agentType> [--dir <store>] (Gap-8 A0; SHADOW: attach a builder persona to a PR for per-persona halting) | export-bank-pair --node-id <hex64> --persona-id <label> --human-root <label> [--out-dir <dir>] (A3-on-v1: emit the Embers bank-ready node.json+meta.json for a verified node; persona_id+human_root are SELF-ASSERTED operator labels, weight-0; isolate via LOOM_LAB_STATE_DIR; SHADOW - banks nothing) | record-manual-merge --pr-url <url> --trigger-class <t> --gotcha-class <g> --corrective-class <c> --lesson-body <text> [--issue-ref <n>] [--built-by <who>] (Phase-1: gh-verified merged PR + an operator-authored lesson -> a join-key-free, weight-0, pre-arm node-only mint; diff_hash over the merge-commit patch; isolate via LOOM_LAB_STATE_DIR; SHADOW - it can never feed LIVE_SOURCES)>\n';
 
 function emit(obj) { process.stdout.write(`${JSON.stringify(obj, null, 2)}\n`); }
 
@@ -515,6 +641,10 @@ function main(argv) {
   if (sub === 'observe-reviews') {
     return mainObserveReviews(args).then((res) => res.code); // Promise<number> (SHADOW review ingestion)
   }
+  if (sub === 'record-manual-merge') {
+    // Phase-1: gh-verified, join-key-free, weight-0 pre-arm node producer (async - it gh-reads in-process).
+    return runRecordManualMerge(args).then((r) => { emit(r); return r.ok ? 0 : 1; });
+  }
   if (sub === 'record-merge') {
     // CONFIRMATION-ONLY (PR-3): record-merge mints nothing, so no live/edge dir is threaded.
     const r = runRecordMerge(
@@ -569,4 +699,4 @@ if (require.main === module) {
 // The mint logic lives in world-anchor-mint.js (the SOLE mint path is observe-merge). cli.js exports the
 // gated entry points; mainObserveMerge is exported so a test can drive the gh-verified auto-mint arm with
 // an injected gh runner + store dirs (production passes no opts).
-module.exports = { parsePrUrl, runRecordMerge, mainObserveMerge, mainObserveReviews, listLive, runRecordPersona, runExportBankPair, backfill2137, runAttestFromCapture, main, SPEC_KITTY_2137, PLACEHOLDER_DIFF_HASH };
+module.exports = { parsePrUrl, runRecordMerge, mainObserveMerge, mainObserveReviews, listLive, runRecordPersona, runExportBankPair, backfill2137, runAttestFromCapture, runRecordManualMerge, main, SPEC_KITTY_2137, PLACEHOLDER_DIFF_HASH };

@@ -49,6 +49,7 @@ const HEX40 = /^[a-f0-9]{40}$/;
 const GH_SEGMENT = /^[A-Za-z0-9._][A-Za-z0-9._-]*$/;
 const DEFAULT_TIMEOUT_MS = 30000;
 const DEFAULT_MAX_BYTES = 1 * 1024 * 1024;   // a single PR JSON is tiny; 1MB is a generous DoS cap.
+const DEFAULT_MAX_DIFF_BYTES = 5 * 1024 * 1024;   // a merge-commit patch; generous cap (over-cap => execFile errors => fail-closed, never a truncated wrong hash).
 
 /** Emit a namespaced, observable alert for a fail-closed reject (the classifier rides gh_reason, not reason). */
 function alert(ghReason, detail) { emitEgressAlert('merge-verify-failed', Object.assign({}, detail || {}, { gh_reason: ghReason })); }
@@ -123,6 +124,17 @@ function buildVerifyEnv(src = process.env || {}) {
   return env;
 }
 
+// Shared run-options for a read-only GET (the two record-manual-merge fetch siblings below; verifyMerge
+// inlines its own, left untouched). buildVerifyEnv ALWAYS filters the env so a caller-supplied opts.env
+// can never drop the GH_PROMPT_DISABLED / GH_NO_UPDATE_NOTIFIER hardening by replacing it wholesale.
+function buildRunOpts(opts, maxBytes) {
+  return {
+    timeoutMs: typeof opts.timeoutMs === 'number' ? opts.timeoutMs : DEFAULT_TIMEOUT_MS,
+    maxBytes: typeof opts.maxBytes === 'number' ? opts.maxBytes : maxBytes,
+    env: buildVerifyEnv(opts.env && typeof opts.env === 'object' ? opts.env : process.env),
+  };
+}
+
 /**
  * Verify whether GitHub considers PR <repo>#<pr_number> merged.
  * @param {{repo: string, pr_number: number}} q  repo (two gh-name-safe segments) + the ALREADY-validated
@@ -195,6 +207,86 @@ async function verifyMerge(q, opts = {}) {
   return { ok: true, merged: true, merge_commit_sha: sha };
 }
 
+// --------------------------------------------------------------------------
+// record-manual-merge (Phase-1) fetch siblings. ADDITIVE to verifyMerge (the untouched merge GATE): these
+// supply the merge METADATA (author/base_sha/branch) + the merge-commit DIFF the manual, gh-verified,
+// join-key-free node producer needs. Same chokepoint discipline (assertReadOnlyGhArgs via defaultRunner,
+// sanitized env, bounded, every fail-closed reject OBSERVABLE). NO node/edge mint, NO LIVE_SOURCES, NO signer.
+// --------------------------------------------------------------------------
+
+// A bounded string with no control chars: rejects C0 (<0x20), DEL (0x7f), AND the C1 band (0x80-0x9f) - a
+// terminal/log-injection escape (CSI etc.) hides in C1 that a bare <0x20 check lets through. charCodeAt form
+// (ADR-0006, no control-regex). Mirrors cli.js isBoundedPlainString; DELIBERATELY duplicated here rather than
+// shared, to avoid a gh-verify -> cli import cycle (each module keeps its own boundary validators).
+function isCleanBounded(v, max) {
+  if (typeof v !== 'string' || v.length < 1 || v.length > max) return false;
+  return !Array.prototype.some.call(v, (c) => { const n = c.charCodeAt(0); return n < 0x20 || (n >= 0x7f && n <= 0x9f); });
+}
+
+// Validate the parsed pr-meta jq object. author/base_sha/branch are REQUIRED + CONTROL-CHAR-CLEAN (branch
+// persists into the attestation; author echoes to the operator terminal - an assume-breach gh response is a
+// trust boundary, VALIDATE hacker M1). merged_by/merged_at are audit-only, clean-or-null. Returns
+// {ok:true, meta}|{ok:false, reason}.
+function validatePrMeta(parsed) {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { ok: false, reason: 'unparseable' };
+  if (typeof parsed.base_sha !== 'string' || !HEX40.test(parsed.base_sha)) return { ok: false, reason: 'bad-base-sha' };
+  if (!isCleanBounded(parsed.branch, 255)) return { ok: false, reason: 'bad-branch' };
+  if (!isCleanBounded(parsed.author, 128)) return { ok: false, reason: 'bad-author' };
+  const merged_by = isCleanBounded(parsed.merged_by, 128) ? parsed.merged_by : null;
+  const merged_at = isCleanBounded(parsed.merged_at, 40) ? parsed.merged_at : null;
+  return { ok: true, meta: { author: parsed.author, merged_by, merged_at, base_sha: parsed.base_sha, branch: parsed.branch } };
+}
+
+/**
+ * Fetch the merge metadata GitHub holds for a PR: author, merge actor, head branch, base sha. A SEPARATE
+ * GET from verifyMerge (which stays the untouched merge gate). base_sha + branch are STATIC strings captured
+ * at PR creation - they survive same-repo branch deletion AND fork-repo deletion (empirically confirmed), so
+ * an already-merged historical PR still yields them. Read-only GET; fail-closed + observable.
+ * @param {{repo:string, pr_number:number}} q  the ALREADY-validated pr_number (never re-parsed from a URL).
+ * @param {{runner?:Function, timeoutMs?:number, maxBytes?:number, env?:object}} [opts]
+ * @returns {Promise<{ok:true, author:string, merged_by:string|null, merged_at:string|null, base_sha:string, branch:string}|{ok:false, reason:string}>}
+ */
+async function fetchPrMergeMeta(q, opts = {}) {
+  const query = q && typeof q === 'object' && !Array.isArray(q) ? q : {};
+  if (!isGhRepo(query.repo)) { alert('meta-bad-repo', { repo: typeof query.repo === 'string' ? query.repo.slice(0, 80) : typeof query.repo }); return { ok: false, reason: 'bad-repo' }; }
+  if (!isPositiveSafeInt(query.pr_number)) { alert('meta-bad-pr-number', { repo: query.repo }); return { ok: false, reason: 'bad-pr-number' }; }
+  const runner = typeof opts.runner === 'function' ? opts.runner : defaultRunner;
+  const args = [
+    'api', '-X', 'GET', `repos/${query.repo}/pulls/${query.pr_number}`,
+    '--jq', '{author: .user.login, merged_by: .merged_by.login, merged_at: .merged_at, base_sha: .base.sha, branch: .head.ref}',
+  ];
+  let stdout;
+  try { const res = await runner(args, buildRunOpts(opts, DEFAULT_MAX_BYTES)); stdout = res && typeof res.stdout === 'string' ? res.stdout : ''; }
+  catch (err) { alert(err && err.killed ? 'meta-gh-timeout' : 'meta-gh-exit', { repo: query.repo, pr_number: query.pr_number, code: (err && err.code) || 'error' }); return { ok: false, reason: 'gh-failed' }; }
+  let parsed;
+  try { parsed = JSON.parse(stdout); } catch { alert('meta-unparseable', { repo: query.repo, pr_number: query.pr_number }); return { ok: false, reason: 'unparseable' }; }
+  const v = validatePrMeta(parsed);
+  if (!v.ok) { alert(`meta-${v.reason}`, { repo: query.repo, pr_number: query.pr_number }); return { ok: false, reason: v.reason }; }
+  return { ok: true, ...v.meta };
+}
+
+/**
+ * Fetch the MERGE-COMMIT patch (what actually LANDED) for diff_hash. Pinned to the merge commit
+ * (repos/<repo>/commits/<merge_sha> with the diff media type), NEVER `gh pr diff` (the live PR-head diff a
+ * squash/rebase merge rewrites) - so diff_hash content-addresses the immutable landed content and stays
+ * deterministic under later base movement. Raw diff TEXT (NOT JSON - never JSON.parse). Read-only GET.
+ * @param {{repo:string, merge_commit_sha:string}} q  a HEX40 merge sha (from verifyMerge).
+ * @param {{runner?:Function, timeoutMs?:number, maxBytes?:number, env?:object}} [opts]
+ * @returns {Promise<{ok:true, diff:string}|{ok:false, reason:string}>}
+ */
+async function fetchMergeCommitDiff(q, opts = {}) {
+  const query = q && typeof q === 'object' && !Array.isArray(q) ? q : {};
+  if (!isGhRepo(query.repo)) { alert('diff-bad-repo', { repo: typeof query.repo === 'string' ? query.repo.slice(0, 80) : typeof query.repo }); return { ok: false, reason: 'bad-repo' }; }
+  if (typeof query.merge_commit_sha !== 'string' || !HEX40.test(query.merge_commit_sha)) { alert('diff-bad-sha', { repo: query.repo }); return { ok: false, reason: 'bad-merge-sha' }; }
+  const runner = typeof opts.runner === 'function' ? opts.runner : defaultRunner;
+  const args = ['api', '-X', 'GET', `repos/${query.repo}/commits/${query.merge_commit_sha}`, '-H', 'Accept: application/vnd.github.diff'];
+  let stdout;
+  try { const res = await runner(args, buildRunOpts(opts, DEFAULT_MAX_DIFF_BYTES)); stdout = res && typeof res.stdout === 'string' ? res.stdout : ''; }
+  catch (err) { alert(err && err.killed ? 'diff-gh-timeout' : 'diff-gh-exit', { repo: query.repo, code: (err && err.code) || 'error' }); return { ok: false, reason: 'gh-failed' }; }
+  if (stdout.length === 0) { alert('diff-empty', { repo: query.repo }); return { ok: false, reason: 'empty-diff' }; }
+  return { ok: true, diff: stdout };
+}
+
 // defaultRunner is exported ONLY so the lab test can prove it INVOKES assertReadOnlyGhArgs (a write-arg
 // throws synchronously, before any spawn) - VALIDATE-hacker M-1. Production callers use verifyMerge.
-module.exports = { verifyMerge, isGhRepo, buildVerifyEnv, assertReadOnlyGhArgs, defaultRunner };
+module.exports = { verifyMerge, fetchPrMergeMeta, fetchMergeCommitDiff, isGhRepo, buildVerifyEnv, assertReadOnlyGhArgs, defaultRunner };
