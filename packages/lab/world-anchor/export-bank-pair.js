@@ -9,9 +9,17 @@
 // The node is the frozen 7-key `world_anchored` body emitted VERBATIM - Embers re-parses it and re-derives
 // its two seals (node_id + content_hash), both by-parity copies of packages/kernel/_lib/canonical-json.js,
 // so a verbatim emit round-trips. The meta is the v1 MINIMAL shape Embers `bank` requires:
-//   { minter: { persona_id, human_root }, prUrl, repoSlug }
+//   { minter: { persona_id, human_root }, prUrl, repoSlug, mergeSnapshot: { merged, merge_sha } }
 // failureSignature is OMITTED - Embers defaults it to node.lesson_signature (the same bytes; emitting a copy
-// would invite drift). scope / mergeSnapshot are optional advisory bags, not emitted at v1 (YAGNI).
+// would invite drift). scope is an optional advisory bag, not emitted (YAGNI).
+//
+// GAP-A (Wave 2a): mergeSnapshot carries the merge SIGNAL the node already proves. A world_anchored node is
+// minted ONLY from a gh-verified merge, so `merged: true` is honestly derivable from node.merge_sha. Embers
+// reads meta.mergeSnapshot into evaluateMintGate: without it the gate FAILs (`not-merged`); with `merged:true`
+// it demotes only to WEAK (`no-distinct-reviewer`), so the merge quality WE DO have is not dropped. The RICHER
+// signals (merger identity, distinct reviewers, merge_commit_parents, time-to-merge) are NOT in the node/att
+// (never captured into a store, R1'/#273), so Embers' generous SHADOW defaults apply - a future enhancement
+// when the pipeline threads them end-to-end. SHADOW: the gate ANNOTATES, never blocks (integrity != provenance).
 //
 // SECURITY (v1 posture - integrity != provenance, #273): persona_id + human_root are SELF-ASSERTED operator
 // labels; Embers banks the pair at receiver-weight 0. This function proves the node's INTEGRITY (the seals
@@ -133,12 +141,15 @@ function buildBankPair(input) {
   if (parsedUrl.repo !== repo) return { ok: false, reason: 'repo-pr-url-mismatch' };
   if (parsedUrl.pr_number !== prNumber) return { ok: false, reason: 'pr-number-mismatch' };
 
-  // 6. Build the v1 meta. minter is an EXPLICIT exactly-2-key literal (never a spread), so the Embers minter
+  // 6. Build the meta. minter is an EXPLICIT exactly-2-key literal (never a spread), so the Embers minter
   //    exact-set is structurally guaranteed. prUrl is the canonicalized (trimmed) form from parsePrUrl.
+  //    mergeSnapshot (GAP-A) carries ONLY the merge signal the verified node proves (merged:true derivable
+  //    from node.merge_sha, itself sealed inside the node's content_hash) - never a fabricated richer signal.
   const meta = {
     minter: { persona_id: personaId, human_root: humanRoot },
     prUrl: parsedUrl.pr_url,
     repoSlug: repo,
+    mergeSnapshot: { merged: true, merge_sha: node.merge_sha },
   };
 
   return { ok: true, node: reconstructNode(node), meta };

@@ -78,14 +78,23 @@ test('byte-parity: the frozen Embers dogfood node is accepted verbatim (seals re
 
 // ---- meta shape (exact-set + casing + no auth field) ----
 
-test('meta is the exact v1 shape: {minter:{persona_id,human_root}, prUrl, repoSlug}', () => {
+test('meta shape: {minter:{persona_id,human_root}, prUrl, repoSlug, mergeSnapshot}', () => {
   const { meta } = buildBankPair(OK_INPUT);
-  assert.deepStrictEqual(Object.keys(meta).sort(), ['minter', 'prUrl', 'repoSlug'], 'exactly 3 top-level keys');
+  assert.deepStrictEqual(Object.keys(meta).sort(), ['mergeSnapshot', 'minter', 'prUrl', 'repoSlug'], 'exactly 4 top-level keys');
   assert.deepStrictEqual(Object.keys(meta.minter).sort(), ['human_root', 'persona_id'], 'minter is exactly 2 snake_case keys');
   assert.strictEqual(meta.minter.persona_id, 'node-backend');
   assert.strictEqual(meta.minter.human_root, 'root-operator-0');
   assert.strictEqual(meta.prUrl, 'https://github.com/acme/widgets/pull/128');
   assert.strictEqual(meta.repoSlug, 'acme/widgets');
+});
+
+// GAP-A (Wave 2a): mergeSnapshot carries ONLY the merge signal the verified node proves. `merged:true` flips
+// the Embers mint-gate FAIL(not-merged) -> WEAK; merge_sha is the node's own sealed value (never a new claim).
+test('GAP-A: meta.mergeSnapshot = {merged:true, merge_sha} from the node, no fabricated richer signal', () => {
+  const { meta } = buildBankPair(OK_INPUT);
+  assert.deepStrictEqual(Object.keys(meta.mergeSnapshot).sort(), ['merge_sha', 'merged'], 'exactly merged + merge_sha (no fabricated merger/reviewer signal)');
+  assert.strictEqual(meta.mergeSnapshot.merged, true, 'a verified world_anchored node is minted only post-merge');
+  assert.strictEqual(meta.mergeSnapshot.merge_sha, EMBERS_DOGFOOD_NODE.merge_sha, 'merge_sha is the node own sealed value, not a re-claim');
 });
 
 test('meta carries NO authentication-implying field (integrity != provenance)', () => {

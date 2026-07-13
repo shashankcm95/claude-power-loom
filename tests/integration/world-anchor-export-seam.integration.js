@@ -111,14 +111,18 @@ check('the emitted node is the frozen 7-key world_anchored body', () => {
   assert.strictEqual(node.provenance, 'world_anchored');
 });
 
-// --- the meta is the exact v1 bank shape, joined from the real attestation ---
-check('the emitted meta is the exact 3-key Embers v1 shape, joined from the attestation', () => {
-  assert.deepStrictEqual(Object.keys(meta).sort(), ['minter', 'prUrl', 'repoSlug']);
+// --- the meta is the Embers bank shape, joined from the real attestation ---
+check('the emitted meta is the Embers bank shape (minter+prUrl+repoSlug+mergeSnapshot), joined from the attestation', () => {
+  assert.deepStrictEqual(Object.keys(meta).sort(), ['mergeSnapshot', 'minter', 'prUrl', 'repoSlug']);
   assert.deepStrictEqual(Object.keys(meta.minter).sort(), ['human_root', 'persona_id']);
   assert.strictEqual(meta.minter.persona_id, 'node-backend');
   assert.strictEqual(meta.minter.human_root, 'root-operator-0');
   assert.strictEqual(meta.prUrl, att.pr_url, 'prUrl is joined from the real attestation');
   assert.strictEqual(meta.repoSlug, att.repo, 'repoSlug is joined from the real attestation');
+  // GAP-A: the merge signal rides the meta (merged:true flips the Embers gate off not-merged; merge_sha is
+  // the node own sealed value).
+  assert.strictEqual(meta.mergeSnapshot.merged, true);
+  assert.strictEqual(meta.mergeSnapshot.merge_sha, node.merge_sha, 'mergeSnapshot.merge_sha re-states the node value');
 });
 
 // --- the subprocess fails closed on an unknown node (real non-zero exit) ---

@@ -292,3 +292,7 @@ A second 3-lens `/verify-plan` pass ran against the revised plan (this section).
 
 - **K=1** (2026-07-13): #2137 — arm→export→bank→verify→kindle clean, weight-0, ZERO new pipeline-bug. (Distinct cell: `boundary-contract|unguarded-edge-case|handle-edge-explicitly`; repo Priivacy-ai/spec-kitty #2137.) STABLE target = K=3 distinct-cell.
 
+### Wave 2a result — GAP-A CLOSED (2026-07-13, toolkit-only)
+
+`buildBankPair` now emits `meta.mergeSnapshot = { merged: true, merge_sha }` — the merge signal a verified `world_anchored` node already proves (`merged:true` derivable from `node.merge_sha`, itself sealed in the node's `content_hash`; never a fabricated richer signal). Embers already reads `meta.mergeSnapshot` (`publish.js:50` → `evaluateMintGate`), so **NO Embers change** was needed. Dogfood re-run of #2137: `mint_gate` flipped **`fail` → `weak`** (`gate_reasons: ["no-distinct-reviewer"]`; the `not-merged` FAIL is gone), receiver-weight still 0 (the gate annotates, never gates). **GAP-A exit MET** (verdict != fail; no hand-authored meta). The richer signals (merger identity, distinct reviewers, `merge_commit_parents`) are NOT in the node/att (never stored, R1'/#273), so Embers' generous SHADOW defaults apply — a future enhancement, and the merger-distinct default (absent→`false`→"self-merge") is a PRE-EXISTING coarse default (the empty-snapshot path already did it), NOT a Wave-2a regression. Tests: export-bank-pair 44→45, export-cli +1 assertion; full world-anchor green; eslint clean.
+
