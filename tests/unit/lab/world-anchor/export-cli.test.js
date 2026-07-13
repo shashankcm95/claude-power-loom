@@ -70,10 +70,11 @@ test('export-bank-pair (stdout): a verified node + matching attestation -> a ban
   assert.strictEqual(r.ok, true, `export ok (${r.reason || ''})`);
   assert.strictEqual(r.node.node_id, node_id, 'the node is the requested one');
   assert.strictEqual(r.node.provenance, 'world_anchored');
-  assert.deepStrictEqual(Object.keys(r.meta).sort(), ['minter', 'prUrl', 'repoSlug']);
+  assert.deepStrictEqual(Object.keys(r.meta).sort(), ['mergeSnapshot', 'minter', 'prUrl', 'repoSlug']);
   assert.deepStrictEqual(r.meta.minter, { persona_id: 'node-backend', human_root: 'root-operator-0' });
   assert.strictEqual(r.meta.prUrl, 'https://github.com/octo/widget/pull/77');
   assert.strictEqual(r.meta.repoSlug, 'octo/widget');
+  assert.strictEqual(r.meta.mergeSnapshot.merged, true, 'GAP-A: the merge signal rides the meta so the Embers gate sees merged');
   assert.ok(/integrity != provenance|self-asserted/i.test(r.note || ''), 'the integrity!=provenance note rides along');
 });
 
