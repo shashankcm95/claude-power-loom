@@ -84,6 +84,28 @@ test('deriveLiveNodeId: deterministic + sealed over the world-anchored basis (an
   assert.notStrictEqual(id1, id3, 'merge_sha is in the identity basis (world-evidence cannot be swapped)');
 });
 
+// GAP-B (Wave 2b, R3' SECONDARY): the merge_sha case above proves ONE field is in the basis; this widens the
+// injectivity guard to ALL 5 basis fields. If a hasher edit silently DROPPED any field from the basis, two
+// nodes differing ONLY in that field would collide to one node_id (a cross-repo bank self-DoS at
+// node-id-mismatch, or a lesson laundered onto another node's id). Each variant uses a VALID non-empty string
+// so the assertion holds identically on the toolkit (String-coerce) and the Embers (strict) deriver. Mirror:
+// embers/test/unit/schema/content-address-injective.test.js.
+test('deriveLiveNodeId is INJECTIVE across all 5 basis fields (each participates; a one-field change flips the id)', () => {
+  const base = { anchor_id: 'b'.repeat(64), provenance: store.WORLD_ANCHORED, merge_sha: 'cafef00d', lesson_signature: 'lesson:x', lesson_body: 'y' };
+  const baseId = store.deriveLiveNodeId(base);
+  const variants = {
+    anchor_id: 'c'.repeat(64),
+    provenance: 'world_anchored_v2',
+    merge_sha: 'deadbeef',
+    lesson_signature: 'lesson:z',
+    lesson_body: 'a different instinct',
+  };
+  for (const [field, val] of Object.entries(variants)) {
+    const id = store.deriveLiveNodeId({ ...base, [field]: val });
+    assert.notStrictEqual(id, baseId, `${field} is in the identity basis (a one-field change must flip the id, else two distinct nodes collide)`);
+  }
+});
+
 test('mint refuses + EMITS for a non-world_anchored provenance (admits ONLY world_anchored)', () => {
   const dir = tmp();
   const { r, alerted } = captureAlert(() => store.mintWorldAnchoredNode({ ...block(), provenance: 'backtest' }, { dir }));
