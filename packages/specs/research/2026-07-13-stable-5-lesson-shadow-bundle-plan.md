@@ -87,6 +87,8 @@ Rationale for K=3 (KISS / YAGNI): the recon shows the mechanism is a recombinati
 
 ## Phase 3 — The 5-lesson accumulation (Track N cadence)
 
+> **SUPERSEDED IN PART (2026-07-14, USER) — see `### Phase-3 result` at the bottom.** The rows #3/#4 below ("an already-merged public PR from history … we did not author") are DEPRECATED as bundle lessons. A bundle lesson must be **minted at the solution path** (OUR own persona's solve, `persona_id`-accountable); a lesson inferred from a stranger's diff breaks provenance/accountability. #3/#4 survive ONLY as one-time mechanism-dogfood (they proved the pipeline STABLE). The real bundle = own-solves only (currently 1/5: #2137), growing on Track N.
+
 **Composition of the 5** (explicit real-now vs pending-merge):
 
 | # | Source | Provenance | Real-now? |
@@ -291,6 +293,8 @@ A second 3-lens `/verify-plan` pass ran against the revised plan (this section).
 ## Stability Ledger
 
 - **K=1** (2026-07-13): #2137 — arm→export→bank→verify→kindle clean, weight-0, ZERO new pipeline-bug. (Distinct cell: `boundary-contract|unguarded-edge-case|handle-edge-explicitly`; repo Priivacy-ai/spec-kitty #2137.) STABLE target = K=3 distinct-cell.
+- **K=2** (2026-07-14): #2614 — `record-manual-merge` on the REAL gh path (merged_by `stijn-dejongh` != author `rayjohnson`) → export → bank → verify(7/7) → kindle @ weight-0, ZERO new pipeline-bug. (Distinct cell: `state-mutation|ordering-dependency|handle-edge-explicitly`; Priivacy-ai/spec-kitty #2614; node `7a010a34…`, merge_sha `a94ac92d…`; operator-vouched lesson = clear-the-stale-derived-value-when-you-remove-its-input.)
+- **K=3** (2026-07-14): #2579 — same REAL gh path (self-merged by maintainer `stijn-dejongh`) → export → bank → verify(7/7) → kindle @ weight-0, ZERO new pipeline-bug. (Distinct cell: `boundary-contract|silent-coercion|handle-edge-explicitly`; #2579; node `147b4d4e…`, merge_sha `d3c22332…`; operator-vouched lesson = the leading-dash CLI arg silently reparsed as a flag, insert `--`.) **STABLE REACHED** — 3 consecutive distinct-cell real-merge mints, zero new pipeline-bug, no source edit the entire run. Track-M mechanism-stability exit MET.
 
 ### Wave 2a result — GAP-A CLOSED (2026-07-13, toolkit-only)
 
@@ -306,4 +310,16 @@ The `deriveLiveNodeId` / `computeContentHash` hasher is a documented byte-parity
 **Non-vacuity PROVEN (Rule "prove it can fail")**: a mutation-injection experiment (code-reviewer VALIDATE lens) dropped `lesson_signature` from each hasher's basis → the widened injectivity test AND the shared-vector literal assertion reddened on both sides (the shared-vector red showed `expected c411ae69…, got e9dc7ae7…`, confirming the assertion compares against the literal, NOT a self-referential embedded field). Cross-repo literal + body byte-identity verified programmatically. VALIDATE verdict: **Approve** (0 CRIT/HIGH/MED; 1 LOW doc-hygiene forward-reference, fixed). Tests: toolkit live-recall-store 32→33, export-bank-pair unchanged count (comment); Embers content-address 6→7, content-address-injective 5→6, full suite **507/0/1264**; eslint clean.
 
 **GAP-B exit MET**: the asymmetric cross-repo drift is now literal-gated both sides; the byte-parity risk window (Phases 1-2, `RISK-WINDOW` above) is closed. Note: Embers local `main` carries 2 UNPUSHED commits (`c3c7e17` ember/v2 contract + sample, `600e59f` M1 lock fix) — the Wave 2b Embers branch is based on `origin/main` and is self-contained (inlines the vector, needs neither), but those commits are the operator's to push.
+
+### Phase-3 result — K=3 mechanism-STABLE (dogfood); bundle = OWN-SOLVES only, 1/5 (2026-07-14)
+
+Ran the full `record-manual-merge -> export-bank-pair -> bank -> verify -> kindle` pipeline for three real merged PRs (#2137 ours + #2614/#2579 others', USER-vouched dogfood set) on the REAL gh path into one growing commons. **K=3 mechanism-STABLE** (ledger above): 3 consecutive distinct-cell real-merge mints, every one verify-clean (7/7) + kindle @ receiver-weight 0, **zero new pipeline-bug and zero source edit the entire run** — the Track-M mechanism-stability exit. The commons demonstrated the Phase-4 accumulation seam (3 bundles, one growing Merkle `_log/`, 3 distinct `_index/` `.idx.json` groups by `failure_signature`; multi-writer append) and confirmed GAP-A live (every bank `mint_gate:"weak"` with only `no-distinct-reviewer` — the `not-merged` FAIL gone because `meta.mergeSnapshot={merged:true}` is read; the gate annotates, never gates weight).
+
+**DESIGN CORRECTION (2026-07-14, USER) — SUPERSEDES the §0 / Phase-3-table "already-merged public history" device for #3/#4.** A world-anchored bundle lesson must be **minted at the solution path** — a byproduct of OUR OWN persona building the fix, so we genuinely know how it was solved AND the node's `persona_id` names a real, accountable builder. Deriving a lesson from a *stranger's* merged diff is **inference from pre-existing work**, not captured learning: we do not know how they solved it, and the `persona_id` becomes fictional, breaking the provenance/accountability chain the substrate exists to establish. Therefore:
+
+- **#2614 / #2579 are DOGFOOD, not bundle lessons.** They proved the minting pipeline is STABLE on real merge data (their only job) and are discarded with the throwaway commons. They do NOT count toward the 5.
+- **The real bundle = OWN-SOLVES only. Count = 1/5** — just **#2137** (our solve, merged by the external maintainer; `persona_id`-accountable). It grows ONLY on **Track N**: our persona solves a beta-queue issue -> PR -> maintainer merges -> `record-manual-merge <pr-url>` mints the lesson tied to that real builder persona. #2611 (still OPEN 2026-07-14) is the next own-solve pending merge.
+- **Forward mechanism**: the honest path is the deferred **live-solve lesson capture** (ladder item 3) — the lesson auto-derived AT the solve, not orchestrator-authored after the fact. Elevated from "deferred nicety" to the correct provenance for a real bundle lesson. `persona_id` must be the ACTUAL builder persona, not a self-asserted label.
+
+All nodes remain `production_inert:true` / `arming_class:"pre-arm"` / weight-0; nothing armed. The K=3 STABLE mechanism result is unaffected by this correction (the pipeline's stability was the thing being proven, and it was — whose PRs exercised it does not change that).
 
