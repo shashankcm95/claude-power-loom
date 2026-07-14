@@ -395,6 +395,12 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/lab/reputation/_spike/reputation-gate-diagnostic.js` - v3.10-W3 E3 — the LIVE diagnostic: run the reputation-gate advisory over the REAL projectReputation output +
 - `packages/lab/reputation/reputation-gate.js` - v3.10-W3 — the reputation-gate ADVISORY consumer: the spawn-narrowing decision that closes the reputation
 
+### `lab/solve-queue/`
+
+- `packages/lab/solve-queue/cli.js` - Wave A - thin CLI over solve-queue-store.js.
+- `packages/lab/solve-queue/solve-queue-fold.js` - Wave A / item-8 Part-A - the PURE fold + transition-legality + boundary VALIDATION for the solve-queue
+- `packages/lab/solve-queue/solve-queue-store.js` - Wave A / item-8 Part-A - the solve-queue lifecycle store (I/O layer).
+
 ### `lab/trace-emitter/`
 
 - `packages/lab/trace-emitter/cli.js` - ③.1-W2b — the F7 trace-emitter CLI: fold close-path timings into a timeline + query it.
