@@ -14,6 +14,7 @@
 'use strict';
 
 const store = require('./solve-queue-store');
+const { promoteMergedEntries } = require('./merge-promote');
 
 function parseFlags(argv) {
   const out = {};
@@ -48,21 +49,23 @@ function run(sub, f) {
     case 'advance': return store.advance({ entry_id: f['entry-id'], to_state: f['to-state'], evidence: buildEvidence(f) });
     case 'get': return store.get({ entry_id: f['entry-id'] });
     case 'list': return { ok: true, entries: store.list(f.state ? { state: f.state } : {}) };
+    case 'promote': return promoteMergedEntries({});             // one async sweep (Wave B); SHADOW/weight-0
     default: return null;
   }
 }
 
-function main(argv) {
+// main is async because `promote` returns a Promise; `await` on the sync commands' return is a no-op.
+async function main(argv) {
   const [sub, ...rest] = argv;
-  const r = run(sub, parseFlags(rest));
+  const r = await run(sub, parseFlags(rest));
   if (r === null) {
-    process.stderr.write('solve-queue - commands: enqueue | next | advance | list | get\n');
+    process.stderr.write('solve-queue - commands: enqueue | next | advance | list | get | promote\n');
     return sub ? 1 : 0;
   }
   process.stdout.write(`${JSON.stringify(r, null, 2)}\n`);
   return r.ok === false ? 1 : 0;
 }
 
-if (require.main === module) { process.exit(main(process.argv.slice(2))); }
+if (require.main === module) { main(process.argv.slice(2)).then((code) => process.exit(code)); }
 
 module.exports = { main, parseFlags, buildEvidence };

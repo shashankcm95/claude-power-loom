@@ -577,6 +577,7 @@ function resolveCapturedSignatureForAttest(q, opts = {}) {
     return { ok: false, reason: 'ambiguous-captured-patch' };
   }
   const lesson_signature = byPatch[0].lesson_signature;
+  const lesson_body = byPatch[0].lesson_body;               // Wave B: the promoter needs the body too
 
   // Check 2: the mint's Branch-B precondition - EXACTLY ONE node for (repoSlug, issue_ref, lesson_signature).
   const bySignature = lane.filter((rec) => repoSlug(rec.repo) === wantSlug
@@ -586,7 +587,10 @@ function resolveCapturedSignatureForAttest(q, opts = {}) {
     mintRefuseAlert({ mint_reason: 'ambiguous-captured-lesson', repo_slug: wantSlug, issue_ref: wantIssue, matches: bySignature.length });
     return { ok: false, reason: 'ambiguous-captured-lesson' };
   }
-  return { ok: true, lesson_signature };
+  // lesson_body is returned so a caller (merge-promote.js) sources it via THIS one dam-admitted reader,
+  // never by importing live-pending-store directly (the full-path reader allowlist). Additive - the prior
+  // caller (runAttestFromCapture) reads only .lesson_signature.
+  return { ok: true, lesson_signature, lesson_body };
 }
 
 // INFORMATION HIDING (code-reviewer LOW-1): export the gated entry point + the Half B read-only lookup.

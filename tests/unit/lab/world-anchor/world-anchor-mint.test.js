@@ -28,7 +28,7 @@ process.env.LOOM_LAB_STATE_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'loom-tes
 
 const REPO = path.join(__dirname, '..', '..', '..', '..');
 const MINT_FILE = path.join(REPO, 'packages', 'lab', 'world-anchor', 'world-anchor-mint.js');
-const { mintFromMergeOutcome } = require(MINT_FILE);
+const { mintFromMergeOutcome, resolveCapturedSignatureForAttest } = require(MINT_FILE);
 const store = require(path.join(REPO, 'packages', 'lab', 'world-anchor', 'world-anchor-store.js'));
 const outcomeStore = require(path.join(REPO, 'packages', 'lab', 'world-anchor', 'merge-outcome-store.js'));
 const liveStore = require(path.join(REPO, 'packages', 'lab', 'world-anchor', 'live-recall-store.js'));
@@ -770,6 +770,25 @@ test('TOTAL with the new branches: the default (no verifyKeyPem) mint never thro
   for (const k of ['minted', 'node_id', 'deduped', 'edge_minted', 'edge_id', 'edge_signed', 'auth_observed', 'commitment_verified']) {
     assert.ok(k in r, `the return shape carries ${k}`);
   }
+});
+
+// Wave B: resolveCapturedSignatureForAttest returns lesson_body too (the DAM-safe body seam - merge-promote.js
+// sources the captured body via THIS one admitted reader, never by importing live-pending-store directly).
+const { mintLivePendingLesson } = require(path.join(REPO, 'packages', 'lab', 'causal-edge', 'live-pending-store.js'));
+test('resolveCapturedSignatureForAttest returns lesson_body (Wave B) + still gates exact-one', () => {
+  const d = pendingDir(tmp());
+  const cps = 'a'.repeat(64);
+  const seed = mintLivePendingLesson({
+    provenance: 'live_pending', repo: 'https://github.com/octo/widget', issue_ref: 7,
+    candidate_patch_sha: cps, lesson_signature: LESSON_SIG, lesson_body: 'a captured earned instinct',
+  }, { dir: d });
+  assert.strictEqual(seed.ok, true, `seed must land (${seed.reason || ''})`);
+  const r = resolveCapturedSignatureForAttest({ repoSlug: 'octo/widget', issueRef: 7, candidatePatchSha: cps }, { pendingDir: d });
+  assert.strictEqual(r.ok, true, `resolve must succeed (${r.reason || ''})`);
+  assert.strictEqual(r.lesson_signature, LESSON_SIG);
+  assert.strictEqual(r.lesson_body, 'a captured earned instinct', 'the body is returned (Wave B dam-safe seam)');
+  // the exact-one gate still holds: an unknown candidate_patch_sha resolves no-captured-lesson
+  assert.strictEqual(resolveCapturedSignatureForAttest({ repoSlug: 'octo/widget', issueRef: 7, candidatePatchSha: 'b'.repeat(64) }, { pendingDir: d }).ok, false);
 });
 
 console.log(`world-anchor-mint.test.js: ${passed} passed`);
