@@ -34,7 +34,7 @@ const { emitEgressAlert } = require('../../kernel/egress/alert');
 // and the fold re-checks field content on READ (verify-on-read, #273); the store re-checks at the WRITE
 // boundary here so a bad input never lands in the log in the first place.
 const {
-  STATES, isLegalTransition, foldEntry, MAX, HEX64, validRepo, validIssueRef, badEvidence,
+  STATES, isLegalTransition, foldEntry, HEX64, validRepo, validIssueRef, validEvidenceField, badEvidence,
 } = require('./solve-queue-fold');
 
 const LAB_STATE_BASE = process.env.LOOM_LAB_STATE_DIR || path.join(os.homedir(), '.claude', 'lab-state');
@@ -174,7 +174,7 @@ function enqueue(input, opts = {}) {
   const { repo, issue_ref, persona } = input || {};
   if (!validRepo(repo)) { alert('bad-input', { field: 'repo' }); return { ok: false, reason: 'bad-input' }; }
   if (!validIssueRef(issue_ref)) { alert('bad-input', { field: 'issue_ref' }); return { ok: false, reason: 'bad-input' }; }
-  if (persona !== undefined && !(typeof persona === 'string' && persona.length >= 1 && persona.length <= MAX.persona)) {
+  if (persona !== undefined && !validEvidenceField('persona', persona)) {   // reuse the shared validator (DRY)
     alert('bad-input', { field: 'persona' }); return { ok: false, reason: 'bad-input' };
   }
   const dir = opts.dir || DEFAULT_DIR;

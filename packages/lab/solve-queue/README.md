@@ -26,6 +26,8 @@ A durable, append-only event log that tracks each external-issue **solve entry**
 - **`entry_id`** = `sha256(canonicalJson({repo, issue_ref}))` — one entry per (repo, issue); enqueue idempotent, re-opens a `disposed` entry.
 - **Concurrency**: a single store-wide lock (`.lock`, `withLockSoft`) serializes every mutating op, so a one-at-a-time `claimNext` never double-claims. Reads (`get`/`list`) are lock-free and tolerate a torn trailing line.
 - **Hardening**: the read path is `O_RDONLY|O_NOFOLLOW|O_NONBLOCK` + fstat-same-fd + reject non-regular / foreign-owned / `size > MAX_LOG_BYTES` (a **log** bound, not the per-node cap). Every refuse is observable via `emitEgressAlert`.
+- **Validation**: `repo` / `issue_ref` / evidence fields are bounds-checked at `enqueue`/`advance` before write, and re-verified on read (verify-on-read — a tampered log never surfaces bad content).
+- **Lock timeouts**: a contended `withLockSoft` returns an observable `{ok:false, reason:'lock-timeout'}` rather than exiting the process.
 
 ## Files
 

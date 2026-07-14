@@ -61,11 +61,23 @@ test('get on an unknown entry emits {ok:false}, exit 1', () => {
   assert.strictEqual(r.out.ok, false);
 });
 
+test('advance transitions an entry + persists evidence via the CLI (its own flag/dispatch path)', () => {
+  cli(['enqueue', '--repo', 'octo/adv', '--issue-ref', '99']);
+  const c = cli(['next']);                              // claims octo/adv#99 (the only queued now)
+  assert.strictEqual(c.out.state, 'solving');
+  const r = cli(['advance', '--entry-id', c.out.entry_id, '--to-state', 'drafted',
+    '--candidate-patch-sha', 'a'.repeat(64), '--lesson-signature', 'lesson:x']);
+  assert.strictEqual(r.code, 0);
+  assert.strictEqual(r.out.state, 'drafted');
+  const g = cli(['get', '--entry-id', c.out.entry_id]);
+  assert.strictEqual(g.out.evidence.candidate_patch_sha, 'a'.repeat(64), 'evidence persisted through the CLI dispatch');
+});
+
 test('an unknown subcommand exits 1', () => {
   const r = cli(['bogus']);
   assert.strictEqual(r.code, 1);
 });
 
 try { fs.rmSync(STATE_BASE, { recursive: true, force: true }); } catch { /* best-effort */ }
-assert.ok(passed >= 6, `anti-vacuity floor: expected >=6, ran ${passed}`);
+assert.ok(passed >= 7, `anti-vacuity floor: expected >=7, ran ${passed}`);
 console.log(`${path.basename(__filename)}: ${passed} passed`);
