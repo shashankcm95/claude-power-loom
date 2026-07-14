@@ -87,6 +87,8 @@ Rationale for K=3 (KISS / YAGNI): the recon shows the mechanism is a recombinati
 
 ## Phase 3 — The 5-lesson accumulation (Track N cadence)
 
+> **SUPERSEDED IN PART (2026-07-14, USER) — see `### Phase-3 result` at the bottom.** The rows #3/#4 below ("an already-merged public PR from history … we did not author") are DEPRECATED as bundle lessons. A bundle lesson must be **minted at the solution path** (OUR own persona's solve, `persona_id`-accountable); a lesson inferred from a stranger's diff breaks provenance/accountability. #3/#4 survive ONLY as one-time mechanism-dogfood (they proved the pipeline STABLE). The real bundle = own-solves only (currently 1/5: #2137), growing on Track N.
+
 **Composition of the 5** (explicit real-now vs pending-merge):
 
 | # | Source | Provenance | Real-now? |
@@ -309,12 +311,15 @@ The `deriveLiveNodeId` / `computeContentHash` hasher is a documented byte-parity
 
 **GAP-B exit MET**: the asymmetric cross-repo drift is now literal-gated both sides; the byte-parity risk window (Phases 1-2, `RISK-WINDOW` above) is closed. Note: Embers local `main` carries 2 UNPUSHED commits (`c3c7e17` ember/v2 contract + sample, `600e59f` M1 lock fix) — the Wave 2b Embers branch is based on `origin/main` and is self-contained (inlines the vector, needs neither), but those commits are the operator's to push.
 
-### Phase-3 result — K=3 STABLE + bundle 3/5 accumulated (2026-07-14)
+### Phase-3 result — K=3 mechanism-STABLE (dogfood); bundle = OWN-SOLVES only, 1/5 (2026-07-14)
 
-Ran the full `record-manual-merge -> export-bank-pair -> bank -> verify -> kindle` pipeline for lessons #3/#4 (USER-vouched, from a 6-candidate honest-fit Workflow) on the REAL gh path, plus a re-mint of #1 (#2137) into one growing commons. **K=3 STABLE** (ledger above): 3 consecutive distinct-cell real-merge mints, every one verify-clean (7/7) + kindle @ receiver-weight 0, **zero new pipeline-bug and zero source edit the entire run** — the Track-M mechanism-stability exit.
+Ran the full `record-manual-merge -> export-bank-pair -> bank -> verify -> kindle` pipeline for three real merged PRs (#2137 ours + #2614/#2579 others', USER-vouched dogfood set) on the REAL gh path into one growing commons. **K=3 mechanism-STABLE** (ledger above): 3 consecutive distinct-cell real-merge mints, every one verify-clean (7/7) + kindle @ receiver-weight 0, **zero new pipeline-bug and zero source edit the entire run** — the Track-M mechanism-stability exit. The commons demonstrated the Phase-4 accumulation seam (3 bundles, one growing Merkle `_log/`, 3 distinct `_index/` `.idx.json` groups by `failure_signature`; multi-writer append) and confirmed GAP-A live (every bank `mint_gate:"weak"` with only `no-distinct-reviewer` — the `not-merged` FAIL gone because `meta.mergeSnapshot={merged:true}` is read; the gate annotates, never gates weight).
 
-- **Bundle accumulation = 3/5 in ONE commons** (`scratchpad/phase3-commons`, a throwaway per §0): bundles for #2137 / #2614 / #2579 share one growing Merkle `_log/` and one `_index/` with **3 distinct `.idx.json` pointer groups** (one per distinct `failure_signature` / taxonomy cell) — the Phase-4 §"_index groups by failure_signature + multi-writer append" completion check, demonstrated early.
-- **GAP-A confirmed live end-to-end**: every bank reported `mint_gate:"weak"` with ONLY `no-distinct-reviewer` — the `not-merged` FAIL is gone because `meta.mergeSnapshot={merged:true}` (Wave 2a) is being read. The gate ANNOTATES, never gates weight (all receiver-weight 0).
-- **Remaining for the 5-count (maintainer-paced, per OQ-NS-6)**: #2 = spec-kitty#2611 (still OPEN 2026-07-14) and #5 = next beta-queue solve — both PENDING a real external merge; run `record-manual-merge <pr-url>` on each once `merged===true`. The MECHANISM is now proven STABLE independently of that clock.
-- **Honesty note**: #3/#4 are others' already-merged public PRs (we did NOT author the fix; the lesson is operator-vouched, USER-blessed 2026-07-14). All nodes `production_inert:true` / `arming_class:"pre-arm"`; the commons is a throwaway scratchpad (a persistent commons is an operator/Phase-4 decision).
+**DESIGN CORRECTION (2026-07-14, USER) — SUPERSEDES the §0 / Phase-3-table "already-merged public history" device for #3/#4.** A world-anchored bundle lesson must be **minted at the solution path** — a byproduct of OUR OWN persona building the fix, so we genuinely know how it was solved AND the node's `persona_id` names a real, accountable builder. Deriving a lesson from a *stranger's* merged diff is **inference from pre-existing work**, not captured learning: we do not know how they solved it, and the `persona_id` becomes fictional, breaking the provenance/accountability chain the substrate exists to establish. Therefore:
+
+- **#2614 / #2579 are DOGFOOD, not bundle lessons.** They proved the minting pipeline is STABLE on real merge data (their only job) and are discarded with the throwaway commons. They do NOT count toward the 5.
+- **The real bundle = OWN-SOLVES only. Count = 1/5** — just **#2137** (our solve, merged by the external maintainer; `persona_id`-accountable). It grows ONLY on **Track N**: our persona solves a beta-queue issue -> PR -> maintainer merges -> `record-manual-merge <pr-url>` mints the lesson tied to that real builder persona. #2611 (still OPEN 2026-07-14) is the next own-solve pending merge.
+- **Forward mechanism**: the honest path is the deferred **live-solve lesson capture** (ladder item 3) — the lesson auto-derived AT the solve, not orchestrator-authored after the fact. Elevated from "deferred nicety" to the correct provenance for a real bundle lesson. `persona_id` must be the ACTUAL builder persona, not a self-asserted label.
+
+All nodes remain `production_inert:true` / `arming_class:"pre-arm"` / weight-0; nothing armed. The K=3 STABLE mechanism result is unaffected by this correction (the pipeline's stability was the thing being proven, and it was — whose PRs exercised it does not change that).
 
