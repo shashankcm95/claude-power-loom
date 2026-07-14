@@ -71,7 +71,11 @@ test('byte-parity: the frozen Embers dogfood node is accepted verbatim (seals re
   const res = buildBankPair(OK_INPUT);
   assert.strictEqual(res.ok, true, 'the frozen vector builds a pair');
   assert.deepStrictEqual(res.node, EMBERS_DOGFOOD_NODE, 'the node is emitted VERBATIM (7 keys, exact values)');
-  // documents the published Embers hashes - a literal drift on either side trips this
+  // GAP-B (Wave 2b) SHARED cross-repo vector: these two literals are pinned IDENTICALLY on the Embers side in
+  // embers/test/unit/schema/content-address.test.js (the 'shared cross-repo vector ...' test), against a node
+  // body inlined byte-for-byte from EMBERS_DOGFOOD_NODE above. One node, one pair of frozen literals, asserted
+  // in BOTH repos -> a one-sided hasher/serializer drift trips HERE or THERE (never leaves both green while a
+  // real bank self-DoSes). Update BOTH sides in lockstep if the vector is ever re-captured.
   assert.strictEqual(res.node.node_id, 'c411ae69b5648dd3f6168f9da1219022667893dfeaa5ce8a5c90d998dda15ddf');
   assert.strictEqual(res.node.content_hash, 'c78a9684afeadaa6b95304abb455d93ca1d678ad5b4c4d304b82eab9c3b9f9a0');
 });
