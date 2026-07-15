@@ -398,6 +398,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 ### `lab/solve-queue/`
 
 - `packages/lab/solve-queue/cli.js` - Wave A - thin CLI over solve-queue-store.js.
+- `packages/lab/solve-queue/merge-promote.js` - Wave B - the async merge-poll -> captured-lesson promotion.
 - `packages/lab/solve-queue/solve-queue-fold.js` - Wave A / item-8 Part-A - the PURE fold + transition-legality + boundary VALIDATION for the solve-queue
 - `packages/lab/solve-queue/solve-queue-store.js` - Wave A / item-8 Part-A - the solve-queue lifecycle store (I/O layer).
 
@@ -435,6 +436,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/lab/world-anchor/live-recall-store.js` - Autonomous-SDE ladder item 3 (packages/specs/plans/2026-06-25-live-lesson-minting-item3.md).
 - `packages/lab/world-anchor/merge-observer.js` - Autonomous-SDE ladder gap-map item 2, PR-2 - the merge OBSERVER (SHADOW).
 - `packages/lab/world-anchor/merge-outcome-store.js` - Autonomous-SDE ladder gap-map item 2, PR-2 - the gh-verified MERGE-OUTCOME record store (SHADOW).
+- `packages/lab/world-anchor/mint-captured-merge.js` - Wave B - the captured-lesson merge mint (Option B, join-key-free, SHADOW / weight-0).
 - `packages/lab/world-anchor/parse-pr-url.js` - Autonomous-SDE ladder gap-map item 2, PR-2 - the shared GitHub PR-URL parser.
 - `packages/lab/world-anchor/persona-attribution-store.js` - Gap-8 review-loop, Wave A0 — the content-addressed PR->PERSONA attribution map (SHADOW).
 - `packages/lab/world-anchor/review-observer.js` - Gap-8 review-loop, Wave A-1 — the REVIEW OBSERVER (SHADOW).

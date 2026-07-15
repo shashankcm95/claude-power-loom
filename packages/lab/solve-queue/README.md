@@ -29,14 +29,24 @@ A durable, append-only event log that tracks each external-issue **solve entry**
 - **Validation**: `repo` / `issue_ref` / evidence fields are bounds-checked at `enqueue`/`advance` before write, and re-verified on read (verify-on-read — a tampered log never surfaces bad content).
 - **Lock timeouts**: a contended `withLockSoft` returns an observable `{ok:false, reason:'lock-timeout'}` rather than exiting the process.
 
+## Promotion sweep (Wave B)
+
+`merge-promote.js` (`promoteMergedEntries` / the `promote` CLI subcommand) is the async merge-poll that turns a merged solve into a minted lesson. One sweep is **two-state**:
+
+1. **`in_flight` → `merged`**: for each `in_flight` entry, `parsePrUrl` + `verifyMerge` (join-key-free gh). On `merged===true`, advance to `merged` (record `merge_sha`); not-yet-merged / unverifiable is left `in_flight` (retried next sweep).
+2. **`merged` → `minted`**: for each `merged` entry (incl. any prior-crash-stranded), source the solve-time **captured** lesson by `candidate_patch_sha` (via the one dam-admitted reader), mint a **weight-0** `world_anchored` node (node-only → admit-refused; `LIVE_SOURCES` frozen-empty), advance to `minted`. A missing capture is fail-closed (`no-captured-lesson`, left `merged`).
+
+Idempotent (a re-sweep re-mints the same node by content-dedup; `emitted_at = gh merged_at` so a crash-retry never collision-rejects). SHADOW: read-only gh, no arming, no PR emit, no signer. Returns `{ok, merged, minted, skipped, errors}`.
+
 ## Files
 
 - [`solve-queue-fold.js`](solve-queue-fold.js) — the pure fold + transition-legality table (no I/O).
 - [`solve-queue-store.js`](solve-queue-store.js) — the I/O layer: append log, `withLockSoft` ops, hardened read, boundary validation.
-- [`cli.js`](cli.js) — thin dispatcher: `enqueue` / `next` / `advance` / `list` / `get`.
+- [`merge-promote.js`](merge-promote.js) — the Wave-B two-state merge-poll → captured-lesson weight-0 promotion.
+- [`cli.js`](cli.js) — thin dispatcher: `enqueue` / `next` / `advance` / `list` / `get` / `promote`.
 
 ## Out of scope (later waves)
 
-- **Wave B**: the async merge-poll + the merge→mint promotion (`mintFromMergeOutcome`) + wiring `live-solve-one` to `claimNext`.
 - **Wave C**: persona-carry as a non-identity pin (never a `BASIS_FIELD`).
-- Operator-only: opening PRs; arming; the authenticated signed-edge minter.
+- The `live-solve-one → queue` auto-wire (solve records `candidate_patch_sha` at `drafted`); Wave B operates on operator-populated or that-wire-populated entries.
+- Operator-only: opening PRs; arming; the authenticated signed-edge minter (Option A, the join-key path).

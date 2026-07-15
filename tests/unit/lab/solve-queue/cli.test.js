@@ -79,5 +79,12 @@ test('an unknown subcommand exits 1', () => {
 });
 
 try { fs.rmSync(STATE_BASE, { recursive: true, force: true }); } catch { /* best-effort */ }
-assert.ok(passed >= 7, `anti-vacuity floor: expected >=7, ran ${passed}`);
+test('promote sweeps with no in_flight/merged entries -> a clean empty summary, exit 0', () => {
+  const r = cli(['promote']);
+  assert.strictEqual(r.code, 0);
+  assert.strictEqual(r.out.ok, true);
+  assert.ok(Array.isArray(r.out.minted) && r.out.minted.length === 0);
+});
+
+assert.ok(passed >= 8, `anti-vacuity floor: expected >=8, ran ${passed}`);
 console.log(`${path.basename(__filename)}: ${passed} passed`);
