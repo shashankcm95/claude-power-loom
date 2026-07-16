@@ -791,4 +791,24 @@ test('resolveCapturedSignatureForAttest returns lesson_body (Wave B) + still gat
   assert.strictEqual(resolveCapturedSignatureForAttest({ repoSlug: 'octo/widget', issueRef: 7, candidatePatchSha: 'b'.repeat(64) }, { pendingDir: d }).ok, false);
 });
 
+// Wave C: resolveCapturedSignatureForAttest ALSO surfaces the persona-context pins (the DAM-safe forward-carry
+// seam - merge-promote.js sources the pins via THIS one admitted reader, never by importing live-pending-store).
+test('resolveCapturedSignatureForAttest surfaces the persona pins (Wave C) + defaults an unset pin to ""', () => {
+  const d = pendingDir(tmp());
+  const cps = 'a'.repeat(64);
+  const seed = mintLivePendingLesson({
+    provenance: 'live_pending', repo: 'https://github.com/octo/widget', issue_ref: 7,
+    candidate_patch_sha: cps, lesson_signature: LESSON_SIG, lesson_body: 'a captured earned instinct',
+    persona_def_ref: 'b'.repeat(64), context_commons_ref: 'c'.repeat(64),
+  }, { dir: d });
+  assert.strictEqual(seed.ok, true, `seed must land (${seed.reason || ''})`);
+  const r = resolveCapturedSignatureForAttest({ repoSlug: 'octo/widget', issueRef: 7, candidatePatchSha: cps }, { pendingDir: d });
+  assert.strictEqual(r.ok, true, `resolve must succeed (${r.reason || ''})`);
+  assert.ok(r.pins && typeof r.pins === 'object', 'the resolver surfaces a pins object');
+  assert.strictEqual(r.pins.persona_def_ref, 'b'.repeat(64), 'the persona accountability pin is surfaced');
+  assert.strictEqual(r.pins.context_commons_ref, 'c'.repeat(64));
+  assert.strictEqual(r.pins.runtime, '', 'an unset pin -> the empty sentinel, never undefined');
+  assert.strictEqual(r.pins.recall_graph_root, '');
+});
+
 console.log(`world-anchor-mint.test.js: ${passed} passed`);

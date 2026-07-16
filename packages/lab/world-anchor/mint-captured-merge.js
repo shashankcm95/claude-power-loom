@@ -21,7 +21,7 @@ const crypto = require('crypto');
 const { fetchPrMergeMeta, fetchMergeCommitDiff } = require('./gh-verify');
 const { resolveCapturedSignatureForAttest } = require('./world-anchor-mint');
 const { deriveAnchorId, recordAttestation } = require('./world-anchor-store');
-const { mintWorldAnchoredNode } = require('./live-recall-store');
+const { mintWorldAnchoredNode, readLiveNode } = require('./live-recall-store');
 const { isCanonicalLessonSignature } = require('../causal-edge/lesson-signature');
 const { emitEgressAlert } = require('../../kernel/egress/alert');
 
@@ -66,11 +66,34 @@ async function mintCapturedMerge(input, opts = {}) {
     built_by: 'captured-promote', approval_hash, emitted_at: meta.merged_at,
   }, { dir: o.anchorDir });
   if (!w.ok) return refuse(`attest-${w.reason}`, { anchor_id });
+  // Wave C - forward-carry the persona-context PINS from the captured node (sourced via the ONE dam-admitted
+  // reader above; `cap.pins` is a fixed 4-key ''-or-hex object). Pins seal into the v2 content_hash but NOT
+  // node_id (non-identity), so they never change the mint's identity or dedup.
   const mint = mintWorldAnchoredNode(
-    { anchor_id: w.anchor_id, merge_sha: i.merge_sha, lesson_signature: cap.lesson_signature, lesson_body: cap.lesson_body }, { dir: o.liveDir },
+    { anchor_id: w.anchor_id, merge_sha: i.merge_sha, lesson_signature: cap.lesson_signature, lesson_body: cap.lesson_body, ...(cap.pins || {}) },
+    { dir: o.liveDir },
   );
-  if (!mint.ok) return refuse(`mint-${mint.reason}`, { anchor_id: w.anchor_id });
-  return { ok: true, node_id: mint.node_id, anchor_id: w.anchor_id };
+  if (!mint.ok) {
+    // A `collision` means a node ALREADY EXISTS for this (anchor, lesson) identity (node_id is over the
+    // 5-field basis; a collision differs ONLY in the non-identity envelope: schema_version + pins - e.g. a
+    // pre-existing v1 node re-swept when the captured path mints v2). Carry the node_id so the poller advances
+    // IDEMPOTENTLY to `minted` instead of sticking the entry forever (the migration-hazard close).
+    // L1 (VALIDATE hacker): the idempotent-advance premise is "a VERIFIABLE node already exists". A collision
+    // can ALSO arise from an UNVERIFIABLE file (same-uid tamper / corruption) where the dedup pre-read + the
+    // EEXIST re-read both reject - advancing on a phantom would be wrong. Only signal the idempotent
+    // mint-collision when readLiveNode confirms a verifiable node; else a HARD mint-collision-unverifiable
+    // refuse (the poller routes it to errors, leaves the entry `merged`, observable - never a silent advance).
+    if (mint.reason === 'collision' && mint.node_id) {
+      const existing = readLiveNode(mint.node_id, { dir: o.liveDir });
+      if (existing) return { ...refuse('mint-collision', { anchor_id: w.anchor_id, node_id: mint.node_id }), node_id: mint.node_id };
+      return refuse('mint-collision-unverifiable', { anchor_id: w.anchor_id, node_id: mint.node_id });
+    }
+    return refuse(`mint-${mint.reason}`, { anchor_id: w.anchor_id });
+  }
+  // MEDIUM (VALIDATE code-reviewer): propagate the store's REAL dedup flag on the success path (a same-body
+  // re-mint or a TOCTOU-EEXIST race returns ok:true, deduped:true) - the poller must not infer dedup from a
+  // heuristic. The collision path above carries deduped semantics separately (the poller labels it).
+  return { ok: true, node_id: mint.node_id, anchor_id: w.anchor_id, deduped: !!mint.deduped };
 }
 
 module.exports = { mintCapturedMerge };

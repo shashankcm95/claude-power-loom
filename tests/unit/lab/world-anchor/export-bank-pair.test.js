@@ -144,6 +144,24 @@ test('fail-closed: a non-world_anchored provenance is rejected', () => {
   assert.strictEqual(res.reason, 'node-provenance');
 });
 
+test('Wave C: a v2 node (schema_version + pins) exports as its v1 PROJECTION - pins dropped, self-consistent', () => {
+  // A real v2 node VERIFIES (verifyNodeBody accepts v2); the export DOWNGRADE-PROJECTS it to v1 (pins dropped,
+  // content_hash re-derived, node_id preserved) so the shipped bank lane keeps working while the pins stay
+  // toolkit-LOCAL (not for the external commons until the authenticated minter arms).
+  const store = require(path.join(REPO, 'packages', 'lab', 'world-anchor', 'live-recall-store.js'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loom-bank-v2-'));
+  const m = store.mintWorldAnchoredNode({ anchor_id: 'a'.repeat(64), merge_sha: 'b3f2c1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', lesson_signature: EMBERS_DOGFOOD_NODE.lesson_signature, lesson_body: 'a world-grounded lesson', persona_def_ref: 'b'.repeat(64) }, { dir });
+  const v2node = store.readLiveNode(m.node_id, { dir });
+  assert.strictEqual(v2node.schema_version, 2, 'precondition: a real v2 node carrying a pin');
+  const res = buildBankPair({ ...OK_INPUT, node: v2node });
+  assert.strictEqual(res.ok, true, `a v2 node exports (as its v1 projection) (${res.reason || ''})`);
+  assert.deepStrictEqual(Object.keys(res.node).sort(), ['anchor_id', 'content_hash', 'lesson_body', 'lesson_signature', 'merge_sha', 'node_id', 'provenance'], 'the emitted node is exactly the 7 v1 keys - NO schema_version, NO pins');
+  assert.strictEqual(res.node.node_id, v2node.node_id, 'the node_id is preserved (basis-derived, unchanged v1<->v2)');
+  assert.strictEqual(res.node.persona_def_ref, undefined, 'the persona pin does NOT cross to the external commons');
+  assert.strictEqual(store.verifyNodeBody(res.node), null, 'the emitted v1 projection is self-consistent (Embers re-parse + re-derive accepts)');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test('fail-closed: a null / non-object node is rejected', () => {
   assert.strictEqual(buildBankPair({ ...OK_INPUT, node: null }).ok, false);
   assert.strictEqual(buildBankPair({ ...OK_INPUT, node: null }).reason, 'node-not-an-object');

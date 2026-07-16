@@ -57,6 +57,7 @@ function setup(over = {}) {
     merge_sha: over.merge_sha || 'd91785ea',
     lesson_signature: over.nodeLessonSignature || att.lesson_signature,
     lesson_body: over.lesson_body || 'a short world-grounded lesson',
+    persona_def_ref: over.persona_def_ref,   // Wave C: an optional captured persona pin (defaults to '')
   });
   assert.strictEqual(m.ok, true, `fixture node mints (${m.reason || ''})`);
   return { node_id: m.node_id, anchor_id: w.anchor_id, att };
@@ -76,6 +77,17 @@ test('export-bank-pair (stdout): a verified node + matching attestation -> a ban
   assert.strictEqual(r.meta.repoSlug, 'octo/widget');
   assert.strictEqual(r.meta.mergeSnapshot.merged, true, 'GAP-A: the merge signal rides the meta so the Embers gate sees merged');
   assert.ok(/integrity != provenance|self-asserted/i.test(r.note || ''), 'the integrity!=provenance note rides along');
+});
+
+test('Wave C: a v2 node minted WITH a persona pin exports as its v1 projection - the pin is DROPPED at the boundary', () => {
+  const { node_id } = setup({ persona_def_ref: 'b'.repeat(64) });
+  const r = cli.runExportBankPair({ 'node-id': node_id, 'persona-id': 'node-backend', 'human-root': 'root-operator-0' });
+  assert.strictEqual(r.ok, true, `export ok (${r.reason || ''})`);
+  assert.strictEqual(r.node.node_id, node_id, 'the node_id is preserved through the projection');
+  assert.strictEqual(r.node.persona_def_ref, undefined, 'the persona pin does NOT cross to the external commons (toolkit-local)');
+  assert.strictEqual(r.node.schema_version, undefined, 'the emitted node is v1 (no schema_version)');
+  assert.strictEqual(Object.keys(r.node).length, 7, 'exactly the 7 v1 keys');
+  assert.strictEqual(liveStore.verifyNodeBody(r.node), null, 'the emitted v1 projection is self-consistent');
 });
 
 // ---- happy path (--out-dir): the emitted node re-parses + re-verifies (Embers would accept) ----

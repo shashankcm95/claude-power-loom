@@ -82,14 +82,25 @@ async function promoteOneMerged(e, ctx, summary) {
     { repo: parsed.repo, issue_ref: e.issue_ref, pr_url: ev.pr_url, pr_number: parsed.pr_number, merge_sha: ev.merge_sha, candidate_patch_sha: ev.candidate_patch_sha },
     { ghRunner, pendingDir: dirs.pending, anchorDir: dirs.anchor, liveDir: dirs.live },
   );
-  if (!m.ok) {
+  // A `mint-collision` carrying a node_id means a node ALREADY EXISTS for this (anchor, lesson) identity
+  // (the captured path minting a pin-carrying v2 node over a pre-existing v1 / divergent-envelope node). The
+  // promote goal - a minted lesson node exists for this merged solve - is MET, so treat it as an IDEMPOTENT
+  // success: advance to `minted` instead of sticking the entry in errors forever. This is the RESIDUAL
+  // migration-hazard handler for the pin path; conditional-v2 in buildBody is the no-pin-path ROOT close.
+  // SHADOW-safe (the node gates nothing); the arming-time revisit (item 5): once a node gates a weight, a
+  // collision must be re-examined, not blindly accepted. Every OTHER mint/attest refuse still routes to errors.
+  const minted = m.ok || (m.reason === 'mint-collision' && typeof m.node_id === 'string');
+  if (!minted) {
     if (/^(attest|mint)-/.test(m.reason)) summary.errors.push({ entry_id: e.entry_id, stage: 'mint', message: m.reason });
     else summary.skipped.push({ entry_id: e.entry_id, stage: 'merged', reason: m.reason });   // no-captured-lesson / transient gh
     return;
   }
+  if (!m.ok) alert('collision-idempotent-minted', { entry_id: e.entry_id, node_id: m.node_id });   // observable: advanced on a pre-existing node
   const adv = queue.advance({ entry_id: e.entry_id, to_state: 'minted', evidence: {} }, { dir: dirs.queue });
   if (!adv.ok) { summary.errors.push({ entry_id: e.entry_id, stage: 'advance-minted', message: adv.reason }); return; }
-  summary.minted.push({ entry_id: e.entry_id, node_id: m.node_id });
+  // deduped: the collision-idempotent path is a dedup (a node already existed); the success path carries the
+  // store's REAL deduped flag (a same-body re-mint / TOCTOU race), NOT a `!m.ok` heuristic (VALIDATE code-reviewer).
+  summary.minted.push({ entry_id: e.entry_id, node_id: m.node_id, deduped: m.ok ? !!m.deduped : true });
 }
 
 /**

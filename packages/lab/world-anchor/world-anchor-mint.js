@@ -554,7 +554,11 @@ function mintFromMergeOutcome(args, opts = {}) {
  *   (repoSlug already normalized by the caller via the same repoSlug used here).
  * @param {{pendingDir?: string}} [opts]  pendingDir = the captured live_pending store dir (a TEST seam;
  *   production passes none -> the real default). A null/non-object opts normalizes to {}.
- * @returns {{ok: true, lesson_signature: string} | {ok: false, reason: string}}
+ * @returns {{ok: true, lesson_signature: string, lesson_body: string, pins: {persona_def_ref: string,
+ *   context_commons_ref: string, runtime: string, recall_graph_root: string}} | {ok: false, reason: string}}
+ *   lesson_body (Wave B) + pins (Wave C) are the DAM-safe forward-carry: the promoter sources them via THIS
+ *   one admitted live-pending reader, never by importing live-pending-store. Each pin defaults to '' when the
+ *   captured node is a pre-Track-A-W2 v1 grandfather (no pins).
  */
 function resolveCapturedSignatureForAttest(q, opts = {}) {
   const o = opts && typeof opts === 'object' && !Array.isArray(opts) ? opts : {};
@@ -587,10 +591,24 @@ function resolveCapturedSignatureForAttest(q, opts = {}) {
     mintRefuseAlert({ mint_reason: 'ambiguous-captured-lesson', repo_slug: wantSlug, issue_ref: wantIssue, matches: bySignature.length });
     return { ok: false, reason: 'ambiguous-captured-lesson' };
   }
-  // lesson_body is returned so a caller (merge-promote.js) sources it via THIS one dam-admitted reader,
-  // never by importing live-pending-store directly (the full-path reader allowlist). Additive - the prior
-  // caller (runAttestFromCapture) reads only .lesson_signature.
-  return { ok: true, lesson_signature, lesson_body };
+  // Wave C - the persona-context PINS forward-carry (blueprint 3a). Read the four Track-A-W2 pins off the
+  // SAME content-verified byPatch[0] body (listLivePendingLessons already content-address-verified it on
+  // read), defaulting each absent field to the '' sentinel (a pre-Track-A-W2 v1 capture carries none). This
+  // is the DAM-SAFE seam: merge-promote.js sources the pins THROUGH here (this one admitted live-pending
+  // reader), NEVER by importing live-pending-store directly (the full-path reader allowlist). A '' -or-
+  // 64-hex value is what live-recall-store's validateBlock accepts; live-pending guarantees that shape.
+  const cap = byPatch[0];
+  const pinStr = (v) => (typeof v === 'string' ? v : '');
+  const pins = {
+    persona_def_ref: pinStr(cap.persona_def_ref),
+    context_commons_ref: pinStr(cap.context_commons_ref),
+    runtime: pinStr(cap.runtime),
+    recall_graph_root: pinStr(cap.recall_graph_root),
+  };
+  // lesson_body + pins are returned so a caller (merge-promote.js) sources them via THIS one dam-admitted
+  // reader, never by importing live-pending-store directly. Additive - the prior caller (runAttestFromCapture)
+  // reads only .lesson_signature; the Wave-B caller reads .lesson_body; the Wave-C caller reads .pins.
+  return { ok: true, lesson_signature, lesson_body, pins };
 }
 
 // INFORMATION HIDING (code-reviewer LOW-1): export the gated entry point + the Half B read-only lookup.

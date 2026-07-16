@@ -6,9 +6,12 @@
 //
 // buildBankPair assembles a `bank`-ready (node, meta) pair from a VERIFIED world_anchored node + the
 // operator/join inputs. Embers ingests the pair via `embers bank --node <node> --meta <meta> --key <pem>`.
-// The node is the frozen 7-key `world_anchored` body emitted VERBATIM - Embers re-parses it and re-derives
-// its two seals (node_id + content_hash), both by-parity copies of packages/kernel/_lib/canonical-json.js,
-// so a verbatim emit round-trips. The meta is the v1 MINIMAL shape Embers `bank` requires:
+// The emitted node is the canonical 7-key v1 `world_anchored` body - Embers re-parses it and re-derives its
+// two seals (node_id + content_hash), both by-parity copies of packages/kernel/_lib/canonical-json.js, so it
+// round-trips. A v1 node emits verbatim; a Wave-C v2 node (schema_version + persona pins) is DOWNGRADE-
+// projected to v1 (projectToV1Body: pins dropped, content_hash re-derived, node_id preserved) - the pins are
+// toolkit-LOCAL until the authenticated minter arms and must not cross to the external commons yet. The meta
+// is the v1 MINIMAL shape Embers `bank` requires:
 //   { minter: { persona_id, human_root }, prUrl, repoSlug, mergeSnapshot: { merged, merge_sha } }
 // failureSignature is OMITTED - Embers defaults it to node.lesson_signature (the same bytes; emitting a copy
 // would invite drift). scope is an optional advisory bag, not emitted (YAGNI).
@@ -37,7 +40,7 @@
 
 'use strict';
 
-const { verifyNodeBody, STORED_KEYS } = require('./live-recall-store');
+const { verifyNodeBody, STORED_KEYS, projectToV1Body } = require('./live-recall-store');
 const { parsePrUrl } = require('./parse-pr-url');
 
 // human_root / persona_id length cap - a bounded label (same DoS class as the built_by/branch caps). A
@@ -120,6 +123,16 @@ function buildBankPair(input) {
   const nodeReason = verifyNodeBody(node);
   if (nodeReason) return { ok: false, reason: `node-${nodeReason}` };
 
+  // 1a. Wave C: a v2 node (schema_version:2 + the four non-identity pins) VERIFIES above, but reconstructNode
+  //     emits only the 7 v1 NODE_EMIT_ORDER keys while KEEPING the v2-sealed content_hash (over 12 fields) -
+  //     a self-inconsistent cross-repo export. DOWNGRADE-PROJECT it to the canonical v1 shape (drop
+  //     schema_version + pins, re-derive a v1 content_hash) so the export stays self-consistent AND the shipped
+  //     bank lane keeps working. The pins are toolkit-LOCAL (integrity-sealed, not provenance-authenticated)
+  //     and must NOT cross to the external commons until the authenticated minter arms - so they are dropped
+  //     HERE, at the export boundary. node_id is preserved (basis-derived, unchanged v1<->v2). A v1 node is an
+  //     idempotent passthrough. projectToV1Body owns the seal re-derivation (this module stays a pure assembler).
+  const emitNode = node.schema_version !== undefined ? projectToV1Body(node) : node;
+
   // 2. Operator labels: bounded, non-empty, control-char-free (terminal/log-injection + DoS bound).
   if (!isBoundedPlainString(personaId, MAX_LABEL)) return { ok: false, reason: 'bad-persona-id' };
   if (!isBoundedPlainString(humanRoot, MAX_LABEL)) return { ok: false, reason: 'bad-human-root' };
@@ -149,10 +162,10 @@ function buildBankPair(input) {
     minter: { persona_id: personaId, human_root: humanRoot },
     prUrl: parsedUrl.pr_url,
     repoSlug: repo,
-    mergeSnapshot: { merged: true, merge_sha: node.merge_sha },
+    mergeSnapshot: { merged: true, merge_sha: emitNode.merge_sha },   // emitNode == node.merge_sha (projection preserves it)
   };
 
-  return { ok: true, node: reconstructNode(node), meta };
+  return { ok: true, node: reconstructNode(emitNode), meta };
 }
 
 module.exports = { buildBankPair, MAX_LABEL };
