@@ -420,7 +420,7 @@ test('readLiveNode / listLiveNodes: an ABSENT read root -> empty SILENTLY, no mk
 function validBody() {
   const dir = tmp();
   const m = store.mintWorldAnchoredNode(block(), { dir });
-  return store.readLiveNode(m.node_id, { dir });  // a full, self-consistent v2 body (always-v2 buildBody)
+  return store.readLiveNode(m.node_id, { dir });  // block() carries no pins -> a self-consistent v1 body (conditional-v2)
 }
 
 test('verifyNodeBody: a self-consistent node body -> null', () => {

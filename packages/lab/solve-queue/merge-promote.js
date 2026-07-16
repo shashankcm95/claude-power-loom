@@ -83,9 +83,10 @@ async function promoteOneMerged(e, ctx, summary) {
     { ghRunner, pendingDir: dirs.pending, anchorDir: dirs.anchor, liveDir: dirs.live },
   );
   // A `mint-collision` carrying a node_id means a node ALREADY EXISTS for this (anchor, lesson) identity
-  // (the Wave-C always-v2 re-mint of a pre-existing v1/divergent-envelope node). The promote goal - a minted
-  // lesson node exists for this merged solve - is MET, so treat it as an IDEMPOTENT success: advance to
-  // `minted` instead of sticking the entry in errors forever (the always-v2 migration-hazard close).
+  // (the captured path minting a pin-carrying v2 node over a pre-existing v1 / divergent-envelope node). The
+  // promote goal - a minted lesson node exists for this merged solve - is MET, so treat it as an IDEMPOTENT
+  // success: advance to `minted` instead of sticking the entry in errors forever. This is the RESIDUAL
+  // migration-hazard handler for the pin path; conditional-v2 in buildBody is the no-pin-path ROOT close.
   // SHADOW-safe (the node gates nothing); the arming-time revisit (item 5): once a node gates a weight, a
   // collision must be re-examined, not blindly accepted. Every OTHER mint/attest refuse still routes to errors.
   const minted = m.ok || (m.reason === 'mint-collision' && typeof m.node_id === 'string');

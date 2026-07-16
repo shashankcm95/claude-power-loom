@@ -184,7 +184,7 @@ async function main() {
   await test('Wave C: a mint-collision (a node already exists for this lesson) advances IDEMPOTENTLY, never stuck', async () => {
     const d = bundle(); seedCapture(d, { persona: 'b'.repeat(64) }); const id = seedInFlight(d);
     // Pre-plant a DIVERGENT node at the SAME (anchor, lesson) identity (a different pin) - the same-basis
-    // different-envelope shape a pre-Wave-C v1 / different-persona node presents to the always-v2 re-mint.
+    // different-envelope shape a pre-Wave-C v1 / different-persona node presents to the pin-carrying v2 re-mint.
     // The anchor is derivable: diff_hash = sha256(the gh diff), anchor = deriveAnchorId(repo, issue, diff_hash).
     const diff_hash = crypto.createHash('sha256').update('diff --git a/x b/x\n+one line\n').digest('hex');
     const anchor_id = deriveAnchorId({ repo: 'octo/widget', issueRef: 7, diff_hash });
