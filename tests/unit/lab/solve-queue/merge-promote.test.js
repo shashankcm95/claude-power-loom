@@ -10,6 +10,7 @@
 'use strict';
 
 const assert = require('assert');
+const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -22,6 +23,7 @@ const queue = require(path.join(REPO, 'packages', 'lab', 'solve-queue', 'solve-q
 const { mintLivePendingLesson } = require(path.join(REPO, 'packages', 'lab', 'causal-edge', 'live-pending-store.js'));
 const liveStore = require(path.join(REPO, 'packages', 'lab', 'world-anchor', 'live-recall-store.js'));
 const { admitWorldAnchorNode } = require(path.join(REPO, 'packages', 'lab', 'world-anchor', 'admit-world-anchor-node.js'));
+const { deriveAnchorId } = require(path.join(REPO, 'packages', 'lab', 'world-anchor', 'world-anchor-store.js'));
 const { promoteMergedEntries } = require(path.join(REPO, 'packages', 'lab', 'solve-queue', 'merge-promote.js'));
 const { mintCapturedMerge } = require(path.join(REPO, 'packages', 'lab', 'world-anchor', 'mint-captured-merge.js'));
 
@@ -50,8 +52,12 @@ function bundle() {
   const b = fs.mkdtempSync(path.join(STATE_BASE, 'b-'));
   return { queueDir: path.join(b, 'q'), pendingDir: path.join(b, 'pending'), anchorDir: path.join(b, 'anchor'), liveDir: path.join(b, 'live') };
 }
-function seedCapture(dirs, { cps = CPS, sig = SIG, body = BODY, repo = 'https://github.com/octo/widget', issue = 7 } = {}) {
-  const r = mintLivePendingLesson({ provenance: 'live_pending', repo, issue_ref: issue, candidate_patch_sha: cps, lesson_signature: sig, lesson_body: body }, { dir: dirs.pendingDir });
+function seedCapture(dirs, { cps = CPS, sig = SIG, body = BODY, repo = 'https://github.com/octo/widget', issue = 7, persona } = {}) {
+  // Wave C: `persona` seeds the persona_def_ref pin at the capture (the solve-time accountability), so the
+  // forward-carry onto the minted world_anchored node can be asserted end to end.
+  const block = { provenance: 'live_pending', repo, issue_ref: issue, candidate_patch_sha: cps, lesson_signature: sig, lesson_body: body };
+  if (persona !== undefined) block.persona_def_ref = persona;
+  const r = mintLivePendingLesson(block, { dir: dirs.pendingDir });
   assert.strictEqual(r.ok, true, `capture seed (${r.reason || ''})`);
 }
 // Enqueue -> claim -> drafted(cps) -> in_flight(pr_url). Returns the entry_id.
@@ -150,6 +156,60 @@ async function main() {
     assert.strictEqual(m1.ok, true, `first mint (${m1.reason || ''})`);
     assert.strictEqual(m2.ok, true, `re-mint (${m2.reason || ''})`);
     assert.strictEqual(m2.node_id, m1.node_id, 'clean content-dedup, never a divergent collision or a forked node');
+  });
+
+  // ---- Wave C: the persona accountability-pin forward-carry (the captured pin -> the minted node) ----
+
+  await test('Wave C: the captured persona pin flows onto the minted world_anchored node; still weight-0', async () => {
+    const d = bundle(); seedCapture(d, { persona: 'b'.repeat(64) }); const id = seedInFlight(d);
+    const r = await promoteMergedEntries({ ...d, ghRunner: ghRunnerFor() });
+    assert.strictEqual(st(d, id), 'minted');
+    assert.strictEqual(r.minted.length, 1);
+    const node = liveStore.readLiveNode(r.minted[0].node_id, { dir: d.liveDir });
+    assert.strictEqual(node.persona_def_ref, 'b'.repeat(64), 'the solve persona is accountable on the DURABLE node (minted at the solution path)');
+    assert.strictEqual(node.schema_version, 2, 'the minted node is v2');
+    const adm = admitWorldAnchorNode(node, { edgeDir: path.join(d.liveDir, '..', 'edges') });
+    assert.strictEqual(adm.admitted, false, `a pin-carrying node is STILL weight-0 (admit-refused: ${adm.reason})`);
+  });
+
+  await test('Wave C: an empty-pin capture mints a v1 node (conditional-v2: no pin -> no v2 envelope)', async () => {
+    const d = bundle(); seedCapture(d); const id = seedInFlight(d);   // no persona seeded
+    const r = await promoteMergedEntries({ ...d, ghRunner: ghRunnerFor() });
+    assert.strictEqual(st(d, id), 'minted');
+    const node = liveStore.readLiveNode(r.minted[0].node_id, { dir: d.liveDir });
+    assert.strictEqual(node.schema_version, undefined, 'no captured persona -> a canonical v1 node, not a v2-empty-pins envelope');
+    assert.strictEqual(node.persona_def_ref, undefined, 'a v1 node carries no pin field');
+  });
+
+  await test('Wave C: a mint-collision (a node already exists for this lesson) advances IDEMPOTENTLY, never stuck', async () => {
+    const d = bundle(); seedCapture(d, { persona: 'b'.repeat(64) }); const id = seedInFlight(d);
+    // Pre-plant a DIVERGENT node at the SAME (anchor, lesson) identity (a different pin) - the same-basis
+    // different-envelope shape a pre-Wave-C v1 / different-persona node presents to the always-v2 re-mint.
+    // The anchor is derivable: diff_hash = sha256(the gh diff), anchor = deriveAnchorId(repo, issue, diff_hash).
+    const diff_hash = crypto.createHash('sha256').update('diff --git a/x b/x\n+one line\n').digest('hex');
+    const anchor_id = deriveAnchorId({ repo: 'octo/widget', issueRef: 7, diff_hash });
+    const pre = liveStore.mintWorldAnchoredNode({ anchor_id, merge_sha: SHA40, lesson_signature: SIG, lesson_body: BODY, persona_def_ref: 'f'.repeat(64) }, { dir: d.liveDir });
+    assert.strictEqual(pre.ok, true, 'the divergent node is pre-planted');
+    const r = await promoteMergedEntries({ ...d, ghRunner: ghRunnerFor() });
+    assert.strictEqual(st(d, id), 'minted', 'the entry advances to minted (idempotent), NOT stuck at merged, NOT an error');
+    assert.strictEqual(r.errors.length, 0, 'a collision on an existing lesson node is NOT an error');
+    assert.ok(r.minted.some((m) => m.entry_id === id && m.deduped === true), 'recorded as a deduped mint carrying the existing node_id');
+    assert.strictEqual(r.minted.find((m) => m.entry_id === id).node_id, pre.node_id, 'the SAME node_id (the pin is non-identity)');
+  });
+
+  await test('Wave C L1: a collision on an UNVERIFIABLE existing file does NOT advance (readback-gated)', async () => {
+    const d = bundle(); seedCapture(d, { persona: 'b'.repeat(64) }); const id = seedInFlight(d);
+    // Plant an OVERSIZE (unverifiable) file at the node_id the mint will target: the dedup pre-read rejects it
+    // (readNodeRaw oversize), the wx create hits EEXIST, the re-read rejects again -> the store reports a
+    // collision with NO verifiable node. The readback gate must REFUSE-not-advance (never advance on a phantom).
+    const diff_hash = crypto.createHash('sha256').update('diff --git a/x b/x\n+one line\n').digest('hex');
+    const anchor_id = deriveAnchorId({ repo: 'octo/widget', issueRef: 7, diff_hash });
+    const node_id = liveStore.deriveLiveNodeId({ anchor_id, provenance: liveStore.WORLD_ANCHORED, merge_sha: SHA40, lesson_signature: SIG, lesson_body: BODY });
+    fs.mkdirSync(d.liveDir, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(path.join(d.liveDir, `${node_id}.json`), 'x'.repeat(70 * 1024));   // oversize -> unverifiable
+    const r = await promoteMergedEntries({ ...d, ghRunner: ghRunnerFor() });
+    assert.strictEqual(st(d, id), 'merged', 'an unverifiable-collision entry stays merged (NOT advanced on a phantom node)');
+    assert.ok(r.errors.some((e) => e.entry_id === id && /mint-collision-unverifiable/.test(e.message)), 'routed to errors, observable');
   });
 
   try { fs.rmSync(STATE_BASE, { recursive: true, force: true }); } catch { /* best-effort */ }

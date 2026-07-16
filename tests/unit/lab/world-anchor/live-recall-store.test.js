@@ -420,7 +420,7 @@ test('readLiveNode / listLiveNodes: an ABSENT read root -> empty SILENTLY, no mk
 function validBody() {
   const dir = tmp();
   const m = store.mintWorldAnchoredNode(block(), { dir });
-  return store.readLiveNode(m.node_id, { dir });  // a full, self-consistent 7-key body
+  return store.readLiveNode(m.node_id, { dir });  // a full, self-consistent v2 body (always-v2 buildBody)
 }
 
 test('verifyNodeBody: a self-consistent node body -> null', () => {
@@ -445,14 +445,114 @@ test('verifyNodeBody: an injected 8th key -> unexpected-field (exact-set BEFORE 
   assert.strictEqual(store.verifyNodeBody({ ...validBody(), weight: 1 }), 'unexpected-field');
 });
 
-test('verifyNodeBody: a node INHERITING its basis fields (own keys < 7) -> unexpected-field (own-property gate)', () => {
+test('verifyNodeBody: a node INHERITING its basis fields (own keys < the expected set) -> missing-field (own-property gate)', () => {
   // deriveLiveNodeId/validateBlock read via the prototype chain; computeContentHash/Object.keys seal only OWN
   // keys. A crafted object that inherits the basis + owns only {node_id, content_hash} must NOT read as valid.
+  // Under the Wave-C discriminated exact-set the OWN key-set is missing the 5 basis fields (no schema_version
+  // -> the V1 shape is expected) -> 'missing-field' (the two-sided check that also closes this bypass).
   const proto = { anchor_id: 'a'.repeat(64), provenance: store.WORLD_ANCHORED, merge_sha: 'd91785ea', lesson_signature: 'lesson:a|b|c', lesson_body: 'inherited body' };
   const crafted = Object.create(proto);
   crafted.node_id = 'a'.repeat(64);
   crafted.content_hash = 'b'.repeat(64);
-  assert.strictEqual(store.verifyNodeBody(crafted), 'unexpected-field', 'own-key-set must equal exactly the 7 stored keys');
+  assert.strictEqual(store.verifyNodeBody(crafted), 'missing-field', 'own-key-set must equal exactly the expected shape (basis fields are missing from OWN keys)');
+});
+
+// ---------------------------------------------------------------------------
+// Wave C: the v2 persona-context pins (forward-carried from the captured live_pending node). Non-identity
+// (sealed in content_hash, NOT in node_id/BASIS_FIELDS), discriminated V1/V2 exact-set. Mirrors the
+// live-pending-store v2 precedent. SHADOW / weight-inert - NO consumer reads a pin this wave.
+// ---------------------------------------------------------------------------
+
+// A full, self-consistent v2 body carrying all four pins (built through the store's own hashing).
+function v2Body(over = {}) {
+  const dir = tmp();
+  const m = store.mintWorldAnchoredNode({ ...block(), persona_def_ref: 'b'.repeat(64), context_commons_ref: 'c'.repeat(64), runtime: 'node20', recall_graph_root: 'e'.repeat(64), ...over }, { dir });
+  assert.strictEqual(m.ok, true, 'v2 mint with pins succeeds');
+  return store.readLiveNode(m.node_id, { dir });
+}
+
+test('Wave C: a v2 mint round-trips all four pins + schema_version:2, self-consistent', () => {
+  const b = v2Body();
+  assert.strictEqual(b.schema_version, store.SCHEMA_VERSION_V2, 'schema_version:2 is sealed');
+  assert.strictEqual(b.persona_def_ref, 'b'.repeat(64), 'the persona accountability pin is sealed + read back');
+  assert.strictEqual(b.context_commons_ref, 'c'.repeat(64));
+  assert.strictEqual(b.runtime, 'node20');
+  assert.strictEqual(b.recall_graph_root, 'e'.repeat(64));
+  assert.strictEqual(store.verifyNodeBody(b), null, 'a full v2 body is self-consistent');
+});
+
+test('Wave C: a NO-PIN mint stays v1 (conditional-v2); a pin makes it v2', () => {
+  const dir = tmp();
+  const m = store.mintWorldAnchoredNode(block(), { dir });   // NO pins supplied
+  const b = store.readLiveNode(m.node_id, { dir });
+  assert.strictEqual(b.schema_version, undefined, 'a no-pin mint is the canonical 7-key v1 body (NOT always-v2)');
+  assert.strictEqual(b.persona_def_ref, undefined, 'a v1 body has no pin field');
+  assert.strictEqual(Object.keys(b).length, 7, 'exactly 7 v1 keys');
+  const dir2 = tmp();
+  const m2 = store.mintWorldAnchoredNode({ ...block(), persona_def_ref: 'b'.repeat(64) }, { dir: dir2 });
+  assert.strictEqual(store.readLiveNode(m2.node_id, { dir: dir2 }).schema_version, store.SCHEMA_VERSION_V2, 'a carried pin makes it v2');
+});
+
+test('Wave C: the migration-hazard close - a NO-PIN re-mint of a pre-existing v1 node DEDUPS, never collides', () => {
+  const dir = tmp();
+  const v1 = selfConsistentNode({});                          // a pre-Wave-C 7-key v1 node, planted on disk
+  fs.writeFileSync(path.join(dir, `${v1.node_id}.json`), JSON.stringify(v1));
+  // re-mint the SAME lesson with NO pin (the record-manual-merge / mintFromMergeOutcome path): conditional-v2
+  // keeps it v1 -> bodiesEqual with the planted v1 -> idempotent DEDUP, NOT a collision refuse.
+  const r = store.mintWorldAnchoredNode({
+    anchor_id: v1.anchor_id, merge_sha: v1.merge_sha, lesson_signature: v1.lesson_signature, lesson_body: v1.lesson_body,
+  }, { dir });
+  assert.strictEqual(r.ok, true, 'a no-pin re-mint of an existing v1 node succeeds');
+  assert.strictEqual(r.deduped, true, 'it DEDUPS (idempotent), the always-v2 collision is gone');
+  assert.strictEqual(r.node_id, v1.node_id, 'same node_id');
+});
+
+test('Wave C: the pin is NON-IDENTITY - two mints differing ONLY by persona_def_ref share a node_id + collide', () => {
+  const dir = tmp();
+  const a = store.mintWorldAnchoredNode({ ...block(), persona_def_ref: 'b'.repeat(64) }, { dir });
+  assert.strictEqual(a.ok, true);
+  const { r, alerted } = captureAlert(() => store.mintWorldAnchoredNode({ ...block(), persona_def_ref: 'f'.repeat(64) }, { dir }));
+  assert.strictEqual(r.ok, false, 'a different-pin re-mint of the SAME lesson is a collision, not a fork');
+  assert.strictEqual(r.reason, 'collision');
+  assert.strictEqual(r.node_id, a.node_id, 'the collision carries the SAME node_id (the pin is NOT in the identity basis)');
+  assert.ok(alerted, 'the collision is observable');
+});
+
+test('Wave C: a v1 grandfather (no schema_version, 7 keys) still reads back unchanged', () => {
+  const dir = tmp();
+  const v1 = selfConsistentNode({});                    // selfConsistentNode builds the pre-migration 7-key shape
+  fs.writeFileSync(path.join(dir, `${v1.node_id}.json`), JSON.stringify(v1));
+  const back = store.readLiveNode(v1.node_id, { dir });
+  assert.ok(back, 'a v1 grandfather node reads back');
+  assert.strictEqual(back.schema_version, undefined, 'a v1 body carries no schema_version');
+  assert.strictEqual(Object.keys(back).length, 7, 'a v1 body is exactly 7 keys');
+});
+
+test('Wave C: a v2 body with an INJECTED extra key -> unexpected-field (exact-set on the V2 shape)', () => {
+  assert.strictEqual(store.verifyNodeBody({ ...v2Body(), weight: 1 }), 'unexpected-field');
+});
+
+test('Wave C: a v2 body with a STRIPPED pin -> missing-field (discriminated exact-set, no subset tolerance)', () => {
+  const stripped = { ...v2Body() };
+  delete stripped.recall_graph_root;                    // v2 marker retained, a pin dropped (the downgrade shape)
+  assert.strictEqual(store.verifyNodeBody(stripped), 'missing-field', 'a partial-pin v2 body is rejected, never read as verified');
+});
+
+test('Wave C: a v1 body CARRYING a pin (no schema_version) -> unexpected-field (a pin is not a V1 key)', () => {
+  const v1WithPin = selfConsistentNode({});             // a v1 body (no schema_version)...
+  v1WithPin.persona_def_ref = 'b'.repeat(64);           // ...with a pin bolted on -> an extra key vs V1_KEYS
+  assert.strictEqual(store.verifyNodeBody(v1WithPin), 'unexpected-field', 'the exact-set (before the seals) rejects a v1+pin body');
+});
+
+test('Wave C: a read-back v2 node with an injected extra key on disk is rejected + observable', () => {
+  const dir = tmp();
+  const m = store.mintWorldAnchoredNode({ ...block(), persona_def_ref: 'b'.repeat(64) }, { dir });
+  const body = JSON.parse(fs.readFileSync(path.join(dir, `${m.node_id}.json`), 'utf8'));
+  body.source = 'world_anchored';                        // an injected trust key a future consumer might read
+  fs.writeFileSync(path.join(dir, `${m.node_id}.json`), JSON.stringify(body));
+  const { r, alerted } = captureAlert(() => store.readLiveNode(m.node_id, { dir }));
+  assert.strictEqual(r, null, 'an injected-key v2 node is rejected on read');
+  assert.ok(alerted, 'the reject is OBSERVABLE');
 });
 
 test('verifyNodeBody: a basis edit that no longer derives node_id -> node-id (self-inconsistent)', () => {

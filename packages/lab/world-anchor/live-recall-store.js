@@ -59,13 +59,44 @@ const NODE_SUFFIX = '.json';
 
 // The identity basis fields, in a fixed shape. node_id seals these; content_hash seals the full body.
 const BASIS_FIELDS = Object.freeze(['anchor_id', 'provenance', 'merge_sha', 'lesson_signature', 'lesson_body']);
-// The EXACT stored shape (buildBody emits precisely these 7 keys). The read path rejects any body whose
-// key-set is not exactly this set (exact-set, NOT subset), so an injected extra key can never ride
-// inside the content_hash seal of a "verified" node (#273 exact-set-not-subset, applied to object keys).
-const STORED_KEYS = Object.freeze([...BASIS_FIELDS, 'node_id', 'content_hash']);
 
-// Hard field-length caps (DoS bound; a malformed/forged giant field cannot write an unbounded file).
-const MAX = Object.freeze({ merge_sha: 128, lesson_signature: 512, lesson_body: 4096 });
+// Track A W2 (Wave C - blueprint 3a) - the persona-context PINS forward-carried from the captured
+// live_pending node onto this DURABLE world_anchored node: content_hash-SEALED but NON-identity (NOT in
+// BASIS_FIELDS, so a per-solve pin NEVER mints a distinct node_id - the USER's "non-identity pin, never a
+// BASIS_FIELD" constraint, structural not conventional). Added as a VERSIONED v2 body gated on a sealed
+// schema_version, so a pre-migration v1 grandfather node (no pins) still reads. Names + shape mirror
+// live-pending-store.js:85 EXACTLY, so the forward-carry is verbatim. The pins are INTEGRITY-sealed, NOT
+// provenance-authenticated (a same-uid process can co-forge a byte-consistent node - the #273 residual
+// stands until the authenticated cross-uid minter arms); NO consumer reads a pin this wave (weight-inert).
+const SCHEMA_VERSION_V2 = 2;
+const PIN_FIELDS = Object.freeze(['persona_def_ref', 'context_commons_ref', 'runtime', 'recall_graph_root']);
+
+// The two EXACT stored shapes - a DISCRIMINATED exact-set (mirroring live-pending-store.js:90-91). The read
+// path requires a body's key-set to equal EXACTLY one of these: a partial-pin / injected-key / stripped-pin /
+// v1+pin body matches NEITHER and is rejected. A naive "accept the superset" filter would degrade this to
+// subset-tolerance (a partial-pin body would read back "verified"), reopening the #273 exact-set hole.
+const V1_KEYS = Object.freeze([...BASIS_FIELDS, 'node_id', 'content_hash']);
+const V2_KEYS = Object.freeze([...BASIS_FIELDS, 'schema_version', ...PIN_FIELDS, 'node_id', 'content_hash']);
+// STORED_KEYS is RETAINED as the v1 alias (=== V1_KEYS): export-bank-pair.js imports it + asserts its width
+// at module load (:92), and reconstructNode emits exactly these 7 keys. Keeping it 7-wide keeps the export
+// seam's drift-check green + the frozen #578 v1 parity vector exportable; a v2 node is refused at the export
+// boundary (buildBankPair), never mis-shaped through the 7-key reconstruct.
+const STORED_KEYS = V1_KEYS;
+
+// Hard field-length caps (DoS bound; a malformed/forged giant field cannot write an unbounded file). The ref
+// pins are self-bounded by HEX64 (exactly 64 chars); `runtime` is a free canonical-json string, so it needs
+// an explicit cap - REJECT-not-truncate on read (store-is-not-a-sandbox).
+const MAX = Object.freeze({ merge_sha: 128, lesson_signature: 512, lesson_body: 4096, runtime: 2048 });
+
+// A pin ref value is either the '' sentinel (no persona / not recorded) or a 64-hex content-address. A LOCAL
+// copy (mirrors live-pending-store.js:186) per the deliberate-duplication discipline - each store's read path
+// is audited independently; NOT a cross-module import (which would also need shadow-import dam clearance).
+function isValidPinRefValue(v) { return v === '' || (typeof v === 'string' && HEX64.test(v)); }
+// Coerce a pin ref to a valid sentinel-or-hex for the write path. validateBlock has already rejected a
+// PRESENT-invalid pin before buildBody runs, so this only defaults an ABSENT pin to '' (defense-in-depth).
+function pinRefValue(v) { return (typeof v === 'string' && HEX64.test(v)) ? v : ''; }
+// runtime is a bounded canonical-json string; an absent value defaults to the '' sentinel.
+function pinRuntimeValue(v) { return (typeof v === 'string' && v.length >= 1 && v.length <= MAX.runtime) ? v : ''; }
 // Total on-disk record cap, enforced on the READ path via st.size BEFORE readFileSync. The field caps
 // bound a record WRITTEN through the validator, but a same-uid process can plant a multi-GB file
 // directly at a valid <64-hex>.json name; reading it fully into memory before the hash check is the
@@ -113,22 +144,73 @@ function validateBlock(block) {
   if (!isBoundedString(block.merge_sha, MAX.merge_sha)) return 'bad-merge-sha';
   if (!isBoundedString(block.lesson_signature, MAX.lesson_signature)) return 'bad-lesson-signature';
   if (!isBoundedString(block.lesson_body, MAX.lesson_body)) return 'bad-lesson-body';
+  // Track A W2 (Wave C) - the v2 pins + schema_version, typed TOLERANTLY (absent -> ok: buildBody defaults
+  // on write, a v1 grandfather has none on read; PRESENT -> strictly typed), mirroring the `provenance !=
+  // null` idiom above. The all-or-nothing per-version enforcement is the DISCRIMINATED exact-set in
+  // verifyNodeBody; here we only bound the VALUE of a present field (store-is-not-a-sandbox: type on BOTH paths).
+  if (block.schema_version != null && block.schema_version !== SCHEMA_VERSION_V2) return 'bad-schema-version';
+  if (block.persona_def_ref != null && !isValidPinRefValue(block.persona_def_ref)) return 'bad-persona-def-ref';
+  if (block.context_commons_ref != null && !isValidPinRefValue(block.context_commons_ref)) return 'bad-context-commons-ref';
+  if (block.recall_graph_root != null && !isValidPinRefValue(block.recall_graph_root)) return 'bad-recall-graph-root';
+  if (block.runtime != null && !(typeof block.runtime === 'string' && block.runtime.length <= MAX.runtime)) return 'bad-runtime';
   return null;
 }
 
-// Build the canonical stored body (only the known fields, fixed shape) + the node_id + the
-// content_hash seal. Immutable: a fresh object, never a mutation of the caller's input.
+// Build the canonical stored body (v1 OR v2, CONDITIONAL on a carried pin) + the node_id + the content_hash
+// seal. Immutable: a fresh object, never a mutation of the caller's input.
+//
+// CONDITIONAL-v2 (VALIDATE code-reviewer HIGH — the migration-hazard ROOT close): a v2 body (schema_version:2
+// + the four pins) is emitted ONLY when a pin is actually carried (any non-empty persona/context/runtime/
+// recall pin); a NO-PIN mint stays the canonical 7-key v1 shape. This diverges DELIBERATELY from live-pending
+// (a fresh single-writer lane that can afford always-v2): live-recall has PRE-EXISTING v1 nodes + THREE mint
+// callers, two of which (record-manual-merge, mintFromMergeOutcome) carry no pin. Under always-v2 every one of
+// their re-mints of an existing v1 node would COLLIDE (same basis node_id, divergent v2 content_hash) instead
+// of DEDUP - a silent loss of idempotency the poller-only collision fix did not cover. Conditional-v2 keeps
+// the no-pin paths minting v1 -> they dedup cleanly with an existing v1 node; a v2 node is born ONLY from a
+// captured-persona solve (the accountability the pin records). The pins seal into content_hash but NOT into
+// node_id (deriveLiveNodeId reads BASIS_FIELDS only) - sealed, not identity - so v1 and v2 for the same solve
+// share a node_id (the residual the poller's collision-idempotent advance handles for the pin path).
 function buildBody(block) {
-  const body = {
+  const base = {
     anchor_id: block.anchor_id,
     provenance: WORLD_ANCHORED,
     merge_sha: String(block.merge_sha),
     lesson_signature: block.lesson_signature,
     lesson_body: block.lesson_body,
   };
+  const persona_def_ref = pinRefValue(block.persona_def_ref);
+  const context_commons_ref = pinRefValue(block.context_commons_ref);
+  const runtime = pinRuntimeValue(block.runtime);
+  const recall_graph_root = pinRefValue(block.recall_graph_root);
+  const hasPin = persona_def_ref !== '' || context_commons_ref !== '' || runtime !== '' || recall_graph_root !== '';
+  const body = hasPin
+    ? { ...base, schema_version: SCHEMA_VERSION_V2, persona_def_ref, context_commons_ref, runtime, recall_graph_root }
+    : base;
   body.node_id = deriveLiveNodeId(body);
   body.content_hash = computeContentHash(body);
   return body;
+}
+
+// Wave C: project a (v1 OR v2) VERIFIED node body to its canonical v1 (7-key) shape with a re-derived v1
+// content_hash. The toolkit->Embers bank/export lane emits v1 ONLY: the pins are toolkit-LOCAL (integrity-
+// sealed, NOT provenance-authenticated) and must not cross to the external commons until the authenticated
+// minter arms - so a v2 node is DOWNGRADE-projected (schema_version + pins dropped) at the export boundary,
+// NOT refused (which would dead-end the shipped bank lane). node_id is basis-derived (BASIS_FIELDS unchanged
+// v1<->v2), so the projection's id is IDENTICAL to the v2 node's; content_hash is re-derived over the 7-key
+// body so the projection is self-consistent (Embers re-derives both seals over the emitted bytes + accepts).
+// A v1 input is idempotent (already the 7-key shape). PURE - no I/O; the caller (export-bank-pair) stays a
+// pure assembler by delegating the seal re-derivation here, where canonical-json + the basis live.
+function projectToV1Body(body) {
+  const v1 = {
+    anchor_id: body.anchor_id,
+    provenance: WORLD_ANCHORED,
+    merge_sha: String(body.merge_sha),
+    lesson_signature: body.lesson_signature,
+    lesson_body: body.lesson_body,
+  };
+  v1.node_id = deriveLiveNodeId(v1);
+  v1.content_hash = computeContentHash(v1);
+  return v1;
 }
 
 /**
@@ -141,22 +223,27 @@ function buildBody(block) {
  * seals-only check (an extra field would ride inside a self-consistent seal).
  * @param {object} parsed  a candidate node body (already JSON-parsed)
  * @returns {string|null} a reason token ('not-an-object'|'provenance'|<validateBlock reason>|
- *   'unexpected-field'|'node-id'|'content-hash'), or null when the body is self-consistent.
+ *   'unexpected-field'|'missing-field'|'node-id'|'content-hash'), or null when the body is self-consistent.
  */
 function verifyNodeBody(parsed) {
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return 'not-an-object';
   if (parsed.provenance !== WORLD_ANCHORED) return 'provenance';
   const bad = validateBlock(parsed);
   if (bad) return bad;
+  // Closed-shape DISCRIMINATED exact-set (Wave C; mirrors live-pending-store.js:377-382): the OWN key-set
+  // must equal EXACTLY V1 (a pre-migration grandfather, no pins) OR EXACTLY V2 (schema_version:2 + all four
+  // pins). validateBlock has already bounded schema_version to absent|2, so a PRESENT schema_version here is
+  // 2. A body matching NEITHER - a partial-pin, an injected key, a v1+pin, a stripped-pin v2 downgrade - is
+  // rejected. OWN enumerable keys only: the `missing` reject also closes the prototype-inheritance bypass (a
+  // crafted object that INHERITS the basis fields and OWNS only {node_id, content_hash} is missing the basis
+  // fields from its OWN key-set -> 'missing-field'). The exact-set runs BEFORE the two seal re-derivations,
+  // because an injected key + a recomputed content_hash would ride inside a self-consistent seals-only check.
+  const expected = parsed.schema_version === SCHEMA_VERSION_V2 ? V2_KEYS : V1_KEYS;
   const ownKeys = Object.keys(parsed);                                       // OWN enumerable keys only
-  const unexpected = ownKeys.filter((k) => !STORED_KEYS.includes(k));
+  const unexpected = ownKeys.filter((k) => !expected.includes(k));
   if (unexpected.length > 0) return 'unexpected-field';
-  // Every stored field must be an OWN property. deriveLiveNodeId + validateBlock read `b[f]` via the
-  // prototype chain, and computeContentHash / Object.keys seal only OWN keys - so a crafted object that
-  // INHERITS the basis fields and OWNS only {node_id, content_hash} would derive a matching id, seal just
-  // its 2 own keys, and pass. Requiring the OWN key-set to be the full 7 (length, given the subset check
-  // above => exactly STORED_KEYS) closes that prototype-inheritance bypass (#273 exact-set, own-vs-inherited).
-  if (ownKeys.length !== STORED_KEYS.length) return 'unexpected-field';
+  const missing = expected.filter((k) => !ownKeys.includes(k));
+  if (missing.length > 0) return 'missing-field';
   if (deriveLiveNodeId(parsed) !== parsed.node_id) return 'node-id';        // basis must derive the FIELD id (self-consistent)
   if (parsed.content_hash !== computeContentHash(parsed)) return 'content-hash'; // full-body seal (launder close)
   return null;
@@ -203,10 +290,17 @@ function bodiesEqual(a, b) { return a.node_id === b.node_id && a.content_hash ==
 
 /**
  * Mint a world_anchored recall node from a verified-attestation-derived block. Verify-on-write +
- * dedup-collision-aware. Every refuse path is OBSERVABLE (M1).
- * @param {{anchor_id, merge_sha, lesson_signature, lesson_body, node_id?, provenance?}} block
- *   An incoming `node_id` is a CLAIM verified against the re-derived id (a self-inconsistent claim
- *   is rejected). An incoming `provenance` must be world_anchored or it is rejected.
+ * dedup-collision-aware. Writes a v2 body (schema_version:2 + the four pins) when ANY pin is carried, else the
+ * canonical 7-key v1 body (CONDITIONAL-v2 - the migration-hazard close; see buildBody). Every refuse path is
+ * OBSERVABLE (M1).
+ * @param {{anchor_id, merge_sha, lesson_signature, lesson_body, persona_def_ref?, context_commons_ref?,
+ *   runtime?, recall_graph_root?, node_id?, provenance?}} block
+ *   The four Track-A-W2 pins (Wave C) are OPTIONAL non-identity fields forward-carried from the captured
+ *   live_pending node; each absent pin defaults to the '' sentinel. A PRESENT pin must be ''-or-64-hex
+ *   (persona/context/recall) or a bounded string (runtime), else the block is rejected. Pins seal into
+ *   content_hash but NOT node_id (deriveLiveNodeId reads BASIS_FIELDS only). An incoming `node_id` is a CLAIM
+ *   verified against the re-derived id (a self-inconsistent claim is rejected). An incoming `provenance` must
+ *   be world_anchored or it is rejected.
  * @param {{dir?: string, selfUid?: number|null}} [opts]
  * @returns {{ok: boolean, node_id?: string, deduped?: boolean, reason?: string}}
  */
@@ -299,7 +393,11 @@ function readNodeRaw(node_id, dir, selfUid) {
     const bodyReason = verifyNodeBody(parsed);
     if (bodyReason) {
       const detail = { node_id, kind: bodyReason };
-      if (bodyReason === 'unexpected-field') detail.unexpected = Object.keys(parsed).filter((k) => !STORED_KEYS.includes(k));
+      // Discriminated telemetry: report the mismatched keys against the SAME shape verifyNodeBody used
+      // (V2 when schema_version:2 else V1), so a legit v2 pin is never mislabeled "unexpected".
+      const exp = parsed && parsed.schema_version === SCHEMA_VERSION_V2 ? V2_KEYS : V1_KEYS;
+      if (bodyReason === 'unexpected-field') detail.unexpected = Object.keys(parsed).filter((k) => !exp.includes(k));
+      else if (bodyReason === 'missing-field') detail.missing = exp.filter((k) => !Object.keys(parsed).includes(k));
       else if (bodyReason === 'node-id') detail.derived = deriveLiveNodeId(parsed);
       alert('verify-mismatch', detail);
       return null;
@@ -381,6 +479,9 @@ module.exports = {
   // verifyNodeBody: the pure self-consistency verifier, shared with the export seam (export-bank-pair.js)
   // so a node re-verified at the emit boundary reuses the store's exact #273 chain, never re-implements it.
   verifyNodeBody, STORED_KEYS,
+  // Wave C - the v2 pin schema surface + projectToV1Body (the export seam downgrade-projects a v2 node to v1
+  // so pins stay toolkit-local). STORED_KEYS stays the v1 alias (=== V1_KEYS) for the export drift-check.
+  SCHEMA_VERSION_V2, PIN_FIELDS, V1_KEYS, V2_KEYS, projectToV1Body,
   WORLD_ANCHORED, LIVE_DEFAULT_DIR,
   // Exported for the C3 bounded-read unit test (drive the helper DIRECTLY on a >cap fd, bypassing the
   // st.size pre-check that would otherwise shadow it). MAX_RECORD_BYTES is the cap the read path enforces.
