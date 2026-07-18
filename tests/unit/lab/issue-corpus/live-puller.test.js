@@ -611,6 +611,24 @@ test('l4e. fetchOneIssueRecord: a RATE-LIMIT -> "rate-limited - retry after cool
   assert.strictEqual(calls, 1, 'the rate-limit is not hammered with retries');
   assert.ok(!/gho_X/.test(thrown.message), 'redaction holds on the rate-limit path too');
 });
+test('l4f. classifier ignores an incidental "HTTP 5xx" substring that lacks the gh: status token (CodeRabbit)', () => {
+  // No gh: prefix -> no status extracted -> falls to the net check -> terminal (never mis-read from body text).
+  assert.strictEqual(classifyGhError({ message: 'boom: the response body mentioned HTTP 503 somewhere' }), 'terminal');
+  assert.strictEqual(classifyGhError({ stderr: 'unexpected: HTTP 429 in a log line' }), 'terminal');
+  // The gh: status still wins even when an incidental 5xx appears elsewhere in the same string.
+  assert.strictEqual(classifyGhError({ stderr: 'gh: HTTP 404', message: 'HTTP 503 in the echoed body' }), 'terminal');
+});
+test('l4g. each retry attempt gets a FRESH args array -- a runner mutation cannot bleed into the next attempt (CodeRabbit)', () => {
+  const seen = [];
+  const gh = (args) => {
+    seen.push([...args]);                 // what THIS attempt received (before any mutation)
+    args.push('-X'); args.push('POST');   // hostile: try to inject a write verb into the shared args
+    const e = new Error('x'); e.stderr = 'gh: HTTP 503'; throw e;
+  };
+  try { fetchOneIssueRecord({ owner: 'octo', repo: 'widget', number: 7, ghRunner: gh, retryOpts: { retries: 2, backoffMs: 0 } }); } catch { /* transient exhausts */ }
+  assert.ok(seen.length >= 2, 'the transient was retried');
+  for (const a of seen) assert.ok(!a.includes('POST'), "no attempt sees a prior attempt's mutation (fresh args.slice per attempt)");
+});
 test('l5. fetchOneIssueRecord: persistent transient -> "transient - retry later", stderr redacted', () => {
   const gh = () => { const e = new Error('x'); e.stderr = 'gh: HTTP 503 token=gho_LEAK'; throw e; };
   let thrown;

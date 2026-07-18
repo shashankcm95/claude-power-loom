@@ -195,11 +195,12 @@ function defaultGhRunner(args, { timeout = 30000, maxBuffer = 8 * 1024 * 1024 } 
 //   'terminal'     404 / auth 401/403 / else -> never retried.
 const TRANSIENT_NET_RE = /\b(?:ETIMEDOUT|ECONNRESET|ECONNREFUSED|EAI_AGAIN|ENOTFOUND|socket hang up)\b/;
 const RATELIMIT_TEXT_RE = /\b(?:rate limit|secondary rate limit|abuse detection)\b/i;
-// gh's OWN status token (`gh: HTTP <code>`), with a positional fallback to the FIRST HTTP token (gh writes
-// its status before any echoed body). Anchored so a terminal error whose JSON body merely CONTAINS an
-// "HTTP 5xx" substring is not mis-read as transient — a body substring never carries the `gh:` prefix.
+// gh's OWN status token (`gh: HTTP <code>`) ONLY — gh always prefixes its status line this way. Anchored
+// strictly to that prefix (NO generic `HTTP <code>` fallback) so a terminal error whose echoed body merely
+// CONTAINS an "HTTP 5xx" substring can never be mis-read as transient. A body substring carries no `gh:`
+// prefix; a prefix-less transport failure has no HTTP status and falls to the network-code check below.
 function ghHttpStatus(s) {
-  const m = s.match(/\bgh:\s*HTTP\s+(\d{3})\b/) || s.match(/\bHTTP\s+(\d{3})\b/);
+  const m = s.match(/\bgh:\s*HTTP\s+(\d{3})\b/);
   return m ? Number(m[1]) : null;
 }
 function classifyGhError(e) {
@@ -243,7 +244,10 @@ function retryTransient(fn, { retries = 2, backoffMs = 500 } = {}) {
   }
 }
 function ghJson(ghRunner, args, retryOpts) {
-  const out = retryTransient(() => ghRunner(args), retryOpts);
+  // Hand each retry attempt a FRESH args copy so a mutation by one ghRunner invocation cannot bleed into the
+  // next attempt (the default runner also re-runs assertReadOnlyGhArgs per attempt; the copy makes the
+  // isolation total for ANY runner). args elements are strings, so a shallow slice fully isolates.
+  const out = retryTransient(() => ghRunner(args.slice()), retryOpts);
   try { return JSON.parse(out); } catch { throw new Error('gh: non-JSON response'); }
 }
 // The constructed endpoint is re-asserted to a fixed shape before it becomes a single argv positional.
