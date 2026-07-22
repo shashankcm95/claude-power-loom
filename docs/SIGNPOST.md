@@ -400,6 +400,8 @@ Auto-generated map of where things live, derived from the repo structure + each 
 - `packages/lab/solve-queue/cli.js` - Wave A - thin CLI over solve-queue-store.js.
 - `packages/lab/solve-queue/merge-promote.js` - Wave B - the async merge-poll -> captured-lesson promotion.
 - `packages/lab/solve-queue/solve-queue-fold.js` - Wave A / item-8 Part-A - the PURE fold + transition-legality + boundary VALIDATION for the solve-queue
+- `packages/lab/solve-queue/solve-queue-poll.js` - F3 — the autonomous poll RUNNER (SHADOW / weight-0).
+- `packages/lab/solve-queue/solve-queue-schedule.js` - F3 — the launchd SCHEDULE generator for the solve-queue poll runner (solve-queue-poll.js).
 - `packages/lab/solve-queue/solve-queue-store.js` - Wave A / item-8 Part-A - the solve-queue lifecycle store (I/O layer).
 
 ### `lab/trace-emitter/`
