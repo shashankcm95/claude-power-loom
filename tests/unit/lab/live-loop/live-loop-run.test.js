@@ -191,11 +191,14 @@ const oneRecordPull = () => async () => ({ records: [FIXTURE_RECORD], stats: {} 
   await test('STRUCTURAL: prod runner forwards {} to runLiveDraftLoop (no live deps.emitFn / custody path)', async () => {
     const w = ws();
     let seenDeps = null;
-    const spyDraft = async ({ deps }) => { seenDeps = deps; return { runId: 'x', total: 1, outcomes: [{ stage: 'draft', ok: true }], fatal: null }; };
+    let seenArgs = null;
+    const spyDraft = async (a) => { seenArgs = a; seenDeps = a.deps; return { runId: 'x', total: 1, outcomes: [{ stage: 'draft', ok: true }], fatal: null }; };
     await withEnv({ LOOM_LIVE_LOOP_ENABLED: '1' }, async () => {
       await runLiveLoop({ ...w, deps: { pullFn: oneRecordPull(), draftFn: spyDraft } });
     });
     assert.deepStrictEqual(seenDeps, {}, 'the runner threads {} - no emitFn, no custodyDispositionPath/custodyTokenPath');
+    // Wave D: the scheduler records each solve into the solve-queue (SHADOW). Emit stays OFF via the {} deps above.
+    assert.strictEqual(seenArgs.recordToQueue, true, 'the scheduler passes recordToQueue:true to runLiveDraftLoop');
   });
 
   // === 7. fail-soft: a throwing pull (a 401 throws OUT of pullLiveCorpus) -> fatal, never throws ===

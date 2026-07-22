@@ -151,6 +151,14 @@ Both load-bearing invariants (fail-soft/outcome-purity + test isolation) verifie
 Verified clean (no findings): join-key equals captureLiveLesson's + live-pending's basis; F1 persona-omission;
 F4 opt-in-rebuild (no implicit build on any default/test path); no outcome-contract regression. 81/0 suite.
 
+**CodeRabbit (async, post-PR; CHILL profile) — 2 nits, no Majors** (the board + VALIDATE caught the HIGHs):
+- thread `ctx={repo, issue_ref}` through `qCall`/`qStartSolving` so a per-record queue alert IDENTIFIES the
+  triggering issue (was op/reason/state only). Folded (also on the drafted-advance call site).
+- add a live-loop test asserting the scheduler passes `recordToQueue:true` to `runLiveDraftLoop`. Folded
+  (extended the existing STRUCTURAL emit-off test's draftFn spy).
+- The skip-ahead "recurring-alert" note is an operational observation (no puller-dedup is wired) — behavior
+  left unchanged per CodeRabbit's own guidance; a puller-dedup is out of scope for Wave D.
+
 ## Out of scope / carries
 - `drafted -> in_flight` (needs the armed emit + a real PR) — operator-gated, later wave.
 - dispose-on-failure sweep (zombie `solving` cleanup).

@@ -112,17 +112,18 @@ function recordOutcome(record, fields) {
 // (gates nothing, never a weight/trust input), so a queue op that throws OR refuses NEVER changes the record
 // outcome - it emits ONE alert and the solve proceeds (the same discipline captureLiveLesson follows). A null
 // queueOps => every call is a no-op (the wire is off: the default test/library path, or an explicit null).
-function qCall(queueOps, op, arg) {
+function qCall(queueOps, op, arg, ctx) {
   if (!queueOps || typeof queueOps[op] !== 'function') return null;
   try {
     const r = queueOps[op](arg);
     // VALIDATE HIGH: the store reason rides on a NON-`reason` key (`refuse_reason`) - emitEgressAlert's
     // positional `reason` token is authoritative and clobbers a `reason` key in detail (alert.js:19), so
     // `reason:` here would silently drop the real store reason (illegal-transition / lock-timeout / ...).
-    if (r && r.ok === false) emitEgressAlert('solve-queue-wire-refused', { op, refuse_reason: (r && r.reason) || 'unknown' });
+    // CodeRabbit: ...ctx threads {repo, issue_ref} so a per-record alert IDENTIFIES which issue tripped it.
+    if (r && r.ok === false) emitEgressAlert('solve-queue-wire-refused', { op, refuse_reason: (r && r.reason) || 'unknown', ...ctx });
     return r;
   } catch (e) {
-    emitEgressAlert('solve-queue-wire-threw', { op, detail: (e && e.message) || 'error' });
+    emitEgressAlert('solve-queue-wire-threw', { op, detail: (e && e.message) || 'error', ...ctx });
     return null;
   }
 }
@@ -134,19 +135,20 @@ function qCall(queueOps, op, arg) {
 // crying-wolf alert). The repo/issue_ref bind to ref.slug/ref.issueRef (the Wave-B slug-vs-slug compare basis).
 function qStartSolving(queueOps, ref, persona) {
   if (!queueOps) return null;
-  const input = { repo: ref.slug, issue_ref: ref.issueRef };
+  const ctx = { repo: ref.slug, issue_ref: ref.issueRef };   // per-record correlation for the alerts (CodeRabbit)
+  const input = { ...ctx };
   if (typeof persona === 'string' && persona) input.persona = persona;
-  const res = qCall(queueOps, 'enqueue', input);
+  const res = qCall(queueOps, 'enqueue', input, ctx);
   if (!res || res.ok !== true) return null;
   // VALIDATE LOW: gate the returned entry_id on the solving-advance ACTUALLY landing. If it fails (a store
   // lock-timeout), the entry stays `queued`; returning its id would fire a later `drafted` advance against a
   // still-`queued` entry = a spurious illegal-transition alert. Return null -> don't track (self-heals next run).
   if (res.state === 'queued') {
-    const adv = qCall(queueOps, 'advance', { entry_id: res.entry_id, to_state: 'solving' });
+    const adv = qCall(queueOps, 'advance', { entry_id: res.entry_id, to_state: 'solving' }, ctx);
     return (adv && adv.ok === true) ? res.entry_id : null;
   }
-  if (res.state === 'solving') return res.entry_id;                        // resume a zombie (already solving)
-  emitEgressAlert('solve-queue-wire-skip-ahead', { state: res.state });    // drafted+ : don't touch (first-solve-wins)
+  if (res.state === 'solving') return res.entry_id;                             // resume a zombie (already solving)
+  emitEgressAlert('solve-queue-wire-skip-ahead', { state: res.state, ...ctx }); // drafted+ : don't touch (first-solve-wins)
   return null;
 }
 
@@ -514,7 +516,7 @@ async function solveGradeDraftOne(ctx) {
   // Wave D - the draft landed: advance solving -> drafted, carrying candidate_patch_sha (the Wave-B join key).
   // queueEntryId is null when the wire is off / the entry is ahead -> qCall is a no-op. F6: the sha is carried
   // even when no lesson was captured (it joins to nothing -> Wave B skips no-captured-lesson, harmless).
-  if (queueEntryId) qCall(queueOps, 'advance', { entry_id: queueEntryId, to_state: 'drafted', evidence: { candidate_patch_sha: candidatePatchSha } });
+  if (queueEntryId) qCall(queueOps, 'advance', { entry_id: queueEntryId, to_state: 'drafted', evidence: { candidate_patch_sha: candidatePatchSha } }, { repo: ref.slug, issue_ref: ref.issueRef });
   return recordOutcome(record, { stage: 'draft', ok: true, reason: 'draft-written', verdict, cost_usd: solveRes.costUsd, artifact, ...classifyFields, ...captureFields });
 }
 
