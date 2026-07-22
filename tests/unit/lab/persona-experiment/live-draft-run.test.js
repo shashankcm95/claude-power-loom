@@ -14,12 +14,20 @@ const assert = require('assert');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+// Wave D: isolate the solve-queue / live-pending stores to a temp dir BEFORE any lab module is required
+// (module-load env capture - see lab-state-dir-require-time-capture). The real ~/.claude/lab-state ledger
+// is never touched by this suite, and the Wave-D real-store tests read this temp dir.
+const LAB_STATE_TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'loom-wave-d-state-'));
+process.env.LOOM_LAB_STATE_DIR = LAB_STATE_TMP;
 const MODULE_SRC = fs.readFileSync(path.join(__dirname, '..', '..', '..', '..', 'packages', 'lab', 'persona-experiment', 'live-draft-run.js'), 'utf8');
 
 const REPO = path.join(__dirname, '..', '..', '..', '..');
 const M = require(path.join(REPO, 'packages', 'lab', 'persona-experiment', 'live-draft-run.js'));
 const { parseRecordRef, hasSymlinkEntry, preflightEnv, solveLiveIssueContained, runLiveDraftLoop } = M;
 const { EMPTY_RECALL_GRAPH_ROOT } = require(path.join(REPO, 'packages', 'lab', 'causal-edge', 'recall-graph-root'));
+const { sidecarSha } = require(path.join(REPO, 'packages', 'lab', 'attribution', 'candidate-sidecar'));
+const { scrubLabSecrets } = require(path.join(REPO, 'packages', 'lab', '_lib', 'scrub-lab-secrets'));
+const solveQueue = require(path.join(REPO, 'packages', 'lab', 'solve-queue', 'solve-queue-store'));
 
 const _tests = [];
 let passed = 0; let failed = 0;
@@ -922,6 +930,147 @@ test('Gap7B/9 (output-inert): a REAL dry ok:false with a NON-gh reason (lock/eti
   }
   assert.strictEqual(disposeCalls.length, 0, 'no real dry ok:false reason ever triggers disposal (never over-claims a block)');
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// ---- Wave D: solve->queue auto-wire + F4 preflight ensure-image -----------------
+// A recording double for the queue ops. Each op logs its call; enqueue/advance defaults return the
+// natural next state, overridable per-test to exercise the F4 retry-legality branches.
+function queueDouble(overrides = {}) {
+  const calls = [];
+  return {
+    calls,
+    enqueue(arg) { calls.push({ op: 'enqueue', arg }); return overrides.enqueue ? overrides.enqueue(arg) : { ok: true, entry_id: 'ent-1', state: 'queued' }; },
+    advance(arg) { calls.push({ op: 'advance', arg }); return overrides.advance ? overrides.advance(arg) : { ok: true, entry_id: arg.entry_id, state: arg.to_state }; },
+  };
+}
+const okSolve = (candidate = BENIGN_DIFF) => async () => ({ ok: true, candidate, costUsd: 0.02, redacted: false });
+function recFor(slug, n) { const [o, r] = slug.split('/'); return { id: `${o}__${r}-issue-${n}`, repo: `https://github.com/${slug}`, base_sha: 'a'.repeat(40), problem_statement: 'x' }; }
+
+test('Wave D: a happy solve records queued->solving->drafted carrying the candidate join key', async () => {
+  const dir = mkArtifacts();
+  const q = queueDouble();
+  const deps = loopDeps({ solveFn: okSolve(), queueOps: q });
+  const report = await runLiveDraftLoop({ records: [REC], artifactsDir: dir, deps });
+  assert.strictEqual(report.outcomes[0].ok, true);
+  assert.deepStrictEqual(q.calls.map((c) => c.arg.to_state || 'enqueue'), ['enqueue', 'solving', 'drafted']);
+  assert.strictEqual(q.calls[0].arg.repo, 'octocat/hello-world');
+  assert.strictEqual(q.calls[0].arg.issue_ref, 42);
+  assert.strictEqual(q.calls[2].arg.evidence.candidate_patch_sha, sidecarSha(scrubLabSecrets(BENIGN_DIFF)));
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+test('Wave D (F1): a null-persona classification enqueues WITHOUT a persona field (never bad-input)', async () => {
+  const dir = mkArtifacts();
+  const q = queueDouble();
+  const deps = loopDeps({ solveFn: okSolve(), queueOps: q, classifyFn: () => ({ persona: null, classify_signal: 'no-match', matched: null }) });
+  const report = await runLiveDraftLoop({ records: [REC], artifactsDir: dir, deps });
+  assert.strictEqual(report.outcomes[0].ok, true);
+  assert.ok(!('persona' in q.calls[0].arg), 'a null persona must be OMITTED from the enqueue input');
+  assert.deepStrictEqual(q.calls.map((c) => c.op), ['enqueue', 'advance', 'advance']);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+test('Wave D: a classified persona rides onto the enqueue input', async () => {
+  const dir = mkArtifacts();
+  const q = queueDouble();
+  const deps = loopDeps({ solveFn: okSolve(), queueOps: q, classifyFn: () => ({ persona: 'node-backend', classify_signal: 'kw', matched: 'api' }) });
+  await runLiveDraftLoop({ records: [REC], artifactsDir: dir, deps });
+  assert.strictEqual(q.calls[0].arg.persona, 'node-backend');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+test('Wave D: a failed solve records enqueue+solving but NO drafted (rests at solving)', async () => {
+  const dir = mkArtifacts();
+  const q = queueDouble();
+  const deps = loopDeps({ solveFn: async () => ({ ok: false, reason: 'solve-failed' }), queueOps: q });
+  const report = await runLiveDraftLoop({ records: [REC], artifactsDir: dir, deps });
+  assert.strictEqual(report.outcomes[0].ok, false);
+  assert.deepStrictEqual(q.calls.map((c) => c.arg.to_state || 'enqueue'), ['enqueue', 'solving']);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+test('Wave D: a THROWING queue op never changes the record outcome (fail-soft)', async () => {
+  const dir = mkArtifacts();
+  const q = queueDouble({ advance: () => { throw new Error('disk full'); } });
+  const deps = loopDeps({ solveFn: okSolve(), queueOps: q });
+  const report = await runLiveDraftLoop({ records: [REC], artifactsDir: dir, deps });
+  assert.strictEqual(report.outcomes[0].ok, true, 'the draft still succeeds despite a queue throw');
+  assert.strictEqual(report.outcomes[0].reason, 'draft-written');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+test('Wave D (F4): an ahead entry (already drafted) is skipped - no advance, outcome still ok', async () => {
+  const dir = mkArtifacts();
+  const q = queueDouble({ enqueue: () => ({ ok: true, entry_id: 'e', state: 'drafted' }) });
+  const deps = loopDeps({ solveFn: okSolve(), queueOps: q });
+  const report = await runLiveDraftLoop({ records: [REC], artifactsDir: dir, deps });
+  assert.strictEqual(report.outcomes[0].ok, true);
+  assert.deepStrictEqual(q.calls.map((c) => c.op), ['enqueue'], 'an ahead entry gets no advance');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+test('Wave D (VALIDATE): a failed solving-advance does NOT track for drafted (no spurious illegal-transition)', async () => {
+  const dir = mkArtifacts();
+  const q = queueDouble({ advance: (arg) => (arg.to_state === 'solving' ? { ok: false, reason: 'lock-timeout' } : { ok: true, entry_id: arg.entry_id, state: arg.to_state }) });
+  const deps = loopDeps({ solveFn: okSolve(), queueOps: q });
+  const report = await runLiveDraftLoop({ records: [REC], artifactsDir: dir, deps });
+  assert.strictEqual(report.outcomes[0].ok, true, 'outcome unaffected by the queue lock-timeout');
+  assert.deepStrictEqual(q.calls.map((c) => c.arg.to_state || 'enqueue'), ['enqueue', 'solving'], 'solving attempted but NO drafted advance after it failed');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+test('Wave D (F4): a solving-zombie resume advances to drafted WITHOUT re-advancing to solving', async () => {
+  const dir = mkArtifacts();
+  const q = queueDouble({ enqueue: () => ({ ok: true, entry_id: 'e', state: 'solving' }) });
+  const deps = loopDeps({ solveFn: okSolve(), queueOps: q });
+  const report = await runLiveDraftLoop({ records: [REC], artifactsDir: dir, deps });
+  assert.strictEqual(report.outcomes[0].ok, true);
+  assert.deepStrictEqual(q.calls.map((c) => c.arg.to_state || 'enqueue'), ['enqueue', 'drafted']);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+test('Wave D (isolation): no recordToQueue + no queueOps => the REAL store is never written (non-vacuous)', async () => {
+  const dir = mkArtifacts();
+  const deps = loopDeps({ solveFn: okSolve() });   // NO queueOps, NO recordToQueue
+  await runLiveDraftLoop({ records: [recFor('iso/late', 1)], artifactsDir: dir, deps });
+  assert.ok(solveQueue.list().every((e) => e.repo !== 'iso/late'), 'the real solve-queue must hold NO entry when the wire is off');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+test('Wave D (real path): recordToQueue:true drives the REAL store to a drafted entry with the join key', async () => {
+  const dir = mkArtifacts();
+  const deps = loopDeps({ solveFn: okSolve() });
+  const report = await runLiveDraftLoop({ records: [recFor('real/wire', 2)], artifactsDir: dir, recordToQueue: true, deps });
+  assert.strictEqual(report.outcomes[0].ok, true);
+  const entry = solveQueue.list().find((e) => e.repo === 'real/wire');
+  assert.ok(entry, 'a real drafted entry exists');
+  assert.strictEqual(entry.state, 'drafted');
+  assert.strictEqual(entry.issue_ref, 2);
+  assert.strictEqual(entry.evidence.candidate_patch_sha, sidecarSha(scrubLabSecrets(BENIGN_DIFF)));
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+test('Wave D: an explicit deps.queueOps=null beats recordToQueue:true (real store untouched)', async () => {
+  const dir = mkArtifacts();
+  const deps = loopDeps({ solveFn: okSolve(), queueOps: null });
+  await runLiveDraftLoop({ records: [recFor('nul/l', 3)], artifactsDir: dir, recordToQueue: true, deps });
+  assert.ok(solveQueue.list().every((e) => e.repo !== 'nul/l'), 'an explicit null queueOps disables the wire even under recordToQueue:true');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+test('Wave D (F4 preflight): ensureImageFn runs BEFORE attest; a built image proceeds to ok', async () => {
+  const order = [];
+  const r = await preflightEnv({ deps: {
+    resolveKeyFn: () => 'sk',
+    ensureImageFn: async () => { order.push('ensure'); return { ok: true, built: true }; },
+    attestFn: async () => { order.push('attest'); return { attested: true }; },
+  } });
+  assert.deepStrictEqual(order, ['ensure', 'attest']);
+  assert.strictEqual(r.ok, true);
+});
+test('Wave D (F4 preflight): a failed ensureImageFn short-circuits to image-ensure-failed (attest never runs)', async () => {
+  let attested = false;
+  const r = await preflightEnv({ deps: {
+    resolveKeyFn: () => 'sk',
+    ensureImageFn: async () => ({ ok: false, reason: 'still-absent-after-build' }),
+    attestFn: async () => { attested = true; return { attested: true }; },
+  } });
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(r.reason, 'image-ensure-failed:still-absent-after-build');
+  assert.strictEqual(attested, false, 'attest must not run after an ensure failure');
+});
+test('Wave D (F4 preflight): no ensureImageFn => byte-identical current behavior (attest only)', async () => {
+  const r = await preflightEnv({ deps: { resolveKeyFn: () => 'sk', attestFn: async () => ({ attested: true }) } });
+  assert.strictEqual(r.ok, true);
 });
 
 (async () => {

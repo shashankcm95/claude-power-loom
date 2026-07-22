@@ -42,6 +42,8 @@ const USAGE = [
   '',
   '  --materialize          inject the classified persona (KB/skills/instincts) into the actor prompt',
   '                         (sets LOOM_PERSONA_MATERIALIZE for this run; SHADOW, never arms egress)',
+  '  --rebuild-image        rebuild the loom-actor image if its tag is absent (the containerd tag can',
+  '                         silently vanish; a `docker build` is a real side-effect, so opt-in only)',
   '  --max-budget-usd <n>   per-run cost cap (default 12)',
   '  --timeout <seconds>    contained-solve wall-clock (default 180; raise for deep substrate issues)',
   '  --model <m>            actor model (default claude-sonnet-4-6)',
@@ -66,11 +68,12 @@ function parseTarget(spec) {
 }
 
 function parseFlags(argv) {
-  const flags = { model: DEFAULT_MODEL, maxBudgetUsd: DEFAULT_CAP_USD, materialize: false, json: false };
+  const flags = { model: DEFAULT_MODEL, maxBudgetUsd: DEFAULT_CAP_USD, materialize: false, json: false, rebuildImage: false };
   let target = null;
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--materialize') flags.materialize = true;
+    else if (a === '--rebuild-image') flags.rebuildImage = true;
     else if (a === '--json') flags.json = true;
     else if (a === '--model') {
       const v = argv[i + 1]; i += 1;
@@ -146,6 +149,11 @@ async function run(argv, deps = {}) {
       model: flags.model,
       timeout: flags.timeoutMs,   // undefined when unset -> runActorInContainer's DEFAULT_ACTOR_TIMEOUT_MS
       runId: `live-solve-${owner}__${repo}-issue-${number}`,
+      // Wave D - record this live solve into the solve-queue (queued->solving->drafted) so the merge-poll cron
+      // has an entry to observe. SHADOW/weight-inert (the queue gates nothing). F4: --rebuild-image opts into
+      // the ensure-image rebuild when the actor tag has vanished.
+      recordToQueue: true,
+      rebuildImageIfAbsent: flags.rebuildImage,
     });
   } finally {
     if (flags.materialize) {
