@@ -22,6 +22,7 @@ const {
   boundProblemStatement, buildPublicRecord, pullLiveCorpus, MAX_PROBLEM_BYTES, LICENSE_ALLOWLIST,
   assertReadOnlyGhArgs, ghApiReadArgs, buildSearchArgs, fetchOneIssueRecord,
   ghApiEndpoint, hasExternalMergeHistory, ghApiClosedPullsArgs,
+  isTransientGhError, classifyGhError, retryTransient,
 } = P;
 const { validatePublicRecord } = require(path.join(REPO, 'packages', 'lab', 'issue-corpus', 'corpus.js'));
 const { parseRecordRef } = require(path.join(REPO, 'packages', 'lab', 'persona-experiment', 'live-draft-run.js'));
@@ -518,6 +519,140 @@ test('k15. ARMED pullLiveCorpus does NOT drop on a transient /pulls error (null 
   const gh = (args) => { if (args.some((a) => typeof a === 'string' && /\/pulls$/.test(a))) throw new Error('rate limit'); return base(args); };
   const { records } = await pullLiveCorpus({ ghRunner: gh, limit: 10, dropOnNoExternalMerge: true });
   assert.strictEqual(records.length, 1, 'a transient /pulls error (guard -> null) keeps the candidate, never drops');
+});
+
+// ── (l) F1/F2 fetch-stage resilience — a transient gh 503 previously killed the run at stage 0 with no
+// retry; the failure was also undifferentiated. Locks the THREE-WAY classifier (transient 5xx/net -> retry;
+// rate-limited 403-ratelimit/429 -> NOT retried in-puller, tagged retry-later; terminal -> drop), the
+// ANCHORED status extraction (a body "HTTP 5xx" substring inside a 404 is not mis-read), the retries/backoff
+// CLAMPS, the differentiated caller reason, and (load-bearing) the redaction invariant — raw gh stderr
+// (ambient-token context) never surfaces. ──
+test('l1. classifyGhError three-way: 5xx/net=transient; 429/403-ratelimit=rate-limited; 404/403-auth/nullish=terminal', () => {
+  assert.strictEqual(classifyGhError({ stderr: 'gh: HTTP 503' }), 'transient');
+  assert.strictEqual(classifyGhError({ stderr: 'gh: HTTP 502' }), 'transient');
+  assert.strictEqual(classifyGhError({ stderr: 'ETIMEDOUT while connecting' }), 'transient');
+  assert.strictEqual(classifyGhError({ message: 'socket hang up' }), 'transient');
+  assert.strictEqual(classifyGhError({ stderr: 'gh: HTTP 429' }), 'rate-limited');
+  assert.strictEqual(classifyGhError({ stderr: 'gh: HTTP 403 - API rate limit exceeded' }), 'rate-limited');
+  assert.strictEqual(classifyGhError({ stderr: 'gh: HTTP 403 You have exceeded a secondary rate limit' }), 'rate-limited');
+  assert.strictEqual(classifyGhError({ stderr: 'gh: HTTP 403 Bad credentials' }), 'terminal');
+  assert.strictEqual(classifyGhError({ stderr: 'gh: HTTP 404' }), 'terminal');
+  assert.strictEqual(classifyGhError({ stderr: 'gh: HTTP 401' }), 'terminal');
+  assert.strictEqual(classifyGhError(null), 'terminal');
+  assert.strictEqual(classifyGhError({}), 'terminal');
+  // isTransientGhError = the in-puller-retryable predicate = 'transient' ONLY (a rate-limit is not hammered)
+  assert.strictEqual(isTransientGhError({ stderr: 'gh: HTTP 503' }), true);
+  assert.strictEqual(isTransientGhError({ stderr: 'gh: HTTP 429' }), false);
+  assert.strictEqual(isTransientGhError({ stderr: 'gh: HTTP 404' }), false);
+});
+test('l2. retryTransient RECOVERS: two transient 503s, then success', () => {
+  let n = 0;
+  const out = retryTransient(() => {
+    n += 1;
+    if (n <= 2) { const e = new Error('x'); e.stderr = 'gh: HTTP 503'; throw e; }
+    return 'OK';
+  }, { retries: 2, backoffMs: 0 });
+  assert.strictEqual(out, 'OK');
+  assert.strictEqual(n, 3, 'two transient failures + one success = 3 attempts');
+});
+test('l3. retryTransient EXHAUSTS on a persistent transient -> .transient=true, .kind=transient, value-free', () => {
+  let n = 0; let thrown;
+  try {
+    retryTransient(() => { n += 1; const e = new Error('x'); e.stderr = 'gh: HTTP 503 token=gho_SECRET'; throw e; }, { retries: 2, backoffMs: 0 });
+  } catch (e) { thrown = e; }
+  assert.ok(thrown, 'exhausted retries throw');
+  assert.strictEqual(thrown.transient, true);
+  assert.strictEqual(thrown.kind, 'transient');
+  assert.strictEqual(n, 3, 'retries=2 -> 3 total attempts');
+  assert.ok(!/gho_SECRET/.test(thrown.message), 'raw gh stderr (token) is NEVER surfaced');
+});
+test('l4. retryTransient does NOT retry a TERMINAL 404 -> single attempt, .transient=false, .kind=terminal', () => {
+  let n = 0; let thrown;
+  try {
+    retryTransient(() => { n += 1; const e = new Error('x'); e.stderr = 'gh: HTTP 404'; throw e; }, { retries: 2, backoffMs: 0 });
+  } catch (e) { thrown = e; }
+  assert.strictEqual(n, 1, 'a terminal 404 is NOT retried');
+  assert.strictEqual(thrown.transient, false);
+  assert.strictEqual(thrown.kind, 'terminal');
+});
+test('l4b. retryTransient does NOT retry a RATE-LIMIT (429 / 403-ratelimit) -> single attempt, retry-later', () => {
+  for (const stderr of ['gh: HTTP 429', 'gh: HTTP 403 - API rate limit exceeded']) {
+    let n = 0; let thrown;
+    try { retryTransient(() => { n += 1; const e = new Error('x'); e.stderr = stderr; throw e; }, { retries: 3, backoffMs: 0 }); }
+    catch (e) { thrown = e; }
+    assert.strictEqual(n, 1, `a rate-limit (${stderr}) is NOT hammered with in-puller retries`);
+    assert.strictEqual(thrown.kind, 'rate-limited');
+    assert.strictEqual(thrown.transient, true, 'rate-limited is retry-LATER (the caller/cron does the long backoff)');
+  }
+});
+test('l4c. classifier is ANCHORED: a 404 whose body merely contains an "HTTP 503" substring stays terminal', () => {
+  const e = { stderr: 'gh: HTTP 404', message: 'Command failed; the body mentioned HTTP 503 somewhere' };
+  assert.strictEqual(classifyGhError(e), 'terminal', "gh's own status (404) wins over a body substring (503)");
+  let n = 0;
+  try { retryTransient(() => { n += 1; throw e; }, { retries: 3, backoffMs: 0 }); } catch { /* expected */ }
+  assert.strictEqual(n, 1, 'the 404 is not mis-retried on the 503 substring');
+});
+test('l4d. retryTransient CLAMPS a NaN / huge / negative retries so a transient never spins forever', () => {
+  for (const retries of [NaN, 1e9, -5, 'x']) {
+    let n = 0; let thrown;
+    try { retryTransient(() => { n += 1; const e = new Error('x'); e.stderr = 'gh: HTTP 503'; throw e; }, { retries, backoffMs: 0 }); }
+    catch (e) { thrown = e; }
+    assert.ok(thrown, `retries=${String(retries)} still terminates`);
+    assert.ok(n >= 1 && n <= 11, `attempts bounded (got ${n}) for retries=${String(retries)}`);
+  }
+});
+test('l4e. fetchOneIssueRecord: a RATE-LIMIT -> "rate-limited - retry after cooldown", not hammered, redacted', () => {
+  let calls = 0;
+  const gh = () => { calls += 1; const e = new Error('x'); e.stderr = 'gh: HTTP 403 - API rate limit exceeded (token gho_X)'; throw e; };
+  let thrown;
+  try { fetchOneIssueRecord({ owner: 'octo', repo: 'widget', number: 7, ghRunner: gh, retryOpts: { retries: 3, backoffMs: 0 } }); }
+  catch (e) { thrown = e; }
+  assert.match(thrown.message, /rate-limited - retry after cooldown/i);
+  assert.strictEqual(calls, 1, 'the rate-limit is not hammered with retries');
+  assert.ok(!/gho_X/.test(thrown.message), 'redaction holds on the rate-limit path too');
+});
+test('l4f. classifier ignores an incidental "HTTP 5xx" substring that lacks the gh: status token (CodeRabbit)', () => {
+  // No gh: prefix -> no status extracted -> falls to the net check -> terminal (never mis-read from body text).
+  assert.strictEqual(classifyGhError({ message: 'boom: the response body mentioned HTTP 503 somewhere' }), 'terminal');
+  assert.strictEqual(classifyGhError({ stderr: 'unexpected: HTTP 429 in a log line' }), 'terminal');
+  // The gh: status still wins even when an incidental 5xx appears elsewhere in the same string.
+  assert.strictEqual(classifyGhError({ stderr: 'gh: HTTP 404', message: 'HTTP 503 in the echoed body' }), 'terminal');
+});
+test('l4g. each retry attempt gets a FRESH args array -- a runner mutation cannot bleed into the next attempt (CodeRabbit)', () => {
+  const seen = [];
+  const gh = (args) => {
+    seen.push([...args]);                 // what THIS attempt received (before any mutation)
+    args.push('-X'); args.push('POST');   // hostile: try to inject a write verb into the shared args
+    const e = new Error('x'); e.stderr = 'gh: HTTP 503'; throw e;
+  };
+  try { fetchOneIssueRecord({ owner: 'octo', repo: 'widget', number: 7, ghRunner: gh, retryOpts: { retries: 2, backoffMs: 0 } }); } catch { /* transient exhausts */ }
+  assert.ok(seen.length >= 2, 'the transient was retried');
+  for (const a of seen) assert.ok(!a.includes('POST'), "no attempt sees a prior attempt's mutation (fresh args.slice per attempt)");
+});
+test('l5. fetchOneIssueRecord: persistent transient -> "transient - retry later", stderr redacted', () => {
+  const gh = () => { const e = new Error('x'); e.stderr = 'gh: HTTP 503 token=gho_LEAK'; throw e; };
+  let thrown;
+  try { fetchOneIssueRecord({ owner: 'octo', repo: 'widget', number: 7, ghRunner: gh, retryOpts: { retries: 1, backoffMs: 0 } }); }
+  catch (e) { thrown = e; }
+  assert.match(thrown.message, /transient - retry later/i);
+  assert.ok(!/gho_LEAK/.test(thrown.message), 'the fetch error never surfaces raw gh stderr');
+});
+test('l6. fetchOneIssueRecord: TERMINAL 404 -> "terminal", no wasted retries', () => {
+  let calls = 0;
+  const gh = () => { calls += 1; const e = new Error('x'); e.stderr = 'gh: HTTP 404'; throw e; };
+  assert.throws(
+    () => fetchOneIssueRecord({ owner: 'octo', repo: 'widget', number: 7, ghRunner: gh, retryOpts: { retries: 3, backoffMs: 0 } }),
+    /terminal - not-found/i,
+  );
+  assert.strictEqual(calls, 1, 'a 404 is not retried even with retries=3');
+});
+test('l7. fetchOneIssueRecord: a 503 on the first gh call is retried and the fetch completes', () => {
+  let n = 0;
+  const fx = { issues: { 'octo/widget#7': issueObj() }, repos: { 'octo/widget': permissiveRepo() }, shas: { 'octo/widget': 'a'.repeat(40) } };
+  const base = issueMock(fx);
+  const gh = (args) => { n += 1; if (n === 1) { const e = new Error('x'); e.stderr = 'gh: HTTP 503'; throw e; } return base(args); };
+  const rec = fetchOneIssueRecord({ owner: 'octo', repo: 'widget', number: 7, ghRunner: gh, retryOpts: { retries: 2, backoffMs: 0 } });
+  assert.strictEqual(validatePublicRecord(rec), true, 'a transient 503 on the first gh call recovers on retry');
 });
 
 // summary — awaits ALL tests' actual completion (Promise.all), then exits on the real pass/fail count.

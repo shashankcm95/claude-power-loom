@@ -181,8 +181,73 @@ function defaultGhRunner(args, { timeout = 30000, maxBuffer = 8 * 1024 * 1024 } 
   const { execFileSync } = require('child_process');   // lazy — an injected runner never loads this
   return execFileSync('gh', args, { encoding: 'utf8', timeout, maxBuffer, stdio: ['ignore', 'pipe', 'pipe'] });
 }
-function ghJson(ghRunner, args) {
-  const out = ghRunner(args);
+// F1/F2 (fetch-stage resilience) — classify a failed `gh` call into three kinds so a brief blip is retried,
+// a rate-limit is retried-LATER (never hammered), and a real error drops. Grounded firsthand: `gh` exits
+// non-zero and writes its status as `gh: HTTP <code>` on stderr; GitHub's OWN rate-limit is a 403 ("API rate
+// limit exceeded" / "secondary rate limit") or a 429 — NOT a 5xx. The classifier reads ONLY the status/kind
+// off the raw error and NEVER surfaces that raw text (it can echo ambient-token context — the redaction
+// invariant); the caller rethrows a value-free, KIND-differentiated reason so an orchestrator/cron backs off.
+//
+//   'transient'    5xx / network blip        -> retried in-puller (short exponential backoff)
+//   'rate-limited' 403-ratelimit / 429       -> NOT retried in-puller (a short retry escalates the secondary
+//                                               limit / self-DoSes the token); tagged retry-later so the
+//                                               CALLER (the F3 cron) does the long, Retry-After-aware backoff.
+//   'terminal'     404 / auth 401/403 / else -> never retried.
+const TRANSIENT_NET_RE = /\b(?:ETIMEDOUT|ECONNRESET|ECONNREFUSED|EAI_AGAIN|ENOTFOUND|socket hang up)\b/;
+const RATELIMIT_TEXT_RE = /\b(?:rate limit|secondary rate limit|abuse detection)\b/i;
+// gh's OWN status token (`gh: HTTP <code>`) ONLY — gh always prefixes its status line this way. Anchored
+// strictly to that prefix (NO generic `HTTP <code>` fallback) so a terminal error whose echoed body merely
+// CONTAINS an "HTTP 5xx" substring can never be mis-read as transient. A body substring carries no `gh:`
+// prefix; a prefix-less transport failure has no HTTP status and falls to the network-code check below.
+function ghHttpStatus(s) {
+  const m = s.match(/\bgh:\s*HTTP\s+(\d{3})\b/);
+  return m ? Number(m[1]) : null;
+}
+function classifyGhError(e) {
+  const s = `${(e && e.stderr) || ''} ${(e && e.message) || ''}`;
+  const status = ghHttpStatus(s);
+  if (status !== null) {
+    if (status >= 500) return 'transient';
+    if (status === 429) return 'rate-limited';
+    if (status === 403 && RATELIMIT_TEXT_RE.test(s)) return 'rate-limited';
+    return 'terminal';                                         // 404 / 401 / 403-auth / any other 4xx
+  }
+  return TRANSIENT_NET_RE.test(s) ? 'transient' : 'terminal';  // no HTTP status => a spawn / network failure
+}
+// Back-compat predicate (also the unit surface): true ONLY for the in-puller-retryable 'transient' class.
+function isTransientGhError(e) { return classifyGhError(e) === 'transient'; }
+// A blocking backoff between retries — Atomics.wait, never a busy-wait (the puller is synchronous by
+// design). A non-positive delay is a no-op (tests inject backoffMs:0 to stay fast).
+function sleepSync(ms) {
+  if (!(ms > 0)) return;
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+// Run `fn` with a BOUNDED retry on a 'transient' failure ONLY. A 'rate-limited' or 'terminal' failure is NOT
+// retried in-puller — rate-limited fails fast tagged retry-later so the caller does the long backoff (never
+// hammering the cooldown). retries/backoffMs are CLAMPED and each sleep is capped, so a NaN/huge value can
+// never spin the loop forever or block Atomics.wait indefinitely (a latent hazard once a caller wires them).
+function retryTransient(fn, { retries = 2, backoffMs = 500 } = {}) {
+  const maxRetries = Number.isInteger(retries) && retries >= 0 ? Math.min(retries, 10) : 2;
+  const base = Number.isFinite(backoffMs) && backoffMs >= 0 ? Math.min(backoffMs, 30000) : 500;
+  for (let attempt = 0; ; attempt++) {
+    try { return fn(); }
+    catch (e) {
+      const kind = classifyGhError(e);
+      if (kind !== 'transient' || attempt >= maxRetries) {
+        const err = new Error('gh: request-failed');
+        err.kind = kind;                                                 // 'transient' | 'rate-limited' | 'terminal'
+        err.transient = kind === 'transient' || kind === 'rate-limited'; // "retry later" (either non-terminal class)
+        throw err;
+      }
+      sleepSync(Math.min(base * (2 ** attempt), 30000));
+    }
+  }
+}
+function ghJson(ghRunner, args, retryOpts) {
+  // Hand each retry attempt a FRESH args copy so a mutation by one ghRunner invocation cannot bleed into the
+  // next attempt (the default runner also re-runs assertReadOnlyGhArgs per attempt; the copy makes the
+  // isolation total for ANY runner). args elements are strings, so a shallow slice fully isolates.
+  const out = retryTransient(() => ghRunner(args.slice()), retryOpts);
   try { return JSON.parse(out); } catch { throw new Error('gh: non-JSON response'); }
 }
 // The constructed endpoint is re-asserted to a fixed shape before it becomes a single argv positional.
@@ -330,7 +395,7 @@ async function pullLiveCorpus({
  *                                  a WARN only, never a drop; the call is fail-soft. Absent = guard not invoked.
  * @returns {object} the PUBLIC record { id, repo, base_sha, problem_statement }
  */
-function fetchOneIssueRecord({ owner, repo, number, ghRunner = defaultGhRunner, logger } = {}) {
+function fetchOneIssueRecord({ owner, repo, number, ghRunner = defaultGhRunner, logger, retryOpts } = {}) {
   // (1) slug guard FIRST, on the rejoined caller string; use the returned {owner,repo} EXCLUSIVELY
   // downstream (architect HIGH — never re-split, never trust the raw args past this point).
   const { owner: o, repo: r } = assertSafeOwnerRepo(`${owner}/${repo}`);
@@ -342,8 +407,17 @@ function fetchOneIssueRecord({ owner, repo, number, ghRunner = defaultGhRunner, 
   // a redacting GET: route through ghApiReadArgs (the -X GET pin + ENDPOINT_RE re-assertion) and NEVER
   // surface the raw gh stderr (it can echo ambient-token context) — rethrow a typed, value-free reason.
   const get = (suffix, cls) => {
-    try { return ghJson(ghRunner, ghApiReadArgs(o, r, suffix)); }
-    catch { throw new Error(`fetchOneIssueRecord: ${cls} for ${o}/${r}${suffix} failed (network / auth / rate-limit / not-found)`); }
+    try { return ghJson(ghRunner, ghApiReadArgs(o, r, suffix), retryOpts); }
+    catch (e) {
+      // F2: value-free BUT KIND-differentiated (raw gh stderr never surfaces — only the classified kind).
+      // 'transient' = brief retry-later; 'rate-limited' = retry after the cooldown (the caller/cron owns the
+      // long, Retry-After-aware backoff); else terminal (not-found / auth).
+      const k = (e && e.kind) || (e && e.transient ? 'transient' : 'terminal');
+      const label = k === 'transient' ? 'transient - retry later'
+        : k === 'rate-limited' ? 'rate-limited - retry after cooldown'
+          : 'terminal - not-found / auth';
+      throw new Error(`fetchOneIssueRecord: ${cls} for ${o}/${r}${suffix} failed (${label})`);
+    }
   };
   // (3) the issue (title + body). Refuse a PR-number: the REST issues endpoint returns pull requests too
   // (they carry a `pull_request` field) and solving a PR-as-issue is nonsensical.
@@ -383,5 +457,6 @@ module.exports = {
   boundProblemStatement, buildPublicRecord, pullLiveCorpus, fetchOneIssueRecord,
   defaultGhRunner, assertReadOnlyGhArgs, ghApiEndpoint, ghApiReadArgs, buildSearchArgs,
   ghApiClosedPullsArgs, hasExternalMergeHistory,
+  isTransientGhError, classifyGhError, retryTransient,
   MAX_PROBLEM_BYTES, LICENSE_ALLOWLIST,
 };
