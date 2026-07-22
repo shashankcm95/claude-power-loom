@@ -203,9 +203,36 @@ async function attestActorContainment({ dockerBin = 'docker', image = DEFAULT_AC
   }
 }
 
+// F4 - the default image builder: `docker build --provenance=false --sbom=false -t <image> -` with the build
+// CONTEXT (the Dockerfile) piped on stdin (the `-`). The Dockerfile path is resolved ABSOLUTE from __dirname:
+// the harness/CLI cwd is not guaranteed to be the repo root, so a bare relative path would ENOENT (F5). Bounded
+// timeout + maxBuffer (a build is minutes-long + verbose). Throws on spawn error / non-zero exit -> the caller
+// (ensureActorImage) converts the throw into an observable {ok:false,reason:'build-threw:*'}.
+const DOCKER_BUILD_TIMEOUT_MS = 600000;   // 10 min - an image build can be slow on a cold cache
+function dockerBuildActorImage(dockerBin, image) {
+  const dockerfile = path.join(__dirname, 'Dockerfile.actor');
+  const r = spawnSync(dockerBin, ['build', '--provenance=false', '--sbom=false', '-t', image, '-'],
+    { input: fs.readFileSync(dockerfile), encoding: 'utf8', timeout: DOCKER_BUILD_TIMEOUT_MS, maxBuffer: MAX_ACTOR_OUT });
+  if (r.error) throw r.error;
+  if (r.status !== 0) throw new Error(`docker-build-exit-${r.status}`);
+}
+
+// F4 - preflight ensure-image: CHECK the tag, then OPT-IN rebuild (the actor tag can silently vanish from the
+// containerd store while content persists - observed 2026-07-21). NEVER builds implicitly (build defaults
+// false): a `docker build` is a real side-effect the caller opts into (rebuildImageIfAbsent). Fail-CLOSED +
+// OBSERVABLE via the returned reason: a build throw / a still-absent tag surfaces, never a silent proceed.
+// existsFn/buildFn are injectable seams (unit-testable without a daemon). Returns {ok, built, reason?}.
+function ensureActorImage({ dockerBin = 'docker', image = DEFAULT_ACTOR_IMAGE, build = false, existsFn = dockerImageExists, buildFn = dockerBuildActorImage } = {}) {
+  if (existsFn(dockerBin, image)) return { ok: true, built: false };
+  if (!build) return { ok: false, reason: 'image-absent', built: false };
+  try { buildFn(dockerBin, image); } catch (e) { return { ok: false, reason: 'build-threw:' + ((e && e.message) || 'error'), built: false }; }
+  if (existsFn(dockerBin, image)) return { ok: true, built: true };
+  return { ok: false, reason: 'still-absent-after-build', built: false };
+}
+
 module.exports = {
   buildActorRunArgs, mapActorResult, parseStreamJson, runActorInContainer, attestActorContainment,
-  dockerClaudeVersionOk, ACTOR_TOOLS, ACTOR_ALLOWED_NETWORKS, DEFAULT_ACTOR_IMAGE, ATTEST_NODE_PAYLOAD,
+  dockerClaudeVersionOk, ensureActorImage, ACTOR_TOOLS, ACTOR_ALLOWED_NETWORKS, DEFAULT_ACTOR_IMAGE, ATTEST_NODE_PAYLOAD,
   // Track A W2 - the runtime-pin defaults, exported so the live_pending `runtime` pin captures the
   // EFFECTIVE model/timeout the actor ran with (resolved at the single source, not re-declared - architect M2).
   DEFAULT_MODEL, DEFAULT_ACTOR_TIMEOUT_MS,

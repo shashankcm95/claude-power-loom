@@ -105,7 +105,9 @@ async function runLiveLoop({
       // threads NO egress custody opts (they are not in runLiveDraftLoop's signature to thread). runLiveDraftLoop
       // is itself fail-soft, but the try makes a defensive throw a fatal, never an escape (advisory posture).
       try {
-        const report = await draftFn({ records, artifactsDir, ledgerPath, capUsd, model, timeout, dockerBin, image, runId: 'live-loop', now: now(), deps: loopDeps });
+        // Wave D - recordToQueue:true records each solve into the solve-queue (SHADOW) so the merge-poll cron
+        // has entries to observe. Emit stays OFF (no custody opts); the queue gates nothing.
+        const report = await draftFn({ records, artifactsDir, ledgerPath, capUsd, model, timeout, dockerBin, image, runId: 'live-loop', now: now(), recordToQueue: true, deps: loopDeps });
         outcomes = (report && Array.isArray(report.outcomes)) ? report.outcomes : [];
         drafted = outcomes.filter((o) => o && o.ok === true).length;
         if (report && report.fatal && !fatal) fatal = 'draft:' + report.fatal;

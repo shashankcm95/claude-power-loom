@@ -52,10 +52,11 @@ test('r2. parseTarget REJECTS malformed targets + coercion-prone issue numbers (
   }
 });
 test('r3. parseFlags — defaults, overrides, and usage errors', () => {
-  assert.deepStrictEqual(parseFlags(['o/r#7']).flags, { model: 'claude-sonnet-4-6', maxBudgetUsd: 12, materialize: false, json: false });
+  assert.deepStrictEqual(parseFlags(['o/r#7']).flags, { model: 'claude-sonnet-4-6', maxBudgetUsd: 12, materialize: false, json: false, rebuildImage: false });
   assert.strictEqual(parseFlags(['o/r#7', '--model', 'claude-opus-4-8']).flags.model, 'claude-opus-4-8');
   assert.strictEqual(parseFlags(['o/r#7', '--max-budget-usd', '5']).flags.maxBudgetUsd, 5);
   assert.strictEqual(parseFlags(['o/r#7', '--materialize']).flags.materialize, true);
+  assert.strictEqual(parseFlags(['o/r#7', '--rebuild-image']).flags.rebuildImage, true);
   assert.throws(() => parseFlags(['o/r#7', '--nope']), /unknown flag/i);
   assert.throws(() => parseFlags(['o/r#7', '--max-budget-usd', '-1']), /positive/i);
   assert.throws(() => parseFlags(['o/r#7', '--model']), /requires a value/i);

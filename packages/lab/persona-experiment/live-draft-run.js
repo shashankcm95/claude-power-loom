@@ -13,8 +13,13 @@ const {
   resolveActorApiKey, assertWithinBudget, recordCost, DEFAULT_COST_CAP_USD,
 } = require('../issue-corpus/cost-ledger');
 const {
-  runActorInContainer, attestActorContainment, ACTOR_TOOLS, DEFAULT_MODEL, DEFAULT_ACTOR_TIMEOUT_MS,
+  runActorInContainer, attestActorContainment, ensureActorImage, ACTOR_TOOLS, DEFAULT_MODEL, DEFAULT_ACTOR_TIMEOUT_MS,
 } = require('../issue-corpus/docker-actor-backend');
+// Wave D - the solve->queue lifecycle wire. SHADOW / weight-inert (the queue gates NOTHING); the ops are
+// used ONLY when the caller opts in (recordToQueue) or injects a test double. REAL_QUEUE_OPS binds the store
+// to the real lifecycle log; a null queueOps => the wire is off (default library/test path).
+const solveQueue = require('../solve-queue/solve-queue-store');
+const REAL_QUEUE_OPS = Object.freeze({ enqueue: solveQueue.enqueue, advance: solveQueue.advance });
 const { prepareClone, captureActorDiff, safeDiscard } = require('../issue-corpus/_clone-lifecycle');
 const { MAX_PATCH_BYTES } = require('./real-solve');
 const { emitPR } = require('../../kernel/egress/emit-pr');
@@ -103,14 +108,66 @@ function recordOutcome(record, fields) {
 }
 
 // --------------------------------------------------------------------------
+// Wave D - the solve->queue lifecycle wire (fail-soft + observable). The solve-queue is SHADOW bookkeeping
+// (gates nothing, never a weight/trust input), so a queue op that throws OR refuses NEVER changes the record
+// outcome - it emits ONE alert and the solve proceeds (the same discipline captureLiveLesson follows). A null
+// queueOps => every call is a no-op (the wire is off: the default test/library path, or an explicit null).
+function qCall(queueOps, op, arg, ctx) {
+  if (!queueOps || typeof queueOps[op] !== 'function') return null;
+  try {
+    const r = queueOps[op](arg);
+    // VALIDATE HIGH: the store reason rides on a NON-`reason` key (`refuse_reason`) - emitEgressAlert's
+    // positional `reason` token is authoritative and clobbers a `reason` key in detail (alert.js:19), so
+    // `reason:` here would silently drop the real store reason (illegal-transition / lock-timeout / ...).
+    // CodeRabbit: ...ctx threads {repo, issue_ref} so a per-record alert IDENTIFIES which issue tripped it.
+    if (r && r.ok === false) emitEgressAlert('solve-queue-wire-refused', { op, refuse_reason: (r && r.reason) || 'unknown', ...ctx });
+    return r;
+  } catch (e) {
+    emitEgressAlert('solve-queue-wire-threw', { op, detail: (e && e.message) || 'error', ...ctx });
+    return null;
+  }
+}
+
+// Enqueue the solve + move it to `solving`. Returns the entry_id to advance to `drafted` on success, or null
+// when: the wire is off; the enqueue refused; OR the entry is AHEAD (already drafted+) - first-solve-wins, so
+// its join key is not clobbered by a re-solve. F1: a null/empty persona is OMITTED (enqueue rejects a null
+// persona field). F4: only queued->solving advances; a `solving` zombie is RESUMED (no illegal re-advance, no
+// crying-wolf alert). The repo/issue_ref bind to ref.slug/ref.issueRef (the Wave-B slug-vs-slug compare basis).
+function qStartSolving(queueOps, ref, persona) {
+  if (!queueOps) return null;
+  const ctx = { repo: ref.slug, issue_ref: ref.issueRef };   // per-record correlation for the alerts (CodeRabbit)
+  const input = { ...ctx };
+  if (typeof persona === 'string' && persona) input.persona = persona;
+  const res = qCall(queueOps, 'enqueue', input, ctx);
+  if (!res || res.ok !== true) return null;
+  // VALIDATE LOW: gate the returned entry_id on the solving-advance ACTUALLY landing. If it fails (a store
+  // lock-timeout), the entry stays `queued`; returning its id would fire a later `drafted` advance against a
+  // still-`queued` entry = a spurious illegal-transition alert. Return null -> don't track (self-heals next run).
+  if (res.state === 'queued') {
+    const adv = qCall(queueOps, 'advance', { entry_id: res.entry_id, to_state: 'solving' }, ctx);
+    return (adv && adv.ok === true) ? res.entry_id : null;
+  }
+  if (res.state === 'solving') return res.entry_id;                             // resume a zombie (already solving)
+  emitEgressAlert('solve-queue-wire-skip-ahead', { state: res.state, ...ctx }); // drafted+ : don't touch (first-solve-wins)
+  return null;
+}
+
+// --------------------------------------------------------------------------
 // Env preflight (fold #3 / fold #6) — key + attest, ONCE. Budget is per-record (cumulative).
 // resolveActorApiKey: ENOENT -> null -> a no-run reason; EACCES -> it THROWS, which propagates to
 // runLiveDraftLoop's try/catch as a host-misconfig FATAL (a bad key file affects every record).
 async function preflightEnv({ dockerBin, image, deps = {} } = {}) {
   const resolveKeyFn = deps.resolveKeyFn || resolveActorApiKey;
   const attestFn = deps.attestFn || attestActorContainment;
+  const ensureImageFn = deps.ensureImageFn || null;   // F4: opt-in ensure-image (default OFF -> byte-identical prior behavior)
   const apiKey = resolveKeyFn({});
   if (!apiKey) return { ok: false, reason: 'actor-key-absent' };
+  // F4 - ensure the actor image BEFORE attest (a rebuilt tag then attests cleanly), AFTER the key check (no
+  // point building without a key). A non-ok ensure short-circuits with an explicit reason (F7); attest never runs.
+  if (ensureImageFn) {
+    const ei = await ensureImageFn({ dockerBin, image });
+    if (!ei || ei.ok !== true) return { ok: false, reason: 'image-ensure-failed:' + ((ei && ei.reason) || 'unknown') };
+  }
   const att = await attestFn({ dockerBin, image });
   if (!att || att.attested !== true) return { ok: false, reason: 'containment-unattested:' + ((att && att.reason) || 'unknown') };
   return { ok: true, apiKey };
@@ -332,6 +389,12 @@ async function solveGradeDraftOne(ctx) {
   const disposeFn = (ctx.deps && ctx.deps.disposeOnTerminalBlock)
     ? ((ctx.deps && ctx.deps.disposeFn) || disposeCandidate)
     : (() => {});
+  // Wave D - the solve->queue wire (null => off: the default test/library path, or an explicit null). All
+  // queue ops are fail-soft (qCall) so a store failure never changes the record outcome (the queue is SHADOW
+  // bookkeeping). queueEntryId is set by qStartSolving after the ref parses; a null means "do not advance to
+  // drafted" (wire off / enqueue refused / an ahead entry we must not clobber).
+  const queueOps = (ctx.deps && ctx.deps.queueOps) || null;
+  let queueEntryId = null;
 
   // item 4 (D5) - classify ALWAYS (it is total). The classifyFn dep defaults to classifyIssue;
   // a dep that throws is degraded to the total fail shape so the wire NEVER aborts the record.
@@ -348,6 +411,12 @@ async function solveGradeDraftOne(ctx) {
   let ref;
   try { ref = parseRecordRef(record); }
   catch (e) { return recordOutcome(record, { stage: 'parse', ok: false, reason: (e && e.message) || 'bad-record', ...classifyFields }); }
+
+  // Wave D - record the solve into the queue (enqueue -> solving) BEFORE the solve runs, so the entry reflects
+  // "solving" while the contained solve is in flight. F1: classifyFields.persona is null for a no-persona
+  // (generic) issue -> qStartSolving OMITS it (enqueue rejects a null persona field). Fail-soft: a queue
+  // failure yields queueEntryId=null (no drafted advance), never a record abort.
+  queueEntryId = qStartSolving(queueOps, ref, classifyFields.persona);
 
   // item 4 (CodeRabbit Major): a throw from solveFn must NOT escape to the loop-catch (which would
   // stamp classify-threw and DROP a persona that already classified). Catch here, preserve classifyFields.
@@ -368,6 +437,10 @@ async function solveGradeDraftOne(ctx) {
   if (hasSymlinkEntry(solveRes.candidate)) {
     return recordOutcome(record, { stage: 'draft', ok: false, reason: 'symlink-entry-rejected', cost_usd: solveRes.costUsd, ...classifyFields });
   }
+  // candidate_patch_sha over the SCRUBBED candidate (matches captureLiveLesson's + the live_pending node's
+  // basis, so the Wave-B join agrees). Computed ONCE here (F7 dedup) and reused at the disposal site + the
+  // Wave-D drafted-advance below; captureLiveLesson's own internal compute is the deferred DRY follow-up.
+  const candidatePatchSha = sidecarSha(scrubLabSecrets(solveRes.candidate));
   let verdict = null;
   try { verdict = await gradeFn({ record, candidate: solveRes.candidate, semanticFn, frictionFn }); }
   catch (e) { verdict = { error: 'grade-threw:' + ((e && e.message) || 'error') }; }
@@ -408,9 +481,8 @@ async function solveGradeDraftOne(ctx) {
       const cls = classifyEmitTerminalBlock(emitRes);
       if (cls.terminal) {
         reason = `terminal-block:${cls.block_reason}`;
-        // candidate_patch_sha over the SCRUBBED candidate (matches captureLiveLesson's convention) - computed
-        // here so it is available even when no lesson was captured (capNodeId === '').
-        const candidatePatchSha = sidecarSha(scrubLabSecrets(solveRes.candidate));
+        // candidatePatchSha is the function-scoped value computed once after the symlink check (F7 dedup) -
+        // matches captureLiveLesson's convention; available even when no lesson was captured (capNodeId === '').
         disposeFn({
           repo: ref.slug, issueRef: ref.issueRef, candidatePatchSha, blockReason: cls.block_reason,
           pendingNodeId: capNodeId || undefined,
@@ -441,6 +513,10 @@ async function solveGradeDraftOne(ctx) {
   } catch (e) {
     return recordOutcome(record, { stage: 'draft', ok: false, reason: 'artifact-write-failed:' + ((e && e.message) || 'error'), verdict, cost_usd: solveRes.costUsd, ...classifyFields, ...captureFields });
   }
+  // Wave D - the draft landed: advance solving -> drafted, carrying candidate_patch_sha (the Wave-B join key).
+  // queueEntryId is null when the wire is off / the entry is ahead -> qCall is a no-op. F6: the sha is carried
+  // even when no lesson was captured (it joins to nothing -> Wave B skips no-captured-lesson, harmless).
+  if (queueEntryId) qCall(queueOps, 'advance', { entry_id: queueEntryId, to_state: 'drafted', evidence: { candidate_patch_sha: candidatePatchSha } }, { repo: ref.slug, issue_ref: ref.issueRef });
   return recordOutcome(record, { stage: 'draft', ok: true, reason: 'draft-written', verdict, cost_usd: solveRes.costUsd, artifact, ...classifyFields, ...captureFields });
 }
 
@@ -450,7 +526,8 @@ async function solveGradeDraftOne(ctx) {
 // accidentally get un-pinned judges.
 async function runLiveDraftLoop({
   records, artifactsDir, ledgerPath, capUsd = DEFAULT_COST_CAP_USD, estimatedUsd,
-  model, timeout, dockerBin, image, runId = 'live-draft', now = null, deps = {},
+  model, timeout, dockerBin, image, runId = 'live-draft', now = null,
+  recordToQueue = false, rebuildImageIfAbsent = false, deps = {},
 } = {}) {
   const solveFn = deps.solveFn || solveLiveIssueContained;
   const gradeFn = deps.gradeFn || gradeLiveIssueSemantic;
@@ -458,6 +535,17 @@ async function runLiveDraftLoop({
   const assertBudgetFn = deps.assertBudgetFn || assertWithinBudget;
   const semanticFn = deps.semanticFn || makeBlindSemanticJudge({ toolless: true });
   const frictionFn = deps.frictionFn || makeFrictionLabeler({ toolless: true });
+  // Wave D - resolve the queue wire + F4 ensure-image with EXPLICIT opt-in (F3: default OFF, NOT coupled to
+  // !judgesInjected - an enqueue fires unconditionally per record, so auto-enabling would let a future
+  // loop-reaching test pollute the real ledger). A hasOwnProperty presence check makes an explicit test double
+  // (incl. null) always win; else the real op is used ONLY when the caller opts in (recordToQueue /
+  // rebuildImageIfAbsent). The live entry points (live-solve-one, live-loop-run) pass recordToQueue:true.
+  const queueOps = Object.prototype.hasOwnProperty.call(deps, 'queueOps')
+    ? deps.queueOps
+    : (recordToQueue ? REAL_QUEUE_OPS : null);
+  const ensureImageFn = Object.prototype.hasOwnProperty.call(deps, 'ensureImageFn')
+    ? deps.ensureImageFn
+    : (rebuildImageIfAbsent ? ((o) => ensureActorImage({ ...o, build: true })) : null);
 
   const recs = Array.isArray(records) ? records : [];
   const report = { runId, total: recs.length, outcomes: [], fatal: null };
@@ -489,7 +577,7 @@ async function runLiveDraftLoop({
     : (!judgesInjected ? makeLiveLessonDeriver({}) : null);         // real default ONLY on the live path
 
   let env;
-  try { env = await preflightEnv({ dockerBin, image, deps }); }
+  try { env = await preflightEnv({ dockerBin, image, deps: { ...deps, ensureImageFn } }); }
   catch (e) { report.fatal = 'preflight-threw:' + ((e && e.message) || 'error'); return finalizeReport(report, artifactsDir); }
   if (!env.ok) { report.fatal = env.reason; return finalizeReport(report, artifactsDir); }
 
@@ -506,7 +594,7 @@ async function runLiveDraftLoop({
         // item-3-live leg 1 - thread the resolved leg via the deps spread. lessonLegFn was resolved above by a
         // hasOwnProperty presence check, so it already equals an explicit deps.lessonLegFn (incl. null) when the
         // caller set one, else the live-path default; overwriting deps.lessonLegFn here is identity-preserving.
-        deps: { ...deps, lessonLegFn }, now,
+        deps: { ...deps, lessonLegFn, queueOps }, now,
       });
     } catch (e) {
       // F4 - the loop-level catch ALSO stamps the classify fields so the "classify fields on
