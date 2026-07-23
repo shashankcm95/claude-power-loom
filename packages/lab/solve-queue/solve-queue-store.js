@@ -200,16 +200,30 @@ function claimNext(opts = {}) {
   });
 }
 
+// `input.expect_state` / `input.expect_rev` (both optional) are COMPARE-AND-SWAP guards: the write commits
+// only if the entry's RE-FOLDED current value (under the lock) still matches. They close the sweep TOCTOU -
+// a caller that decided against a stale unlocked snapshot refuses to mutate if the entry raced meanwhile.
+// `expect_state` pins the state (`drafted -> disposed` is itself legal, so a bare legality check would let
+// the sweep reap a raced-to-`drafted` entry). `expect_rev` pins the VERSION (`rev` = the monotonic count of
+// accepted events, which increments on EVERY transition and is clock-INDEPENDENT): it catches a
+// same-state-different-instance race - an entry that cycled `solving(stale) -> disposed -> queued ->
+// solving(FRESH)` has a higher `rev`, so a staleness decision made against the stale snapshot is refused
+// (`version-changed`). `rev` is used (not the wall-clock `updated_at`) precisely because two events in the
+// same millisecond share a ts but never a rev.
 function advance(input, opts = {}) {
-  const { entry_id, to_state, evidence } = input || {};
+  const { entry_id, to_state, evidence, expect_state, expect_rev } = input || {};
   if (typeof entry_id !== 'string' || !HEX64.test(entry_id)) { alert('bad-input', { field: 'entry_id' }); return { ok: false, reason: 'bad-input' }; }
   if (!STATES.includes(to_state)) { alert('bad-input', { field: 'to_state' }); return { ok: false, reason: 'bad-input' }; }
+  if (expect_state !== undefined && !STATES.includes(expect_state)) { alert('bad-input', { field: 'expect_state' }); return { ok: false, reason: 'bad-input' }; }
+  if (expect_rev !== undefined && !(Number.isInteger(expect_rev) && expect_rev >= 0)) { alert('bad-input', { field: 'expect_rev' }); return { ok: false, reason: 'bad-input' }; }
   const evBad = badEvidence(evidence);
   if (evBad) { alert('bad-input', { field: 'evidence', detail: evBad }); return { ok: false, reason: 'bad-input' }; }
   const dir = opts.dir || DEFAULT_DIR;
   return underLock(dir, 'advance', () => {
     const cur = foldOne(dir, entry_id);
     if (!cur) { alert('unknown-entry', { entry_id, op: 'advance' }); return { ok: false, reason: 'unknown-entry' }; }
+    if (expect_state !== undefined && cur.state !== expect_state) { alert('state-changed', { entry_id, expected: expect_state, actual: cur.state }); return { ok: false, reason: 'state-changed' }; }
+    if (expect_rev !== undefined && cur.rev !== expect_rev) { alert('version-changed', { entry_id, expected: expect_rev, actual: cur.rev }); return { ok: false, reason: 'version-changed' }; }
     if (!isLegalTransition(cur.state, to_state)) { alert('illegal-transition', { entry_id, from: cur.state, to: to_state }); return { ok: false, reason: 'illegal-transition' }; }
     const w = appendEvent(dir, mkEvent(entry_id, cur.repo, cur.issue_ref, cur.state, to_state, evidence));
     return w.ok ? { ok: true, entry_id, state: to_state } : w;
