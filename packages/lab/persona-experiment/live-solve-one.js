@@ -22,6 +22,9 @@ const os = require('os');
 const path = require('path');
 const { fetchOneIssueRecord } = require('../issue-corpus/live-puller');
 const { runLiveDraftLoop } = require('./live-draft-run');
+// DEFAULT_STALE_MS is a SHADOW bookkeeping constant (the dispose-sweep window) - NOT an arming/egress path,
+// so importing it does not widen this module's no-arm surface. Used only to bound --timeout (HIGH-1).
+const { DEFAULT_STALE_MS } = require('../solve-queue/dispose-stale');
 
 const CHECKPOINTS = path.join(os.homedir(), '.claude', 'checkpoints');
 const DEFAULT_ARTIFACTS_DIR = path.join(CHECKPOINTS, 'live-solve-artifacts');
@@ -32,6 +35,11 @@ const DEFAULT_LEDGER_PATH = path.join(CHECKPOINTS, 'live-solve-ledger.json');
 const DEFAULT_OUTCOME_LEDGER_PATH = path.join(CHECKPOINTS, 'live-solve-outcomes.jsonl');
 const DEFAULT_MODEL = 'claude-sonnet-4-6';
 const DEFAULT_CAP_USD = 12;
+// HIGH-1 (dispose-sweep): headroom for grade + draft + queue-write AFTER the contained solve completes but
+// before the entry advances to `drafted`. `--timeout` must fit within DEFAULT_STALE_MS minus this margin, so
+// a long solve is never reaped mid-run as a stale-`solving` zombie (the two knobs move together).
+const SOLVE_TIMEOUT_MARGIN_MS = 30 * 60 * 1000;
+const MAX_TIMEOUT_MS = DEFAULT_STALE_MS - SOLVE_TIMEOUT_MARGIN_MS;
 
 const USAGE = [
   'Usage: live-solve-one <owner>/<repo>#<issue> [--model <m>] [--max-budget-usd <n>] [--materialize] [--json]',
@@ -45,7 +53,9 @@ const USAGE = [
   '  --rebuild-image        rebuild the loom-actor image if its tag is absent (the containerd tag can',
   '                         silently vanish; a `docker build` is a real side-effect, so opt-in only)',
   '  --max-budget-usd <n>   per-run cost cap (default 12)',
-  '  --timeout <seconds>    contained-solve wall-clock (default 180; raise for deep substrate issues)',
+  '  --timeout <seconds>    contained-solve wall-clock (default 180; raise for deep substrate issues,',
+  '                         capped BELOW the dispose-sweep window (leaving grade/draft headroom) so a',
+  '                         solve is not reaped mid-run)',
   '  --model <m>            actor model (default claude-sonnet-4-6)',
   '  --json                 print the raw runLiveDraftLoop report as JSON',
 ].join('\n');
@@ -92,7 +102,10 @@ function parseFlags(argv) {
       // issues need deep context and blow the 3-min default -> operator-tunable (dogfood-surfaced).
       const v = Number(argv[i + 1]); i += 1;
       if (!Number.isInteger(v) || v <= 0) throw new Error('usage: --timeout must be a positive integer (seconds)');
-      flags.timeoutMs = v * 1000;
+      const ms = v * 1000;
+      // HIGH-1: fail fast if the solve could outlive the dispose-sweep window (else it is reaped mid-run).
+      if (ms > MAX_TIMEOUT_MS) throw new Error(`usage: --timeout must be <= ${Math.floor(MAX_TIMEOUT_MS / 1000)}s (leaves grade/draft headroom within the dispose-sweep window; widen DEFAULT_STALE_MS for longer solves)`);
+      flags.timeoutMs = ms;
     } else if (a.startsWith('--')) throw new Error(`usage: unknown flag ${a}`);
     else if (target === null) target = a;
     else throw new Error(`usage: unexpected extra argument ${JSON.stringify(a)}`);

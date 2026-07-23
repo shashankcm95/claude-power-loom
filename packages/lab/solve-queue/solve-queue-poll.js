@@ -23,6 +23,7 @@
 
 const queue = require('./solve-queue-store');
 const { promoteMergedEntries } = require('./merge-promote');
+const { disposeStaleSolving } = require('./dispose-stale');
 const { runReviewObserve } = require('../world-anchor/review-observer');
 const { emitEgressAlert } = require('../../kernel/egress/alert');
 
@@ -38,17 +39,37 @@ function resolveDirs(o) {
 }
 
 /**
- * One autonomous poll sweep: observe reviews (PASS 1) then promote merges (PASS 2). TOTAL / SHADOW / weight-0.
+ * One autonomous poll sweep: dispose stale `solving` zombies (PASS 0), observe reviews (PASS 1), then
+ * promote merges (PASS 2). TOTAL / SHADOW / weight-0.
  * @param {{queueDir?, pendingDir?, anchorDir?, liveDir?, reviewDir?, ghRunner?: Function}} [opts]
  *   all-or-nothing dir set (0 = production; 5 = isolated tests) + the injected read-only gh runner.
- * @returns {Promise<{ok, observed, reviews_recorded, merged, minted, skipped, errors, rate_limited}>}
+ * @returns {Promise<{ok, disposed, observed, reviews_recorded, merged, minted, skipped, errors, rate_limited}>}
  */
 async function pollSolveQueue(opts = {}) {
   const o = opts && typeof opts === 'object' && !Array.isArray(opts) ? opts : {};
   const rd = resolveDirs(o);
-  const summary = { observed: [], reviews_recorded: 0, merged: [], minted: [], skipped: [], errors: [], rate_limited: false, review_pass_bailed: false };
+  const summary = { disposed: [], observed: [], reviews_recorded: 0, merged: [], minted: [], skipped: [], errors: [], rate_limited: false, review_pass_bailed: false };
   if (!rd.ok) { alert(rd.reason, {}); return { ok: false, reason: rd.reason, ...summary }; }
   const ghRunner = o.ghRunner;
+
+  // PASS 0: dispose stale `solving` zombies (a solver that died mid-flight leaves an entry with no terminal
+  // path). Zero gh calls (can't touch PASS 1's rate-limit budget); SHADOW. Wrapped so a throw can't abort
+  // PASS 1/2 (mirrors the queue.list fail-soft below).
+  try {
+    const swept = disposeStaleSolving(o.queueDir !== undefined ? { queueDir: o.queueDir } : {});
+    summary.disposed = (swept && Array.isArray(swept.disposed)) ? swept.disposed : [];
+    if (swept && Array.isArray(swept.errors) && swept.errors.length) {
+      summary.errors.push(...swept.errors.map((x) => Object.assign({ stage: 'dispose' }, x)));
+    }
+    // A whole-sweep failure (e.g. list-threw) returns ok:false with EMPTY errors[] - surface it so PASS 0
+    // never fails silently (the fail-closed-must-be-observable invariant).
+    if (swept && swept.ok === false && (!Array.isArray(swept.errors) || swept.errors.length === 0)) {
+      summary.errors.push({ stage: 'dispose', message: swept.reason || 'dispose-failed' });
+    }
+  } catch (err) {
+    alert('dispose-pass-threw', { message: (err && err.message) || 'error' });
+    summary.errors.push({ stage: 'dispose', message: (err && err.message) || 'dispose-threw' });
+  }
 
   // PASS 1: review-observe each in_flight PR (poll review state -> review-outcome-store).
   // F3 pacing: walk sequentially and BAIL on systemic failure so the sweep never hammers the shared-token

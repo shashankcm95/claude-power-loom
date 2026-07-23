@@ -114,5 +114,49 @@ test('foldEntry RESETS transient evidence on a disposed -> queued re-open (no st
   assert.strictEqual(f.evidence.candidate_patch_sha, 'a'.repeat(64));
 });
 
-assert.ok(passed >= 12, `anti-vacuity floor: expected >=12 checks, ran ${passed}`);
+// ---- updated_at (the dispose-sweep staleness clock; audit-only, never an ordering key) ----
+
+test('foldEntry.updated_at = the ts of the LAST ACCEPTED event', () => {
+  const f = foldEntry([ev('queued', {}, { ts: 100 }), ev('solving', {}, { ts: 250 })]);
+  assert.strictEqual(f.updated_at, 250);
+});
+
+test('foldEntry.updated_at is refreshed by a re-open (= the re-queue ts)', () => {
+  const f = foldEntry([
+    ev('queued', {}, { ts: 10 }), ev('solving', {}, { ts: 20 }), ev('disposed', { reason: 'x' }, { ts: 30 }),
+    ev('queued', {}, { ts: 40 }),
+  ]);
+  assert.strictEqual(f.state, 'queued');
+  assert.strictEqual(f.updated_at, 40, 'the re-open restarts the staleness clock');
+});
+
+test('a SKIPPED event does NOT set updated_at (only accepted events count)', () => {
+  const f = foldEntry([ev('queued', {}, { ts: 10 }), ev('some_future_state', {}, { ts: 999 }), ev('solving', {}, { ts: 20 })]);
+  assert.strictEqual(f.state, 'solving');
+  assert.strictEqual(f.updated_at, 20, 'the skipped future-state ts:999 is not the clock');
+});
+
+test('foldEntry.updated_at reflects ONLY the last accepted ts: a bad LAST ts -> undefined (fail-safe)', () => {
+  // A corrupt last-event ts must NOT fall back to an older ts - that would make the entry look STALER than it
+  // is (its latest event may be recent) and risk premature disposal. undefined -> the sweep skips it.
+  const badLast = foldEntry([ev('queued', {}, { ts: 100 }), ev('solving', {}, { ts: 'nope' })]);
+  assert.strictEqual(badLast.updated_at, undefined, 'a bad last ts does not fall back to an older one');
+  const goodLast = foldEntry([ev('queued', {}, { ts: 'nope' }), ev('solving', {}, { ts: 200 })]);
+  assert.strictEqual(goodLast.updated_at, 200, 'a good last ts is used even if an earlier one was bad');
+});
+
+// ---- rev (the monotonic version token for the CAS; clock-independent, ms-collision-proof) ----
+
+test('foldEntry.rev = the count of ACCEPTED events', () => {
+  assert.strictEqual(foldEntry([ev('queued'), ev('solving')]).rev, 2);
+  assert.strictEqual(foldEntry([ev('queued'), ev('solving'), ev('disposed', { reason: 'x' }), ev('queued'), ev('solving')]).rev, 5);
+});
+
+test('foldEntry.rev does NOT count a SKIPPED event (only accepted transitions bump it)', () => {
+  const f = foldEntry([ev('queued'), ev('some_future_state'), ev('solving')]);   // the middle event is skipped
+  assert.strictEqual(f.state, 'solving');
+  assert.strictEqual(f.rev, 2, 'the skipped future-state does not increment rev');
+});
+
+assert.ok(passed >= 18, `anti-vacuity floor: expected >=18 checks, ran ${passed}`);
 console.log(`${path.basename(__filename)}: ${passed} passed`);

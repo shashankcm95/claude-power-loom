@@ -200,6 +200,90 @@ test('CONCURRENCY: N loop-claimers over M entries claim each EXACTLY ONCE (the s
   assert.strictEqual(claimed.length, M, `every entry claimed exactly once (got ${claimed.length}/${M})`);
 });
 
+// ---- advance compare-and-swap (expect_state) — the dispose-sweep TOCTOU guard ----
+test('advance with a MATCHING expect_state commits the transition', () => {
+  const dir = freshDir();
+  const e = store.enqueue({ repo: 'octo/w', issue_ref: 3 }, { dir });
+  const r = store.advance({ entry_id: e.entry_id, to_state: 'solving', expect_state: 'queued' }, { dir });
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(store.get({ entry_id: e.entry_id }, { dir }).state, 'solving');
+});
+
+test('advance with a MISMATCHED expect_state REFUSES (state-changed) and writes NO event', () => {
+  const dir = freshDir();
+  const e = store.enqueue({ repo: 'octo/w', issue_ref: 4 }, { dir });   // state = queued
+  const r = store.advance({ entry_id: e.entry_id, to_state: 'solving', expect_state: 'solving' }, { dir });
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(r.reason, 'state-changed');
+  assert.strictEqual(store.get({ entry_id: e.entry_id }, { dir }).state, 'queued', 'the entry is UNCHANGED (no lost-update)');
+});
+
+test('advance WITHOUT expect_state is unchanged (backward-compatible)', () => {
+  const dir = freshDir();
+  const e = store.enqueue({ repo: 'octo/w', issue_ref: 5 }, { dir });
+  assert.strictEqual(store.advance({ entry_id: e.entry_id, to_state: 'solving' }, { dir }).ok, true);
+});
+
+test('advance with a BAD expect_state value -> bad-input', () => {
+  const dir = freshDir();
+  const e = store.enqueue({ repo: 'octo/w', issue_ref: 6 }, { dir });
+  const r = store.advance({ entry_id: e.entry_id, to_state: 'disposed', expect_state: 'bogus' }, { dir });
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(r.reason, 'bad-input');
+});
+
+test('advance expect_rev (version CAS): a stale rev REFUSED (version-changed), matching commits', () => {
+  const dir = freshDir();
+  const e = store.enqueue({ repo: 'octo/w', issue_ref: 8 }, { dir });
+  assert.strictEqual(store.get({ entry_id: e.entry_id }, { dir }).rev, 1, 'one accepted event -> rev 1');
+
+  const stale = store.advance({ entry_id: e.entry_id, to_state: 'solving', expect_rev: 0 }, { dir });
+  assert.strictEqual(stale.reason, 'version-changed', 'a decision made against an OLD rev is refused');
+  assert.strictEqual(store.get({ entry_id: e.entry_id }, { dir }).state, 'queued', 'no mutation on a version mismatch');
+
+  assert.strictEqual(store.advance({ entry_id: e.entry_id, to_state: 'solving', expect_rev: -1 }, { dir }).reason, 'bad-input');
+  assert.strictEqual(store.advance({ entry_id: e.entry_id, to_state: 'solving', expect_rev: 1 }, { dir }).ok, true, 'the matching rev commits');
+});
+
+test('CAS is MS-COLLISION-PROOF: a solving->disposed->queued->solving cycle at ONE ts cannot pass a stale rev', () => {
+  const dir = freshDir();
+  const eid = store.entryId('octo/w', 9);
+  // 5 accepted events ALL sharing ts=100 (the ms-collision the ts-based CAS was vulnerable to). rev still
+  // distinguishes the fresh solve (rev 5) from the stale snapshot (rev 2).
+  const seq = [['queued', null], ['solving', 'queued'], ['disposed', 'solving'], ['queued', 'disposed'], ['solving', 'queued']];
+  const evs = seq.map(([to, from]) => ({ entry_id: eid, repo: 'octo/w', issue_ref: 9, from_state: from, to_state: to, ts: 100, evidence: to === 'disposed' ? { reason: 'x' } : {} }));
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  fs.writeFileSync(path.join(dir, 'events.jsonl'), `${evs.map((x) => JSON.stringify(x)).join('\n')}\n`, { mode: 0o600 });
+  const cur = store.get({ entry_id: eid }, { dir });
+  assert.strictEqual(cur.state, 'solving');
+  assert.strictEqual(cur.rev, 5, 'the fresh solve is rev 5 despite every event sharing ts=100');
+  assert.strictEqual(cur.updated_at, 100, 'ts collides across the whole cycle');
+  // A dispose decided against the STALE rev-2 snapshot is refused -> the fresh live solve is NOT reaped.
+  const r = store.advance({ entry_id: eid, to_state: 'disposed', expect_state: 'solving', expect_rev: 2 }, { dir });
+  assert.strictEqual(r.reason, 'version-changed', 'ms-collision does not let a stale snapshot through');
+  assert.strictEqual(store.get({ entry_id: eid }, { dir }).state, 'solving', 'fresh solve preserved');
+});
+
+// ---- MED-2a: adding updated_at must NOT change claimNext ordering (LINE ORDER stays the sort key) ----
+test('claimNext orders by LINE ORDER, not updated_at (a is MIDDLE-aged by ts yet claimed first)', () => {
+  const dir = freshDir();
+  const idA = store.entryId('octo/a', 1);
+  const idB = store.entryId('octo/b', 2);
+  const idC = store.entryId('octo/c', 3);
+  // Line order A,B,C but ts order B(100) < A(200) < C(300): A is the MIDDLE by updated_at. If claimNext ever
+  // sorted by ascending updated_at it would return B; FIFO by line order must return A. Crafted log so the
+  // ts values are deterministic (and diverge from line order, which enqueue's live Date.now() cannot).
+  const rows = [
+    { entry_id: idA, repo: 'octo/a', issue_ref: 1, from_state: null, to_state: 'queued', ts: 200, evidence: {} },
+    { entry_id: idB, repo: 'octo/b', issue_ref: 2, from_state: null, to_state: 'queued', ts: 100, evidence: {} },
+    { entry_id: idC, repo: 'octo/c', issue_ref: 3, from_state: null, to_state: 'queued', ts: 300, evidence: {} },
+  ];
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  fs.writeFileSync(path.join(dir, 'events.jsonl'), `${rows.map((r) => JSON.stringify(r)).join('\n')}\n`, { mode: 0o600 });
+  for (const row of store.list({ state: 'queued' }, { dir })) assert.strictEqual(typeof row.updated_at, 'number', 'the staleness clock is exposed on list rows');
+  assert.strictEqual(store.claimNext({ dir }).entry_id, idA, 'FIFO by line order, NOT ascending updated_at (which would pick B)');
+});
+
 try { fs.rmSync(STATE_BASE, { recursive: true, force: true }); } catch { /* best-effort */ }
-assert.ok(passed >= 16, `anti-vacuity floor: expected >=16 checks, ran ${passed}`);
+assert.ok(passed >= 23, `anti-vacuity floor: expected >=23 checks, ran ${passed}`);
 console.log(`${path.basename(__filename)}: ${passed} passed`);
