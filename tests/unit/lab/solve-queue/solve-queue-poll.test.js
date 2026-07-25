@@ -22,6 +22,7 @@ const REPO = path.join(__dirname, '..', '..', '..', '..');
 const queue = require(path.join(REPO, 'packages', 'lab', 'solve-queue', 'solve-queue-store.js'));
 const { mintLivePendingLesson } = require(path.join(REPO, 'packages', 'lab', 'causal-edge', 'live-pending-store.js'));
 const { pollSolveQueue } = require(path.join(REPO, 'packages', 'lab', 'solve-queue', 'solve-queue-poll.js'));
+const { DEFAULT_STALE_MS } = require(path.join(REPO, 'packages', 'lab', 'solve-queue', 'dispose-stale.js'));
 
 let passed = 0;
 const pending = [];
@@ -74,6 +75,43 @@ function seedInFlight(d, { prNum = 77, cps = CPS, issue = 7 } = {}) {
   queue.advance({ entry_id: e.entry_id, to_state: 'in_flight', evidence: { pr_url: `https://github.com/octo/widget/pull/${prNum}`, pr_number: prNum } }, { dir: d.queueDir });
   return e.entry_id;
 }
+
+// A back-dated `solving` entry (the store stamps a live ts, so we craft the event log directly) to exercise
+// PASS 0 with the poll's default real-time clock.
+function seedStaleSolving(d, { issue = 55, ageMs = DEFAULT_STALE_MS + 60000 } = {}) {
+  const repo = 'octo/widget';
+  const eid = queue.entryId(repo, issue);
+  const ts = Date.now() - ageMs;
+  const evs = [
+    { entry_id: eid, repo, issue_ref: issue, from_state: null, to_state: 'queued', ts, evidence: {} },
+    { entry_id: eid, repo, issue_ref: issue, from_state: 'queued', to_state: 'solving', ts, evidence: {} },
+  ];
+  fs.mkdirSync(d.queueDir, { recursive: true, mode: 0o700 });
+  fs.writeFileSync(path.join(d.queueDir, 'events.jsonl'), `${evs.map((e) => JSON.stringify(e)).join('\n')}\n`, { mode: 0o600 });
+  return eid;
+}
+
+test('m5. PASS 0 disposes a stale solving zombie in a full sweep (observe/promote still run)', async () => {
+  const d = dirs5();
+  const eid = seedStaleSolving(d);
+  const res = await pollSolveQueue({ ...d, ghRunner: ghRunnerFor() });
+  assert.strictEqual(res.ok, true);
+  assert.deepStrictEqual(res.disposed.map((x) => x.entry_id), [eid], 'the stale solving entry was reaped');
+  assert.strictEqual(queue.get({ entry_id: eid }, { dir: d.queueDir }).state, 'disposed', 'disposed on disk');
+  assert.strictEqual(res.observed.length, 0);
+  assert.strictEqual(res.minted.length, 0);
+});
+
+test('m6. PASS 0 leaves a FRESH solving entry untouched (a live solve is never reaped)', async () => {
+  const d = dirs5();
+  const e = queue.enqueue({ repo: 'octo/widget', issue_ref: 66 }, { dir: d.queueDir });
+  queue.claimNext({ dir: d.queueDir });   // -> solving, live ts
+  const res = await pollSolveQueue({ ...d, ghRunner: ghRunnerFor() });
+  assert.strictEqual(res.ok, true);
+  assert.deepStrictEqual(res.disposed, []);
+  assert.deepStrictEqual(res.errors.filter((x) => x.stage === 'dispose'), [], 'PASS 0 examined the queue cleanly (no dispose-stage error)');
+  assert.strictEqual(queue.get({ entry_id: e.entry_id }, { dir: d.queueDir }).state, 'solving');
+});
 
 test('m1. one sweep OBSERVES the in_flight PR review AND PROMOTES the merge -> minted', async () => {
   const d = dirs5(); seedCapture(d); const id = seedInFlight(d);

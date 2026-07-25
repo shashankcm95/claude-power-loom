@@ -83,9 +83,22 @@ function isLegalTransition(from, to) {
  * illegal in-sequence transition, OR an event whose repo/issue_ref is invalid (identity is set only from a
  * CONTENT-VALID event). Evidence accumulates per-field but is RESET on a `-> queued` (re-open), so a stale
  * `reason`/`pr_url` from a failed attempt never leaks onto a later successful run. A malformed evidence
- * field is dropped. Returns `{ entry_id, repo, issue_ref, state, evidence }` or null.
+ * field is dropped. Returns `{ entry_id, repo, issue_ref, state, evidence, updated_at, rev }` or null.
+ *
+ * `updated_at` = the `ts` of the LAST ACCEPTED event (audit-only: the dispose-on-failure sweep reads it to
+ * decide STALENESS). It reflects ONLY the last accepted event's `ts` - a non-finite/missing ts leaves it
+ * `undefined` (the sweep then skips the entry, fail-SAFE: an entry whose latest event has a corrupt ts must
+ * NOT look staler than it is via an older prior ts). It is NEVER an ordering/sort key (the fold's load-
+ * bearing invariant is LINE ORDER; claimNext orders by the queued line index, not this) and NEVER folded
+ * into a content-addressed identity (a wall-clock ts in a content_hash is the retry-collision class
+ * merge-promote.js warns of - consumers pass explicit fields, never the whole entry).
+ *
+ * `rev` = the COUNT of accepted events (a strictly-monotonic, clock-INDEPENDENT version token). It is the
+ * compare-and-swap key for the dispose-sweep: unlike `updated_at`, it changes on EVERY accepted transition
+ * even within the same wall-clock millisecond, so a `solving -> disposed -> queued -> solving` cycle can
+ * never present a stale snapshot as current (the ms-collision the ts-based CAS was vulnerable to).
  * @param {Array<object>} events
- * @returns {{entry_id: string, repo: string, issue_ref: number, state: string, evidence: object} | null}
+ * @returns {{entry_id: string, repo: string, issue_ref: number, state: string, evidence: object, updated_at: number|undefined, rev: number} | null}
  */
 function foldEntry(events) {
   if (!Array.isArray(events)) return null;
@@ -94,13 +107,17 @@ function foldEntry(events) {
   let repo = null;
   let issue_ref = null;
   let evidence = {};
+  let updated_at;                                                 // audit-only: ts of the last ACCEPTED event
+  let rev = 0;                                                    // monotonic count of accepted events (CAS version)
   for (const evt of events) {
     if (!evt || typeof evt !== 'object' || Array.isArray(evt)) continue;
     if (!STATES.includes(evt.to_state)) continue;                 // unknown to_state -> skip (forward-compat)
     if (!isLegalTransition(state, evt.to_state)) continue;        // illegal in-sequence -> skip (defensive)
     if (state === null && !(validRepo(evt.repo) && validIssueRef(evt.issue_ref))) continue; // bad identity -> skip (H1)
     state = evt.to_state;
+    rev += 1;                                                     // one more accepted transition
     if (entry_id === null) { entry_id = evt.entry_id; repo = evt.repo; issue_ref = evt.issue_ref; }
+    updated_at = (typeof evt.ts === 'number' && Number.isFinite(evt.ts)) ? evt.ts : undefined; // last-event ts (fail-safe)
     if (evt.to_state === 'queued') evidence = {};                 // re-open resets transient evidence
     if (evt.evidence && typeof evt.evidence === 'object' && !Array.isArray(evt.evidence)) {
       for (const f of EVIDENCE_FIELDS) {
@@ -109,7 +126,7 @@ function foldEntry(events) {
     }
   }
   if (state === null) return null;
-  return { entry_id, repo, issue_ref, state, evidence };
+  return { entry_id, repo, issue_ref, state, evidence, updated_at, rev };
 }
 
 module.exports = {

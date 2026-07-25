@@ -162,6 +162,13 @@ test('r12. parseFlags --timeout: valid seconds -> ms; 0 / negative / non-integer
   }
 });
 
+test('r12b. --timeout is bounded to the dispose-sweep window (HIGH-1: a solve is never reaped mid-run)', () => {
+  // DEFAULT_STALE_MS (2h) - 30min margin = 5400s max.
+  assert.strictEqual(parseFlags(['o/r#7', '--timeout', '5400']).flags.timeoutMs, 5400000, 'at the window boundary: accepted');
+  assert.throws(() => parseFlags(['o/r#7', '--timeout', '5401']), /dispose-sweep window/i, 'one second over: rejected');
+  assert.throws(() => parseFlags(['o/r#7', '--timeout', '99999']), /dispose-sweep window/i, 'far over: rejected');
+});
+
 // ── the durable outcome ledger (failure-inclusive observability) ──
 test('r13. run() appends a SUCCESS outcome to the durable outcome ledger', async () => {
   const record = { id: 'octo__widget-issue-7', repo: 'https://github.com/octo/widget', base_sha: 'a'.repeat(40), problem_statement: 'x' };
