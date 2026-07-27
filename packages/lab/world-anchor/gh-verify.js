@@ -50,6 +50,10 @@ const GH_SEGMENT = /^[A-Za-z0-9._][A-Za-z0-9._-]*$/;
 const DEFAULT_TIMEOUT_MS = 30000;
 const DEFAULT_MAX_BYTES = 1 * 1024 * 1024;   // a single PR JSON is tiny; 1MB is a generous DoS cap.
 const DEFAULT_MAX_DIFF_BYTES = 5 * 1024 * 1024;   // a merge-commit patch; generous cap (over-cap => execFile errors => fail-closed, never a truncated wrong hash).
+// The shared gh rate-limit classifier. Lives HERE (the gh-discipline home) so every gh consumer - the poll's
+// PASS 1 bail and the emit reconciler's PASS 0.5 bail - tests the SAME pattern rather than each keeping a
+// private copy that could drift apart.
+const RATELIMIT_RE = /rate.?limit|429|secondary/i;
 
 /** Emit a namespaced, observable alert for a fail-closed reject (the classifier rides gh_reason, not reason). */
 function alert(ghReason, detail) { emitEgressAlert('merge-verify-failed', Object.assign({}, detail || {}, { gh_reason: ghReason })); }
@@ -289,4 +293,4 @@ async function fetchMergeCommitDiff(q, opts = {}) {
 
 // defaultRunner is exported ONLY so the lab test can prove it INVOKES assertReadOnlyGhArgs (a write-arg
 // throws synchronously, before any spawn) - VALIDATE-hacker M-1. Production callers use verifyMerge.
-module.exports = { verifyMerge, fetchPrMergeMeta, fetchMergeCommitDiff, isGhRepo, buildVerifyEnv, assertReadOnlyGhArgs, defaultRunner };
+module.exports = { verifyMerge, fetchPrMergeMeta, fetchMergeCommitDiff, isGhRepo, buildVerifyEnv, assertReadOnlyGhArgs, defaultRunner, RATELIMIT_RE };

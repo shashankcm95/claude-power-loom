@@ -13,7 +13,7 @@ A durable, append-only event log that tracks each external-issue **solve entry**
 | _absent_ | `queued` | `enqueue` (pipeline) |
 | `queued` | `solving`, `disposed` | `claimNext` (pipeline) |
 | `solving` | `drafted`, `disposed` | pipeline (candidate + captured lesson) |
-| `drafted` | `in_flight`, `disposed` | **operator** (opened the PR) |
+| `drafted` | `in_flight`, `disposed` | **the reconciler** (poll PASS 0.5) — the operator still OPENS the PR; the sweep only OBSERVES it (read-only `gh`) and records `pr_url`/`pr_number` |
 | `in_flight` | `merged`, `disposed` | **Wave B** (merge-poll) |
 | `merged` | `minted`, `disposed` | **Wave B** (lesson promotion) |
 | `disposed` | `queued` | re-open / retry |
@@ -43,10 +43,15 @@ Idempotent (a re-sweep re-mints the same node by content-dedup; `emitted_at = gh
 - [`solve-queue-fold.js`](solve-queue-fold.js) — the pure fold + transition-legality table (no I/O).
 - [`solve-queue-store.js`](solve-queue-store.js) — the I/O layer: append log, `withLockSoft` ops, hardened read, boundary validation.
 - [`merge-promote.js`](merge-promote.js) — the Wave-B two-state merge-poll → captured-lesson weight-0 promotion.
+- [`dispose-stale.js`](dispose-stale.js) — poll PASS 0: reap stale `solving` zombies → `disposed` (CAS-guarded).
+- [`emit-reconcile.js`](emit-reconcile.js) — poll PASS 0.5: OBSERVE the operator-emitted PR → `drafted` → `in_flight` (read-only `gh`, exact-set match, CAS-guarded). Arms nothing.
+- [`solve-queue-poll.js`](solve-queue-poll.js) — the sweep runner composing PASS 0 → 0.5 → 1 (review-observe) → 2 (merge→mint).
 - [`cli.js`](cli.js) — thin dispatcher: `enqueue` / `next` / `advance` / `list` / `get` / `promote`.
 
 ## Out of scope (later waves)
 
 - **Wave C**: persona-carry as a non-identity pin (never a `BASIS_FIELD`).
-- The `live-solve-one → queue` auto-wire (solve records `candidate_patch_sha` at `drafted`); Wave B operates on operator-populated or that-wire-populated entries.
+- Hold/defer awareness: PR labels (`pr:deferred`), `mergeable_state`, and insider *comments* as signal, plus a `held-exogenous` outcome class excluded from the merge-rate denominator. Needs the frozen `EVIDENCE_FIELDS` enum extended; its own wave.
+- Closed-unmerged disposal (an `in_flight` PR closed without merging) and solve-queue log rotation.
+- A terminal path for a never-emitted `drafted` entry (`drafted → disposed` is already legal; nothing sweeps it).
 - Operator-only: opening PRs; arming; the authenticated signed-edge minter (Option A, the join-key path).

@@ -2,7 +2,7 @@
 
 // tests/unit/lab/solve-queue/solve-queue-poll.test.js
 //
-// F3 — the autonomous poll RUNNER: one sweep = review-observe (PASS 1) + merge->mint (PASS 2). Integration
+// F3 - the autonomous poll RUNNER: one sweep = review-observe (PASS 1) + merge->mint (PASS 2). Integration
 // over the REAL solve-queue + review-outcome + world-anchor stores on isolated dirs + a mock gh. TOTAL /
 // SHADOW / weight-0. Locks: the compose (observe + promote in one sweep), the F3 systemic-failure bail
 // (never hammering a rate-limit cooldown) with promote STILL running, the empty-queue no-op, and the
@@ -75,6 +75,51 @@ function seedInFlight(d, { prNum = 77, cps = CPS, issue = 7 } = {}) {
   queue.advance({ entry_id: e.entry_id, to_state: 'in_flight', evidence: { pr_url: `https://github.com/octo/widget/pull/${prNum}`, pr_number: prNum } }, { dir: d.queueDir });
   return e.entry_id;
 }
+
+// PASS 0.5 - the emit reconciler. A `drafted` entry + a matching observed PR must reach `in_flight` in the
+// SAME sweep, and a rate limit there must bail PASS 1 rather than walking into the same cooldown.
+function seedDrafted(d, { issue = 71, cps = CPS } = {}) {
+  const e = queue.enqueue({ repo: 'octo/widget', issue_ref: issue }, { dir: d.queueDir });
+  queue.claimNext({ dir: d.queueDir });
+  queue.advance({ entry_id: e.entry_id, to_state: 'drafted', evidence: { candidate_patch_sha: cps } }, { dir: d.queueDir });
+  return e.entry_id;
+}
+
+test('m7. PASS 0.5 reconciles a drafted entry to in_flight from an observed PR', async () => {
+  const d = dirs5();
+  const id = seedDrafted(d);
+  const updatedAt = queue.get({ entry_id: id }, { dir: d.queueDir }).updated_at;
+  const base = ghRunnerFor({ merged: false, state: 'open', reviews: [] });
+  const gh = async (args) => {
+    if (args.join(' ').includes('/pulls?state=all')) {
+      return { stdout: JSON.stringify([{ n: 501, ref: 'loom/issue-71-0123456789ab', head_repo: 'octo/widget', created: new Date(updatedAt + 1000).toISOString() }]) };
+    }
+    return base(args);
+  };
+  const res = await pollSolveQueue({ ...d, ghRunner: gh });
+  assert.strictEqual(res.ok, true);
+  assert.deepStrictEqual(res.reconciled.map((x) => x.entry_id), [id], 'reconciled in this sweep');
+  assert.strictEqual(queue.get({ entry_id: id }, { dir: d.queueDir }).state, 'in_flight');
+  assert.deepStrictEqual(res.errors.filter((x) => x.stage === 'reconcile'), [], 'no reconcile-stage error');
+});
+
+test('m8. a rate limit in PASS 0.5 BAILS PASS 1 (never walks into the same cooldown)', async () => {
+  const d = dirs5();
+  seedDrafted(d, { issue: 72 });
+  seedCapture(d); seedInFlight(d);
+  let observeCalls = 0;
+  const base = ghRunnerFor();
+  const gh = async (args) => {
+    const s = args.join(' ');
+    if (s.includes('/pulls?state=all')) { const e = new Error('HTTP 429'); e.stderr = 'gh: API rate limit exceeded'; throw e; }
+    if (s.includes('/reviews')) observeCalls += 1;
+    return base(args);
+  };
+  const res = await pollSolveQueue({ ...d, ghRunner: gh });
+  assert.strictEqual(res.rate_limited, true, 'the reconciler surfaced the rate limit');
+  assert.strictEqual(res.review_pass_bailed, true, 'PASS 1 bailed on the upstream signal');
+  assert.strictEqual(observeCalls, 0, 'PASS 1 spent ZERO gh calls into the cooldown');
+});
 
 // A back-dated `solving` entry (the store stamps a live ts, so we craft the event log directly) to exercise
 // PASS 0 with the poll's default real-time clock.
