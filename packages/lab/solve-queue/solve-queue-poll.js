@@ -2,17 +2,19 @@
 
 // @loom-layer: lab
 //
-// F3 — the autonomous poll RUNNER (SHADOW / weight-0). ONE sweep over the solve-queue that composes two
-// existing SHADOW pieces and adds no new capability:
-//   PASS 1  OBSERVE each `in_flight` entry's PR review state (runReviewObserve -> review-outcome-store).
-//   PASS 2  PROMOTE merged PRs to minted world_anchored nodes (promoteMergedEntries, Wave B).
+// F3 - the autonomous poll RUNNER (SHADOW / weight-0). ONE sweep over the solve-queue composing SHADOW
+// pieces and adding no new capability:
+//   PASS 0    DISPOSE stale `solving` zombies (dispose-stale; no gh calls).
+//   PASS 0.5  RECONCILE `drafted` -> `in_flight` by OBSERVING the operator-emitted PR (emit-reconcile).
+//   PASS 1    OBSERVE each `in_flight` entry's PR review state (runReviewObserve -> review-outcome-store).
+//   PASS 2    PROMOTE merged PRs to minted world_anchored nodes (promoteMergedEntries, Wave B).
 // It is the poll-half of the true autonomous loop: solve -> PR (elsewhere) -> [this cron] observe reviews +
 // harden-on-merge. Read-only `gh` only; NO write, NO arming, NO egress, NO join-key. Designed to run behind a
-// launchd timer (the INTERVAL is the primary pacing against the shared-token secondary rate-limit — see F3).
+// launchd timer (the INTERVAL is the primary pacing against the shared-token secondary rate-limit - see F3).
 //
 // TOTAL: never throws. A bad entry / a failed observe is recorded in the summary and the sweep continues.
 // F3 PACING: PASS 1 walks entries sequentially and BAILS on a rate-limit signal (never hammering the
-// cooldown — the whole reason the F1/F2 puller now hands callers a differentiated `rate-limited` reason).
+// cooldown - the whole reason the F1/F2 puller now hands callers a differentiated `rate-limited` reason).
 // Wave B's own gh-verify already fail-soft-skips a transient error per entry.
 //
 // Dir wiring mirrors merge-promote: ALL-OR-NOTHING over the 5 store dirs (0 = production, each store uses its
@@ -24,11 +26,12 @@
 const queue = require('./solve-queue-store');
 const { promoteMergedEntries } = require('./merge-promote');
 const { disposeStaleSolving } = require('./dispose-stale');
+const { reconcileDraftedEntries } = require('./emit-reconcile');
 const { runReviewObserve } = require('../world-anchor/review-observer');
+const { RATELIMIT_RE } = require('../world-anchor/gh-verify');
 const { emitEgressAlert } = require('../../kernel/egress/alert');
 
 const DIR_KEYS = ['queueDir', 'pendingDir', 'anchorDir', 'liveDir', 'reviewDir'];
-const RATELIMIT_RE = /rate.?limit|429|secondary/i;
 
 function alert(reason, detail) { emitEgressAlert('solve-queue-poll', Object.assign({}, detail || {}, { poll_reason: reason })); }
 
@@ -48,7 +51,7 @@ function resolveDirs(o) {
 async function pollSolveQueue(opts = {}) {
   const o = opts && typeof opts === 'object' && !Array.isArray(opts) ? opts : {};
   const rd = resolveDirs(o);
-  const summary = { disposed: [], observed: [], reviews_recorded: 0, merged: [], minted: [], skipped: [], errors: [], rate_limited: false, review_pass_bailed: false };
+  const summary = { disposed: [], reconciled: [], reconcile_skipped: [], observed: [], reviews_recorded: 0, merged: [], minted: [], skipped: [], errors: [], rate_limited: false, review_pass_bailed: false, promote_pass_bailed: false };
   if (!rd.ok) { alert(rd.reason, {}); return { ok: false, reason: rd.reason, ...summary }; }
   const ghRunner = o.ghRunner;
 
@@ -71,16 +74,50 @@ async function pollSolveQueue(opts = {}) {
     summary.errors.push({ stage: 'dispose', message: (err && err.message) || 'dispose-threw' });
   }
 
+  // PASS 0.5: reconcile `drafted` -> `in_flight` by OBSERVING the operator-emitted PR (read-only gh). It is
+  // the cheapest gh pass (1 call per REPO, bounded pages) vs PASS 1's 1-per-entry, so it runs first; its
+  // real benefit is removing a sweep of latency for a PR opened AND merged while the cron was down.
+  // RATE-LIMIT INTERLOCK (bidirectional): PASS 0.5 spends gh calls BEFORE PASS 1's own bail could fire, so a
+  // rate limit detected here must SKIP PASS 1 entirely - otherwise this pass becomes a new way to burn the
+  // exact shared-token budget that bail exists to protect.
+  try {
+    const rec = await reconcileDraftedEntries(o.queueDir !== undefined ? { queueDir: o.queueDir, runner: ghRunner } : { runner: ghRunner });
+    summary.reconciled = (rec && Array.isArray(rec.reconciled)) ? rec.reconciled : [];
+    if (rec && Array.isArray(rec.errors) && rec.errors.length) {
+      summary.errors.push(...rec.errors.map((x) => Object.assign({ stage: 'reconcile' }, x)));
+    }
+    // Carry the reconciler's SKIPS through too. PASS 2 later assigns summary.skipped wholesale, so stash
+    // them separately: a `list-truncated` / `no-join-key` stall is invisible to a monitor otherwise.
+    if (rec && Array.isArray(rec.skipped) && rec.skipped.length) {
+      summary.reconcile_skipped = rec.skipped.map((x) => Object.assign({ stage: 'reconcile' }, x));
+    }
+    if (rec && rec.rate_limited === true) summary.rate_limited = true;
+    if (rec && rec.ok === false && (!Array.isArray(rec.errors) || rec.errors.length === 0)) {
+      summary.errors.push({ stage: 'reconcile', message: rec.reason || 'reconcile-failed' });
+    }
+  } catch (err) {
+    alert('reconcile-pass-threw', { message: (err && err.message) || 'error' });
+    summary.errors.push({ stage: 'reconcile', message: (err && err.message) || 'reconcile-threw' });
+  }
+
   // PASS 1: review-observe each in_flight PR (poll review state -> review-outcome-store).
   // F3 pacing: walk sequentially and BAIL on systemic failure so the sweep never hammers the shared-token
   // secondary-rate-limit cooldown. runReviewObserve masks a gh failure as an opaque `gh-exit` (it does not
   // surface the status), so the bail triggers on a RECOGNIZED rate-limit reason (future-proof, if the
   // observer is later hardened to differentiate) OR on 2 CONSECUTIVE observe failures (the systemic-failure
-  // proxy — a rate-limit fails every call, so two in a row is the signal to stop, not press on).
+  // proxy - a rate-limit fails every call, so two in a row is the signal to stop, not press on).
   let consecutiveFail = 0;
   let entries;
-  try { entries = queue.list({ state: 'in_flight' }, { dir: o.queueDir }); }
-  catch (err) { alert('queue-list-threw', { message: (err && err.message) || 'error' }); entries = []; }
+  // The PASS 0.5 interlock: if the reconciler already hit the shared-token rate limit, do NOT start a
+  // per-entry observe walk into the same cooldown - bail before the first call, not after two more.
+  if (summary.rate_limited) {
+    summary.review_pass_bailed = true;
+    alert('review-pass-bail', { reason: 'rate-limited-upstream-pass', consecutive: 0 });
+    entries = [];
+  } else {
+    try { entries = queue.list({ state: 'in_flight' }, { dir: o.queueDir }); }
+    catch (err) { alert('queue-list-threw', { message: (err && err.message) || 'error' }); entries = []; }
+  }
   for (const e of entries) {
     const pr = e && e.evidence && e.evidence.pr_url;
     if (typeof pr !== 'string' || !pr) continue;
@@ -109,6 +146,21 @@ async function pollSolveQueue(opts = {}) {
   if (rd.isolated) {
     promoteOpts.queueDir = o.queueDir; promoteOpts.pendingDir = o.pendingDir;
     promoteOpts.anchorDir = o.anchorDir; promoteOpts.liveDir = o.liveDir;
+  }
+  // The interlock covers PASS 2 as well: merge-promote has NO bail of its own (1 verifyMerge per in_flight +
+  // 2 fetches per merged, unbounded), so running it into a known cooldown would spend exactly the shared
+  // budget the bail protects (VALIDATE-hacker M-2).
+  // Gated on a RECOGNIZED rate limit only - deliberately NOT on the generic `review_pass_bailed`.
+  // A pre-PR CodeRabbit Major proposed bailing on both, but premise-probing it against the prior wave shows
+  // that over-reaches: PASS 1's systemic bail also fires on 2 consecutive NON-rate-limit failures (two 404s,
+  // a transient blip), and F3 (#584) deliberately keeps promote running through those - its own test m3 and
+  // this suite's header lock that in, because Wave B's gh-verify already fail-soft-skips per entry. Bailing
+  // on every systemic failure would silently overturn a tested design decision to close a hole that the
+  // `rate_limited` gate (the actual cooldown, VALIDATE-hacker M-2) already closes.
+  if (summary.rate_limited) {
+    summary.promote_pass_bailed = true;
+    alert('promote-pass-bail', { reason: 'rate-limited-upstream-pass' });
+    return { ok: true, ...summary };
   }
   const promoted = await promoteMergedEntries(promoteOpts);
   if (promoted && promoted.ok) {
