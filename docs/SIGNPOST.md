@@ -399,6 +399,7 @@ Auto-generated map of where things live, derived from the repo structure + each 
 
 - `packages/lab/solve-queue/cli.js` - Wave A - thin CLI over solve-queue-store.js.
 - `packages/lab/solve-queue/commit-anchor.js` - COMMIT-LEVEL WORLD-ANCHORING DETECTOR (SHADOW / weight-0 / ADVISORY - gates nothing).
+- `packages/lab/solve-queue/dispose-closed.js` - GAP-2 - CLOSED-UNMERGED DISPOSAL (SHADOW / weight-0).
 - `packages/lab/solve-queue/dispose-stale.js` - The dispose-on-failure sweep (SHADOW / weight-0).
 - `packages/lab/solve-queue/emit-reconcile.js` - The EMIT RECONCILER (SHADOW / weight-0) - the producer of the `drafted -> in_flight` edge.
 - `packages/lab/solve-queue/merge-promote.js` - Wave B - the async merge-poll -> captured-lesson promotion.
