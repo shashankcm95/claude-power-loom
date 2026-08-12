@@ -69,7 +69,8 @@ authored on/after our PR opened.**
 ### Module — `packages/lab/solve-queue/commit-anchor.js`
 
 `detectCommitAnchoring({ repo, pr_number, runner?, timeoutMs?, maxBytes?, maxCandidates? })` ->
-`{ ok, anchored, strength, landed:[{sha, patch_exact}], our_commit_count, reason? }`
+`{ ok, anchored, strength, via, landed:[{sha, patch_exact}], our_commit_count, reason? }`
+(`via` is `'head-contained'` on PATH A and `'attributed-reachable'` on PATH B; `null` when not anchored.)
 
 - READ-ONLY: every call goes through the shared `assertReadOnlyGhArgs` gate, invoked HERE (an injected
   runner bypasses `defaultRunner`'s own gate — the `review-observer.js:81` lesson).
@@ -122,9 +123,29 @@ authored on/after our PR opened.**
 - `packages/lab/solve-queue/commit-anchor.js` — NEW.
 - `tests/unit/lab/solve-queue/commit-anchor.test.js` — NEW.
 
-## Architect VERIFY / VALIDATE / sign-off
+## Pre-PR CodeRabbit — 4 findings, all folded
 
-(appended as the wave completes)
+The pre-PR CLI was unavailable (transient `WebSocket closed`), so the async bot on the PR was the review
+surface. It found 2 Majors, both real:
+
+- **Major — reachability used the PR's BASE REF, not the repo's DEFAULT branch.** The plan claimed "reachable
+  from the upstream default branch" while the code passed `.base.ref`. A PR targeting `release` could be
+  reachable from `release` and absent from `main`, reporting a landing on a branch the trust argument never
+  covered. -> FIXED: `.base.repo.default_branch` (already on the PR payload, so no extra call); fail-closed if
+  absent. Regression test drives a base-aware compare double and asserts EVERY compare uses the default branch.
+- **Major — a binary / patch-less file could produce a false `patch_exact`.** The API omits `patch` for binary
+  and too-large files, so those hash an EMPTY body and two unrelated binary commits would agree. -> FIXED:
+  fingerprints carry `comparable`, and exactness requires BOTH sides comparable (falls back to the weaker
+  link, never `exact`). Also the `+++`/`---` prefix filter was eating real content: `-` plus `--count;`
+  renders `---count;`. Probed that GitHub's `patch` starts at `@@` and carries no file headers at all, so the
+  filter could only ever have dropped content. -> now a STRUCTURAL header match (`^(---|\+\+\+) [ab]/`).
+- **Minor** — the documented result shape omitted `via` though PATH A returns it -> added above.
+- **Minor** — this section was still a placeholder -> replaced by this record.
+
+## Sign-off (post-fold)
+
+- 15 tests (3 added for the folds); full lab + kernel suites exit 0; eslint / signpost / markdownlint clean.
+- Live re-verified after the default-branch change (see the dogfood section).
 
 ## Live dogfood + the defect a CONTROL caught
 

@@ -41,16 +41,21 @@ const FILES = (body, subject = 'refactor: a change', file = 'src/x.py') => ({
 });
 
 // A dispatching runner double over the endpoints the module uses. `reach` maps sha -> ahead_by.
-function runnerFor({ headAhead = 2, ourCommits, candidates, reach = {}, patches = {}, throwOn, prCreated = '2026-07-13T00:00:00Z' } = {}) {
+function runnerFor({ headAhead = 2, ourCommits, candidates, reach = {}, patches = {}, throwOn, prCreated = '2026-07-13T00:00:00Z', baseRef = 'main', defaultBranch = 'main', reachByBase = null } = {}) {
   const calls = [];
   const fn = async (args) => {
     calls.push(args);
     const p = args[3] || '';
     if (throwOn && p.includes(throwOn)) { const e = new Error('gh boom'); e.stderr = 'boom'; throw e; }
     if (/\/pulls\/\d+\/commits/.test(p)) return { stdout: JSON.stringify(ourCommits) };
-    if (/\/pulls\/\d+$/.test(p)) return { stdout: JSON.stringify({ head_sha: OURS_B, created_at: prCreated, base_ref: 'main' }) };
+    if (/\/pulls\/\d+$/.test(p)) return { stdout: JSON.stringify({ head_sha: OURS_B, created_at: prCreated, base_ref: baseRef, default_branch: defaultBranch }) };
     if (p.includes('/compare/')) {
       const sha = p.split('...')[1];
+      if (reachByBase) {                       // base-aware: prove we compare against the DEFAULT branch
+        const base = decodeURIComponent(p.split('/compare/')[1].split('...')[0]);
+        const m = (reachByBase[base] || {});
+        return { stdout: JSON.stringify({ status: m[sha] === 0 ? 'behind' : 'diverged', ahead_by: m[sha] === 0 ? 0 : 1 }) };
+      }
       const ahead = sha === OURS_B ? headAhead : (Object.prototype.hasOwnProperty.call(reach, sha) ? reach[sha] : 1);
       return { stdout: JSON.stringify({ status: ahead === 0 ? 'behind' : 'diverged', ahead_by: ahead }) };
     }
@@ -216,8 +221,55 @@ test('a rate-limited scan is classified as such (not a silent not-anchored)', as
   assert.strictEqual(res.reason, 'rate-limited', 'a rate limit must not read as "no evidence"');
 });
 
+
+// ---- CodeRabbit folds ----
+
+test('CR Major: reachability is checked against the repo DEFAULT branch, not the PR base ref', async () => {
+  // A PR targeting `release` may be reachable from `release` while ABSENT from `main`. Anchoring on the
+  // base ref would claim a landing on a branch the trust argument never covered.
+  const r = runnerFor({
+    baseRef: 'release', defaultBranch: 'main',
+    ourCommits: ourTwo,
+    candidates: [{ sha: LANDED_A }],
+    reachByBase: { release: { [LANDED_A]: 0, [OURS_B]: 1 }, main: { [LANDED_A]: 1, [OURS_B]: 1 } },
+    patches: { [OURS_A]: FILES('x', 'feat: one'), [OURS_B]: FILES('y', 'feat: two'), [LANDED_A]: FILES('x', 'feat: one') },
+  });
+  const res = await detectCommitAnchoring({ repo: SLUG, pr_number: 21, runner: r.fn });
+  assert.strictEqual(res.anchored, false, 'reachable only from `release` must NOT read as anchored');
+  const bases = r.calls.map((a) => a[3] || '').filter((x) => x.includes('/compare/')).map((x) => decodeURIComponent(x.split('/compare/')[1].split('...')[0]));
+  assert.ok(bases.every((b) => b === 'main'), `every compare must use the default branch, got ${JSON.stringify(bases)}`);
+});
+
+test('CR Major: a BINARY / patch-less file can never produce patch_exact', async () => {
+  // The API omits `patch` for binary + too-large files. Two unrelated binary commits would both hash an
+  // EMPTY body and claim exactness. They must fall back to the weaker link, never `exact`.
+  const bin = (subject) => ({ subject, files: [{ filename: 'img.png' }] });   // no `patch` key at all
+  const r = runnerFor({
+    ourCommits: ourTwo,
+    candidates: [{ sha: LANDED_A }],
+    reach: { [LANDED_A]: 0 },
+    patches: { [OURS_A]: bin('chore: add asset'), [OURS_B]: FILES('y', 'feat: two'), [LANDED_A]: bin('chore: add asset') },
+  });
+  const res = await detectCommitAnchoring({ repo: SLUG, pr_number: 22, runner: r.fn });
+  assert.strictEqual(res.anchored, true, 'the subject+file link still holds');
+  assert.strictEqual(res.landed[0].patch_exact, false, 'two empty bodies must NEVER be called patch-exact');
+  assert.strictEqual(res.strength, 'adapted');
+});
+
+test('CR Major: a removed line whose content starts with `--` is NOT eaten by the header filter', async () => {
+  // `-` (removal) + `--count;` renders as `---count;`. A bare prefix filter drops it, so two commits that
+  // differ ONLY in such lines would hash identically.
+  const withDecr = normalizedPatchHash([{ filename: 'a.c', patch: '@@ -1,2 +1,2 @@\n---count;\n+++count;\n' }]);
+  const withOther = normalizedPatchHash([{ filename: 'a.c', patch: '@@ -1,2 +1,2 @@\n---other;\n+++other;\n' }]);
+  assert.notStrictEqual(withDecr, withOther, 'content lines beginning with --/++ must survive normalization');
+  // ...while a REAL unified-diff file header is still stripped.
+  const a = normalizedPatchHash([{ filename: 'a.c', patch: '--- a/a.c\n+++ b/a.c\n@@ -1,1 +1,1 @@\n-x\n+y\n' }]);
+  const b = normalizedPatchHash([{ filename: 'a.c', patch: '@@ -9,1 +9,1 @@\n-x\n+y\n' }]);
+  assert.strictEqual(a, b, 'real file headers are structurally stripped');
+});
+
 Promise.all(pending).then(() => {
   try { fs.rmSync(STATE_BASE, { recursive: true, force: true }); } catch { /* best-effort */ }
-  assert.ok(passed >= 12, `anti-vacuity floor: expected >=11, ran ${passed}`);
+  assert.ok(passed >= 15, `anti-vacuity floor: expected >=11, ran ${passed}`);
   process.stdout.write(`${path.basename(__filename)}: ${passed} passed\n`);
 });
