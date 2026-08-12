@@ -178,6 +178,7 @@ unchanged. A regression test locks the control's finding.
 
 ## Sign-off
 
-- commit-anchor 12 passed; full lab + kernel suites exit 0; eslint / signpost clean; 0 non-ASCII added.
+- commit-anchor 12 passed at first sign-off; **15 after the CodeRabbit folds** (3 regression tests added) -
+  see the post-fold Sign-off above, which is the current count.
 - Live: #2611 anchored/adapted (the false negative caught); #3305 control corrected 104 -> 2.
 - Wired to NOTHING. `verifyMerge` and `merge-promote` are untouched; this gates nothing this wave.

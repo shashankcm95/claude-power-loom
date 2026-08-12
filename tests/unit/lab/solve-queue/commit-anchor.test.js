@@ -270,6 +270,6 @@ test('CR Major: a removed line whose content starts with `--` is NOT eaten by th
 
 Promise.all(pending).then(() => {
   try { fs.rmSync(STATE_BASE, { recursive: true, force: true }); } catch { /* best-effort */ }
-  assert.ok(passed >= 15, `anti-vacuity floor: expected >=11, ran ${passed}`);
+  assert.ok(passed >= 15, `anti-vacuity floor: expected >=15, ran ${passed}`);
   process.stdout.write(`${path.basename(__filename)}: ${passed} passed\n`);
 });
