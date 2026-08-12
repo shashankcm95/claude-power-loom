@@ -1,0 +1,291 @@
+#!/usr/bin/env node
+
+// @loom-layer: lab
+//
+// COMMIT-LEVEL WORLD-ANCHORING DETECTOR (SHADOW / weight-0 / ADVISORY - gates nothing).
+//
+// `merge-promote` decides anchoring from `pulls/N.merged`. That is PR-SCOPED, but the anchoring event is
+// COMMIT-SCOPED: a maintainer who carries our commits into THEIR pull request gives us a real merge that
+// the PR-scoped check calls a rejection. Demonstrated on the first real case (spec-kitty#2611):
+//
+//   verifyMerge(#2611)         -> {merged:false, merge_commit_sha:null, state:"closed"}   => "rejected"
+//   compare(main...6930d8c56)  -> {status:"behind", ahead_by:0}                           => actually landed
+//
+// This module answers "did our WORK land upstream?" independent of whether OUR PR merged.
+//
+// THE SIGNAL: a commit ATTRIBUTED to our author identity, REACHABLE from the upstream default branch,
+// authored on/after our PR opened.
+//   - REACHABILITY IS THE TRUST BASIS. Only a writer of the upstream repo can put a commit on its default
+//     branch, so reachability is maintainer-sanctioned by construction. It is verified EXPLICITLY per
+//     candidate rather than inferred from a list endpoint's default-branch behaviour.
+//   - AUTHOR-EMAIL IS THE ATTRIBUTION LINK AND A SEARCH BOUND - NEVER THE EVIDENCE. Git author metadata is
+//     self-asserted; forging it upstream would require write access, i.e. the maintainer deliberately
+//     landing work as us, which IS the event being detected.
+//   - PATCH-IDENTITY IS A STRENGTH QUALIFIER, NOT A GATE. Probed on the real case: of our two commits only
+//     ONE was patch-identical after landing; the other was ADAPTED by the maintainer in flight. Gating on
+//     patch-identity would have produced a false negative on the adapted one.
+//   - NO SUBJECT/SHAPE MATCHING. We never claim a 1:1 ours->landed mapping from message text (the
+//     shape-is-not-identity trap). We report the landed set and mark which are patch-exact.
+//
+// READ-ONLY: `gh api -X GET` only, the shared gate invoked HERE (an injected runner bypasses
+// defaultRunner's own gate - the review-observer lesson). Zero egress imports, arms nothing.
+// TOTAL: never throws; every failure is a classified reason plus an observable alert.
+//
+// RESIDUAL (named, not built): a landing RE-AUTHORED under the maintainer's own identity is invisible to
+// this detector - the attribution link is gone. Catching that needs patch-identity over a broad unfiltered
+// scan (expensive) or a maintainer-declared link.
+
+'use strict';
+
+const crypto = require('crypto');
+const {
+  assertReadOnlyGhArgs, buildVerifyEnv, defaultRunner, isGhRepo, RATELIMIT_RE,
+} = require('../world-anchor/gh-verify');
+const { emitEgressAlert } = require('../../kernel/egress/alert');
+
+const DEFAULT_TIMEOUT_MS = 30000;
+const DEFAULT_MAX_BYTES = 4 * 1024 * 1024;   // a commit's file patches can be large; bounded
+const PER_PAGE = 100;
+const MAX_OUR_COMMITS = 50;                  // a PR with more commits than this is out of scope, observably
+const SHA_RE = /^[0-9a-f]{7,40}$/;
+
+// FIXED positional token + a `kind` differentiator spread LAST so a detail key cannot clobber it.
+// Details carry only shas/counts - never raw vendor prose (the C1-band lesson).
+function alert(kind, detail) { emitEgressAlert('commit-anchor', Object.assign({}, detail || {}, { kind })); }
+
+/**
+ * A patch-id-STYLE normalization: drop hunk headers and file-header lines, keep only the +/- content, and
+ * order by filename. Rebasing shifts `@@ -a,b +c,d @@` line numbers without changing the change itself, so
+ * hashing the raw patch would miss a rebased-but-identical commit. This approximates `git patch-id`; it is
+ * deliberately NOT byte-equal to it.
+ */
+// A REAL unified-diff file header, e.g. `--- a/x.py` / `+++ b/x.py`. Matched STRUCTURALLY, not by a bare
+// `---`/`+++` prefix: a removed line whose content begins with `--` renders as `---count;`, and a prefix
+// filter would silently eat it. (Probed: GitHub's `files[].patch` starts at `@@` and carries no file
+// headers at all, so the old prefix filter could only ever have dropped real content.)
+const DIFF_FILE_HEADER = /^(?:---|\+\+\+) [ab]\//;
+
+function normalizedPatchHash(files) {
+  const list = Array.isArray(files) ? files : [];
+  const parts = list
+    .filter((f) => f && typeof f.filename === 'string')
+    .slice()
+    .sort((a, b) => (a.filename < b.filename ? -1 : a.filename > b.filename ? 1 : 0))
+    .map((f) => {
+      const body = (typeof f.patch === 'string' ? f.patch : '')
+        .split('\n')
+        .filter((l) => (l.startsWith('+') || l.startsWith('-')) && !DIFF_FILE_HEADER.test(l))
+        .join('\n');
+      return `${f.filename}\n${body}`;
+    });
+  return crypto.createHash('sha256').update(parts.join('\n\u0000\n')).digest('hex');
+}
+
+/**
+ * Is a commit's content actually comparable? The API omits `patch` for BINARY and too-large files, so those
+ * hash to an EMPTY body - two unrelated binary commits would then hash identically and be reported
+ * `patch_exact: true`. A commit carrying any such file is NOT comparable and can never claim exactness.
+ */
+function isPatchComparable(files) {
+  const list = Array.isArray(files) ? files : [];
+  if (list.length === 0) return false;              // nothing to compare is not evidence of sameness
+  return list.every((f) => f && typeof f.patch === 'string' && f.patch.length > 0);
+}
+
+function makeCtx(o) {
+  return {
+    runner: typeof o.runner === 'function' ? o.runner : defaultRunner,
+    timeoutMs: typeof o.timeoutMs === 'number' ? o.timeoutMs : DEFAULT_TIMEOUT_MS,
+    maxBytes: typeof o.maxBytes === 'number' ? o.maxBytes : DEFAULT_MAX_BYTES,
+    maxCandidates: Number.isInteger(o.maxCandidates) && o.maxCandidates > 0 ? o.maxCandidates : PER_PAGE,
+  };
+}
+
+/** One read-only GET. Returns {ok,data} or {ok:false, reason}. NEVER throws. */
+async function ghGet(pathAndQuery, jq, ctx) {
+  const args = ['api', '-X', 'GET', pathAndQuery];
+  if (jq) { args.push('--jq', jq); }
+  try { assertReadOnlyGhArgs(args); }        // invoked HERE: an injected runner bypasses the runner's gate
+  catch { return { ok: false, reason: 'not-read-only' }; }
+  let stdout;
+  try {
+    const res = await ctx.runner(args, { timeoutMs: ctx.timeoutMs, maxBytes: ctx.maxBytes, env: buildVerifyEnv(process.env) });
+    stdout = (res && typeof res.stdout === 'string') ? res.stdout : '';
+  } catch (err) {
+    const text = `${(err && err.stderr) || ''} ${(err && err.message) || ''}`;
+    return { ok: false, reason: RATELIMIT_RE.test(text) ? 'rate-limited' : 'gh-failed' };
+  }
+  try { return { ok: true, data: JSON.parse(stdout) }; }
+  catch { return { ok: false, reason: 'bad-json' }; }
+}
+
+/** Is `sha` reachable from `base`? EXPLICIT - never inferred from an endpoint default. */
+async function isReachable(repo, base, sha, ctx) {
+  const r = await ghGet(`repos/${repo}/compare/${encodeURIComponent(base)}...${sha}`,
+    '{status: .status, ahead_by: .ahead_by}', ctx);
+  if (!r.ok) return { ok: false, reason: r.reason };
+  const d = r.data;
+  // ahead_by === 0 means the head introduces nothing the base lacks -> fully contained.
+  return { ok: true, reachable: !!(d && typeof d === 'object' && d.ahead_by === 0) };
+}
+
+/** A commit's linkage fingerprint: normalized patch hash + subject + the set of files it touched. */
+async function fingerprintOf(repo, sha, ctx) {
+  const r = await ghGet(`repos/${repo}/commits/${sha}`,
+    '{subject: (.commit.message | split("\\n")[0]), files: [.files[]? | {filename, patch}]}', ctx);
+  if (!r.ok) return { ok: false, reason: r.reason };
+  const d = r.data || {};
+  const files = Array.isArray(d.files) ? d.files : [];
+  return {
+    ok: true,
+    hash: normalizedPatchHash(files),
+    comparable: isPatchComparable(files),
+    subject: typeof d.subject === 'string' ? d.subject.trim() : '',
+    files: new Set(files.map((f) => f && f.filename).filter((n) => typeof n === 'string')),
+  };
+}
+
+// The minimum share of OUR commit's files a candidate must also touch to count as a weak (adapted) link.
+const FILE_OVERLAP_MIN = 0.5;
+
+/**
+ * Is `cand` a landing of `ours`? Returns 'exact' | 'adapted' | null.
+ *
+ * LOAD-BEARING (a control run caught this): author attribution ALONE is NOT a link. Every commit the same
+ * author pushed to main since the PR opened is "attributed and reachable", so anchoring on that alone means
+ * "this person has committed since" - which fired `anchored` with 104 unrelated release chores on a control.
+ * A candidate must be tied to a SPECIFIC commit of ours:
+ *   - 'exact'   patch-identical after normalization. Sound; no shape matching.
+ *   - 'adapted' same subject AND a majority of our files also touched. This IS a shape-assisted inference,
+ *               so it is never reported as 'exact' and never stands in for patch-identity - it exists only
+ *               because a maintainer may MODIFY the change while landing it (probed: 1 of our 2 commits).
+ */
+function linkKind(ours, cand) {
+  // Exactness requires both sides to be genuinely comparable: a binary / too-large file has no `patch`, so
+  // an "equal" hash there would just be two empty bodies agreeing (CodeRabbit Major).
+  if (ours.comparable && cand.comparable && ours.hash === cand.hash) return 'exact';
+  if (!ours.subject || ours.subject !== cand.subject) return null;
+  if (ours.files.size === 0) return null;
+  let shared = 0;
+  for (const f of ours.files) if (cand.files.has(f)) shared += 1;
+  return (shared / ours.files.size) >= FILE_OVERLAP_MIN ? 'adapted' : null;
+}
+
+/**
+ * Did our work land in the upstream default branch, regardless of whether OUR PR merged?
+ * TOTAL / SHADOW / ADVISORY - gates nothing.
+ * @param {{repo, pr_number, runner?, timeoutMs?, maxBytes?, maxCandidates?}} input
+ * @returns {Promise<{ok, anchored, strength, via, landed, our_commit_count, reason?}>}
+ */
+async function detectCommitAnchoring(input = {}) {
+  const i = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
+  const out = { ok: true, anchored: false, strength: null, via: null, landed: [], our_commit_count: 0 };
+  if (!isGhRepo(i.repo)) { alert('bad-repo', {}); return { ...out, ok: false, reason: 'bad-repo' }; }
+  if (!(Number.isSafeInteger(i.pr_number) && i.pr_number >= 1)) { alert('bad-pr-number', { repo: i.repo }); return { ...out, ok: false, reason: 'bad-pr-number' }; }
+  const ctx = makeCtx(i);
+  const repo = i.repo;
+
+  const pr = await ghGet(`repos/${repo}/pulls/${i.pr_number}`,
+    '{head_sha: .head.sha, created_at: .created_at, base_ref: .base.ref, default_branch: .base.repo.default_branch}', ctx);
+  if (!pr.ok) { alert('pr-fetch-failed', { pr_number: i.pr_number, detail_reason: pr.reason }); return { ...out, ok: false, reason: pr.reason }; }
+  // THE TRUST BRANCH IS THE REPO'S DEFAULT BRANCH, not the PR's base ref (CodeRabbit Major). A PR that
+  // targets `release` can be reachable from `release` while absent from `main` - reporting that as anchored
+  // would claim a landing on a branch the trust argument never covered. Fail closed if it is missing.
+  const { head_sha: headSha, created_at: createdAt, default_branch: baseRef } = pr.data || {};
+  if (typeof headSha !== 'string' || !SHA_RE.test(headSha) || typeof baseRef !== 'string' || !baseRef) {
+    alert('pr-shape', { pr_number: i.pr_number });
+    return { ...out, ok: false, reason: 'pr-shape' };
+  }
+
+  // PATH A - the ordinary case: our head is already contained in the base branch (merge / fast-forward).
+  const headReach = await isReachable(repo, baseRef, headSha, ctx);
+  if (!headReach.ok) { alert('compare-failed', { pr_number: i.pr_number, detail_reason: headReach.reason }); return { ...out, ok: false, reason: headReach.reason }; }
+  if (headReach.reachable) {
+    return { ...out, anchored: true, strength: 'exact', via: 'head-contained', landed: [{ sha: headSha, patch_exact: true }] };
+  }
+
+  // PATH B - the rebase / cherry-pick case: our commits landed under DIFFERENT shas.
+  const ourRes = await ghGet(`repos/${repo}/pulls/${i.pr_number}/commits?per_page=${PER_PAGE}`,
+    'if type=="array" then [.[] | {sha: .sha, email: (.commit.author.email // null)}] else error("commits body not an array") end', ctx);
+  if (!ourRes.ok) { alert('our-commits-failed', { pr_number: i.pr_number, detail_reason: ourRes.reason }); return { ...out, ok: false, reason: ourRes.reason }; }
+  const ourCommits = Array.isArray(ourRes.data) ? ourRes.data.filter((c) => c && SHA_RE.test(String(c.sha))) : [];
+  out.our_commit_count = ourCommits.length;
+  if (ourCommits.length === 0) { return { ...out, reason: 'no-our-commits' }; }
+  if (ourCommits.length > MAX_OUR_COMMITS) {
+    alert('too-many-commits', { pr_number: i.pr_number, count: ourCommits.length });
+    return { ...out, ok: false, reason: 'too-many-commits' };
+  }
+
+  // Bound the search by author EMAIL. PROBED: the `author=<login>` form returns ZERO for a commit that is
+  // demonstrably on the default branch AND linked to the account; the EMAIL form returns it. Do not
+  // "simplify" this to the login form - it silently finds nothing.
+  const emails = [...new Set(ourCommits.map((c) => c.email).filter((e) => typeof e === 'string' && e.length > 0 && e.length <= 320))];
+  if (emails.length === 0) { return { ...out, reason: 'no-author-email' }; }
+
+  const since = typeof createdAt === 'string' && createdAt ? createdAt : null;
+  const candidates = [];
+  let truncated = false;
+  for (const email of emails) {
+    const q = `repos/${repo}/commits?author=${encodeURIComponent(email)}&per_page=${ctx.maxCandidates}${since ? `&since=${encodeURIComponent(since)}` : ''}`;
+    const r = await ghGet(q, 'if type=="array" then [.[] | {sha: .sha}] else error("commits body not an array") end', ctx);
+    if (!r.ok) { alert('candidate-scan-failed', { pr_number: i.pr_number, detail_reason: r.reason }); return { ...out, ok: false, reason: r.reason }; }
+    const rows = Array.isArray(r.data) ? r.data : [];
+    if (rows.length >= ctx.maxCandidates) truncated = true;   // a full page: more may exist, never silent
+    for (const row of rows) if (row && SHA_RE.test(String(row.sha))) candidates.push(String(row.sha));
+  }
+  if (candidates.length === 0) {
+    return { ...out, reason: truncated ? 'candidates-truncated' : 'no-attributed-commits' };
+  }
+
+  // Fingerprint OUR commits (patch hash + subject + file set) so a candidate can be LINKED to a specific one.
+  const ourPrints = [];
+  for (const c of ourCommits) {
+    const p = await fingerprintOf(repo, c.sha, ctx);
+    if (!p.ok) { alert('our-fingerprint-failed', { sha: String(c.sha).slice(0, 9), detail_reason: p.reason }); return { ...out, ok: false, reason: p.reason }; }
+    ourPrints.push(p);
+  }
+
+  const landed = [];
+  const linkedOurs = new Map();                                         // our sha -> best link kind
+  for (const sha of [...new Set(candidates)]) {
+    const reach = await isReachable(repo, baseRef, sha, ctx);           // EXPLICIT - the trust basis
+    if (!reach.ok) { alert('candidate-compare-failed', { sha: sha.slice(0, 9), detail_reason: reach.reason }); return { ...out, ok: false, reason: reach.reason }; }
+    if (!reach.reachable) continue;                                     // attributed but NOT upstream -> not evidence
+    const cand = await fingerprintOf(repo, sha, ctx);
+    if (!cand.ok) { alert('candidate-fingerprint-failed', { sha: sha.slice(0, 9), detail_reason: cand.reason }); return { ...out, ok: false, reason: cand.reason }; }
+    // Attribution + reachability are NOT enough - the candidate must link to a SPECIFIC commit of ours.
+    let best = null;
+    for (let k = 0; k < ourPrints.length; k += 1) {
+      const kind = linkKind(ourPrints[k], cand);
+      if (!kind) continue;
+      if (kind === 'exact') { best = { kind, idx: k }; break; }
+      if (!best) best = { kind, idx: k };
+    }
+    if (!best) continue;                                                // an unrelated commit by the same author
+    const prev = linkedOurs.get(ourCommits[best.idx].sha);
+    if (best.kind === 'exact' || !prev) linkedOurs.set(ourCommits[best.idx].sha, best.kind);
+    landed.push({ sha, patch_exact: best.kind === 'exact' });
+  }
+
+  if (landed.length === 0) {
+    return { ...out, reason: truncated ? 'candidates-truncated' : 'no-linked-commits' };
+  }
+  // `exact` only when EVERY one of our commits has a patch-exact landing; otherwise the change was ADAPTED
+  // in flight (the real case: 1 of 2 exact) - still anchored, honestly labelled.
+  const allExact = ourCommits.length > 0 && ourCommits.every((c) => linkedOurs.get(c.sha) === 'exact');
+  const strength = allExact ? 'exact' : 'adapted';
+  if (truncated) alert('candidates-truncated', { pr_number: i.pr_number, seen: candidates.length });
+  alert('anchored', { pr_number: i.pr_number, landed: landed.length, strength });
+  return { ...out, anchored: true, strength, via: 'attributed-reachable', landed, our_commit_count: ourCommits.length };
+}
+
+module.exports = { detectCommitAnchoring, normalizedPatchHash, MAX_OUR_COMMITS };
+
+// CLI: one probe, JSON to stdout, exit 0 always (advisory; a shadow no-op is not a failure).
+// exitCode (not process.exit) so a piped stdout flushes.
+if (require.main === module) {
+  const [repo, prRaw] = process.argv.slice(2);
+  detectCommitAnchoring({ repo, pr_number: Number(prRaw) })
+    .then((res) => { process.stdout.write(`${JSON.stringify(res)}\n`); process.exitCode = 0; })
+    .catch((err) => { process.stdout.write(`${JSON.stringify({ ok: false, reason: 'probe-threw', message: (err && err.message) || 'error' })}\n`); process.exitCode = 0; });
+}
